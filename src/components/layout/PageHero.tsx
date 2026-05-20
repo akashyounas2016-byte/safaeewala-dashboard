@@ -21,7 +21,7 @@ export function PageHero({
   const { openMenu } = useLayout()
 
   return (
-    <section className="gradient-card rounded-[22px] p-6 text-white shadow-[0_10px_30px_rgba(15,23,42,0.06)] mb-6 relative overflow-hidden">
+    <section className="gradient-card rounded-[22px] p-6 text-white shadow-[0_20px_60px_rgba(15,23,42,0.35)] mb-6 relative overflow-hidden">
       {/* Glow */}
       <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
 
