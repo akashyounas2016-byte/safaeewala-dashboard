@@ -1,4 +1,5 @@
 import { useState, type ElementType } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -7,9 +8,52 @@ import {
   ArrowUpRight, ArrowDownRight, Minus, ArrowRight,
   AlertCircle, Clock, CalendarPlus, FileText, UserCheck, ShoppingCart,
 } from 'lucide-react'
+import { Modal } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
+import { Input, Select, Textarea } from '@/components/ui/Input'
 import { formatTime } from '@/lib/utils'
 import { mockStats, revenueData, serviceBreakdown, mockBookings, mockEmployees } from '@/data/mock'
 import { PageHero } from '@/components/layout/PageHero'
+
+const serviceTypes = [
+  'Standard Clean', 'Deep Clean', 'Move-in', 'Move-out',
+  'Commercial', 'Post-construction', 'Office', 'Carpet', 'Window',
+]
+
+function NewBookingForm({ onClose }: { onClose: () => void }) {
+  return (
+    <form className="space-y-4" onSubmit={e => { e.preventDefault(); onClose() }}>
+      <div className="grid grid-cols-2 gap-4">
+        <Input label="Client Name" placeholder="Full name" />
+        <Input label="Phone" placeholder="+971 50 000 0000" />
+      </div>
+      <Input label="Service Address" placeholder="Street, unit, neighborhood" />
+      <div className="grid grid-cols-2 gap-4">
+        <Select label="Service Type">
+          <option value="">Select service…</option>
+          {serviceTypes.map(s => <option key={s}>{s}</option>)}
+        </Select>
+        <Select label="Frequency">
+          <option value="once">One-time</option>
+          <option value="weekly">Weekly</option>
+          <option value="biweekly">Bi-weekly</option>
+          <option value="monthly">Monthly</option>
+        </Select>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        <Input label="Date" type="date" />
+        <Input label="Time" type="time" />
+        <Input label="Duration (hrs)" type="number" min="1" max="12" defaultValue="3" />
+      </div>
+      <Input label="Total Amount (AED)" type="number" placeholder="0.00" />
+      <Textarea label="Notes" placeholder="Access instructions, special requirements…" rows={3} />
+      <div className="flex gap-3 pt-2">
+        <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+        <Button type="submit" className="flex-1">Create Booking</Button>
+      </div>
+    </form>
+  )
+}
 
 const todayBookings = mockBookings.filter(b => b.scheduled_date === '2026-05-20')
 
@@ -211,7 +255,8 @@ function ServiceMixDonut() {
 
 /* ─── Overview page ─── */
 export function Overview() {
-  const [_newBooking, setNewBooking] = useState(false)
+  const [showNewBooking, setShowNewBooking] = useState(false)
+  const navigate = useNavigate()
   const liveCount = todayBookings.filter(b => b.status === 'in_progress').length
   const scheduledCount = todayBookings.filter(b => b.status === 'confirmed').length
 
@@ -225,7 +270,7 @@ export function Overview() {
         subtitle={`Wednesday, 20 May 2026 · ${todayBookings.length} jobs scheduled · ${liveCount} live now`}
         statusChip="On track"
         actionLabel="New Booking"
-        onAction={() => setNewBooking(true)}
+        onAction={() => setShowNewBooking(true)}
       />
 
       {/* ── Filters ── */}
@@ -268,13 +313,14 @@ export function Overview() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { icon: CalendarPlus, label: 'New Booking', sub: 'Create customer appointment', bg: 'bg-emerald-100', color: 'text-emerald-600', hover: 'hover:bg-emerald-50' },
-              { icon: FileText, label: 'Create Invoice', sub: 'Generate VAT invoice', bg: 'bg-sky-100', color: 'text-sky-600', hover: 'hover:bg-sky-50' },
-              { icon: UserCheck, label: 'Assign Crew', sub: 'Manage cleaner schedules', bg: 'bg-amber-100', color: 'text-amber-600', hover: 'hover:bg-amber-50' },
-              { icon: ShoppingCart, label: 'Purchase Order', sub: 'Restock cleaning supplies', bg: 'bg-purple-100', color: 'text-purple-600', hover: 'hover:bg-purple-50' },
+              { icon: CalendarPlus, label: 'New Booking',    sub: 'Create customer appointment', bg: 'bg-emerald-100', color: 'text-emerald-600', hover: 'hover:bg-emerald-50', action: () => setShowNewBooking(true) },
+              { icon: FileText,     label: 'Create Invoice', sub: 'Generate VAT invoice',         bg: 'bg-sky-100',     color: 'text-sky-600',     hover: 'hover:bg-sky-50',     action: () => navigate('/invoices') },
+              { icon: UserCheck,    label: 'Assign Crew',    sub: 'Manage cleaner schedules',     bg: 'bg-amber-100',   color: 'text-amber-600',   hover: 'hover:bg-amber-50',   action: () => navigate('/dispatch') },
+              { icon: ShoppingCart, label: 'Purchase Order', sub: 'Restock cleaning supplies',    bg: 'bg-purple-100',  color: 'text-purple-600',  hover: 'hover:bg-purple-50',  action: () => navigate('/inventory') },
             ].map(action => (
               <button key={action.label}
-                className={`group bg-slate-50 ${action.hover} border border-[#E4E8EC] rounded-2xl p-5 transition-all text-left`}>
+                onClick={action.action}
+                className={`group bg-slate-50 ${action.hover} border border-[#E4E8EC] rounded-2xl p-5 transition-all text-left cursor-pointer`}>
                 <div className={`w-12 h-12 rounded-2xl ${action.bg} flex items-center justify-center mb-4 group-hover:scale-105 transition-transform`}>
                   <action.icon size={20} className={action.color} />
                 </div>
@@ -501,11 +547,16 @@ export function Overview() {
 
         <div className="p-6 border-t border-[#E4E8EC] flex justify-between items-center">
           <p className="text-sm text-[#6B7280]">Showing {todayBookings.length} of {mockBookings.length} bookings</p>
-          <a href="/bookings" className="text-[#059669] font-semibold hover:underline flex items-center gap-2">
+          <Link to="/bookings" className="text-[#059669] font-semibold hover:underline flex items-center gap-2">
             View all bookings <ArrowRight size={14} />
-          </a>
+          </Link>
         </div>
       </section>
+
+      {/* ── New Booking Modal ── */}
+      <Modal open={showNewBooking} onClose={() => setShowNewBooking(false)} title="New Booking" size="lg">
+        <NewBookingForm onClose={() => setShowNewBooking(false)} />
+      </Modal>
     </div>
   )
 }
