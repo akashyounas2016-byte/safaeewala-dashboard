@@ -1,11 +1,21 @@
+import { useState } from 'react'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, Legend,
 } from 'recharts'
-import { TrendingUp, Target, Award, Users } from 'lucide-react'
+import { TrendingUp, Target, Award, Users, Download } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatCurrency } from '@/lib/utils'
 import { revenueData, serviceBreakdown, mockEmployees, mockClients } from '@/data/mock'
+
+function exportCSV(filename: string, rows: string[][]) {
+  const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
+  URL.revokeObjectURL(url)
+}
 
 const kpiTrend = [
   { month: 'Dec', churn: 5.2, admin_min: 20, margin: 42 },
@@ -25,6 +35,20 @@ const employeePerf = mockEmployees.filter(e => e.status === 'active').slice(0, 5
 const topClients = [...mockClients].sort((a, b) => b.total_spent - a.total_spent).slice(0, 5)
 
 export function Reports() {
+  const [dateRange, setDateRange] = useState('6m')
+
+  function handleExport() {
+    exportCSV('safaeewala-revenue-report.csv', [
+      ['Month', 'Revenue (AED)', 'Target (AED)', 'vs Target'],
+      ...revenueData.map(d => [
+        d.month,
+        String(d.revenue),
+        String(d.target),
+        `${d.revenue >= d.target ? '+' : ''}${(((d.revenue - d.target) / d.target) * 100).toFixed(1)}%`,
+      ]),
+    ])
+  }
+
   return (
     <div className="space-y-6">
 
@@ -33,9 +57,34 @@ export function Reports() {
         title="Reports"
         subtitle="Year 1 KPI targets · Revenue analytics · Staff performance · Service breakdown"
         statusChip="On Track"
-        actionLabel="Export Report"
+        actionLabel="Export CSV"
+        onAction={handleExport}
         searchPlaceholder="Search reports…"
       />
+
+      {/* ── Date Range + Export bar ── */}
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-3.5 flex items-center gap-3 flex-wrap">
+        <span className="text-[11px] uppercase tracking-[0.12em] text-slate-500 font-semibold shrink-0">Date Range</span>
+        <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+          {[{ label: '3M', value: '3m' }, { label: '6M', value: '6m' }, { label: '1Y', value: '1y' }, { label: 'All', value: 'all' }].map(r => (
+            <button
+              key={r.value}
+              onClick={() => setDateRange(r.value)}
+              className={`text-[12px] px-3 py-1.5 rounded-lg font-semibold transition-all ${dateRange === r.value ? 'bg-white text-[#111827] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl hover:bg-emerald-100 transition-colors"
+          >
+            <Download size={13} /> Export CSV
+          </button>
+        </div>
+      </div>
 
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
