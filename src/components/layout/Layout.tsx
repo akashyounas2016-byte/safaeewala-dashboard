@@ -15,7 +15,7 @@ export function Layout() {
       <div className="flex h-screen w-screen overflow-hidden bg-[#f4f7f6]">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        <div className="flex flex-col flex-1 min-w-0 bg-[#f0f4f3]">
           {/* Mobile-only top bar (hamburger + logo) */}
           <div className="lg:hidden flex items-center gap-3 px-4 h-14 bg-[#0B1215] border-b border-white/10 shrink-0">
             <button
@@ -33,8 +33,8 @@ export function Layout() {
             </div>
           </div>
 
-          <main className="flex-1 overflow-y-auto overflow-x-hidden">
-            <div className="max-w-[1440px] mx-auto p-8">
+          <main className="flex-1 overflow-y-auto bg-[#f0f4f3]">
+            <div className="max-w-[1440px] mx-auto px-8 pt-8 pb-10">
               <Outlet />
             </div>
           </main>

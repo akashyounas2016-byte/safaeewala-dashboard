@@ -5,8 +5,8 @@
   --font-display: 'Inter Tight', system-ui, sans-serif;
 
   /* ── Page surfaces ── */
-  --color-canvas:   #f4f7f6;
-  --color-surface:  #f4f7f6;
+  --color-canvas:   #f0f4f3;
+  --color-surface:  #f0f4f3;
   --color-elevated: #ffffff;
 
   /* ── Text ── */
@@ -45,7 +45,7 @@
 
 body {
   font-family: var(--font-sans);
-  background: #f4f7f6;
+  background: #f0f4f3;
   color: #111827;
   -webkit-font-smoothing: antialiased;
 }
