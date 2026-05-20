@@ -1,0 +1,86 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Inter', system-ui, sans-serif;
+
+  /* ── Page surfaces ── */
+  --color-canvas:   #f4f7f6;
+  --color-surface:  #f4f7f6;
+  --color-elevated: #ffffff;
+
+  /* ── Text ── */
+  --color-ink:      #111827;
+  --color-ink-soft: #374151;
+  --color-ink-mute: #6B7280;
+
+  /* ── Borders / lines ── */
+  --color-line:        #E4E8EC;
+  --color-line-soft:   #f1f5f9;
+  --color-line-strong: #cbd5e1;
+
+  /* ── Brand accent (deep green) ── */
+  --color-accent:        #065f46;
+  --color-accent-bright: #059669;
+  --color-accent-soft:   #d1fae5;
+
+  /* ── Status colors ── */
+  --color-teal:       #059669;
+  --color-teal-deep:  #047857;
+  --color-teal-soft:  #d1fae5;
+
+  --color-coral:      #ef4444;
+  --color-coral-soft: #fee2e2;
+
+  --color-gold:       #d97706;
+  --color-amber-warm: #d97706;
+  --color-amber-deep: #b45309;
+  --color-amber-soft: #fef3c7;
+
+  --color-sky:      #0ea5e9;
+  --color-sky-soft: #e0f2fe;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-sans);
+  background: #f4f7f6;
+  color: #111827;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root { width: 100%; min-height: 100svh; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Gradient card (hero section on each page) */
+.gradient-card {
+  background: linear-gradient(135deg, #0f172a 0%, #065f46 100%);
+}
+
+/* Sidebar background */
+.sidebar-bg {
+  background: linear-gradient(180deg, #0B1215 0%, #111827 100%);
+}
+
+/* Active sidebar nav item */
+.nav-active {
+  background: rgba(16, 185, 129, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(16, 185, 129, 0.20);
+}
+
+.nav-inactive {
+  color: #94a3b8;
+  border: 1px solid transparent;
+}
+
+.nav-inactive:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #e2e8f0;
+}

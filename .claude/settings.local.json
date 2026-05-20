@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(cd \"e:\\\\VS CODE PROJECTS\\\\SAFAEEWALA DASHBOARD\"; Start-Process powershell -ArgumentList \"-NoProfile -Command `\"cd 'e:\\\\VS CODE PROJECTS\\\\SAFAEEWALA DASHBOARD'; npm run dev`\"\" -WindowStyle Normal; Start-Sleep -Seconds 3; Write-Host \"Dev server starting...\")",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

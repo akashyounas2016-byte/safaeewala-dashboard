@@ -1,0 +1,697 @@
+==============================================================
+  SAFAEEWALA DASHBOARD — COMPLETE DESIGN BRIEF
+  For: Designer
+  Prepared: May 2026
+==============================================================
+
+
+--------------------------------------------------------------
+1. COMPANY OVERVIEW
+--------------------------------------------------------------
+
+Company Name    : Safaeewala LLC
+Location        : Dubai, UAE
+Industry        : Professional Cleaning Services
+Owner           : Akash Younas (Owner · Admin)
+
+Services offered:
+  - Home Cleaning (most common — weekly/biweekly)
+  - Deep Cleaning
+  - Villa Cleaning (premium, 8+ hrs, large crews)
+  - Commercial / Office Cleaning
+  - Move-in / Move-out Cleaning
+  - Carpet, Sofa, Curtain, Window Cleaning
+  - Maintenance Cleaning
+
+Business scale (current data):
+  - 247 active clients
+  - 18 employees (crew leads + cleaners)
+  - ~12 jobs per day
+  - Revenue ~AED/$ 128,400 per month
+  - Average rating: 4.8 / 5.0 (127 reviews)
+
+
+--------------------------------------------------------------
+2. WHAT IS BEING BUILT
+--------------------------------------------------------------
+
+A web-based internal management dashboard (not client-facing).
+Only Akash (owner) and admin staff will use it.
+
+Purpose: Replace manual WhatsApp/Excel management with a
+single tool for running the entire cleaning business.
+
+Tech stack (for context, not for the designer to worry about):
+  - React 19 + TypeScript
+  - Tailwind CSS (utility-first CSS framework)
+  - Runs in a browser at http://localhost:5173 during dev
+  - Responsive: works on desktop and tablet (mobile is secondary)
+
+Layout structure:
+  - Left sidebar (fixed, always visible on desktop, 240px wide)
+  - Top header bar (fixed, full width)
+  - Main content area (scrollable, max ~1280px wide, centered)
+
+
+--------------------------------------------------------------
+3. CURRENT PROBLEMS (Why a designer is needed)
+--------------------------------------------------------------
+
+The current implementation was built by a developer without
+professional design input. Issues:
+
+  a) No consistent visual hierarchy — everything looks the same weight
+  b) Color scheme feels amateurish — too many greens, no clear system
+  c) Cards have inconsistent padding (some cramped, some too spaced)
+  d) Typography has no clear size scale — headings vs body feel similar
+  e) KPI metric cards are merged into a gray strip — not individual,
+     feels like a spreadsheet
+  f) The sidebar feels dark but inconsistent — active states unclear
+  g) Charts lack proper labeling and visual breathing room
+  h) The overall feel is "developer-designed" — not polished or modern
+  i) No clear design language across pages — each page looks different
+
+
+--------------------------------------------------------------
+4. DESIGN GOALS
+--------------------------------------------------------------
+
+  - Clean, modern, professional SaaS dashboard aesthetic
+  - Primary users: owner + 1-2 admin staff (not tech-savvy)
+  - Should feel premium — this is for a growing Dubai business
+  - Clarity over decoration — data must be easy to scan quickly
+  - Consistent spacing, consistent card padding, consistent type scale
+  - Brand color: Deep Emerald / Dark Green (company name = "Safaeewala"
+    which means "cleaner" in Urdu/Hindi)
+  - No clutter. White space is not empty space — use it well.
+
+
+--------------------------------------------------------------
+5. COLOR PREFERENCES
+--------------------------------------------------------------
+
+Current palette (developer-chosen, open to redesign):
+
+  Page background   : #f8fafc (very light cool gray)
+  Card background   : #ffffff (pure white)
+  Sidebar           : #0f172a (very dark slate blue-black)
+  Primary text      : #0f172a (slate-900)
+  Secondary text    : #475569 (slate-600)
+  Muted text        : #94a3b8 (slate-400)
+  Borders           : #e2e8f0 (slate-200)
+
+  Accent / Brand    : #059669 (emerald-600) — green for active states,
+                      buttons, positive indicators
+  Accent dark       : #065f46 (emerald-800)
+
+  Status colors:
+    Success / Live  : #059669 green  (bg: #d1fae5)
+    Warning         : #d97706 amber  (bg: #fef3c7)
+    Danger / Error  : #ef4444 red    (bg: #fee2e2)
+    Info            : #0ea5e9 sky    (bg: #e0f2fe)
+
+The designer is free to refine/replace any of these as long as
+the brand stays in the green/emerald family and the overall
+feel is professional and clean.
+
+
+--------------------------------------------------------------
+6. ALL SCREENS — CONTENT & PURPOSE
+--------------------------------------------------------------
+
+=== SCREEN 1: SIDEBAR (persistent navigation) ===
+
+Always visible on desktop. Contains:
+
+  BRAND AREA (top)
+    - Logo: "S" initial mark (dark green gradient square/circle)
+    - Company name: "Safaeewala" (bold, white)
+    - Tagline: "LLC · Dubai" (small, muted)
+
+  NAVIGATION — Section 1: WORKSPACE
+    - Overview        (home/dashboard icon)
+    - Bookings        (calendar icon)
+    - Clients         (people icon)
+    - Employees       (user-check icon)
+    - Dispatch        (map pin icon)
+
+  NAVIGATION — Section 2: FINANCE
+    - Invoices        (document icon)
+    - Inventory       (package icon)
+    - Reports         (bar chart icon)
+    - Settings        (gear icon)
+
+  USER CARD (bottom)
+    - Avatar with initials "AY" (amber/gold gradient circle)
+    - Name: "Akash Younas"
+    - Role: "Owner · Admin"
+
+  Active state: currently selected page should be clearly
+  highlighted — suggested: green/emerald tint bg + bright text.
+  Inactive: muted gray text.
+
+
+=== SCREEN 2: HEADER BAR ===
+
+Sits at top of every page. Contains:
+
+  LEFT SIDE:
+    - Page title (e.g., "Overview", "Bookings")
+    - Page subtitle (small, muted) e.g., "4 jobs today · revenue tracking ahead of target"
+    - Small eyebrow label above title: "Wed · 20 May 2026"
+    - On mobile: hamburger menu button to open sidebar
+
+  RIGHT SIDE:
+    - Search bar (desktop) — "Search…" with ⌘K shortcut shown
+    - Notification bell button — with red dot when there are alerts
+    - "New Booking" button — primary CTA, green, prominent
+
+
+=== SCREEN 3: OVERVIEW (Home Dashboard) ===
+
+This is the most important screen. Owner opens this every morning.
+It should answer: "How is today going?" at a glance.
+
+SECTION A — Page greeting
+  - "Good morning, Akash" (large heading)
+  - Subtext: "Wednesday, 20 May 2026 · 4 jobs scheduled · 2 live now"
+  - Status chip: "On track" (green pill, top right)
+
+SECTION B — 4 KPI Cards (top metrics row)
+  Each card is a separate white card with:
+    - Colored icon in a soft-tinted circle (top left)
+    - Delta badge showing trend (top right, e.g. "+18% ↑")
+    - Large bold number (main metric)
+    - Metric label below number
+    - Sub-label (context) below that
+
+  Card 1: Jobs Today
+    Value: 4
+    Sub: "vs avg Wednesday"
+    Delta: +1 (up, green)
+    Icon: Calendar (green)
+
+  Card 2: Revenue Today
+    Value: $2,180
+    Sub: "vs last Wednesday"
+    Delta: +18% (up, green)
+    Icon: Dollar sign (blue)
+
+  Card 3: Active Cleaners
+    Value: 17
+    Sub: "1 on leave today"
+    Delta: 17 active (neutral)
+    Icon: People (amber)
+
+  Card 4: Avg Rating
+    Value: 4.8
+    Sub: "127 total reviews"
+    Delta: +0.1 (up, green)
+    Icon: Star (purple)
+
+SECTION C — 3 Ops Alert Cards (secondary metrics row)
+  Smaller cards, side by side, highlight problems/alerts:
+
+  Card 1: Pending Invoices — 9 (red, alert icon)
+    Sub: "$6,820 outstanding"
+  Card 2: Low Stock Alerts — 3 (amber, warning icon)
+    Sub: "1 critical item"
+  Card 3: Crew Utilization — 84% (green, clock icon)
+    Sub: "5 cleaners dispatched"
+
+SECTION D — Charts (side by side)
+  Left (wider, ~62% width): Revenue vs Target
+    - Line/area chart showing last 6 months
+    - Two lines: Actual Revenue (solid green) + Target (dashed gray)
+    - X-axis: Dec, Jan, Feb, Mar, Apr, May
+    - Summary stats above chart: Total Revenue $194k (+18%),
+      Target Hit 5/6, Monthly Avg $32.3k
+    - Time range toggle: 3M | 6M | 1Y
+
+  Right (narrower, ~38% width): Service Mix
+    - Donut/pie chart
+    - Center: "486" (total jobs this month)
+    - Legend below chart showing each service type with % and job count
+    - Services: Home Cleaning 48%, Deep Cleaning 22%,
+      Villa Cleaning 14%, Commercial 10%, Maintenance 6%
+
+SECTION E — Today's Dispatch (full-width table)
+  Header: "Today's Dispatch" + "4 jobs · 2 live, 1 scheduled"
+  Filter tabs: All | Live | Scheduled
+
+  Table columns:
+    Time | (Avatar) | Client Name + Address | Service Type | Status | Amount
+
+  Status pills (color-coded):
+    - Live      = green pill  (in_progress)
+    - Scheduled = blue pill   (confirmed)
+    - Pending   = amber pill
+    - Cancelled = red pill
+    - Done      = gray pill   (completed)
+
+  Sample rows (today = May 20, 2026):
+    09:00  |  Sarah Al-Rashidi     | Apt 1204, Marina Heights     | Home Cleaning  | Scheduled | $300
+    10:00  |  Mohammed Al-Farsi    | Villa 23, Al Barsha 2        | Deep Cleaning  | Live       | $750
+    11:00  |  Aisha Malik          | Apt 304, Jumeirah Beach      | Home Cleaning  | Cancelled  | $300
+    14:00  |  Priya Sharma         | Unit 805, Burj View Tower    | Home Cleaning  | Pending    | $200
+
+  Footer: "View all 7 bookings →" (link to Bookings page)
+
+
+=== SCREEN 4: BOOKINGS ===
+
+Full list of all bookings. Main job management screen.
+
+HEADER ROW:
+  - "Bookings" title
+  - Filter/search bar
+  - Toggle: List view | Calendar view
+  - "New Booking" button (if not in header)
+
+KPI STRIP (top, small):
+  - Total Jobs (week): 12
+  - Revenue (week): $4,850
+  - Pending: 2
+  - Cancelled: 1
+
+LIST VIEW TABLE:
+  Columns: Date & Time | Client | Service | Crew Assigned | Status | Amount | Actions
+
+  Full booking list (7 total in mock data):
+  1. b001 — Sarah Al-Rashidi      | May 20, 09:00 | Home Cleaning, 3hr | crew: emp001,emp002 | Confirmed | $300
+  2. b002 — Mohammed Al-Farsi     | May 20, 10:00 | Deep Cleaning, 6hr | crew: emp003,emp004,emp005 | In Progress | $750
+  3. b003 — Priya Sharma          | May 20, 14:00 | Home Cleaning, 2hr | crew: emp001 | Pending | $200
+  4. b004 — James Thornton        | May 19, 07:00 | Office Cleaning, 4hr | crew: emp006,emp007 | Completed | $420
+  5. b005 — Fatima Hassan         | May 21, 08:00 | Villa Cleaning, 8hr | crew: emp002,emp003,emp004 | Confirmed | $1,200
+  6. b006 — David Chen            | May 22, 10:00 | Move-in Cleaning, 5hr | crew: emp005,emp006 | Confirmed | $600
+  7. b007 — Aisha Malik           | May 20, 11:00 | Home Cleaning, 3hr | crew: emp007 | Cancelled | $300
+
+  Notes on some bookings:
+    - b002: "Owner has two dogs. Please use pet-safe products."
+    - b005: "Access code: 4521. Park at visitor bay."
+    - b007: "Client cancelled due to travel"
+
+  Each row should have action buttons: View | Edit | Invoice
+
+CALENDAR VIEW:
+  Monthly calendar grid. Each day shows colored dots/chips for
+  bookings that day. Click a day to see bookings for that day.
+
+BOOKING DETAIL (modal or slide-out panel):
+  When a booking is clicked, show full details:
+    - Client name + contact (phone, WhatsApp)
+    - Service address (with map link)
+    - Service type + duration
+    - Assigned crew members (names + roles)
+    - Status (with ability to change)
+    - Notes
+    - Invoice status + link
+    - Recurring frequency: weekly/biweekly/monthly/once
+
+
+=== SCREEN 5: CLIENTS ===
+
+CRM — manage client profiles.
+
+SEARCH + FILTER BAR at top.
+Stats row: Total Clients: 247 | Active this month: 89 | Avg LTV: $2,840
+
+CLIENT LIST (cards or table):
+  Each client shows:
+    - Avatar with initials (colored)
+    - Full name + nationality flag
+    - Phone / WhatsApp
+    - Area / Building
+    - Total bookings count
+    - Total spent
+    - Last service date
+    - Action: View Profile
+
+SAMPLE CLIENTS:
+  1. Sarah Al-Rashidi     | Emirati | Dubai Marina  | 24 bookings | $7,200 spent  | Last: May 13
+  2. Mohammed Al-Farsi    | Emirati | Al Barsha 2   | 12 bookings | $9,600 spent  | Last: May 20
+  3. Priya Sharma         | Indian  | Downtown Dubai| 18 bookings | $3,600 spent  | Last: May 6
+  4. James Thornton       | British | DIFC          | 52 bookings | $21,840 spent | Last: May 19
+  5. Fatima Hassan        | Emirati | Palm Jumeirah | 48 bookings | $57,600 spent | Last: May 14
+  6. David Chen           | Chinese | DIFC          | 3 bookings  | $1,200 spent  | New client
+
+CLIENT PROFILE PAGE:
+  When clicking a client:
+    - Header: name, nationality, contact info, WhatsApp button
+    - Address section: building, apartment/villa, area, city
+    - Special notes: access instructions, pet info, preferred cleaner
+    - Booking history (list of past + upcoming jobs)
+    - Invoice history
+    - Lifetime value chart
+
+
+=== SCREEN 6: EMPLOYEES ===
+
+Staff roster and compliance tracking.
+
+CRITICAL FEATURE: Visa/permit expiry alerts.
+  Employees have UAE-specific compliance docs that expire:
+    - Emirates ID
+    - Residence Visa
+    - Work Permit
+    - Medical Insurance
+    - Passport
+
+  If any doc expires within 30 days → amber warning
+  If expired → red alert
+
+STATS ROW:
+  Total Staff: 18 | Active: 17 | On Leave: 1 | Expiring Docs: 3
+
+EMPLOYEE LIST (table or cards):
+  Each employee:
+    - Avatar with initials
+    - Name + Nationality + Role (Crew Lead / Cleaner)
+    - Status: Active / On Leave
+    - Visa expiry date (colored: green/amber/red based on proximity)
+    - Skills list (chips)
+    - Pay rate (hourly)
+    - Actions: View | Schedule
+
+SAMPLE EMPLOYEES:
+  emp001 — Maria Santos   | Filipino | Crew Lead | Active | Visa: Aug 2026 | $18/hr
+  emp002 — Ravi Kumar     | Indian   | Cleaner   | Active | Visa: Nov 2026 | $14/hr
+  emp003 — Amara Diallo   | Ghanaian | Cleaner   | Active | Visa: Jun 2026 (WARNING!) | $14/hr
+  emp004 — Chen Wei       | Chinese  | Cleaner   | Active | Visa: Feb 2027 | $14/hr
+  emp005 — Fatima Nour    | Egyptian | Crew Lead | Active | Visa: Sep 2026, Passport: Dec 2026 (WARNING) | $18/hr
+  emp006 — John Okafor    | Nigerian | Cleaner   | Active | Visa: May 2027 | $14/hr
+  emp007 — Sita Rana      | Nepali   | Cleaner   | On Leave | Visa: Jul 2026 | $14/hr
+
+EMPLOYEE PROFILE:
+  - Personal info
+  - All document expiry dates (with colored status indicators)
+  - Skills/certifications
+  - Assigned jobs (calendar)
+  - Pay history
+
+SKILLS ACROSS STAFF:
+  Home Cleaning, Deep Cleaning, Villa Cleaning, Move-in/out,
+  Commercial Cleaning, Office Cleaning, Hospital Cleaning (HACCP),
+  Carpet Cleaning, Sofa Cleaning, Curtain Cleaning,
+  Window Cleaning, Post-Construction, Kitchen Cleaning
+
+
+=== SCREEN 7: DISPATCH ===
+
+Today's crew scheduling — who is going where.
+
+This is an operational screen. Used to assign crews to jobs
+and track real-time job status.
+
+VIEW:
+  - Timeline view: vertical timeline of the day (07:00 to 20:00)
+  - Each booking shown as a block on the timeline
+  - Color-coded by status: green=live, blue=scheduled, gray=done
+
+  OR:
+  - Map view: Dubai map showing job locations as pins
+  - Each pin colored by status
+
+CREW ASSIGNMENT PANEL:
+  - List of employees and their current assignment for the day
+  - Drag-and-drop (or select) to assign crew to a job
+  - Shows if employee is free or busy at a given time
+
+TODAY'S SCHEDULE SUMMARY:
+  Jobs today: 4 (active), 1 (cancelled)
+  Crews deployed: 5 cleaners, 2 crew leads
+  Vehicles: Van 1, Van 2
+
+JOB BLOCKS SHOW:
+  Time slot, Client name, Address, Service type, Crew assigned, Status
+
+
+=== SCREEN 8: INVOICES ===
+
+Billing and payment management. UAE VAT compliant (5% VAT).
+
+STATS ROW:
+  Total outstanding: $6,820 | Overdue: $315 (1 invoice) |
+  Paid this month: $441 | Draft: 0
+
+FILTER TABS: All | Paid | Sent | Overdue | Draft
+
+INVOICE LIST (table):
+  Columns: Invoice # | Client | Date | Due Date | Amount (excl VAT) | VAT | Total | Status | Actions
+
+  Sample invoices:
+  SAF-2026-0142 | James Thornton | May 19 | May 29 | $420 | $21 | $441 | PAID   | View PDF
+  SAF-2026-0141 | Fatima Hassan  | May 14 | May 28 | $1,200 | $60 | $1,260 | SENT | View | Remind
+  SAF-2026-0140 | Sarah Al-Rashidi | May 6 | May 13 | $300 | $15 | $315 | OVERDUE | View | Remind
+
+INVOICE DETAIL / PDF VIEW:
+  - Company header: Safaeewala LLC, TRN: 100234567890003
+  - Client address block
+  - Line items table:
+      Description | Qty | Unit Price | Amount
+      "Weekly Home Cleaning – 3 hrs" | 1 | $300 | $300
+  - Subtotal, VAT (5%), Total
+  - Payment terms
+  - Status
+
+ACTIONS on each invoice:
+  - View / Download PDF
+  - Send to client (email/WhatsApp)
+  - Mark as paid
+  - Send payment reminder
+
+
+=== SCREEN 9: INVENTORY ===
+
+Stock management for cleaning supplies and equipment.
+
+ALERT BANNER: "3 items below minimum stock level"
+
+STATS ROW:
+  Total Items: 7 | Below Min: 3 | Critical (below 50% of min): 1 |
+  Total Stock Value: ~$2,450
+
+FILTER: All | Chemicals | Equipment | PPE
+
+INVENTORY TABLE:
+  Columns: Item Name | Category | Location | In Stock | Min Stock | Status | Unit Cost | Last Restocked | Actions
+
+  Items:
+  All-Purpose Cleaner   | Chemical  | Main Storeroom | 45 L   | 20 L  | OK       | $12/L  | May 10
+  Microfibre Cloths     | Equipment | Main Storeroom | 8 pcs  | 30 pcs| CRITICAL | $3.5ea | Apr 20
+  Bathroom Disinfectant | Chemical  | Main Storeroom | 12 L   | 15 L  | LOW      | $18/L  | Apr 28
+  Mop Heads             | Equipment | Van 1          | 22 pcs | 10 pcs| OK       | $8 ea  | May 1
+  Glass Cleaner         | Chemical  | Main Storeroom | 30 L   | 10 L  | OK       | $10/L  | May 5
+  Latex Gloves (Box)    | PPE       | Main Storeroom | 6 boxes| 10 box| LOW      | $25/box| Apr 15
+  Vacuum Bags           | Equipment | Van 2          | 50 pcs | 20 pcs| OK       | $4 ea  | May 8
+
+  Suppliers:
+    CleanPro UAE, Gulf Supplies, Safety First UAE
+
+Stock status colors:
+  OK       = green (current >= min)
+  LOW      = amber (current < min)
+  CRITICAL = red   (current < 50% of min)
+
+Actions per item: Edit stock | Create Purchase Order | View History
+
+
+=== SCREEN 10: REPORTS ===
+
+Performance analytics. Monthly/weekly summaries.
+
+REPORT SECTIONS:
+
+  1. Revenue Report
+     - Monthly revenue bar chart (full year)
+     - Revenue by service type (pie/donut)
+     - Revenue vs target line chart
+     - Top 5 clients by revenue
+
+  2. Operations Report
+     - Jobs completed per week
+     - Average job duration
+     - Cancellation rate
+     - Crew utilization rate
+
+  3. Client Report
+     - New clients per month
+     - Retention rate
+     - Average bookings per client
+     - Client acquisition source
+
+  4. Employee Report
+     - Hours worked per employee
+     - Jobs per employee
+     - Performance rating
+
+  DATE RANGE FILTER: This week | This month | Last month | Custom range
+
+
+=== SCREEN 11: SETTINGS ===
+
+Company and system configuration.
+
+SECTIONS:
+  Company Info:
+    - Company name: Safaeewala LLC
+    - TRN (VAT number): 100234567890003
+    - Address: Dubai, UAE
+    - Phone, Email
+    - Logo upload
+
+  Invoice Settings:
+    - Invoice prefix: SAF
+    - Default payment terms: 10 days
+    - VAT rate: 5% (UAE standard)
+    - Invoice footer text
+
+  Notification Settings:
+    - Low stock alerts: ON
+    - Visa expiry reminders: ON (30 days before)
+    - New booking notifications: ON
+    - Overdue invoice reminders: ON
+
+  User Accounts:
+    - Owner: Akash Younas (akashyounas2016@gmail.com)
+    - Add/remove admin users
+
+  Service Types:
+    - List of services with pricing
+    - Default duration per service
+
+
+--------------------------------------------------------------
+7. COMPONENT LIBRARY NEEDED
+--------------------------------------------------------------
+
+The designer should define the look for these reusable components:
+
+  BUTTONS:
+    - Primary (solid green) — "New Booking", main CTAs
+    - Secondary (outlined/ghost) — secondary actions
+    - Danger (red) — delete, cancel
+    - Icon-only button
+
+  CARDS:
+    - KPI metric card (number + label + delta + icon)
+    - Content card (white box with title + body)
+    - Alert card (colored border/bg for warnings)
+
+  BADGES / PILLS:
+    - Status badge (Scheduled, Live, Pending, Cancelled, Done)
+    - Stock status badge (OK, Low, Critical)
+    - Document expiry badge (OK, Expiring, Expired)
+
+  INPUTS:
+    - Text input
+    - Select / Dropdown
+    - Date picker
+    - Search bar
+
+  TABLE:
+    - Standard data table (sortable headers, hover rows)
+    - Column header style
+    - Empty state (no data)
+
+  NAVIGATION:
+    - Sidebar nav item (active + inactive states)
+    - Section label (group divider in sidebar)
+
+  MODALS / PANELS:
+    - Modal dialog (for forms, confirmations)
+    - Slide-out panel / drawer (for detail views)
+
+  CHARTS:
+    - Line/area chart style
+    - Bar chart style
+    - Donut/pie chart style
+
+  AVATARS:
+    - Initials circle (various colors)
+    - Size variants: small (32px), medium (40px)
+
+  MISC:
+    - Empty state (illustration + message)
+    - Loading skeleton
+    - Tabs (All | Live | Scheduled style)
+    - Toggle / segmented control
+
+
+--------------------------------------------------------------
+8. TYPOGRAPHY REQUIREMENTS
+--------------------------------------------------------------
+
+The designer should define a clear type scale:
+
+  Recommended font: Inter (already installed)
+
+  Suggested scale:
+    H1 (page title in header)   : 16–18px, semibold
+    H2 (section title in page)  : 20–24px, bold
+    H3 (card title)             : 14–16px, semibold
+    KPI number                  : 28–32px, bold, tight tracking
+    Body text                   : 13–14px, regular
+    Small / label               : 11–12px, medium or semibold
+    Uppercase label             : 10–11px, semibold, wide tracking
+
+  Key rule: There must be a clear visual gap between heading sizes.
+  Currently all sizes feel too close together.
+
+
+--------------------------------------------------------------
+9. SPACING & LAYOUT REQUIREMENTS
+--------------------------------------------------------------
+
+  Sidebar width     : 240px (fixed)
+  Header height     : 60–64px (fixed)
+  Content max-width : 1280px (centered)
+  Content padding   : 24px (sides and top/bottom)
+
+  Card padding      : 20–24px inside all cards (consistent)
+  Card gap          : 16–20px between cards in a grid
+  Section gap       : 24px between major page sections
+
+  Border radius     : 12–16px on cards (rounded, modern feel)
+
+  Key rule: Every card must have IDENTICAL padding.
+  Currently some cards have tight content touching the edges.
+
+
+--------------------------------------------------------------
+10. DELIVERABLES REQUESTED FROM DESIGNER
+--------------------------------------------------------------
+
+Priority order:
+
+  1. Design system / style guide
+     - Color tokens (backgrounds, text, borders, accents, status colors)
+     - Typography scale
+     - Spacing scale
+     - Component definitions (buttons, badges, cards, inputs)
+
+  2. Overview / Dashboard screen (full design)
+     - Desktop: 1440px wide
+     - Show sidebar + header + full overview content
+
+  3. Bookings screen
+     - List view with table
+     - Empty state
+
+  4. Sidebar + Header (exact specs)
+     - Active state, inactive state
+     - All nav items
+
+  5. Key components
+     - KPI card variants
+     - Status badges
+     - Data table row
+
+  6. Optional: Clients, Employees, Invoices, Inventory screens
+
+FORMAT: Figma preferred. PNG/PDF also acceptable.
+
+
+--------------------------------------------------------------
+END OF BRIEF
+--------------------------------------------------------------

@@ -1,0 +1,592 @@
+import { useState } from 'react'
+import {
+  Plus, Search, Calendar as CalendarIcon, Clock, MapPin, Phone,
+  ChevronLeft, ChevronRight, List, CalendarDays,
+  TrendingUp, CheckCircle, AlertCircle, XCircle,
+} from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Input, Select, Textarea } from '@/components/ui/Input'
+import { Modal } from '@/components/ui/Modal'
+import { PageHero } from '@/components/layout/PageHero'
+import { formatCurrency, formatDate, formatTime } from '@/lib/utils'
+import { mockBookings } from '@/data/mock'
+
+/* ─── Filter chips ─── */
+const statusFilters = [
+  { label: 'All',       value: 'all' },
+  { label: 'Pending',   value: 'pending' },
+  { label: 'Scheduled', value: 'confirmed' },
+  { label: 'Live',      value: 'in_progress' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Cancelled', value: 'cancelled' },
+]
+
+const serviceTypes = [
+  'Standard Clean', 'Deep Clean', 'Move-in', 'Move-out',
+  'Commercial', 'Post-construction', 'Office', 'Carpet', 'Window',
+]
+
+/* ─── Avatar palette ─── */
+const avatarColors = [
+  { bg: '#dcefe7', text: '#0d8a72' },
+  { bg: '#fce4d6', text: '#c66a3a' },
+  { bg: '#e4dff5', text: '#6b5bb5' },
+  { bg: '#d6e7f5', text: '#3a7ab8' },
+  { bg: '#fcecc8', text: '#a8842a' },
+]
+function Initials({ name, idx, size = 'md' }: { name: string; idx: number; size?: 'sm' | 'md' | 'lg' }) {
+  const parts = name.trim().split(' ')
+  const init = ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase()
+  const dims = size === 'lg' ? 'w-12 h-12 text-[14px]' : size === 'sm' ? 'w-7 h-7 text-[10.5px]' : 'w-9 h-9 text-[12px]'
+  const color = avatarColors[idx % avatarColors.length]
+  return (
+    <div
+      className={`${dims} rounded-full flex items-center justify-center font-bold shrink-0`}
+      style={{ background: color.bg, color: color.text }}
+    >
+      {init}
+    </div>
+  )
+}
+
+/* ─── Status pill ─── */
+const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+  confirmed:   { bg: 'bg-emerald-50',  text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Scheduled' },
+  in_progress: { bg: 'bg-emerald-500', text: 'text-white',        dot: 'bg-white',       label: 'Live' },
+  pending:     { bg: 'bg-amber-50',    text: 'text-amber-700',    dot: 'bg-amber-500',   label: 'Pending' },
+  cancelled:   { bg: 'bg-red-50',      text: 'text-red-700',      dot: 'bg-red-400',     label: 'Cancelled' },
+  completed:   { bg: 'bg-slate-100',   text: 'text-slate-600',    dot: 'bg-slate-400',   label: 'Done' },
+}
+function StatusPill({ status }: { status: string }) {
+  const c = statusConfig[status] ?? { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400', label: status }
+  return (
+    <span className={`text-[11px] px-2.5 py-[3px] rounded-full font-semibold inline-flex items-center gap-1.5 ${c.bg} ${c.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+      {c.label}
+    </span>
+  )
+}
+
+/* ─── Calendar block colors ─── */
+const crewBlockColors: Record<string, { bg: string; border: string; text: string }> = {
+  Maria:   { bg: '#dcefe7', border: '#0d8a72', text: '#0a5b4c' },
+  James:   { bg: '#cfe6dc', border: '#0d8a72', text: '#0a5b4c' },
+  Aisha:   { bg: '#fcecc8', border: '#a8842a', text: '#6b541a' },
+  Tom:     { bg: '#e4dff5', border: '#6b5bb5', text: '#473877' },
+  Priya:   { bg: '#fce4d6', border: '#c66a3a', text: '#7a3e1f' },
+  default: { bg: '#d6e7f5', border: '#3a7ab8', text: '#234c72' },
+}
+
+/* ─── Main Bookings page ─── */
+export function Bookings() {
+  const [view, setView] = useState<'list' | 'calendar'>('list')
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [serviceFilter, setServiceFilter] = useState('all')
+  const [showModal, setShowModal] = useState(false)
+  const [selectedBooking, setSelectedBooking] = useState<typeof mockBookings[0] | null>(null)
+
+  const filtered = mockBookings.filter((b) => {
+    const matchSearch = b.client_name.toLowerCase().includes(search.toLowerCase()) ||
+      b.service_type.toLowerCase().includes(search.toLowerCase()) ||
+      b.service_address.toLowerCase().includes(search.toLowerCase())
+    const matchStatus = statusFilter === 'all' || b.status === statusFilter
+    const matchService = serviceFilter === 'all' || b.service_type === serviceFilter
+    return matchSearch && matchStatus && matchService
+  })
+
+  const counts = {
+    pending:     mockBookings.filter(b => b.status === 'pending').length,
+    confirmed:   mockBookings.filter(b => b.status === 'confirmed').length,
+    in_progress: mockBookings.filter(b => b.status === 'in_progress').length,
+    completed:   mockBookings.filter(b => b.status === 'completed').length,
+  }
+
+  const totalRevenue = mockBookings
+    .filter(b => b.status === 'completed')
+    .reduce((s, b) => s + b.total_amount, 0)
+
+  return (
+    <div className="space-y-6">
+
+      {/* ── Hero ── */}
+      <PageHero
+        title="Bookings"
+        subtitle={`${mockBookings.length} jobs · ${counts.in_progress} live now · ${counts.pending} need confirmation`}
+        statusChip={`${counts.in_progress} Active`}
+        actionLabel="New Booking"
+        onAction={() => setShowModal(true)}
+        searchPlaceholder="Search bookings…"
+      />
+
+      {/* ── KPI Cards ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          {
+            label: 'Pending',
+            value: counts.pending,
+            sub: 'Awaiting confirmation',
+            icon: AlertCircle,
+            iconColor: 'text-amber-500',
+            iconBg: 'bg-amber-50',
+            delta: '+2',
+            deltaUp: true,
+          },
+          {
+            label: 'Scheduled',
+            value: counts.confirmed,
+            sub: 'Locked in',
+            icon: CalendarIcon,
+            iconColor: 'text-emerald-600',
+            iconBg: 'bg-emerald-50',
+            delta: '+5',
+            deltaUp: true,
+          },
+          {
+            label: 'Live Now',
+            value: counts.in_progress,
+            sub: 'Crew on site',
+            icon: TrendingUp,
+            iconColor: 'text-blue-600',
+            iconBg: 'bg-blue-50',
+            delta: 'Real-time',
+            deltaUp: true,
+          },
+          {
+            label: 'Completed',
+            value: counts.completed,
+            sub: `AED ${totalRevenue.toLocaleString()} earned`,
+            icon: CheckCircle,
+            iconColor: 'text-slate-500',
+            iconBg: 'bg-slate-100',
+            delta: '+12%',
+            deltaUp: true,
+          },
+        ].map(card => (
+          <div
+            key={card.label}
+            onClick={() => setStatusFilter(
+              card.label === 'Live Now' ? 'in_progress' :
+              card.label === 'Scheduled' ? 'confirmed' :
+              card.label.toLowerCase()
+            )}
+            className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 cursor-pointer hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all"
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center`}>
+                <card.icon size={18} className={card.iconColor} />
+              </div>
+              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${card.deltaUp ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                {card.delta}
+              </span>
+            </div>
+            <p className="text-3xl font-bold text-[#111827] tracking-tight">{card.value}</p>
+            <p className="text-[13px] font-medium text-[#111827] mt-1">{card.label}</p>
+            <p className="text-[12px] text-slate-500 mt-0.5">{card.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Filters + View Toggle ── */}
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4">
+        <div className="flex flex-wrap items-center gap-3">
+
+          {/* Search */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search client, service, or address…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full text-[13px] pl-10 pr-4 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 focus:bg-white placeholder-slate-400 transition-colors"
+            />
+          </div>
+
+          {/* Service filter */}
+          <select
+            value={serviceFilter}
+            onChange={e => setServiceFilter(e.target.value)}
+            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer"
+          >
+            <option value="all">All Services</option>
+            {serviceTypes.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+
+          {/* Date range */}
+          <select className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer">
+            <option>This Week</option>
+            <option>This Month</option>
+            <option>Last 30 Days</option>
+            <option>Custom Range</option>
+          </select>
+
+          {/* View toggle */}
+          <div className="flex gap-1 p-1 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl ml-auto">
+            <button
+              onClick={() => setView('list')}
+              className={`text-[12px] px-3 py-1.5 rounded-lg font-medium inline-flex items-center gap-1.5 transition-all ${view === 'list' ? 'bg-white text-[#111827] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <List size={13} /> List
+            </button>
+            <button
+              onClick={() => setView('calendar')}
+              className={`text-[12px] px-3 py-1.5 rounded-lg font-medium inline-flex items-center gap-1.5 transition-all ${view === 'calendar' ? 'bg-white text-[#111827] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <CalendarDays size={13} /> Week
+            </button>
+          </div>
+        </div>
+
+        {/* Status chips */}
+        <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-[#E4E8EC]">
+          {statusFilters.map(f => (
+            <button
+              key={f.value}
+              onClick={() => setStatusFilter(f.value)}
+              className={`px-3 py-1 rounded-full text-[12px] font-semibold transition-colors ${
+                statusFilter === f.value
+                  ? 'bg-[#111827] text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── LIST VIEW ── */}
+      {view === 'list' && (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {filtered.map((b, idx) => (
+              <div
+                key={b.id}
+                onClick={() => setSelectedBooking(b)}
+                className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] hover:border-emerald-200 transition-all cursor-pointer"
+              >
+                {/* Top row */}
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Initials name={b.client_name} idx={idx} />
+                    <div className="min-w-0">
+                      <p className="text-[14px] font-semibold text-[#111827] truncate">{b.client_name}</p>
+                      <p className="text-[12px] text-slate-500 mt-0.5 capitalize">{b.service_type} · {b.frequency}</p>
+                    </div>
+                  </div>
+                  <StatusPill status={b.status} />
+                </div>
+
+                {/* Details grid */}
+                <div className="grid grid-cols-2 gap-y-2.5 gap-x-3 text-[12px] text-slate-600 mb-4">
+                  <div className="flex items-center gap-1.5">
+                    <CalendarIcon size={13} className="text-slate-400 shrink-0" />
+                    <span className="tabular-nums">{formatDate(b.scheduled_date)}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Clock size={13} className="text-slate-400 shrink-0" />
+                    <span className="tabular-nums">{formatTime(`${b.scheduled_date}T${b.scheduled_time}`)} · {b.duration_hours}h</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 col-span-2">
+                    <MapPin size={13} className="text-slate-400 shrink-0" />
+                    <span className="truncate">{b.service_address}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 col-span-2">
+                    <Phone size={13} className="text-slate-400 shrink-0" />
+                    <span className="tabular-nums">{b.client_phone}</span>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between pt-3.5 border-t border-[#E4E8EC]">
+                  <span className="text-[12px] text-slate-500">
+                    {b.assigned_crew.length} cleaner{b.assigned_crew.length !== 1 ? 's' : ''} assigned
+                  </span>
+                  <span className="text-[16px] font-bold text-[#111827] tabular-nums">
+                    AED {b.total_amount.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {filtered.length === 0 && (
+            <div className="bg-white rounded-[22px] border border-[#E4E8EC] py-16 text-center">
+              <CalendarIcon className="mx-auto mb-3 text-slate-300" size={40} strokeWidth={1.25} />
+              <p className="text-[13px] text-slate-500">No bookings match your search</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── CALENDAR VIEW ── */}
+      {view === 'calendar' && <WeekCalendar bookings={filtered} onSelect={setSelectedBooking} />}
+
+      {/* ── Modals ── */}
+      <Modal open={showModal} onClose={() => setShowModal(false)} title="New booking" size="lg">
+        <NewBookingForm onClose={() => setShowModal(false)} />
+      </Modal>
+
+      <Modal open={!!selectedBooking} onClose={() => setSelectedBooking(null)} title="Booking details" size="lg">
+        {selectedBooking && <BookingDetail booking={selectedBooking} />}
+      </Modal>
+    </div>
+  )
+}
+
+/* ─── Week calendar ─── */
+function WeekCalendar({
+  bookings,
+  onSelect,
+}: {
+  bookings: typeof mockBookings
+  onSelect: (b: typeof mockBookings[0]) => void
+}) {
+  const days = [
+    { label: 'MON', date: 18 },
+    { label: 'TUE', date: 19 },
+    { label: 'WED', date: 20, today: true },
+    { label: 'THU', date: 21 },
+    { label: 'FRI', date: 22 },
+    { label: 'SAT', date: 23 },
+    { label: 'SUN', date: 24 },
+  ]
+  const hours = Array.from({ length: 11 }, (_, i) => 7 + i)
+
+  const blockFor = (b: typeof mockBookings[0]) => {
+    const start = parseInt(b.scheduled_time.split(':')[0])
+    const startMin = parseInt(b.scheduled_time.split(':')[1])
+    const top = ((start - 7) + startMin / 60) * 56
+    const height = b.duration_hours * 56 - 2
+    const crew = b.assigned_crew[0] ?? 'default'
+    const color = crewBlockColors[crew] ?? crewBlockColors.default
+    return { top, height, color, crew }
+  }
+
+  const bookingsByDate = bookings.reduce((acc, b) => {
+    (acc[b.scheduled_date] ||= []).push(b)
+    return acc
+  }, {} as Record<string, typeof mockBookings>)
+
+  const dateKey = (d: number) => `2026-05-${String(d).padStart(2, '0')}`
+
+  return (
+    <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-[#E4E8EC] flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h3 className="text-[17px] font-bold text-[#111827] tracking-tight">
+            May 2026 <span className="text-slate-400 font-normal">· Week 21</span>
+          </h3>
+          <span className="text-[12px] text-slate-500">28 jobs · AED 5,840 projected</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center border border-[#E4E8EC] rounded-xl overflow-hidden">
+            <button className="p-2 hover:bg-slate-50 transition-colors"><ChevronLeft size={14} /></button>
+            <button className="text-[12px] px-3 py-2 border-l border-r border-[#E4E8EC] hover:bg-slate-50 transition-colors font-medium">Today</button>
+            <button className="p-2 hover:bg-slate-50 transition-colors"><ChevronRight size={14} /></button>
+          </div>
+        </div>
+      </div>
+
+      {/* Crew filter row */}
+      <div className="px-5 py-3 border-b border-[#E4E8EC] bg-slate-50 flex items-center gap-3 flex-wrap">
+        <span className="text-[10.5px] uppercase tracking-[0.08em] text-slate-500 font-semibold">Crew</span>
+        <div className="flex gap-1.5 flex-wrap">
+          {['All', 'Maria', 'James', 'Aisha', 'Tom', 'Priya'].map((c) => {
+            const color = c === 'All' ? null : crewBlockColors[c]?.border
+            return (
+              <button
+                key={c}
+                className={`text-[11.5px] px-2.5 py-1 rounded-full font-medium inline-flex items-center gap-1.5 transition-colors ${
+                  c === 'All'
+                    ? 'bg-[#111827] text-white'
+                    : 'bg-white border border-[#E4E8EC] text-slate-600 hover:border-slate-300'
+                }`}
+              >
+                {color && <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />}
+                {c}
+              </button>
+            )
+          })}
+        </div>
+        <span className="ml-auto text-[11.5px] text-slate-500">29 jobs · AED 7,250+ this week</span>
+      </div>
+
+      {/* Grid */}
+      <div className="grid" style={{ gridTemplateColumns: '52px repeat(7, 1fr)' }}>
+        {/* Day header row */}
+        <div className="border-b border-[#E4E8EC] bg-slate-50" />
+        {days.map(d => (
+          <div
+            key={d.label}
+            className={`border-b border-l border-[#E4E8EC] px-2 py-2.5 text-center ${d.today ? 'bg-emerald-50' : 'bg-slate-50'}`}
+          >
+            <p className={`text-[10.5px] uppercase tracking-[0.1em] font-semibold ${d.today ? 'text-emerald-600' : 'text-slate-500'}`}>
+              {d.label}
+            </p>
+            <p className={`text-[20px] font-bold tracking-tight mt-0.5 inline-flex items-center justify-center w-8 h-8 rounded-full ${d.today ? 'bg-emerald-500 text-white' : 'text-[#111827]'}`}>
+              {d.date}
+            </p>
+          </div>
+        ))}
+
+        {/* Hour rows */}
+        <div className="col-span-8 grid relative" style={{ gridTemplateColumns: '52px repeat(7, 1fr)', minHeight: `${56 * 11}px` }}>
+          <div className="flex flex-col">
+            {hours.map(h => (
+              <div key={h} className="h-14 border-b border-[#E4E8EC] text-right pr-2 pt-1">
+                <span className="text-[10.5px] text-slate-400 tabular-nums">
+                  {h > 12 ? h - 12 : h}{h >= 12 ? 'p' : 'a'}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {days.map(d => {
+            const dayBookings = bookingsByDate[dateKey(d.date)] ?? []
+            return (
+              <div
+                key={d.label}
+                className={`relative border-l border-[#E4E8EC] ${d.today ? 'bg-emerald-50/30' : ''}`}
+              >
+                {hours.map(h => (
+                  <div key={h} className="h-14 border-b border-[#E4E8EC]" />
+                ))}
+                {dayBookings.map(b => {
+                  const { top, height, color, crew } = blockFor(b)
+                  return (
+                    <button
+                      key={b.id}
+                      onClick={() => onSelect(b)}
+                      className="absolute left-[3px] right-[3px] rounded-xl px-2 py-1.5 text-left overflow-hidden hover:shadow-md transition-shadow border-l-[3px]"
+                      style={{
+                        top: `${top}px`,
+                        height: `${height}px`,
+                        background: color.bg,
+                        borderLeftColor: color.border,
+                        color: color.text,
+                      }}
+                    >
+                      <p className="text-[11.5px] font-semibold leading-tight truncate">{b.client_name}</p>
+                      <p className="text-[10.5px] opacity-80 truncate mt-0.5 capitalize">
+                        {b.service_type} · {crew}
+                      </p>
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="px-5 py-3 border-t border-[#E4E8EC] bg-slate-50 flex items-center gap-4 flex-wrap text-[11px] text-slate-500">
+        <span className="uppercase tracking-[0.08em] font-semibold">Crew colors</span>
+        {Object.entries(crewBlockColors).filter(([k]) => k !== 'default').map(([name, c]) => (
+          <div key={name} className="inline-flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded" style={{ background: c.bg, borderLeft: `2px solid ${c.border}` }} />
+            {name}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ─── New Booking Form ─── */
+function NewBookingForm({ onClose }: { onClose: () => void }) {
+  return (
+    <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); onClose() }}>
+      <div className="grid grid-cols-2 gap-4">
+        <Input label="Client name" placeholder="Full name" />
+        <Input label="Phone" placeholder="+971 50 000 0000" />
+      </div>
+      <Input label="Service address" placeholder="Street, unit, neighborhood" />
+      <div className="grid grid-cols-2 gap-4">
+        <Select label="Service type">
+          <option value="">Select service…</option>
+          {serviceTypes.map(s => <option key={s}>{s}</option>)}
+        </Select>
+        <Select label="Frequency">
+          <option value="once">One-time</option>
+          <option value="weekly">Weekly</option>
+          <option value="biweekly">Bi-weekly</option>
+          <option value="monthly">Monthly</option>
+        </Select>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        <Input label="Date" type="date" />
+        <Input label="Time" type="time" />
+        <Input label="Duration (hrs)" type="number" min="1" max="12" defaultValue="3" />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <Input label="Total amount (AED)" type="number" placeholder="0.00" />
+        <Select label="Status">
+          <option value="pending">Pending</option>
+          <option value="confirmed">Scheduled</option>
+        </Select>
+      </div>
+      <Textarea label="Notes" placeholder="Access instructions, special requirements…" rows={3} />
+      <div className="flex gap-3 pt-2">
+        <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+        <Button type="submit" className="flex-1">Create booking</Button>
+      </div>
+    </form>
+  )
+}
+
+/* ─── Booking Detail panel ─── */
+function BookingDetail({ booking }: { booking: typeof mockBookings[0] }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Initials name={booking.client_name} idx={0} size="lg" />
+          <div>
+            <p className="font-bold text-[#111827] text-[16px]">{booking.client_name}</p>
+            <p className="text-[12.5px] text-slate-500 mt-0.5">{booking.client_phone}</p>
+          </div>
+        </div>
+        <StatusPill status={booking.status} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          { label: 'Service',   value: booking.service_type },
+          { label: 'Frequency', value: booking.frequency },
+          { label: 'Date',      value: formatDate(booking.scheduled_date) },
+          { label: 'Time',      value: formatTime(`${booking.scheduled_date}T${booking.scheduled_time}`) },
+          { label: 'Duration',  value: `${booking.duration_hours} hours` },
+          { label: 'Amount',    value: `AED ${booking.total_amount.toLocaleString()}` },
+        ].map(({ label, value }) => (
+          <div key={label} className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC]">
+            <p className="text-[10.5px] text-slate-500 uppercase tracking-[0.08em] font-semibold">{label}</p>
+            <p className="text-[13px] font-semibold text-[#111827] mt-1 capitalize">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-slate-50 border border-[#E4E8EC] rounded-xl p-3">
+        <p className="text-[10.5px] text-slate-500 uppercase tracking-[0.08em] font-semibold">Address</p>
+        <p className="text-[13px] font-semibold text-[#111827] mt-1">{booking.service_address}</p>
+      </div>
+
+      {booking.notes && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+          <p className="text-[10.5px] text-amber-700 uppercase tracking-[0.08em] font-semibold">Notes</p>
+          <p className="text-[13px] text-amber-700 mt-1">{booking.notes}</p>
+        </div>
+      )}
+
+      <div className="flex gap-2 pt-2">
+        <Button variant="outline" className="flex-1" size="sm">Edit</Button>
+        <Button variant="primary" className="flex-1" size="sm">Mark complete</Button>
+        <Button variant="danger" size="sm">Cancel</Button>
+      </div>
+    </div>
+  )
+}
