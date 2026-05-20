@@ -8,7 +8,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   primary:   'bg-accent text-[#faf8f3] hover:bg-accent-bright active:bg-accent shadow-sm',
   secondary: 'bg-line-soft text-ink-soft hover:bg-line active:bg-line',
   ghost:     'text-ink-mute hover:bg-line-soft hover:text-ink active:bg-line',
-  danger:    'bg-rose text-[#faf8f3] hover:bg-rose-deep active:bg-rose-deep shadow-sm',
+  danger:    'bg-red-500 text-white hover:bg-red-600 active:bg-red-700 shadow-sm',
   outline:   'border border-line text-ink-soft hover:bg-surface hover:text-ink active:bg-line-soft',
 }
 
