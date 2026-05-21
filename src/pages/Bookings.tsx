@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import {
   Search, Calendar as CalendarIcon, Clock, MapPin, Phone,
   ChevronLeft, ChevronRight, List, CalendarDays, Columns3,
-  TrendingUp, CheckCircle, AlertCircle,
+  TrendingUp, CheckCircle, AlertCircle, Upload, Download,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -79,10 +79,43 @@ const crewBlockColors: Record<string, { bg: string; border: string; text: string
   default: { bg: '#d6e7f5', border: '#3a7ab8', text: '#234c72' },
 }
 
+/* ─── CSV helpers ─── */
+function exportBookingsCSV(bookings: Booking[]) {
+  const headers = ['Client Name', 'Phone', 'Service Type', 'Date', 'Time', 'Duration (hrs)', 'Amount (AED)', 'Status', 'Address', 'Notes']
+  const rows = bookings.map(b => [
+    b.client_name, b.client_phone, b.service_type, b.scheduled_date,
+    b.scheduled_time, b.duration_hours, b.total_amount, b.status,
+    `"${b.service_address.replace(/"/g, '""')}"`,
+    `"${(b.notes || '').replace(/"/g, '""')}"`,
+  ].join(','))
+  const csv = [headers.join(','), ...rows].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `bookings-${new Date().toISOString().split('T')[0]}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = []
+  let cur = ''
+  let inQuotes = false
+  for (const ch of line) {
+    if (ch === '"') { inQuotes = !inQuotes }
+    else if (ch === ',' && !inQuotes) { result.push(cur.trim()); cur = '' }
+    else { cur += ch }
+  }
+  result.push(cur.trim())
+  return result
+}
+
 /* ─── Main Bookings page ─── */
 export function Bookings() {
   const { bookings, addBooking, updateBooking, deleteBooking } = useData()
   const [view, setView] = useState<'list' | 'calendar' | 'kanban'>('list')
+  const csvInputRef = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [serviceFilter, setServiceFilter] = useState('all')
@@ -224,8 +257,56 @@ export function Bookings() {
             <option>Custom Range</option>
           </select>
 
+          {/* Import / Export */}
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              const reader = new FileReader()
+              reader.onload = ev => {
+                const text = ev.target?.result as string
+                const lines = text.split('\n').slice(1).filter(l => l.trim())
+                lines.forEach(line => {
+                  const [client_name, client_phone, service_type, scheduled_date, scheduled_time, duration_hours, total_amount, , service_address, notes] = parseCSVLine(line)
+                  if (!client_name) return
+                  addBooking({
+                    client_id: '', client_name, client_phone: client_phone || '',
+                    service_type: service_type || 'Standard Clean',
+                    frequency: 'once' as BookingFrequency,
+                    scheduled_date: scheduled_date || new Date().toISOString().split('T')[0],
+                    scheduled_time: scheduled_time || '09:00',
+                    duration_hours: Number(duration_hours) || 3,
+                    total_amount: Number(total_amount) || 0,
+                    status: 'pending',
+                    service_address: service_address || '',
+                    notes: notes || '',
+                    assigned_crew: [],
+                  })
+                })
+                e.target.value = ''
+              }
+              reader.readAsText(file)
+            }}
+          />
+          <button
+            onClick={() => csvInputRef.current?.click()}
+            className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors"
+          >
+            <Upload size={13} /> Import CSV
+          </button>
+          <button
+            onClick={() => exportBookingsCSV(filtered)}
+            className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors"
+          >
+            <Download size={13} /> Export CSV
+          </button>
+
           {/* View toggle */}
-          <div className="flex gap-1 p-1 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl ml-auto">
+          <div className="flex gap-1 p-1 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl">
             {([
               { key: 'list',     icon: List,          label: 'List'   },
               { key: 'kanban',   icon: Columns3,      label: 'Board'  },
@@ -511,7 +592,15 @@ function WeekCalendar({
 
 /* ─── New Booking Form ─── */
 function NewBookingForm({ onClose, onAdd }: { onClose: () => void; onAdd: (b: any) => void }) {
+  const { employees } = useData()
+  const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project')
+  const [selectedCrew, setSelectedCrew] = useState<string[]>([])
   const ref = useRef<HTMLFormElement>(null)
+
+  function toggleCrew(id: string) {
+    setSelectedCrew(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const f = new FormData(ref.current!)
@@ -520,14 +609,14 @@ function NewBookingForm({ onClose, onAdd }: { onClose: () => void; onAdd: (b: an
       client_phone:   String(f.get('phone') || ''),
       client_id:      '',
       service_address:String(f.get('address') || ''),
-      service_type:   String(f.get('service_type') || 'Home Cleaning'),
-      frequency:      String(f.get('frequency') || 'once'),
+      service_type:   String(f.get('service_type') || 'Standard Clean'),
+      frequency:      (f.get('frequency') || 'once') as BookingFrequency,
       scheduled_date: String(f.get('date') || new Date().toISOString().split('T')[0]),
       scheduled_time: String(f.get('time') || '09:00'),
       duration_hours: Number(f.get('duration') || 3),
       total_amount:   Number(f.get('amount') || 0),
       status:         'pending',
-      assigned_crew:  [],
+      assigned_crew:  selectedCrew,
       notes:          String(f.get('notes') || ''),
     })
     onClose()
@@ -557,7 +646,42 @@ function NewBookingForm({ onClose, onAdd }: { onClose: () => void; onAdd: (b: an
         <Input name="duration" label="Duration (hrs)" type="number" min="1" max="12" defaultValue="3" />
       </div>
       <Input name="amount" label="Total amount (AED)" type="number" placeholder="0.00" />
-      <Textarea name="notes" label="Notes" placeholder="Access instructions, special requirements…" rows={3} />
+
+      {/* Crew selector */}
+      <div>
+        <p className="text-[12px] font-semibold text-slate-600 mb-2">Assign Crew</p>
+        {activeEmps.length === 0 ? (
+          <p className="text-[12px] text-slate-400 italic">No active employees — add employees first</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+            {activeEmps.map(emp => {
+              const checked = selectedCrew.includes(emp.id)
+              return (
+                <label
+                  key={emp.id}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer transition-colors ${
+                    checked ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-50 border-[#E4E8EC] text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <input type="checkbox" className="hidden" checked={checked} onChange={() => toggleCrew(emp.id)} />
+                  <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 ${checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
+                    {checked && <span className="text-white text-[10px] font-bold">✓</span>}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-semibold truncate">{emp.full_name}</p>
+                    <p className="text-[10.5px] text-slate-400 capitalize">{emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}</p>
+                  </div>
+                </label>
+              )
+            })}
+          </div>
+        )}
+        {selectedCrew.length > 0 && (
+          <p className="text-[11px] text-emerald-600 font-medium mt-1.5">{selectedCrew.length} cleaner{selectedCrew.length > 1 ? 's' : ''} selected</p>
+        )}
+      </div>
+
+      <Textarea name="notes" label="Notes" placeholder="Access instructions, special requirements…" rows={2} />
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
         <Button type="submit" className="flex-1">Create booking</Button>

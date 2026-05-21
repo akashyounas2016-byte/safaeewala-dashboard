@@ -45,13 +45,17 @@ function ExpiryIndicator({ date, label }: { date: string; label: string }) {
 }
 
 /* ─── Status badge ─── */
+const statusStyles: Record<string, { bg: string; label: string }> = {
+  active:              { bg: 'bg-emerald-50 text-emerald-700', label: 'Active' },
+  inactive:            { bg: 'bg-slate-100 text-slate-500',    label: 'Inactive' },
+  on_leave:            { bg: 'bg-amber-50 text-amber-700',     label: 'On Leave' },
+  engaged_in_project:  { bg: 'bg-blue-50 text-blue-700',       label: 'Engaged' },
+}
 function StatusBadge({ status }: { status: string }) {
-  const c = status === 'active'
-    ? 'bg-emerald-50 text-emerald-700'
-    : 'bg-slate-100 text-slate-500'
+  const s = statusStyles[status] ?? { bg: 'bg-slate-100 text-slate-500', label: status }
   return (
-    <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${c}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+    <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${s.bg}`}>
+      {s.label}
     </span>
   )
 }
@@ -495,6 +499,8 @@ export function Employees() {
               <Select name="status" label="Status" defaultValue={selected.status}>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
+                <option value="on_leave">On Leave</option>
+                <option value="engaged_in_project">Engaged in Project</option>
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">

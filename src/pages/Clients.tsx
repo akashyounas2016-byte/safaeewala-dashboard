@@ -1,11 +1,17 @@
 import { useState } from 'react'
-import { Plus, Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign, Heart, Award } from 'lucide-react'
+import { Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign, Heart, Award } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
+import type { BookingFrequency } from '@/types'
+
+const serviceTypes = [
+  'Standard Clean', 'Deep Clean', 'Move-in', 'Move-out',
+  'Commercial', 'Post-construction', 'Office', 'Carpet', 'Window',
+]
 
 /* ─── Avatar palette ─── */
 const avatarColors = [
@@ -28,10 +34,12 @@ function Avatar({ name, size = 'md', idx = 0 }: { name: string; size?: 'sm' | 'm
 }
 
 export function Clients() {
-  const { clients, addClient } = useData()
+  const { clients, addClient, updateClient, addBooking } = useData()
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<typeof clients[0] | null>(null)
+  const [isEditingClient, setIsEditingClient] = useState(false)
+  const [showBookingModal, setShowBookingModal] = useState(false)
   const [areaFilter, setAreaFilter] = useState('all')
 
   const totalSpent = clients.reduce((s, c) => s + c.total_spent, 0)
@@ -336,15 +344,22 @@ export function Clients() {
         </form>
       </Modal>
 
-      {/* ── Client Detail Modal ── */}
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Client Profile" size="lg">
-        {selected && (
+      {/* ── Client Detail / Edit Modal ── */}
+      <Modal
+        open={!!selected}
+        onClose={() => { setSelected(null); setIsEditingClient(false) }}
+        title={isEditingClient ? 'Edit Client' : 'Client Profile'}
+        size="lg"
+      >
+        {selected && !isEditingClient && (
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <Avatar name={selected.full_name} size="lg" idx={0} />
               <div>
                 <p className="text-[18px] font-bold text-[#111827]">{selected.full_name}</p>
-                <p className="text-[13px] text-slate-500 mt-0.5">{selected.nationality} · Client since {formatDate(selected.created_at)}</p>
+                <p className="text-[13px] text-slate-500 mt-0.5">
+                  {selected.nationality ? `${selected.nationality} · ` : ''}Client since {formatDate(selected.created_at)}
+                </p>
               </div>
             </div>
 
@@ -378,12 +393,139 @@ export function Clients() {
             )}
 
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" size="sm">Edit Profile</Button>
-              <Button className="flex-1" size="sm">New Booking</Button>
+              <Button variant="outline" className="flex-1" size="sm" onClick={() => setIsEditingClient(true)}>Edit Profile</Button>
+              <Button className="flex-1" size="sm" onClick={() => { setSelected(null); setIsEditingClient(false); setShowBookingModal(true) }}>New Booking</Button>
             </div>
           </div>
         )}
+
+        {selected && isEditingClient && (
+          <form
+            className="space-y-4"
+            onSubmit={e => {
+              e.preventDefault()
+              const f = new FormData(e.currentTarget)
+              const patch = {
+                full_name:     f.get('full_name') as string,
+                phone:         f.get('phone') as string,
+                whatsapp:      f.get('whatsapp') as string,
+                email:         f.get('email') as string,
+                nationality:   f.get('nationality') as string,
+                city:          f.get('city') as string,
+                building_name: f.get('building') as string,
+                apartment:     f.get('apartment') as string,
+                area:          f.get('area') as string,
+                access_notes:  f.get('access_notes') as string,
+                pet_info:      f.get('pet_info') as string,
+              }
+              updateClient(selected.id, patch)
+              setSelected({ ...selected, ...patch })
+              setIsEditingClient(false)
+            }}
+          >
+            <div className="grid grid-cols-2 gap-4">
+              <Input name="full_name" label="Full Name" defaultValue={selected.full_name} required />
+              <Input name="phone" label="Phone" defaultValue={selected.phone} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input name="whatsapp" label="WhatsApp" defaultValue={selected.whatsapp ?? ''} />
+              <Input name="email" label="Email" type="email" defaultValue={selected.email ?? ''} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input name="nationality" label="Nationality" defaultValue={selected.nationality ?? ''} />
+              <Select name="city" label="Emirate" defaultValue={selected.city}>
+                <option>Dubai</option><option>Abu Dhabi</option><option>Sharjah</option><option>Ajman</option>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input name="building" label="Building / Villa" defaultValue={selected.building_name ?? ''} />
+              <Input name="apartment" label="Apt / Unit" defaultValue={selected.apartment ?? ''} />
+            </div>
+            <Input name="area" label="Area / Community" defaultValue={selected.area} />
+            <Textarea name="access_notes" label="Access Notes" defaultValue={selected.access_notes ?? ''} rows={2} />
+            <Textarea name="pet_info" label="Pet Information" defaultValue={selected.pet_info ?? ''} rows={2} />
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setIsEditingClient(false)}>Cancel</Button>
+              <Button type="submit" className="flex-1">Save Changes</Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* ── New Booking for Client Modal ── */}
+      <Modal open={showBookingModal} onClose={() => setShowBookingModal(false)} title="New Booking" size="lg">
+        <ClientBookingForm
+          clientName={selected?.full_name ?? ''}
+          clientPhone={selected?.phone ?? ''}
+          onClose={() => setShowBookingModal(false)}
+          onAdd={b => { addBooking(b); setShowBookingModal(false) }}
+        />
       </Modal>
     </div>
+  )
+}
+
+function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: {
+  clientName: string; clientPhone: string
+  onClose: () => void; onAdd: (b: any) => void
+}) {
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={e => {
+        e.preventDefault()
+        const f = new FormData(e.currentTarget)
+        onAdd({
+          client_id: '',
+          client_name: clientName,
+          client_phone: clientPhone,
+          service_address: f.get('service_address') as string,
+          service_type: f.get('service_type') as string,
+          frequency: (f.get('frequency') as BookingFrequency) || 'once',
+          scheduled_date: f.get('scheduled_date') as string,
+          scheduled_time: f.get('scheduled_time') as string,
+          duration_hours: Number(f.get('duration_hours')) || 3,
+          total_amount: Number(f.get('total_amount')) || 0,
+          notes: f.get('notes') as string,
+          status: 'pending',
+          assigned_crew: [],
+        })
+      }}
+    >
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC]">
+          <p className="text-[10.5px] text-slate-500 uppercase tracking-[0.08em] font-semibold mb-1">Client</p>
+          <p className="text-[13px] font-semibold text-[#111827]">{clientName}</p>
+        </div>
+        <div className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC]">
+          <p className="text-[10.5px] text-slate-500 uppercase tracking-[0.08em] font-semibold mb-1">Phone</p>
+          <p className="text-[13px] font-semibold text-[#111827]">{clientPhone}</p>
+        </div>
+      </div>
+      <Input name="service_address" label="Service Address" placeholder="Street, unit, neighborhood" />
+      <div className="grid grid-cols-2 gap-4">
+        <Select name="service_type" label="Service Type">
+          <option value="">Select service…</option>
+          {serviceTypes.map(s => <option key={s}>{s}</option>)}
+        </Select>
+        <Select name="frequency" label="Frequency">
+          <option value="once">One-time</option>
+          <option value="weekly">Weekly</option>
+          <option value="biweekly">Bi-weekly</option>
+          <option value="monthly">Monthly</option>
+        </Select>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        <Input name="scheduled_date" label="Date" type="date" required />
+        <Input name="scheduled_time" label="Time" type="time" />
+        <Input name="duration_hours" label="Duration (hrs)" type="number" min="1" max="12" defaultValue="3" />
+      </div>
+      <Input name="total_amount" label="Total Amount (AED)" type="number" placeholder="0.00" />
+      <Textarea name="notes" label="Notes" placeholder="Access instructions, special requirements…" rows={2} />
+      <div className="flex gap-3 pt-2">
+        <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+        <Button type="submit" className="flex-1">Create Booking</Button>
+      </div>
+    </form>
   )
 }

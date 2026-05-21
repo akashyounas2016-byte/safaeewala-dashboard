@@ -64,7 +64,7 @@ export interface Employee {
   medical_insurance_expiry: string
   passport_expiry: string
   skills: string[]
-  status: 'active' | 'on_leave' | 'inactive'
+  status: 'active' | 'on_leave' | 'inactive' | 'engaged_in_project'
   pay_rate_hourly: number
   joined_date: string
   created_at: string

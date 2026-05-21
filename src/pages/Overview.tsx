@@ -12,7 +12,6 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { formatTime } from '@/lib/utils'
-import { revenueData, serviceBreakdown } from '@/data/mock'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import type { Booking, BookingFrequency } from '@/types'
@@ -153,7 +152,35 @@ function KpiCard({ label, value, sub, delta, trend = 'neutral', icon: Icon, icon
 }
 
 /* ─── Revenue chart ─── */
-function RevenueChart() {
+function RevenueChart({ bookings }: { bookings: Booking[] }) {
+  const [range, setRange] = useState<'3M' | '6M' | '1Y'>('6M')
+  const count = range === '3M' ? 3 : range === '6M' ? 6 : 12
+  const MONTHLY_TARGET = 10000
+
+  const months = Array.from({ length: count }, (_, i) => {
+    const d = new Date()
+    d.setDate(1)
+    d.setMonth(d.getMonth() - (count - 1 - i))
+    return {
+      month: d.toLocaleDateString('en-US', { month: 'short' }),
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      revenue: 0,
+      target: MONTHLY_TARGET,
+    }
+  })
+
+  bookings
+    .filter(b => b.status === 'completed' || b.status === 'in_progress')
+    .forEach(b => {
+      const key = b.scheduled_date.slice(0, 7)
+      const m = months.find(m => m.key === key)
+      if (m) m.revenue += b.total_amount
+    })
+
+  const totalRevenue = months.reduce((s, m) => s + m.revenue, 0)
+  const targetHit = months.filter(m => m.revenue >= m.target).length
+  const monthlyAvg = Math.round(totalRevenue / count)
+
   return (
     <div className="bg-white rounded-[22px] p-5 border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)]">
       <div className="flex items-center justify-between mb-6">
@@ -162,9 +189,9 @@ function RevenueChart() {
           <p className="text-sm text-[#6B7280] mt-1">Business growth performance overview</p>
         </div>
         <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
-          {['3M', '6M', '1Y'].map(t => (
-            <button key={t}
-              className={`text-xs px-3 py-2 rounded-xl font-semibold transition-all ${t === '6M' ? 'bg-[#059669] text-white shadow-sm' : 'text-[#6B7280] hover:text-[#111827]'}`}>
+          {(['3M', '6M', '1Y'] as const).map(t => (
+            <button key={t} onClick={() => setRange(t)}
+              className={`text-xs px-3 py-2 rounded-xl font-semibold transition-all ${t === range ? 'bg-[#059669] text-white shadow-sm' : 'text-[#6B7280] hover:text-[#111827]'}`}>
               {t}
             </button>
           ))}
@@ -174,43 +201,49 @@ function RevenueChart() {
       <div className="grid grid-cols-3 gap-5 mb-6">
         <div>
           <p className="text-sm text-[#6B7280] mb-1">Total Revenue</p>
-          <h4 className="text-xl font-bold text-[#111827]">AED 770k</h4>
-          <p className="text-sm font-semibold text-[#059669] mt-1">+18%</p>
+          <h4 className="text-xl font-bold text-[#111827]">AED {totalRevenue.toLocaleString()}</h4>
+          <p className="text-sm font-semibold text-[#059669] mt-1">All completed jobs</p>
         </div>
         <div>
           <p className="text-sm text-[#6B7280] mb-1">Target Hit</p>
-          <h4 className="text-xl font-bold text-[#111827]">5/6</h4>
+          <h4 className="text-xl font-bold text-[#111827]">{targetHit}/{count}</h4>
           <p className="text-sm text-slate-500 mt-1">Months</p>
         </div>
         <div>
           <p className="text-sm text-[#6B7280] mb-1">Monthly Avg</p>
-          <h4 className="text-xl font-bold text-[#111827]">AED 128k</h4>
-          <p className="text-sm text-slate-500 mt-1">Steady growth</p>
+          <h4 className="text-xl font-bold text-[#111827]">AED {monthlyAvg.toLocaleString()}</h4>
+          <p className="text-sm text-slate-500 mt-1">{count} month period</p>
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={200}>
-        <AreaChart data={revenueData} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
-          <defs>
-            <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#059669" stopOpacity={0.2} />
-              <stop offset="100%" stopColor="#059669" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="2 4" stroke="#f1f5f9" vertical={false} />
-          <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false}
-            tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
-          <Tooltip formatter={v => [`AED ${Number(v).toLocaleString()}`, '']}
-            contentStyle={{ borderRadius: 12, border: '1px solid #E4E8EC', fontSize: 12, boxShadow: '0 4px 20px rgba(15,23,42,0.08)' }} />
-          <Area type="monotone" dataKey="target" stroke="#cbd5e1" strokeWidth={1.5}
-            fill="none" strokeDasharray="4 4" name="Target" />
-          <Area type="monotone" dataKey="revenue" stroke="#059669" strokeWidth={2.5}
-            fill="url(#revGrad)" name="Revenue"
-            dot={{ r: 3.5, fill: '#fff', stroke: '#059669', strokeWidth: 2 }}
-            activeDot={{ r: 5, fill: '#059669', stroke: '#fff', strokeWidth: 2 }} />
-        </AreaChart>
-      </ResponsiveContainer>
+      {totalRevenue === 0 ? (
+        <div className="flex items-center justify-center h-[200px] text-slate-400 text-sm">
+          Complete bookings to see revenue data
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={200}>
+          <AreaChart data={months} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
+            <defs>
+              <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#059669" stopOpacity={0.2} />
+                <stop offset="100%" stopColor="#059669" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="2 4" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false}
+              tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
+            <Tooltip formatter={v => [`AED ${Number(v).toLocaleString()}`, '']}
+              contentStyle={{ borderRadius: 12, border: '1px solid #E4E8EC', fontSize: 12, boxShadow: '0 4px 20px rgba(15,23,42,0.08)' }} />
+            <Area type="monotone" dataKey="target" stroke="#cbd5e1" strokeWidth={1.5}
+              fill="none" strokeDasharray="4 4" name="Target" />
+            <Area type="monotone" dataKey="revenue" stroke="#059669" strokeWidth={2.5}
+              fill="url(#revGrad)" name="Revenue"
+              dot={{ r: 3.5, fill: '#fff', stroke: '#059669', strokeWidth: 2 }}
+              activeDot={{ r: 5, fill: '#059669', stroke: '#fff', strokeWidth: 2 }} />
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
 
       <div className="flex gap-5 mt-3">
         <div className="flex items-center gap-2 text-sm text-[#475569]">
@@ -227,15 +260,23 @@ function RevenueChart() {
 
 /* ─── Service mix donut ─── */
 const CIRC = 238.76
-function ServiceMixDonut({ totalJobs }: { totalJobs: number }) {
+const donutColors = ['#059669', '#0ea5e9', '#f59e0b', '#8b5cf6', '#cbd5e1']
+function ServiceMixDonut({ bookings }: { bookings: Booking[] }) {
+  const counts: Record<string, number> = {}
+  bookings.forEach(b => { counts[b.service_type] = (counts[b.service_type] || 0) + 1 })
+  const total = bookings.length || 1
+  const breakdown = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, count]) => ({ name, value: Math.round((count / total) * 100) }))
+
   let offset = 0
-  const segments = serviceBreakdown.map(s => {
+  const segments = breakdown.map(s => {
     const dash = (s.value / 100) * CIRC
     const seg = { ...s, dash, offset }
     offset += dash
     return seg
   })
-  const colors = ['#059669', '#0ea5e9', '#f59e0b', '#8b5cf6', '#cbd5e1']
 
   return (
     <div className="bg-white rounded-[22px] p-5 border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)]">
@@ -248,9 +289,11 @@ function ServiceMixDonut({ totalJobs }: { totalJobs: number }) {
         <div className="relative">
           <svg width="160" height="160" viewBox="0 0 100 100">
             <circle cx="50" cy="50" r="38" fill="none" stroke="#f1f5f9" strokeWidth="11" />
-            {segments.map((seg, i) => (
+            {segments.length === 0 ? (
+              <circle cx="50" cy="50" r="38" fill="none" stroke="#e2e8f0" strokeWidth="11" />
+            ) : segments.map((seg, i) => (
               <circle key={seg.name} cx="50" cy="50" r="38" fill="none"
-                stroke={colors[i]} strokeWidth="11"
+                stroke={donutColors[i % donutColors.length]} strokeWidth="11"
                 strokeDasharray={`${seg.dash} ${CIRC}`}
                 strokeDashoffset={-seg.offset}
                 transform="rotate(-90 50 50)" />
@@ -258,23 +301,27 @@ function ServiceMixDonut({ totalJobs }: { totalJobs: number }) {
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
             <p className="text-[10px] uppercase tracking-[0.1em] text-[#94a3b8] font-semibold">Jobs</p>
-            <p className="text-[28px] font-bold text-[#111827] leading-none mt-0.5">{totalJobs}</p>
+            <p className="text-[28px] font-bold text-[#111827] leading-none mt-0.5">{bookings.length}</p>
             <p className="text-[11px] text-[#94a3b8] mt-0.5">total</p>
           </div>
         </div>
       </div>
 
-      <div className="mt-6 space-y-4">
-        {serviceBreakdown.map((s, i) => (
-          <div key={s.name} className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="w-3 h-3 rounded-full shrink-0" style={{ background: colors[i] }} />
-              <p className="text-sm font-medium text-[#111827]">{s.name}</p>
+      {breakdown.length === 0 ? (
+        <p className="text-center text-sm text-slate-400 mt-4">No bookings yet</p>
+      ) : (
+        <div className="mt-6 space-y-4">
+          {breakdown.map((s, i) => (
+            <div key={s.name} className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="w-3 h-3 rounded-full shrink-0" style={{ background: donutColors[i % donutColors.length] }} />
+                <p className="text-sm font-medium text-[#111827]">{s.name}</p>
+              </div>
+              <span className="text-sm font-semibold text-[#111827]">{s.value}%</span>
             </div>
-            <span className="text-sm font-semibold text-[#111827]">{s.value}%</span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -582,8 +629,8 @@ export function Overview() {
 
       {/* ── Charts ── */}
       <section className="grid grid-cols-1 lg:grid-cols-[1.65fr_1fr] gap-5 mb-6">
-        <RevenueChart />
-        <ServiceMixDonut totalJobs={bookings.length} />
+        <RevenueChart bookings={bookings} />
+        <ServiceMixDonut bookings={bookings} />
       </section>
 
       {/* ── Today's Dispatch ── */}
