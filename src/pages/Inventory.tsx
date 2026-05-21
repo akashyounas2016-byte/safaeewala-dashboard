@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
-import { mockInventory } from '@/data/mock'
+import { useData } from '@/store/DataContext'
+import type { InventoryItem } from '@/types'
 
-function stockLevel(item: typeof mockInventory[0]) {
+function stockLevel(item: InventoryItem) {
   const ratio = item.current_stock / item.min_stock
   const w = `${Math.min(100, (item.current_stock / item.reorder_quantity) * 100)}%`
   if (ratio <= 1)   return { label: 'Critical', textColor: 'text-red-600',    barColor: 'bg-red-500',    width: w }
@@ -15,17 +16,18 @@ function stockLevel(item: typeof mockInventory[0]) {
 }
 
 export function Inventory() {
+  const { inventory, addInventory, reorderItem } = useData()
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
 
-  const lowStock    = mockInventory.filter(i => i.current_stock <= i.min_stock)
-  const criticalStock = mockInventory.filter(i => i.current_stock < i.min_stock)
-  const totalValue  = mockInventory.reduce((s, i) => s + i.current_stock * i.unit_cost, 0)
-  const suppliers   = [...new Set(mockInventory.map(i => i.supplier))]
-  const categories  = [...new Set(mockInventory.map(i => i.category))]
+  const lowStock    = inventory.filter(i => i.current_stock <= i.min_stock)
+  const criticalStock = inventory.filter(i => i.current_stock < i.min_stock)
+  const totalValue  = inventory.reduce((s, i) => s + i.current_stock * i.unit_cost, 0)
+  const suppliers   = [...new Set(inventory.map(i => i.supplier))]
+  const categories  = [...new Set(inventory.map(i => i.category))]
 
-  const filtered = mockInventory.filter(i => {
+  const filtered = inventory.filter(i => {
     const matchSearch = i.name.toLowerCase().includes(search.toLowerCase()) ||
       i.category.toLowerCase().includes(search.toLowerCase())
     const matchCat = categoryFilter === 'all' || i.category === categoryFilter
@@ -34,7 +36,7 @@ export function Inventory() {
 
   /* Stock health by category */
   const catHealth = categories.map(cat => {
-    const items = mockInventory.filter(i => i.category === cat)
+    const items = inventory.filter(i => i.category === cat)
     const okCount = items.filter(i => i.current_stock > i.min_stock * 1.5).length
     return { cat, total: items.length, ok: okCount, pct: Math.round((okCount / items.length) * 100) }
   })
@@ -45,7 +47,7 @@ export function Inventory() {
       {/* ── Hero ── */}
       <PageHero
         title="Inventory"
-        subtitle={`${mockInventory.length} items · AED ${totalValue.toLocaleString()} stock value · ${lowStock.length} items low`}
+        subtitle={`${inventory.length} items · AED ${totalValue.toLocaleString()} stock value · ${lowStock.length} items low`}
         statusChip={criticalStock.length > 0 ? `${criticalStock.length} Critical` : 'Stocked'}
         actionLabel="Add Item"
         onAction={() => setShowModal(true)}
@@ -64,7 +66,10 @@ export function Inventory() {
               {criticalStock.map(i => i.name).join(', ')} — below minimum threshold. Reorder immediately.
             </p>
           </div>
-          <button className="shrink-0 bg-red-600 text-white text-[12px] font-semibold px-4 py-2 rounded-xl hover:bg-red-700 transition-colors">
+          <button
+            onClick={() => criticalStock.forEach(i => reorderItem(i.id))}
+            className="shrink-0 bg-red-600 text-white text-[12px] font-semibold px-4 py-2 rounded-xl hover:bg-red-700 transition-colors"
+          >
             Reorder All
           </button>
         </div>
@@ -85,7 +90,7 @@ export function Inventory() {
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {[
-          { label: 'Total Items',   value: mockInventory.length,              sub: 'All categories', icon: Boxes,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '+2',   deltaUp: true  },
+          { label: 'Total Items',   value: inventory.length,              sub: 'All categories', icon: Boxes,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '+2',   deltaUp: true  },
           { label: 'Low Stock',     value: lowStock.length,                   sub: 'Need reorder',   icon: AlertTriangle, iconBg: 'bg-amber-50', iconColor: 'text-amber-600', delta: lowStock.length > 0 ? '!' : 'OK', deltaUp: lowStock.length === 0 },
           { label: 'Critical',      value: criticalStock.length,              sub: 'Below minimum',  icon: RefreshCw, iconBg: 'bg-red-50',     iconColor: 'text-red-600',     delta: criticalStock.length > 0 ? '!!' : 'OK', deltaUp: criticalStock.length === 0 },
           { label: 'Stock Value',   value: `AED ${(totalValue/1000).toFixed(1)}k`, sub: 'Total inventory', icon: DollarSign, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: '+3%', deltaUp: true },
@@ -191,7 +196,10 @@ export function Inventory() {
                         </td>
                         <td className="px-4 py-3.5">
                           {item.current_stock <= item.min_stock && (
-                            <button className="text-[11px] bg-amber-50 text-amber-700 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-semibold transition-colors">
+                            <button
+                              onClick={() => reorderItem(item.id)}
+                              className="text-[11px] bg-amber-50 text-amber-700 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-semibold transition-colors"
+                            >
                               Reorder
                             </button>
                           )}
@@ -242,7 +250,7 @@ export function Inventory() {
             </div>
             <div className="space-y-3">
               {suppliers.map((supplier, idx) => {
-                const supplierItems = mockInventory.filter(i => i.supplier === supplier)
+                const supplierItems = inventory.filter(i => i.supplier === supplier)
                 const value = supplierItems.reduce((s, i) => s + i.current_stock * i.unit_cost, 0)
                 return (
                   <div key={supplier} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-[#E4E8EC]">
@@ -298,32 +306,48 @@ export function Inventory() {
 
       {/* ── Add Item Modal ── */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Add Inventory Item" size="md">
-        <form className="space-y-4" onSubmit={e => { e.preventDefault(); setShowModal(false) }}>
-          <Input label="Item Name" placeholder="e.g. All-Purpose Cleaner" />
+        <form className="space-y-4" onSubmit={e => {
+          e.preventDefault()
+          const fd = new FormData(e.currentTarget)
+          addInventory({
+            name: fd.get('name') as string,
+            category: fd.get('category') as string,
+            unit: fd.get('unit') as string,
+            current_stock: Number(fd.get('current_stock')),
+            min_stock: Number(fd.get('min_stock')),
+            reorder_quantity: Number(fd.get('reorder_quantity')),
+            unit_cost: Number(fd.get('unit_cost')),
+            location: fd.get('location') as string,
+            supplier: fd.get('supplier') as string,
+            last_restocked: new Date().toISOString().split('T')[0],
+          })
+          setShowModal(false)
+        }}>
+          <Input name="name" label="Item Name" placeholder="e.g. All-Purpose Cleaner" required />
           <div className="grid grid-cols-2 gap-4">
-            <Select label="Category">
+            <Select name="category" label="Category">
               <option>Chemicals</option>
               <option>Equipment</option>
               <option>PPE</option>
               <option>Consumables</option>
             </Select>
-            <Input label="Unit" placeholder="e.g. Litres, Pieces, Boxes" />
+            <Input name="unit" label="Unit" placeholder="e.g. Litres, Pieces, Boxes" />
           </div>
           <div className="grid grid-cols-3 gap-4">
-            <Input label="Current Stock" type="number" placeholder="0" />
-            <Input label="Min Stock" type="number" placeholder="0" />
-            <Input label="Reorder Qty" type="number" placeholder="0" />
+            <Input name="current_stock" label="Current Stock" type="number" placeholder="0" defaultValue="0" />
+            <Input name="min_stock" label="Min Stock" type="number" placeholder="0" defaultValue="0" />
+            <Input name="reorder_quantity" label="Reorder Qty" type="number" placeholder="0" defaultValue="0" />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Unit Cost (AED)" type="number" placeholder="0.00" />
-            <Select label="Location">
+            <Input name="unit_cost" label="Unit Cost (AED)" type="number" placeholder="0.00" step="0.01" defaultValue="0" />
+            <Select name="location" label="Location">
               <option>Main Storeroom</option>
               <option>Van 1</option>
               <option>Van 2</option>
               <option>Van 3</option>
             </Select>
           </div>
-          <Input label="Supplier" placeholder="Supplier name" />
+          <Input name="supplier" label="Supplier" placeholder="Supplier name" />
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setShowModal(false)}>Cancel</Button>
             <Button type="submit" className="flex-1">Add Item</Button>

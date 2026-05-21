@@ -5,7 +5,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatDate } from '@/lib/utils'
-import { mockInvoices } from '@/data/mock'
+import { useData } from '@/store/DataContext'
 import type { Invoice } from '@/types'
 
 const COMPANY = {
@@ -33,26 +33,27 @@ function StatusPill({ status }: { status: string }) {
 }
 
 export function Invoices() {
+  const { invoices, addInvoice, updateInvoice } = useData()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<Invoice | null>(null)
 
-  const totalPaid    = mockInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
-  const totalPending = mockInvoices.filter(i => i.status === 'sent').reduce((s, i) => s + i.total, 0)
-  const totalOverdue = mockInvoices.filter(i => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
-  const totalVat     = mockInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.vat_amount, 0)
-  const paidCount    = mockInvoices.filter(i => i.status === 'paid').length
-  const collectionRate = Math.round((paidCount / mockInvoices.length) * 100)
+  const totalPaid    = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
+  const totalPending = invoices.filter(i => i.status === 'sent').reduce((s, i) => s + i.total, 0)
+  const totalOverdue = invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
+  const totalVat     = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.vat_amount, 0)
+  const paidCount    = invoices.filter(i => i.status === 'paid').length
+  const collectionRate = Math.round((paidCount / invoices.length) * 100)
 
-  const filtered = mockInvoices.filter(i => {
+  const filtered = invoices.filter(i => {
     const matchSearch = i.client_name.toLowerCase().includes(search.toLowerCase()) ||
       i.invoice_number.toLowerCase().includes(search.toLowerCase())
     const matchStatus = statusFilter === 'all' || i.status === statusFilter
     return matchSearch && matchStatus
   })
 
-  const overdueInvoices = mockInvoices.filter(i => i.status === 'overdue')
+  const overdueInvoices = invoices.filter(i => i.status === 'overdue')
 
   return (
     <div className="space-y-6">
@@ -60,7 +61,7 @@ export function Invoices() {
       {/* ── Hero ── */}
       <PageHero
         title="Invoices"
-        subtitle={`${mockInvoices.length} invoices · AED ${totalPaid.toLocaleString()} collected · AED ${totalOverdue.toLocaleString()} overdue`}
+        subtitle={`${invoices.length} invoices · AED ${totalPaid.toLocaleString()} collected · AED ${totalOverdue.toLocaleString()} overdue`}
         statusChip={overdueInvoices.length > 0 ? `${overdueInvoices.length} Overdue` : 'All Clear'}
         actionLabel="New Invoice"
         onAction={() => setShowModal(true)}
@@ -70,7 +71,7 @@ export function Invoices() {
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {[
-          { label: 'Total Invoices', value: mockInvoices.length,                           sub: 'All time',        icon: FileText,    iconBg: 'bg-slate-100',  iconColor: 'text-slate-600',   delta: '+5',   deltaUp: true  },
+          { label: 'Total Invoices', value: invoices.length,                           sub: 'All time',        icon: FileText,    iconBg: 'bg-slate-100',  iconColor: 'text-slate-600',   delta: '+5',   deltaUp: true  },
           { label: 'Paid',           value: `AED ${(totalPaid/1000).toFixed(1)}k`,         sub: `${paidCount} invoices`, icon: CheckCircle, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: '+12%', deltaUp: true  },
           { label: 'Pending',        value: `AED ${(totalPending/1000).toFixed(1)}k`,      sub: 'Awaiting payment', icon: Clock,       iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: 'Active', deltaUp: true },
           { label: 'Overdue',        value: `AED ${(totalOverdue/1000).toFixed(1)}k`,      sub: `${overdueInvoices.length} overdue`, icon: AlertCircle, iconBg: 'bg-red-50', iconColor: 'text-red-600', delta: '!', deltaUp: false },
@@ -246,7 +247,7 @@ export function Invoices() {
             </div>
             <div className="space-y-3">
               {[
-                { label: 'Taxable Revenue',  value: `AED ${mockInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.subtotal, 0).toLocaleString()}` },
+                { label: 'Taxable Revenue',  value: `AED ${invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.subtotal, 0).toLocaleString()}` },
                 { label: 'VAT Collected',    value: `AED ${totalVat.toLocaleString()}` },
                 { label: 'TRN',             value: COMPANY.trn },
                 { label: 'Next Filing',      value: 'Q2 2026 — Jun 30' },
@@ -264,58 +265,102 @@ export function Invoices() {
 
       {/* ── Invoice Detail Modal ── */}
       <Modal open={!!selected} onClose={() => setSelected(null)} title="Invoice" size="lg">
-        {selected && <InvoiceView invoice={selected} />}
+        {selected && (
+          <InvoiceView
+            invoice={selected}
+            onMarkPaid={() => {
+              updateInvoice(selected.id, { status: 'paid', paid_date: new Date().toISOString().split('T')[0] })
+              setSelected(null)
+            }}
+            onSend={() => {
+              updateInvoice(selected.id, { status: 'sent' })
+              setSelected(null)
+            }}
+          />
+        )}
       </Modal>
 
       {/* ── New Invoice Modal ── */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title="New Invoice" size="lg">
-        <form className="space-y-4" onSubmit={e => { e.preventDefault(); setShowModal(false) }}>
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Client Name" placeholder="Full name" />
-            <Input label="Client Address" placeholder="Full address" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Client TRN (optional)" placeholder="Tax Registration Number" />
-            <Input label="Due Date" type="date" />
-          </div>
-          <div className="bg-slate-50 rounded-xl p-4 space-y-3 border border-[#E4E8EC]">
-            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.1em]">Line Items</p>
-            <div className="grid grid-cols-12 gap-2 text-[11px] text-slate-500 font-medium px-1">
-              <span className="col-span-6">Description</span>
-              <span className="col-span-2 text-right">Qty</span>
-              <span className="col-span-2 text-right">Unit Price</span>
-              <span className="col-span-2 text-right">Amount</span>
-            </div>
-            <div className="grid grid-cols-12 gap-2">
-              <div className="col-span-6"><Input placeholder="Service description" /></div>
-              <div className="col-span-2"><Input type="number" placeholder="1" defaultValue="1" /></div>
-              <div className="col-span-2"><Input type="number" placeholder="0.00" /></div>
-              <div className="col-span-2"><Input type="number" placeholder="0.00" readOnly /></div>
-            </div>
-            <button type="button" className="text-[12px] text-emerald-600 hover:text-emerald-700 font-semibold">+ Add line item</button>
-          </div>
-          <div className="bg-slate-50 rounded-xl p-4 border border-[#E4E8EC]">
-            <div className="space-y-2 text-[13px]">
-              <div className="flex justify-between"><span className="text-slate-500">Subtotal</span><span className="text-[#111827]">AED 0.00</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">VAT (5%)</span><span className="text-[#111827]">AED 0.00</span></div>
-              <div className="flex justify-between font-bold text-[#111827] pt-2 border-t border-[#E4E8EC]">
-                <span>Total</span><span>AED 0.00</span>
-              </div>
-            </div>
-          </div>
-          <Textarea label="Notes" placeholder="Payment terms, bank details, thank you message..." rows={2} />
-          <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button type="button" variant="secondary" className="flex-1">Save Draft</Button>
-            <Button type="submit" className="flex-1">Send Invoice</Button>
-          </div>
-        </form>
+        <NewInvoiceForm
+          onClose={() => setShowModal(false)}
+          onAdd={(draft) => { addInvoice(draft); setShowModal(false) }}
+        />
       </Modal>
     </div>
   )
 }
 
-function InvoiceView({ invoice }: { invoice: Invoice }) {
+function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Omit<Invoice, 'id' | 'created_at'>) => void }) {
+  const [qty, setQty] = useState(1)
+  const [unitPrice, setUnitPrice] = useState(0)
+  const subtotal = qty * unitPrice
+  const vatAmount = Math.round(subtotal * 0.05 * 100) / 100
+  const total = subtotal + vatAmount
+
+  return (
+    <form className="space-y-4" onSubmit={e => {
+      e.preventDefault()
+      const fd = new FormData(e.currentTarget)
+      const desc = fd.get('description') as string
+      const invoiceNum = `INV-${Date.now().toString().slice(-6)}`
+      onAdd({
+        invoice_number: invoiceNum,
+        client_name: fd.get('client_name') as string,
+        client_address: fd.get('client_address') as string,
+        trn: fd.get('trn') as string,
+        due_date: fd.get('due_date') as string,
+        status: 'sent',
+        subtotal,
+        vat_rate: 5,
+        vat_amount: vatAmount,
+        total,
+        line_items: [{ description: desc, quantity: qty, unit_price: unitPrice, amount: subtotal }],
+        notes: fd.get('notes') as string,
+      })
+    }}>
+      <div className="grid grid-cols-2 gap-4">
+        <Input name="client_name" label="Client Name" placeholder="Full name" required />
+        <Input name="client_address" label="Client Address" placeholder="Full address" />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <Input name="trn" label="Client TRN (optional)" placeholder="Tax Registration Number" />
+        <Input name="due_date" label="Due Date" type="date" required />
+      </div>
+      <div className="bg-slate-50 rounded-xl p-4 space-y-3 border border-[#E4E8EC]">
+        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.1em]">Line Item</p>
+        <div className="grid grid-cols-12 gap-2 text-[11px] text-slate-500 font-medium px-1">
+          <span className="col-span-6">Description</span>
+          <span className="col-span-2 text-right">Qty</span>
+          <span className="col-span-2 text-right">Unit Price</span>
+          <span className="col-span-2 text-right">Amount</span>
+        </div>
+        <div className="grid grid-cols-12 gap-2">
+          <div className="col-span-6"><Input name="description" placeholder="Service description" required /></div>
+          <div className="col-span-2"><Input type="number" value={qty} min={1} onChange={e => setQty(Number(e.target.value))} /></div>
+          <div className="col-span-2"><Input type="number" value={unitPrice} min={0} step="0.01" onChange={e => setUnitPrice(Number(e.target.value))} /></div>
+          <div className="col-span-2"><Input type="number" value={subtotal.toFixed(2)} readOnly /></div>
+        </div>
+      </div>
+      <div className="bg-slate-50 rounded-xl p-4 border border-[#E4E8EC]">
+        <div className="space-y-2 text-[13px]">
+          <div className="flex justify-between"><span className="text-slate-500">Subtotal</span><span className="text-[#111827]">AED {subtotal.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">VAT (5%)</span><span className="text-[#111827]">AED {vatAmount.toFixed(2)}</span></div>
+          <div className="flex justify-between font-bold text-[#111827] pt-2 border-t border-[#E4E8EC]">
+            <span>Total</span><span>AED {total.toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+      <Textarea name="notes" label="Notes" placeholder="Payment terms, bank details, thank you message..." rows={2} />
+      <div className="flex gap-3 pt-2">
+        <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+        <Button type="submit" className="flex-1">Send Invoice</Button>
+      </div>
+    </form>
+  )
+}
+
+function InvoiceView({ invoice, onMarkPaid, onSend }: { invoice: Invoice; onMarkPaid: () => void; onSend: () => void }) {
   const statusCfg: Record<string, { bg: string; text: string }> = {
     paid:    { bg: 'bg-emerald-50', text: 'text-emerald-700' },
     sent:    { bg: 'bg-blue-50',    text: 'text-blue-700' },
@@ -400,9 +445,16 @@ function InvoiceView({ invoice }: { invoice: Invoice }) {
           <Download size={14} className="mr-1.5" /> Download PDF
         </Button>
         {invoice.status !== 'paid' && (
-          <Button className="flex-1" size="sm">
-            <Send size={14} className="mr-1.5" /> Send to Client
-          </Button>
+          <>
+            {invoice.status !== 'sent' && (
+              <Button variant="secondary" className="flex-1" size="sm" onClick={onSend}>
+                <Send size={14} className="mr-1.5" /> Send
+              </Button>
+            )}
+            <Button className="flex-1" size="sm" onClick={onMarkPaid}>
+              Mark Paid
+            </Button>
+          </>
         )}
       </div>
     </div>

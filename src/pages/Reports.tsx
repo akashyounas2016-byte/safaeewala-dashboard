@@ -37,10 +37,13 @@ const topClients = [...mockClients].sort((a, b) => b.total_spent - a.total_spent
 export function Reports() {
   const [dateRange, setDateRange] = useState('6m')
 
+  const sliceCount = dateRange === '3m' ? 3 : dateRange === '6m' ? 6 : dateRange === '1y' ? 12 : revenueData.length
+  const filteredRevenue = revenueData.slice(-sliceCount)
+
   function handleExport() {
     exportCSV('safaeewala-revenue-report.csv', [
       ['Month', 'Revenue (AED)', 'Target (AED)', 'vs Target'],
-      ...revenueData.map(d => [
+      ...filteredRevenue.map(d => [
         d.month,
         String(d.revenue),
         String(d.target),
@@ -148,7 +151,7 @@ export function Reports() {
             </div>
             <div className="px-6 py-5">
               <ResponsiveContainer width="100%" height={240}>
-                <AreaChart data={revenueData} margin={{ top: 4, right: 0, left: -10, bottom: 0 }}>
+                <AreaChart data={filteredRevenue} margin={{ top: 4, right: 0, left: -10, bottom: 0 }}>
                   <defs>
                     <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%"  stopColor="#10b981" stopOpacity={0.15} />

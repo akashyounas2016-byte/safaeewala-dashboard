@@ -5,7 +5,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { mockClients } from '@/data/mock'
+import { useData } from '@/store/DataContext'
 
 /* ─── Avatar palette ─── */
 const avatarColors = [
@@ -28,19 +28,20 @@ function Avatar({ name, size = 'md', idx = 0 }: { name: string; size?: 'sm' | 'm
 }
 
 export function Clients() {
+  const { clients, addClient } = useData()
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
-  const [selected, setSelected] = useState<typeof mockClients[0] | null>(null)
+  const [selected, setSelected] = useState<typeof clients[0] | null>(null)
   const [areaFilter, setAreaFilter] = useState('all')
 
-  const totalSpent = mockClients.reduce((s, c) => s + c.total_spent, 0)
-  const avgLtv = Math.round(totalSpent / mockClients.length)
-  const activeClients = mockClients.filter(c => c.last_service && new Date(c.last_service) > new Date('2026-01-01')).length
-  const vipClients = mockClients.filter(c => c.total_spent > 2000).length
+  const totalSpent = clients.reduce((s, c) => s + c.total_spent, 0)
+  const avgLtv = Math.round(totalSpent / (clients.length || 1))
+  const activeClients = clients.filter(c => c.last_service && new Date(c.last_service) > new Date('2026-01-01')).length
+  const vipClients = clients.filter(c => c.total_spent > 2000).length
 
-  const areas = [...new Set(mockClients.map(c => c.area))]
+  const areas = [...new Set(clients.map(c => c.area))]
 
-  const filtered = mockClients.filter(c => {
+  const filtered = clients.filter(c => {
     const matchSearch = c.full_name.toLowerCase().includes(search.toLowerCase()) ||
       c.phone.includes(search) ||
       c.area.toLowerCase().includes(search.toLowerCase())
@@ -48,9 +49,9 @@ export function Clients() {
     return matchSearch && matchArea
   })
 
-  const topClients = [...mockClients].sort((a, b) => b.total_spent - a.total_spent).slice(0, 5)
+  const topClients = [...clients].sort((a, b) => b.total_spent - a.total_spent).slice(0, 5)
 
-  const areaCounts = mockClients.reduce((acc, c) => {
+  const areaCounts = clients.reduce((acc, c) => {
     acc[c.area] = (acc[c.area] || 0) + 1
     return acc
   }, {} as Record<string, number>)
@@ -61,7 +62,7 @@ export function Clients() {
       {/* ── Hero ── */}
       <PageHero
         title="Clients"
-        subtitle={`${mockClients.length} total clients · ${activeClients} active this year · AED ${totalSpent.toLocaleString()} lifetime`}
+        subtitle={`${clients.length} total clients · ${activeClients} active this year · AED ${totalSpent.toLocaleString()} lifetime`}
         statusChip={`${vipClients} VIP`}
         actionLabel="Add Client"
         onAction={() => setShowModal(true)}
@@ -71,7 +72,7 @@ export function Clients() {
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {[
-          { label: 'Total Clients',    value: mockClients.length,             sub: 'All time',       icon: Users,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '+3',   deltaUp: true  },
+          { label: 'Total Clients',    value: clients.length,             sub: 'All time',       icon: Users,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '+3',   deltaUp: true  },
           { label: 'Active (30d)',     value: activeClients,                  sub: 'Recent activity', icon: TrendingUp, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: '+1',   deltaUp: true  },
           { label: 'VIP Clients',      value: vipClients,                     sub: 'AED 2k+ spent',  icon: Award,     iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: '+2',   deltaUp: true  },
           { label: 'Avg Lifetime',     value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client',   icon: DollarSign, iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: '+8%',  deltaUp: true  },
@@ -287,31 +288,47 @@ export function Clients() {
 
       {/* ── Add Client Modal ── */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Add New Client" size="lg">
-        <form className="space-y-4" onSubmit={e => { e.preventDefault(); setShowModal(false) }}>
+        <form className="space-y-4" onSubmit={e => {
+          e.preventDefault()
+          const f = new FormData(e.currentTarget as HTMLFormElement)
+          addClient({
+            full_name:     String(f.get('full_name') || 'New Client'),
+            phone:         String(f.get('phone') || ''),
+            whatsapp:      String(f.get('whatsapp') || ''),
+            email:         String(f.get('email') || ''),
+            nationality:   String(f.get('nationality') || ''),
+            city:          String(f.get('city') || 'Dubai'),
+            building_name: String(f.get('building') || ''),
+            apartment:     String(f.get('apartment') || ''),
+            area:          String(f.get('area') || 'Dubai'),
+            access_notes:  String(f.get('access_notes') || ''),
+            pet_info:      String(f.get('pet_info') || ''),
+            total_bookings: 0,
+            total_spent:   0,
+          })
+          setShowModal(false)
+        }}>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Full Name" placeholder="Full name" />
-            <Input label="Phone" placeholder="+971 50 000 0000" />
+            <Input name="full_name" label="Full Name" placeholder="Full name" />
+            <Input name="phone" label="Phone" placeholder="+971 50 000 0000" />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="WhatsApp" placeholder="+971 50 000 0000" />
-            <Input label="Email" type="email" placeholder="email@example.com" />
+            <Input name="whatsapp" label="WhatsApp" placeholder="+971 50 000 0000" />
+            <Input name="email" label="Email" type="email" placeholder="email@example.com" />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Nationality" placeholder="e.g. Emirati, Indian..." />
-            <Select label="Emirate">
-              <option>Dubai</option>
-              <option>Abu Dhabi</option>
-              <option>Sharjah</option>
-              <option>Ajman</option>
+            <Input name="nationality" label="Nationality" placeholder="e.g. Emirati, Indian..." />
+            <Select name="city" label="Emirate">
+              <option>Dubai</option><option>Abu Dhabi</option><option>Sharjah</option><option>Ajman</option>
             </Select>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Building / Villa Name" placeholder="Building or villa name" />
-            <Input label="Apartment / Unit" placeholder="Unit number" />
+            <Input name="building" label="Building / Villa Name" placeholder="Building or villa name" />
+            <Input name="apartment" label="Apartment / Unit" placeholder="Unit number" />
           </div>
-          <Input label="Area / Community" placeholder="e.g. Dubai Marina, JBR..." />
-          <Textarea label="Access Notes" placeholder="Key with concierge, parking instructions, gate code..." rows={2} />
-          <Textarea label="Pet Information" placeholder="Pet type, breed, any cleaning product restrictions..." rows={2} />
+          <Input name="area" label="Area / Community" placeholder="e.g. Dubai Marina, JBR..." />
+          <Textarea name="access_notes" label="Access Notes" placeholder="Key with concierge, parking instructions, gate code..." rows={2} />
+          <Textarea name="pet_info" label="Pet Information" placeholder="Pet type, breed, any cleaning product restrictions..." rows={2} />
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setShowModal(false)}>Cancel</Button>
             <Button type="submit" className="flex-1">Save Client</Button>

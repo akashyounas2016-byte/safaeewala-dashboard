@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import {
   Plus, Search, Calendar as CalendarIcon, Clock, MapPin, Phone,
   ChevronLeft, ChevronRight, List, CalendarDays,
@@ -10,7 +10,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils'
-import { mockBookings } from '@/data/mock'
+import { useData } from '@/store/DataContext'
 
 /* ─── Filter chips ─── */
 const statusFilters = [
@@ -80,14 +80,15 @@ const crewBlockColors: Record<string, { bg: string; border: string; text: string
 
 /* ─── Main Bookings page ─── */
 export function Bookings() {
+  const { bookings, addBooking, updateBooking, deleteBooking } = useData()
   const [view, setView] = useState<'list' | 'calendar'>('list')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [serviceFilter, setServiceFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
-  const [selectedBooking, setSelectedBooking] = useState<typeof mockBookings[0] | null>(null)
+  const [selectedBooking, setSelectedBooking] = useState<typeof bookings[0] | null>(null)
 
-  const filtered = mockBookings.filter((b) => {
+  const filtered = bookings.filter((b) => {
     const matchSearch = b.client_name.toLowerCase().includes(search.toLowerCase()) ||
       b.service_type.toLowerCase().includes(search.toLowerCase()) ||
       b.service_address.toLowerCase().includes(search.toLowerCase())
@@ -97,13 +98,13 @@ export function Bookings() {
   })
 
   const counts = {
-    pending:     mockBookings.filter(b => b.status === 'pending').length,
-    confirmed:   mockBookings.filter(b => b.status === 'confirmed').length,
-    in_progress: mockBookings.filter(b => b.status === 'in_progress').length,
-    completed:   mockBookings.filter(b => b.status === 'completed').length,
+    pending:     bookings.filter(b => b.status === 'pending').length,
+    confirmed:   bookings.filter(b => b.status === 'confirmed').length,
+    in_progress: bookings.filter(b => b.status === 'in_progress').length,
+    completed:   bookings.filter(b => b.status === 'completed').length,
   }
 
-  const totalRevenue = mockBookings
+  const totalRevenue = bookings
     .filter(b => b.status === 'completed')
     .reduce((s, b) => s + b.total_amount, 0)
 
@@ -113,7 +114,7 @@ export function Bookings() {
       {/* ── Hero ── */}
       <PageHero
         title="Bookings"
-        subtitle={`${mockBookings.length} jobs · ${counts.in_progress} live now · ${counts.pending} need confirmation`}
+        subtitle={`${bookings.length} jobs · ${counts.in_progress} live now · ${counts.pending} need confirmation`}
         statusChip={`${counts.in_progress} Active`}
         actionLabel="New Booking"
         onAction={() => setShowModal(true)}
@@ -326,11 +327,17 @@ export function Bookings() {
 
       {/* ── Modals ── */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title="New booking" size="lg">
-        <NewBookingForm onClose={() => setShowModal(false)} />
+        <NewBookingForm onClose={() => setShowModal(false)} onAdd={addBooking} />
       </Modal>
 
       <Modal open={!!selectedBooking} onClose={() => setSelectedBooking(null)} title="Booking details" size="lg">
-        {selectedBooking && <BookingDetail booking={selectedBooking} />}
+        {selectedBooking && (
+          <BookingDetail
+            booking={selectedBooking}
+            onUpdate={(patch) => { updateBooking(selectedBooking.id, patch); setSelectedBooking(b => b ? { ...b, ...patch } : b) }}
+            onDelete={() => { deleteBooking(selectedBooking.id); setSelectedBooking(null) }}
+          />
+        )}
       </Modal>
     </div>
   )
@@ -498,20 +505,41 @@ function WeekCalendar({
 }
 
 /* ─── New Booking Form ─── */
-function NewBookingForm({ onClose }: { onClose: () => void }) {
+function NewBookingForm({ onClose, onAdd }: { onClose: () => void; onAdd: (b: any) => void }) {
+  const ref = useRef<HTMLFormElement>(null)
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const f = new FormData(ref.current!)
+    onAdd({
+      client_name:    String(f.get('client_name') || 'New Client'),
+      client_phone:   String(f.get('phone') || ''),
+      client_id:      '',
+      service_address:String(f.get('address') || ''),
+      service_type:   String(f.get('service_type') || 'Home Cleaning'),
+      frequency:      String(f.get('frequency') || 'once'),
+      scheduled_date: String(f.get('date') || new Date().toISOString().split('T')[0]),
+      scheduled_time: String(f.get('time') || '09:00'),
+      duration_hours: Number(f.get('duration') || 3),
+      total_amount:   Number(f.get('amount') || 0),
+      status:         'pending',
+      assigned_crew:  [],
+      notes:          String(f.get('notes') || ''),
+    })
+    onClose()
+  }
   return (
-    <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); onClose() }}>
+    <form ref={ref} className="space-y-4" onSubmit={handleSubmit}>
       <div className="grid grid-cols-2 gap-4">
-        <Input label="Client name" placeholder="Full name" />
-        <Input label="Phone" placeholder="+971 50 000 0000" />
+        <Input name="client_name" label="Client name" placeholder="Full name" />
+        <Input name="phone" label="Phone" placeholder="+971 50 000 0000" />
       </div>
-      <Input label="Service address" placeholder="Street, unit, neighborhood" />
+      <Input name="address" label="Service address" placeholder="Street, unit, neighborhood" />
       <div className="grid grid-cols-2 gap-4">
-        <Select label="Service type">
+        <Select name="service_type" label="Service type">
           <option value="">Select service…</option>
           {serviceTypes.map(s => <option key={s}>{s}</option>)}
         </Select>
-        <Select label="Frequency">
+        <Select name="frequency" label="Frequency">
           <option value="once">One-time</option>
           <option value="weekly">Weekly</option>
           <option value="biweekly">Bi-weekly</option>
@@ -519,18 +547,12 @@ function NewBookingForm({ onClose }: { onClose: () => void }) {
         </Select>
       </div>
       <div className="grid grid-cols-3 gap-4">
-        <Input label="Date" type="date" />
-        <Input label="Time" type="time" />
-        <Input label="Duration (hrs)" type="number" min="1" max="12" defaultValue="3" />
+        <Input name="date" label="Date" type="date" />
+        <Input name="time" label="Time" type="time" />
+        <Input name="duration" label="Duration (hrs)" type="number" min="1" max="12" defaultValue="3" />
       </div>
-      <div className="grid grid-cols-2 gap-4">
-        <Input label="Total amount (AED)" type="number" placeholder="0.00" />
-        <Select label="Status">
-          <option value="pending">Pending</option>
-          <option value="confirmed">Scheduled</option>
-        </Select>
-      </div>
-      <Textarea label="Notes" placeholder="Access instructions, special requirements…" rows={3} />
+      <Input name="amount" label="Total amount (AED)" type="number" placeholder="0.00" />
+      <Textarea name="notes" label="Notes" placeholder="Access instructions, special requirements…" rows={3} />
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
         <Button type="submit" className="flex-1">Create booking</Button>
@@ -540,7 +562,19 @@ function NewBookingForm({ onClose }: { onClose: () => void }) {
 }
 
 /* ─── Booking Detail panel ─── */
-function BookingDetail({ booking }: { booking: typeof mockBookings[0] }) {
+type BookingType = ReturnType<typeof useData>['bookings'][0]
+function BookingDetail({ booking, onUpdate, onDelete }: {
+  booking: BookingType
+  onUpdate: (patch: Partial<BookingType>) => void
+  onDelete: () => void
+}) {
+  const [status, setStatus] = useState(booking.status)
+
+  function applyStatus(s: string) {
+    setStatus(s)
+    onUpdate({ status: s })
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -551,7 +585,7 @@ function BookingDetail({ booking }: { booking: typeof mockBookings[0] }) {
             <p className="text-[12.5px] text-slate-500 mt-0.5">{booking.client_phone}</p>
           </div>
         </div>
-        <StatusPill status={booking.status} />
+        <StatusPill status={status} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -583,9 +617,13 @@ function BookingDetail({ booking }: { booking: typeof mockBookings[0] }) {
       )}
 
       <div className="flex gap-2 pt-2">
-        <Button variant="outline" className="flex-1" size="sm">Edit</Button>
-        <Button variant="primary" className="flex-1" size="sm">Mark complete</Button>
-        <Button variant="danger" size="sm">Cancel</Button>
+        {status === 'pending'     && <Button className="flex-1" size="sm" onClick={() => applyStatus('confirmed')}>Confirm</Button>}
+        {status === 'confirmed'   && <Button className="flex-1" size="sm" onClick={() => applyStatus('in_progress')}>Start Job</Button>}
+        {status === 'in_progress' && <Button className="flex-1" size="sm" onClick={() => applyStatus('completed')}>Mark Complete</Button>}
+        {status !== 'cancelled' && status !== 'completed' && (
+          <Button variant="danger" size="sm" onClick={() => applyStatus('cancelled')}>Cancel</Button>
+        )}
+        <Button variant="danger" size="sm" onClick={onDelete}>Delete</Button>
       </div>
     </div>
   )

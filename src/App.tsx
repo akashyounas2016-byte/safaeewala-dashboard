@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { DataProvider } from '@/store/DataContext'
 import { Layout } from '@/components/layout/Layout'
 import { Overview } from '@/pages/Overview'
 import { Bookings } from '@/pages/Bookings'
@@ -12,6 +13,7 @@ import { Settings } from '@/pages/Settings'
 
 export default function App() {
   return (
+    <DataProvider>
     <BrowserRouter>
       <Routes>
         <Route element={<Layout />}>
@@ -27,5 +29,6 @@ export default function App() {
         </Route>
       </Routes>
     </BrowserRouter>
+    </DataProvider>
   )
 }

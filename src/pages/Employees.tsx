@@ -5,7 +5,7 @@ import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatDate, daysUntil } from '@/lib/utils'
-import { mockEmployees } from '@/data/mock'
+import { useData } from '@/store/DataContext'
 
 /* ─── Avatar palette ─── */
 const avatarColors = [
@@ -56,20 +56,21 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export function Employees() {
+  const { employees, addEmployee } = useData()
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
-  const [selected, setSelected] = useState<typeof mockEmployees[0] | null>(null)
+  const [selected, setSelected] = useState<typeof employees[0] | null>(null)
 
-  const expiringCount = mockEmployees.filter(e => {
+  const expiringCount = employees.filter(e => {
     const soonest = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry), daysUntil(e.passport_expiry))
     return soonest < 90
   }).length
 
-  const activeCount = mockEmployees.filter(e => e.status === 'active').length
-  const crewLeads = mockEmployees.filter(e => e.role === 'crew_lead').length
+  const activeCount = employees.filter(e => e.status === 'active').length
+  const crewLeads = employees.filter(e => e.role === 'crew_lead').length
 
-  const filtered = mockEmployees.filter(e => {
+  const filtered = employees.filter(e => {
     const matchSearch = e.full_name.toLowerCase().includes(search.toLowerCase()) ||
       e.nationality.toLowerCase().includes(search.toLowerCase())
     const matchRole = roleFilter === 'all' || e.role === roleFilter
@@ -77,7 +78,7 @@ export function Employees() {
   })
 
   /* Aggregate all skills across all employees */
-  const skillCounts = mockEmployees.reduce((acc, e) => {
+  const skillCounts = employees.reduce((acc, e) => {
     e.skills.forEach(s => { acc[s] = (acc[s] || 0) + 1 })
     return acc
   }, {} as Record<string, number>)
@@ -88,7 +89,7 @@ export function Employees() {
       {/* ── Hero ── */}
       <PageHero
         title="Employees"
-        subtitle={`${mockEmployees.length} staff · ${activeCount} active · ${expiringCount} documents expiring soon`}
+        subtitle={`${employees.length} staff · ${activeCount} active · ${expiringCount} documents expiring soon`}
         statusChip={expiringCount > 0 ? `${expiringCount} Alerts` : 'All Clear'}
         actionLabel="Add Employee"
         onAction={() => setShowModal(true)}
@@ -113,7 +114,7 @@ export function Employees() {
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {[
-          { label: 'Total Staff',     value: mockEmployees.length,  sub: 'All roles',        icon: Users,      iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '+2',   deltaUp: true  },
+          { label: 'Total Staff',     value: employees.length,  sub: 'All roles',        icon: Users,      iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '+2',   deltaUp: true  },
           { label: 'Active',          value: activeCount,           sub: 'Currently working', icon: UserCheck,  iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: '+1',   deltaUp: true  },
           { label: 'Crew Leads',      value: crewLeads,             sub: 'Senior staff',     icon: Star,       iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: '0',    deltaUp: true  },
           { label: 'Docs Expiring',   value: expiringCount,         sub: 'Within 90 days',   icon: Shield,     iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: expiringCount > 0 ? `${expiringCount} !` : 'OK', deltaUp: expiringCount === 0 },
@@ -240,7 +241,7 @@ export function Employees() {
               </span>
             </div>
             <div className="space-y-3">
-              {mockEmployees.slice(0, 5).map((emp, idx) => {
+              {employees.slice(0, 5).map((emp, idx) => {
                 const statuses = ['On Job', 'Available', 'On Job', 'Break', 'On Job']
                 const status = statuses[idx % statuses.length]
                 const statusStyle = status === 'On Job'
@@ -275,7 +276,7 @@ export function Employees() {
               )}
             </div>
             <div className="space-y-3">
-              {mockEmployees
+              {employees
                 .filter(e => {
                   const days = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry))
                   return days < 90
@@ -300,7 +301,7 @@ export function Employees() {
                     </div>
                   )
                 })}
-              {mockEmployees.filter(e => Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry)) < 90).length === 0 && (
+              {employees.filter(e => Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry)) < 90).length === 0 && (
                 <div className="text-center py-4">
                   <p className="text-[13px] text-slate-500">All documents are up to date</p>
                 </div>
@@ -319,12 +320,12 @@ export function Employees() {
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 7)
                 .map(([skill, count]) => {
-                  const pct = Math.round((count / mockEmployees.length) * 100)
+                  const pct = Math.round((count / employees.length) * 100)
                   return (
                     <div key={skill}>
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[12px] font-medium text-slate-700 truncate">{skill}</span>
-                        <span className="text-[11px] font-bold text-slate-500 ml-2">{count}/{mockEmployees.length}</span>
+                        <span className="text-[11px] font-bold text-slate-500 ml-2">{count}/{employees.length}</span>
                       </div>
                       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                         <div className="h-full bg-emerald-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
@@ -340,31 +341,50 @@ export function Employees() {
 
       {/* ── Add Employee Modal ── */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Add New Employee" size="lg">
-        <form className="space-y-4" onSubmit={e => { e.preventDefault(); setShowModal(false) }}>
+        <form className="space-y-4" onSubmit={e => {
+          e.preventDefault()
+          const fd = new FormData(e.currentTarget)
+          addEmployee({
+            full_name: fd.get('full_name') as string,
+            phone: fd.get('phone') as string,
+            role: fd.get('role') as 'cleaner' | 'crew_lead',
+            nationality: fd.get('nationality') as string,
+            emirates_id: fd.get('emirates_id') as string,
+            pay_rate_hourly: Number(fd.get('pay_rate_hourly')),
+            visa_expiry: fd.get('visa_expiry') as string,
+            work_permit_expiry: fd.get('work_permit_expiry') as string,
+            passport_expiry: fd.get('passport_expiry') as string,
+            medical_insurance_expiry: fd.get('medical_insurance_expiry') as string,
+            joined_date: fd.get('joined_date') as string,
+            status: 'active',
+            skills: [],
+          })
+          setShowModal(false)
+        }}>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Full Name" placeholder="Full name" />
-            <Input label="Phone" placeholder="+971 50 000 0000" />
+            <Input name="full_name" label="Full Name" placeholder="Full name" required />
+            <Input name="phone" label="Phone" placeholder="+971 50 000 0000" />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Select label="Role">
+            <Select name="role" label="Role">
               <option value="cleaner">Cleaner</option>
               <option value="crew_lead">Crew Lead</option>
             </Select>
-            <Input label="Nationality" placeholder="e.g. Filipino, Indian..." />
+            <Input name="nationality" label="Nationality" placeholder="e.g. Filipino, Indian..." />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Emirates ID" placeholder="784-XXXX-XXXXXXX-X" />
-            <Input label="Pay Rate (AED/hr)" type="number" placeholder="14" />
+            <Input name="emirates_id" label="Emirates ID" placeholder="784-XXXX-XXXXXXX-X" />
+            <Input name="pay_rate_hourly" label="Pay Rate (AED/hr)" type="number" placeholder="14" />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Visa Expiry" type="date" />
-            <Input label="Work Permit Expiry" type="date" />
+            <Input name="visa_expiry" label="Visa Expiry" type="date" />
+            <Input name="work_permit_expiry" label="Work Permit Expiry" type="date" />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Passport Expiry" type="date" />
-            <Input label="Medical Insurance Expiry" type="date" />
+            <Input name="passport_expiry" label="Passport Expiry" type="date" />
+            <Input name="medical_insurance_expiry" label="Medical Insurance Expiry" type="date" />
           </div>
-          <Input label="Joined Date" type="date" />
+          <Input name="joined_date" label="Joined Date" type="date" />
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setShowModal(false)}>Cancel</Button>
             <Button type="submit" className="flex-1">Save Employee</Button>
