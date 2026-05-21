@@ -410,7 +410,7 @@ function ServiceMixDonut({ bookings }: { bookings: Booking[] }) {
 
 /* ─── Overview page ─── */
 export function Overview() {
-  const { bookings, employees, invoices, inventory, addBooking } = useData()
+  const { bookings, clients, employees, invoices, inventory, addBooking } = useData()
   const [showNewBooking, setShowNewBooking] = useState(false)
   const navigate = useNavigate()
 
@@ -464,23 +464,36 @@ export function Overview() {
         onAction={() => setShowNewBooking(true)}
       />
 
-      {/* ── Filters ── */}
-      <section className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {[
-            { label: 'Date Scope', options: ['This Month', 'Last 7 Days', 'Last 14 Days', 'Last 30 Days'] },
-            { label: 'Service Type Filter', options: ['All Services', 'Home Cleaning', 'Deep Cleaning', 'Villa Cleaning', 'Commercial'] },
-            { label: 'Acquisition Channel', options: ['All Channels', 'Google My Business', 'Facebook Ads', 'WhatsApp', 'Referral', 'Instagram'] },
-          ].map(f => (
-            <div key={f.label}>
-              <label className="text-[11px] uppercase tracking-[0.15em] text-[#6B7280] font-semibold block mb-2">{f.label}</label>
-              <select className="w-full h-11 rounded-2xl border border-[#E4E8EC] bg-slate-50 px-4 text-sm font-medium outline-none text-[#111827]">
-                {f.options.map(o => <option key={o}>{o}</option>)}
-              </select>
+      {/* ── Month-to-Date Summary Strip ── */}
+      {(() => {
+        const mtdKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+        const mtdBookings = bookings.filter(b => b.scheduled_date.startsWith(mtdKey))
+        const mtdRevenue  = mtdBookings.filter(b => b.status === 'completed' || b.status === 'in_progress').reduce((s, b) => s + b.total_amount, 0)
+        const mtdCompleted = mtdBookings.filter(b => b.status === 'completed').length
+        const mtdPending   = mtdBookings.filter(b => b.status === 'pending' || b.status === 'confirmed').length
+        const mtdCancelled = mtdBookings.filter(b => b.status === 'cancelled').length
+        return (
+          <section className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-6 py-4 mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-[11px] uppercase tracking-[0.15em] text-[#6B7280] font-semibold">Month to Date</span>
+              <span className="text-[11px] text-slate-400">— {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
             </div>
-          ))}
-        </div>
-      </section>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: 'Revenue',   value: `AED ${mtdRevenue.toLocaleString()}`,  color: 'text-emerald-600' },
+                { label: 'Jobs',      value: `${mtdBookings.length}`,               color: 'text-blue-600' },
+                { label: 'Completed', value: `${mtdCompleted}`,                     color: 'text-slate-700' },
+                { label: 'Upcoming',  value: `${mtdPending}  ·  ${mtdCancelled} cancelled`, color: 'text-amber-600' },
+              ].map(s => (
+                <div key={s.label}>
+                  <p className="text-[11px] text-slate-400 font-medium">{s.label}</p>
+                  <p className={`text-[15px] font-bold mt-0.5 ${s.color}`}>{s.value}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )
+      })()}
 
       {/* ── KPI Cards ── */}
       <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
@@ -503,8 +516,8 @@ export function Overview() {
           onClick={() => navigate('/employees')}
         />
         <KpiCard
-          label="Avg Rating" value="4.8" sub="Client feedback"
-          delta="+0.1" trend="up"
+          label="Completion Rate" value={`${bookings.length - bookings.filter(b=>b.status==='cancelled').length > 0 ? Math.round((bookings.filter(b=>b.status==='completed').length / (bookings.length - bookings.filter(b=>b.status==='cancelled').length)) * 100) : 0}%`} sub="Completed vs active"
+          delta={`${bookings.filter(b=>b.status==='completed').length} done`} trend="up"
           icon={Star} iconBg="#ede9fe" iconColor="#7c3aed"
           onClick={() => navigate('/reports')}
         />
@@ -619,29 +632,43 @@ export function Overview() {
 
       {/* ── Smart Operations Row ── */}
       <section className="grid grid-cols-1 xl:grid-cols-4 gap-5 mb-6">
-        {/* Weather */}
-        <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h3 className="text-lg font-bold text-[#111827]">Dubai Weather</h3>
-              <p className="text-sm text-[#6B7280]">Operational forecast</p>
+        {/* Business Performance */}
+        {(() => {
+          const allCompleted = bookings.filter(b => b.status === 'completed')
+          const allActive    = bookings.filter(b => b.status !== 'cancelled')
+          const completionPct = allActive.length > 0 ? Math.round((allCompleted.length / allActive.length) * 100) : 0
+          const totalRevenue  = allCompleted.reduce((s, b) => s + b.total_amount, 0)
+          const repeatClients = clients.filter(c => c.total_bookings > 1).length
+          const repeatRate    = clients.length > 0 ? Math.round((repeatClients / clients.length) * 100) : 0
+          return (
+            <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h3 className="text-lg font-bold text-[#111827]">Business Health</h3>
+                  <p className="text-sm text-[#6B7280]">All-time performance</p>
+                </div>
+                <span className="text-2xl">{completionPct >= 80 ? '🟢' : completionPct >= 60 ? '🟡' : '🔴'}</span>
+              </div>
+              <div className="space-y-3.5">
+                {[
+                  { label: 'Total Revenue', value: `AED ${totalRevenue.toLocaleString()}`, pct: Math.min(100, Math.round((totalRevenue / 100000) * 100)), color: '#059669' },
+                  { label: 'Completion Rate', value: `${completionPct}%`, pct: completionPct, color: '#0369a1' },
+                  { label: 'Repeat Client Rate', value: `${repeatRate}%`, pct: repeatRate, color: '#d97706' },
+                ].map(item => (
+                  <div key={item.label}>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-[12px] text-slate-600 font-medium">{item.label}</span>
+                      <span className="text-[12px] font-bold text-[#111827]">{item.value}</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${item.pct}%`, background: item.color }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <span className="text-3xl">☀️</span>
-          </div>
-          <div className="flex items-end justify-between mb-5">
-            <div>
-              <h2 className="text-4xl font-bold text-[#111827]">34°</h2>
-              <p className="text-sm text-[#6B7280] mt-1">Feels like 38°</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm font-semibold text-emerald-600">Good conditions</p>
-              <p className="text-xs text-[#6B7280] mt-1">Humidity 42%</p>
-            </div>
-          </div>
-          <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 text-sm text-emerald-700 font-medium">
-            Window cleaning recommended until 5 PM
-          </div>
-        </div>
+          )
+        })()}
 
         {/* Crew Availability */}
         <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
@@ -680,32 +707,49 @@ export function Overview() {
           )}
         </div>
 
-        {/* Dispatch Map */}
+        {/* Today's Coverage */}
         <div className="xl:col-span-2 bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h3 className="text-lg font-bold text-[#111827]">Live Dubai Dispatch Map</h3>
-              <p className="text-sm text-[#6B7280]">Real-time crew movement</p>
+              <h3 className="text-lg font-bold text-[#111827]">Today's Coverage</h3>
+              <p className="text-sm text-[#6B7280]">Active service areas — {todayBookings.length} jobs</p>
             </div>
             <button onClick={() => navigate('/dispatch')} className="px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 text-sm font-semibold hover:bg-emerald-200 transition-colors">
-              Live Tracking
+              Open Dispatch
             </button>
           </div>
-          <div className="h-[180px] rounded-[20px] bg-gradient-to-br from-slate-100 to-slate-200 border border-[#E4E8EC] relative overflow-hidden">
-            <div className="absolute inset-0 opacity-20"
-              style={{ backgroundImage: 'radial-gradient(circle, #94a3b8 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
-            <div className="absolute top-6 left-12 bg-white shadow-lg rounded-2xl px-4 py-3 border border-[#E4E8EC]">
-              <p className="font-semibold text-sm text-[#111827]">Dubai Marina</p>
-              <p className="text-xs text-[#6B7280] mt-1">{liveCount > 0 ? `${liveCount} crews active` : 'No active jobs'}</p>
+          {todayBookings.length === 0 ? (
+            <div className="h-[180px] rounded-[20px] bg-slate-50 border border-[#E4E8EC] flex items-center justify-center">
+              <div className="text-center">
+                <p className="text-slate-400 text-sm">No jobs today</p>
+                <button onClick={() => setShowNewBooking(true)} className="mt-2 text-emerald-600 font-semibold text-sm hover:underline">+ Schedule a job</button>
+              </div>
             </div>
-            <div className="absolute top-16 right-16 bg-white shadow-lg rounded-2xl px-4 py-3 border border-[#E4E8EC]">
-              <p className="font-semibold text-sm text-[#111827]">Al Barsha</p>
-              <p className="text-xs text-[#6B7280] mt-1">{scheduledCount} scheduled</p>
+          ) : (
+            <div className="space-y-2.5">
+              {(() => {
+                const areas: Record<string, { total: number; live: number; done: number }> = {}
+                todayBookings.forEach(b => {
+                  const parts = b.service_address.split(',')
+                  const area = (parts[parts.length - 1] ?? b.service_address).trim() || 'Unknown'
+                  if (!areas[area]) areas[area] = { total: 0, live: 0, done: 0 }
+                  areas[area].total++
+                  if (b.status === 'in_progress') areas[area].live++
+                  if (b.status === 'completed')   areas[area].done++
+                })
+                return Object.entries(areas).sort((a, b) => b[1].total - a[1].total).map(([area, counts]) => (
+                  <div key={area} className="flex items-center gap-4 p-3 rounded-xl bg-slate-50 border border-[#E4E8EC]">
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${counts.live > 0 ? 'bg-emerald-500' : counts.done === counts.total ? 'bg-slate-400' : 'bg-blue-400'}`} />
+                    <span className="text-[13px] font-semibold text-[#111827] flex-1 truncate">{area}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {counts.live > 0 && <span className="text-[11px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-semibold">{counts.live} live</span>}
+                      <span className="text-[11px] text-slate-500">{counts.total} job{counts.total > 1 ? 's' : ''}</span>
+                    </div>
+                  </div>
+                ))
+              })()}
             </div>
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#059669] text-white shadow-lg rounded-2xl px-5 py-3">
-              <p className="font-semibold text-sm">{dispatchedToday} Active Crews</p>
-            </div>
-          </div>
+          )}
         </div>
       </section>
 

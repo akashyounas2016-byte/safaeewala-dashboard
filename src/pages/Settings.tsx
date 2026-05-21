@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, X, ExternalLink, CheckCircle } from 'lucide-react'
+import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, X, ExternalLink, CheckCircle, Download } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { PageHero } from '@/components/layout/PageHero'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
+import { useData } from '@/store/DataContext'
 
 const tabs = [
   { id: 'company',       label: 'Company',        icon: Building  },
@@ -263,9 +264,21 @@ const integrations: IntegrationInfo[] = [
 ]
 
 export function Settings() {
+  const { bookings, clients, employees, invoices, inventory } = useData()
   const [activeTab, setActiveTab] = useState('company')
   const [connectingIntegration, setConnectingIntegration] = useState<IntegrationInfo | null>(null)
   const [saved, setSaved] = useState(false)
+
+  function downloadBackup() {
+    const data = { bookings, clients, employees, invoices, inventory, exported_at: new Date().toISOString() }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url
+    a.download = `safaeewala-backup-${new Date().toISOString().split('T')[0]}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   function handleSave() {
     setSaved(true)
@@ -647,6 +660,15 @@ export function Settings() {
                 </div>
               ))}
             </div>
+            <button
+              onClick={downloadBackup}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 transition-colors mb-2"
+            >
+              <Download size={13} /> Download Full Backup (JSON)
+            </button>
+            <p className="text-[10.5px] text-slate-400 text-center mb-3">
+              Exports all bookings, clients, employees, invoices &amp; inventory as a JSON file · {bookings.length + clients.length + employees.length + invoices.length + inventory.length} records
+            </p>
             <a
               href="https://supabase.com/dashboard"
               target="_blank"

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign, Heart, Award } from 'lucide-react'
+import { Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign, Heart, Award, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -110,7 +110,7 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
 }
 
 export function Clients() {
-  const { clients, addClient, updateClient, addBooking } = useData()
+  const { clients, bookings, addClient, updateClient, addBooking } = useData()
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<typeof clients[0] | null>(null)
@@ -119,10 +119,12 @@ export function Clients() {
   const [bookingClient, setBookingClient] = useState<{ name: string; phone: string } | null>(null)
   const [areaFilter, setAreaFilter] = useState('all')
 
-  const totalSpent = clients.reduce((s, c) => s + c.total_spent, 0)
-  const avgLtv = Math.round(totalSpent / (clients.length || 1))
+  const totalSpent    = clients.reduce((s, c) => s + c.total_spent, 0)
+  const avgLtv        = Math.round(totalSpent / (clients.length || 1))
   const activeClients = clients.filter(c => c.last_service && new Date(c.last_service) > new Date('2026-01-01')).length
-  const vipClients = clients.filter(c => c.total_spent > 2000).length
+  const vipClients    = clients.filter(c => c.total_spent > 2000).length
+  const repeatClients = clients.filter(c => c.total_bookings > 1).length
+  const repeatRate    = clients.length > 0 ? Math.round((repeatClients / clients.length) * 100) : 0
 
   const areas = [...new Set(clients.map(c => c.area))]
 
@@ -162,7 +164,7 @@ export function Clients() {
           { label: 'VIP Clients',      value: vipClients,                     sub: 'AED 2k+ spent',  icon: Award,     iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: '+2',   deltaUp: true  },
           { label: 'Avg Lifetime',     value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client',   icon: DollarSign, iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: '+8%',  deltaUp: true  },
           { label: 'Total Revenue',    value: `AED ${(totalSpent/1000).toFixed(1)}k`, sub: 'All clients', icon: Star,  iconBg: 'bg-rose-50',    iconColor: 'text-rose-600',    delta: '+12%', deltaUp: true  },
-          { label: 'Retention Rate',   value: '78%',                          sub: 'Returning clients', icon: Heart,  iconBg: 'bg-pink-50',    iconColor: 'text-pink-600',    delta: '+5%',  deltaUp: true  },
+          { label: 'Repeat Rate',      value: `${repeatRate}%`,               sub: 'Have 2+ bookings',  icon: Heart,  iconBg: 'bg-pink-50',    iconColor: 'text-pink-600',    delta: `${repeatClients} clients`, deltaUp: repeatRate > 0 },
         ].map(card => (
           <div key={card.label} className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all">
             <div className="flex items-start justify-between mb-4">
@@ -309,35 +311,46 @@ export function Clients() {
             </div>
           </div>
 
-          {/* Live Activity */}
+          {/* Recent Bookings (real) */}
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[15px] font-bold text-[#111827]">Recent Activity</h3>
-              <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Live
-              </span>
+              <h3 className="text-[15px] font-bold text-[#111827]">Recent Bookings</h3>
+              <span className="text-[11px] text-slate-400">Latest activity</span>
             </div>
-            <div className="space-y-3">
-              {[
-                { name: 'Sarah Al-Mansouri', action: 'Booking confirmed', time: '2m ago', color: 'bg-emerald-50 text-emerald-700' },
-                { name: 'Raj Patel',         action: 'Service completed',  time: '18m ago', color: 'bg-blue-50 text-blue-700' },
-                { name: 'Emma Wilson',       action: 'Invoice paid',       time: '1h ago',  color: 'bg-purple-50 text-purple-700' },
-                { name: 'Khalid Al-Rashid',  action: 'New booking',        time: '2h ago',  color: 'bg-amber-50 text-amber-700' },
-                { name: 'Aisha Mohamed',     action: 'Profile updated',    time: '3h ago',  color: 'bg-slate-100 text-slate-600' },
-              ].map((item, idx) => (
-                <div key={idx} className="flex items-center gap-3">
-                  <Avatar name={item.name} size="sm" idx={idx} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-semibold text-[#111827] truncate">{item.name}</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">{item.action}</p>
-                  </div>
-                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${item.color}`}>
-                    {item.time}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {bookings.length === 0 ? (
+              <p className="text-[12px] text-slate-400 text-center py-4">No bookings yet</p>
+            ) : (
+              <div className="space-y-3">
+                {[...bookings]
+                  .sort((a, b) => b.created_at.localeCompare(a.created_at))
+                  .slice(0, 5)
+                  .map((b, idx) => {
+                    const statusColor =
+                      b.status === 'completed'   ? 'bg-slate-100 text-slate-600' :
+                      b.status === 'in_progress' ? 'bg-emerald-50 text-emerald-700' :
+                      b.status === 'confirmed'   ? 'bg-blue-50 text-blue-700' :
+                      b.status === 'cancelled'   ? 'bg-red-50 text-red-600' :
+                      'bg-amber-50 text-amber-700'
+                    const statusLabel =
+                      b.status === 'completed'   ? 'Done' :
+                      b.status === 'in_progress' ? 'Live' :
+                      b.status === 'confirmed'   ? 'Scheduled' :
+                      b.status === 'cancelled'   ? 'Cancelled' : 'Pending'
+                    return (
+                      <div key={b.id} className="flex items-center gap-3">
+                        <Avatar name={b.client_name} size="sm" idx={idx} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] font-semibold text-[#111827] truncate">{b.client_name}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{b.service_type} · {b.scheduled_date}</p>
+                        </div>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusColor}`}>
+                          {statusLabel}
+                        </span>
+                      </div>
+                    )
+                  })}
+              </div>
+            )}
           </div>
 
           {/* Client Density by Area */}

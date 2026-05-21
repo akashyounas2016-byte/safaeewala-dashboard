@@ -44,7 +44,7 @@ export function Invoices() {
   const totalOverdue = invoices.filter(i => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
   const totalVat     = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.vat_amount, 0)
   const paidCount    = invoices.filter(i => i.status === 'paid').length
-  const collectionRate = Math.round((paidCount / invoices.length) * 100)
+  const collectionRate = invoices.length > 0 ? Math.round((paidCount / invoices.length) * 100) : 0
 
   const filtered = invoices.filter(i => {
     const matchSearch = i.client_name.toLowerCase().includes(search.toLowerCase()) ||
