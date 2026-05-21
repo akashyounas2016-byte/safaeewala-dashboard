@@ -6,6 +6,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatTime } from '@/lib/utils'
 import { mockBookings, mockEmployees } from '@/data/mock'
+import type { BookingStatus } from '@/types'
 
 const todayJobs = mockBookings
   .filter(b => b.scheduled_date === '2026-05-20')
@@ -55,7 +56,7 @@ function empById(id: string) {
 function JobDetail({ job, onClose }: { job: typeof mockBookings[0]; onClose: () => void }) {
   const [status, setStatus] = useState(job.status)
 
-  const nextStatus: Record<string, string> = {
+  const nextStatus: Record<string, BookingStatus> = {
     pending:     'confirmed',
     confirmed:   'in_progress',
     in_progress: 'completed',

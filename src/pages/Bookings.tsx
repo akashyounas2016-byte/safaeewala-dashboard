@@ -11,6 +11,7 @@ import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
+import type { Booking, BookingStatus } from '@/types'
 
 /* ─── Filter chips ─── */
 const statusFilters = [
@@ -348,8 +349,8 @@ function WeekCalendar({
   bookings,
   onSelect,
 }: {
-  bookings: typeof mockBookings
-  onSelect: (b: typeof mockBookings[0]) => void
+  bookings: Booking[]
+  onSelect: (b: Booking) => void
 }) {
   const days = [
     { label: 'MON', date: 18 },
@@ -362,7 +363,7 @@ function WeekCalendar({
   ]
   const hours = Array.from({ length: 11 }, (_, i) => 7 + i)
 
-  const blockFor = (b: typeof mockBookings[0]) => {
+  const blockFor = (b: Booking) => {
     const start = parseInt(b.scheduled_time.split(':')[0])
     const startMin = parseInt(b.scheduled_time.split(':')[1])
     const top = ((start - 7) + startMin / 60) * 56
@@ -372,10 +373,10 @@ function WeekCalendar({
     return { top, height, color, crew }
   }
 
-  const bookingsByDate = bookings.reduce((acc, b) => {
+  const bookingsByDate = bookings.reduce<Record<string, Booking[]>>((acc, b) => {
     (acc[b.scheduled_date] ||= []).push(b)
     return acc
-  }, {} as Record<string, typeof mockBookings>)
+  }, {})
 
   const dateKey = (d: number) => `2026-05-${String(d).padStart(2, '0')}`
 
@@ -570,7 +571,7 @@ function BookingDetail({ booking, onUpdate, onDelete }: {
 }) {
   const [status, setStatus] = useState(booking.status)
 
-  function applyStatus(s: string) {
+  function applyStatus(s: BookingStatus) {
     setStatus(s)
     onUpdate({ status: s })
   }

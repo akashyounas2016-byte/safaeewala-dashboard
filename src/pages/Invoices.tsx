@@ -306,9 +306,11 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
       const invoiceNum = `INV-${Date.now().toString().slice(-6)}`
       onAdd({
         invoice_number: invoiceNum,
+        client_id: '',
         client_name: fd.get('client_name') as string,
         client_address: fd.get('client_address') as string,
         trn: fd.get('trn') as string,
+        company_trn: '100234567890003',
         due_date: fd.get('due_date') as string,
         status: 'sent',
         subtotal,
