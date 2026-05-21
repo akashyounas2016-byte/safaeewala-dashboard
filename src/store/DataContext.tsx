@@ -1,8 +1,6 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import type { Booking, Client, Employee, Invoice, InventoryItem } from '../types'
-import {
-  mockBookings, mockClients, mockEmployees, mockInvoices, mockInventory,
-} from '../data/mock'
+import { supabase } from '@/lib/supabase'
 
 interface DataStore {
   bookings:  Booking[]
@@ -10,6 +8,7 @@ interface DataStore {
   employees: Employee[]
   invoices:  Invoice[]
   inventory: InventoryItem[]
+  loading:   boolean
 
   addBooking:      (b: Omit<Booking, 'id' | 'created_at'>) => void
   updateBooking:   (id: string, patch: Partial<Booking>) => void
@@ -31,38 +30,105 @@ interface DataStore {
 
 const DataContext = createContext<DataStore | null>(null)
 
-function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }
+function uid() { return crypto.randomUUID() }
+function now() { return new Date().toISOString() }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [bookings,  setBookings]  = useState<Booking[]>       (mockBookings)
-  const [clients,   setClients]   = useState<Client[]>        (mockClients)
-  const [employees, setEmployees] = useState<Employee[]>      (mockEmployees)
-  const [invoices,  setInvoices]  = useState<Invoice[]>       (mockInvoices)
-  const [inventory, setInventory] = useState<InventoryItem[]> (mockInventory)
+  const [bookings,  setBookings]  = useState<Booking[]>([])
+  const [clients,   setClients]   = useState<Client[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [invoices,  setInvoices]  = useState<Invoice[]>([])
+  const [inventory, setInventory] = useState<InventoryItem[]>([])
+  const [loading,   setLoading]   = useState(true)
+
+  /* ── Load all data on mount ── */
+  useEffect(() => {
+    Promise.all([
+      supabase.from('bookings').select('*').order('created_at', { ascending: false }),
+      supabase.from('clients').select('*').order('created_at', { ascending: false }),
+      supabase.from('employees').select('*').order('created_at', { ascending: false }),
+      supabase.from('invoices').select('*').order('created_at', { ascending: false }),
+      supabase.from('inventory').select('*').order('created_at', { ascending: false }),
+    ]).then(([b, c, e, i, inv]) => {
+      if (b.data)   setBookings(b.data   as Booking[])
+      if (c.data)   setClients(c.data    as Client[])
+      if (e.data)   setEmployees(e.data  as Employee[])
+      if (i.data)   setInvoices(i.data   as Invoice[])
+      if (inv.data) setInventory(inv.data as InventoryItem[])
+      setLoading(false)
+    })
+  }, [])
 
   const store: DataStore = {
-    bookings, clients, employees, invoices, inventory,
+    bookings, clients, employees, invoices, inventory, loading,
 
-    addBooking:  (b) => setBookings(p  => [{ ...b, id: `b${uid()}`,    created_at: new Date().toISOString() }, ...p]),
-    updateBooking: (id, patch) => setBookings(p  => p.map(b  => b.id  === id ? { ...b,  ...patch } : b)),
-    deleteBooking: (id)        => setBookings(p  => p.filter(b => b.id !== id)),
+    /* ── Bookings ── */
+    addBooking: (b) => {
+      const row = { ...b, id: uid(), created_at: now() }
+      setBookings(p => [row, ...p])
+      supabase.from('bookings').insert(row).then(({ error }) => { if (error) console.error(error) })
+    },
+    updateBooking: (id, patch) => {
+      setBookings(p => p.map(b => b.id === id ? { ...b, ...patch } : b))
+      supabase.from('bookings').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+    },
+    deleteBooking: (id) => {
+      setBookings(p => p.filter(b => b.id !== id))
+      supabase.from('bookings').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+    },
 
-    addClient:    (c) => setClients(p   => [{ ...c, id: `c${uid()}`,    created_at: new Date().toISOString() }, ...p]),
-    updateClient: (id, patch) => setClients(p   => p.map(c  => c.id  === id ? { ...c,  ...patch } : c)),
+    /* ── Clients ── */
+    addClient: (c) => {
+      const row = { ...c, id: uid(), created_at: now() }
+      setClients(p => [row, ...p])
+      supabase.from('clients').insert(row).then(({ error }) => { if (error) console.error(error) })
+    },
+    updateClient: (id, patch) => {
+      setClients(p => p.map(c => c.id === id ? { ...c, ...patch } : c))
+      supabase.from('clients').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+    },
 
-    addEmployee:    (e) => setEmployees(p => [{ ...e, id: `emp${uid()}`, created_at: new Date().toISOString() }, ...p]),
-    updateEmployee: (id, patch) => setEmployees(p => p.map(e  => e.id  === id ? { ...e,  ...patch } : e)),
+    /* ── Employees ── */
+    addEmployee: (e) => {
+      const row = { ...e, id: uid(), created_at: now() }
+      setEmployees(p => [row, ...p])
+      supabase.from('employees').insert(row).then(({ error }) => { if (error) console.error(error) })
+    },
+    updateEmployee: (id, patch) => {
+      setEmployees(p => p.map(e => e.id === id ? { ...e, ...patch } : e))
+      supabase.from('employees').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+    },
 
-    addInvoice:    (i) => setInvoices(p  => [{ ...i, id: `inv${uid()}`, created_at: new Date().toISOString() }, ...p]),
-    updateInvoice: (id, patch) => setInvoices(p  => p.map(i  => i.id  === id ? { ...i,  ...patch } : i)),
+    /* ── Invoices ── */
+    addInvoice: (i) => {
+      const row = { ...i, id: uid(), created_at: now() }
+      setInvoices(p => [row, ...p])
+      supabase.from('invoices').insert(row).then(({ error }) => { if (error) console.error(error) })
+    },
+    updateInvoice: (id, patch) => {
+      setInvoices(p => p.map(i => i.id === id ? { ...i, ...patch } : i))
+      supabase.from('invoices').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+    },
 
-    addInventory:    (i) => setInventory(p => [{ ...i, id: `item${uid()}`, created_at: new Date().toISOString() }, ...p]),
-    updateInventory: (id, patch) => setInventory(p => p.map(i  => i.id  === id ? { ...i,  ...patch } : i)),
-    reorderItem: (id) => setInventory(p => p.map(i =>
-      i.id === id
-        ? { ...i, current_stock: i.current_stock + i.reorder_quantity, last_restocked: new Date().toISOString().split('T')[0] }
-        : i
-    )),
+    /* ── Inventory ── */
+    addInventory: (i) => {
+      const row = { ...i, id: uid(), created_at: now() }
+      setInventory(p => [row, ...p])
+      supabase.from('inventory').insert(row).then(({ error }) => { if (error) console.error(error) })
+    },
+    updateInventory: (id, patch) => {
+      setInventory(p => p.map(i => i.id === id ? { ...i, ...patch } : i))
+      supabase.from('inventory').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+    },
+    reorderItem: (id) => {
+      const item = inventory.find(i => i.id === id)
+      if (!item) return
+      const newStock = item.current_stock + item.reorder_quantity
+      const lastRestocked = new Date().toISOString().split('T')[0]
+      setInventory(p => p.map(i => i.id === id ? { ...i, current_stock: newStock, last_restocked: lastRestocked } : i))
+      supabase.from('inventory').update({ current_stock: newStock, last_restocked: lastRestocked }).eq('id', id)
+        .then(({ error }) => { if (error) console.error(error) })
+    },
   }
 
   return <DataContext.Provider value={store}>{children}</DataContext.Provider>
