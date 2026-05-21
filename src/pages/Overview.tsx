@@ -12,28 +12,52 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { formatTime } from '@/lib/utils'
-import { mockStats, revenueData, serviceBreakdown, mockBookings, mockEmployees } from '@/data/mock'
+import { revenueData, serviceBreakdown } from '@/data/mock'
 import { PageHero } from '@/components/layout/PageHero'
+import { useData } from '@/store/DataContext'
+import type { Booking, BookingFrequency } from '@/types'
 
 const serviceTypes = [
   'Standard Clean', 'Deep Clean', 'Move-in', 'Move-out',
   'Commercial', 'Post-construction', 'Office', 'Carpet', 'Window',
 ]
 
-function NewBookingForm({ onClose }: { onClose: () => void }) {
+function NewBookingForm({ onClose, onAdd }: {
+  onClose: () => void
+  onAdd: (b: Omit<Booking, 'id' | 'created_at'>) => void
+}) {
   return (
-    <form className="space-y-4" onSubmit={e => { e.preventDefault(); onClose() }}>
+    <form className="space-y-4" onSubmit={e => {
+      e.preventDefault()
+      const fd = new FormData(e.currentTarget)
+      onAdd({
+        client_id: '',
+        client_name: fd.get('client_name') as string,
+        client_phone: fd.get('client_phone') as string,
+        service_address: fd.get('service_address') as string,
+        service_type: fd.get('service_type') as string,
+        frequency: (fd.get('frequency') as BookingFrequency) || 'once',
+        scheduled_date: fd.get('scheduled_date') as string,
+        scheduled_time: fd.get('scheduled_time') as string,
+        duration_hours: Number(fd.get('duration_hours')) || 3,
+        total_amount: Number(fd.get('total_amount')) || 0,
+        notes: fd.get('notes') as string,
+        status: 'pending',
+        assigned_crew: [],
+      })
+      onClose()
+    }}>
       <div className="grid grid-cols-2 gap-4">
-        <Input label="Client Name" placeholder="Full name" />
-        <Input label="Phone" placeholder="+971 50 000 0000" />
+        <Input name="client_name" label="Client Name" placeholder="Full name" required />
+        <Input name="client_phone" label="Phone" placeholder="+971 50 000 0000" />
       </div>
-      <Input label="Service Address" placeholder="Street, unit, neighborhood" />
+      <Input name="service_address" label="Service Address" placeholder="Street, unit, neighborhood" />
       <div className="grid grid-cols-2 gap-4">
-        <Select label="Service Type">
+        <Select name="service_type" label="Service Type">
           <option value="">Select service…</option>
           {serviceTypes.map(s => <option key={s}>{s}</option>)}
         </Select>
-        <Select label="Frequency">
+        <Select name="frequency" label="Frequency">
           <option value="once">One-time</option>
           <option value="weekly">Weekly</option>
           <option value="biweekly">Bi-weekly</option>
@@ -41,12 +65,12 @@ function NewBookingForm({ onClose }: { onClose: () => void }) {
         </Select>
       </div>
       <div className="grid grid-cols-3 gap-4">
-        <Input label="Date" type="date" />
-        <Input label="Time" type="time" />
-        <Input label="Duration (hrs)" type="number" min="1" max="12" defaultValue="3" />
+        <Input name="scheduled_date" label="Date" type="date" required />
+        <Input name="scheduled_time" label="Time" type="time" />
+        <Input name="duration_hours" label="Duration (hrs)" type="number" min="1" max="12" defaultValue="3" />
       </div>
-      <Input label="Total Amount (AED)" type="number" placeholder="0.00" />
-      <Textarea label="Notes" placeholder="Access instructions, special requirements…" rows={3} />
+      <Input name="total_amount" label="Total Amount (AED)" type="number" placeholder="0.00" />
+      <Textarea name="notes" label="Notes" placeholder="Access instructions, special requirements…" rows={3} />
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
         <Button type="submit" className="flex-1">Create Booking</Button>
@@ -54,8 +78,6 @@ function NewBookingForm({ onClose }: { onClose: () => void }) {
     </form>
   )
 }
-
-const todayBookings = mockBookings.filter(b => b.scheduled_date === '2026-05-20')
 
 /* ─── shared avatar palette ─── */
 const avatarPalette = [
@@ -101,12 +123,16 @@ interface KpiCardProps {
   label: string; value: string | number; sub: string
   delta?: string; trend?: 'up' | 'down' | 'neutral'
   icon: ElementType; iconColor: string; iconBg: string
+  onClick?: () => void
 }
-function KpiCard({ label, value, sub, delta, trend = 'neutral', icon: Icon, iconColor, iconBg }: KpiCardProps) {
+function KpiCard({ label, value, sub, delta, trend = 'neutral', icon: Icon, iconColor, iconBg, onClick }: KpiCardProps) {
   const trendColor = trend === 'up' ? '#059669' : trend === 'down' ? '#ef4444' : '#475569'
   const TrendIcon = trend === 'up' ? ArrowUpRight : trend === 'down' ? ArrowDownRight : Minus
   return (
-    <div className="bg-white rounded-[24px] p-6 border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)]">
+    <div
+      onClick={onClick}
+      className={`bg-white rounded-[24px] p-6 border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] transition-all ${onClick ? 'cursor-pointer hover:shadow-[0_8px_30px_rgba(15,23,42,0.12)] hover:border-emerald-200' : ''}`}
+    >
       <div className="flex items-start justify-between mb-6">
         <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: iconBg }}>
           <Icon size={20} style={{ color: iconColor }} strokeWidth={2} />
@@ -148,7 +174,7 @@ function RevenueChart() {
       <div className="grid grid-cols-3 gap-5 mb-6">
         <div>
           <p className="text-sm text-[#6B7280] mb-1">Total Revenue</p>
-          <h4 className="text-xl font-bold text-[#111827]">$194k</h4>
+          <h4 className="text-xl font-bold text-[#111827]">AED 770k</h4>
           <p className="text-sm font-semibold text-[#059669] mt-1">+18%</p>
         </div>
         <div>
@@ -158,7 +184,7 @@ function RevenueChart() {
         </div>
         <div>
           <p className="text-sm text-[#6B7280] mb-1">Monthly Avg</p>
-          <h4 className="text-xl font-bold text-[#111827]">$32.3k</h4>
+          <h4 className="text-xl font-bold text-[#111827]">AED 128k</h4>
           <p className="text-sm text-slate-500 mt-1">Steady growth</p>
         </div>
       </div>
@@ -174,8 +200,8 @@ function RevenueChart() {
           <CartesianGrid strokeDasharray="2 4" stroke="#f1f5f9" vertical={false} />
           <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
           <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false}
-            tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
-          <Tooltip formatter={v => [`$${Number(v).toLocaleString()}`, '']}
+            tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+          <Tooltip formatter={v => [`AED ${Number(v).toLocaleString()}`, '']}
             contentStyle={{ borderRadius: 12, border: '1px solid #E4E8EC', fontSize: 12, boxShadow: '0 4px 20px rgba(15,23,42,0.08)' }} />
           <Area type="monotone" dataKey="target" stroke="#cbd5e1" strokeWidth={1.5}
             fill="none" strokeDasharray="4 4" name="Target" />
@@ -201,7 +227,7 @@ function RevenueChart() {
 
 /* ─── Service mix donut ─── */
 const CIRC = 238.76
-function ServiceMixDonut() {
+function ServiceMixDonut({ totalJobs }: { totalJobs: number }) {
   let offset = 0
   const segments = serviceBreakdown.map(s => {
     const dash = (s.value / 100) * CIRC
@@ -232,8 +258,8 @@ function ServiceMixDonut() {
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
             <p className="text-[10px] uppercase tracking-[0.1em] text-[#94a3b8] font-semibold">Jobs</p>
-            <p className="text-[28px] font-bold text-[#111827] leading-none mt-0.5">486</p>
-            <p className="text-[11px] text-[#94a3b8] mt-0.5">this month</p>
+            <p className="text-[28px] font-bold text-[#111827] leading-none mt-0.5">{totalJobs}</p>
+            <p className="text-[11px] text-[#94a3b8] mt-0.5">total</p>
           </div>
         </div>
       </div>
@@ -255,19 +281,55 @@ function ServiceMixDonut() {
 
 /* ─── Overview page ─── */
 export function Overview() {
+  const { bookings, employees, invoices, inventory, addBooking } = useData()
   const [showNewBooking, setShowNewBooking] = useState(false)
   const navigate = useNavigate()
+
+  const today = new Date().toISOString().split('T')[0]
+  const todayBookings = bookings.filter(b => b.scheduled_date === today)
   const liveCount = todayBookings.filter(b => b.status === 'in_progress').length
   const scheduledCount = todayBookings.filter(b => b.status === 'confirmed').length
 
-  const activeEmps = mockEmployees.filter(e => e.status === 'active').slice(0, 3)
+  const activeEmps = employees.filter(e => e.status === 'active')
+  const pendingInvoices = invoices.filter(i => i.status === 'sent' || i.status === 'overdue')
+  const lowStockItems = inventory.filter(i => i.current_stock <= i.min_stock)
+  const todayRevenue = todayBookings
+    .filter(b => b.status === 'completed' || b.status === 'in_progress')
+    .reduce((sum, b) => sum + b.total_amount, 0)
+  const dispatchedToday = todayBookings.filter(b => b.status !== 'cancelled' && b.status !== 'pending').length
+  const crewUtilization = activeEmps.length > 0 ? Math.round((dispatchedToday / activeEmps.length) * 100) : 0
+
+  /* ── Live Activity from real data ── */
+  const liveEvents: { icon: string; title: string; sub: string; bg: string }[] = []
+  const recentBookings = [...bookings].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 2)
+  recentBookings.forEach(b => liveEvents.push({
+    icon: '📅', bg: 'bg-emerald-100',
+    title: `Booking: ${b.client_name}`,
+    sub: `${b.service_type} · ${b.scheduled_date}`,
+  }))
+  const recentPaid = [...invoices].filter(i => i.status === 'paid').sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 1)
+  recentPaid.forEach(i => liveEvents.push({
+    icon: '💳', bg: 'bg-sky-100',
+    title: `Invoice paid: ${i.client_name}`,
+    sub: `AED ${i.total.toLocaleString()} received`,
+  }))
+  if (lowStockItems.length > 0) liveEvents.push({
+    icon: '⚠️', bg: 'bg-red-100',
+    title: `${lowStockItems[0].name} stock low`,
+    sub: `${lowStockItems[0].current_stock} ${lowStockItems[0].unit} remaining · reorder needed`,
+  })
+  const displayEvents = liveEvents.length > 0 ? liveEvents.slice(0, 4) : [
+    { icon: '👋', bg: 'bg-slate-100', title: 'No activity yet', sub: 'Add a booking or invoice to see events here' },
+  ]
+
+  const todayDisplay = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
 
   return (
     <div>
       {/* ── Page Hero ── */}
       <PageHero
         title="Good morning, Akash 👋"
-        subtitle={`Wednesday, 20 May 2026 · ${todayBookings.length} jobs scheduled · ${liveCount} live now`}
+        subtitle={`${todayDisplay} · ${todayBookings.length} jobs scheduled · ${liveCount} live now`}
         statusChip="On track"
         actionLabel="New Booking"
         onAction={() => setShowNewBooking(true)}
@@ -277,7 +339,7 @@ export function Overview() {
       <section className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {[
-            { label: 'Date Scope', options: ['This Month', 'Last 7 Days', 'Last 14 Days', 'Last 30 Days', 'Custom Range'] },
+            { label: 'Date Scope', options: ['This Month', 'Last 7 Days', 'Last 14 Days', 'Last 30 Days'] },
             { label: 'Service Type Filter', options: ['All Services', 'Home Cleaning', 'Deep Cleaning', 'Villa Cleaning', 'Commercial'] },
             { label: 'Acquisition Channel', options: ['All Channels', 'Google My Business', 'Facebook Ads', 'WhatsApp', 'Referral', 'Instagram'] },
           ].map(f => (
@@ -293,14 +355,30 @@ export function Overview() {
 
       {/* ── KPI Cards ── */}
       <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
-        <KpiCard label="Jobs Today" value={todayBookings.length} sub="vs avg Wednesday"
-          delta="+1 ↑" trend="up" icon={CalendarCheck} iconBg="#d1fae5" iconColor="#059669" />
-        <KpiCard label="Revenue Today" value="$2,180" sub="vs last Wednesday"
-          delta="+18%" trend="up" icon={DollarSign} iconBg="#e0f2fe" iconColor="#0369a1" />
-        <KpiCard label="Active Cleaners" value={mockStats.active_employees} sub="1 on leave today"
-          delta="17 active" trend="neutral" icon={Users} iconBg="#fef3c7" iconColor="#d97706" />
-        <KpiCard label="Avg Rating" value="4.8" sub="127 total reviews"
-          delta="+0.1" trend="up" icon={Star} iconBg="#ede9fe" iconColor="#7c3aed" />
+        <KpiCard
+          label="Jobs Today" value={todayBookings.length} sub={`${liveCount} live · ${scheduledCount} scheduled`}
+          delta={todayBookings.length > 0 ? `+${todayBookings.length}` : '0'} trend={todayBookings.length > 0 ? 'up' : 'neutral'}
+          icon={CalendarCheck} iconBg="#d1fae5" iconColor="#059669"
+          onClick={() => navigate('/bookings')}
+        />
+        <KpiCard
+          label="Revenue Today" value={`AED ${todayRevenue.toLocaleString()}`} sub="Completed + live jobs"
+          delta={todayRevenue > 0 ? '+today' : 'AED 0'} trend={todayRevenue > 0 ? 'up' : 'neutral'}
+          icon={DollarSign} iconBg="#e0f2fe" iconColor="#0369a1"
+          onClick={() => navigate('/reports')}
+        />
+        <KpiCard
+          label="Active Cleaners" value={activeEmps.length} sub={`${employees.length} total staff`}
+          delta={`${activeEmps.length} active`} trend="neutral"
+          icon={Users} iconBg="#fef3c7" iconColor="#d97706"
+          onClick={() => navigate('/employees')}
+        />
+        <KpiCard
+          label="Avg Rating" value="4.8" sub="Client feedback"
+          delta="+0.1" trend="up"
+          icon={Star} iconBg="#ede9fe" iconColor="#7c3aed"
+          onClick={() => navigate('/reports')}
+        />
       </section>
 
       {/* ── Quick Actions + Live Activity ── */}
@@ -336,17 +414,13 @@ export function Overview() {
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="text-xl font-bold text-[#111827] mb-1">Live Activity</h3>
-              <p className="text-sm text-[#6B7280]">Real-time business events</p>
+              <p className="text-sm text-[#6B7280]">Recent business events</p>
             </div>
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
           </div>
           <div className="space-y-5">
-            {[
-              { icon: '💳', title: 'Invoice paid by James Thornton', sub: '$441 received · 12 mins ago', bg: 'bg-emerald-100' },
-              { icon: '📍', title: 'Crew dispatched to Dubai Marina', sub: 'Maria Santos checked in', bg: 'bg-sky-100' },
-              { icon: '⚠️', title: 'Microfiber cloth stock low', sub: 'Below minimum inventory level', bg: 'bg-red-100' },
-            ].map(ev => (
-              <div key={ev.title} className="flex gap-4">
+            {displayEvents.map((ev, i) => (
+              <div key={i} className="flex gap-4">
                 <div className={`w-10 h-10 rounded-full ${ev.bg} flex items-center justify-center shrink-0`}>
                   <span>{ev.icon}</span>
                 </div>
@@ -362,40 +436,55 @@ export function Overview() {
 
       {/* ── Ops Alert Cards ── */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
-        <div className="bg-red-50 border border-red-100 rounded-3xl p-6">
+        <div
+          onClick={() => navigate('/invoices')}
+          className="bg-red-50 border border-red-100 rounded-3xl p-6 cursor-pointer hover:shadow-md transition-all hover:border-red-300"
+        >
           <div className="flex items-center justify-between mb-4">
             <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center">
               <AlertCircle size={20} className="text-red-600" />
             </div>
             <span className="text-red-700 font-semibold text-sm">Action Required</span>
           </div>
-          <h3 className="text-2xl font-bold text-red-700">{mockStats.pending_invoices}</h3>
+          <h3 className="text-2xl font-bold text-red-700">{pendingInvoices.length}</h3>
           <p className="font-semibold text-[#111827] mt-1">Pending Invoices</p>
-          <p className="text-sm text-red-600 mt-2">$6,820 outstanding</p>
+          <p className="text-sm text-red-600 mt-2">
+            {pendingInvoices.length > 0
+              ? `AED ${pendingInvoices.reduce((s, i) => s + i.total, 0).toLocaleString()} outstanding`
+              : 'All invoices paid'}
+          </p>
         </div>
 
-        <div className="bg-amber-50 border border-amber-100 rounded-3xl p-6">
+        <div
+          onClick={() => navigate('/inventory')}
+          className="bg-amber-50 border border-amber-100 rounded-3xl p-6 cursor-pointer hover:shadow-md transition-all hover:border-amber-300"
+        >
           <div className="flex items-center justify-between mb-4">
             <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center">
               <AlertCircle size={20} className="text-amber-600" />
             </div>
             <span className="text-amber-700 font-semibold text-sm">Inventory Alert</span>
           </div>
-          <h3 className="text-2xl font-bold text-amber-700">{mockStats.low_stock_items}</h3>
+          <h3 className="text-2xl font-bold text-amber-700">{lowStockItems.length}</h3>
           <p className="font-semibold text-[#111827] mt-1">Low Stock Alerts</p>
-          <p className="text-sm text-amber-600 mt-2">1 critical item</p>
+          <p className="text-sm text-amber-600 mt-2">
+            {lowStockItems.length > 0 ? `${lowStockItems[0].name} needs reorder` : 'All items stocked'}
+          </p>
         </div>
 
-        <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-6">
+        <div
+          onClick={() => navigate('/dispatch')}
+          className="bg-emerald-50 border border-emerald-100 rounded-3xl p-6 cursor-pointer hover:shadow-md transition-all hover:border-emerald-300"
+        >
           <div className="flex items-center justify-between mb-4">
             <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center">
               <Clock size={20} className="text-emerald-600" />
             </div>
-            <span className="text-emerald-700 font-semibold text-sm">Healthy</span>
+            <span className="text-emerald-700 font-semibold text-sm">{crewUtilization >= 70 ? 'Healthy' : 'Low'}</span>
           </div>
-          <h3 className="text-2xl font-bold text-emerald-700">84%</h3>
+          <h3 className="text-2xl font-bold text-emerald-700">{crewUtilization}%</h3>
           <p className="font-semibold text-[#111827] mt-1">Crew Utilization</p>
-          <p className="text-sm text-emerald-600 mt-2">5 cleaners dispatched</p>
+          <p className="text-sm text-emerald-600 mt-2">{dispatchedToday} cleaners dispatched today</p>
         </div>
       </section>
 
@@ -430,32 +519,36 @@ export function Overview() {
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="text-lg font-bold text-[#111827]">Crew Availability</h3>
-              <p className="text-sm text-[#6B7280]">Real-time workforce status</p>
+              <p className="text-sm text-[#6B7280]">Active workforce status</p>
             </div>
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
           </div>
-          <div className="space-y-4">
-            {activeEmps.map((emp, i) => {
-              const currentJob = todayBookings.find(b => b.assigned_crew.includes(emp.id) && b.status === 'in_progress')
-              const initials = emp.full_name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()
-              const colors = [{ bg: 'bg-emerald-100', text: 'text-emerald-700' }, { bg: 'bg-amber-100', text: 'text-amber-700' }, { bg: 'bg-sky-100', text: 'text-sky-700' }]
-              const c = colors[i % colors.length]
-              return (
-                <div key={emp.id} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full ${c.bg} flex items-center justify-center font-bold text-sm ${c.text}`}>{initials}</div>
-                    <div>
-                      <p className="font-medium text-sm text-[#111827]">{emp.full_name.split(' ')[0]} {emp.full_name.split(' ')[1]}</p>
-                      <p className="text-xs text-[#6B7280]">{currentJob ? currentJob.service_address.split(',')[0] : 'Available Now'}</p>
+          {activeEmps.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-4">No active employees yet</p>
+          ) : (
+            <div className="space-y-4">
+              {activeEmps.slice(0, 3).map((emp, i) => {
+                const currentJob = todayBookings.find(b => b.assigned_crew.includes(emp.id) && b.status === 'in_progress')
+                const initials = emp.full_name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()
+                const colors = [{ bg: 'bg-emerald-100', text: 'text-emerald-700' }, { bg: 'bg-amber-100', text: 'text-amber-700' }, { bg: 'bg-sky-100', text: 'text-sky-700' }]
+                const c = colors[i % colors.length]
+                return (
+                  <div key={emp.id} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-full ${c.bg} flex items-center justify-center font-bold text-sm ${c.text}`}>{initials}</div>
+                      <div>
+                        <p className="font-medium text-sm text-[#111827]">{emp.full_name}</p>
+                        <p className="text-xs text-[#6B7280]">{currentJob ? currentJob.service_address.split(',')[0] : 'Available'}</p>
+                      </div>
                     </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${currentJob ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {currentJob ? 'Assigned' : 'Free'}
+                    </span>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${currentJob ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                    {currentJob ? 'Assigned' : 'Free'}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* Dispatch Map */}
@@ -465,7 +558,7 @@ export function Overview() {
               <h3 className="text-lg font-bold text-[#111827]">Live Dubai Dispatch Map</h3>
               <p className="text-sm text-[#6B7280]">Real-time crew movement</p>
             </div>
-            <button className="px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 text-sm font-semibold">
+            <button onClick={() => navigate('/dispatch')} className="px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 text-sm font-semibold hover:bg-emerald-200 transition-colors">
               Live Tracking
             </button>
           </div>
@@ -474,14 +567,14 @@ export function Overview() {
               style={{ backgroundImage: 'radial-gradient(circle, #94a3b8 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
             <div className="absolute top-6 left-12 bg-white shadow-lg rounded-2xl px-4 py-3 border border-[#E4E8EC]">
               <p className="font-semibold text-sm text-[#111827]">Dubai Marina</p>
-              <p className="text-xs text-[#6B7280] mt-1">2 crews active</p>
+              <p className="text-xs text-[#6B7280] mt-1">{liveCount > 0 ? `${liveCount} crews active` : 'No active jobs'}</p>
             </div>
             <div className="absolute top-16 right-16 bg-white shadow-lg rounded-2xl px-4 py-3 border border-[#E4E8EC]">
               <p className="font-semibold text-sm text-[#111827]">Al Barsha</p>
-              <p className="text-xs text-[#6B7280] mt-1">1 live booking</p>
+              <p className="text-xs text-[#6B7280] mt-1">{scheduledCount} scheduled</p>
             </div>
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#059669] text-white shadow-lg rounded-2xl px-5 py-3">
-              <p className="font-semibold text-sm">5 Active Crews</p>
+              <p className="font-semibold text-sm">{dispatchedToday} Active Crews</p>
             </div>
           </div>
         </div>
@@ -490,7 +583,7 @@ export function Overview() {
       {/* ── Charts ── */}
       <section className="grid grid-cols-1 lg:grid-cols-[1.65fr_1fr] gap-5 mb-6">
         <RevenueChart />
-        <ServiceMixDonut />
+        <ServiceMixDonut totalJobs={bookings.length} />
       </section>
 
       {/* ── Today's Dispatch ── */}
@@ -510,43 +603,52 @@ export function Overview() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px]">
-            <thead className="bg-slate-50 text-left text-sm text-[#6B7280]">
-              <tr>
-                <th className="px-7 py-4 font-semibold">Time</th>
-                <th className="px-7 py-4 font-semibold">Client</th>
-                <th className="px-7 py-4 font-semibold">Service</th>
-                <th className="px-7 py-4 font-semibold">Status</th>
-                <th className="px-7 py-4 font-semibold">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {todayBookings.map((b, idx) => (
-                <tr key={b.id} className="border-t border-[#E4E8EC] hover:bg-slate-50 transition-all">
-                  <td className="px-7 py-5 font-semibold text-[#111827]">
-                    {formatTime(`2026-05-20T${b.scheduled_time}`)}
-                  </td>
-                  <td className="px-7 py-5">
-                    <div className="flex items-center gap-4">
-                      <Avatar name={b.client_name} idx={idx} />
-                      <div>
-                        <p className="font-semibold text-[#111827]">{b.client_name}</p>
-                        <p className="text-sm text-[#6B7280]">{b.service_address.split(',')[1]?.trim() || b.service_address}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-7 py-5 font-medium text-[#111827]">{b.service_type}</td>
-                  <td className="px-7 py-5"><StatusPill status={b.status} /></td>
-                  <td className="px-7 py-5 font-bold text-[#111827]">${b.total_amount.toLocaleString()}</td>
+        {todayBookings.length === 0 ? (
+          <div className="py-16 text-center">
+            <p className="text-slate-400 text-[15px]">No bookings scheduled for today</p>
+            <button onClick={() => setShowNewBooking(true)} className="mt-4 text-emerald-600 font-semibold text-sm hover:underline">
+              + Add a booking
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px]">
+              <thead className="bg-slate-50 text-left text-sm text-[#6B7280]">
+                <tr>
+                  <th className="px-7 py-4 font-semibold">Time</th>
+                  <th className="px-7 py-4 font-semibold">Client</th>
+                  <th className="px-7 py-4 font-semibold">Service</th>
+                  <th className="px-7 py-4 font-semibold">Status</th>
+                  <th className="px-7 py-4 font-semibold">Amount</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {todayBookings.map((b, idx) => (
+                  <tr key={b.id} className="border-t border-[#E4E8EC] hover:bg-slate-50 transition-all">
+                    <td className="px-7 py-5 font-semibold text-[#111827]">
+                      {formatTime(`${today}T${b.scheduled_time}`)}
+                    </td>
+                    <td className="px-7 py-5">
+                      <div className="flex items-center gap-4">
+                        <Avatar name={b.client_name} idx={idx} />
+                        <div>
+                          <p className="font-semibold text-[#111827]">{b.client_name}</p>
+                          <p className="text-sm text-[#6B7280]">{b.service_address.split(',')[1]?.trim() || b.service_address}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-7 py-5 font-medium text-[#111827]">{b.service_type}</td>
+                    <td className="px-7 py-5"><StatusPill status={b.status} /></td>
+                    <td className="px-7 py-5 font-bold text-[#111827]">AED {b.total_amount.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <div className="p-6 border-t border-[#E4E8EC] flex justify-between items-center">
-          <p className="text-sm text-[#6B7280]">Showing {todayBookings.length} of {mockBookings.length} bookings</p>
+          <p className="text-sm text-[#6B7280]">Showing {todayBookings.length} today · {bookings.length} total bookings</p>
           <Link to="/bookings" className="text-[#059669] font-semibold hover:underline flex items-center gap-2">
             View all bookings <ArrowRight size={14} />
           </Link>
@@ -555,7 +657,7 @@ export function Overview() {
 
       {/* ── New Booking Modal ── */}
       <Modal open={showNewBooking} onClose={() => setShowNewBooking(false)} title="New Booking" size="lg">
-        <NewBookingForm onClose={() => setShowNewBooking(false)} />
+        <NewBookingForm onClose={() => setShowNewBooking(false)} onAdd={addBooking} />
       </Modal>
     </div>
   )

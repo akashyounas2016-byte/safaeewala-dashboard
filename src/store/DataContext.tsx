@@ -67,6 +67,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const row = { ...b, id: uid(), created_at: now() }
       setBookings(p => [row, ...p])
       supabase.from('bookings').insert(row).then(({ error }) => { if (error) console.error(error) })
+
+      // Auto-create client if they don't already exist
+      setClients(prev => {
+        const exists = prev.some(c => c.full_name.toLowerCase().trim() === b.client_name.toLowerCase().trim())
+        if (exists) return prev
+        const newClient: Client = {
+          id: uid(), created_at: now(),
+          full_name: b.client_name,
+          phone: b.client_phone,
+          area: '', city: 'Dubai',
+          total_bookings: 1,
+          total_spent: b.total_amount,
+          last_service: b.scheduled_date,
+        }
+        supabase.from('clients').insert(newClient).then(({ error }) => { if (error) console.error(error) })
+        return [newClient, ...prev]
+      })
     },
     updateBooking: (id, patch) => {
       setBookings(p => p.map(b => b.id === id ? { ...b, ...patch } : b))
