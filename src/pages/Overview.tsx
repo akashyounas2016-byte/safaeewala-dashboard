@@ -1,4 +1,4 @@
-import { useState, type ElementType } from 'react'
+import { useState, useRef, useEffect, type ElementType } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -21,31 +21,112 @@ const serviceTypes = [
   'Commercial', 'Post-construction', 'Office', 'Carpet', 'Window',
 ]
 
+function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (ids: string[]) => void }) {
+  const { employees } = useData()
+  const [search, setSearch] = useState('')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project')
+  const filtered = search
+    ? activeEmps.filter(e => e.full_name.toLowerCase().includes(search.toLowerCase()))
+    : activeEmps
+  const selectedEmps = activeEmps.filter(e => selected.includes(e.id))
+  useEffect(() => {
+    function outside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', outside)
+    return () => document.removeEventListener('mousedown', outside)
+  }, [])
+  function toggle(id: string) {
+    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id])
+  }
+  return (
+    <div>
+      <p className="text-[12px] font-semibold text-slate-600 mb-2">Assign Crew</p>
+      {selectedEmps.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {selectedEmps.map(emp => (
+            <span key={emp.id} className="inline-flex items-center gap-1 text-[11.5px] bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-medium">
+              {emp.full_name}
+              <button type="button" onClick={() => toggle(emp.id)} className="ml-0.5 hover:text-red-600 font-bold leading-none">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="relative" ref={ref}>
+        <input
+          type="text"
+          placeholder={activeEmps.length === 0 ? 'No active employees — add employees first' : 'Search and select cleaners…'}
+          value={search}
+          onFocus={() => setOpen(true)}
+          onChange={e => { setSearch(e.target.value); setOpen(true) }}
+          disabled={activeEmps.length === 0}
+          className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50 focus:outline-none focus:border-emerald-400 placeholder-slate-400 disabled:opacity-50 transition-colors"
+        />
+        {open && (
+          <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-[#E4E8EC] rounded-xl shadow-xl max-h-52 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="text-[12px] text-slate-400 px-4 py-3">No employees match "{search}"</p>
+            ) : filtered.map(emp => {
+              const checked = selected.includes(emp.id)
+              return (
+                <button
+                  key={emp.id}
+                  type="button"
+                  onClick={() => { toggle(emp.id); setSearch('') }}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-[#E4E8EC] last:border-0 transition-colors ${checked ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
+                >
+                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
+                    {checked && <span className="text-white text-[9px] font-bold">✓</span>}
+                  </div>
+                  <div>
+                    <p className="text-[12.5px] font-semibold text-[#111827]">{emp.full_name}</p>
+                    <p className="text-[10.5px] text-slate-400">{emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}</p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+      {selectedEmps.length > 0 && (
+        <p className="text-[11px] text-emerald-600 font-medium mt-1.5">{selectedEmps.length} cleaner{selectedEmps.length > 1 ? 's' : ''} assigned</p>
+      )}
+    </div>
+  )
+}
+
 function NewBookingForm({ onClose, onAdd }: {
   onClose: () => void
   onAdd: (b: Omit<Booking, 'id' | 'created_at'>) => void
 }) {
+  const [selectedCrew, setSelectedCrew] = useState<string[]>([])
+  const formRef = useRef<HTMLFormElement>(null)
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const fd = new FormData(formRef.current!)
+    onAdd({
+      client_id: '',
+      client_name: fd.get('client_name') as string,
+      client_phone: fd.get('client_phone') as string,
+      service_address: fd.get('service_address') as string,
+      service_type: fd.get('service_type') as string,
+      frequency: (fd.get('frequency') as BookingFrequency) || 'once',
+      scheduled_date: fd.get('scheduled_date') as string,
+      scheduled_time: fd.get('scheduled_time') as string,
+      duration_hours: Number(fd.get('duration_hours')) || 3,
+      total_amount: Number(fd.get('total_amount')) || 0,
+      notes: fd.get('notes') as string,
+      status: 'pending',
+      assigned_crew: selectedCrew,
+    })
+    onClose()
+  }
+
   return (
-    <form className="space-y-4" onSubmit={e => {
-      e.preventDefault()
-      const fd = new FormData(e.currentTarget)
-      onAdd({
-        client_id: '',
-        client_name: fd.get('client_name') as string,
-        client_phone: fd.get('client_phone') as string,
-        service_address: fd.get('service_address') as string,
-        service_type: fd.get('service_type') as string,
-        frequency: (fd.get('frequency') as BookingFrequency) || 'once',
-        scheduled_date: fd.get('scheduled_date') as string,
-        scheduled_time: fd.get('scheduled_time') as string,
-        duration_hours: Number(fd.get('duration_hours')) || 3,
-        total_amount: Number(fd.get('total_amount')) || 0,
-        notes: fd.get('notes') as string,
-        status: 'pending',
-        assigned_crew: [],
-      })
-      onClose()
-    }}>
+    <form ref={formRef} className="space-y-4" onSubmit={handleSubmit}>
       <div className="grid grid-cols-2 gap-4">
         <Input name="client_name" label="Client Name" placeholder="Full name" required />
         <Input name="client_phone" label="Phone" placeholder="+971 50 000 0000" />
@@ -69,6 +150,7 @@ function NewBookingForm({ onClose, onAdd }: {
         <Input name="duration_hours" label="Duration (hrs)" type="number" min="1" max="12" defaultValue="3" />
       </div>
       <Input name="total_amount" label="Total Amount (AED)" type="number" placeholder="0.00" />
+      <CrewSelector selected={selectedCrew} onChange={setSelectedCrew} />
       <Textarea name="notes" label="Notes" placeholder="Access instructions, special requirements…" rows={3} />
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>

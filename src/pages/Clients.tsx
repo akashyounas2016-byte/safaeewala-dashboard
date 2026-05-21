@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign, Heart, Award } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -33,6 +33,82 @@ function Avatar({ name, size = 'md', idx = 0 }: { name: string; size?: 'sm' | 'm
   )
 }
 
+function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (ids: string[]) => void }) {
+  const { employees } = useData()
+  const [search, setSearch] = useState('')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project')
+  const filtered = search
+    ? activeEmps.filter(e => e.full_name.toLowerCase().includes(search.toLowerCase()))
+    : activeEmps
+  const selectedEmps = activeEmps.filter(e => selected.includes(e.id))
+  useEffect(() => {
+    function outside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', outside)
+    return () => document.removeEventListener('mousedown', outside)
+  }, [])
+  function toggle(id: string) {
+    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id])
+  }
+  return (
+    <div>
+      <p className="text-[12px] font-semibold text-slate-600 mb-2">Assign Crew</p>
+      {selectedEmps.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {selectedEmps.map(emp => (
+            <span key={emp.id} className="inline-flex items-center gap-1 text-[11.5px] bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-medium">
+              {emp.full_name}
+              <button type="button" onClick={() => toggle(emp.id)} className="ml-0.5 hover:text-red-600 font-bold leading-none">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="relative" ref={ref}>
+        <input
+          type="text"
+          placeholder={activeEmps.length === 0 ? 'No active employees — add employees first' : 'Search and select cleaners…'}
+          value={search}
+          onFocus={() => setOpen(true)}
+          onChange={e => { setSearch(e.target.value); setOpen(true) }}
+          disabled={activeEmps.length === 0}
+          className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50 focus:outline-none focus:border-emerald-400 placeholder-slate-400 disabled:opacity-50 transition-colors"
+        />
+        {open && (
+          <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-[#E4E8EC] rounded-xl shadow-xl max-h-52 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="text-[12px] text-slate-400 px-4 py-3">No employees match "{search}"</p>
+            ) : filtered.map(emp => {
+              const checked = selected.includes(emp.id)
+              return (
+                <button
+                  key={emp.id}
+                  type="button"
+                  onClick={() => { toggle(emp.id); setSearch('') }}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-[#E4E8EC] last:border-0 transition-colors ${checked ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
+                >
+                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
+                    {checked && <span className="text-white text-[9px] font-bold">✓</span>}
+                  </div>
+                  <div>
+                    <p className="text-[12.5px] font-semibold text-[#111827]">{emp.full_name}</p>
+                    <p className="text-[10.5px] text-slate-400">{emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}</p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+      {selectedEmps.length > 0 && (
+        <p className="text-[11px] text-emerald-600 font-medium mt-1.5">{selectedEmps.length} cleaner{selectedEmps.length > 1 ? 's' : ''} assigned</p>
+      )}
+    </div>
+  )
+}
+
 export function Clients() {
   const { clients, addClient, updateClient, addBooking } = useData()
   const [search, setSearch] = useState('')
@@ -40,6 +116,7 @@ export function Clients() {
   const [selected, setSelected] = useState<typeof clients[0] | null>(null)
   const [isEditingClient, setIsEditingClient] = useState(false)
   const [showBookingModal, setShowBookingModal] = useState(false)
+  const [bookingClient, setBookingClient] = useState<{ name: string; phone: string } | null>(null)
   const [areaFilter, setAreaFilter] = useState('all')
 
   const totalSpent = clients.reduce((s, c) => s + c.total_spent, 0)
@@ -304,10 +381,10 @@ export function Clients() {
             phone:         String(f.get('phone') || ''),
             whatsapp:      String(f.get('whatsapp') || ''),
             email:         String(f.get('email') || ''),
-            nationality:   String(f.get('nationality') || ''),
+            nationality:   '',
             city:          String(f.get('city') || 'Dubai'),
             building_name: String(f.get('building') || ''),
-            apartment:     String(f.get('apartment') || ''),
+            apartment:     '',
             area:          String(f.get('area') || 'Dubai'),
             access_notes:  String(f.get('access_notes') || ''),
             pet_info:      String(f.get('pet_info') || ''),
@@ -325,14 +402,10 @@ export function Clients() {
             <Input name="email" label="Email" type="email" placeholder="email@example.com" />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input name="nationality" label="Nationality" placeholder="e.g. Emirati, Indian..." />
+            <Input name="building" label="Building / Villa Name" placeholder="Building or villa name" />
             <Select name="city" label="Emirate">
               <option>Dubai</option><option>Abu Dhabi</option><option>Sharjah</option><option>Ajman</option>
             </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="building" label="Building / Villa Name" placeholder="Building or villa name" />
-            <Input name="apartment" label="Apartment / Unit" placeholder="Unit number" />
           </div>
           <Input name="area" label="Area / Community" placeholder="e.g. Dubai Marina, JBR..." />
           <Textarea name="access_notes" label="Access Notes" placeholder="Key with concierge, parking instructions, gate code..." rows={2} />
@@ -394,7 +467,7 @@ export function Clients() {
 
             <div className="flex gap-3">
               <Button variant="outline" className="flex-1" size="sm" onClick={() => setIsEditingClient(true)}>Edit Profile</Button>
-              <Button className="flex-1" size="sm" onClick={() => { setSelected(null); setIsEditingClient(false); setShowBookingModal(true) }}>New Booking</Button>
+              <Button className="flex-1" size="sm" onClick={() => { setBookingClient({ name: selected!.full_name, phone: selected!.phone }); setSelected(null); setIsEditingClient(false); setShowBookingModal(true) }}>New Booking</Button>
             </div>
           </div>
         )}
@@ -410,10 +483,8 @@ export function Clients() {
                 phone:         f.get('phone') as string,
                 whatsapp:      f.get('whatsapp') as string,
                 email:         f.get('email') as string,
-                nationality:   f.get('nationality') as string,
                 city:          f.get('city') as string,
                 building_name: f.get('building') as string,
-                apartment:     f.get('apartment') as string,
                 area:          f.get('area') as string,
                 access_notes:  f.get('access_notes') as string,
                 pet_info:      f.get('pet_info') as string,
@@ -432,14 +503,10 @@ export function Clients() {
               <Input name="email" label="Email" type="email" defaultValue={selected.email ?? ''} />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <Input name="nationality" label="Nationality" defaultValue={selected.nationality ?? ''} />
+              <Input name="building" label="Building / Villa" defaultValue={selected.building_name ?? ''} />
               <Select name="city" label="Emirate" defaultValue={selected.city}>
                 <option>Dubai</option><option>Abu Dhabi</option><option>Sharjah</option><option>Ajman</option>
               </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Input name="building" label="Building / Villa" defaultValue={selected.building_name ?? ''} />
-              <Input name="apartment" label="Apt / Unit" defaultValue={selected.apartment ?? ''} />
             </div>
             <Input name="area" label="Area / Community" defaultValue={selected.area} />
             <Textarea name="access_notes" label="Access Notes" defaultValue={selected.access_notes ?? ''} rows={2} />
@@ -455,8 +522,8 @@ export function Clients() {
       {/* ── New Booking for Client Modal ── */}
       <Modal open={showBookingModal} onClose={() => setShowBookingModal(false)} title="New Booking" size="lg">
         <ClientBookingForm
-          clientName={selected?.full_name ?? ''}
-          clientPhone={selected?.phone ?? ''}
+          clientName={bookingClient?.name ?? ''}
+          clientPhone={bookingClient?.phone ?? ''}
           onClose={() => setShowBookingModal(false)}
           onAdd={b => { addBooking(b); setShowBookingModal(false) }}
         />
@@ -469,6 +536,7 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: {
   clientName: string; clientPhone: string
   onClose: () => void; onAdd: (b: any) => void
 }) {
+  const [selectedCrew, setSelectedCrew] = useState<string[]>([])
   return (
     <form
       className="space-y-4"
@@ -488,7 +556,7 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: {
           total_amount: Number(f.get('total_amount')) || 0,
           notes: f.get('notes') as string,
           status: 'pending',
-          assigned_crew: [],
+          assigned_crew: selectedCrew,
         })
       }}
     >
@@ -521,6 +589,7 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: {
         <Input name="duration_hours" label="Duration (hrs)" type="number" min="1" max="12" defaultValue="3" />
       </div>
       <Input name="total_amount" label="Total Amount (AED)" type="number" placeholder="0.00" />
+      <CrewSelector selected={selectedCrew} onChange={setSelectedCrew} />
       <Textarea name="notes" label="Notes" placeholder="Access instructions, special requirements…" rows={2} />
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
