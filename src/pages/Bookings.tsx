@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react'
 import {
-  Plus, Search, Calendar as CalendarIcon, Clock, MapPin, Phone,
-  ChevronLeft, ChevronRight, List, CalendarDays,
-  TrendingUp, CheckCircle, AlertCircle, XCircle,
+  Search, Calendar as CalendarIcon, Clock, MapPin, Phone,
+  ChevronLeft, ChevronRight, List, CalendarDays, Columns3,
+  TrendingUp, CheckCircle, AlertCircle,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -11,7 +11,7 @@ import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
-import type { Booking, BookingStatus } from '@/types'
+import type { Booking, BookingStatus, BookingFrequency } from '@/types'
 
 /* ─── Filter chips ─── */
 const statusFilters = [
@@ -82,7 +82,7 @@ const crewBlockColors: Record<string, { bg: string; border: string; text: string
 /* ─── Main Bookings page ─── */
 export function Bookings() {
   const { bookings, addBooking, updateBooking, deleteBooking } = useData()
-  const [view, setView] = useState<'list' | 'calendar'>('list')
+  const [view, setView] = useState<'list' | 'calendar' | 'kanban'>('list')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [serviceFilter, setServiceFilter] = useState('all')
@@ -226,18 +226,19 @@ export function Bookings() {
 
           {/* View toggle */}
           <div className="flex gap-1 p-1 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl ml-auto">
-            <button
-              onClick={() => setView('list')}
-              className={`text-[12px] px-3 py-1.5 rounded-lg font-medium inline-flex items-center gap-1.5 transition-all ${view === 'list' ? 'bg-white text-[#111827] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              <List size={13} /> List
-            </button>
-            <button
-              onClick={() => setView('calendar')}
-              className={`text-[12px] px-3 py-1.5 rounded-lg font-medium inline-flex items-center gap-1.5 transition-all ${view === 'calendar' ? 'bg-white text-[#111827] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              <CalendarDays size={13} /> Week
-            </button>
+            {([
+              { key: 'list',     icon: List,          label: 'List'   },
+              { key: 'kanban',   icon: Columns3,      label: 'Board'  },
+              { key: 'calendar', icon: CalendarDays,  label: 'Week'   },
+            ] as const).map(v => (
+              <button
+                key={v.key}
+                onClick={() => setView(v.key)}
+                className={`text-[12px] px-3 py-1.5 rounded-lg font-medium inline-flex items-center gap-1.5 transition-all ${view === v.key ? 'bg-white text-[#111827] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <v.icon size={13} /> {v.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -322,6 +323,9 @@ export function Bookings() {
           )}
         </>
       )}
+
+      {/* ── KANBAN VIEW ── */}
+      {view === 'kanban' && <KanbanBoard bookings={filtered} onSelect={setSelectedBooking} />}
 
       {/* ── CALENDAR VIEW ── */}
       {view === 'calendar' && <WeekCalendar bookings={filtered} onSelect={setSelectedBooking} />}
@@ -570,10 +574,65 @@ function BookingDetail({ booking, onUpdate, onDelete }: {
   onDelete: () => void
 }) {
   const [status, setStatus] = useState(booking.status)
+  const [isEditing, setIsEditing] = useState(false)
 
   function applyStatus(s: BookingStatus) {
     setStatus(s)
     onUpdate({ status: s })
+  }
+
+  if (isEditing) {
+    return (
+      <form
+        className="space-y-4"
+        onSubmit={e => {
+          e.preventDefault()
+          const fd = new FormData(e.currentTarget)
+          const patch: Partial<BookingType> = {
+            client_name:    fd.get('client_name') as string,
+            client_phone:   fd.get('client_phone') as string,
+            service_address:fd.get('service_address') as string,
+            service_type:   fd.get('service_type') as string,
+            frequency:      fd.get('frequency') as BookingFrequency,
+            scheduled_date: fd.get('scheduled_date') as string,
+            scheduled_time: fd.get('scheduled_time') as string,
+            duration_hours: Number(fd.get('duration_hours')),
+            total_amount:   Number(fd.get('total_amount')),
+            notes:          fd.get('notes') as string,
+          }
+          onUpdate(patch)
+          setIsEditing(false)
+        }}
+      >
+        <div className="grid grid-cols-2 gap-4">
+          <Input name="client_name" label="Client Name" defaultValue={booking.client_name} required />
+          <Input name="client_phone" label="Phone" defaultValue={booking.client_phone} />
+        </div>
+        <Input name="service_address" label="Service Address" defaultValue={booking.service_address} />
+        <div className="grid grid-cols-2 gap-4">
+          <Select name="service_type" label="Service Type" defaultValue={booking.service_type}>
+            {serviceTypes.map(s => <option key={s}>{s}</option>)}
+          </Select>
+          <Select name="frequency" label="Frequency" defaultValue={booking.frequency}>
+            <option value="once">One-time</option>
+            <option value="weekly">Weekly</option>
+            <option value="biweekly">Bi-weekly</option>
+            <option value="monthly">Monthly</option>
+          </Select>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <Input name="scheduled_date" label="Date" type="date" defaultValue={booking.scheduled_date} />
+          <Input name="scheduled_time" label="Time" type="time" defaultValue={booking.scheduled_time} />
+          <Input name="duration_hours" label="Duration (hrs)" type="number" min="1" max="12" defaultValue={String(booking.duration_hours)} />
+        </div>
+        <Input name="total_amount" label="Amount (AED)" type="number" defaultValue={String(booking.total_amount)} />
+        <Textarea name="notes" label="Notes" defaultValue={booking.notes} rows={3} />
+        <div className="flex gap-3 pt-2">
+          <Button type="button" variant="outline" className="flex-1" onClick={() => setIsEditing(false)}>Cancel</Button>
+          <Button type="submit" className="flex-1">Save Changes</Button>
+        </div>
+      </form>
+    )
   }
 
   return (
@@ -595,7 +654,7 @@ function BookingDetail({ booking, onUpdate, onDelete }: {
           { label: 'Frequency', value: booking.frequency },
           { label: 'Date',      value: formatDate(booking.scheduled_date) },
           { label: 'Time',      value: formatTime(`${booking.scheduled_date}T${booking.scheduled_time}`) },
-          { label: 'Duration',  value: `${booking.duration_hours} hours` },
+          { label: 'Duration',  value: `${booking.duration_hours} Hours` },
           { label: 'Amount',    value: `AED ${booking.total_amount.toLocaleString()}` },
         ].map(({ label, value }) => (
           <div key={label} className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC]">
@@ -607,7 +666,7 @@ function BookingDetail({ booking, onUpdate, onDelete }: {
 
       <div className="bg-slate-50 border border-[#E4E8EC] rounded-xl p-3">
         <p className="text-[10.5px] text-slate-500 uppercase tracking-[0.08em] font-semibold">Address</p>
-        <p className="text-[13px] font-semibold text-[#111827] mt-1">{booking.service_address}</p>
+        <p className="text-[13px] font-semibold text-[#111827] mt-1">{booking.service_address || '—'}</p>
       </div>
 
       {booking.notes && (
@@ -617,7 +676,8 @@ function BookingDetail({ booking, onUpdate, onDelete }: {
         </div>
       )}
 
-      <div className="flex gap-2 pt-2">
+      <div className="flex gap-2 pt-2 flex-wrap">
+        <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>Edit</Button>
         {status === 'pending'     && <Button className="flex-1" size="sm" onClick={() => applyStatus('confirmed')}>Confirm</Button>}
         {status === 'confirmed'   && <Button className="flex-1" size="sm" onClick={() => applyStatus('in_progress')}>Start Job</Button>}
         {status === 'in_progress' && <Button className="flex-1" size="sm" onClick={() => applyStatus('completed')}>Mark Complete</Button>}
@@ -626,6 +686,62 @@ function BookingDetail({ booking, onUpdate, onDelete }: {
         )}
         <Button variant="danger" size="sm" onClick={onDelete}>Delete</Button>
       </div>
+    </div>
+  )
+}
+
+/* ─── Kanban Board ─── */
+const kanbanCols = [
+  { key: 'pending',     label: 'Pending',    color: 'bg-amber-500',   light: 'bg-amber-50 border-amber-200',   text: 'text-amber-700' },
+  { key: 'confirmed',   label: 'Scheduled',  color: 'bg-emerald-500', light: 'bg-emerald-50 border-emerald-200', text: 'text-emerald-700' },
+  { key: 'in_progress', label: 'Live',       color: 'bg-blue-500',    light: 'bg-blue-50 border-blue-200',     text: 'text-blue-700' },
+  { key: 'completed',   label: 'Done',       color: 'bg-slate-400',   light: 'bg-slate-50 border-slate-200',   text: 'text-slate-600' },
+] as const
+
+function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b: Booking) => void }) {
+  return (
+    <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      {kanbanCols.map(col => {
+        const colBookings = bookings.filter(b => b.status === col.key)
+        return (
+          <div key={col.key} className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] flex flex-col min-h-[400px]">
+            {/* Column header */}
+            <div className="px-4 py-3.5 border-b border-[#E4E8EC] flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${col.color}`} />
+              <span className="text-[13px] font-bold text-[#111827]">{col.label}</span>
+              <span className={`ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full border ${col.light} ${col.text}`}>
+                {colBookings.length}
+              </span>
+            </div>
+            {/* Cards */}
+            <div className="flex-1 p-3 space-y-2.5 overflow-y-auto">
+              {colBookings.length === 0 && (
+                <p className="text-center text-[12px] text-slate-400 mt-8">No bookings</p>
+              )}
+              {colBookings.map((b, idx) => (
+                <div
+                  key={b.id}
+                  onClick={() => onSelect(b)}
+                  className="bg-slate-50 border border-[#E4E8EC] rounded-[16px] p-3.5 cursor-pointer hover:border-emerald-300 hover:shadow-sm transition-all"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <Initials name={b.client_name} idx={idx} size="sm" />
+                    <p className="text-[13px] font-semibold text-[#111827] truncate">{b.client_name}</p>
+                  </div>
+                  <p className="text-[11.5px] text-slate-500 mb-2 capitalize">{b.service_type}</p>
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <div className="flex items-center gap-1">
+                      <CalendarIcon size={11} className="text-slate-400" />
+                      <span>{formatDate(b.scheduled_date)}</span>
+                    </div>
+                    <span className="font-bold text-[#111827]">AED {b.total_amount.toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

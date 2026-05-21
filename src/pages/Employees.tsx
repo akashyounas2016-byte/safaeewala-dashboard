@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Plus, Search, AlertTriangle, Phone, Shield, Users, UserCheck, Star, Activity, TrendingUp, Clock } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Search, AlertTriangle, Phone, Shield, Users, UserCheck, Star, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -56,11 +57,13 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export function Employees() {
-  const { employees, addEmployee } = useData()
+  const { employees, addEmployee, updateEmployee } = useData()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<typeof employees[0] | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
 
   const expiringCount = employees.filter(e => {
     const soonest = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry), daysUntil(e.passport_expiry))
@@ -392,9 +395,14 @@ export function Employees() {
         </form>
       </Modal>
 
-      {/* ── Employee Detail Modal ── */}
-      <Modal open={!!selected} onClose={() => setSelected(null)} title="Employee Profile" size="lg">
-        {selected && (
+      {/* ── Employee Detail / Edit Modal ── */}
+      <Modal
+        open={!!selected}
+        onClose={() => { setSelected(null); setIsEditing(false) }}
+        title={isEditing ? 'Edit Employee' : 'Employee Profile'}
+        size="lg"
+      >
+        {selected && !isEditing && (
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <Avatar name={selected.full_name} size="lg" idx={0} />
@@ -434,17 +442,83 @@ export function Employees() {
             <div>
               <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.1em] mb-2">Skills</p>
               <div className="flex flex-wrap gap-2">
-                {selected.skills.map(s => (
-                  <span key={s} className="text-[12px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-medium">{s}</span>
-                ))}
+                {selected.skills.length === 0
+                  ? <p className="text-[12px] text-slate-400">No skills added yet</p>
+                  : selected.skills.map(s => (
+                    <span key={s} className="text-[12px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-medium">{s}</span>
+                  ))}
               </div>
             </div>
 
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" size="sm">Edit</Button>
-              <Button className="flex-1" size="sm">View Schedule</Button>
+              <Button variant="outline" className="flex-1" size="sm" onClick={() => setIsEditing(true)}>Edit</Button>
+              <Button className="flex-1" size="sm" onClick={() => { setSelected(null); setIsEditing(false); navigate('/dispatch') }}>View Schedule</Button>
             </div>
           </div>
+        )}
+
+        {selected && isEditing && (
+          <form
+            className="space-y-4"
+            onSubmit={e => {
+              e.preventDefault()
+              const fd = new FormData(e.currentTarget)
+              const patch = {
+                full_name:                 fd.get('full_name') as string,
+                phone:                     fd.get('phone') as string,
+                role:                      fd.get('role') as 'cleaner' | 'crew_lead',
+                nationality:               fd.get('nationality') as string,
+                emirates_id:               fd.get('emirates_id') as string,
+                pay_rate_hourly:           Number(fd.get('pay_rate_hourly')),
+                visa_expiry:               fd.get('visa_expiry') as string,
+                work_permit_expiry:        fd.get('work_permit_expiry') as string,
+                passport_expiry:           fd.get('passport_expiry') as string,
+                medical_insurance_expiry:  fd.get('medical_insurance_expiry') as string,
+                joined_date:               fd.get('joined_date') as string,
+                status:                    fd.get('status') as 'active' | 'inactive',
+                skills: (fd.get('skills') as string).split(',').map(s => s.trim()).filter(Boolean),
+              }
+              updateEmployee(selected.id, patch)
+              setSelected({ ...selected, ...patch })
+              setIsEditing(false)
+            }}
+          >
+            <div className="grid grid-cols-2 gap-4">
+              <Input name="full_name" label="Full Name" defaultValue={selected.full_name} required />
+              <Input name="phone" label="Phone" defaultValue={selected.phone} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Select name="role" label="Role" defaultValue={selected.role}>
+                <option value="cleaner">Cleaner</option>
+                <option value="crew_lead">Crew Lead</option>
+              </Select>
+              <Select name="status" label="Status" defaultValue={selected.status}>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input name="nationality" label="Nationality" defaultValue={selected.nationality} />
+              <Input name="emirates_id" label="Emirates ID" defaultValue={selected.emirates_id} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input name="pay_rate_hourly" label="Pay Rate (AED/hr)" type="number" defaultValue={String(selected.pay_rate_hourly)} />
+              <Input name="joined_date" label="Joined Date" type="date" defaultValue={selected.joined_date} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input name="visa_expiry" label="Visa Expiry" type="date" defaultValue={selected.visa_expiry} />
+              <Input name="work_permit_expiry" label="Work Permit Expiry" type="date" defaultValue={selected.work_permit_expiry} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input name="passport_expiry" label="Passport Expiry" type="date" defaultValue={selected.passport_expiry} />
+              <Input name="medical_insurance_expiry" label="Medical Ins. Expiry" type="date" defaultValue={selected.medical_insurance_expiry} />
+            </div>
+            <Input name="skills" label="Skills (comma separated)" defaultValue={selected.skills.join(', ')} placeholder="Deep Clean, Carpet, Window..." />
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setIsEditing(false)}>Cancel</Button>
+              <Button type="submit" className="flex-1">Save Changes</Button>
+            </div>
+          </form>
         )}
       </Modal>
     </div>
