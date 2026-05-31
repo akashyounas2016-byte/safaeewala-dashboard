@@ -113,6 +113,36 @@ export interface InventoryItem {
   created_at: string
 }
 
+export type PaymentMode = 'Cash' | 'Online' | 'Pending' | 'Monthly' | 'Above'
+export type MaterialType = 'No' | 'Yes' | 'Sofa' | 'Ladder' | 'Sofa Seat'
+
+export interface DailyJob {
+  id: string
+  created_at: string
+  date: string
+  staff_name: string
+  start_time: string
+  end_time: string
+  duty_hours: number
+  address: string
+  area: string
+  material: MaterialType
+  charges: number
+  received: number
+  payment_mode: PaymentMode
+  is_overtime: boolean
+  remarks: string
+}
+
+export interface DailyExpense {
+  id: string
+  created_at: string
+  date: string
+  name: string
+  category: string
+  amount: number
+}
+
 export interface DashboardStats {
   total_bookings_today: number
   revenue_today: number

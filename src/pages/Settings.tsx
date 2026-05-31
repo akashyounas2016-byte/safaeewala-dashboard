@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut } from 'lucide-react'
+import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import * as XLSX from 'xlsx'
+import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured } from '@/lib/googleDrive'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { PageHero } from '@/components/layout/PageHero'
@@ -265,13 +267,16 @@ const integrations: IntegrationInfo[] = [
 ]
 
 export function Settings() {
-  const { bookings, clients, employees, invoices, inventory } = useData()
+  const { bookings, clients, employees, invoices, inventory, dailyJobs, dailyExpenses } = useData()
   const [activeTab, setActiveTab] = useState('company')
   const [connectingIntegration, setConnectingIntegration] = useState<IntegrationInfo | null>(null)
   const [saved, setSaved] = useState(false)
+  const [driveStatus, setDriveStatus] = useState<'idle' | 'connecting' | 'uploading' | 'done' | 'error'>('idle')
+  const [driveLink, setDriveLink]   = useState('')
+  const [driveError, setDriveError] = useState('')
 
   function downloadBackup() {
-    const data = { bookings, clients, employees, invoices, inventory, exported_at: new Date().toISOString() }
+    const data = { bookings, clients, employees, invoices, inventory, dailyJobs, dailyExpenses, exported_at: new Date().toISOString() }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
@@ -279,6 +284,42 @@ export function Settings() {
     a.download = `safaeewala-backup-${new Date().toISOString().split('T')[0]}.json`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  function downloadExcel() {
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bookings),      'Bookings')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clients),       'Clients')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(employees),     'Employees')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(invoices),      'Invoices')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inventory),     'Inventory')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailyJobs),     'Daily Jobs')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailyExpenses), 'Daily Expenses')
+    XLSX.writeFile(wb, `safaeewala-backup-${new Date().toISOString().split('T')[0]}.xlsx`)
+  }
+
+  async function backupToDrive() {
+    try {
+      setDriveStatus('connecting'); setDriveError('')
+      let token = getAccessToken()
+      if (!token) token = await authorizeGoogleDrive()
+      setDriveStatus('uploading')
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bookings),      'Bookings')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(clients),       'Clients')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(employees),     'Employees')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(invoices),      'Invoices')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inventory),     'Inventory')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailyJobs),     'Daily Jobs')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailyExpenses), 'Daily Expenses')
+      const buf  = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const filename = `safaeewala-backup-${new Date().toISOString().split('T')[0]}.xlsx`
+      const link = await uploadToDrive(blob, filename, token)
+      setDriveLink(link); setDriveStatus('done')
+    } catch (err: any) {
+      setDriveError(err.message || 'Upload failed'); setDriveStatus('error')
+    }
   }
 
   function handleSave() {
@@ -668,13 +709,51 @@ export function Settings() {
               ))}
             </div>
             <button
-              onClick={downloadBackup}
+              onClick={downloadExcel}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 transition-colors mb-2"
             >
-              <Download size={13} /> Download Full Backup (JSON)
+              <FileSpreadsheet size={13} /> Download as Excel (.xlsx)
             </button>
+            <button
+              onClick={downloadBackup}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-700 text-white text-[12px] font-semibold hover:bg-slate-800 transition-colors mb-2"
+            >
+              <Download size={13} /> Download JSON Backup
+            </button>
+
+            {/* Google Drive */}
+            {gdriveConfigured ? (
+              <>
+                <button
+                  onClick={backupToDrive}
+                  disabled={driveStatus === 'connecting' || driveStatus === 'uploading'}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 text-white text-[12px] font-semibold hover:bg-blue-700 transition-colors mb-2 disabled:opacity-60"
+                >
+                  <CloudUpload size={13} />
+                  {driveStatus === 'connecting' ? 'Connecting to Google…' : driveStatus === 'uploading' ? 'Uploading…' : 'Backup to Google Drive'}
+                </button>
+                {driveStatus === 'done' && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-2 flex items-center justify-between">
+                    <span className="text-[11px] text-emerald-700 font-semibold">Uploaded to Drive</span>
+                    <a href={driveLink} target="_blank" rel="noopener noreferrer" className="text-[11px] text-emerald-600 underline">Open</a>
+                  </div>
+                )}
+                {driveStatus === 'error' && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-2">
+                    <p className="text-[11px] text-red-700">{driveError}</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-2">
+                <p className="text-[11.5px] font-semibold text-blue-800 mb-1">Enable Google Drive Backup</p>
+                <p className="text-[11px] text-blue-700 mb-1">Add <code className="bg-blue-100 px-1 rounded">VITE_GOOGLE_CLIENT_ID</code> to your Netlify environment variables.</p>
+                <p className="text-[10.5px] text-blue-600">Google Cloud Console → APIs → OAuth 2.0 Client (Web) → copy Client ID → Netlify env vars → redeploy.</p>
+              </div>
+            )}
+
             <p className="text-[10.5px] text-slate-400 text-center mb-3">
-              Exports all bookings, clients, employees, invoices &amp; inventory as a JSON file · {bookings.length + clients.length + employees.length + invoices.length + inventory.length} records
+              {bookings.length + clients.length + employees.length + invoices.length + inventory.length + dailyJobs.length} records across all tables
             </p>
             <a
               href="https://supabase.com/dashboard"

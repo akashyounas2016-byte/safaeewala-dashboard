@@ -14,6 +14,7 @@ import { Invoices } from '@/pages/Invoices'
 import { Inventory } from '@/pages/Inventory'
 import { Reports } from '@/pages/Reports'
 import { Settings } from '@/pages/Settings'
+import { DailyJobSheet } from '@/pages/DailyJobSheet'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
@@ -54,6 +55,7 @@ export default function App() {
               <Route path="inventory" element={<Inventory />} />
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="daily-job-sheet" element={<DailyJobSheet />} />
             </Route>
           </Routes>
         </BrowserRouter>

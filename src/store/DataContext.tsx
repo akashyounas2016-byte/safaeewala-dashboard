@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
-import type { Booking, Client, Employee, Invoice, InventoryItem } from '../types'
+import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense } from '../types'
 import { supabase } from '@/lib/supabase'
 
 interface DataStore {
@@ -29,6 +29,14 @@ interface DataStore {
   addInventory:    (i: Omit<InventoryItem, 'id' | 'created_at'>) => void
   updateInventory: (id: string, patch: Partial<InventoryItem>) => void
   reorderItem:     (id: string) => void
+
+  dailyJobs:          DailyJob[]
+  dailyExpenses:      DailyExpense[]
+  addDailyJob:        (j: Omit<DailyJob, 'id' | 'created_at'>) => void
+  updateDailyJob:     (id: string, patch: Partial<DailyJob>) => void
+  deleteDailyJob:     (id: string) => void
+  addDailyExpense:    (e: Omit<DailyExpense, 'id' | 'created_at'>) => void
+  deleteDailyExpense: (id: string) => void
 }
 
 const DataContext = createContext<DataStore | null>(null)
@@ -37,12 +45,14 @@ function uid() { return crypto.randomUUID() }
 function now() { return new Date().toISOString() }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [bookings,  setBookings]  = useState<Booking[]>([])
-  const [clients,   setClients]   = useState<Client[]>([])
-  const [employees, setEmployees] = useState<Employee[]>([])
-  const [invoices,  setInvoices]  = useState<Invoice[]>([])
-  const [inventory, setInventory] = useState<InventoryItem[]>([])
-  const [loading,   setLoading]   = useState(true)
+  const [bookings,      setBookings]      = useState<Booking[]>([])
+  const [clients,       setClients]       = useState<Client[]>([])
+  const [employees,     setEmployees]     = useState<Employee[]>([])
+  const [invoices,      setInvoices]      = useState<Invoice[]>([])
+  const [inventory,     setInventory]     = useState<InventoryItem[]>([])
+  const [dailyJobs,     setDailyJobs]     = useState<DailyJob[]>([])
+  const [dailyExpenses, setDailyExpenses] = useState<DailyExpense[]>([])
+  const [loading,       setLoading]       = useState(true)
 
   /* ── Load all data on mount ── */
   useEffect(() => {
@@ -52,18 +62,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from('employees').select('*').order('created_at', { ascending: false }),
       supabase.from('invoices').select('*').order('created_at', { ascending: false }),
       supabase.from('inventory').select('*').order('created_at', { ascending: false }),
-    ]).then(([b, c, e, i, inv]) => {
-      if (b.data)   setBookings(b.data   as Booking[])
-      if (c.data)   setClients(c.data    as Client[])
-      if (e.data)   setEmployees(e.data  as Employee[])
-      if (i.data)   setInvoices(i.data   as Invoice[])
-      if (inv.data) setInventory(inv.data as InventoryItem[])
+      supabase.from('daily_jobs').select('*').order('date', { ascending: false }),
+      supabase.from('daily_expenses').select('*').order('date', { ascending: false }),
+    ]).then(([b, c, e, i, inv, dj, de]) => {
+      if (b.data)   setBookings(b.data     as Booking[])
+      if (c.data)   setClients(c.data      as Client[])
+      if (e.data)   setEmployees(e.data    as Employee[])
+      if (i.data)   setInvoices(i.data     as Invoice[])
+      if (inv.data) setInventory(inv.data  as InventoryItem[])
+      if (dj.data)  setDailyJobs(dj.data   as DailyJob[])
+      if (de.data)  setDailyExpenses(de.data as DailyExpense[])
       setLoading(false)
     })
   }, [])
 
   const store: DataStore = {
     bookings, clients, employees, invoices, inventory, loading,
+    dailyJobs, dailyExpenses,
 
     /* ── Bookings ── */
     addBooking: (b) => {
@@ -152,6 +167,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setInventory(p => p.map(i => i.id === id ? { ...i, ...patch } : i))
       supabase.from('inventory').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
     },
+    /* ── Daily Job Sheet ── */
+    addDailyJob: (j) => {
+      const row = { ...j, id: uid(), created_at: now() }
+      setDailyJobs(p => [row, ...p])
+      supabase.from('daily_jobs').insert(row).then(({ error }) => { if (error) console.error(error) })
+    },
+    updateDailyJob: (id, patch) => {
+      setDailyJobs(p => p.map(j => j.id === id ? { ...j, ...patch } : j))
+      supabase.from('daily_jobs').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+    },
+    deleteDailyJob: (id) => {
+      setDailyJobs(p => p.filter(j => j.id !== id))
+      supabase.from('daily_jobs').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+    },
+    addDailyExpense: (e) => {
+      const row = { ...e, id: uid(), created_at: now() }
+      setDailyExpenses(p => [row, ...p])
+      supabase.from('daily_expenses').insert(row).then(({ error }) => { if (error) console.error(error) })
+    },
+    deleteDailyExpense: (id) => {
+      setDailyExpenses(p => p.filter(e => e.id !== id))
+      supabase.from('daily_expenses').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+    },
+
     reorderItem: (id) => {
       const item = inventory.find(i => i.id === id)
       if (!item) return

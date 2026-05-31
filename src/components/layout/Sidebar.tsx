@@ -3,15 +3,16 @@ import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, CalendarCheck, Users, UserCheck, MapPin,
-  FileText, Package, BarChart3, Settings, X,
+  FileText, Package, BarChart3, Settings, X, ClipboardList,
 } from 'lucide-react'
 
 const workspaceNav = [
-  { to: '/',          label: 'Overview',   icon: LayoutDashboard },
-  { to: '/bookings',  label: 'Bookings',   icon: CalendarCheck },
-  { to: '/clients',   label: 'Clients',    icon: Users },
-  { to: '/employees', label: 'Employees',  icon: UserCheck },
-  { to: '/dispatch',  label: 'Dispatch',   icon: MapPin },
+  { to: '/',                 label: 'Overview',        icon: LayoutDashboard },
+  { to: '/bookings',         label: 'Bookings',        icon: CalendarCheck },
+  { to: '/clients',          label: 'Clients',         icon: Users },
+  { to: '/employees',        label: 'Employees',       icon: UserCheck },
+  { to: '/dispatch',         label: 'Dispatch',        icon: MapPin },
+  { to: '/daily-job-sheet',  label: 'Daily Job Sheet', icon: ClipboardList },
 ]
 
 const financeNav = [
