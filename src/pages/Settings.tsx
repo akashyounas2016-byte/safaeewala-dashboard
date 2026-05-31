@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { useIsAdmin } from '@/store/UserContext'
+import { useIsAdmin, useCurrentUser } from '@/store/UserContext'
 import * as XLSX from 'xlsx'
 import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured } from '@/lib/googleDrive'
 import { Button } from '@/components/ui/Button'
@@ -463,8 +463,11 @@ const DEFAULT_NOTIF: NotifData = {
 
 export function Settings() {
   const { bookings, clients, employees, invoices, inventory, dailyJobs, dailyExpenses } = useData()
-  const isAdmin    = useIsAdmin()
-  const tabs       = allTabs.filter(t => !t.adminOnly || isAdmin)
+  const isAdmin = useIsAdmin()
+  // Hide admin-only tabs only when role is confirmed as employee (not while loading)
+  const currentUser = useCurrentUser()
+  const roleLoaded  = currentUser !== null
+  const tabs        = allTabs.filter(t => !t.adminOnly || !roleLoaded || isAdmin)
   const [activeTab, setActiveTab] = useState('company')
   const [userEmail, setUserEmail] = useState('')
   const [company,  setCompany]   = useState<CompanyData>(DEFAULT_COMPANY)
@@ -581,7 +584,7 @@ export function Settings() {
           {/* Tab nav */}
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-3 py-3">
             <div className="flex gap-1 flex-wrap">
-              {tabs.filter(t => !t.adminOnly || isAdmin).map(t => (
+              {tabs.map(t => (
                 <button
                   key={t.id}
                   onClick={() => setActiveTab(t.id)}

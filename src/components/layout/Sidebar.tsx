@@ -59,8 +59,9 @@ function NavItem({ to, label, icon: Icon, onClose }: { to: string; label: string
 
 function SidebarContent({ onClose, showClose }: { onClose: () => void; showClose?: boolean }) {
   const currentUser = useCurrentUser()
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'developer'
-  const workspaceNav = isAdmin ? [...workspaceNavBase, ...adminOnlyNav] : workspaceNavBase
+  // Show full nav while role is loading (null) — AuthGuard already confirmed login
+  const isEmployee = currentUser?.role === 'employee'
+  const workspaceNav = isEmployee ? workspaceNavBase : [...workspaceNavBase, ...adminOnlyNav]
 
   return (
     <div className="flex flex-col h-full sidebar-bg">
