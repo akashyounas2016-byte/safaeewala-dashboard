@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, X, ExternalLink, CheckCircle, Download } from 'lucide-react'
+import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { PageHero } from '@/components/layout/PageHero'
@@ -603,6 +604,12 @@ export function Settings() {
             </div>
             <button className="w-full mt-4 py-2 rounded-xl border border-[#E4E8EC] text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
               <User size={14} /> Edit Profile
+            </button>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="w-full mt-2 py-2 rounded-xl border border-red-200 text-[12px] font-semibold text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center gap-2"
+            >
+              <LogOut size={14} /> Sign Out
             </button>
           </div>
 

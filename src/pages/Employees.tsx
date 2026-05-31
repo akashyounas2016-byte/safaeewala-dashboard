@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, AlertTriangle, Phone, Shield, Users, UserCheck, Star, TrendingUp } from 'lucide-react'
+import { Search, AlertTriangle, Phone, Shield, Users, UserCheck, Star, TrendingUp, Trash2, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -61,13 +61,14 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export function Employees() {
-  const { employees, addEmployee, updateEmployee } = useData()
+  const { employees, bookings, addEmployee, updateEmployee, deleteEmployee } = useData()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<typeof employees[0] | null>(null)
   const [isEditing, setIsEditing] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const expiringCount = employees.filter(e => {
     const soonest = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry), daysUntil(e.passport_expiry))
@@ -76,6 +77,8 @@ export function Employees() {
 
   const activeCount = employees.filter(e => e.status === 'active').length
   const crewLeads = employees.filter(e => e.role === 'crew_lead').length
+  const totalJobsDone = bookings.filter(b => b.status === 'completed').length
+  const onLeaveCount = employees.filter(e => e.status === 'on_leave').length
 
   const filtered = employees.filter(e => {
     const matchSearch = e.full_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -125,8 +128,8 @@ export function Employees() {
           { label: 'Active',          value: activeCount,           sub: 'Currently working', icon: UserCheck,  iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: '+1',   deltaUp: true  },
           { label: 'Crew Leads',      value: crewLeads,             sub: 'Senior staff',     icon: Star,       iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: '0',    deltaUp: true  },
           { label: 'Docs Expiring',   value: expiringCount,         sub: 'Within 90 days',   icon: Shield,     iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: expiringCount > 0 ? `${expiringCount} !` : 'OK', deltaUp: expiringCount === 0 },
-          { label: 'Avg Rating',      value: '4.8',                 sub: 'Client feedback',  icon: Star,       iconBg: 'bg-rose-50',    iconColor: 'text-rose-600',    delta: '+0.2', deltaUp: true  },
-          { label: 'Utilization',     value: '87%',                 sub: 'This week',        icon: TrendingUp, iconBg: 'bg-teal-50',    iconColor: 'text-teal-600',    delta: '+4%',  deltaUp: true  },
+          { label: 'Jobs Completed',  value: totalJobsDone,         sub: 'All time',         icon: CheckCircle, iconBg: 'bg-rose-50',    iconColor: 'text-rose-600',   delta: `${totalJobsDone}`, deltaUp: true  },
+          { label: 'On Leave',        value: onLeaveCount,          sub: 'Currently absent', icon: TrendingUp, iconBg: 'bg-teal-50',    iconColor: 'text-teal-600',    delta: onLeaveCount > 0 ? `${onLeaveCount}` : 'None', deltaUp: onLeaveCount === 0 },
         ].map(card => (
           <div key={card.label} className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all">
             <div className="flex items-start justify-between mb-4">
@@ -241,21 +244,36 @@ export function Employees() {
           {/* Live Crew Status */}
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[15px] font-bold text-[#111827]">Live Crew Status</h3>
+              <h3 className="text-[15px] font-bold text-[#111827]">Crew Status</h3>
               <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 Live
               </span>
             </div>
             <div className="space-y-3">
-              {employees.slice(0, 5).map((emp, idx) => {
-                const statuses = ['On Job', 'Available', 'On Job', 'Break', 'On Job']
-                const status = statuses[idx % statuses.length]
-                const statusStyle = status === 'On Job'
-                  ? 'bg-emerald-50 text-emerald-700'
-                  : status === 'Available'
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'bg-amber-50 text-amber-700'
+              {employees.slice(0, 6).map((emp, idx) => {
+                const today = new Date().toISOString().split('T')[0]
+                const activeJob = bookings.find(b =>
+                  b.assigned_crew.includes(emp.id) &&
+                  b.scheduled_date === today &&
+                  b.status === 'in_progress'
+                )
+                const scheduledToday = bookings.find(b =>
+                  b.assigned_crew.includes(emp.id) &&
+                  b.scheduled_date === today &&
+                  b.status === 'confirmed'
+                )
+                const label =
+                  emp.status === 'on_leave'          ? 'On Leave' :
+                  emp.status === 'inactive'           ? 'Inactive' :
+                  activeJob                           ? 'On Job' :
+                  scheduledToday                      ? 'Scheduled' : 'Available'
+                const statusStyle =
+                  label === 'On Job'    ? 'bg-emerald-50 text-emerald-700' :
+                  label === 'Scheduled' ? 'bg-blue-50 text-blue-700' :
+                  label === 'On Leave'  ? 'bg-amber-50 text-amber-700' :
+                  label === 'Inactive'  ? 'bg-slate-100 text-slate-500' :
+                  'bg-slate-50 text-slate-600'
                 return (
                   <div key={emp.id} className="flex items-center gap-3">
                     <Avatar name={emp.full_name} size="sm" idx={idx} />
@@ -264,7 +282,7 @@ export function Employees() {
                       <p className="text-[11px] text-slate-500">{emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}</p>
                     </div>
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusStyle}`}>
-                      {status}
+                      {label}
                     </span>
                   </div>
                 )
@@ -402,7 +420,7 @@ export function Employees() {
       {/* ── Employee Detail / Edit Modal ── */}
       <Modal
         open={!!selected}
-        onClose={() => { setSelected(null); setIsEditing(false) }}
+        onClose={() => { setSelected(null); setIsEditing(false); setConfirmDelete(false) }}
         title={isEditing ? 'Edit Employee' : 'Employee Profile'}
         size="lg"
       >
@@ -454,10 +472,34 @@ export function Employees() {
               </div>
             </div>
 
-            <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" size="sm" onClick={() => setIsEditing(true)}>Edit</Button>
-              <Button className="flex-1" size="sm" onClick={() => { setSelected(null); setIsEditing(false); navigate('/dispatch') }}>View Schedule</Button>
-            </div>
+            {confirmDelete ? (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-[13px] font-semibold text-red-700 mb-1">Delete this employee?</p>
+                <p className="text-[12px] text-red-600 mb-3">This will permanently remove <strong>{selected.full_name}</strong> from Supabase. This cannot be undone.</p>
+                <div className="flex gap-3">
+                  <Button type="button" variant="outline" className="flex-1" size="sm" onClick={() => setConfirmDelete(false)}>Cancel</Button>
+                  <button
+                    type="button"
+                    className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[13px] font-semibold py-2 rounded-xl transition-colors"
+                    onClick={() => { deleteEmployee(selected!.id); setSelected(null); setConfirmDelete(false) }}
+                  >
+                    Yes, Delete
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 text-red-600 text-[12px] font-semibold hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 size={13} /> Delete
+                </button>
+                <Button variant="outline" className="flex-1" size="sm" onClick={() => setIsEditing(true)}>Edit</Button>
+                <Button className="flex-1" size="sm" onClick={() => { setSelected(null); setIsEditing(false); navigate('/dispatch') }}>View Schedule</Button>
+              </div>
+            )}
           </div>
         )}
 

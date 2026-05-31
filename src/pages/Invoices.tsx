@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Search, Download, Send, AlertCircle, TrendingUp, CheckCircle, Clock, FileText, DollarSign, Percent } from 'lucide-react'
+import { Search, Download, Send, AlertCircle, TrendingUp, CheckCircle, Clock, FileText, Percent, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -32,12 +32,82 @@ function StatusPill({ status }: { status: string }) {
   )
 }
 
+function printInvoice(invoice: Invoice) {
+  const win = window.open('', '_blank', 'width=820,height=700')
+  if (!win) return
+  const lines = invoice.line_items.map(item => `
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;color:#374151">${item.description}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;text-align:right;color:#6b7280">${item.quantity}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;text-align:right;color:#6b7280">AED ${item.unit_price.toLocaleString()}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;color:#111827">AED ${item.amount.toLocaleString()}</td>
+    </tr>`).join('')
+  win.document.write(`<!DOCTYPE html><html><head>
+    <title>Invoice ${invoice.invoice_number}</title>
+    <style>
+      body{font-family:Arial,sans-serif;padding:48px;color:#111827;font-size:13px;max-width:760px;margin:0 auto}
+      @media print{body{padding:24px}}
+    </style>
+  </head><body>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <div style="width:32px;height:32px;border-radius:8px;background:#10b981;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px">S</div>
+          <span style="font-size:15px;font-weight:700">Safaeewala Cleaning &amp; Maintenance LLC</span>
+        </div>
+        <div style="color:#6b7280">Dubai, United Arab Emirates</div>
+        <div style="color:#6b7280">TRN: 100234567890003</div>
+        <div style="color:#6b7280">+971 55 628 2374 · info@safaeewala.com</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:22px;font-weight:900">TAX INVOICE</div>
+        <div style="font-family:monospace;color:#6b7280">${invoice.invoice_number}</div>
+        <div style="margin-top:4px;display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;background:${invoice.status === 'paid' ? '#d1fae5' : '#fee2e2'};color:${invoice.status === 'paid' ? '#065f46' : '#991b1b'};text-transform:capitalize">${invoice.status}</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+      <div style="background:#f9fafb;padding:16px;border-radius:8px;border:1px solid #e5e7eb">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin-bottom:8px">Bill To</div>
+        <div style="font-weight:700">${invoice.client_name}</div>
+        <div style="color:#6b7280;margin-top:2px">${invoice.client_address || ''}</div>
+        ${invoice.trn ? `<div style="color:#6b7280">TRN: ${invoice.trn}</div>` : ''}
+      </div>
+      <div style="background:#f9fafb;padding:16px;border-radius:8px;border:1px solid #e5e7eb">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin-bottom:8px">Invoice Details</div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#6b7280">Issue Date</span><span style="font-weight:600">${invoice.created_at.split('T')[0]}</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#6b7280">Due Date</span><span style="font-weight:600">${invoice.due_date}</span></div>
+        ${invoice.paid_date ? `<div style="display:flex;justify-content:space-between"><span style="color:#6b7280">Paid Date</span><span style="font-weight:600;color:#059669">${invoice.paid_date}</span></div>` : ''}
+      </div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
+      <thead><tr style="border-bottom:2px solid #111827">
+        <th style="text-align:left;padding:8px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280">Description</th>
+        <th style="text-align:right;padding:8px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280">Qty</th>
+        <th style="text-align:right;padding:8px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280">Unit Price</th>
+        <th style="text-align:right;padding:8px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280">Amount</th>
+      </tr></thead>
+      <tbody>${lines}</tbody>
+    </table>
+    <div style="display:flex;justify-content:flex-end">
+      <div style="width:260px">
+        <div style="display:flex;justify-content:space-between;padding:6px 0"><span style="color:#6b7280">Subtotal</span><span>AED ${invoice.subtotal.toLocaleString()}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0"><span style="color:#6b7280">VAT (${invoice.vat_rate}%)</span><span>AED ${invoice.vat_amount.toLocaleString()}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #111827;font-size:15px;font-weight:700"><span>Total Due</span><span>AED ${invoice.total.toLocaleString()}</span></div>
+      </div>
+    </div>
+    ${invoice.notes ? `<div style="margin-top:24px;padding:12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;color:#92400e;font-size:12px">${invoice.notes}</div>` : ''}
+    <script>window.onload=()=>{window.print()}<\/script>
+  </body></html>`)
+  win.document.close()
+}
+
 export function Invoices() {
-  const { invoices, addInvoice, updateInvoice } = useData()
+  const { invoices, addInvoice, updateInvoice, deleteInvoice } = useData()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<Invoice | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const totalPaid    = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
   const totalPending = invoices.filter(i => i.status === 'sent').reduce((s, i) => s + i.total, 0)
@@ -167,14 +237,21 @@ export function Invoices() {
                       <td className="px-4 py-3.5"><StatusPill status={inv.status} /></td>
                       <td className="px-4 py-3.5">
                         <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                          <button className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="Download PDF">
+                          <button onClick={() => printInvoice(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="Print / Download PDF">
                             <Download size={14} />
                           </button>
                           {inv.status !== 'paid' && (
-                            <button className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 transition-colors" title="Send to client">
+                            <button
+                              onClick={() => updateInvoice(inv.id, { status: 'sent' })}
+                              className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 transition-colors" title="Mark as sent">
                               <Send size={14} />
                             </button>
                           )}
+                          <button
+                            onClick={() => setConfirmDeleteId(inv.id)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" title="Delete invoice">
+                            <Trash2 size={14} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -276,8 +353,32 @@ export function Invoices() {
               updateInvoice(selected.id, { status: 'sent' })
               setSelected(null)
             }}
+            onPrint={() => printInvoice(selected)}
+            onDelete={() => setConfirmDeleteId(selected.id)}
           />
         )}
+      </Modal>
+
+      {/* ── Delete Confirmation Modal ── */}
+      <Modal open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)} title="Delete Invoice" size="sm">
+        <div className="space-y-4">
+          <p className="text-[13px] text-slate-600">This will permanently delete the invoice from Supabase. This cannot be undone.</p>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
+            <button
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[13px] font-semibold py-2 rounded-xl transition-colors"
+              onClick={() => {
+                if (confirmDeleteId) {
+                  deleteInvoice(confirmDeleteId)
+                  if (selected?.id === confirmDeleteId) setSelected(null)
+                  setConfirmDeleteId(null)
+                }
+              }}
+            >
+              Yes, Delete
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* ── New Invoice Modal ── */}
@@ -362,7 +463,9 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
   )
 }
 
-function InvoiceView({ invoice, onMarkPaid, onSend }: { invoice: Invoice; onMarkPaid: () => void; onSend: () => void }) {
+function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete }: {
+  invoice: Invoice; onMarkPaid: () => void; onSend: () => void; onPrint: () => void; onDelete: () => void
+}) {
   const statusCfg: Record<string, { bg: string; text: string }> = {
     paid:    { bg: 'bg-emerald-50', text: 'text-emerald-700' },
     sent:    { bg: 'bg-blue-50',    text: 'text-blue-700' },
@@ -442,10 +545,17 @@ function InvoiceView({ invoice, onMarkPaid, onSend }: { invoice: Invoice; onMark
         </div>
       </div>
 
-      <div className="flex gap-3">
-        <Button variant="outline" className="flex-1" size="sm">
-          <Download size={14} className="mr-1.5" /> Download PDF
+      <div className="flex gap-3 flex-wrap">
+        <Button variant="outline" size="sm" onClick={onPrint}>
+          <Download size={14} className="mr-1.5" /> Print / PDF
         </Button>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 text-red-600 text-[12px] font-semibold hover:bg-red-50 transition-colors"
+        >
+          <Trash2 size={13} /> Delete
+        </button>
         {invoice.status !== 'paid' && (
           <>
             {invoice.status !== 'sent' && (

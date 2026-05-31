@@ -16,12 +16,15 @@ interface DataStore {
 
   addClient:       (c: Omit<Client, 'id' | 'created_at'>) => void
   updateClient:    (id: string, patch: Partial<Client>) => void
+  deleteClient:    (id: string) => void
 
   addEmployee:     (e: Omit<Employee, 'id' | 'created_at'>) => void
   updateEmployee:  (id: string, patch: Partial<Employee>) => void
+  deleteEmployee:  (id: string) => void
 
   addInvoice:      (i: Omit<Invoice, 'id' | 'created_at'>) => void
   updateInvoice:   (id: string, patch: Partial<Invoice>) => void
+  deleteInvoice:   (id: string) => void
 
   addInventory:    (i: Omit<InventoryItem, 'id' | 'created_at'>) => void
   updateInventory: (id: string, patch: Partial<InventoryItem>) => void
@@ -104,6 +107,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setClients(p => p.map(c => c.id === id ? { ...c, ...patch } : c))
       supabase.from('clients').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
     },
+    deleteClient: (id) => {
+      setClients(p => p.filter(c => c.id !== id))
+      supabase.from('clients').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+    },
 
     /* ── Employees ── */
     addEmployee: (e) => {
@@ -115,6 +122,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setEmployees(p => p.map(e => e.id === id ? { ...e, ...patch } : e))
       supabase.from('employees').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
     },
+    deleteEmployee: (id) => {
+      setEmployees(p => p.filter(e => e.id !== id))
+      supabase.from('employees').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+    },
 
     /* ── Invoices ── */
     addInvoice: (i) => {
@@ -125,6 +136,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateInvoice: (id, patch) => {
       setInvoices(p => p.map(i => i.id === id ? { ...i, ...patch } : i))
       supabase.from('invoices').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+    },
+    deleteInvoice: (id) => {
+      setInvoices(p => p.filter(i => i.id !== id))
+      supabase.from('invoices').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
     },
 
     /* ── Inventory ── */

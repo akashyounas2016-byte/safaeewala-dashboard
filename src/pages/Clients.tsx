@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign, Heart, Award, CheckCircle } from 'lucide-react'
+import { Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign, Heart, Award, CheckCircle, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -110,7 +110,7 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
 }
 
 export function Clients() {
-  const { clients, bookings, addClient, updateClient, addBooking } = useData()
+  const { clients, bookings, addClient, updateClient, deleteClient, addBooking } = useData()
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<typeof clients[0] | null>(null)
@@ -118,6 +118,8 @@ export function Clients() {
   const [showBookingModal, setShowBookingModal] = useState(false)
   const [bookingClient, setBookingClient] = useState<{ name: string; phone: string } | null>(null)
   const [areaFilter, setAreaFilter] = useState('all')
+  const [sortOrder, setSortOrder] = useState<'recent' | 'top_spent' | 'name'>('recent')
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const totalSpent    = clients.reduce((s, c) => s + c.total_spent, 0)
   const avgLtv        = Math.round(totalSpent / (clients.length || 1))
@@ -126,15 +128,29 @@ export function Clients() {
   const repeatClients = clients.filter(c => c.total_bookings > 1).length
   const repeatRate    = clients.length > 0 ? Math.round((repeatClients / clients.length) * 100) : 0
 
+  // Month-over-month deltas
+  const now = new Date()
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
+  const newThisMonth  = clients.filter(c => c.created_at >= startOfMonth).length
+  const newLastMonth  = clients.filter(c => c.created_at >= startOfLastMonth && c.created_at < startOfMonth).length
+  const clientDelta   = newThisMonth - newLastMonth
+  const clientDeltaLabel = newThisMonth > 0 ? `+${newThisMonth} this month` : '0 this month'
+
   const areas = [...new Set(clients.map(c => c.area))]
 
-  const filtered = clients.filter(c => {
-    const matchSearch = c.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      c.phone.includes(search) ||
-      c.area.toLowerCase().includes(search.toLowerCase())
-    const matchArea = areaFilter === 'all' || c.area === areaFilter
-    return matchSearch && matchArea
-  })
+  const filtered = (() => {
+    const base = clients.filter(c => {
+      const matchSearch = c.full_name.toLowerCase().includes(search.toLowerCase()) ||
+        c.phone.includes(search) ||
+        c.area.toLowerCase().includes(search.toLowerCase())
+      const matchArea = areaFilter === 'all' || c.area === areaFilter
+      return matchSearch && matchArea
+    })
+    if (sortOrder === 'top_spent') return [...base].sort((a, b) => b.total_spent - a.total_spent)
+    if (sortOrder === 'name')      return [...base].sort((a, b) => a.full_name.localeCompare(b.full_name))
+    return [...base].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  })()
 
   const topClients = [...clients].sort((a, b) => b.total_spent - a.total_spent).slice(0, 5)
 
@@ -159,12 +175,12 @@ export function Clients() {
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {[
-          { label: 'Total Clients',    value: clients.length,             sub: 'All time',       icon: Users,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '+3',   deltaUp: true  },
-          { label: 'Active (30d)',     value: activeClients,                  sub: 'Recent activity', icon: TrendingUp, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: '+1',   deltaUp: true  },
-          { label: 'VIP Clients',      value: vipClients,                     sub: 'AED 2k+ spent',  icon: Award,     iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: '+2',   deltaUp: true  },
-          { label: 'Avg Lifetime',     value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client',   icon: DollarSign, iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: '+8%',  deltaUp: true  },
-          { label: 'Total Revenue',    value: `AED ${(totalSpent/1000).toFixed(1)}k`, sub: 'All clients', icon: Star,  iconBg: 'bg-rose-50',    iconColor: 'text-rose-600',    delta: '+12%', deltaUp: true  },
-          { label: 'Repeat Rate',      value: `${repeatRate}%`,               sub: 'Have 2+ bookings',  icon: Heart,  iconBg: 'bg-pink-50',    iconColor: 'text-pink-600',    delta: `${repeatClients} clients`, deltaUp: repeatRate > 0 },
+          { label: 'Total Clients',    value: clients.length,             sub: 'All time',       icon: Users,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: clientDeltaLabel,  deltaUp: newThisMonth >= 0 },
+          { label: 'Active (30d)',     value: activeClients,              sub: 'Recent activity', icon: TrendingUp, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: `${activeClients} active`, deltaUp: activeClients > 0 },
+          { label: 'VIP Clients',      value: vipClients,                 sub: 'AED 2k+ spent',  icon: Award,     iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: vipClients > 0 ? `${vipClients} VIP` : 'None', deltaUp: vipClients > 0 },
+          { label: 'Avg Lifetime',     value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client', icon: DollarSign, iconBg: 'bg-amber-50',  iconColor: 'text-amber-600',   delta: avgLtv > 0 ? 'Real' : '—', deltaUp: avgLtv > 0 },
+          { label: 'Total Revenue',    value: `AED ${(totalSpent/1000).toFixed(1)}k`, sub: 'All clients', icon: Star, iconBg: 'bg-rose-50', iconColor: 'text-rose-600',    delta: `AED ${totalSpent.toLocaleString()}`, deltaUp: totalSpent > 0 },
+          { label: 'Repeat Rate',      value: `${repeatRate}%`,           sub: 'Have 2+ bookings', icon: Heart, iconBg: 'bg-pink-50',    iconColor: 'text-pink-600',    delta: `${repeatClients} clients`, deltaUp: repeatRate > 0 },
         ].map(card => (
           <div key={card.label} className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all">
             <div className="flex items-start justify-between mb-4">
@@ -209,10 +225,14 @@ export function Clients() {
                 <option value="all">All Areas</option>
                 {areas.map(a => <option key={a} value={a}>{a}</option>)}
               </select>
-              <select className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer">
-                <option>Sort by: Recent</option>
-                <option>Sort by: Top Spenders</option>
-                <option>Sort by: Name</option>
+              <select
+                value={sortOrder}
+                onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
+                className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer"
+              >
+                <option value="recent">Sort by: Recent</option>
+                <option value="top_spent">Sort by: Top Spenders</option>
+                <option value="name">Sort by: Name</option>
               </select>
             </div>
           </div>
@@ -433,7 +453,7 @@ export function Clients() {
       {/* ── Client Detail / Edit Modal ── */}
       <Modal
         open={!!selected}
-        onClose={() => { setSelected(null); setIsEditingClient(false) }}
+        onClose={() => { setSelected(null); setIsEditingClient(false); setConfirmDelete(false) }}
         title={isEditingClient ? 'Edit Client' : 'Client Profile'}
         size="lg"
       >
@@ -478,10 +498,38 @@ export function Clients() {
               </div>
             )}
 
-            <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" size="sm" onClick={() => setIsEditingClient(true)}>Edit Profile</Button>
-              <Button className="flex-1" size="sm" onClick={() => { setBookingClient({ name: selected!.full_name, phone: selected!.phone }); setSelected(null); setIsEditingClient(false); setShowBookingModal(true) }}>New Booking</Button>
-            </div>
+            {confirmDelete ? (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-[13px] font-semibold text-red-700 mb-1">Delete this client?</p>
+                <p className="text-[12px] text-red-600 mb-3">This will permanently remove <strong>{selected.full_name}</strong> from Supabase. This cannot be undone.</p>
+                <div className="flex gap-3">
+                  <Button type="button" variant="outline" className="flex-1" size="sm" onClick={() => setConfirmDelete(false)}>Cancel</Button>
+                  <button
+                    type="button"
+                    className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[13px] font-semibold py-2 rounded-xl transition-colors"
+                    onClick={() => {
+                      deleteClient(selected!.id)
+                      setSelected(null)
+                      setConfirmDelete(false)
+                    }}
+                  >
+                    Yes, Delete
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 text-red-600 text-[12px] font-semibold hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 size={13} /> Delete
+                </button>
+                <Button variant="outline" className="flex-1" size="sm" onClick={() => setIsEditingClient(true)}>Edit Profile</Button>
+                <Button className="flex-1" size="sm" onClick={() => { setBookingClient({ name: selected!.full_name, phone: selected!.phone }); setSelected(null); setIsEditingClient(false); setShowBookingModal(true) }}>New Booking</Button>
+              </div>
+            )}
           </div>
         )}
 
