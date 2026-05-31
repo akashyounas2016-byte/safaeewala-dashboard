@@ -77,36 +77,32 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const [session, setSession]             = useState<Session | null | undefined>(undefined)
-  const [profileStatus, setProfileStatus] = useState<ProfileStatus>('loading')
+  const [blocked, setBlocked]             = useState<'pending' | 'rejected' | null>(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
+    // getSession reads from local cache — resolves instantly
+    supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
       if (data.session) {
-        const s = await fetchProfileStatus(data.session.user.id, data.session.user.email ?? '')
-        setProfileStatus(s)
-      } else {
-        setProfileStatus('approved')
+        // profile check runs in background — never blocks the UI
+        fetchProfileStatus(data.session.user.id, data.session.user.email ?? '')
+          .then(s => { if (s === 'pending' || s === 'rejected') setBlocked(s) })
       }
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setSession(session)
-      if (session) {
-        const s = await fetchProfileStatus(session.user.id, session.user.email ?? '')
-        setProfileStatus(s)
-      } else {
-        setProfileStatus('approved')
-      }
+      if (!session) setBlocked(null)
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
-  if (session === undefined || (session && profileStatus === 'loading')) return <Loader />
-  if (!session)                     return <Login />
-  if (profileStatus === 'pending')  return <PendingScreen />
-  if (profileStatus === 'rejected') return <RejectedScreen />
+  // Only show spinner while local session cache is being read (< 100ms normally)
+  if (session === undefined) return <Loader />
+  if (!session)              return <Login />
+  if (blocked === 'pending') return <PendingScreen />
+  if (blocked === 'rejected') return <RejectedScreen />
   return <>{children}</>
 }
 
