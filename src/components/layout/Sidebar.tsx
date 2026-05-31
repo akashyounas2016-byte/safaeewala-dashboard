@@ -5,14 +5,18 @@ import {
   LayoutDashboard, CalendarCheck, Users, UserCheck, MapPin,
   FileText, Package, BarChart3, Settings, X, ClipboardList,
 } from 'lucide-react'
+import { useCurrentUser } from '@/store/UserContext'
 
-const workspaceNav = [
-  { to: '/',                 label: 'Overview',        icon: LayoutDashboard },
-  { to: '/bookings',         label: 'Bookings',        icon: CalendarCheck },
-  { to: '/clients',          label: 'Clients',         icon: Users },
-  { to: '/employees',        label: 'Employees',       icon: UserCheck },
-  { to: '/dispatch',         label: 'Dispatch',        icon: MapPin },
-  { to: '/daily-job-sheet',  label: 'Daily Job Sheet', icon: ClipboardList },
+const workspaceNavBase = [
+  { to: '/',                label: 'Overview',        icon: LayoutDashboard },
+  { to: '/bookings',        label: 'Bookings',        icon: CalendarCheck },
+  { to: '/clients',         label: 'Clients',         icon: Users },
+  { to: '/employees',       label: 'Employees',       icon: UserCheck },
+  { to: '/dispatch',        label: 'Dispatch',        icon: MapPin },
+]
+
+const adminOnlyNav = [
+  { to: '/daily-job-sheet', label: 'Daily Job Sheet', icon: ClipboardList },
 ]
 
 const financeNav = [
@@ -54,6 +58,10 @@ function NavItem({ to, label, icon: Icon, onClose }: { to: string; label: string
 }
 
 function SidebarContent({ onClose, showClose }: { onClose: () => void; showClose?: boolean }) {
+  const currentUser = useCurrentUser()
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'developer'
+  const workspaceNav = isAdmin ? [...workspaceNavBase, ...adminOnlyNav] : workspaceNavBase
+
   return (
     <div className="flex flex-col h-full sidebar-bg">
 

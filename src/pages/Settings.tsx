@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useIsAdmin } from '@/store/UserContext'
 import * as XLSX from 'xlsx'
 import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured } from '@/lib/googleDrive'
 import { Button } from '@/components/ui/Button'
@@ -10,13 +11,13 @@ import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 
-const tabs = [
-  { id: 'company',       label: 'Company',        icon: Building  },
-  { id: 'users',         label: 'Users',          icon: Users     },
-  { id: 'notifications', label: 'Notifications',  icon: Bell      },
-  { id: 'roles',         label: 'Roles & Access', icon: Shield    },
-  { id: 'billing',       label: 'Billing',        icon: CreditCard },
-  { id: 'integrations',  label: 'Integrations',   icon: Globe     },
+const allTabs = [
+  { id: 'company',       label: 'Company',        icon: Building,  adminOnly: false },
+  { id: 'users',         label: 'Users',          icon: Users,     adminOnly: true  },
+  { id: 'notifications', label: 'Notifications',  icon: Bell,      adminOnly: false },
+  { id: 'roles',         label: 'Roles & Access', icon: Shield,    adminOnly: false },
+  { id: 'billing',       label: 'Billing',        icon: CreditCard, adminOnly: false },
+  { id: 'integrations',  label: 'Integrations',   icon: Globe,     adminOnly: false },
 ]
 
 interface Profile {
@@ -24,18 +25,26 @@ interface Profile {
   email: string
   full_name: string
   status: 'pending' | 'approved' | 'rejected'
+  role: 'admin' | 'developer' | 'employee'
   created_at: string
 }
 
 function UsersPanel() {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading]   = useState(true)
+  const [pendingRoles, setPendingRoles] = useState<Record<string, string>>({})
 
   async function load() {
     setLoading(true)
     const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
     if (data) setProfiles(data as Profile[])
     setLoading(false)
+  }
+
+  async function approveWithRole(id: string) {
+    const role = pendingRoles[id] ?? 'employee'
+    await supabase.from('profiles').update({ status: 'approved', role }).eq('id', id)
+    setProfiles(p => p.map(u => u.id === id ? { ...u, status: 'approved', role: role as Profile['role'] } : u))
   }
 
   async function setStatus(id: string, status: 'approved' | 'rejected') {
@@ -87,7 +96,16 @@ function UsersPanel() {
                   <p className="text-[11px] text-slate-500 mt-0.5">{u.email}</p>
                   <p className="text-[10.5px] text-slate-400 mt-0.5">Requested {new Date(u.created_at).toLocaleDateString()}</p>
                 </div>
-                <div className="flex gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
+                  <select
+                    value={pendingRoles[u.id] ?? 'employee'}
+                    onChange={e => setPendingRoles(r => ({ ...r, [u.id]: e.target.value }))}
+                    className="text-[12px] px-2.5 py-1.5 border border-[#E4E8EC] rounded-xl bg-slate-50 focus:outline-none focus:border-emerald-400 text-slate-700"
+                  >
+                    <option value="employee">Employee</option>
+                    <option value="admin">Admin</option>
+                    <option value="developer">Developer</option>
+                  </select>
                   <button
                     onClick={() => setStatus(u.id, 'rejected')}
                     className="px-3 py-1.5 rounded-xl border border-red-200 text-red-600 text-[12px] font-semibold hover:bg-red-50 transition-colors"
@@ -95,7 +113,7 @@ function UsersPanel() {
                     Reject
                   </button>
                   <button
-                    onClick={() => setStatus(u.id, 'approved')}
+                    onClick={() => approveWithRole(u.id)}
                     className="px-3 py-1.5 rounded-xl bg-emerald-500 text-white text-[12px] font-semibold hover:bg-emerald-600 transition-colors"
                   >
                     Approve
@@ -167,9 +185,10 @@ function UsersPanel() {
   )
 }
 
-/* ─── Toggle — inline styles so it renders correctly regardless of Tailwind purge ─── */
-function Toggle({ label, description, defaultChecked = false }: { label: string; description: string; defaultChecked?: boolean }) {
-  const [on, setOn] = useState(defaultChecked)
+/* ─── Toggle — controlled ─── */
+function Toggle({ label, description, checked, onChange }: {
+  label: string; description: string; checked: boolean; onChange: (v: boolean) => void
+}) {
   return (
     <div className="flex items-start justify-between gap-4 py-3.5">
       <div>
@@ -179,18 +198,18 @@ function Toggle({ label, description, defaultChecked = false }: { label: string;
       <button
         type="button"
         role="switch"
-        aria-checked={on}
-        onClick={() => setOn(v => !v)}
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
         style={{
           width: 44, height: 24, borderRadius: 12,
-          background: on ? '#10b981' : '#d1d5db',
+          background: checked ? '#10b981' : '#d1d5db',
           position: 'relative', border: 'none', cursor: 'pointer',
           transition: 'background 0.2s', flexShrink: 0, marginTop: 2, outline: 'none',
           display: 'inline-block',
         }}
       >
         <span style={{
-          position: 'absolute', top: 2, left: on ? 22 : 2,
+          position: 'absolute', top: 2, left: checked ? 22 : 2,
           width: 20, height: 20, borderRadius: '50%',
           background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
           transition: 'left 0.2s',
@@ -415,13 +434,75 @@ const integrations: IntegrationInfo[] = [
   },
 ]
 
+type CompanyData = Record<string, string>
+type NotifData   = Record<string, boolean>
+
+const DEFAULT_COMPANY: CompanyData = {
+  company_name: 'Safaeewala Cleaning & Maintenance LLC',
+  trading_name: 'Safaeewala',
+  trn: '100234567890003',
+  ded_license: '1089342',
+  phone: '+971 55 628 2374',
+  email: 'info@safaeewala.com',
+  website: 'https://www.safaeewala.com',
+  address: 'Dubai, United Arab Emirates',
+  currency: 'AED',
+  timezone: 'Asia/Dubai',
+  invoice_prefix: 'SAF',
+  invoice_next_number: '143',
+  payment_terms_days: '10',
+  invoice_vat_rate: '5',
+  invoice_notes: 'Payment due within 10 days. Bank transfer or cash accepted. For queries contact: info@safaeewala.com',
+}
+
+const DEFAULT_NOTIF: NotifData = {
+  new_booking: false, booking_confirmed: false, booking_cancelled: true,
+  reminder_24h: true, reminder_2h: true, invoice_overdue: true,
+  payment_received: true, low_stock: true, document_expiry: true, new_review: false,
+}
+
 export function Settings() {
   const { bookings, clients, employees, invoices, inventory, dailyJobs, dailyExpenses } = useData()
+  const isAdmin    = useIsAdmin()
+  const tabs       = allTabs.filter(t => !t.adminOnly || isAdmin)
   const [activeTab, setActiveTab] = useState('company')
   const [userEmail, setUserEmail] = useState('')
+  const [company,  setCompany]   = useState<CompanyData>(DEFAULT_COMPANY)
+  const [notif,    setNotif]     = useState<NotifData>(DEFAULT_NOTIF)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? ''))
+
+    supabase.from('company_settings').select('data').eq('id', 1).single().then(({ data }) => {
+      if (data?.data) {
+        const saved = data.data as Record<string, any>
+        setCompany(c => ({ ...c, ...saved.company }))
+        if (saved.notifications) setNotif(n => ({ ...n, ...saved.notifications }))
+      }
+      setSettingsLoaded(true)
+    })
   }, [])
+
+  async function saveCompany(patch: CompanyData) {
+    const merged = { ...company, ...patch }
+    setCompany(merged)
+    await supabase.from('company_settings').upsert({ id: 1, data: { company: merged, notifications: notif } })
+    setSaved(true); setTimeout(() => setSaved(false), 2000)
+  }
+
+  async function saveInvoice(patch: CompanyData) {
+    const merged = { ...company, ...patch }
+    setCompany(merged)
+    await supabase.from('company_settings').upsert({ id: 1, data: { company: merged, notifications: notif } })
+    setSaved(true); setTimeout(() => setSaved(false), 2000)
+  }
+
+  async function toggleNotif(key: string, val: boolean) {
+    const updated = { ...notif, [key]: val }
+    setNotif(updated)
+    await supabase.from('company_settings').upsert({ id: 1, data: { company, notifications: updated } })
+  }
   const [connectingIntegration, setConnectingIntegration] = useState<IntegrationInfo | null>(null)
   const [saved, setSaved] = useState(false)
   const [driveStatus, setDriveStatus] = useState<'idle' | 'connecting' | 'uploading' | 'done' | 'error'>('idle')
@@ -500,7 +581,7 @@ export function Settings() {
           {/* Tab nav */}
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-3 py-3">
             <div className="flex gap-1 flex-wrap">
-              {tabs.map(t => (
+              {tabs.filter(t => !t.adminOnly || isAdmin).map(t => (
                 <button
                   key={t.id}
                   onClick={() => setActiveTab(t.id)}
@@ -522,68 +603,89 @@ export function Settings() {
           {activeTab === 'users' && <UsersPanel />}
 
           {/* ── Company ── */}
-          {activeTab === 'company' && (
+          {activeTab === 'company' && settingsLoaded && (
             <div className="space-y-5">
               <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
                 <div className="px-6 py-4 border-b border-[#E4E8EC]">
                   <h3 className="text-[15px] font-bold text-[#111827]">Company Profile</h3>
                 </div>
-                <div className="p-6 space-y-4">
+                <form className="p-6 space-y-4" onSubmit={e => {
+                  e.preventDefault()
+                  const fd = new FormData(e.currentTarget as HTMLFormElement)
+                  saveCompany({
+                    company_name: fd.get('company_name') as string,
+                    trading_name: fd.get('trading_name') as string,
+                    trn: fd.get('trn') as string,
+                    ded_license: fd.get('ded_license') as string,
+                    phone: fd.get('phone') as string,
+                    email: fd.get('email') as string,
+                    website: fd.get('website') as string,
+                    address: fd.get('address') as string,
+                    currency: fd.get('currency') as string,
+                    timezone: fd.get('timezone') as string,
+                  })
+                }}>
                   <div className="grid grid-cols-2 gap-4">
-                    <Input label="Company Name" defaultValue="Safaeewala Cleaning & Maintenance LLC" />
-                    <Input label="Trading Name" defaultValue="Safaeewala" />
+                    <Input name="company_name" label="Company Name" defaultValue={company.company_name} />
+                    <Input name="trading_name" label="Trading Name" defaultValue={company.trading_name} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <Input label="Tax Registration Number (TRN)" defaultValue="100234567890003" />
-                    <Input label="DED License Number" defaultValue="1089342" />
+                    <Input name="trn" label="Tax Registration Number (TRN)" defaultValue={company.trn} />
+                    <Input name="ded_license" label="DED License Number" defaultValue={company.ded_license} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <Input label="Phone" defaultValue="+971 55 628 2374" />
-                    <Input label="Email" type="email" defaultValue="info@safaeewala.com" />
+                    <Input name="phone" label="Phone" defaultValue={company.phone} />
+                    <Input name="email" label="Email" type="email" defaultValue={company.email} />
                   </div>
-                  <Input label="Website" defaultValue="https://www.safaeewala.com" />
-                  <Textarea label="Address" defaultValue="Dubai, United Arab Emirates" rows={2} />
+                  <Input name="website" label="Website" defaultValue={company.website} />
+                  <Textarea name="address" label="Address" defaultValue={company.address} rows={2} />
                   <div className="grid grid-cols-2 gap-4">
-                    <Select label="Default Currency">
+                    <Select name="currency" label="Default Currency" defaultValue={company.currency}>
                       <option value="AED">AED — UAE Dirham</option>
                       <option value="USD">USD — US Dollar</option>
                     </Select>
-                    <Select label="Timezone">
+                    <Select name="timezone" label="Timezone" defaultValue={company.timezone}>
                       <option value="Asia/Dubai">Asia/Dubai (GMT+4)</option>
                       <option value="Asia/Riyadh">Asia/Riyadh (GMT+3)</option>
                     </Select>
                   </div>
                   <div className="flex justify-end">
-                    <Button onClick={handleSave}>
-                      <Save size={14} className="mr-1.5" /> Save Changes
-                    </Button>
+                    <Button type="submit"><Save size={14} className="mr-1.5" /> Save Changes</Button>
                   </div>
-                </div>
+                </form>
               </div>
 
               <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
                 <div className="px-6 py-4 border-b border-[#E4E8EC]">
                   <h3 className="text-[15px] font-bold text-[#111827]">Invoice Settings</h3>
                 </div>
-                <div className="p-6 space-y-4">
+                <form className="p-6 space-y-4" onSubmit={e => {
+                  e.preventDefault()
+                  const fd = new FormData(e.currentTarget as HTMLFormElement)
+                  saveInvoice({
+                    invoice_prefix: fd.get('invoice_prefix') as string,
+                    invoice_next_number: fd.get('invoice_next_number') as string,
+                    payment_terms_days: fd.get('payment_terms_days') as string,
+                    invoice_vat_rate: fd.get('invoice_vat_rate') as string,
+                    invoice_notes: fd.get('invoice_notes') as string,
+                  })
+                }}>
                   <div className="grid grid-cols-2 gap-4">
-                    <Input label="Invoice Prefix" defaultValue="SAF" />
-                    <Input label="Next Invoice Number" type="number" defaultValue="143" />
+                    <Input name="invoice_prefix" label="Invoice Prefix" defaultValue={company.invoice_prefix} />
+                    <Input name="invoice_next_number" label="Next Invoice Number" type="number" defaultValue={company.invoice_next_number} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <Input label="Default Payment Terms (days)" type="number" defaultValue="10" />
-                    <Select label="Default VAT Rate">
+                    <Input name="payment_terms_days" label="Default Payment Terms (days)" type="number" defaultValue={company.payment_terms_days} />
+                    <Select name="invoice_vat_rate" label="Default VAT Rate" defaultValue={company.invoice_vat_rate}>
                       <option value="5">5% (UAE Standard)</option>
                       <option value="0">0% (Zero-rated)</option>
                     </Select>
                   </div>
-                  <Textarea label="Default Invoice Notes" defaultValue="Payment due within 10 days. Bank transfer or cash accepted. For queries contact: info@safaeewala.com" rows={3} />
+                  <Textarea name="invoice_notes" label="Default Invoice Notes" defaultValue={company.invoice_notes} rows={3} />
                   <div className="flex justify-end">
-                    <Button onClick={handleSave}>
-                      <Save size={14} className="mr-1.5" /> Save
-                    </Button>
+                    <Button type="submit"><Save size={14} className="mr-1.5" /> Save</Button>
                   </div>
-                </div>
+                </form>
               </div>
             </div>
           )}
@@ -593,27 +695,23 @@ export function Settings() {
             <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
               <div className="px-6 py-4 border-b border-[#E4E8EC]">
                 <h3 className="text-[15px] font-bold text-[#111827]">Notification Preferences</h3>
-                <p className="text-[12px] text-slate-500 mt-1">
-                  Notifications require WhatsApp or Resend integration to actually send. These settings are saved for when integrations are connected.
-                </p>
+                <p className="text-[12px] text-slate-500 mt-1">Settings are saved instantly to Supabase. Sending requires WhatsApp or Resend integration.</p>
               </div>
               <div className="p-6">
                 <div className="space-y-0 divide-y divide-[#E4E8EC]">
                   <p className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.1em] pb-3">Booking Alerts</p>
-                  <Toggle label="New booking created"  description="Get notified when a new booking is made"           defaultChecked={false} />
-                  <Toggle label="Booking confirmed"    description="Alert when a booking is confirmed by office"       defaultChecked={false} />
-                  <Toggle label="Booking cancelled"    description="Alert when a client cancels"                       defaultChecked />
-                  <Toggle label="24h before reminder"  description="Send reminder to crew 24 hours before job"         defaultChecked />
-                  <Toggle label="2h before reminder"   description="Send reminder 2 hours before job"                  defaultChecked />
-
+                  <Toggle label="New booking created"  description="Get notified when a new booking is made"           checked={notif.new_booking}         onChange={v => toggleNotif('new_booking', v)} />
+                  <Toggle label="Booking confirmed"    description="Alert when a booking is confirmed by office"       checked={notif.booking_confirmed}    onChange={v => toggleNotif('booking_confirmed', v)} />
+                  <Toggle label="Booking cancelled"    description="Alert when a client cancels"                       checked={notif.booking_cancelled}    onChange={v => toggleNotif('booking_cancelled', v)} />
+                  <Toggle label="24h before reminder"  description="Send reminder to crew 24 hours before job"         checked={notif.reminder_24h}         onChange={v => toggleNotif('reminder_24h', v)} />
+                  <Toggle label="2h before reminder"   description="Send reminder 2 hours before job"                  checked={notif.reminder_2h}          onChange={v => toggleNotif('reminder_2h', v)} />
                   <p className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.1em] py-3">Financial Alerts</p>
-                  <Toggle label="Invoice overdue"      description="Alert when an invoice is past due date"            defaultChecked />
-                  <Toggle label="Payment received"     description="Notify when a payment is confirmed"                defaultChecked />
-
+                  <Toggle label="Invoice overdue"      description="Alert when an invoice is past due date"            checked={notif.invoice_overdue}      onChange={v => toggleNotif('invoice_overdue', v)} />
+                  <Toggle label="Payment received"     description="Notify when a payment is confirmed"                checked={notif.payment_received}     onChange={v => toggleNotif('payment_received', v)} />
                   <p className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.1em] py-3">Operational Alerts</p>
-                  <Toggle label="Low stock alert"           description="Alert when inventory falls below minimum"       defaultChecked />
-                  <Toggle label="Document expiry warning"   description="Warn 90 days before staff documents expire"     defaultChecked />
-                  <Toggle label="New client review"         description="Notify when a client leaves a review" />
+                  <Toggle label="Low stock alert"         description="Alert when inventory falls below minimum"       checked={notif.low_stock}            onChange={v => toggleNotif('low_stock', v)} />
+                  <Toggle label="Document expiry warning" description="Warn 90 days before staff documents expire"     checked={notif.document_expiry}      onChange={v => toggleNotif('document_expiry', v)} />
+                  <Toggle label="New client review"       description="Notify when a client leaves a review"           checked={notif.new_review}           onChange={v => toggleNotif('new_review', v)} />
                 </div>
               </div>
             </div>
@@ -624,25 +722,38 @@ export function Settings() {
             <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
               <div className="px-6 py-4 border-b border-[#E4E8EC]">
                 <h3 className="text-[15px] font-bold text-[#111827]">Role Permissions</h3>
+                <p className="text-[12px] text-slate-500 mt-1">Assign roles when approving users in the Users tab.</p>
               </div>
               <div className="p-6 space-y-4">
                 {[
-                  { role: 'Owner',        desc: 'Full access to all modules, settings, and financial data',     perms: ['All modules', 'Delete records', 'Export data', 'Manage roles', 'Financial reports'] },
-                  { role: 'Office Staff', desc: 'Can manage bookings, clients, invoices, and staff schedules',  perms: ['Bookings', 'Clients', 'Invoices', 'Dispatch', 'Employees (view)'] },
-                  { role: 'Crew Lead',    desc: 'Mobile app access, can view and manage assigned jobs',         perms: ['Mobile app', 'View own schedule', 'Checklists', 'Photos'] },
-                  { role: 'Cleaner',      desc: 'Mobile app access for viewing own schedule only',              perms: ['Mobile app', 'View own schedule', 'Checklists'] },
+                  {
+                    role: 'Admin', badge: 'bg-purple-50 text-purple-700 border-purple-200',
+                    desc: 'Full access to all modules including user management and daily job sheet',
+                    perms: ['All modules', 'Daily Job Sheet', 'Approve users', 'Delete records', 'Export data', 'Financial reports', 'Settings'],
+                  },
+                  {
+                    role: 'Developer', badge: 'bg-blue-50 text-blue-700 border-blue-200',
+                    desc: 'Same full access as Admin — for technical team members managing the system',
+                    perms: ['All modules', 'Daily Job Sheet', 'Approve users', 'Delete records', 'Export data', 'Financial reports', 'Settings'],
+                  },
+                  {
+                    role: 'Employee', badge: 'bg-slate-100 text-slate-600 border-slate-200',
+                    desc: 'Operational access only — cannot approve users or access Daily Job Sheet',
+                    perms: ['Overview', 'Bookings', 'Clients', 'Employees', 'Dispatch', 'Invoices', 'Inventory', 'Reports'],
+                    restricted: ['Daily Job Sheet', 'Approve users', 'Users tab'],
+                  },
                 ].map(r => (
                   <div key={r.role} className="border border-[#E4E8EC] rounded-xl p-4 hover:border-slate-300 transition-colors">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <p className="text-[13px] font-bold text-[#111827]">{r.role}</p>
-                        <p className="text-[12px] text-slate-500 mt-0.5">{r.desc}</p>
-                      </div>
-                      <Button variant="ghost" size="sm">Edit</Button>
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${r.badge}`}>{r.role}</span>
+                      <p className="text-[12px] text-slate-500 flex-1">{r.desc}</p>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {r.perms.map(p => (
                         <span key={p} className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">{p}</span>
+                      ))}
+                      {'restricted' in r && r.restricted?.map(p => (
+                        <span key={p} className="text-[11px] bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full font-medium line-through">{p}</span>
                       ))}
                     </div>
                   </div>
