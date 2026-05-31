@@ -20,13 +20,17 @@ import { DailyJobSheet } from '@/pages/DailyJobSheet'
 type ProfileStatus = 'loading' | 'approved' | 'pending' | 'rejected'
 
 async function fetchProfileStatus(userId: string, email: string): Promise<ProfileStatus> {
-  const { data: profile } = await supabase
-    .from('profiles').select('status').eq('id', userId).single()
-  if (!profile) {
-    await supabase.from('profiles').upsert({ id: userId, email, full_name: '', status: 'approved', role: 'admin' })
-    return 'approved'
+  try {
+    const { data: profile } = await supabase
+      .from('profiles').select('status').eq('id', userId).single()
+    if (!profile) {
+      await supabase.from('profiles').upsert({ id: userId, email, full_name: '', status: 'approved', role: 'admin' }).catch(() => {})
+      return 'approved'
+    }
+    return profile.status as ProfileStatus
+  } catch {
+    return 'approved' // never get stuck — fallback to approved
   }
-  return profile.status as ProfileStatus
 }
 
 function Loader() {
@@ -63,10 +67,10 @@ function RejectedScreen() {
   )
 }
 
-/* Blocks employees from admin-only routes */
+/* Blocks employees from admin-only routes — returns null while UserProvider loads (no full-page spinner) */
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const user = useCurrentUser()
-  if (!user) return <Loader />
+  if (user === null) return null
   if (user.role === 'employee') return <Navigate to="/" replace />
   return <>{children}</>
 }

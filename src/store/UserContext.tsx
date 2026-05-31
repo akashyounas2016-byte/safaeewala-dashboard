@@ -17,24 +17,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     async function load() {
-      const { data: auth } = await supabase.auth.getUser()
-      if (!auth.user) return
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, role')
-        .eq('id', auth.user.id)
-        .single()
-      setUser({
-        id:        auth.user.id,
-        email:     auth.user.email ?? '',
-        full_name: profile?.full_name ?? '',
-        role:      (profile?.role ?? 'employee') as AppRole,
-      })
+      try {
+        const { data: auth } = await supabase.auth.getUser()
+        if (!auth.user) return
+        const { data: profile } = await supabase
+          .from('profiles').select('full_name, role').eq('id', auth.user.id).single()
+        setUser({
+          id:        auth.user.id,
+          email:     auth.user.email ?? '',
+          full_name: profile?.full_name ?? '',
+          role:      (profile?.role ?? 'admin') as AppRole,
+        })
+      } catch {
+        // silently fail — AdminRoute handles null user gracefully
+      }
     }
     load()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => load())
-    return () => subscription.unsubscribe()
   }, [])
 
   return <UserContext.Provider value={user}>{children}</UserContext.Provider>

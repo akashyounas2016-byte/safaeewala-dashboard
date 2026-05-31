@@ -54,26 +54,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [dailyExpenses, setDailyExpenses] = useState<DailyExpense[]>([])
   const [loading,       setLoading]       = useState(true)
 
-  /* ── Load all data on mount ── */
+  /* ── Load all data on mount — each table is fetched independently so a
+       missing table (e.g. daily_jobs not created yet) never blocks the others ── */
   useEffect(() => {
+    const q = (table: string, order = 'created_at') =>
+      supabase.from(table).select('*').order(order, { ascending: false }).then(r => r.data ?? []).catch(() => [])
+
     Promise.all([
-      supabase.from('bookings').select('*').order('created_at', { ascending: false }),
-      supabase.from('clients').select('*').order('created_at', { ascending: false }),
-      supabase.from('employees').select('*').order('created_at', { ascending: false }),
-      supabase.from('invoices').select('*').order('created_at', { ascending: false }),
-      supabase.from('inventory').select('*').order('created_at', { ascending: false }),
-      supabase.from('daily_jobs').select('*').order('date', { ascending: false }),
-      supabase.from('daily_expenses').select('*').order('date', { ascending: false }),
+      q('bookings'),
+      q('clients'),
+      q('employees'),
+      q('invoices'),
+      q('inventory'),
+      q('daily_jobs',     'date'),
+      q('daily_expenses', 'date'),
     ]).then(([b, c, e, i, inv, dj, de]) => {
-      if (b.data)   setBookings(b.data     as Booking[])
-      if (c.data)   setClients(c.data      as Client[])
-      if (e.data)   setEmployees(e.data    as Employee[])
-      if (i.data)   setInvoices(i.data     as Invoice[])
-      if (inv.data) setInventory(inv.data  as InventoryItem[])
-      if (dj.data)  setDailyJobs(dj.data   as DailyJob[])
-      if (de.data)  setDailyExpenses(de.data as DailyExpense[])
+      setBookings(b     as Booking[])
+      setClients(c      as Client[])
+      setEmployees(e    as Employee[])
+      setInvoices(i     as Invoice[])
+      setInventory(inv  as InventoryItem[])
+      setDailyJobs(dj   as DailyJob[])
+      setDailyExpenses(de as DailyExpense[])
       setLoading(false)
-    })
+    }).catch(() => setLoading(false))
   }, [])
 
   const store: DataStore = {
