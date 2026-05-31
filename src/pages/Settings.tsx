@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import * as XLSX from 'xlsx'
 import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured } from '@/lib/googleDrive'
@@ -12,11 +12,189 @@ import { useData } from '@/store/DataContext'
 
 const tabs = [
   { id: 'company',       label: 'Company',        icon: Building  },
+  { id: 'users',         label: 'Users',          icon: Users     },
   { id: 'notifications', label: 'Notifications',  icon: Bell      },
   { id: 'roles',         label: 'Roles & Access', icon: Shield    },
   { id: 'billing',       label: 'Billing',        icon: CreditCard },
   { id: 'integrations',  label: 'Integrations',   icon: Globe     },
 ]
+
+interface Profile {
+  id: string
+  email: string
+  full_name: string
+  status: 'pending' | 'approved' | 'rejected'
+  created_at: string
+}
+
+function UsersPanel() {
+  const [profiles, setProfiles] = useState<Profile[]>([])
+  const [loading, setLoading]   = useState(true)
+
+  async function load() {
+    setLoading(true)
+    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
+    if (data) setProfiles(data as Profile[])
+    setLoading(false)
+  }
+
+  async function setStatus(id: string, status: 'approved' | 'rejected') {
+    await supabase.from('profiles').update({ status }).eq('id', id)
+    setProfiles(p => p.map(u => u.id === id ? { ...u, status } : u))
+  }
+
+  useEffect(() => { load() }, [])
+
+  const pending  = profiles.filter(p => p.status === 'pending')
+  const approved = profiles.filter(p => p.status === 'approved')
+  const rejected = profiles.filter(p => p.status === 'rejected')
+
+  const statusBadge = (s: string) => {
+    const cfg: Record<string, string> = {
+      approved: 'bg-emerald-50 text-emerald-700',
+      pending:  'bg-amber-50 text-amber-700',
+      rejected: 'bg-red-50 text-red-600',
+    }
+    return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${cfg[s] ?? ''}`}>{s}</span>
+  }
+
+  return (
+    <div className="space-y-5">
+
+      {/* Supabase setup notice */}
+      <div className="bg-amber-50 border border-amber-200 rounded-[22px] p-5">
+        <p className="text-[13px] font-bold text-amber-800 mb-2">One-time Supabase setup required</p>
+        <p className="text-[12px] text-amber-700 mb-3">Run this SQL in Supabase → SQL Editor once to enable user approval:</p>
+        <pre className="bg-slate-900 text-emerald-400 text-[11px] p-4 rounded-xl overflow-x-auto leading-relaxed whitespace-pre">{`CREATE TABLE IF NOT EXISTS profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  full_name TEXT DEFAULT '',
+  status TEXT DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO profiles (id, email, full_name)
+  VALUES (NEW.id, NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', ''))
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();`}</pre>
+      </div>
+
+      {/* Pending requests */}
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between">
+          <h3 className="text-[15px] font-bold text-[#111827]">Pending Requests</h3>
+          {pending.length > 0 && (
+            <span className="text-[11px] font-bold bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full">
+              {pending.length} waiting
+            </span>
+          )}
+        </div>
+        {loading ? (
+          <p className="text-[13px] text-slate-400 text-center py-8">Loading…</p>
+        ) : pending.length === 0 ? (
+          <p className="text-[13px] text-slate-400 text-center py-8">No pending requests</p>
+        ) : (
+          <div className="divide-y divide-[#E4E8EC]">
+            {pending.map(u => (
+              <div key={u.id} className="px-6 py-4 flex items-center gap-4">
+                <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-[13px] shrink-0">
+                  {(u.full_name || u.email)[0].toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-[#111827]">{u.full_name || '—'}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{u.email}</p>
+                  <p className="text-[10.5px] text-slate-400 mt-0.5">Requested {new Date(u.created_at).toLocaleDateString()}</p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={() => setStatus(u.id, 'rejected')}
+                    className="px-3 py-1.5 rounded-xl border border-red-200 text-red-600 text-[12px] font-semibold hover:bg-red-50 transition-colors"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    onClick={() => setStatus(u.id, 'approved')}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-500 text-white text-[12px] font-semibold hover:bg-emerald-600 transition-colors"
+                  >
+                    Approve
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Approved users */}
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#E4E8EC]">
+          <h3 className="text-[15px] font-bold text-[#111827]">Active Users ({approved.length})</h3>
+        </div>
+        <div className="divide-y divide-[#E4E8EC]">
+          {approved.map(u => (
+            <div key={u.id} className="px-6 py-4 flex items-center gap-4">
+              <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-[13px] shrink-0">
+                {(u.full_name || u.email)[0].toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-[#111827]">{u.full_name || '—'}</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">{u.email}</p>
+              </div>
+              {statusBadge(u.status)}
+              <button
+                onClick={() => setStatus(u.id, 'rejected')}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-500 text-[12px] font-semibold hover:bg-slate-50 hover:text-red-600 hover:border-red-200 transition-colors"
+              >
+                Revoke
+              </button>
+            </div>
+          ))}
+          {approved.length === 0 && <p className="text-[13px] text-slate-400 text-center py-6">No approved users</p>}
+        </div>
+      </div>
+
+      {/* Rejected users */}
+      {rejected.length > 0 && (
+        <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+          <div className="px-6 py-4 border-b border-[#E4E8EC]">
+            <h3 className="text-[15px] font-bold text-[#111827]">Rejected ({rejected.length})</h3>
+          </div>
+          <div className="divide-y divide-[#E4E8EC]">
+            {rejected.map(u => (
+              <div key={u.id} className="px-6 py-4 flex items-center gap-4">
+                <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center text-red-500 font-bold text-[13px] shrink-0">
+                  {(u.full_name || u.email)[0].toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-[#111827]">{u.full_name || '—'}</p>
+                  <p className="text-[11px] text-slate-500">{u.email}</p>
+                </div>
+                {statusBadge(u.status)}
+                <button
+                  onClick={() => setStatus(u.id, 'approved')}
+                  className="px-3 py-1.5 rounded-xl border border-emerald-200 text-emerald-600 text-[12px] font-semibold hover:bg-emerald-50 transition-colors"
+                >
+                  Re-approve
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 /* ─── Toggle — inline styles so it renders correctly regardless of Tailwind purge ─── */
 function Toggle({ label, description, defaultChecked = false }: { label: string; description: string; defaultChecked?: boolean }) {
@@ -364,6 +542,9 @@ export function Settings() {
               ))}
             </div>
           </div>
+
+          {/* ── Users ── */}
+          {activeTab === 'users' && <UsersPanel />}
 
           {/* ── Company ── */}
           {activeTab === 'company' && (
