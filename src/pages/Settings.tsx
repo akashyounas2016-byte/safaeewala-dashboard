@@ -61,35 +61,6 @@ function UsersPanel() {
   return (
     <div className="space-y-5">
 
-      {/* Supabase setup notice */}
-      <div className="bg-amber-50 border border-amber-200 rounded-[22px] p-5">
-        <p className="text-[13px] font-bold text-amber-800 mb-2">One-time Supabase setup required</p>
-        <p className="text-[12px] text-amber-700 mb-3">Run this SQL in Supabase → SQL Editor once to enable user approval:</p>
-        <pre className="bg-slate-900 text-emerald-400 text-[11px] p-4 rounded-xl overflow-x-auto leading-relaxed whitespace-pre">{`CREATE TABLE IF NOT EXISTS profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  email TEXT NOT NULL,
-  full_name TEXT DEFAULT '',
-  status TEXT DEFAULT 'pending',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO profiles (id, email, full_name)
-  VALUES (NEW.id, NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', ''))
-  ON CONFLICT (id) DO NOTHING;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION handle_new_user();`}</pre>
-      </div>
-
       {/* Pending requests */}
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between">
@@ -447,6 +418,10 @@ const integrations: IntegrationInfo[] = [
 export function Settings() {
   const { bookings, clients, employees, invoices, inventory, dailyJobs, dailyExpenses } = useData()
   const [activeTab, setActiveTab] = useState('company')
+  const [userEmail, setUserEmail] = useState('')
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? ''))
+  }, [])
   const [connectingIntegration, setConnectingIntegration] = useState<IntegrationInfo | null>(null)
   const [saved, setSaved] = useState(false)
   const [driveStatus, setDriveStatus] = useState<'idle' | 'connecting' | 'uploading' | 'done' | 'error'>('idle')
@@ -813,7 +788,7 @@ export function Settings() {
             </div>
             <div className="space-y-2">
               {[
-                { label: 'Email',      value: 'akash@safaeewala.com' },
+                { label: 'Email',      value: userEmail || '—' },
                 { label: 'Role',       value: 'Owner' },
                 { label: '2FA',        value: 'Not enabled' },
                 { label: 'Last login', value: 'Today' },
