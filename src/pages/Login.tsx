@@ -87,12 +87,29 @@ function SignUpForm({ onSwitch }: { onSwitch: () => void }) {
     e.preventDefault()
     if (password.length < 6) { setError('Password must be at least 6 characters'); return }
     setError(''); setLoading(true)
-    const { error } = await supabase.auth.signUp({
+
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { full_name: name } },
     })
     if (error) { setError(error.message); setLoading(false); return }
+
+    // Insert profile directly — more reliable than a DB trigger
+    if (data.user) {
+      const { error: profileError } = await supabase.from('profiles').upsert({
+        id:        data.user.id,
+        email:     data.user.email ?? email,
+        full_name: name,
+        status:    'pending',
+      })
+      if (profileError) {
+        setError('Account created but profile save failed: ' + profileError.message)
+        setLoading(false)
+        return
+      }
+    }
+
     setDone(true)
   }
 
