@@ -26,7 +26,7 @@ async function fetchProfileStatus(userId: string, email: string): Promise<Profil
     if (!profile) {
       await supabase.from('profiles')
         .upsert({ id: userId, email, full_name: '', status: 'approved', role: 'admin' })
-        .catch(() => {})
+        .then(() => {}, () => {})
       return 'approved'
     }
     return profile.status as ProfileStatus

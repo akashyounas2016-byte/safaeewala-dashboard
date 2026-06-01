@@ -1039,9 +1039,6 @@ export function Settings() {
             </a>
           </div>
 
-        </div>
-      </div>
-
           {/* Demo Data — admin only */}
           {isAdmin && (
             <div className="bg-slate-50 border border-[#E4E8EC] rounded-[22px] p-5">
@@ -1073,6 +1070,7 @@ export function Settings() {
               <p className="text-[10px] text-slate-400 text-center mt-2">Safe to run multiple times — uses upsert</p>
             </div>
           )}
+
         </div>
       </div>
 

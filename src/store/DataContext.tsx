@@ -57,8 +57,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   /* ── Load all data on mount — each table is fetched independently so a
        missing table (e.g. daily_jobs not created yet) never blocks the others ── */
   useEffect(() => {
-    const q = (table: string, order = 'created_at') =>
-      supabase.from(table).select('*').order(order, { ascending: false }).then(r => r.data ?? []).catch(() => [])
+    const q = async (table: string, order = 'created_at'): Promise<any[]> => {
+      try {
+        const { data } = await supabase.from(table).select('*').order(order, { ascending: false })
+        return data ?? []
+      } catch { return [] }
+    }
 
     Promise.all([
       q('bookings'),
