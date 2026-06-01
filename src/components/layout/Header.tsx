@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
-import { Menu, Search, Bell, Plus, AlertCircle, Package, FileText, Clock, Users } from 'lucide-react'
+import { useState, useRef, useEffect, type ElementType } from 'react'
+import { Menu, Search, Bell, Plus, Package, FileText, Clock, Users } from 'lucide-react'
 import { useData } from '@/store/DataContext'
 import { useNavigate } from 'react-router-dom'
 
@@ -29,7 +29,7 @@ function NotificationPanel({ onClose }: { onClose: () => void }) {
 
   const pendingBookings = bookings.filter(b => b.status === 'pending')
 
-  type Notif = { id: string; icon: React.ElementType; iconBg: string; iconColor: string; title: string; sub: string; route: string }
+  type Notif = { id: string; icon: ElementType; iconBg: string; iconColor: string; title: string; sub: string; route: string }
   const notifications: Notif[] = [
     ...overdueInvoices.map(i => ({
       id: i.id, icon: FileText, iconBg: 'bg-red-50', iconColor: 'text-red-500',
