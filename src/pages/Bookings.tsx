@@ -429,163 +429,206 @@ export function Bookings() {
   )
 }
 
-/* ─── Week calendar ─── */
-function WeekCalendar({
-  bookings,
-  onSelect,
-}: {
-  bookings: Booking[]
-  onSelect: (b: Booking) => void
-}) {
-  const days = [
-    { label: 'MON', date: 18 },
-    { label: 'TUE', date: 19 },
-    { label: 'WED', date: 20, today: true },
-    { label: 'THU', date: 21 },
-    { label: 'FRI', date: 22 },
-    { label: 'SAT', date: 23 },
-    { label: 'SUN', date: 24 },
-  ]
-  const hours = Array.from({ length: 11 }, (_, i) => 7 + i)
+/* ─── Month Calendar (real, dynamic) ─── */
+function WeekCalendar({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b: Booking) => void }) {
+  const today = new Date()
+  const [curYear,  setCurYear]  = useState(today.getFullYear())
+  const [curMonth, setCurMonth] = useState(today.getMonth())
 
-  const blockFor = (b: Booking) => {
-    const start = parseInt(b.scheduled_time.split(':')[0])
-    const startMin = parseInt(b.scheduled_time.split(':')[1])
-    const top = ((start - 7) + startMin / 60) * 56
-    const height = b.duration_hours * 56 - 2
-    const crew = b.assigned_crew[0] ?? 'default'
-    const color = crewBlockColors[crew] ?? crewBlockColors.default
-    return { top, height, color, crew }
+  const todayStr = today.toISOString().split('T')[0]
+  const monthName = new Date(curYear, curMonth).toLocaleString('en-GB', { month: 'long', year: 'numeric' })
+
+  function prevMonth() {
+    if (curMonth === 0) { setCurMonth(11); setCurYear(y => y - 1) }
+    else setCurMonth(m => m - 1)
   }
+  function nextMonth() {
+    if (curMonth === 11) { setCurMonth(0); setCurYear(y => y + 1) }
+    else setCurMonth(m => m + 1)
+  }
+  function goToday() { setCurYear(today.getFullYear()); setCurMonth(today.getMonth()) }
+
+  // Build grid cells
+  const firstDay = new Date(curYear, curMonth, 1).getDay() // 0=Sun
+  const daysInMonth = new Date(curYear, curMonth + 1, 0).getDate()
+  const cells: (number | null)[] = [
+    ...Array(firstDay).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ]
+  while (cells.length % 7 !== 0) cells.push(null)
 
   const bookingsByDate = bookings.reduce<Record<string, Booking[]>>((acc, b) => {
     (acc[b.scheduled_date] ||= []).push(b)
     return acc
   }, {})
 
-  const dateKey = (d: number) => `2026-05-${String(d).padStart(2, '0')}`
+  const statusDot: Record<string, string> = {
+    completed:   'bg-slate-400',
+    confirmed:   'bg-emerald-500',
+    in_progress: 'bg-blue-500',
+    pending:     'bg-amber-400',
+    cancelled:   'bg-red-400',
+  }
+
+  const monthRevenue = bookings
+    .filter(b => {
+      const d = new Date(b.scheduled_date)
+      return d.getFullYear() === curYear && d.getMonth() === curMonth && b.status !== 'cancelled'
+    })
+    .reduce((s, b) => s + b.total_amount, 0)
+
+  const monthJobs = bookings.filter(b => {
+    const d = new Date(b.scheduled_date)
+    return d.getFullYear() === curYear && d.getMonth() === curMonth
+  }).length
 
   return (
     <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-[#E4E8EC] flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h3 className="text-[17px] font-bold text-[#111827] tracking-tight">
-            May 2026 <span className="text-slate-400 font-normal">· Week 21</span>
-          </h3>
-          <span className="text-[12px] text-slate-500">28 jobs · AED 5,840 projected</span>
+      <div className="px-5 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h3 className="text-[17px] font-bold text-[#111827]">{monthName}</h3>
+          <p className="text-[12px] text-slate-500 mt-0.5">{monthJobs} jobs · AED {monthRevenue.toLocaleString()} projected</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center border border-[#E4E8EC] rounded-xl overflow-hidden">
-            <button className="p-2 hover:bg-slate-50 transition-colors"><ChevronLeft size={14} /></button>
-            <button className="text-[12px] px-3 py-2 border-l border-r border-[#E4E8EC] hover:bg-slate-50 transition-colors font-medium">Today</button>
-            <button className="p-2 hover:bg-slate-50 transition-colors"><ChevronRight size={14} /></button>
+            <button onClick={prevMonth} className="p-2 hover:bg-slate-50 transition-colors"><ChevronLeft size={14} /></button>
+            <button onClick={goToday} className="text-[12px] px-3 py-2 border-l border-r border-[#E4E8EC] hover:bg-slate-50 font-medium">Today</button>
+            <button onClick={nextMonth} className="p-2 hover:bg-slate-50 transition-colors"><ChevronRight size={14} /></button>
           </div>
         </div>
       </div>
 
-      {/* Crew filter row */}
-      <div className="px-5 py-3 border-b border-[#E4E8EC] bg-slate-50 flex items-center gap-3 flex-wrap">
-        <span className="text-[10.5px] uppercase tracking-[0.08em] text-slate-500 font-semibold">Crew</span>
-        <div className="flex gap-1.5 flex-wrap">
-          {['All', 'Maria', 'James', 'Aisha', 'Tom', 'Priya'].map((c) => {
-            const color = c === 'All' ? null : crewBlockColors[c]?.border
-            return (
-              <button
-                key={c}
-                className={`text-[11.5px] px-2.5 py-1 rounded-full font-medium inline-flex items-center gap-1.5 transition-colors ${
-                  c === 'All'
-                    ? 'bg-[#111827] text-white'
-                    : 'bg-white border border-[#E4E8EC] text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                {color && <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />}
-                {c}
-              </button>
-            )
-          })}
-        </div>
-        <span className="ml-auto text-[11.5px] text-slate-500">29 jobs · AED 7,250+ this week</span>
-      </div>
-
-      {/* Grid */}
-      <div className="grid" style={{ gridTemplateColumns: '52px repeat(7, 1fr)' }}>
-        {/* Day header row */}
-        <div className="border-b border-[#E4E8EC] bg-slate-50" />
-        {days.map(d => (
-          <div
-            key={d.label}
-            className={`border-b border-l border-[#E4E8EC] px-2 py-2.5 text-center ${d.today ? 'bg-emerald-50' : 'bg-slate-50'}`}
-          >
-            <p className={`text-[10.5px] uppercase tracking-[0.1em] font-semibold ${d.today ? 'text-emerald-600' : 'text-slate-500'}`}>
-              {d.label}
-            </p>
-            <p className={`text-[20px] font-bold tracking-tight mt-0.5 inline-flex items-center justify-center w-8 h-8 rounded-full ${d.today ? 'bg-emerald-500 text-white' : 'text-[#111827]'}`}>
-              {d.date}
-            </p>
-          </div>
+      {/* Day-of-week header */}
+      <div className="grid grid-cols-7 border-b border-[#E4E8EC] bg-slate-50">
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+          <div key={d} className="py-2.5 text-center text-[10.5px] font-semibold text-slate-500 uppercase tracking-[0.08em]">{d}</div>
         ))}
+      </div>
 
-        {/* Hour rows */}
-        <div className="col-span-8 grid relative" style={{ gridTemplateColumns: '52px repeat(7, 1fr)', minHeight: `${56 * 11}px` }}>
-          <div className="flex flex-col">
-            {hours.map(h => (
-              <div key={h} className="h-14 border-b border-[#E4E8EC] text-right pr-2 pt-1">
-                <span className="text-[10.5px] text-slate-400 tabular-nums">
-                  {h > 12 ? h - 12 : h}{h >= 12 ? 'p' : 'a'}
-                </span>
+      {/* Calendar grid */}
+      <div className="grid grid-cols-7">
+        {cells.map((day, i) => {
+          if (!day) return <div key={i} className="min-h-[100px] border-r border-b border-[#E4E8EC] bg-slate-50/40" />
+          const dateStr = `${curYear}-${String(curMonth + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+          const dayBookings = bookingsByDate[dateStr] ?? []
+          const isToday = dateStr === todayStr
+          return (
+            <div key={i} className={`min-h-[100px] border-r border-b border-[#E4E8EC] p-2 ${isToday ? 'bg-emerald-50/50' : 'hover:bg-slate-50/60'} transition-colors`}>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold mb-1.5 ${isToday ? 'bg-emerald-500 text-white' : 'text-slate-700'}`}>
+                {day}
               </div>
-            ))}
-          </div>
-
-          {days.map(d => {
-            const dayBookings = bookingsByDate[dateKey(d.date)] ?? []
-            return (
-              <div
-                key={d.label}
-                className={`relative border-l border-[#E4E8EC] ${d.today ? 'bg-emerald-50/30' : ''}`}
-              >
-                {hours.map(h => (
-                  <div key={h} className="h-14 border-b border-[#E4E8EC]" />
+              <div className="space-y-1">
+                {dayBookings.slice(0, 3).map(b => (
+                  <button
+                    key={b.id}
+                    onClick={() => onSelect(b)}
+                    className="w-full text-left flex items-center gap-1.5 px-1.5 py-1 rounded-lg hover:bg-white/80 transition-colors group"
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[b.status] ?? 'bg-slate-400'}`} />
+                    <span className="text-[10.5px] font-medium text-slate-700 truncate group-hover:text-emerald-700">{b.client_name}</span>
+                  </button>
                 ))}
-                {dayBookings.map(b => {
-                  const { top, height, color, crew } = blockFor(b)
-                  return (
-                    <button
-                      key={b.id}
-                      onClick={() => onSelect(b)}
-                      className="absolute left-[3px] right-[3px] rounded-xl px-2 py-1.5 text-left overflow-hidden hover:shadow-md transition-shadow border-l-[3px]"
-                      style={{
-                        top: `${top}px`,
-                        height: `${height}px`,
-                        background: color.bg,
-                        borderLeftColor: color.border,
-                        color: color.text,
-                      }}
-                    >
-                      <p className="text-[11.5px] font-semibold leading-tight truncate">{b.client_name}</p>
-                      <p className="text-[10.5px] opacity-80 truncate mt-0.5 capitalize">
-                        {b.service_type} · {crew}
-                      </p>
-                    </button>
-                  )
-                })}
+                {dayBookings.length > 3 && (
+                  <p className="text-[10px] text-slate-400 pl-1.5 font-medium">+{dayBookings.length - 3} more</p>
+                )}
               </div>
-            )
-          })}
-        </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Legend */}
-      <div className="px-5 py-3 border-t border-[#E4E8EC] bg-slate-50 flex items-center gap-4 flex-wrap text-[11px] text-slate-500">
-        <span className="uppercase tracking-[0.08em] font-semibold">Crew colors</span>
-        {Object.entries(crewBlockColors).filter(([k]) => k !== 'default').map(([name, c]) => (
-          <div key={name} className="inline-flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded" style={{ background: c.bg, borderLeft: `2px solid ${c.border}` }} />
-            {name}
+      <div className="px-5 py-3 border-t border-[#E4E8EC] bg-slate-50 flex items-center gap-5 flex-wrap text-[11px] text-slate-500">
+        {[
+          { label: 'Scheduled', dot: 'bg-emerald-500' },
+          { label: 'Live',      dot: 'bg-blue-500' },
+          { label: 'Pending',   dot: 'bg-amber-400' },
+          { label: 'Completed', dot: 'bg-slate-400' },
+          { label: 'Cancelled', dot: 'bg-red-400' },
+        ].map(l => (
+          <div key={l.label} className="flex items-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${l.dot}`} />
+            {l.label}
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+/* ─── Kanban board ─── */
+function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b: Booking) => void }) {
+  const cols: { key: BookingStatus; label: string; bg: string; border: string; dot: string }[] = [
+    { key: 'pending',     label: 'Pending',   bg: 'bg-amber-50',   border: 'border-amber-200',  dot: 'bg-amber-400' },
+    { key: 'confirmed',   label: 'Scheduled', bg: 'bg-emerald-50', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+    { key: 'in_progress', label: 'Live Now',  bg: 'bg-blue-50',    border: 'border-blue-200',   dot: 'bg-blue-500' },
+    { key: 'completed',   label: 'Completed', bg: 'bg-slate-50',   border: 'border-slate-200',  dot: 'bg-slate-400' },
+    { key: 'cancelled',   label: 'Cancelled', bg: 'bg-red-50',     border: 'border-red-200',    dot: 'bg-red-400' },
+  ]
+
+  const grouped = cols.reduce((acc, c) => {
+    acc[c.key] = bookings.filter(b => b.status === c.key)
+    return acc
+  }, {} as Record<string, Booking[]>)
+
+  return (
+    <div className="flex gap-4 overflow-x-auto pb-2">
+      {cols.map(col => (
+        <div key={col.key} className="min-w-[240px] flex-1">
+          {/* Column header */}
+          <div className={`flex items-center gap-2 px-3 py-2.5 rounded-t-2xl border ${col.bg} ${col.border} mb-2`}>
+            <span className={`w-2 h-2 rounded-full ${col.dot}`} />
+            <span className="text-[12px] font-bold text-slate-700">{col.label}</span>
+            <span className="ml-auto text-[11px] font-semibold text-slate-500 bg-white/60 px-2 py-0.5 rounded-full">
+              {grouped[col.key]?.length ?? 0}
+            </span>
+          </div>
+
+          {/* Cards */}
+          <div className="space-y-2.5">
+            {(grouped[col.key] ?? []).map((b, idx) => (
+              <div
+                key={b.id}
+                onClick={() => onSelect(b)}
+                className="bg-white rounded-[18px] border border-[#E4E8EC] p-4 cursor-pointer hover:shadow-[0_4px_16px_rgba(15,23,42,0.10)] hover:border-emerald-200 transition-all"
+              >
+                <div className="flex items-start gap-2.5 mb-3">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
+                    style={{ background: ['#dcefe7','#fce4d6','#e4dff5','#d6e7f5','#fcecc8'][idx % 5], color: ['#0d8a72','#c66a3a','#6b5bb5','#3a7ab8','#a8842a'][idx % 5] }}
+                  >
+                    {b.client_name.split(' ').map(p => p[0]).join('').slice(0,2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold text-[#111827] truncate">{b.client_name}</p>
+                    <p className="text-[11px] text-slate-500 capitalize mt-0.5">{b.service_type}</p>
+                  </div>
+                </div>
+                <div className="space-y-1.5 text-[11px] text-slate-500">
+                  <div className="flex items-center gap-1.5">
+                    <CalendarIcon size={11} className="shrink-0" />
+                    <span>{b.scheduled_date} · {b.scheduled_time}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <MapPin size={11} className="shrink-0" />
+                    <span className="truncate">{b.service_address}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-[#E4E8EC]">
+                  <span className="text-[11px] text-slate-400">{b.duration_hours}h</span>
+                  <span className="text-[13px] font-bold text-[#111827]">AED {b.total_amount.toLocaleString()}</span>
+                </div>
+              </div>
+            ))}
+            {(grouped[col.key] ?? []).length === 0 && (
+              <div className="bg-slate-50 rounded-2xl border border-dashed border-[#E4E8EC] py-8 text-center">
+                <p className="text-[11px] text-slate-400">No {col.label.toLowerCase()} bookings</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

@@ -108,8 +108,47 @@ export function DataProvider({ children }: { children: ReactNode }) {
       })
     },
     updateBooking: (id, patch) => {
+      const booking = bookings.find(b => b.id === id)
       setBookings(p => p.map(b => b.id === id ? { ...b, ...patch } : b))
       supabase.from('bookings').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+
+      // When a booking is marked completed for the first time:
+      if (patch.status === 'completed' && booking && booking.status !== 'completed') {
+        // 1. Update client total_spent + total_bookings + last_service
+        const client = clients.find(c =>
+          c.full_name.toLowerCase().trim() === booking.client_name.toLowerCase().trim()
+        )
+        if (client) {
+          const clientPatch = {
+            total_spent:    client.total_spent + booking.total_amount,
+            total_bookings: client.total_bookings + 1,
+            last_service:   booking.scheduled_date,
+          }
+          setClients(p => p.map(c => c.id === client.id ? { ...c, ...clientPatch } : c))
+          supabase.from('clients').update(clientPatch).eq('id', client.id)
+            .then(({ error }) => { if (error) console.error(error) })
+        }
+
+        // 2. Auto-create a draft invoice
+        const sub = booking.total_amount
+        const vat = Math.round(sub * 0.05 * 100) / 100
+        const due = new Date(); due.setDate(due.getDate() + 10)
+        const invoice = {
+          id: uid(), created_at: now(),
+          invoice_number: `INV-${Date.now().toString().slice(-6)}`,
+          client_id: booking.client_id,
+          client_name: booking.client_name,
+          client_address: booking.service_address,
+          trn: '', company_trn: '100234567890003',
+          line_items: [{ description: `${booking.service_type} — ${booking.scheduled_date}`, quantity: 1, unit_price: sub, amount: sub }],
+          subtotal: sub, vat_rate: 5, vat_amount: vat, total: sub + vat,
+          status: 'draft' as const,
+          due_date: due.toISOString().split('T')[0],
+          notes: 'Payment due within 10 days. Bank transfer or cash accepted.',
+        }
+        setInvoices(p => [invoice, ...p])
+        supabase.from('invoices').insert(invoice).then(({ error }) => { if (error) console.error(error) })
+      }
     },
     deleteBooking: (id) => {
       setBookings(p => p.filter(b => b.id !== id))
