@@ -322,7 +322,8 @@ export function Dispatch() {
             ) : (
               <div>
                 {timeSlots.map(slot => {
-                  const jobs = todayJobs.filter(b => b.scheduled_time === slot)
+                  const slotHour = slot.split(':')[0]
+                  const jobs = todayJobs.filter(b => b.scheduled_time?.split(':')[0] === slotHour)
                   return (
                     <div key={slot} className={`flex gap-4 px-6 py-2.5 border-b border-[#E4E8EC] last:border-0 ${jobs.length > 0 ? 'bg-slate-50/60' : ''}`}>
                       <div className="w-14 shrink-0 text-right pt-0.5">
