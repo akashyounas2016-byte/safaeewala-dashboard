@@ -17,19 +17,21 @@ import { Reports } from '@/pages/Reports'
 import { Settings } from '@/pages/Settings'
 import { DailyJobSheet } from '@/pages/DailyJobSheet'
 
-type ProfileStatus = 'loading' | 'approved' | 'pending' | 'rejected'
+type ProfileStatus = 'approved' | 'pending' | 'rejected'
 
 async function fetchProfileStatus(userId: string, email: string): Promise<ProfileStatus> {
   try {
     const { data: profile } = await supabase
       .from('profiles').select('status').eq('id', userId).single()
     if (!profile) {
-      await supabase.from('profiles').upsert({ id: userId, email, full_name: '', status: 'approved', role: 'admin' }).catch(() => {})
+      await supabase.from('profiles')
+        .upsert({ id: userId, email, full_name: '', status: 'approved', role: 'admin' })
+        .catch(() => {})
       return 'approved'
     }
     return profile.status as ProfileStatus
   } catch {
-    return 'approved' // never get stuck — fallback to approved
+    return 'approved'
   }
 }
 
@@ -67,7 +69,6 @@ function RejectedScreen() {
   )
 }
 
-/* Blocks employees from admin-only routes — returns null while UserProvider loads (no full-page spinner) */
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const user = useCurrentUser()
   if (user === null) return null
@@ -76,33 +77,46 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const [session, setSession]             = useState<Session | null | undefined>(undefined)
-  const [blocked, setBlocked]             = useState<'pending' | 'rejected' | null>(null)
+  // null = no session, undefined = still loading
+  const [session, setSession] = useState<Session | null | undefined>(undefined)
+  const [blocked, setBlocked] = useState<ProfileStatus | null>(null)
 
   useEffect(() => {
-    // getSession reads from local cache — resolves instantly
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      if (data.session) {
-        // profile check runs in background — never blocks the UI
-        fetchProfileStatus(data.session.user.id, data.session.user.email ?? '')
-          .then(s => { if (s === 'pending' || s === 'rejected') setBlocked(s) })
-      }
+    let cancelled = false
+
+    // Hard 4-second timeout — if getSession hangs, show login instead of spinner forever
+    const timeout = setTimeout(() => {
+      if (!cancelled) setSession(null)
+    }, 4000)
+
+    supabase.auth.getSession()
+      .then(({ data }) => {
+        if (cancelled) return
+        clearTimeout(timeout)
+        setSession(data.session)
+        if (data.session) {
+          fetchProfileStatus(data.session.user.id, data.session.user.email ?? '')
+            .then(s => { if (!cancelled && (s === 'pending' || s === 'rejected')) setBlocked(s) })
+        }
+      })
+      .catch(() => {
+        if (!cancelled) { clearTimeout(timeout); setSession(null) }
+      })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+      if (cancelled) return
+      clearTimeout(timeout)
+      setSession(s)
+      if (!s) setBlocked(null)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setSession(session)
-      if (!session) setBlocked(null)
-    })
-
-    return () => subscription.unsubscribe()
+    return () => { cancelled = true; clearTimeout(timeout); subscription.unsubscribe() }
   }, [])
 
-  // Only show spinner while local session cache is being read (< 100ms normally)
-  if (session === undefined) return <Loader />
-  if (!session)              return <Login />
-  if (blocked === 'pending') return <PendingScreen />
-  if (blocked === 'rejected') return <RejectedScreen />
+  if (session === undefined)     return <Loader />
+  if (!session)                  return <Login />
+  if (blocked === 'pending')     return <PendingScreen />
+  if (blocked === 'rejected')    return <RejectedScreen />
   return <>{children}</>
 }
 
