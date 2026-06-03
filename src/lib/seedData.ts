@@ -1,6 +1,12 @@
 import { supabase } from './supabase'
 
-const uid = () => crypto.randomUUID()
+const uid = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+  })
+}
 const today = new Date()
 const d = (offsetDays: number) => {
   const dt = new Date(today)
