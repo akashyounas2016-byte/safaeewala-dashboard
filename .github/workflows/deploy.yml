@@ -8,38 +8,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-
-      - name: Upload to VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: 187.77.116.14
-          username: root
-          key: ${{ secrets.VPS_SSH_KEY }}
-          source: "dist/*"
-          target: "/var/www/safaeewala"
-          strip_components: 1
-
-      - name: Reload nginx
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 187.77.116.14
-          username: root
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: systemctl reload nginx
+      - name: Trigger VPS deploy
+        run: |
+          curl -s -X POST http://187.77.116.14:9000/deploy \
+            -H "X-Secret: ${{ secrets.WEBHOOK_SECRET }}" \
+            --max-time 30 \
+            && echo "Deploy triggered successfully" \
+            || echo "Webhook call failed"
