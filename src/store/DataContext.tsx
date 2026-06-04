@@ -41,6 +41,22 @@ interface DataStore {
 
 const DataContext = createContext<DataStore | null>(null)
 
+/* ── Fire-and-forget audit logger — silently skips if table doesn't exist ── */
+function logAudit(action: string, entity: string, entityId: string, entityName: string, details?: string) {
+  supabase.auth.getUser()
+    .then(({ data: { user } }) =>
+      supabase.from('audit_log').insert({
+        user_name:   user?.email ?? 'System',
+        action,
+        entity,
+        entity_id:   entityId,
+        entity_name: entityName,
+        details:     details ?? null,
+      })
+    )
+    .catch(() => {})
+}
+
 function uid() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -124,11 +140,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const row = { ...b, id: uid(), created_at: now(), client_id: resolvedClientId }
       setBookings(p => [row, ...p])
       supabase.from('bookings').insert(row).then(({ error }) => { if (error) console.error(error) })
+      logAudit('created', 'booking', row.id, b.client_name, `${b.service_type} · ${b.scheduled_date}`)
     },
     updateBooking: (id, patch) => {
       const booking = bookings.find(b => b.id === id)
       setBookings(p => p.map(b => b.id === id ? { ...b, ...patch } : b))
       supabase.from('bookings').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      if (patch.status && booking) logAudit('status_changed', 'booking', id, booking.client_name, `${booking.status} → ${patch.status}`)
 
       // When a booking is marked completed for the first time:
       if (patch.status === 'completed' && booking && booking.status !== 'completed') {
@@ -185,8 +203,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
     },
     deleteBooking: (id) => {
+      const b = bookings.find(b => b.id === id)
       setBookings(p => p.filter(b => b.id !== id))
       supabase.from('bookings').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      if (b) logAudit('deleted', 'booking', id, b.client_name)
     },
 
     /* ── Clients ── */
@@ -194,14 +214,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const row = { ...c, id: uid(), created_at: now() }
       setClients(p => [row, ...p])
       supabase.from('clients').insert(row).then(({ error }) => { if (error) console.error(error) })
+      logAudit('created', 'client', row.id, c.full_name)
     },
     updateClient: (id, patch) => {
       setClients(p => p.map(c => c.id === id ? { ...c, ...patch } : c))
       supabase.from('clients').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
     },
     deleteClient: (id) => {
+      const c = clients.find(c => c.id === id)
       setClients(p => p.filter(c => c.id !== id))
       supabase.from('clients').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      if (c) logAudit('deleted', 'client', id, c.full_name)
     },
 
     /* ── Employees ── */
@@ -209,14 +232,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const row = { ...e, id: uid(), created_at: now() }
       setEmployees(p => [row, ...p])
       supabase.from('employees').insert(row).then(({ error }) => { if (error) console.error(error) })
+      logAudit('created', 'employee', row.id, e.full_name, e.role)
     },
     updateEmployee: (id, patch) => {
       setEmployees(p => p.map(e => e.id === id ? { ...e, ...patch } : e))
       supabase.from('employees').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
     },
     deleteEmployee: (id) => {
+      const e = employees.find(e => e.id === id)
       setEmployees(p => p.filter(e => e.id !== id))
       supabase.from('employees').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      if (e) logAudit('deleted', 'employee', id, e.full_name)
     },
 
     /* ── Invoices ── */
@@ -224,14 +250,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const row = { ...i, id: uid(), created_at: now() }
       setInvoices(p => [row, ...p])
       supabase.from('invoices').insert(row).then(({ error }) => { if (error) console.error(error) })
+      logAudit('created', 'invoice', row.id, i.client_name, `AED ${i.total} · ${i.invoice_number}`)
     },
     updateInvoice: (id, patch) => {
+      const inv = invoices.find(i => i.id === id)
       setInvoices(p => p.map(i => i.id === id ? { ...i, ...patch } : i))
       supabase.from('invoices').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      if (patch.status && inv) logAudit('status_changed', 'invoice', id, inv.client_name, `${inv.status} → ${patch.status}`)
     },
     deleteInvoice: (id) => {
+      const inv = invoices.find(i => i.id === id)
       setInvoices(p => p.filter(i => i.id !== id))
       supabase.from('invoices').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      if (inv) logAudit('deleted', 'invoice', id, inv.client_name)
     },
 
     /* ── Inventory ── */

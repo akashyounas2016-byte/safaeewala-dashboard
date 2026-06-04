@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle } from 'lucide-react'
+import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle, Clock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useIsAdmin, useCurrentUser, useRolePerms, useSetRolePerms, DEFAULT_ROLE_PERMS, ALL_MODULES, type RolePerms, type AppRole } from '@/store/UserContext'
 import { seedDemoData } from '@/lib/seedData'
@@ -19,11 +19,12 @@ const ROLE_META: Record<AppRole, { label: string; badge: string; desc: string }>
 }
 
 const allTabs = [
-  { id: 'company',       label: 'Company',        icon: Building,  adminOnly: false },
-  { id: 'users',         label: 'Users',          icon: Users,     adminOnly: true  },
-  { id: 'notifications', label: 'Notifications',  icon: Bell,      adminOnly: false },
-  { id: 'roles',         label: 'Roles & Access', icon: Shield,    adminOnly: false },
+  { id: 'company',       label: 'Company',        icon: Building,   adminOnly: false },
+  { id: 'users',         label: 'Users',          icon: Users,      adminOnly: true  },
+  { id: 'notifications', label: 'Notifications',  icon: Bell,       adminOnly: false },
+  { id: 'roles',         label: 'Roles & Access', icon: Shield,     adminOnly: false },
   { id: 'billing',       label: 'Billing',        icon: CreditCard, adminOnly: false },
+  { id: 'activity',      label: 'Activity Log',   icon: Clock,      adminOnly: true  },
   { id: 'integrations',  label: 'Integrations',   icon: Globe,     adminOnly: false },
 ]
 
@@ -466,6 +467,118 @@ const DEFAULT_NOTIF: NotifData = {
   new_booking: false, booking_confirmed: false, booking_cancelled: true,
   reminder_24h: true, reminder_2h: true, invoice_overdue: true,
   payment_received: true, low_stock: true, document_expiry: true, new_review: false,
+}
+
+const AUDIT_SQL = `-- Run this once in Supabase SQL Editor:
+create table if not exists public.audit_log (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz default now(),
+  user_name text,
+  action text,
+  entity text,
+  entity_id text,
+  entity_name text,
+  details text
+);
+alter table public.audit_log enable row level security;
+create policy "allow all authenticated" on public.audit_log
+  for all using (auth.uid() is not null)
+  with check (auth.uid() is not null);`
+
+const ENTITY_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
+  booking:  { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  client:   { bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500'    },
+  invoice:  { bg: 'bg-purple-50',  text: 'text-purple-700',  dot: 'bg-purple-500'  },
+  employee: { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500'   },
+  default:  { bg: 'bg-slate-100',  text: 'text-slate-600',   dot: 'bg-slate-400'   },
+}
+const ACTION_LABELS: Record<string, string> = {
+  created:        '✦ Created',
+  deleted:        '✕ Deleted',
+  status_changed: '↻ Status changed',
+  updated:        '✎ Updated',
+}
+
+function ActivityLogPanel() {
+  const [logs, setLogs] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [tableExists, setTableExists] = useState(true)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    supabase
+      .from('audit_log')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100)
+      .then(({ data, error }) => {
+        if (error) setTableExists(false)
+        else setLogs(data ?? [])
+        setLoading(false)
+      })
+  }, [])
+
+  if (!tableExists) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-amber-50 border border-amber-200 rounded-[22px] p-5">
+          <p className="text-[13px] font-bold text-amber-800 mb-1">One-time setup required</p>
+          <p className="text-[12px] text-amber-700 mb-3">
+            The activity log needs a table in Supabase. Run the SQL below in your Supabase SQL Editor, then refresh the page.
+          </p>
+          <div className="relative">
+            <pre className="text-[11px] font-mono bg-slate-900 text-emerald-400 p-4 rounded-xl overflow-x-auto whitespace-pre-wrap">{AUDIT_SQL}</pre>
+            <button
+              onClick={() => { navigator.clipboard.writeText(AUDIT_SQL); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+              className="absolute top-2 right-2 text-[11px] font-semibold bg-white/10 text-white px-2.5 py-1 rounded-lg hover:bg-white/20 transition-colors"
+            >
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+      <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between">
+        <h3 className="text-[15px] font-bold text-[#111827]">Activity Log</h3>
+        <span className="text-[12px] text-slate-500">{logs.length} entries</span>
+      </div>
+      {loading ? (
+        <p className="text-[13px] text-slate-400 text-center py-10">Loading…</p>
+      ) : logs.length === 0 ? (
+        <p className="text-[13px] text-slate-400 text-center py-10">No activity recorded yet</p>
+      ) : (
+        <div className="divide-y divide-[#E4E8EC]">
+          {logs.map(log => {
+            const style = ENTITY_STYLES[log.entity] ?? ENTITY_STYLES.default
+            return (
+              <div key={log.id} className="px-6 py-3.5 flex items-center gap-4">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${style.dot}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${style.bg} ${style.text} capitalize`}>
+                      {log.entity}
+                    </span>
+                    <span className="text-[12px] font-semibold text-[#111827] truncate">{log.entity_name}</span>
+                    <span className="text-[11.5px] text-slate-500">{ACTION_LABELS[log.action] ?? log.action}</span>
+                    {log.details && (
+                      <span className="text-[11px] text-slate-400 font-mono bg-slate-50 px-1.5 py-0.5 rounded">{log.details}</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {log.user_name} · {new Date(log.created_at).toLocaleString('en-AE', { dateStyle: 'short', timeStyle: 'short' })}
+                  </p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function Settings() {
@@ -960,6 +1073,9 @@ export function Settings() {
               </div>
             </div>
           )}
+
+          {/* ── Activity Log ── */}
+          {activeTab === 'activity' && <ActivityLogPanel />}
         </div>
 
         {/* ── Right sidebar ── */}

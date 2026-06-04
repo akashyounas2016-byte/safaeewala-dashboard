@@ -34,7 +34,7 @@ export function Layout() {
           </div>
 
           <main className="flex-1 overflow-y-auto bg-[#f0f4f3]">
-            <div className="max-w-[1440px] mx-auto px-8 pt-8 pb-10">
+            <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 lg:pt-8 pb-10">
               <Outlet />
             </div>
           </main>
