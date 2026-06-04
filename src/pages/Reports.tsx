@@ -31,9 +31,10 @@ export function Reports() {
   const [dateRange, setDateRange] = useState('6m')
 
   // Payroll period — default to current month
-  const [payPeriod, setPayPeriod] = useState(
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  )
+  const [payPeriod, setPayPeriod] = useState(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
   // Build last 6 months as options
   const payPeriodOptions = Array.from({ length: 6 }, (_, i) => {
     const d = new Date()
