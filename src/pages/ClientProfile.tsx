@@ -198,6 +198,18 @@ export function ClientProfile() {
             </div>
           ))}
         </div>
+
+        {/* Mismatch warning — helps diagnose stale data */}
+        {client.total_bookings > clientBookings.length && (
+          <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 flex items-center gap-2">
+            <span className="text-amber-600 text-[13px]">⚠</span>
+            <p className="text-[12px] text-amber-800">
+              The database records {client.total_bookings} bookings for this client but only {clientBookings.length} are linked.
+              This happens when bookings were created with a slightly different name spelling.
+              Check Bookings and search for "{client.full_name.split(' ')[0]}" to find unlinked records.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* ── Tabs + sidebar ── */}

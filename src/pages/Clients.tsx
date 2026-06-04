@@ -276,12 +276,20 @@ export function Clients() {
                 </div>
 
                 {(() => {
-                  const clientInvs = invoices.filter(i => i.client_id === c.id || i.client_name.toLowerCase().trim() === c.full_name.toLowerCase().trim())
-                  const outstanding = clientInvs.reduce((s, i) => s + i.total, 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
+                  const nameLower    = c.full_name.toLowerCase().trim()
+                  const liveBookings = bookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase().trim() === nameLower)
+                  const clientInvs   = invoices.filter(i => i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower)
+                  const outstanding  = clientInvs.reduce((s, i) => s + i.total, 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
                   return (
                     <div className="flex items-center justify-between mt-4 pt-3.5 border-t border-[#E4E8EC]">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[12px] text-slate-500">{c.total_bookings} bookings</span>
+                        <Link
+                          to={`/clients/${c.id}`}
+                          onClick={e => e.stopPropagation()}
+                          className="text-[12px] text-slate-500 hover:text-emerald-600 hover:underline transition-colors"
+                        >
+                          {liveBookings.length} booking{liveBookings.length !== 1 ? 's' : ''}
+                        </Link>
                         {c.pet_info && (
                           <span className="text-[11px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">Pet</span>
                         )}
@@ -289,9 +297,13 @@ export function Clients() {
                           <span className="text-[11px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-medium">VIP</span>
                         )}
                         {outstanding > 0 && (
-                          <span className="text-[11px] bg-red-50 text-red-600 px-2 py-0.5 rounded-full font-semibold">
+                          <Link
+                            to={`/clients/${c.id}`}
+                            onClick={e => e.stopPropagation()}
+                            className="text-[11px] bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full font-semibold hover:bg-red-100 transition-colors"
+                          >
                             AED {outstanding.toLocaleString()} owed
-                          </span>
+                          </Link>
                         )}
                       </div>
                       <Link
