@@ -384,11 +384,11 @@ export function DailyJobSheet() {
     }
   }
 
-  // All-time pending jobs (payment not collected), sorted newest first
+  // All-time pending jobs (any job where charges > received — amount not fully collected), sorted newest first
   const allPendingJobs = [...dailyJobs]
-    .filter(j => j.payment_mode === 'Pending')
+    .filter(j => j.charges > j.received)
     .sort((a, b) => b.date.localeCompare(a.date))
-  const totalAllPending = allPendingJobs.reduce((s, j) => s + j.charges, 0)
+  const totalAllPending = allPendingJobs.reduce((s, j) => s + (j.charges - j.received), 0)
 
   const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project')
 
@@ -514,7 +514,7 @@ export function DailyJobSheet() {
           <table className="w-full text-[12px]" style={{ minWidth: 1000 }}>
             <thead>
               <tr className="bg-slate-50 border-b border-[#E4E8EC]">
-                {['Staff', 'Start', 'End', 'Hrs', 'Address', 'Area', 'Material', 'Charges', 'Received', 'Mode', 'OT', 'Remarks', ''].map(h => (
+                {['Staff', 'Start', 'End', 'Hrs', 'Address', 'Area', 'Material', 'Charges', 'Received', 'Pending', 'Mode', 'OT', 'Remarks', ''].map(h => (
                   <th key={h} className="text-left px-3 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-[0.07em] whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -536,6 +536,13 @@ export function DailyJobSheet() {
                   </td>
                   <td className="px-3 py-3 font-semibold text-emerald-700 whitespace-nowrap">
                     {job.payment_mode === 'Pending' || job.payment_mode === 'Monthly' ? '—' : `AED ${job.received.toLocaleString()}`}
+                  </td>
+                  <td className="px-3 py-3 font-semibold whitespace-nowrap">
+                    {job.charges > job.received ? (
+                      <span className="text-red-600">AED {(job.charges - job.received).toLocaleString()}</span>
+                    ) : (
+                      <span className="text-emerald-600">—</span>
+                    )}
                   </td>
                   <td className="px-3 py-3"><PaymentBadge mode={job.payment_mode} /></td>
                   <td className="px-3 py-3 text-center">
@@ -561,6 +568,7 @@ export function DailyJobSheet() {
                   <td colSpan={7} className="px-3 py-3 text-slate-600">Totals</td>
                   <td className="px-3 py-3 text-[#111827]">AED {todayJobs.reduce((s, j) => s + j.charges, 0).toLocaleString()}</td>
                   <td className="px-3 py-3 text-emerald-700">AED {grossCollected.toLocaleString()}</td>
+                  <td className="px-3 py-3 text-red-600">AED {todayJobs.reduce((s, j) => s + Math.max(0, j.charges - j.received), 0).toLocaleString()}</td>
                   <td colSpan={4} />
                 </tr>
               </tfoot>
@@ -688,7 +696,7 @@ export function DailyJobSheet() {
                     <td className="px-4 py-3 font-semibold text-[#111827] whitespace-nowrap">{job.staff_name}</td>
                     <td className="px-4 py-3 text-slate-600 max-w-[180px] truncate">{job.address || '—'}</td>
                     <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{job.area || '—'}</td>
-                    <td className="px-4 py-3 font-bold text-red-600 whitespace-nowrap">AED {job.charges.toLocaleString()}</td>
+                    <td className="px-4 py-3 font-bold text-red-600 whitespace-nowrap">AED {(job.charges - job.received).toLocaleString()}</td>
                     <td className="px-4 py-3 text-slate-400 max-w-[140px] truncate">{job.remarks || '—'}</td>
                     <td className="px-4 py-3">
                       <button
