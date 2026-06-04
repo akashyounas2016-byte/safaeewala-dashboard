@@ -26,7 +26,7 @@ async function fetchProfileStatus(userId: string, email: string): Promise<Profil
       .from('profiles').select('status').eq('id', userId).single()
     if (!profile) {
       await supabase.from('profiles')
-        .upsert({ id: userId, email, full_name: '', status: 'approved', role: 'admin' })
+        .upsert({ id: userId, email, full_name: '', status: 'pending', role: 'employee' })
         .then(() => {}, () => {})
       return 'approved'
     }

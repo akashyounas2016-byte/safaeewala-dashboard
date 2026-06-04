@@ -14,6 +14,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { formatTime } from '@/lib/utils'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
+import { useCurrentUser } from '@/store/UserContext'
 import type { Booking, BookingFrequency } from '@/types'
 
 const serviceTypes = [
@@ -411,8 +412,18 @@ function ServiceMixDonut({ bookings }: { bookings: Booking[] }) {
 /* ─── Overview page ─── */
 export function Overview() {
   const { bookings, clients, employees, invoices, inventory, addBooking } = useData()
+  const currentUser = useCurrentUser()
   const [showNewBooking, setShowNewBooking] = useState(false)
   const navigate = useNavigate()
+
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const firstName = currentUser?.full_name?.split(' ')[0] || 'there'
+
+  const nonCancelledCount = bookings.length - bookings.filter(b => b.status === 'cancelled').length
+  const completionRatePct = nonCancelledCount > 0
+    ? Math.round((bookings.filter(b => b.status === 'completed').length / nonCancelledCount) * 100)
+    : 0
 
   const today = new Date().toISOString().split('T')[0]
   const todayBookings = bookings.filter(b => b.scheduled_date === today)
@@ -457,7 +468,7 @@ export function Overview() {
     <div>
       {/* ── Page Hero ── */}
       <PageHero
-        title="Good morning, Akash 👋"
+        title={`${greeting}, ${firstName} 👋`}
         subtitle={`${todayDisplay} · ${todayBookings.length} jobs scheduled · ${liveCount} live now`}
         statusChip="On track"
         actionLabel="New Booking"
@@ -516,7 +527,7 @@ export function Overview() {
           onClick={() => navigate('/employees')}
         />
         <KpiCard
-          label="Completion Rate" value={`${bookings.length - bookings.filter(b=>b.status==='cancelled').length > 0 ? Math.round((bookings.filter(b=>b.status==='completed').length / (bookings.length - bookings.filter(b=>b.status==='cancelled').length)) * 100) : 0}%`} sub="Completed vs active"
+          label="Completion Rate" value={`${completionRatePct}%`} sub="Completed vs active"
           delta={`${bookings.filter(b=>b.status==='completed').length} done`} trend="up"
           icon={Star} iconBg="#ede9fe" iconColor="#7c3aed"
           onClick={() => navigate('/reports')}

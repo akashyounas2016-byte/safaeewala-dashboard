@@ -161,20 +161,33 @@ export function Bookings() {
   const { bookings, addBooking, updateBooking, deleteBooking } = useData()
   const [view, setView] = useState<'list' | 'calendar' | 'kanban'>('list')
   const xlsxInputRef = useRef<HTMLInputElement>(null)
-  const [importing, setImporting] = useState(false)
+  const [importing,   setImporting]   = useState(false)
+  const [dateFilter,  setDateFilter]  = useState('all')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [serviceFilter, setServiceFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState<typeof bookings[0] | null>(null)
 
+  const todayStr    = new Date().toISOString().split('T')[0]
+  const monthKey    = todayStr.slice(0, 7)
+  const last30      = new Date(); last30.setDate(last30.getDate() - 30)
+  const last30Str   = last30.toISOString().split('T')[0]
+  const weekStart   = (() => { const d = new Date(); d.setDate(d.getDate() - d.getDay()); return d.toISOString().split('T')[0] })()
+
   const filtered = bookings.filter((b) => {
     const matchSearch = b.client_name.toLowerCase().includes(search.toLowerCase()) ||
       b.service_type.toLowerCase().includes(search.toLowerCase()) ||
       b.service_address.toLowerCase().includes(search.toLowerCase())
-    const matchStatus = statusFilter === 'all' || b.status === statusFilter
+    const matchStatus  = statusFilter === 'all' || b.status === statusFilter
     const matchService = serviceFilter === 'all' || b.service_type === serviceFilter
-    return matchSearch && matchStatus && matchService
+    const matchDate    = dateFilter === 'all'        ? true
+                       : dateFilter === 'today'      ? b.scheduled_date === todayStr
+                       : dateFilter === 'this_week'  ? b.scheduled_date >= weekStart
+                       : dateFilter === 'this_month' ? b.scheduled_date.startsWith(monthKey)
+                       : dateFilter === 'last_30'    ? b.scheduled_date >= last30Str
+                       : true
+    return matchSearch && matchStatus && matchService && matchDate
   })
 
   const counts = {
@@ -296,11 +309,16 @@ export function Bookings() {
           </select>
 
           {/* Date range */}
-          <select className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer">
-            <option>This Week</option>
-            <option>This Month</option>
-            <option>Last 30 Days</option>
-            <option>Custom Range</option>
+          <select
+            value={dateFilter}
+            onChange={e => setDateFilter(e.target.value)}
+            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer"
+          >
+            <option value="all">All Time</option>
+            <option value="today">Today</option>
+            <option value="this_week">This Week</option>
+            <option value="this_month">This Month</option>
+            <option value="last_30">Last 30 Days</option>
           </select>
 
           {/* Import / Export */}
