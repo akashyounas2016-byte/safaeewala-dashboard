@@ -4,7 +4,7 @@ import {
   Search, Calendar as CalendarIcon, Clock, MapPin, Phone,
   ChevronLeft, ChevronRight, List, CalendarDays, Columns3,
   TrendingUp, CheckCircle, AlertCircle, Upload, Download,
-  FileSpreadsheet,
+  FileSpreadsheet, MessageCircle, RefreshCw,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -434,9 +434,16 @@ export function Bookings() {
 
                 {/* Footer */}
                 <div className="flex items-center justify-between pt-3.5 border-t border-[#E4E8EC]">
-                  <span className="text-[12px] text-slate-500">
-                    {b.assigned_crew.length} cleaner{b.assigned_crew.length !== 1 ? 's' : ''} assigned
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[12px] text-slate-500">
+                      {b.assigned_crew.length} cleaner{b.assigned_crew.length !== 1 ? 's' : ''} assigned
+                    </span>
+                    {b.frequency !== 'once' && (
+                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full capitalize">
+                        <RefreshCw size={9} /> {b.frequency}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-[16px] font-bold text-[#111827] tabular-nums">
                     AED {b.total_amount.toLocaleString()}
                   </span>
@@ -824,6 +831,17 @@ function NewBookingForm({ onClose, onAdd }: { onClose: () => void; onAdd: (b: an
   )
 }
 
+/* ─── WhatsApp message templates ─── */
+function buildConfirmationMsg(b: { client_name: string; scheduled_date: string; scheduled_time: string; service_address: string; service_type: string; duration_hours: number; total_amount: number }) {
+  return `Hi ${b.client_name}, your Safaeewala booking is confirmed! ✅\n\n📅 ${formatDate(b.scheduled_date)} at ${b.scheduled_time}\n🏠 ${b.service_address}\n🧹 ${b.service_type} · ${b.duration_hours}h\n💰 AED ${b.total_amount.toLocaleString()}\n\nYour team will arrive on time. To reschedule call: +971 55 628 2374\n\nThank you for choosing Safaeewala! 🙏`
+}
+function buildReminderMsg(b: { client_name: string; scheduled_date: string; scheduled_time: string; service_address: string; service_type: string }) {
+  return `Hi ${b.client_name}, reminder for your Safaeewala appointment tomorrow! 🧹\n\n📅 ${formatDate(b.scheduled_date)} at ${b.scheduled_time}\n🏠 ${b.service_address}\n🧹 ${b.service_type}\n\nPlease ensure access to the property. See you tomorrow!\n\nSafaeewala Team · +971 55 628 2374`
+}
+function waLink(phone: string, msg: string) {
+  return `https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`
+}
+
 /* ─── Booking Detail panel ─── */
 type BookingType = ReturnType<typeof useData>['bookings'][0]
 function BookingDetail({ booking, onUpdate, onDelete }: {
@@ -934,7 +952,37 @@ function BookingDetail({ booking, onUpdate, onDelete }: {
         </div>
       )}
 
-      <div className="flex gap-2 pt-2 flex-wrap">
+      {/* WhatsApp / Call actions */}
+      {booking.client_phone && (
+        <div className="flex gap-2 flex-wrap">
+          <a
+            href={`tel:${booking.client_phone}`}
+            className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl border border-[#E4E8EC] text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            <Phone size={13} /> Call Client
+          </a>
+          {(status === 'confirmed' || status === 'in_progress') && (
+            <a
+              href={waLink(booking.client_phone, buildConfirmationMsg(booking))}
+              target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+            >
+              <MessageCircle size={13} /> Send Confirmation
+            </a>
+          )}
+          {status === 'confirmed' && (
+            <a
+              href={waLink(booking.client_phone, buildReminderMsg(booking))}
+              target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+            >
+              <MessageCircle size={13} /> Send Reminder
+            </a>
+          )}
+        </div>
+      )}
+
+      <div className="flex gap-2 pt-1 flex-wrap">
         <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>Edit</Button>
         {status === 'pending'     && <Button className="flex-1" size="sm" onClick={() => applyStatus('confirmed')}>Confirm</Button>}
         {status === 'confirmed'   && <Button className="flex-1" size="sm" onClick={() => applyStatus('in_progress')}>Start Job</Button>}

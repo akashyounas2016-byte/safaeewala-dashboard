@@ -57,7 +57,7 @@ export function Reports() {
       month: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
       key:   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
       revenue: 0,
-      target: 10000,
+      target: 0,
       jobs: 0,
     }
   })
@@ -68,6 +68,13 @@ export function Reports() {
       const m = months.find(m => m.key === key)
       if (m) { m.revenue += b.total_amount; m.jobs++ }
     })
+
+  // Dynamic target: 110% of average monthly revenue (min AED 5,000)
+  const nonZeroRevs = months.map(m => m.revenue).filter(r => r > 0)
+  const monthlyTarget = nonZeroRevs.length > 0
+    ? Math.max(5000, Math.round((nonZeroRevs.reduce((s, r) => s + r, 0) / nonZeroRevs.length) * 1.1 / 500) * 500)
+    : 10000
+  months.forEach(m => { m.target = monthlyTarget })
 
   /* ── KPI computations (all real) ── */
   const completedBookings  = bookings.filter(b => b.status === 'completed')
@@ -144,7 +151,7 @@ export function Reports() {
   /* ── Export (real data) ── */
   function handleExport() {
     exportCSV('safaeewala-revenue-report.csv', [
-      ['Month', 'Revenue (AED)', 'Target (AED)', 'Jobs Completed'],
+      ['Month', 'Revenue (AED)', `Target (AED ${monthlyTarget.toLocaleString()})`, 'Jobs Completed'],
       ...months.map(d => [d.month, String(d.revenue), String(d.target), String(d.jobs)]),
     ])
   }
@@ -253,7 +260,7 @@ export function Reports() {
                   <span className="w-3 h-0.5 bg-emerald-500 inline-block rounded" />Revenue
                 </span>
                 <span className="flex items-center gap-1.5 text-slate-500">
-                  <span className="w-3 h-0.5 bg-slate-300 inline-block rounded" />AED 10k Target
+                  <span className="w-3 h-0.5 bg-slate-300 inline-block rounded" />Target (AED {(monthlyTarget / 1000).toFixed(0)}k)
                 </span>
               </div>
             </div>
