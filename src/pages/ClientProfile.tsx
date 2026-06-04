@@ -100,7 +100,8 @@ export function ClientProfile() {
   }
 
   function buildMessage(b: Booking) {
-    return `Hi ${client.full_name},\n\nThank you for choosing Safaeewala Cleaning & Maintenance! We hope you were fully satisfied with your ${b.service_type} service on ${formatDate(b.scheduled_date)} at ${b.service_address}.\n\nWe'd love to hear your feedback — a quick review would mean a lot to us and helps us keep our quality high.\n\nThank you for being a valued client! 🙏\n\nSafaeewala Team\n+971 55 628 2374`
+    const name = client!.full_name
+    return `Hi ${name},\n\nThank you for choosing Safaeewala Cleaning & Maintenance! We hope you were fully satisfied with your ${b.service_type} service on ${formatDate(b.scheduled_date)} at ${b.service_address}.\n\nWe'd love to hear your feedback — a quick review would mean a lot to us and helps us keep our quality high.\n\nThank you for being a valued client! 🙏\n\nSafaeewala Team\n+971 55 628 2374`
   }
 
   function markSent(b: Booking) {
