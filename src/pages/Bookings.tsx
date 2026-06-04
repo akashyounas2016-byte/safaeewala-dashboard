@@ -158,7 +158,7 @@ async function parseBookingsFile(file: File): Promise<Parameters<(b: any) => voi
 
 /* ─── Main Bookings page ─── */
 export function Bookings() {
-  const { bookings, addBooking, updateBooking, deleteBooking } = useData()
+  const { bookings, addBooking, updateBooking, deleteBooking, invoices, updateInvoice } = useData()
   const [view, setView] = useState<'list' | 'calendar' | 'kanban'>('list')
   const xlsxInputRef = useRef<HTMLInputElement>(null)
   const [importing,   setImporting]   = useState(false)
@@ -478,6 +478,8 @@ export function Bookings() {
             booking={selectedBooking}
             onUpdate={(patch) => { updateBooking(selectedBooking.id, patch); setSelectedBooking(b => b ? { ...b, ...patch } : b) }}
             onDelete={() => { deleteBooking(selectedBooking.id); setSelectedBooking(null) }}
+            invoices={invoices}
+            onUpdateInvoice={updateInvoice}
           />
         )}
       </Modal>
@@ -844,10 +846,12 @@ function waLink(phone: string, msg: string) {
 
 /* ─── Booking Detail panel ─── */
 type BookingType = ReturnType<typeof useData>['bookings'][0]
-function BookingDetail({ booking, onUpdate, onDelete }: {
+function BookingDetail({ booking, onUpdate, onDelete, invoices, onUpdateInvoice }: {
   booking: BookingType
   onUpdate: (patch: Partial<BookingType>) => void
   onDelete: () => void
+  invoices: ReturnType<typeof useData>['invoices']
+  onUpdateInvoice: (id: string, patch: any) => void
 }) {
   const [status,    setStatus]    = useState(booking.status)
   const [isEditing, setIsEditing] = useState(false)
@@ -963,6 +967,41 @@ function BookingDetail({ booking, onUpdate, onDelete }: {
           onChange={ids => { setCrew(ids); onUpdate({ assigned_crew: ids }) }}
         />
       </div>
+
+      {/* Invoice Status */}
+      {(() => {
+        const relatedInvoice = invoices.find(inv =>
+          inv.client_id === booking.client_id ||
+          inv.client_name.toLowerCase().trim() === booking.client_name.toLowerCase().trim()
+        )
+        const invoicePaid = relatedInvoice?.status === 'paid'
+        return (
+          <div className="border border-[#E4E8EC] rounded-xl p-3">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={invoicePaid}
+                onChange={() => {
+                  if (relatedInvoice) {
+                    onUpdateInvoice(relatedInvoice.id, { status: invoicePaid ? 'sent' : 'paid' })
+                  }
+                }}
+                className="w-4 h-4 rounded accent-emerald-500"
+              />
+              <div>
+                <p className="text-[13px] font-semibold text-[#111827]">Invoice Paid</p>
+                {relatedInvoice ? (
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Status: <span className={invoicePaid ? 'text-emerald-600 font-medium' : 'text-amber-600 font-medium'}>{invoicePaid ? 'Paid' : 'Pending'}</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-400 mt-0.5">No invoice found</p>
+                )}
+              </div>
+            </label>
+          </div>
+        )
+      })()}
 
       {/* WhatsApp / Call actions */}
       {booking.client_phone && (
