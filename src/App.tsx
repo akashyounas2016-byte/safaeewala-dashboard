@@ -16,6 +16,7 @@ import { Inventory } from '@/pages/Inventory'
 import { Reports } from '@/pages/Reports'
 import { Settings } from '@/pages/Settings'
 import { DailyJobSheet } from '@/pages/DailyJobSheet'
+import { ClientProfile } from '@/pages/ClientProfile'
 
 type ProfileStatus = 'approved' | 'pending' | 'rejected'
 
@@ -131,6 +132,7 @@ export default function App() {
                 <Route index element={<Overview />} />
                 <Route path="bookings"   element={<Bookings />} />
                 <Route path="clients"    element={<Clients />} />
+                <Route path="clients/:id" element={<ClientProfile />} />
                 <Route path="employees"  element={<Employees />} />
                 <Route path="dispatch"   element={<Dispatch />} />
                 <Route path="invoices"   element={<Invoices />} />

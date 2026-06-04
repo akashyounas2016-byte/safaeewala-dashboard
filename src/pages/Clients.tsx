@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign, Heart, Award, CheckCircle, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign, Heart, Award, CheckCircle, Trash2, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -275,18 +276,22 @@ export function Clients() {
                 </div>
 
                 <div className="flex items-center justify-between mt-4 pt-3.5 border-t border-[#E4E8EC]">
-                  <span className="text-[12px] text-slate-500">{c.total_bookings} bookings</span>
-                  <div className="flex gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[12px] text-slate-500">{c.total_bookings} bookings</span>
                     {c.pet_info && (
                       <span className="text-[11px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">Pet</span>
-                    )}
-                    {c.preferred_cleaner && (
-                      <span className="text-[11px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">Preferred</span>
                     )}
                     {c.total_spent > 2000 && (
                       <span className="text-[11px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-medium">VIP</span>
                     )}
                   </div>
+                  <Link
+                    to={`/clients/${c.id}`}
+                    onClick={e => e.stopPropagation()}
+                    className="flex items-center gap-1 text-[11.5px] font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors"
+                  >
+                    View Profile <ExternalLink size={11} />
+                  </Link>
                 </div>
               </div>
             ))}
