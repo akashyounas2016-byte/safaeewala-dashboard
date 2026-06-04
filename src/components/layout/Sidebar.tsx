@@ -5,7 +5,7 @@ import {
   LayoutDashboard, CalendarCheck, Users, UserCheck, MapPin,
   FileText, Package, BarChart3, Settings, X, ClipboardList,
 } from 'lucide-react'
-import { useCurrentUser } from '@/store/UserContext'
+import { useCurrentUser, useCanAccess } from '@/store/UserContext'
 
 const workspaceNavBase = [
   { to: '/',                label: 'Overview',        icon: LayoutDashboard },
@@ -58,10 +58,9 @@ function NavItem({ to, label, icon: Icon, onClose }: { to: string; label: string
 }
 
 function SidebarContent({ onClose, showClose }: { onClose: () => void; showClose?: boolean }) {
-  const currentUser = useCurrentUser()
-  // Show full nav while role is loading (null) — AuthGuard already confirmed login
-  const isEmployee = currentUser?.role === 'employee'
-  const workspaceNav = isEmployee ? workspaceNavBase : [...workspaceNavBase, ...adminOnlyNav]
+  const currentUser    = useCurrentUser()
+  const canAccessDJS   = useCanAccess('Daily Job Sheet')
+  const workspaceNav   = canAccessDJS ? [...workspaceNavBase, ...adminOnlyNav] : workspaceNavBase
 
   return (
     <div className="flex flex-col h-full sidebar-bg">

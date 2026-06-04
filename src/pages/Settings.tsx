@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload } from 'lucide-react'
+import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { useIsAdmin, useCurrentUser } from '@/store/UserContext'
+import { useIsAdmin, useCurrentUser, useRolePerms, useSetRolePerms, DEFAULT_ROLE_PERMS, ALL_MODULES, type RolePerms, type AppRole } from '@/store/UserContext'
 import { seedDemoData } from '@/lib/seedData'
 import * as XLSX from 'xlsx'
 import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured } from '@/lib/googleDrive'
@@ -11,6 +11,12 @@ import { PageHero } from '@/components/layout/PageHero'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
+
+const ROLE_META: Record<AppRole, { label: string; badge: string; desc: string }> = {
+  admin:     { label: 'Admin',     badge: 'bg-purple-50 text-purple-700 border-purple-200', desc: 'Full access to all modules including user management and daily job sheet' },
+  developer: { label: 'Developer', badge: 'bg-blue-50 text-blue-700 border-blue-200',       desc: 'Same full access as Admin — for technical team members managing the system' },
+  employee:  { label: 'Employee',  badge: 'bg-slate-100 text-slate-600 border-slate-200',   desc: 'Operational access only — configure accessible modules below' },
+}
 
 const allTabs = [
   { id: 'company',       label: 'Company',        icon: Building,  adminOnly: false },
@@ -492,6 +498,7 @@ export function Settings() {
         const saved = data.data as Record<string, any>
         setCompany(c => ({ ...c, ...saved.company }))
         if (saved.notifications) setNotif(n => ({ ...n, ...saved.notifications }))
+        if (saved.rolePermissions) setRolePerms(r => ({ ...r, ...saved.rolePermissions }))
       }
       setSettingsLoaded(true)
     })
@@ -516,6 +523,11 @@ export function Settings() {
     setNotif(updated)
     await supabase.from('company_settings').upsert({ id: 1, data: { company, notifications: updated } })
   }
+  const storedRolePerms  = useRolePerms()
+  const setStoredPerms   = useSetRolePerms()
+  const [rolePerms,      setRolePerms]      = useState<RolePerms>(DEFAULT_ROLE_PERMS)
+  const [editingRole,    setEditingRole]    = useState<AppRole | null>(null)
+  const [editPerms,      setEditPerms]      = useState<string[]>([])
   const [connectingIntegration, setConnectingIntegration] = useState<IntegrationInfo | null>(null)
   const [saved, setSaved] = useState(false)
   const [editProfileOpen,  setEditProfileOpen]  = useState(false)
@@ -576,6 +588,14 @@ export function Settings() {
     } catch (err: any) {
       setDriveError(err.message || 'Upload failed'); setDriveStatus('error')
     }
+  }
+
+  async function saveRolePerms(newPerms: RolePerms) {
+    setRolePerms(newPerms)
+    setStoredPerms(newPerms)  // update sidebar immediately
+    const { data } = await supabase.from('company_settings').select('data').eq('id', 1).single()
+    const current = (data?.data ?? {}) as Record<string, any>
+    await supabase.from('company_settings').upsert({ id: 1, data: { ...current, rolePermissions: newPerms } })
   }
 
   async function saveProfile(name: string) {
@@ -780,42 +800,46 @@ export function Settings() {
             <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
               <div className="px-6 py-4 border-b border-[#E4E8EC]">
                 <h3 className="text-[15px] font-bold text-[#111827]">Role Permissions</h3>
-                <p className="text-[12px] text-slate-500 mt-1">Assign roles when approving users in the Users tab.</p>
+                <p className="text-[12px] text-slate-500 mt-1">Define which modules each role can access. Assign roles when approving users in the Users tab.</p>
               </div>
               <div className="p-6 space-y-4">
-                {[
-                  {
-                    role: 'Admin', badge: 'bg-purple-50 text-purple-700 border-purple-200',
-                    desc: 'Full access to all modules including user management and daily job sheet',
-                    perms: ['All modules', 'Daily Job Sheet', 'Approve users', 'Delete records', 'Export data', 'Financial reports', 'Settings'],
-                  },
-                  {
-                    role: 'Developer', badge: 'bg-blue-50 text-blue-700 border-blue-200',
-                    desc: 'Same full access as Admin — for technical team members managing the system',
-                    perms: ['All modules', 'Daily Job Sheet', 'Approve users', 'Delete records', 'Export data', 'Financial reports', 'Settings'],
-                  },
-                  {
-                    role: 'Employee', badge: 'bg-slate-100 text-slate-600 border-slate-200',
-                    desc: 'Operational access only — cannot approve users or access Daily Job Sheet',
-                    perms: ['Overview', 'Bookings', 'Clients', 'Employees', 'Dispatch', 'Invoices', 'Inventory', 'Reports'],
-                    restricted: ['Daily Job Sheet', 'Approve users', 'Users tab'],
-                  },
-                ].map(r => (
-                  <div key={r.role} className="border border-[#E4E8EC] rounded-xl p-4 hover:border-slate-300 transition-colors">
-                    <div className="flex items-center gap-3 mb-3">
-                      <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${r.badge}`}>{r.role}</span>
-                      <p className="text-[12px] text-slate-500 flex-1">{r.desc}</p>
+                {(['admin', 'developer', 'employee'] as const).map(roleKey => {
+                  const meta  = ROLE_META[roleKey]
+                  const perms = rolePerms[roleKey]
+                  return (
+                    <div key={roleKey} className="border border-[#E4E8EC] rounded-xl p-4 hover:border-slate-300 transition-colors">
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${meta.badge}`}>{meta.label}</span>
+                        <p className="text-[12px] text-slate-500 flex-1">{meta.desc}</p>
+                        {isAdmin && (
+                          <button
+                            onClick={() => { setEditingRole(roleKey); setEditPerms([...perms]) }}
+                            className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 hover:text-slate-700 border border-slate-200 hover:border-slate-300 px-2.5 py-1 rounded-lg transition-colors shrink-0"
+                          >
+                            <Pencil size={11} /> Edit
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ALL_MODULES.map(mod => {
+                          const has = perms.includes(mod)
+                          return (
+                            <span
+                              key={mod}
+                              className={`text-[11px] px-2 py-0.5 rounded-full font-medium border ${
+                                has
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-red-50 text-red-500 border-red-200 line-through opacity-60'
+                              }`}
+                            >
+                              {mod}
+                            </span>
+                          )
+                        })}
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {r.perms.map(p => (
-                        <span key={p} className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">{p}</span>
-                      ))}
-                      {'restricted' in r && r.restricted?.map(p => (
-                        <span key={p} className="text-[11px] bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full font-medium line-through">{p}</span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
@@ -969,6 +993,26 @@ export function Settings() {
                 </div>
               ))}
             </div>
+            {!isAdmin && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle size={13} className="text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[11.5px] font-semibold text-amber-800">Role mismatch detected</p>
+                    <p className="text-[11px] text-amber-700 mt-0.5 mb-2">Your profile is set to Employee in the database. Click below to restore admin access.</p>
+                    <button
+                      onClick={async () => {
+                        await supabase.from('profiles').update({ role: 'admin' }).eq('id', currentUserId)
+                        window.location.reload()
+                      }}
+                      className="text-[11px] font-bold text-amber-800 underline hover:text-amber-900"
+                    >
+                      Restore Admin Access
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             <button
               onClick={() => setEditProfileOpen(true)}
               className="w-full mt-4 py-2 rounded-xl border border-[#E4E8EC] text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
@@ -1152,6 +1196,45 @@ export function Settings() {
 
         </div>
       </div>
+
+      {/* ── Edit Role Permissions modal ── */}
+      <Modal
+        open={!!editingRole}
+        onClose={() => setEditingRole(null)}
+        title={editingRole ? `Edit ${ROLE_META[editingRole].label} Permissions` : ''}
+        size="sm"
+      >
+        {editingRole && (
+          <div className="space-y-3">
+            <p className="text-[12px] text-slate-500">Toggle which modules this role can access. Changes apply immediately across the app.</p>
+            <div className="space-y-0 divide-y divide-[#E4E8EC]">
+              {ALL_MODULES.map(mod => (
+                <label key={mod} className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-slate-50 -mx-1 px-1 rounded-lg transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={editPerms.includes(mod)}
+                    onChange={e =>
+                      setEditPerms(p => e.target.checked ? [...p, mod] : p.filter(x => x !== mod))
+                    }
+                    className="w-4 h-4 rounded border-slate-300 accent-emerald-600"
+                  />
+                  <span className="text-[13px] text-[#111827] font-medium">{mod}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="secondary" onClick={() => setEditingRole(null)}>Cancel</Button>
+              <Button onClick={async () => {
+                const newPerms = { ...rolePerms, [editingRole]: editPerms }
+                await saveRolePerms(newPerms)
+                setEditingRole(null)
+              }}>
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* ── Edit Profile modal ── */}
       <Modal
