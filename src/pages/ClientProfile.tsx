@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   ArrowLeft, Phone, Mail, MapPin, Calendar, Star, MessageCircle,
-  Copy, CheckCircle, User, Clock, ExternalLink,
+  Copy, CheckCircle, User, Clock, ExternalLink, Pencil,
 } from 'lucide-react'
 import { useData } from '@/store/DataContext'
+import { Input, Select, Textarea } from '@/components/ui/Input'
 import { formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -62,11 +63,13 @@ function persistReview(bookingId: string) {
 /* ─── Main component ─── */
 export function ClientProfile() {
   const { id } = useParams<{ id: string }>()
-  const { clients, bookings, employees, invoices } = useData()
+  const { clients, bookings, employees, invoices, updateClient } = useData()
   const [activeTab,     setActiveTab]     = useState<'bookings' | 'info'>('bookings')
   const [reviewBooking, setReviewBooking] = useState<Booking | null>(null)
   const [reviewMap,     setReviewMap]     = useState<Record<string, string>>({})
   const [copied,        setCopied]        = useState(false)
+  const [editOpen,      setEditOpen]      = useState(false)
+  const [editSaving,    setEditSaving]    = useState(false)
 
   useEffect(() => { setReviewMap(loadReviews()) }, [])
 
@@ -87,7 +90,10 @@ export function ClientProfile() {
   }
 
   const clientBookings   = bookings
-    .filter(b => b.client_id === id)
+    .filter(b =>
+      b.client_id === id ||
+      b.client_name.toLowerCase().trim() === client!.full_name.toLowerCase().trim()
+    )
     .sort((a, b) => new Date(b.scheduled_date).getTime() - new Date(a.scheduled_date).getTime())
   const completed        = clientBookings.filter(b => b.status === 'completed')
   const upcoming         = clientBookings.filter(b => ['pending', 'confirmed'].includes(b.status))
@@ -124,12 +130,20 @@ export function ClientProfile() {
     <div className="space-y-6">
 
       {/* Back nav */}
-      <Link
-        to="/clients"
-        className="inline-flex items-center gap-2 text-[13px] font-semibold text-slate-500 hover:text-slate-700 transition-colors w-fit"
-      >
-        <ArrowLeft size={14} /> Back to Clients
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link
+          to="/clients"
+          className="inline-flex items-center gap-2 text-[13px] font-semibold text-slate-500 hover:text-slate-700 transition-colors"
+        >
+          <ArrowLeft size={14} /> Back to Clients
+        </Link>
+        <button
+          onClick={() => setEditOpen(true)}
+          className="flex items-center gap-2 text-[13px] font-semibold px-4 py-2 rounded-xl border border-[#E4E8EC] text-slate-600 hover:bg-slate-50 transition-colors"
+        >
+          <Pencil size={13} /> Edit Client
+        </button>
+      </div>
 
       {/* ── Hero card ── */}
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-6">
@@ -418,6 +432,61 @@ export function ClientProfile() {
           )}
         </div>
       </div>
+
+      {/* ── Edit Client Modal ── */}
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Client" size="lg">
+        <form
+          className="space-y-4"
+          onSubmit={async e => {
+            e.preventDefault()
+            const fd = new FormData(e.currentTarget as HTMLFormElement)
+            setEditSaving(true)
+            updateClient(client.id, {
+              full_name:         fd.get('full_name') as string,
+              phone:             fd.get('phone') as string,
+              whatsapp:          fd.get('whatsapp') as string || undefined,
+              email:             fd.get('email') as string || undefined,
+              nationality:       fd.get('nationality') as string || undefined,
+              building_name:     fd.get('building_name') as string || undefined,
+              apartment:         fd.get('apartment') as string || undefined,
+              area:              fd.get('area') as string,
+              city:              fd.get('city') as string,
+              preferred_cleaner: fd.get('preferred_cleaner') as string || undefined,
+              access_notes:      fd.get('access_notes') as string || undefined,
+              pet_info:          fd.get('pet_info') as string || undefined,
+            })
+            setEditSaving(false)
+            setEditOpen(false)
+          }}
+        >
+          <div className="grid grid-cols-2 gap-4">
+            <Input name="full_name"     label="Full Name"    defaultValue={client.full_name}     required />
+            <Input name="phone"         label="Phone"        defaultValue={client.phone}          required />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input name="whatsapp"      label="WhatsApp"     defaultValue={client.whatsapp ?? ''} />
+            <Input name="email"         label="Email"        defaultValue={client.email ?? ''}    type="email" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input name="nationality"   label="Nationality"  defaultValue={client.nationality ?? ''} />
+            <Input name="building_name" label="Building"     defaultValue={client.building_name ?? ''} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input name="apartment"     label="Apartment"    defaultValue={client.apartment ?? ''} />
+            <Input name="area"          label="Area"         defaultValue={client.area}           required />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input name="city"              label="City"               defaultValue={client.city} required />
+            <Input name="preferred_cleaner" label="Preferred Cleaner"  defaultValue={client.preferred_cleaner ?? ''} />
+          </div>
+          <Textarea name="access_notes" label="Access Notes" defaultValue={client.access_notes ?? ''} rows={2} />
+          <Textarea name="pet_info"     label="Pet Info"     defaultValue={client.pet_info ?? ''}     rows={2} />
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="secondary" className="flex-1" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button type="submit" className="flex-1" disabled={editSaving}>{editSaving ? 'Saving…' : 'Save Changes'}</Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* ── Review Request Modal ── */}
       <Modal
