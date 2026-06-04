@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import * as XLSX from 'xlsx'
 import {
   ChevronLeft, ChevronRight, Calendar, Printer, Download, Plus,
   Trash2, AlertCircle, TrendingUp, Users, Briefcase, CloudUpload,
+  Upload, CheckCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -339,6 +340,56 @@ export function DailyJobSheet() {
     }
   }
 
+  const importRef = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
+
+  async function importJobs(file: File) {
+    setImporting(true)
+    try {
+      const buf  = await file.arrayBuffer()
+      const wb   = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true })
+      // Try 'Jobs' sheet first, fall back to first sheet
+      const sheetName = wb.SheetNames.includes('Jobs') ? 'Jobs' : wb.SheetNames[0]
+      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[sheetName])
+      const toDate = (v: any) => {
+        if (!v) return selectedDate
+        if (v instanceof Date) return v.toISOString().split('T')[0]
+        const s = String(v).trim()
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+        const d = new Date(s)
+        return isNaN(d.getTime()) ? selectedDate : d.toISOString().split('T')[0]
+      }
+      rows.forEach(r => {
+        const nm = (k: string) => r[k] ?? r[k.toLowerCase()] ?? r[k.replace(' ', '_').toLowerCase()] ?? ''
+        const staffName = String(nm('Staff') || nm('staff_name') || '').trim()
+        if (!staffName) return
+        addDailyJob({
+          date:         toDate(nm('Date') || nm('date')),
+          staff_name:   staffName,
+          start_time:   String(nm('Start') || nm('start_time') || '').trim(),
+          end_time:     String(nm('End')   || nm('end_time')   || '').trim(),
+          duty_hours:   Number(nm('Hrs')   || nm('duty_hours') || 0),
+          address:      String(nm('Address')  || nm('address')  || '').trim(),
+          area:         String(nm('Area')     || nm('area')     || '').trim(),
+          material:     (String(nm('Material') || nm('material') || 'No').trim()) as MaterialType,
+          charges:      Number(nm('Charges AED') || nm('charges') || 0),
+          received:     Number(nm('Received AED') || nm('received') || 0),
+          payment_mode: (String(nm('Payment Mode') || nm('payment_mode') || 'Cash').trim()) as PaymentMode,
+          is_overtime:  String(nm('OT') || nm('is_overtime') || '').toLowerCase() === 'yes' || nm('is_overtime') === true,
+          remarks:      String(nm('Remarks') || nm('remarks') || '').trim(),
+        })
+      })
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  // All-time pending jobs (payment not collected), sorted newest first
+  const allPendingJobs = [...dailyJobs]
+    .filter(j => j.payment_mode === 'Pending')
+    .sort((a, b) => b.date.localeCompare(a.date))
+  const totalAllPending = allPendingJobs.reduce((s, j) => s + j.charges, 0)
+
   const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project')
 
   return (
@@ -378,8 +429,26 @@ export function DailyJobSheet() {
 
           {/* Actions */}
           <div className="flex items-center gap-2 flex-wrap">
+            <input
+              ref={importRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={async e => {
+                const file = e.target.files?.[0]
+                if (file) await importJobs(file)
+                e.target.value = ''
+              }}
+            />
+            <button
+              onClick={() => importRef.current?.click()}
+              disabled={importing}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#E4E8EC] text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-60"
+            >
+              <Upload size={13} /> {importing ? 'Importing…' : 'Import'}
+            </button>
             <button onClick={exportExcel} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#E4E8EC] text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
-              <Download size={13} /> Excel
+              <Download size={13} /> Export
             </button>
             <button onClick={printSheet} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#E4E8EC] text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
               <Printer size={13} /> Print
@@ -580,6 +649,68 @@ export function DailyJobSheet() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── Pending Collections Widget ── */}
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-[#E4E8EC] flex items-center justify-between">
+          <div>
+            <h3 className="text-[15px] font-bold text-[#111827]">Pending Collections</h3>
+            <p className="text-[12px] text-slate-500 mt-0.5">All jobs where payment was not collected yet</p>
+          </div>
+          {allPendingJobs.length > 0 && (
+            <div className="text-right">
+              <p className="text-[16px] font-black text-red-600">AED {totalAllPending.toLocaleString()}</p>
+              <p className="text-[11px] text-slate-400">{allPendingJobs.length} job{allPendingJobs.length !== 1 ? 's' : ''} pending</p>
+            </div>
+          )}
+        </div>
+
+        {allPendingJobs.length === 0 ? (
+          <div className="py-10 text-center">
+            <CheckCircle className="mx-auto mb-2 text-emerald-400" size={28} strokeWidth={1.5} />
+            <p className="text-[13px] text-slate-500">All payments collected — no pending amounts</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]" style={{ minWidth: 700 }}>
+              <thead>
+                <tr className="bg-slate-50 border-b border-[#E4E8EC]">
+                  {['Date', 'Staff', 'Address', 'Area', 'Amount Due', 'Remarks', ''].map(h => (
+                    <th key={h} className="text-left px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-[0.07em] whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E4E8EC]">
+                {allPendingJobs.map(job => (
+                  <tr key={job.id} className="hover:bg-red-50/30 transition-colors">
+                    <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">{fmtDate(job.date)}</td>
+                    <td className="px-4 py-3 font-semibold text-[#111827] whitespace-nowrap">{job.staff_name}</td>
+                    <td className="px-4 py-3 text-slate-600 max-w-[180px] truncate">{job.address || '—'}</td>
+                    <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{job.area || '—'}</td>
+                    <td className="px-4 py-3 font-bold text-red-600 whitespace-nowrap">AED {job.charges.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-slate-400 max-w-[140px] truncate">{job.remarks || '—'}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => updateDailyJob(job.id, { payment_mode: 'Cash', received: job.charges })}
+                        className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors whitespace-nowrap"
+                      >
+                        <CheckCircle size={11} /> Mark Collected
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-[#E4E8EC] bg-red-50">
+                <tr>
+                  <td colSpan={4} className="px-4 py-3 text-[12px] font-bold text-red-800">Total Outstanding</td>
+                  <td className="px-4 py-3 text-[14px] font-black text-red-700">AED {totalAllPending.toLocaleString()}</td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* ── Supabase setup notice (shown when no data ever) ── */}
