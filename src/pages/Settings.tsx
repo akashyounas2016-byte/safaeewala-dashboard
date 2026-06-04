@@ -1178,8 +1178,8 @@ export function Settings() {
             label="Email"
             value={userEmail}
             disabled
-            hint="Email cannot be changed here."
           />
+          <p className="text-[11px] text-slate-400 -mt-3">Email cannot be changed here.</p>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={() => setEditProfileOpen(false)}>Cancel</Button>
             <Button type="submit" disabled={profileSaving}>
