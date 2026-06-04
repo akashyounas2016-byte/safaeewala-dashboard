@@ -104,12 +104,18 @@ function Avatar({ name, size = 'md', idx = 0 }: { name: string; size?: 'sm' | 'm
 }
 
 /* ─── Document expiry indicator (used in detail modal) ─── */
-function ExpiryIndicator({ date, label }: { date: string; label: string }) {
+function ExpiryIndicator({ date, label }: { date: string | undefined | null; label: string }) {
+  if (!date) return (
+    <div className="rounded-xl p-3 text-center border border-[#E4E8EC] bg-slate-50">
+      <p className="text-[11px] font-semibold text-slate-500">{label}</p>
+      <p className="text-[11px] mt-0.5 text-slate-400">Not set</p>
+    </div>
+  )
   const days = daysUntil(date)
   let bg = 'bg-emerald-50'; let text = 'text-emerald-700'
-  if (days < 0)  { bg = 'bg-red-50';    text = 'text-red-700' }
-  else if (days < 30)  { bg = 'bg-red-50';    text = 'text-red-700' }
-  else if (days < 90)  { bg = 'bg-amber-50';  text = 'text-amber-700' }
+  if (days < 0)        { bg = 'bg-red-50';   text = 'text-red-700'   }
+  else if (days < 30)  { bg = 'bg-red-50';   text = 'text-red-700'   }
+  else if (days < 90)  { bg = 'bg-amber-50'; text = 'text-amber-700' }
   return (
     <div className={`rounded-xl p-3 text-center border border-[#E4E8EC] ${bg}`}>
       <p className={`text-[11px] font-semibold ${text}`}>{label}</p>
@@ -293,8 +299,9 @@ export function Employees() {
           {/* Employee cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filtered.map((emp, idx) => {
-              const minDays = Math.min(daysUntil(emp.visa_expiry), daysUntil(emp.work_permit_expiry), daysUntil(emp.passport_expiry))
-              const hasAlert = minDays < 90
+              const safeDay = (d: string | undefined) => d ? daysUntil(d) : Infinity
+              const minDays = Math.min(safeDay(emp.visa_expiry), safeDay(emp.work_permit_expiry), safeDay(emp.passport_expiry))
+              const hasAlert = isFinite(minDays) && minDays < 90
               return (
                 <div
                   key={emp.id}
@@ -572,9 +579,9 @@ export function Employees() {
             <div>
               <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.1em] mb-2">Skills</p>
               <div className="flex flex-wrap gap-2">
-                {selected.skills.length === 0
+                {(selected.skills ?? []).length === 0
                   ? <p className="text-[12px] text-slate-400">No skills added yet</p>
-                  : selected.skills.map(s => (
+                  : (selected.skills ?? []).map(s => (
                     <span key={s} className="text-[12px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-medium">{s}</span>
                   ))}
               </div>
