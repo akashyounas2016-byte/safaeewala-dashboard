@@ -849,8 +849,9 @@ function BookingDetail({ booking, onUpdate, onDelete }: {
   onUpdate: (patch: Partial<BookingType>) => void
   onDelete: () => void
 }) {
-  const [status, setStatus] = useState(booking.status)
+  const [status,    setStatus]    = useState(booking.status)
   const [isEditing, setIsEditing] = useState(false)
+  const [crew,      setCrew]      = useState<string[]>(booking.assigned_crew ?? [])
 
   function applyStatus(s: BookingStatus) {
     setStatus(s)
@@ -875,6 +876,7 @@ function BookingDetail({ booking, onUpdate, onDelete }: {
             duration_hours: Number(fd.get('duration_hours')),
             total_amount:   Number(fd.get('total_amount')),
             notes:          fd.get('notes') as string,
+            assigned_crew:  crew,
           }
           onUpdate(patch)
           setIsEditing(false)
@@ -903,6 +905,7 @@ function BookingDetail({ booking, onUpdate, onDelete }: {
         </div>
         <Input name="total_amount" label="Amount (AED)" type="number" defaultValue={String(booking.total_amount)} />
         <Textarea name="notes" label="Notes" defaultValue={booking.notes} rows={3} />
+        <CrewSelector selected={crew} onChange={setCrew} />
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="outline" className="flex-1" onClick={() => setIsEditing(false)}>Cancel</Button>
           <Button type="submit" className="flex-1">Save Changes</Button>
@@ -951,6 +954,15 @@ function BookingDetail({ booking, onUpdate, onDelete }: {
           <p className="text-[13px] text-amber-700 mt-1">{booking.notes}</p>
         </div>
       )}
+
+      {/* Crew Assignment */}
+      <div className="border border-[#E4E8EC] rounded-xl p-3">
+        <p className="text-[10.5px] text-slate-500 uppercase tracking-[0.08em] font-semibold mb-2">Assigned Crew</p>
+        <CrewSelector
+          selected={crew}
+          onChange={ids => { setCrew(ids); onUpdate({ assigned_crew: ids }) }}
+        />
+      </div>
 
       {/* WhatsApp / Call actions */}
       {booking.client_phone && (
