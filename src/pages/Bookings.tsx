@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
+import * as XLSX from 'xlsx'
 import {
   Search, Calendar as CalendarIcon, Clock, MapPin, Phone,
   ChevronLeft, ChevronRight, List, CalendarDays, Columns3,
   TrendingUp, CheckCircle, AlertCircle, Upload, Download,
+  FileSpreadsheet,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -79,43 +81,87 @@ const crewBlockColors: Record<string, { bg: string; border: string; text: string
   default: { bg: '#d6e7f5', border: '#3a7ab8', text: '#234c72' },
 }
 
-/* ─── CSV helpers ─── */
-function exportBookingsCSV(bookings: Booking[]) {
-  const headers = ['Client Name', 'Phone', 'Service Type', 'Date', 'Time', 'Duration (hrs)', 'Amount (AED)', 'Status', 'Address', 'Notes']
-  const rows = bookings.map(b => [
-    b.client_name, b.client_phone, b.service_type, b.scheduled_date,
-    b.scheduled_time, b.duration_hours, b.total_amount, b.status,
-    `"${b.service_address.replace(/"/g, '""')}"`,
-    `"${(b.notes || '').replace(/"/g, '""')}"`,
-  ].join(','))
-  const csv = [headers.join(','), ...rows].join('\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `bookings-${new Date().toISOString().split('T')[0]}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+/* ─── Excel import/export helpers ─── */
+function toISODate(val: any): string {
+  if (!val) return ''
+  if (val instanceof Date) return val.toISOString().split('T')[0]
+  const s = String(val).trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  const d = new Date(s)
+  return isNaN(d.getTime()) ? s : d.toISOString().split('T')[0]
 }
 
-function parseCSVLine(line: string): string[] {
-  const result: string[] = []
-  let cur = ''
-  let inQuotes = false
-  for (const ch of line) {
-    if (ch === '"') { inQuotes = !inQuotes }
-    else if (ch === ',' && !inQuotes) { result.push(cur.trim()); cur = '' }
-    else { cur += ch }
-  }
-  result.push(cur.trim())
-  return result
+function parseFrequency(v: string): BookingFrequency {
+  const s = v?.toLowerCase().replace(/[-\s]/g, '') ?? ''
+  if (s === 'weekly')   return 'weekly'
+  if (s === 'biweekly') return 'biweekly'
+  if (s === 'monthly')  return 'monthly'
+  return 'once'
+}
+
+function parseBookingStatus(v: string): BookingStatus {
+  const s = v?.toLowerCase().trim() ?? ''
+  if (s === 'completed')                      return 'completed'
+  if (s === 'confirmed' || s === 'scheduled') return 'confirmed'
+  if (s === 'in_progress' || s === 'in progress') return 'in_progress'
+  if (s === 'cancelled' || s === 'canceled')  return 'cancelled'
+  return 'pending'
+}
+
+function exportBookingsXLSX(bookings: Booking[]) {
+  const rows = bookings.map((b, i) => ({
+    'Booking ID':        `BK-${String(i + 1).padStart(3, '0')}`,
+    'Client Name':       b.client_name,
+    'Phone':             b.client_phone,
+    'Service Address':   b.service_address,
+    'Service Type':      b.service_type,
+    'Frequency':         b.frequency === 'once' ? 'One-time' : b.frequency.charAt(0).toUpperCase() + b.frequency.slice(1),
+    'Date':              b.scheduled_date,
+    'Time':              b.scheduled_time,
+    'Duration (hrs)':    b.duration_hours,
+    'Total Amount (AED)': b.total_amount,
+    'Status':            b.status.replace('_', ' '),
+    'Notes':             b.notes ?? '',
+  }))
+  const ws = XLSX.utils.json_to_sheet(rows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Bookings')
+  XLSX.writeFile(wb, `bookings-${new Date().toISOString().split('T')[0]}.xlsx`)
+}
+
+async function parseBookingsFile(file: File): Promise<Parameters<(b: any) => void>[0][]> {
+  const buf  = await file.arrayBuffer()
+  const wb   = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true })
+  const rows = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[wb.SheetNames[0]])
+  return rows
+    .map(r => {
+      const name = String(r['Client Name'] ?? r['client_name'] ?? '').trim()
+      if (!name) return null
+      return {
+        client_id:       '',
+        client_name:     name,
+        client_phone:    String(r['Phone'] ?? r['client_phone'] ?? '').trim(),
+        service_address: String(r['Service Address'] ?? r['service_address'] ?? '').trim(),
+        service_type:    String(r['Service Type'] ?? r['service_type'] ?? 'Standard Clean').trim(),
+        frequency:       parseFrequency(String(r['Frequency'] ?? '')),
+        scheduled_date:  toISODate(r['Date'] ?? r['scheduled_date']),
+        scheduled_time:  String(r['Time'] ?? r['scheduled_time'] ?? '09:00').trim(),
+        duration_hours:  Number(r['Duration (hrs)'] ?? r['duration_hours']) || 3,
+        total_amount:    Number(r['Total Amount (AED)'] ?? r['total_amount']) || 0,
+        status:          parseBookingStatus(String(r['Status'] ?? '')),
+        notes:           String(r['Notes'] ?? r['notes'] ?? '').trim(),
+        assigned_crew:   [],
+      }
+    })
+    .filter(Boolean) as any[]
 }
 
 /* ─── Main Bookings page ─── */
 export function Bookings() {
   const { bookings, addBooking, updateBooking, deleteBooking } = useData()
   const [view, setView] = useState<'list' | 'calendar' | 'kanban'>('list')
-  const csvInputRef = useRef<HTMLInputElement>(null)
+  const xlsxInputRef = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [serviceFilter, setServiceFilter] = useState('all')
@@ -259,50 +305,35 @@ export function Bookings() {
 
           {/* Import / Export */}
           <input
-            ref={csvInputRef}
+            ref={xlsxInputRef}
             type="file"
-            accept=".csv"
+            accept=".xlsx,.xls,.csv"
             className="hidden"
-            onChange={e => {
+            onChange={async e => {
               const file = e.target.files?.[0]
               if (!file) return
-              const reader = new FileReader()
-              reader.onload = ev => {
-                const text = ev.target?.result as string
-                const lines = text.split('\n').slice(1).filter(l => l.trim())
-                lines.forEach(line => {
-                  const [client_name, client_phone, service_type, scheduled_date, scheduled_time, duration_hours, total_amount, , service_address, notes] = parseCSVLine(line)
-                  if (!client_name) return
-                  addBooking({
-                    client_id: '', client_name, client_phone: client_phone || '',
-                    service_type: service_type || 'Standard Clean',
-                    frequency: 'once' as BookingFrequency,
-                    scheduled_date: scheduled_date || new Date().toISOString().split('T')[0],
-                    scheduled_time: scheduled_time || '09:00',
-                    duration_hours: Number(duration_hours) || 3,
-                    total_amount: Number(total_amount) || 0,
-                    status: 'pending',
-                    service_address: service_address || '',
-                    notes: notes || '',
-                    assigned_crew: [],
-                  })
-                })
+              setImporting(true)
+              try {
+                const rows = await parseBookingsFile(file)
+                rows.forEach(r => addBooking(r))
+              } finally {
+                setImporting(false)
                 e.target.value = ''
               }
-              reader.readAsText(file)
             }}
           />
           <button
-            onClick={() => csvInputRef.current?.click()}
-            className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors"
+            onClick={() => xlsxInputRef.current?.click()}
+            disabled={importing}
+            className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors disabled:opacity-60"
           >
-            <Upload size={13} /> Import CSV
+            <Upload size={13} /> {importing ? 'Importing…' : 'Import Excel'}
           </button>
           <button
-            onClick={() => exportBookingsCSV(filtered)}
+            onClick={() => exportBookingsXLSX(filtered)}
             className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors"
           >
-            <Download size={13} /> Export CSV
+            <FileSpreadsheet size={13} /> Export Excel
           </button>
 
           {/* View toggle */}

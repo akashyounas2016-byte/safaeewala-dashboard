@@ -1,12 +1,87 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import * as XLSX from 'xlsx'
 import { useNavigate } from 'react-router-dom'
-import { Search, AlertTriangle, Phone, Shield, Users, UserCheck, Star, TrendingUp, Trash2, CheckCircle } from 'lucide-react'
+import { Search, AlertTriangle, Phone, Shield, Users, UserCheck, Star, TrendingUp, Trash2, CheckCircle, Upload, Download, FileSpreadsheet } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
+import type { Employee } from '@/types'
+
+/* ─── Excel import/export helpers ─── */
+function toISODate(val: any): string {
+  if (!val) return ''
+  if (val instanceof Date) return val.toISOString().split('T')[0]
+  const s = String(val).trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  const d = new Date(s)
+  return isNaN(d.getTime()) ? s : d.toISOString().split('T')[0]
+}
+
+function parseEmpRole(v: string): 'crew_lead' | 'cleaner' {
+  const s = v?.toLowerCase().trim() ?? ''
+  return (s === 'supervisor' || s === 'crew_lead' || s === 'crew lead' || s === 'lead') ? 'crew_lead' : 'cleaner'
+}
+
+function parseEmpStatus(v: string): Employee['status'] {
+  const s = v?.toLowerCase().replace(/\s/g, '_').trim() ?? ''
+  if (s === 'on_leave')               return 'on_leave'
+  if (s === 'inactive')               return 'inactive'
+  if (s === 'engaged_in_project')     return 'engaged_in_project'
+  return 'active'
+}
+
+function exportEmployeesXLSX(employees: Employee[]) {
+  const rows = employees.map((e, i) => ({
+    'Emp ID':                    `EMP-${String(i + 1).padStart(3, '0')}`,
+    'Full Name':                 e.full_name,
+    'Phone':                     e.phone,
+    'Role':                      e.role === 'crew_lead' ? 'Supervisor' : 'Cleaner',
+    'Nationality':               e.nationality,
+    'Emirates ID':               e.emirates_id,
+    'Pay Rate (AED/hr)':         e.pay_rate_hourly,
+    'Visa Expiry':               e.visa_expiry,
+    'Work Permit Expiry':        e.work_permit_expiry,
+    'Passport Expiry':           e.passport_expiry,
+    'Medical Insurance Expiry':  e.medical_insurance_expiry,
+    'Joined Date':               e.joined_date,
+    'Status':                    e.status === 'on_leave' ? 'On Leave' : e.status.charAt(0).toUpperCase() + e.status.slice(1),
+  }))
+  const ws = XLSX.utils.json_to_sheet(rows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Employees')
+  XLSX.writeFile(wb, `employees-${new Date().toISOString().split('T')[0]}.xlsx`)
+}
+
+async function parseEmployeesFile(file: File): Promise<Omit<Employee, 'id' | 'created_at'>[]> {
+  const buf  = await file.arrayBuffer()
+  const wb   = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true })
+  const rows = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[wb.SheetNames[0]])
+  return rows
+    .map(r => {
+      const name = String(r['Full Name'] ?? r['full_name'] ?? '').trim()
+      if (!name) return null
+      return {
+        full_name:                  name,
+        phone:                      String(r['Phone'] ?? r['phone'] ?? '').trim(),
+        email:                      String(r['Email'] ?? r['email'] ?? '').trim() || undefined,
+        role:                       parseEmpRole(String(r['Role'] ?? '')),
+        nationality:                String(r['Nationality'] ?? r['nationality'] ?? '').trim(),
+        emirates_id:                String(r['Emirates ID'] ?? r['emirates_id'] ?? '').trim(),
+        pay_rate_hourly:            Number(r['Pay Rate (AED/hr)'] ?? r['pay_rate_hourly']) || 14,
+        visa_expiry:                toISODate(r['Visa Expiry'] ?? r['visa_expiry']),
+        work_permit_expiry:         toISODate(r['Work Permit Expiry'] ?? r['work_permit_expiry']),
+        medical_insurance_expiry:   toISODate(r['Medical Insurance Expiry'] ?? r['medical_insurance_expiry']),
+        passport_expiry:            toISODate(r['Passport Expiry'] ?? r['passport_expiry']),
+        skills:                     [],
+        status:                     parseEmpStatus(String(r['Status'] ?? '')),
+        joined_date:                toISODate(r['Joined Date'] ?? r['joined_date']),
+      } as Omit<Employee, 'id' | 'created_at'>
+    })
+    .filter(Boolean) as Omit<Employee, 'id' | 'created_at'>[]
+}
 
 /* ─── Avatar palette ─── */
 const avatarColors = [
@@ -63,12 +138,14 @@ function StatusBadge({ status }: { status: string }) {
 export function Employees() {
   const { employees, bookings, addEmployee, updateEmployee, deleteEmployee } = useData()
   const navigate = useNavigate()
+  const xlsxInputRef = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<typeof employees[0] | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [importing, setImporting] = useState(false)
 
   const expiringCount = employees.filter(e => {
     const soonest = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry), daysUntil(e.passport_expiry))
@@ -166,7 +243,7 @@ export function Employees() {
                   className="w-full text-[13px] pl-10 pr-4 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 focus:bg-white placeholder-slate-400 transition-colors"
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 {['all', 'crew_lead', 'cleaner'].map(r => (
                   <button
                     key={r}
@@ -178,6 +255,37 @@ export function Employees() {
                     {r === 'all' ? 'All' : r === 'crew_lead' ? 'Crew Leads' : 'Cleaners'}
                   </button>
                 ))}
+                <input
+                  ref={xlsxInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  className="hidden"
+                  onChange={async e => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    setImporting(true)
+                    try {
+                      const rows = await parseEmployeesFile(file)
+                      rows.forEach(r => addEmployee(r))
+                    } finally {
+                      setImporting(false)
+                      e.target.value = ''
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => xlsxInputRef.current?.click()}
+                  disabled={importing}
+                  className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors disabled:opacity-60"
+                >
+                  <Upload size={13} /> {importing ? 'Importing…' : 'Import Excel'}
+                </button>
+                <button
+                  onClick={() => exportEmployeesXLSX(filtered)}
+                  className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors"
+                >
+                  <FileSpreadsheet size={13} /> Export Excel
+                </button>
               </div>
             </div>
           </div>
