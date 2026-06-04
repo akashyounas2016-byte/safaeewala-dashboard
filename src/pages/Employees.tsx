@@ -147,6 +147,8 @@ export function Employees() {
   const xlsxInputRef = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'on_leave'>('all')
+  const [expiryFilter, setExpiryFilter] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<typeof employees[0] | null>(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -167,7 +169,12 @@ export function Employees() {
     const matchSearch = e.full_name.toLowerCase().includes(search.toLowerCase()) ||
       e.nationality.toLowerCase().includes(search.toLowerCase())
     const matchRole = roleFilter === 'all' || e.role === roleFilter
-    return matchSearch && matchRole
+    const matchStatus = statusFilter === 'all' || e.status === statusFilter
+    const matchExpiry = !expiryFilter || (() => {
+      const soonest = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry), daysUntil(e.passport_expiry))
+      return soonest < 90
+    })()
+    return matchSearch && matchRole && matchStatus && matchExpiry
   })
 
   /* Aggregate all skills across all employees */
@@ -215,10 +222,10 @@ export function Employees() {
           { label: 'On Leave',        value: onLeaveCount,          sub: 'Currently absent', icon: TrendingUp, iconBg: 'bg-teal-50',    iconColor: 'text-teal-600',    delta: onLeaveCount > 0 ? `${onLeaveCount}` : 'None', deltaUp: onLeaveCount === 0 },
         ].map(card => {
           let action: (() => void) | null = null
-          if (card.label === 'Active') action = () => setSearch('status:active')
-          else if (card.label === 'Crew Leads') action = () => setSearch('role:crew_lead')
-          else if (card.label === 'Docs Expiring') action = () => setSearch('expiring')
-          else if (card.label === 'On Leave') action = () => setSearch('status:on_leave')
+          if (card.label === 'Active') action = () => { setStatusFilter('active'); setExpiryFilter(false); setRoleFilter('all'); setSearch('') }
+          else if (card.label === 'Crew Leads') action = () => { setRoleFilter('crew_lead'); setStatusFilter('all'); setExpiryFilter(false); setSearch('') }
+          else if (card.label === 'Docs Expiring') action = () => { setExpiryFilter(true); setStatusFilter('all'); setRoleFilter('all'); setSearch('') }
+          else if (card.label === 'On Leave') action = () => { setStatusFilter('on_leave'); setExpiryFilter(false); setRoleFilter('all'); setSearch('') }
           return (
           <div key={card.label} onClick={action ?? undefined} className={`bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all ${action ? 'cursor-pointer' : ''}`}>
             <div className="flex items-start justify-between mb-4">
