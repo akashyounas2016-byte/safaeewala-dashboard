@@ -220,6 +220,9 @@ export function Dispatch() {
   const { bookings, employees, updateBooking, addBooking } = useData()
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [showNewJob, setShowNewJob] = useState(false)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set())
+  const [bulkCrew, setBulkCrew] = useState<string>('')
 
   const today = new Date().toISOString().split('T')[0]
   const todayDisplay = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -240,6 +243,30 @@ export function Dispatch() {
     : '0'
 
   const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project')
+
+  // Crew efficiency metrics
+  const crewMetrics = activeEmps.map(emp => {
+    const assigned = todayJobs.filter(b => b.assigned_crew.includes(emp.id))
+    const completed = assigned.filter(b => b.status === 'completed').length
+    const onJob = assigned.filter(b => b.status === 'in_progress').length
+    const totalHours = assigned.reduce((s, b) => s + b.duration_hours, 0)
+    const utilization = totalHours > 0 ? Math.round((totalHours / 10) * 100) : 0 // Assume 10h working day
+    const onTimeCount = assigned.filter(b => b.status === 'completed').length
+    const onTimeRate = assigned.length > 0 ? Math.round((onTimeCount / assigned.length) * 100) : 0
+    return { emp, assigned: assigned.length, completed, onJob, utilization, onTimeRate }
+  })
+
+  // Job elapsed time
+  function getJobProgress(job: Booking) {
+    if (job.status !== 'in_progress') return null
+    const now = new Date()
+    const start = new Date(`${job.scheduled_date}T${job.scheduled_time}`)
+    const elapsed = Math.round((now.getTime() - start.getTime()) / 60000) // minutes
+    const expectedEnd = new Date(start.getTime() + job.duration_hours * 60 * 60 * 1000)
+    const remaining = Math.max(0, Math.round((expectedEnd.getTime() - now.getTime()) / 60 * 1000))
+    const isLate = elapsed > job.duration_hours * 60
+    return { elapsed, expectedEnd, remaining, isLate }
+  }
 
   const areaBreakdown = todayJobs.reduce((acc, b) => {
     const parts = b.service_address.split(',')
@@ -309,8 +336,40 @@ export function Dispatch() {
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
             <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between">
               <h3 className="text-[16px] font-bold text-[#111827]">Today's Timeline</h3>
-              <span className="text-[12px] text-slate-500">{todayJobs.length} jobs · click to manage</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setSelectMode(!selectMode); setSelectedJobs(new Set()) }}
+                  className={`text-[12px] font-semibold px-2 py-1 rounded-lg transition-colors ${selectMode ? 'bg-emerald-50 text-emerald-700' : 'text-slate-500 hover:bg-slate-50'}`}
+                >
+                  {selectMode ? '✓ Select mode' : 'Multi-select'}
+                </button>
+                <span className="text-[12px] text-slate-500">{todayJobs.length} jobs</span>
+              </div>
             </div>
+
+            {selectMode && selectedJobs.size > 0 && (
+              <div className="px-6 py-3 bg-emerald-50 border-b border-emerald-200 flex items-center justify-between">
+                <span className="text-[12px] font-semibold text-emerald-700">{selectedJobs.size} selected</span>
+                <div className="flex items-center gap-2">
+                  <Select value={bulkCrew} onChange={e => setBulkCrew(e.target.value)} className="text-[12px]">
+                    <option value="">Assign crew…</option>
+                    {activeEmps.map(e => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+                  </Select>
+                  <Button size="sm" onClick={() => {
+                    selectedJobs.forEach(jobId => {
+                      const job = bookings.find(b => b.id === jobId)
+                      if (job && bulkCrew) {
+                        const newCrew = Array.from(new Set([...job.assigned_crew, bulkCrew]))
+                        updateBooking(jobId, { assigned_crew: newCrew })
+                      }
+                    })
+                    setSelectedJobs(new Set())
+                    setBulkCrew('')
+                  }} disabled={!bulkCrew} className="text-[12px]">Assign</Button>
+                  <Button variant="outline" size="sm" onClick={() => setSelectedJobs(new Set())} className="text-[12px]">Clear</Button>
+                </div>
+              </div>
+            )}
 
             {todayJobs.length === 0 ? (
               <div className="py-16 text-center">
@@ -339,20 +398,54 @@ export function Dispatch() {
                             : job.status === 'completed'  ? 'bg-slate-50 hover:bg-slate-100'
                             : job.status === 'cancelled'  ? 'bg-red-50 opacity-60'
                             : 'bg-blue-50 hover:bg-blue-100'
+                          const progress = getJobProgress(job)
+                          const isSelected = selectedJobs.has(job.id)
                           return (
                             <button
                               key={job.id}
-                              onClick={() => setSelectedJobId(job.id)}
-                              className={`rounded-xl p-3.5 border-l-4 text-left w-full transition-colors cursor-pointer ${bg}`}
+                              onClick={() => {
+                                if (selectMode) {
+                                  const newSelected = new Set(selectedJobs)
+                                  if (newSelected.has(job.id)) newSelected.delete(job.id)
+                                  else newSelected.add(job.id)
+                                  setSelectedJobs(newSelected)
+                                } else {
+                                  setSelectedJobId(job.id)
+                                }
+                              }}
+                              className={`rounded-xl p-3.5 border-l-4 text-left w-full transition-all cursor-pointer ${bg} ${isSelected ? 'ring-2 ring-emerald-400' : ''}`}
                               style={{ borderLeftColor: borderColor }}
                             >
                               <div className="flex items-start justify-between gap-2 mb-1.5">
-                                <div>
-                                  <p className="text-[13px] font-bold text-[#111827]">{job.client_name}</p>
-                                  <p className="text-[12px] text-slate-500 capitalize">{job.service_type} · {job.duration_hours}h</p>
+                                <div className="flex items-start gap-2 flex-1">
+                                  {selectMode && (
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => {}}
+                                      className="w-4 h-4 mt-1 rounded accent-emerald-500"
+                                    />
+                                  )}
+                                  <div>
+                                    <p className="text-[13px] font-bold text-[#111827]">{job.client_name}</p>
+                                    <p className="text-[12px] text-slate-500 capitalize">{job.service_type} · {job.duration_hours}h</p>
+                                  </div>
                                 </div>
                                 <StatusPill status={job.status} />
                               </div>
+                              {progress && (
+                                <div className="mb-2 flex items-center gap-2">
+                                  <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full transition-all ${progress.isLate ? 'bg-red-500' : 'bg-emerald-500'}`}
+                                      style={{ width: `${Math.min(100, (progress.elapsed / (job.duration_hours * 60)) * 100)}%` }}
+                                    />
+                                  </div>
+                                  <span className={`text-[10px] font-mono font-semibold whitespace-nowrap ${progress.isLate ? 'text-red-600' : 'text-emerald-600'}`}>
+                                    {progress.elapsed}m
+                                  </span>
+                                </div>
+                              )}
                               <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-2">
                                 <MapPin size={11} className="shrink-0" />
                                 <span className="truncate">{job.service_address}</span>
@@ -396,9 +489,10 @@ export function Dispatch() {
               <p className="text-[12px] text-slate-400 text-center py-4">No active employees — add employees first</p>
             ) : (
               <div className="space-y-3">
-                {activeEmps.map((emp, idx) => {
+                {crewMetrics.map(({ emp, assigned, completed, onJob, utilization, onTimeRate }, idx) => {
                   const currentJob = todayJobs.find(b => b.assigned_crew.includes(emp.id) && b.status === 'in_progress')
                   const nextJob    = todayJobs.find(b => b.assigned_crew.includes(emp.id) && (b.status === 'confirmed' || b.status === 'pending'))
+                  const progress   = currentJob ? getJobProgress(currentJob) : null
                   const isOnJob    = !!currentJob
                   return (
                     <button
@@ -411,9 +505,25 @@ export function Dispatch() {
                         <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${isOnJob ? 'bg-emerald-500' : 'bg-slate-300'}`} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-bold text-[#111827] truncate">{emp.full_name}</p>
-                        {currentJob ? (
-                          <p className="text-[11px] text-emerald-600 font-medium truncate">On job: {currentJob.service_type}</p>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <p className="text-[12px] font-bold text-[#111827] truncate">{emp.full_name}</p>
+                          <span className="text-[10px] font-semibold text-slate-500">{onTimeRate}% on-time</span>
+                        </div>
+                        {currentJob && progress ? (
+                          <>
+                            <p className={`text-[11px] font-medium truncate ${progress.isLate ? 'text-red-600' : 'text-emerald-600'}`}>
+                              {progress.isLate ? '⚠️ Running late' : '✓ On job'}: {currentJob.service_type}
+                            </p>
+                            <div className="mt-1.5 flex items-center gap-2">
+                              <div className="flex-1 h-1 bg-slate-200 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all ${progress.isLate ? 'bg-red-500' : 'bg-emerald-500'}`}
+                                  style={{ width: `${Math.min(100, (progress.elapsed / (currentJob.duration_hours * 60)) * 100)}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] text-slate-500 font-mono">{progress.elapsed}m / {Math.round(currentJob.duration_hours * 60)}m</span>
+                            </div>
+                          </>
                         ) : nextJob ? (
                           <p className="text-[11px] text-blue-600 font-medium truncate">
                             Next: {formatTime(`${nextJob.scheduled_date}T${nextJob.scheduled_time}`)} · {nextJob.service_type}
@@ -421,6 +531,11 @@ export function Dispatch() {
                         ) : (
                           <p className="text-[11px] text-slate-400">Available</p>
                         )}
+                        <div className="mt-1 flex gap-2 text-[10px] text-slate-500">
+                          <span>Jobs: {assigned}</span>
+                          <span>·</span>
+                          <span>{utilization}% util.</span>
+                        </div>
                       </div>
                     </button>
                   )
