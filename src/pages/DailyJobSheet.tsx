@@ -360,7 +360,15 @@ export function DailyJobSheet() {
         return isNaN(d.getTime()) ? selectedDate : d.toISOString().split('T')[0]
       }
       rows.forEach(r => {
-        const nm = (k: string) => r[k] ?? r[k.toLowerCase()] ?? r[k.replace(' ', '_').toLowerCase()] ?? ''
+        // Normalize column name matching: handle "Charges (AED)", "Charges AED", "charges", etc.
+        const nm = (k: string) => {
+          const normalized = k.toLowerCase().replace(/\s*\([^)]*\)\s*/g, '').replace(/\s+/g, '_')
+          for (const [key, val] of Object.entries(r)) {
+            const keyNorm = String(key).toLowerCase().replace(/\s*\([^)]*\)\s*/g, '').replace(/\s+/g, '_')
+            if (keyNorm === normalized) return val
+          }
+          return ''
+        }
         const staffName = String(nm('Staff') || nm('staff_name') || '').trim()
         if (!staffName) return
         addDailyJob({
@@ -372,11 +380,11 @@ export function DailyJobSheet() {
           address:      String(nm('Address')  || nm('address')  || '').trim(),
           area:         String(nm('Area')     || nm('area')     || '').trim(),
           material:     (String(nm('Material') || nm('material') || 'No').trim()) as MaterialType,
-          charges:      Number(nm('Charges AED') || nm('charges') || 0),
-          received:     Number(nm('Received AED') || nm('received') || 0),
-          payment_mode: (String(nm('Payment Mode') || nm('payment_mode') || 'Cash').trim()) as PaymentMode,
-          is_overtime:  String(nm('OT') || nm('is_overtime') || '').toLowerCase() === 'yes' || nm('is_overtime') === true,
-          remarks:      String(nm('Remarks') || nm('remarks') || '').trim(),
+          charges:      Number(nm('charges_aed') || nm('charges') || 0),
+          received:     Number(nm('received_aed') || nm('received') || 0),
+          payment_mode: (String(nm('payment_mode') || nm('mode') || 'Cash').trim()) as PaymentMode,
+          is_overtime:  String(nm('ot') || nm('is_overtime') || '').toLowerCase() === 'yes' || String(nm('ot')).toLowerCase() === 'yes',
+          remarks:      String(nm('remarks') || '').trim(),
         })
       })
     } finally {
