@@ -352,6 +352,13 @@ export function Employees() {
 
                   <div className="flex items-center justify-between pt-3.5 border-t border-[#E4E8EC]">
                     <span className="text-[12px] text-slate-500">Since {formatDate(emp.joined_date)}</span>
+                    <button
+                      onClick={e => { e.stopPropagation(); deleteEmployee(emp.id) }}
+                      className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
+                      title="Delete employee"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                     <span className="text-[14px] font-bold text-[#111827]">AED {emp.pay_rate_hourly}/hr</span>
                   </div>
                 </div>

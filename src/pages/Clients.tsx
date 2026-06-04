@@ -306,13 +306,22 @@ export function Clients() {
                           </Link>
                         )}
                       </div>
-                      <Link
-                        to={`/clients/${c.id}`}
-                        onClick={e => e.stopPropagation()}
-                        className="flex items-center gap-1 text-[11.5px] font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors shrink-0"
-                      >
-                        View Profile <ExternalLink size={11} />
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={e => { e.stopPropagation(); deleteClient(c.id) }}
+                          className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
+                          title="Delete client"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                        <Link
+                          to={`/clients/${c.id}`}
+                          onClick={e => e.stopPropagation()}
+                          className="flex items-center gap-1 text-[11.5px] font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors shrink-0"
+                        >
+                          View Profile <ExternalLink size={11} />
+                        </Link>
+                      </div>
                     </div>
                   )
                 })()}
