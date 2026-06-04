@@ -62,7 +62,7 @@ function persistReview(bookingId: string) {
 /* ─── Main component ─── */
 export function ClientProfile() {
   const { id } = useParams<{ id: string }>()
-  const { clients, bookings, employees } = useData()
+  const { clients, bookings, employees, invoices } = useData()
   const [activeTab,     setActiveTab]     = useState<'bookings' | 'info'>('bookings')
   const [reviewBooking, setReviewBooking] = useState<Booking | null>(null)
   const [reviewMap,     setReviewMap]     = useState<Record<string, string>>({})
@@ -94,6 +94,14 @@ export function ClientProfile() {
   const totalSpent       = completed.reduce((s, b) => s + b.total_amount, 0)
   const avgJobValue      = completed.length > 0 ? totalSpent / completed.length : 0
   const reviewedCount    = completed.filter(b => reviewMap[b.id]).length
+
+  // Financial summary — match by client_id or name fallback
+  const clientInvoices   = invoices.filter(i =>
+    i.client_id === id || i.client_name.toLowerCase().trim() === client!.full_name.toLowerCase().trim()
+  )
+  const totalInvoiced    = clientInvoices.reduce((s, i) => s + i.total, 0)
+  const totalPaid        = clientInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
+  const outstanding      = totalInvoiced - totalPaid
 
   function crewNames(ids: string[]) {
     return ids.map(cid => employees.find(e => e.id === cid)?.full_name ?? '').filter(Boolean).join(', ')
@@ -366,6 +374,36 @@ export function ClientProfile() {
                   >
                     <Star size={13} /> Request Next Review
                   </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Financial summary */}
+          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-lg">💳</span>
+              <h3 className="text-[15px] font-bold text-[#111827]">Financials</h3>
+            </div>
+            {clientInvoices.length === 0 ? (
+              <p className="text-[12px] text-slate-400 text-center py-3">No invoices yet</p>
+            ) : (
+              <>
+                {[
+                  { label: 'Total Invoiced', value: `AED ${totalInvoiced.toLocaleString()}`, color: 'text-[#111827]' },
+                  { label: 'Total Paid',     value: `AED ${totalPaid.toLocaleString()}`,     color: 'text-emerald-600' },
+                  { label: 'Outstanding',    value: `AED ${outstanding.toLocaleString()}`,   color: outstanding > 0 ? 'text-red-600 font-bold' : 'text-emerald-600' },
+                  { label: 'Invoices',       value: `${clientInvoices.length} total`,        color: 'text-slate-600' },
+                ].map(r => (
+                  <div key={r.label} className="flex justify-between py-2 border-b border-[#E4E8EC] last:border-0">
+                    <span className="text-[12px] text-slate-500">{r.label}</span>
+                    <span className={`text-[12px] ${r.color}`}>{r.value}</span>
+                  </div>
+                ))}
+                {outstanding > 0 && (
+                  <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-2.5 text-center">
+                    <p className="text-[11px] font-semibold text-red-700">AED {outstanding.toLocaleString()} unpaid</p>
+                  </div>
                 )}
               </>
             )}

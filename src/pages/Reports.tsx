@@ -1,9 +1,10 @@
 import { useState } from 'react'
+import * as XLSX from 'xlsx'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, Legend,
 } from 'recharts'
-import { TrendingUp, Target, Award, Users, Download, DollarSign, CheckCircle, Percent, Calendar } from 'lucide-react'
+import { TrendingUp, Target, Award, Users, Download, DollarSign, CheckCircle, Percent, Calendar, FileSpreadsheet } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 
@@ -26,8 +27,22 @@ const avatarColors = [
 ]
 
 export function Reports() {
-  const { bookings, clients, employees, invoices } = useData()
+  const { bookings, clients, employees, invoices, dailyJobs } = useData()
   const [dateRange, setDateRange] = useState('6m')
+
+  // Payroll period — default to current month
+  const [payPeriod, setPayPeriod] = useState(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  )
+  // Build last 6 months as options
+  const payPeriodOptions = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date()
+    d.setDate(1)
+    d.setMonth(d.getMonth() - i)
+    const key   = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    return { key, label }
+  })
 
   const now = new Date()
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -132,6 +147,35 @@ export function Reports() {
       ['Month', 'Revenue (AED)', 'Target (AED)', 'Jobs Completed'],
       ...months.map(d => [d.month, String(d.revenue), String(d.target), String(d.jobs)]),
     ])
+  }
+
+  /* ── Payroll calculations ── */
+  const payrollRows = employees
+    .filter(e => e.status !== 'inactive')
+    .map(emp => {
+      const empJobs = dailyJobs.filter(j =>
+        j.date.startsWith(payPeriod) &&
+        j.staff_name.toLowerCase().trim() === emp.full_name.toLowerCase().trim()
+      )
+      const hours  = empJobs.reduce((s, j) => s + (j.duty_hours || 0), 0)
+      const salary = Math.round(hours * emp.pay_rate_hourly)
+      return { emp, hours: Math.round(hours * 10) / 10, salary, jobCount: empJobs.length }
+    })
+    .sort((a, b) => b.salary - a.salary)
+  const totalPayroll = payrollRows.reduce((s, r) => s + r.salary, 0)
+
+  function exportPayroll() {
+    const ws = XLSX.utils.json_to_sheet(payrollRows.map(r => ({
+      'Employee':        r.emp.full_name,
+      'Role':            r.emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner',
+      'Jobs Logged':     r.jobCount,
+      'Hours Worked':    r.hours,
+      'Rate (AED/hr)':   r.emp.pay_rate_hourly,
+      'Salary (AED)':    r.salary,
+    })))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Payroll')
+    XLSX.writeFile(wb, `payroll-${payPeriod}.xlsx`)
   }
 
   return (
@@ -432,6 +476,86 @@ export function Reports() {
           </div>
 
         </div>
+      </div>
+
+      {/* ── Payroll Report ── */}
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h3 className="text-[16px] font-bold text-[#111827]">Staff Payroll</h3>
+            <p className="text-[12px] text-slate-500 mt-0.5">Based on daily job sheet hours × employee hourly rate</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <select
+              value={payPeriod}
+              onChange={e => setPayPeriod(e.target.value)}
+              className="text-[13px] px-3.5 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer"
+            >
+              {payPeriodOptions.map(o => (
+                <option key={o.key} value={o.key}>{o.label}</option>
+              ))}
+            </select>
+            <button
+              onClick={exportPayroll}
+              className="flex items-center gap-2 text-[12px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl hover:bg-emerald-100 transition-colors"
+            >
+              <FileSpreadsheet size={13} /> Export Excel
+            </button>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="border-b border-[#E4E8EC] bg-slate-50">
+                {['Employee', 'Role', 'Jobs Logged', 'Hours Worked', 'Rate (AED/hr)', 'Salary (AED)'].map(h => (
+                  <th key={h} className="text-left px-5 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.07em] whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E4E8EC]">
+              {payrollRows.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-5 py-10 text-center text-[13px] text-slate-400">No employees found</td>
+                </tr>
+              ) : payrollRows.map(({ emp, hours, salary, jobCount }) => (
+                <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-5 py-3.5">
+                    <p className="font-semibold text-[#111827]">{emp.full_name}</p>
+                    <p className="text-[11px] text-slate-400">{emp.nationality}</p>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${emp.role === 'crew_lead' ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
+                      {emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3.5 text-slate-600">{jobCount}</td>
+                  <td className="px-5 py-3.5">
+                    <span className={`font-semibold ${hours > 0 ? 'text-[#111827]' : 'text-slate-400'}`}>{hours}h</span>
+                  </td>
+                  <td className="px-5 py-3.5 text-slate-600">AED {emp.pay_rate_hourly}</td>
+                  <td className="px-5 py-3.5">
+                    <span className={`text-[14px] font-bold ${salary > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      AED {salary.toLocaleString()}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t-2 border-[#E4E8EC] bg-slate-50">
+              <tr>
+                <td colSpan={5} className="px-5 py-3.5 text-[13px] font-bold text-[#111827]">Total Payroll</td>
+                <td className="px-5 py-3.5 text-[15px] font-bold text-emerald-600">AED {totalPayroll.toLocaleString()}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        {payrollRows.every(r => r.hours === 0) && dailyJobs.length > 0 && (
+          <div className="px-6 py-3 bg-amber-50 border-t border-amber-100">
+            <p className="text-[12px] text-amber-700">
+              ⚠ Hours are pulled from Daily Job Sheet entries. Make sure employee names in the Daily Job Sheet match exactly with employee full names.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

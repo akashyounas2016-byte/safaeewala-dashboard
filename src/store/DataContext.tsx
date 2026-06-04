@@ -166,6 +166,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
         setInvoices(p => [invoice, ...p])
         supabase.from('invoices').insert(invoice).then(({ error }) => { if (error) console.error(error) })
+
+        // Auto-schedule next occurrence for recurring bookings
+        if (booking.frequency !== 'once') {
+          const d = new Date(booking.scheduled_date)
+          if (booking.frequency === 'weekly')   d.setDate(d.getDate() + 7)
+          else if (booking.frequency === 'biweekly') d.setDate(d.getDate() + 14)
+          else if (booking.frequency === 'monthly')  d.setMonth(d.getMonth() + 1)
+          const nextRow = {
+            ...booking,
+            id: uid(), created_at: now(),
+            status: 'confirmed' as const,
+            scheduled_date: d.toISOString().split('T')[0],
+          }
+          setBookings(p => [nextRow, ...p])
+          supabase.from('bookings').insert(nextRow).then(({ error }) => { if (error) console.error(error) })
+        }
       }
     },
     deleteBooking: (id) => {
