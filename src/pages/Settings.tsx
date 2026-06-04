@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useIsAdmin, useCurrentUser } from '@/store/UserContext'
 import { seedDemoData } from '@/lib/seedData'
@@ -252,7 +252,7 @@ function IntegrationModal({ info, onClose }: { info: IntegrationInfo; onClose: (
         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
           <p className="text-[13px] font-semibold text-emerald-800 mb-1">Already working</p>
           <p className="text-[12px] text-emerald-700">
-            {info.name} is connected and active. Your database URL and API keys are stored in Netlify environment variables.
+            {info.name} is connected and active. Your database URL and API keys are stored in VPS environment variables.
           </p>
         </div>
       )}
@@ -282,13 +282,13 @@ function IntegrationModal({ info, onClose }: { info: IntegrationInfo; onClose: (
           </div>
           {info.envVars && (
             <div>
-              <p className="text-[12px] font-bold text-slate-600 uppercase tracking-[0.08em] mb-2">Netlify Environment Variables to Add</p>
+              <p className="text-[12px] font-bold text-slate-600 uppercase tracking-[0.08em] mb-2">Environment Variables to Add</p>
               <div className="bg-slate-900 rounded-xl p-4 space-y-1">
                 {info.envVars.map(v => (
                   <p key={v} className="text-[12px] font-mono text-emerald-400">{v}=your_key_here</p>
                 ))}
               </div>
-              <p className="text-[11px] text-slate-400 mt-2">Add these in Netlify → Site Settings → Environment Variables, then redeploy.</p>
+              <p className="text-[11px] text-slate-400 mt-2">Add these to your VPS .env file, then redeploy.</p>
             </div>
           )}
           {info.docsUrl && (
@@ -332,7 +332,7 @@ const integrations: IntegrationInfo[] = [
       'Apply for WhatsApp Business API access (approval takes 1–3 days)',
       'Create a WhatsApp Business App in Meta Developer Portal',
       'Get your Phone Number ID and Access Token',
-      'Add the environment variables to Netlify (see below)',
+      'Add the environment variables to your VPS .env file (see below)',
       'Contact your developer to wire up the sending logic in the backend',
     ],
     envVars: ['VITE_WHATSAPP_PHONE_ID', 'VITE_WHATSAPP_TOKEN'],
@@ -348,7 +348,7 @@ const integrations: IntegrationInfo[] = [
       'Sign up at resend.com (free)',
       'Add and verify your domain: safaeewala.com',
       'Generate an API key in the Resend dashboard',
-      'Add the environment variable to Netlify',
+      'Add the environment variable to your VPS .env file',
       'Contact your developer to wire up email sending',
     ],
     envVars: ['RESEND_API_KEY'],
@@ -364,7 +364,7 @@ const integrations: IntegrationInfo[] = [
       'Create a Stripe account at stripe.com (UAE is supported)',
       'Complete business verification with your DED license and bank details',
       'Get your publishable key and secret key from the Stripe dashboard',
-      'Add keys to Netlify environment variables',
+      'Add keys to your VPS environment variables',
       'Contact your developer to add payment form and webhook handler',
     ],
     envVars: ['VITE_STRIPE_PUBLISHABLE_KEY', 'STRIPE_SECRET_KEY'],
@@ -380,7 +380,7 @@ const integrations: IntegrationInfo[] = [
       'Go to console.cloud.google.com and create a project',
       'Enable the Google Calendar API',
       'Create OAuth 2.0 credentials (Web Application type)',
-      'Add your Netlify URL as an authorized redirect URI',
+      'Add your VPS URL as an authorized redirect URI',
       'This requires backend OAuth flow — contact your developer',
     ],
     envVars: ['VITE_GOOGLE_CLIENT_ID'],
@@ -412,7 +412,7 @@ const integrations: IntegrationInfo[] = [
       'Sign up free at posthog.com',
       'Create a new project for your dashboard',
       'Copy your Project API Key from Settings',
-      'Add the environment variable to Netlify',
+      'Add the environment variable to your VPS .env file',
       'PostHog will automatically start tracking page views',
     ],
     envVars: ['VITE_POSTHOG_KEY'],
@@ -428,7 +428,7 @@ const integrations: IntegrationInfo[] = [
       'Sign up free at sentry.io',
       'Create a new React project',
       'Copy your DSN from Project Settings → Client Keys',
-      'Add the environment variable to Netlify',
+      'Add the environment variable to your VPS .env file',
       'Ask your developer to add the Sentry initialization code',
     ],
     envVars: ['VITE_SENTRY_DSN'],
@@ -476,7 +476,16 @@ export function Settings() {
   const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? ''))
+    supabase.auth.getUser().then(({ data }) => {
+      const uid = data.user?.id ?? ''
+      setUserEmail(data.user?.email ?? '')
+      setCurrentUserId(uid)
+      if (uid) {
+        supabase.from('profiles').select('full_name').eq('id', uid).single().then(({ data: p }) => {
+          if (p?.full_name) setProfileName(p.full_name)
+        })
+      }
+    })
 
     supabase.from('company_settings').select('data').eq('id', 1).single().then(({ data }) => {
       if (data?.data) {
@@ -509,11 +518,18 @@ export function Settings() {
   }
   const [connectingIntegration, setConnectingIntegration] = useState<IntegrationInfo | null>(null)
   const [saved, setSaved] = useState(false)
+  const [editProfileOpen,  setEditProfileOpen]  = useState(false)
+  const [profileName,      setProfileName]      = useState('Akash Younas')
+  const [profileSaving,    setProfileSaving]    = useState(false)
+  const [currentUserId,    setCurrentUserId]    = useState('')
   const [driveStatus, setDriveStatus] = useState<'idle' | 'connecting' | 'uploading' | 'done' | 'error'>('idle')
   const [driveLink, setDriveLink]   = useState('')
   const [driveError, setDriveError] = useState('')
   const [seedLog,    setSeedLog]    = useState<string[]>([])
   const [seeding,    setSeeding]    = useState(false)
+  const [importStatus, setImportStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [importError,  setImportError]  = useState('')
+  const importRef = useRef<HTMLInputElement>(null)
 
   function downloadBackup() {
     const data = { bookings, clients, employees, invoices, inventory, dailyJobs, dailyExpenses, exported_at: new Date().toISOString() }
@@ -559,6 +575,42 @@ export function Settings() {
       setDriveLink(link); setDriveStatus('done')
     } catch (err: any) {
       setDriveError(err.message || 'Upload failed'); setDriveStatus('error')
+    }
+  }
+
+  async function saveProfile(name: string) {
+    setProfileSaving(true)
+    await supabase.from('profiles').update({ full_name: name }).eq('id', currentUserId)
+    setProfileName(name)
+    setProfileSaving(false)
+    setEditProfileOpen(false)
+  }
+
+  async function importBackup(file: File) {
+    try {
+      setImportStatus('loading')
+      setImportError('')
+      const text = await file.text()
+      const data = JSON.parse(text)
+      const tables: [string, any[]][] = [
+        ['bookings',       data.bookings       ?? []],
+        ['clients',        data.clients        ?? []],
+        ['employees',      data.employees      ?? []],
+        ['invoices',       data.invoices       ?? []],
+        ['inventory',      data.inventory      ?? []],
+        ['daily_jobs',     data.dailyJobs      ?? []],
+        ['daily_expenses', data.dailyExpenses  ?? []],
+      ]
+      for (const [table, rows] of tables) {
+        if (rows.length > 0) {
+          await supabase.from(table).upsert(rows)
+        }
+      }
+      setImportStatus('done')
+      setTimeout(() => setImportStatus('idle'), 3000)
+    } catch (err: any) {
+      setImportError(err.message || 'Import failed')
+      setImportStatus('error')
     }
   }
 
@@ -815,7 +867,7 @@ export function Settings() {
                     <div className="space-y-2 text-[13px]">
                       {[
                         { item: 'Supabase (Database + Auth + Storage)', cost: '$0/mo', note: 'Free tier' },
-                        { item: 'Netlify (Hosting)',                     cost: '$0/mo', note: 'Free tier' },
+                        { item: 'VPS (Hosting)',                         cost: '~$5/mo', note: 'VPS server' },
                         { item: 'Custom domain (if registered)',         cost: '~$10/yr', note: 'Paid separately' },
                       ].map(b => (
                         <div key={b.item} className="flex justify-between py-2.5 border-b border-[#E4E8EC]">
@@ -827,7 +879,7 @@ export function Settings() {
                         </div>
                       ))}
                       <div className="flex justify-between pt-2 font-bold text-[#111827] text-[14px]">
-                        <span>Total Monthly</span><span className="text-emerald-600">$0/mo</span>
+                        <span>Total Monthly</span><span className="text-emerald-600">~$5/mo</span>
                       </div>
                     </div>
                   </div>
@@ -897,10 +949,10 @@ export function Settings() {
                 className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-[14px] text-black shrink-0"
                 style={{ background: 'linear-gradient(135deg, #fbbf24, #f97316)' }}
               >
-                AY
+                {profileName.trim().split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '??'}
               </div>
               <div>
-                <p className="text-[15px] font-bold text-[#111827]">Akash Younas</p>
+                <p className="text-[15px] font-bold text-[#111827]">{profileName}</p>
                 <p className="text-[12px] text-slate-500 mt-0.5">Owner · Admin</p>
               </div>
             </div>
@@ -917,7 +969,10 @@ export function Settings() {
                 </div>
               ))}
             </div>
-            <button className="w-full mt-4 py-2 rounded-xl border border-[#E4E8EC] text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-2">
+            <button
+              onClick={() => setEditProfileOpen(true)}
+              className="w-full mt-4 py-2 rounded-xl border border-[#E4E8EC] text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+            >
               <User size={14} /> Edit Profile
             </button>
             <button
@@ -936,8 +991,8 @@ export function Settings() {
             </div>
             <div className="space-y-3">
               {[
-                { service: 'Database (Supabase)',  status: 'Online',    latency: '~12ms', ok: true  },
-                { service: 'File Hosting (Netlify)', status: 'Online',  latency: '~30ms', ok: true  },
+                { service: 'Database',       status: 'Online',     latency: '~12ms', ok: true  },
+                { service: 'File Hosting',   status: 'Online',     latency: '~30ms', ok: true  },
                 { service: 'WhatsApp',             status: 'Not set up', latency: '—',   ok: false },
                 { service: 'Email (Resend)',        status: 'Not set up', latency: '—',   ok: false },
               ].map(s => (
@@ -962,12 +1017,6 @@ export function Settings() {
             <div className="flex items-center gap-2 mb-3">
               <HardDrive size={16} className="text-slate-500" />
               <h3 className="text-[14px] font-bold text-slate-700">Data Backup</h3>
-            </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
-              <p className="text-[12px] font-semibold text-amber-800 mb-1">Free tier — no auto backups</p>
-              <p className="text-[11px] text-amber-700">
-                Supabase Free tier does not include automated backups. Upgrade to Pro ($25/mo) for daily automatic backups.
-              </p>
             </div>
             <div className="space-y-1.5 mb-3">
               <p className="text-[12px] font-semibold text-slate-600 mb-2">Manual backup options:</p>
@@ -995,6 +1044,36 @@ export function Settings() {
               <Download size={13} /> Download JSON Backup
             </button>
 
+            {/* Import */}
+            <input
+              ref={importRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={e => {
+                const file = e.target.files?.[0]
+                if (file) importBackup(file)
+                e.target.value = ''
+              }}
+            />
+            <button
+              onClick={() => importRef.current?.click()}
+              disabled={importStatus === 'loading'}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-300 text-[12px] font-semibold text-slate-700 hover:bg-slate-50 transition-colors mb-2 disabled:opacity-60"
+            >
+              <Upload size={13} /> {importStatus === 'loading' ? 'Importing…' : 'Import JSON Backup'}
+            </button>
+            {importStatus === 'done' && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-2">
+                <p className="text-[11px] text-emerald-700 font-semibold">Backup imported successfully</p>
+              </div>
+            )}
+            {importStatus === 'error' && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-2">
+                <p className="text-[11px] text-red-700">{importError}</p>
+              </div>
+            )}
+
             {/* Google Drive */}
             {gdriveConfigured ? (
               <>
@@ -1021,8 +1100,8 @@ export function Settings() {
             ) : (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-2">
                 <p className="text-[11.5px] font-semibold text-blue-800 mb-1">Enable Google Drive Backup</p>
-                <p className="text-[11px] text-blue-700 mb-1">Add <code className="bg-blue-100 px-1 rounded">VITE_GOOGLE_CLIENT_ID</code> to your Netlify environment variables.</p>
-                <p className="text-[10.5px] text-blue-600">Google Cloud Console → APIs → OAuth 2.0 Client (Web) → copy Client ID → Netlify env vars → redeploy.</p>
+                <p className="text-[11px] text-blue-700 mb-1">Add <code className="bg-blue-100 px-1 rounded">VITE_GOOGLE_CLIENT_ID</code> to your VPS environment variables.</p>
+                <p className="text-[10.5px] text-blue-600">Google Cloud Console → APIs → OAuth 2.0 Client (Web) → copy Client ID → VPS .env file → redeploy.</p>
               </div>
             )}
 
@@ -1073,6 +1152,42 @@ export function Settings() {
 
         </div>
       </div>
+
+      {/* ── Edit Profile modal ── */}
+      <Modal
+        open={editProfileOpen}
+        onClose={() => setEditProfileOpen(false)}
+        title="Edit Profile"
+        size="sm"
+      >
+        <form
+          className="space-y-4"
+          onSubmit={async e => {
+            e.preventDefault()
+            const fd = new FormData(e.currentTarget as HTMLFormElement)
+            await saveProfile(fd.get('full_name') as string)
+          }}
+        >
+          <Input
+            name="full_name"
+            label="Full Name"
+            defaultValue={profileName}
+            required
+          />
+          <Input
+            label="Email"
+            value={userEmail}
+            disabled
+            hint="Email cannot be changed here."
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={() => setEditProfileOpen(false)}>Cancel</Button>
+            <Button type="submit" disabled={profileSaving}>
+              {profileSaving ? 'Saving…' : 'Save Changes'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* ── Integration info modal ── */}
       <Modal
