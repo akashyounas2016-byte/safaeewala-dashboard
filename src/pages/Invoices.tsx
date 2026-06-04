@@ -156,8 +156,14 @@ export function Invoices() {
           { label: 'Overdue',        value: `AED ${(totalOverdue/1000).toFixed(1)}k`,      sub: `${overdueInvoices.length} overdue`, icon: AlertCircle, iconBg: 'bg-red-50', iconColor: 'text-red-600', delta: '!', deltaUp: false },
           { label: 'VAT Collected',  value: `AED ${(totalVat/1000).toFixed(1)}k`,          sub: 'From paid invoices', icon: Percent,   iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: '5%',   deltaUp: true  },
           { label: 'Collection',     value: `${collectionRate}%`,                          sub: 'Payment rate',   icon: TrendingUp,  iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: '+3%',  deltaUp: true  },
-        ].map(card => (
-          <div key={card.label} className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all">
+        ].map(card => {
+          let action: (() => void) | null = null
+          if (card.label === 'Total Invoices') action = () => setStatusFilter('all')
+          else if (card.label === 'Paid') action = () => setStatusFilter('paid')
+          else if (card.label === 'Pending') action = () => setStatusFilter('sent')
+          else if (card.label === 'Overdue') action = () => setStatusFilter('overdue')
+          return (
+          <div key={card.label} onClick={action ?? undefined} className={`bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all ${action ? 'cursor-pointer' : ''}`}>
             <div className="flex items-start justify-between mb-4">
               <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center`}>
                 <card.icon size={18} className={card.iconColor} />
@@ -170,7 +176,8 @@ export function Invoices() {
             <p className="text-[12px] font-semibold text-[#111827] mt-1">{card.label}</p>
             <p className="text-[11px] text-slate-500 mt-0.5">{card.sub}</p>
           </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* ── Main: Table + Sidebar ── */}

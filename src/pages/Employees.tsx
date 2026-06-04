@@ -213,8 +213,14 @@ export function Employees() {
           { label: 'Docs Expiring',   value: expiringCount,         sub: 'Within 90 days',   icon: Shield,     iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: expiringCount > 0 ? `${expiringCount} !` : 'OK', deltaUp: expiringCount === 0 },
           { label: 'Jobs Completed',  value: totalJobsDone,         sub: 'All time',         icon: CheckCircle, iconBg: 'bg-rose-50',    iconColor: 'text-rose-600',   delta: `${totalJobsDone}`, deltaUp: true  },
           { label: 'On Leave',        value: onLeaveCount,          sub: 'Currently absent', icon: TrendingUp, iconBg: 'bg-teal-50',    iconColor: 'text-teal-600',    delta: onLeaveCount > 0 ? `${onLeaveCount}` : 'None', deltaUp: onLeaveCount === 0 },
-        ].map(card => (
-          <div key={card.label} className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all">
+        ].map(card => {
+          let action: (() => void) | null = null
+          if (card.label === 'Active') action = () => setSearch('status:active')
+          else if (card.label === 'Crew Leads') action = () => setSearch('role:crew_lead')
+          else if (card.label === 'Docs Expiring') action = () => setSearch('expiring')
+          else if (card.label === 'On Leave') action = () => setSearch('status:on_leave')
+          return (
+          <div key={card.label} onClick={action ?? undefined} className={`bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all ${action ? 'cursor-pointer' : ''}`}>
             <div className="flex items-start justify-between mb-4">
               <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center`}>
                 <card.icon size={18} className={card.iconColor} />
@@ -227,7 +233,8 @@ export function Employees() {
             <p className="text-[12px] font-semibold text-[#111827] mt-1">{card.label}</p>
             <p className="text-[11px] text-slate-500 mt-0.5">{card.sub}</p>
           </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* ── Main content + sidebar ── */}
