@@ -238,7 +238,6 @@ function KpiCard({ label, value, sub, delta, trend = 'neutral', icon: Icon, icon
 function RevenueChart({ bookings }: { bookings: Booking[] }) {
   const [range, setRange] = useState<'3M' | '6M' | '1Y'>('6M')
   const count = range === '3M' ? 3 : range === '6M' ? 6 : 12
-  const MONTHLY_TARGET = 10000
 
   const months = Array.from({ length: count }, (_, i) => {
     const d = new Date()
@@ -248,7 +247,7 @@ function RevenueChart({ bookings }: { bookings: Booking[] }) {
       month: d.toLocaleDateString('en-US', { month: 'short' }),
       key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
       revenue: 0,
-      target: MONTHLY_TARGET,
+      target: 0,
     }
   })
 
@@ -259,6 +258,13 @@ function RevenueChart({ bookings }: { bookings: Booking[] }) {
       const m = months.find(m => m.key === key)
       if (m) m.revenue += b.total_amount
     })
+
+  // Target = 110% of average revenue across displayed months (min AED 5,000)
+  const nonZeroRevenues = months.map(m => m.revenue).filter(r => r > 0)
+  const MONTHLY_TARGET = nonZeroRevenues.length > 0
+    ? Math.max(5000, Math.round((nonZeroRevenues.reduce((s, r) => s + r, 0) / nonZeroRevenues.length) * 1.1 / 500) * 500)
+    : 10000
+  months.forEach(m => { m.target = MONTHLY_TARGET })
 
   const totalRevenue = months.reduce((s, m) => s + m.revenue, 0)
   const targetHit = months.filter(m => m.revenue >= m.target).length
@@ -411,7 +417,7 @@ function ServiceMixDonut({ bookings }: { bookings: Booking[] }) {
 
 /* ─── Overview page ─── */
 export function Overview() {
-  const { bookings, clients, employees, invoices, inventory, addBooking } = useData()
+  const { bookings, clients, employees, invoices, inventory, addBooking, dailyExpenses } = useData()
   const currentUser = useCurrentUser()
   const [showNewBooking, setShowNewBooking] = useState(false)
   const navigate = useNavigate()
@@ -479,22 +485,24 @@ export function Overview() {
       {(() => {
         const mtdKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
         const mtdBookings = bookings.filter(b => b.scheduled_date.startsWith(mtdKey))
-        const mtdRevenue  = mtdBookings.filter(b => b.status === 'completed' || b.status === 'in_progress').reduce((s, b) => s + b.total_amount, 0)
+        const mtdRevenue   = mtdBookings.filter(b => b.status === 'completed' || b.status === 'in_progress').reduce((s, b) => s + b.total_amount, 0)
         const mtdCompleted = mtdBookings.filter(b => b.status === 'completed').length
         const mtdPending   = mtdBookings.filter(b => b.status === 'pending' || b.status === 'confirmed').length
-        const mtdCancelled = mtdBookings.filter(b => b.status === 'cancelled').length
+        const mtdExpenses  = dailyExpenses.filter(e => e.date.startsWith(mtdKey)).reduce((s, e) => s + e.amount, 0)
+        const mtdProfit    = mtdRevenue - mtdExpenses
         return (
           <section className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-6 py-4 mb-6">
             <div className="flex items-center gap-2 mb-3">
               <span className="text-[11px] uppercase tracking-[0.15em] text-[#6B7280] font-semibold">Month to Date</span>
               <span className="text-[11px] text-slate-400">— {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {[
-                { label: 'Revenue',   value: `AED ${mtdRevenue.toLocaleString()}`,  color: 'text-emerald-600' },
-                { label: 'Jobs',      value: `${mtdBookings.length}`,               color: 'text-blue-600' },
-                { label: 'Completed', value: `${mtdCompleted}`,                     color: 'text-slate-700' },
-                { label: 'Upcoming',  value: `${mtdPending}  ·  ${mtdCancelled} cancelled`, color: 'text-amber-600' },
+                { label: 'Revenue',   value: `AED ${mtdRevenue.toLocaleString()}`,               color: 'text-emerald-600' },
+                { label: 'Expenses',  value: `AED ${mtdExpenses.toLocaleString()}`,              color: 'text-red-500' },
+                { label: 'Net Profit',value: `AED ${mtdProfit.toLocaleString()}`,                color: mtdProfit >= 0 ? 'text-emerald-700' : 'text-red-600' },
+                { label: 'Jobs',      value: `${mtdBookings.length} · ${mtdCompleted} done`,     color: 'text-blue-600' },
+                { label: 'Upcoming',  value: `${mtdPending} pending`,                            color: 'text-amber-600' },
               ].map(s => (
                 <div key={s.label}>
                   <p className="text-[11px] text-slate-400 font-medium">{s.label}</p>

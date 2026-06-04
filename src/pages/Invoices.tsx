@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Search, Download, Send, AlertCircle, TrendingUp, CheckCircle, Clock, FileText, Percent, Trash2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Search, Download, Send, AlertCircle, TrendingUp, CheckCircle, Clock, FileText, Percent, Trash2, DollarSign } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -108,6 +108,15 @@ export function Invoices() {
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<Invoice | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  // Auto-mark overdue: sent invoices past their due date
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0]
+    invoices
+      .filter(i => i.status === 'sent' && i.due_date < today)
+      .forEach(i => updateInvoice(i.id, { status: 'overdue' }))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const totalPaid    = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
   const totalPending = invoices.filter(i => i.status === 'sent').reduce((s, i) => s + i.total, 0)
@@ -240,11 +249,18 @@ export function Invoices() {
                           <button onClick={() => printInvoice(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="Print / Download PDF">
                             <Download size={14} />
                           </button>
-                          {inv.status !== 'paid' && (
+                          {inv.status !== 'paid' && inv.status !== 'sent' && (
                             <button
                               onClick={() => updateInvoice(inv.id, { status: 'sent' })}
-                              className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 transition-colors" title="Mark as sent">
+                              className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors" title="Mark as sent">
                               <Send size={14} />
+                            </button>
+                          )}
+                          {inv.status !== 'paid' && (
+                            <button
+                              onClick={() => updateInvoice(inv.id, { status: 'paid', paid_date: new Date().toISOString().split('T')[0] })}
+                              className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 transition-colors" title="Mark as paid">
+                              <DollarSign size={14} />
                             </button>
                           )}
                           <button

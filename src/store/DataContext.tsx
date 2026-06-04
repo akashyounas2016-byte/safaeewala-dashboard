@@ -59,6 +59,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [dailyJobs,     setDailyJobs]     = useState<DailyJob[]>([])
   const [dailyExpenses, setDailyExpenses] = useState<DailyExpense[]>([])
   const [loading,       setLoading]       = useState(true)
+  const [companyTRN,    setCompanyTRN]    = useState('100234567890003')
 
   /* ── Load all data on mount — each table is fetched independently so a
        missing table (e.g. daily_jobs not created yet) never blocks the others ── */
@@ -69,6 +70,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return data ?? []
       } catch { return [] }
     }
+
+    // Load company settings for TRN used in auto-invoices
+    supabase.from('company_settings').select('data').eq('id', 1).single()
+      .then(({ data }) => { if (data?.data?.company?.trn) setCompanyTRN(data.data.company.trn) })
 
     Promise.all([
       q('bookings'),
@@ -152,7 +157,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           client_id: booking.client_id,
           client_name: booking.client_name,
           client_address: booking.service_address,
-          trn: '', company_trn: '100234567890003',
+          trn: '', company_trn: companyTRN,
           line_items: [{ description: `${booking.service_type} — ${booking.scheduled_date}`, quantity: 1, unit_price: sub, amount: sub }],
           subtotal: sub, vat_rate: 5, vat_amount: vat, total: sub + vat,
           status: 'draft' as const,
