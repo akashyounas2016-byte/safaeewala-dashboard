@@ -341,7 +341,7 @@ export function Clients() {
               {topClients.map((c, idx) => {
                 const pct = Math.round((c.total_spent / topClients[0].total_spent) * 100)
                 return (
-                  <div key={c.id} className="flex items-center gap-3">
+                  <Link key={c.id} to={`/clients/${c.id}`} className="flex items-center gap-3 hover:bg-slate-50 rounded-xl -mx-2 px-2 py-1 transition-colors">
                     <span className={`text-[12px] font-bold w-4 shrink-0 ${idx === 0 ? 'text-amber-500' : 'text-slate-400'}`}>
                       {idx + 1}
                     </span>
@@ -353,7 +353,7 @@ export function Clients() {
                       </div>
                     </div>
                     <span className="text-[12px] font-bold text-[#111827] shrink-0">AED {c.total_spent.toLocaleString()}</span>
-                  </div>
+                  </Link>
                 )
               })}
             </div>
@@ -385,7 +385,7 @@ export function Clients() {
                       b.status === 'confirmed'   ? 'Scheduled' :
                       b.status === 'cancelled'   ? 'Cancelled' : 'Pending'
                     return (
-                      <div key={b.id} className="flex items-center gap-3">
+                      <Link key={b.id} to="/bookings" className="flex items-center gap-3 hover:bg-slate-50 rounded-xl -mx-2 px-2 py-1 transition-colors">
                         <Avatar name={b.client_name} size="sm" idx={idx} />
                         <div className="flex-1 min-w-0">
                           <p className="text-[12px] font-semibold text-[#111827] truncate">{b.client_name}</p>
@@ -394,7 +394,7 @@ export function Clients() {
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusColor}`}>
                           {statusLabel}
                         </span>
-                      </div>
+                      </Link>
                     )
                   })}
               </div>

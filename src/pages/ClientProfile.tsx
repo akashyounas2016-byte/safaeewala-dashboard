@@ -427,9 +427,12 @@ export function ClientProfile() {
                   </div>
                 ))}
                 {outstanding > 0 && (
-                  <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-2.5 text-center">
-                    <p className="text-[11px] font-semibold text-red-700">AED {outstanding.toLocaleString()} unpaid</p>
-                  </div>
+                  <Link
+                    to="/invoices"
+                    className="mt-3 block bg-red-50 border border-red-200 rounded-xl p-2.5 text-center hover:bg-red-100 transition-colors"
+                  >
+                    <p className="text-[11px] font-semibold text-red-700">AED {outstanding.toLocaleString()} unpaid — view invoices →</p>
+                  </Link>
                 )}
               </>
             )}

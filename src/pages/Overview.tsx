@@ -446,26 +446,26 @@ export function Overview() {
   const crewUtilization = activeEmps.length > 0 ? Math.round((dispatchedToday / activeEmps.length) * 100) : 0
 
   /* ── Live Activity from real data ── */
-  const liveEvents: { icon: string; title: string; sub: string; bg: string }[] = []
+  const liveEvents: { icon: string; title: string; sub: string; bg: string; route: string }[] = []
   const recentBookings = [...bookings].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 2)
   recentBookings.forEach(b => liveEvents.push({
-    icon: '📅', bg: 'bg-emerald-100',
+    icon: '📅', bg: 'bg-emerald-100', route: '/bookings',
     title: `Booking: ${b.client_name}`,
     sub: `${b.service_type} · ${b.scheduled_date}`,
   }))
   const recentPaid = [...invoices].filter(i => i.status === 'paid').sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 1)
   recentPaid.forEach(i => liveEvents.push({
-    icon: '💳', bg: 'bg-sky-100',
+    icon: '💳', bg: 'bg-sky-100', route: '/invoices',
     title: `Invoice paid: ${i.client_name}`,
     sub: `AED ${i.total.toLocaleString()} received`,
   }))
   if (lowStockItems.length > 0) liveEvents.push({
-    icon: '⚠️', bg: 'bg-red-100',
+    icon: '⚠️', bg: 'bg-red-100', route: '/inventory',
     title: `${lowStockItems[0].name} stock low`,
     sub: `${lowStockItems[0].current_stock} ${lowStockItems[0].unit} remaining · reorder needed`,
   })
   const displayEvents = liveEvents.length > 0 ? liveEvents.slice(0, 4) : [
-    { icon: '👋', bg: 'bg-slate-100', title: 'No activity yet', sub: 'Add a booking or invoice to see events here' },
+    { icon: '👋', bg: 'bg-slate-100', route: '', title: 'No activity yet', sub: 'Add a booking or invoice to see events here' },
   ]
 
   const todayDisplay = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -579,16 +579,21 @@ export function Overview() {
             </div>
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
           </div>
-          <div className="space-y-5">
+          <div className="space-y-2">
             {displayEvents.map((ev, i) => (
-              <div key={i} className="flex gap-4">
+              <div
+                key={i}
+                onClick={() => ev.route && navigate(ev.route)}
+                className={`flex gap-4 p-2 rounded-xl transition-colors ${ev.route ? 'cursor-pointer hover:bg-slate-50' : ''}`}
+              >
                 <div className={`w-10 h-10 rounded-full ${ev.bg} flex items-center justify-center shrink-0`}>
                   <span>{ev.icon}</span>
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm text-[#111827]">{ev.title}</p>
                   <p className="text-xs text-[#6B7280] mt-1">{ev.sub}</p>
                 </div>
+                {ev.route && <span className="text-slate-300 self-center text-[11px]">→</span>}
               </div>
             ))}
           </div>
