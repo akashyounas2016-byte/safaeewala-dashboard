@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, CircleMarker } from 'react-leaflet'
 import { Icon } from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { MapPin, Truck, Clock, CheckCircle, Phone, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Input'
