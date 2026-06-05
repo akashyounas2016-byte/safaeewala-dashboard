@@ -223,6 +223,7 @@ export function Dispatch() {
   const [selectMode, setSelectMode] = useState(false)
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set())
   const [bulkCrew, setBulkCrew] = useState<string>('')
+  const [showAllCrew, setShowAllCrew] = useState(false)
 
   const today = new Date().toISOString().split('T')[0]
   const todayDisplay = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -488,8 +489,9 @@ export function Dispatch() {
             {activeEmps.length === 0 ? (
               <p className="text-[12px] text-slate-400 text-center py-4">No active employees — add employees first</p>
             ) : (
-              <div className="space-y-3">
-                {crewMetrics.map(({ emp, assigned, completed, onJob, utilization, onTimeRate }, idx) => {
+              <>
+                <div className="space-y-3">
+                  {crewMetrics.slice(0, showAllCrew ? crewMetrics.length : 3).map(({ emp, assigned, completed, onJob, utilization, onTimeRate }, idx) => {
                   const currentJob = todayJobs.find(b => b.assigned_crew.includes(emp.id) && b.status === 'in_progress')
                   const nextJob    = todayJobs.find(b => b.assigned_crew.includes(emp.id) && (b.status === 'confirmed' || b.status === 'pending'))
                   const progress   = currentJob ? getJobProgress(currentJob) : null
@@ -540,7 +542,16 @@ export function Dispatch() {
                     </button>
                   )
                 })}
-              </div>
+                </div>
+                {crewMetrics.length > 3 && (
+                  <button
+                    onClick={() => setShowAllCrew(!showAllCrew)}
+                    className="w-full mt-3 py-2 px-3 text-[12px] font-semibold text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                  >
+                    {showAllCrew ? '↑ Show less' : `+ Show all (${crewMetrics.length})`}
+                  </button>
+                )}
+              </>
             )}
           </div>
 
