@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle, Clock } from 'lucide-react'
+import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle, Clock, Moon, Sun } from 'lucide-react'
+import { useDarkMode } from '@/hooks/useDarkMode'
 import { supabase } from '@/lib/supabase'
 import { useIsAdmin, useCurrentUser, useRolePerms, useSetRolePerms, DEFAULT_ROLE_PERMS, ALL_MODULES, type RolePerms, type AppRole } from '@/store/UserContext'
 import { seedDemoData } from '@/lib/seedData'
@@ -20,6 +21,7 @@ const ROLE_META: Record<AppRole, { label: string; badge: string; desc: string }>
 
 const allTabs = [
   { id: 'company',       label: 'Company',        icon: Building,   adminOnly: false },
+  { id: 'appearance',    label: 'Appearance',     icon: Moon,       adminOnly: false },
   { id: 'users',         label: 'Users',          icon: Users,      adminOnly: true  },
   { id: 'notifications', label: 'Notifications',  icon: Bell,       adminOnly: false },
   { id: 'roles',         label: 'Roles & Access', icon: Shield,     adminOnly: false },
@@ -35,6 +37,65 @@ interface Profile {
   status: 'pending' | 'approved' | 'rejected'
   role: 'admin' | 'developer' | 'employee'
   created_at: string
+}
+
+function AppearancePanel() {
+  const { isDark, toggleDark } = useDarkMode()
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-6">
+        <h3 className="text-[16px] font-bold text-[#111827] mb-4 flex items-center gap-2">
+          <Moon size={18} className="text-slate-600" />
+          Theme
+        </h3>
+
+        <div className="space-y-4">
+          <p className="text-[13px] text-slate-600">Choose your preferred theme for the dashboard</p>
+
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => {
+                if (isDark) toggleDark()
+              }}
+              className={`relative p-6 rounded-[16px] border-2 transition-all cursor-pointer ${
+                !isDark
+                  ? 'border-emerald-400 bg-emerald-50'
+                  : 'border-[#E4E8EC] bg-white hover:border-slate-300'
+              }`}
+            >
+              <Sun size={32} className={!isDark ? 'text-amber-500' : 'text-slate-400'} />
+              <p className={`text-[13px] font-bold mt-3 ${!isDark ? 'text-emerald-700' : 'text-slate-600'}`}>
+                Light Mode
+              </p>
+              {!isDark && <CheckCircle size={16} className="absolute top-3 right-3 text-emerald-500" />}
+            </button>
+
+            <button
+              onClick={() => {
+                if (!isDark) toggleDark()
+              }}
+              className={`relative p-6 rounded-[16px] border-2 transition-all cursor-pointer ${
+                isDark
+                  ? 'border-emerald-400 bg-emerald-50'
+                  : 'border-[#E4E8EC] bg-white hover:border-slate-300'
+              }`}
+            >
+              <Moon size={32} className={isDark ? 'text-blue-500' : 'text-slate-400'} />
+              <p className={`text-[13px] font-bold mt-3 ${isDark ? 'text-emerald-700' : 'text-slate-600'}`}>
+                Dark Mode
+              </p>
+              {isDark && <CheckCircle size={16} className="absolute top-3 right-3 text-emerald-500" />}
+            </button>
+          </div>
+
+          <p className="text-[11px] text-slate-500 bg-slate-50 rounded-lg p-3">
+            💡 Dark mode is perfect for night operations. Your preference is saved automatically.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function UsersPanel() {
@@ -789,6 +850,9 @@ export function Settings() {
               ))}
             </div>
           </div>
+
+          {/* ── Appearance ── */}
+          {activeTab === 'appearance' && <AppearancePanel />}
 
           {/* ── Users ── */}
           {activeTab === 'users' && <UsersPanel />}
