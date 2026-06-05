@@ -2,9 +2,9 @@ import { useState, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, CircleMarker } from 'react-leaflet'
 import { Icon } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { MapPin, Truck, Clock, CheckCircle, Phone, MessageCircle } from 'lucide-react'
+import { MapPin, Truck, Clock, CheckCircle, Phone, MessageCircle, AlertCircle, TrendingUp, Users, Zap, Navigation, Search } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Select } from '@/components/ui/Input'
+import { Select, Input } from '@/components/ui/Input'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 
@@ -112,11 +112,11 @@ function JobMarker({ job, status }: { job: any; status: string }) {
 export function LiveMap() {
   const { bookings, employees } = useData()
   const [filterStatus, setFilterStatus] = useState<'all' | 'in_progress' | 'pending' | 'confirmed'>('all')
-  const [filterCrew, setFilterCrew] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortBy, setSortBy] = useState<'time' | 'client' | 'service'>('time')
 
   const today = new Date().toISOString().split('T')[0]
-  const todayJobs = bookings
-    .filter(b => b.scheduled_date === today)
+  const todayJobs = bookings.filter(b => b.scheduled_date === today)
 
   const enrichedJobs = useMemo(() => {
     return todayJobs
@@ -125,8 +125,11 @@ export function LiveMap() {
         return b.status === filterStatus
       })
       .filter(b => {
-        if (filterCrew === 'all') return true
-        return b.assigned_crew.length > 0
+        const matchSearch = searchQuery === '' ||
+          b.client_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          b.service_address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          b.service_type.toLowerCase().includes(searchQuery.toLowerCase())
+        return matchSearch
       })
       .map(b => ({
         ...b,
@@ -135,139 +138,221 @@ export function LiveMap() {
           return emp?.full_name || 'Unknown'
         }),
       }))
-  }, [todayJobs, filterStatus, filterCrew, employees])
+  }, [todayJobs, filterStatus, searchQuery, employees])
+
+  const sorted = useMemo(() => {
+    const copy = [...enrichedJobs]
+    if (sortBy === 'time') return copy.sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time))
+    if (sortBy === 'client') return copy.sort((a, b) => a.client_name.localeCompare(b.client_name))
+    if (sortBy === 'service') return copy.sort((a, b) => a.service_type.localeCompare(b.service_type))
+    return copy
+  }, [enrichedJobs, sortBy])
 
   const liveCount = enrichedJobs.filter(j => j.status === 'in_progress').length
   const pendingCount = enrichedJobs.filter(j => j.status === 'pending' || j.status === 'confirmed').length
   const completedCount = enrichedJobs.filter(j => j.status === 'completed').length
+  const totalRevenue = enrichedJobs.reduce((s, j) => s + j.total_amount, 0)
 
-  // Calculate route sequence
-  const routeSequence = enrichedJobs
-    .filter(j => j.status === 'in_progress' || j.status === 'pending' || j.status === 'confirmed')
-    .sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time))
+  // Service breakdown
+  const serviceBreakdown = enrichedJobs.reduce((acc, j) => {
+    acc[j.service_type] = (acc[j.service_type] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
 
   return (
-    <div className="space-y-6 h-full">
+    <div className="space-y-4">
 
       <PageHero
-        title="Live Map"
-        subtitle={`${enrichedJobs.length} jobs today · ${liveCount} live · ${pendingCount} pending`}
-        statusChip={`${liveCount} Active`}
+        title="🗺️ Live Operations Map"
+        subtitle={`Real-time job tracking · ${enrichedJobs.length} total · ${liveCount} active now`}
+        statusChip={liveCount > 0 ? `🔴 ${liveCount} LIVE` : 'No active jobs'}
       />
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      {/* Advanced KPI Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {[
-          { label: 'Live Now', value: liveCount, icon: Truck, bg: 'bg-emerald-50', color: 'text-emerald-600' },
-          { label: 'Pending', value: pendingCount, icon: Clock, bg: 'bg-blue-50', color: 'text-blue-600' },
-          { label: 'Completed', value: completedCount, icon: CheckCircle, bg: 'bg-slate-50', color: 'text-slate-600' },
+          { label: '🚗 Live', value: liveCount, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+          { label: '⏳ Pending', value: pendingCount, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: '✓ Done', value: completedCount, color: 'text-slate-600', bg: 'bg-slate-50' },
+          { label: '💰 Revenue', value: `AED ${(totalRevenue/1000).toFixed(1)}k`, color: 'text-amber-600', bg: 'bg-amber-50' },
+          { label: '👥 Crew', value: new Set(enrichedJobs.flatMap(j => j.assigned_crew)).size, color: 'text-purple-600', bg: 'bg-purple-50' },
         ].map(card => (
-          <div key={card.label} className={`rounded-[20px] border border-[#E4E8EC] ${card.bg} p-4 flex items-center gap-3`}>
-            <div className={`w-10 h-10 rounded-lg ${card.bg} flex items-center justify-center`}>
-              <card.icon size={18} className={card.color} />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-[#111827]">{card.value}</p>
-              <p className="text-[12px] text-slate-500">{card.label}</p>
-            </div>
+          <div key={card.label} className={`${card.bg} rounded-[16px] p-3.5 border border-[#E4E8EC]`}>
+            <p className="text-[11px] text-slate-600 font-semibold">{card.label}</p>
+            <p className={`text-2xl font-black ${card.color} mt-1`}>{card.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1">
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {/* Map */}
-        <div className="lg:col-span-3 bg-white rounded-[22px] border border-[#E4E8EC] overflow-hidden shadow-[0_4px_20px_rgba(15,23,42,0.05)]">
-          <div className="h-[500px] lg:h-[600px]">
-            <MapContainer
-              center={DEFAULT_LOCATION}
-              zoom={11}
-              style={{ height: '100%', width: '100%' }}
-            >
-              <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; OpenStreetMap contributors'
-              />
-              {enrichedJobs.map(job => (
-                <JobMarker key={job.id} job={job} status={job.status} />
-              ))}
-            </MapContainer>
+        {/* Left: Map (Smaller) + Filters */}
+        <div className="lg:col-span-2 space-y-4">
+
+          {/* Map Container - Reduced Height */}
+          <div className="bg-white rounded-[22px] border border-[#E4E8EC] overflow-hidden shadow-[0_4px_20px_rgba(15,23,42,0.05)]">
+            <div className="h-[280px]">
+              <MapContainer center={DEFAULT_LOCATION} zoom={11} style={{ height: '100%', width: '100%' }}>
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
+                {enrichedJobs.map(job => <JobMarker key={job.id} job={job} status={job.status} />)}
+              </MapContainer>
+            </div>
           </div>
-        </div>
 
-        {/* Sidebar */}
-        <div className="space-y-4">
-
-          {/* Filters */}
+          {/* Search & Filters */}
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-            <h3 className="text-[14px] font-bold text-[#111827] mb-3">Filters</h3>
             <div className="space-y-3">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-600 uppercase">Status</label>
-                <Select
-                  value={filterStatus}
-                  onChange={e => setFilterStatus(e.target.value as any)}
-                  className="text-[12px] mt-1"
-                >
-                  <option value="all">All Jobs</option>
-                  <option value="in_progress">Live Only</option>
-                  <option value="pending">Pending Only</option>
-                  <option value="confirmed">Confirmed Only</option>
+              <div className="relative">
+                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input
+                  type="text"
+                  placeholder="Search jobs by client, address, service…"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)} className="text-[12px]">
+                  <option value="all">📋 All Status</option>
+                  <option value="in_progress">🔴 Live</option>
+                  <option value="pending">⏳ Pending</option>
+                  <option value="confirmed">✓ Confirmed</option>
+                </Select>
+                <Select value={sortBy} onChange={e => setSortBy(e.target.value as any)} className="text-[12px]">
+                  <option value="time">⏰ By Time</option>
+                  <option value="client">👤 By Client</option>
+                  <option value="service">🧹 By Service</option>
                 </Select>
               </div>
             </div>
           </div>
 
-          {/* Route Sequence */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-            <h3 className="text-[14px] font-bold text-[#111827] mb-3 flex items-center gap-2">
-              <MapPin size={16} />
-              Route Sequence
-            </h3>
-            {routeSequence.length === 0 ? (
-              <p className="text-[12px] text-slate-400 text-center py-4">No jobs to route</p>
+          {/* Detailed Job List */}
+          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+            <div className="px-6 py-4 border-b border-[#E4E8EC] bg-gradient-to-r from-slate-50 to-transparent">
+              <h3 className="text-[15px] font-bold text-[#111827]">Job Details ({sorted.length})</h3>
+            </div>
+            {sorted.length === 0 ? (
+              <p className="text-[13px] text-slate-400 text-center py-8">No jobs match your filters</p>
             ) : (
-              <div className="space-y-2">
-                {routeSequence.map((job, i) => (
-                  <div
-                    key={job.id}
-                    className={`text-[12px] p-3 rounded-lg border-l-4 flex items-start gap-2 ${
-                      job.status === 'in_progress'
-                        ? 'bg-emerald-50 border-l-emerald-500'
-                        : 'bg-blue-50 border-l-blue-500'
-                    }`}
-                  >
-                    <span className="text-[11px] font-bold text-slate-500 shrink-0 w-5">{i + 1}.</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-[#111827] truncate">{job.client_name}</p>
-                      <p className="text-[11px] text-slate-500">{job.service_type}</p>
-                      <p className="text-[10px] text-slate-400">{job.scheduled_time}</p>
+              <div className="divide-y divide-[#E4E8EC] max-h-[500px] overflow-y-auto">
+                {sorted.map(job => (
+                  <div key={job.id} className="p-4 hover:bg-slate-50/50 transition-colors border-l-4" style={{
+                    borderLeftColor: job.status === 'in_progress' ? '#10b981' : job.status === 'confirmed' ? '#3b82f6' : '#94a3b8'
+                  }}>
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div>
+                        <p className="text-[13px] font-bold text-[#111827]">{job.client_name}</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">{job.service_address}</p>
+                      </div>
+                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full shrink-0 ${
+                        job.status === 'in_progress' ? 'bg-emerald-100 text-emerald-700' :
+                        job.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
+                        'bg-slate-100 text-slate-700'
+                      }`}>
+                        {job.status === 'in_progress' ? '🔴 LIVE' : job.status === 'confirmed' ? '✓ CONFIRMED' : '⏳ PENDING'}
+                      </span>
                     </div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded shrink-0 ${
-                      job.status === 'in_progress' ? 'bg-emerald-200 text-emerald-700' : 'bg-blue-200 text-blue-700'
-                    }`}>
-                      {job.status === 'in_progress' ? '🔴' : '⏳'}
-                    </span>
+                    <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600">
+                      <div>📌 <span className="font-semibold">{job.service_type}</span> · {job.duration_hours}h</div>
+                      <div>⏰ {job.scheduled_time} (AED {job.total_amount.toLocaleString()})</div>
+                    </div>
+                    {job.assigned_crew.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {job.assigned_crew.map((crew, i) => (
+                          <span key={i} className="text-[10px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">
+                            👤 {crew}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             )}
-            <p className="text-[10px] text-slate-400 mt-3 italic">
-              💡 Sequence based on scheduled time for optimal routing
+          </div>
+
+        </div>
+
+        {/* Right Sidebar: Advanced Stats & Breakdown */}
+        <div className="space-y-4">
+
+          {/* Service Type Breakdown */}
+          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+            <h3 className="text-[14px] font-bold text-[#111827] mb-4 flex items-center gap-2">
+              <TrendingUp size={16} className="text-blue-600" />
+              Service Mix
+            </h3>
+            {Object.entries(serviceBreakdown).length === 0 ? (
+              <p className="text-[12px] text-slate-400">No services</p>
+            ) : (
+              <div className="space-y-3">
+                {Object.entries(serviceBreakdown)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([service, count]) => (
+                    <div key={service}>
+                      <div className="flex justify-between items-center mb-1">
+                        <p className="text-[12px] font-semibold text-slate-700 truncate">{service}</p>
+                        <span className="text-[11px] font-bold text-emerald-600">{count} jobs</span>
+                      </div>
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-blue-500 to-blue-400"
+                          style={{ width: `${(count / enrichedJobs.length) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+
+          {/* Quick Stats */}
+          <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-[22px] border border-emerald-200 p-5">
+            <h3 className="text-[14px] font-bold text-emerald-900 mb-3 flex items-center gap-2">
+              <Zap size={16} className="text-emerald-600" />
+              Live Efficiency
+            </h3>
+            <div className="space-y-2 text-[12px]">
+              <div className="flex justify-between">
+                <span className="text-emerald-700">Avg Service Duration</span>
+                <span className="font-bold text-emerald-900">{enrichedJobs.length > 0 ? (enrichedJobs.reduce((s, j) => s + j.duration_hours, 0) / enrichedJobs.length).toFixed(1) : 0}h</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-emerald-700">Completion Rate</span>
+                <span className="font-bold text-emerald-900">{enrichedJobs.length > 0 ? Math.round((completedCount / enrichedJobs.length) * 100) : 0}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-emerald-700">Active Crew</span>
+                <span className="font-bold text-emerald-900">{new Set(enrichedJobs.filter(j => j.status === 'in_progress').flatMap(j => j.assigned_crew)).size} on job</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Route Tips */}
+          <div className="bg-amber-50 rounded-[22px] border border-amber-200 p-5">
+            <h3 className="text-[14px] font-bold text-amber-900 mb-3 flex items-center gap-2">
+              <Navigation size={16} className="text-amber-600" />
+              Route Tips
+            </h3>
+            <p className="text-[12px] text-amber-800 leading-relaxed">
+              💡 Sort by <strong>Time</strong> for optimal sequencing · Click map markers for details · Use search to find specific jobs
             </p>
           </div>
 
           {/* Legend */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-            <h3 className="text-[14px] font-bold text-[#111827] mb-3">Map Legend</h3>
-            <div className="space-y-2 text-[12px]">
+          <div className="bg-slate-50 rounded-[22px] border border-slate-200 p-4">
+            <h3 className="text-[12px] font-bold text-slate-700 mb-2.5">Map Legend</h3>
+            <div className="space-y-1.5 text-[11px]">
               <div className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-full bg-emerald-500" />
-                <span className="text-slate-600">Live (In Progress)</span>
+                <div className="w-4 h-4 rounded-full bg-emerald-500 border-2 border-white" />
+                <span className="text-slate-600">Live / In Progress</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded-full bg-blue-500" />
-                <span className="text-slate-600">Pending/Confirmed</span>
+                <div className="w-3.5 h-3.5 rounded-full bg-blue-500 border-2 border-white" />
+                <span className="text-slate-600">Pending / Confirmed</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-slate-400" />
