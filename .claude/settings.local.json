@@ -25,7 +25,8 @@
       "Bash(curl -s --max-time 10 http://187.77.116.14:8080/)",
       "Bash(git commit -m 'Fix TS18048: non-null assert client in buildMessage closure *)",
       "Bash(ssh root@187.77.116.14 \"tail -5 /var/log/deploy.log\")",
-      "Bash(xargs grep -l \"interface Invoice\")"
+      "Bash(xargs grep -l \"interface Invoice\")",
+      "Bash(ssh root@187.77.116.14 \"cd /root/safaeewala-dashboard && git pull && npm run build 2>&1 | tail -5 && cp -r dist/* /var/www/safaeewala/ && nginx -s reload && echo '✅ Deployed!'\")"
     ]
   }
 }
