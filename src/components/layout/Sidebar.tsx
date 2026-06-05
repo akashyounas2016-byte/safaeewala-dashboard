@@ -2,7 +2,7 @@ import { type ElementType } from 'react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard, CalendarCheck, Users, UserCheck, MapPin,
+  LayoutDashboard, CalendarCheck, Users, UserCheck, MapPin, Map,
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
 } from 'lucide-react'
 import { useCurrentUser, useCanAccess } from '@/store/UserContext'
@@ -13,6 +13,7 @@ const workspaceNavBase = [
   { to: '/clients',         label: 'Clients',         icon: Users },
   { to: '/employees',       label: 'Employees',       icon: UserCheck },
   { to: '/dispatch',        label: 'Dispatch',        icon: MapPin },
+  { to: '/map',             label: 'Live Map',        icon: Map },
 ]
 
 const adminOnlyNav = [
