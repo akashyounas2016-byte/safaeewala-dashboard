@@ -1,6 +1,7 @@
 import { createContext, useContext, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
+import { NotificationCenter } from '@/components/NotificationCenter'
 import { Menu } from 'lucide-react'
 
 /* ── Layout context — lets PageHero access openMenu ── */
@@ -35,6 +36,9 @@ export function Layout() {
 
           <main className="flex-1 overflow-y-auto bg-[#f0f4f3]">
             <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 lg:pt-8 pb-10">
+              <div className="mb-6">
+                <NotificationCenter />
+              </div>
               <Outlet />
             </div>
           </main>

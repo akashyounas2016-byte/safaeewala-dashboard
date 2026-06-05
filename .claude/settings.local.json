@@ -2,7 +2,30 @@
   "permissions": {
     "allow": [
       "PowerShell(cd \"e:\\\\VS CODE PROJECTS\\\\SAFAEEWALA DASHBOARD\"; Start-Process powershell -ArgumentList \"-NoProfile -Command `\"cd 'e:\\\\VS CODE PROJECTS\\\\SAFAEEWALA DASHBOARD'; npm run dev`\"\" -WindowStyle Normal; Start-Sleep -Seconds 3; Write-Host \"Dev server starting...\")",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(node -e \"const l = require\\('lucide-react'\\); const names = Object.keys\\(l\\).filter\\(k => k.toLowerCase\\(\\).includes\\('kanban'\\) || k.toLowerCase\\(\\).includes\\('column'\\) || k.toLowerCase\\(\\).includes\\('grid'\\)\\); console.log\\(names.slice\\(0,20\\)\\)\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(node --max-old-space-size=4096 ./node_modules/.bin/tsc -b --noEmit)",
+      "Bash(git commit -m 'Fix signup: insert profile directly instead of relying on DB trigger *)",
+      "Bash(git commit -m 'Settings: remove SQL setup block, show real auth user email *)",
+      "Bash(git commit -m 'Fix infinite loading spinner: isolate table fetches, add try-catch to auth *)",
+      "Bash(git commit -m 'Fix stuck spinner: profile check now runs in background, never blocks app *)",
+      "Bash(git commit -m 'Fix nav/tabs disappearing: show admin items until role is confirmed employee *)",
+      "Bash(git commit -m 'Add demo data seeder: one-click load of realistic UAE cleaning company data *)",
+      "PowerShell(cd \"e:\\\\VS CODE PROJECTS\\\\SAFAEEWALA DASHBOARD\"; $env:NODE_OPTIONS=\"--max-old-space-size=4096\"; npx tsc --noEmit 2>&1 | Select-Object -First 30)",
+      "Bash(git commit -m 'Fix build error: import ElementType from react, remove unused AlertCircle *)",
+      "Bash(git commit -m 'Fix dispatch timeline: match jobs by hour not exact time \\(08:06 now shows in 08:00 slot\\) *)",
+      "Bash(git commit -m 'Fix infinite spinner: 4s timeout on getSession, guard for missing env vars *)",
+      "Bash(git commit -m 'Fix all build errors: duplicate KanbanBoard, .catch\\(\\) on Supabase builders, misplaced JSX *)",
+      "Bash(git commit -m 'Fix crypto.randomUUID: add fallback for HTTP/non-secure contexts *)",
+      "Bash(git commit -m 'Fix crypto.randomUUID in seedData.ts: same HTTP fallback *)",
+      "Bash(curl -s --max-time 10 http://187.77.116.14:8080/)",
+      "Bash(git commit -m 'Fix TS18048: non-null assert client in buildMessage closure *)",
+      "Bash(ssh root@187.77.116.14 \"tail -5 /var/log/deploy.log\")",
+      "Bash(xargs grep -l \"interface Invoice\")"
     ]
   }
 }

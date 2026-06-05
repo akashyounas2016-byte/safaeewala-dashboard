@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import { DataProvider } from '@/store/DataContext'
+import { DataProvider, useData } from '@/store/DataContext'
 import { UserProvider, useCurrentUser } from '@/store/UserContext'
+import { NotificationProvider } from '@/store/NotificationContext'
 import { Layout } from '@/components/layout/Layout'
 import { Login } from '@/pages/Login'
 import { Overview } from '@/pages/Overview'
@@ -121,30 +122,39 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function AppRoutes() {
+  const { bookings, invoices, inventory } = useData()
+  return (
+    <NotificationProvider bookings={bookings} invoices={invoices} inventory={inventory}>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route index element={<Overview />} />
+            <Route path="bookings"   element={<Bookings />} />
+            <Route path="clients"    element={<Clients />} />
+            <Route path="clients/:id" element={<ClientProfile />} />
+            <Route path="employees"  element={<Employees />} />
+            <Route path="dispatch"   element={<Dispatch />} />
+            <Route path="invoices"   element={<Invoices />} />
+            <Route path="inventory"  element={<Inventory />} />
+            <Route path="reports"    element={<Reports />} />
+            <Route path="settings"   element={<Settings />} />
+            <Route path="daily-job-sheet" element={
+              <AdminRoute><DailyJobSheet /></AdminRoute>
+            } />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </NotificationProvider>
+  )
+}
+
 export default function App() {
   return (
     <AuthGuard>
       <DataProvider>
         <UserProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route element={<Layout />}>
-                <Route index element={<Overview />} />
-                <Route path="bookings"   element={<Bookings />} />
-                <Route path="clients"    element={<Clients />} />
-                <Route path="clients/:id" element={<ClientProfile />} />
-                <Route path="employees"  element={<Employees />} />
-                <Route path="dispatch"   element={<Dispatch />} />
-                <Route path="invoices"   element={<Invoices />} />
-                <Route path="inventory"  element={<Inventory />} />
-                <Route path="reports"    element={<Reports />} />
-                <Route path="settings"   element={<Settings />} />
-                <Route path="daily-job-sheet" element={
-                  <AdminRoute><DailyJobSheet /></AdminRoute>
-                } />
-              </Route>
-            </Routes>
-          </BrowserRouter>
+          <AppRoutes />
         </UserProvider>
       </DataProvider>
     </AuthGuard>
