@@ -51,61 +51,98 @@ function JobMarker({ job, status }: { job: any; status: string }) {
   const isPending = status === 'pending' || status === 'confirmed'
 
   const color = isLive ? '#10b981' : isPending ? '#3b82f6' : '#94a3b8'
-  const size = isLive ? 35 : isPending ? 30 : 25
+  const size = isLive ? 40 : isPending ? 35 : 28
 
-  const crewName = job.assigned_crew.length > 0
-    ? job.assigned_crew[0].split('-')[0]
-    : 'Unassigned'
+  const crewNames = job.assigned_crew.length > 0 ? job.assigned_crew : ['👤 Unassigned']
 
   return (
-    <CircleMarker
-      center={coords}
-      radius={size / 2}
-      pathOptions={{
-        fillColor: color,
-        color: color,
-        weight: 2,
-        opacity: 0.8,
-        fillOpacity: 0.8,
-      }}
-    >
-      <Popup>
-        <div className="w-48">
-          <div className="flex items-center justify-between mb-2">
-            <p className="font-bold text-sm text-[#111827]">{job.client_name}</p>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-              isLive ? 'bg-emerald-100 text-emerald-700' :
-              isPending ? 'bg-blue-100 text-blue-700' :
-              'bg-slate-100 text-slate-700'
-            }`}>
-              {status}
-            </span>
+    <>
+      <CircleMarker
+        center={coords}
+        radius={size / 2}
+        pathOptions={{
+          fillColor: color,
+          color: 'white',
+          weight: 3,
+          opacity: 1,
+          fillOpacity: 0.9,
+        }}
+      >
+        <Popup>
+          <div className="w-56">
+            <div className="flex items-center justify-between mb-2">
+              <p className="font-bold text-sm text-[#111827]">{job.client_name}</p>
+              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                isLive ? 'bg-emerald-100 text-emerald-700' :
+                isPending ? 'bg-blue-100 text-blue-700' :
+                'bg-slate-100 text-slate-700'
+              }`}>
+                {isLive ? '🔴 LIVE' : isPending ? '✓ CONFIRMED' : '✓ DONE'}
+              </span>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-2.5 mb-3">
+              <p className="text-xs font-semibold text-[#111827]">{job.service_type}</p>
+              <p className="text-[11px] text-slate-600 mt-0.5">Duration: {job.duration_hours}h · AED {job.total_amount.toLocaleString()}</p>
+              <p className="text-[10px] text-slate-500 mt-1">📍 {job.service_address}</p>
+              <p className="text-[10px] text-slate-500">⏰ {job.scheduled_time}</p>
+            </div>
+
+            <div className="border-t border-slate-200 pt-2.5 mb-3">
+              <p className="text-[10px] font-bold text-slate-600 mb-2">ASSIGNED CREW</p>
+              <div className="space-y-1.5">
+                {crewNames.map((crew: string, i: number) => (
+                  <div key={i} className="flex items-center gap-2 bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-2">
+                    <span className="text-lg">👤</span>
+                    <div>
+                      <p className="text-[11px] font-bold text-purple-900">{crew}</p>
+                      <p className="text-[9px] text-purple-600">On the job</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              {job.client_phone && (
+                <a href={`tel:${job.client_phone}`} className="flex-1">
+                  <Button size="sm" className="w-full flex items-center justify-center gap-1 text-xs">
+                    <Phone size={12} /> Call
+                  </Button>
+                </a>
+              )}
+              {job.client_phone && (
+                <a href={`https://wa.me/${job.client_phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="flex-1">
+                  <Button size="sm" variant="outline" className="w-full flex items-center justify-center gap-1 text-xs bg-green-50 hover:bg-green-100">
+                    <MessageCircle size={12} /> Chat
+                  </Button>
+                </a>
+              )}
+            </div>
           </div>
-          <p className="text-xs text-slate-600 mb-2">{job.service_type} · {job.duration_hours}h</p>
-          <p className="text-xs text-slate-500 mb-2">{job.service_address}</p>
-          <div className="flex items-center gap-1 text-xs text-slate-600 mb-3">
-            <Truck size={12} />
-            <span>{crewName}</span>
-          </div>
-          <div className="flex gap-2">
-            {job.client_phone && (
-              <a href={`tel:${job.client_phone}`}>
-                <Button size="sm" variant="outline" className="flex items-center gap-1 text-xs">
-                  <Phone size={12} /> Call
-                </Button>
-              </a>
-            )}
-            {job.client_phone && (
-              <a href={`https://wa.me/${job.client_phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">
-                <Button size="sm" variant="outline" className="flex items-center gap-1 text-xs bg-green-50">
-                  <MessageCircle size={12} /> Chat
-                </Button>
-              </a>
-            )}
-          </div>
+        </Popup>
+      </CircleMarker>
+
+      {/* Show crew member names as floating labels on map */}
+      {crewNames.length > 0 && isLive && (
+        <div className="leaflet-marker-pane">
+          {crewNames.map((crew: string, idx: number) => (
+            <div
+              key={idx}
+              style={{
+                position: 'absolute',
+                left: `${coords[1]}px`,
+                top: `${coords[0]}px`,
+                transform: 'translate(-50%, -100%)',
+                marginTop: `-${30 + idx * 25}px`,
+              }}
+              className="bg-white rounded-lg shadow-lg px-2.5 py-1.5 text-[11px] font-bold text-purple-700 border-l-4 border-purple-500 whitespace-nowrap"
+            >
+              👤 {crew}
+            </div>
+          ))}
         </div>
-      </Popup>
-    </CircleMarker>
+      )}
+    </>
   )
 }
 
