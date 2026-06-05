@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, CalendarCheck, Users, UserCheck, MapPin,
-  FileText, Package, BarChart3, Settings, X, ClipboardList,
+  FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
 } from 'lucide-react'
 import { useCurrentUser, useCanAccess } from '@/store/UserContext'
 
@@ -22,6 +22,7 @@ const adminOnlyNav = [
 const financeNav = [
   { to: '/invoices',  label: 'Invoices',   icon: FileText },
   { to: '/inventory', label: 'Inventory',  icon: Package },
+  { to: '/expenses',  label: 'Expenses',   icon: TrendingDown },
   { to: '/reports',   label: 'Reports',    icon: BarChart3 },
   { to: '/settings',  label: 'Settings',   icon: Settings },
 ]

@@ -18,6 +18,7 @@ import { Reports } from '@/pages/Reports'
 import { Settings } from '@/pages/Settings'
 import { DailyJobSheet } from '@/pages/DailyJobSheet'
 import { ClientProfile } from '@/pages/ClientProfile'
+import { Expenses } from '@/pages/Expenses'
 
 type ProfileStatus = 'approved' | 'pending' | 'rejected'
 
@@ -137,6 +138,7 @@ function AppRoutes() {
             <Route path="dispatch"   element={<Dispatch />} />
             <Route path="invoices"   element={<Invoices />} />
             <Route path="inventory"  element={<Inventory />} />
+            <Route path="expenses"   element={<Expenses />} />
             <Route path="reports"    element={<Reports />} />
             <Route path="settings"   element={<Settings />} />
             <Route path="daily-job-sheet" element={
