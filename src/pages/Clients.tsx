@@ -121,6 +121,7 @@ export function Clients() {
   const [areaFilter, setAreaFilter] = useState('all')
   const [sortOrder, setSortOrder] = useState<'recent' | 'top_spent' | 'name'>('recent')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [filterType, setFilterType] = useState<'all' | 'active' | 'vip' | 'repeat' | null>(null)
 
   const totalSpent    = clients.reduce((s, c) => s + c.total_spent, 0)
   const avgLtv        = Math.round(totalSpent / (clients.length || 1))
@@ -142,11 +143,17 @@ export function Clients() {
 
   const filtered = (() => {
     const base = clients.filter(c => {
-      const matchSearch = c.full_name.toLowerCase().includes(search.toLowerCase()) ||
+      const matchSearch = search === '' || c.full_name.toLowerCase().includes(search.toLowerCase()) ||
         c.phone.includes(search) ||
         c.area.toLowerCase().includes(search.toLowerCase())
       const matchArea = areaFilter === 'all' || c.area === areaFilter
-      return matchSearch && matchArea
+      const matchFilter = !filterType || (
+        filterType === 'active' ? (c.last_service && new Date(c.last_service) > new Date('2026-01-01')) :
+        filterType === 'vip' ? c.total_spent > 2000 :
+        filterType === 'repeat' ? c.total_bookings > 1 :
+        true
+      )
+      return matchSearch && matchArea && matchFilter
     })
     if (sortOrder === 'top_spent') return [...base].sort((a, b) => b.total_spent - a.total_spent)
     if (sortOrder === 'name')      return [...base].sort((a, b) => a.full_name.localeCompare(b.full_name))
@@ -176,27 +183,36 @@ export function Clients() {
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {[
-          { label: 'Total Clients',    value: clients.length,             sub: 'All time',       icon: Users,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: clientDeltaLabel,  deltaUp: newThisMonth >= 0 },
-          { label: 'Active (30d)',     value: activeClients,              sub: 'Recent activity', icon: TrendingUp, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: `${activeClients} active`, deltaUp: activeClients > 0 },
-          { label: 'VIP Clients',      value: vipClients,                 sub: 'AED 2k+ spent',  icon: Award,     iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: vipClients > 0 ? `${vipClients} VIP` : 'None', deltaUp: vipClients > 0 },
-          { label: 'Avg Lifetime',     value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client', icon: DollarSign, iconBg: 'bg-amber-50',  iconColor: 'text-amber-600',   delta: avgLtv > 0 ? 'Real' : '—', deltaUp: avgLtv > 0 },
-          { label: 'Total Revenue',    value: `AED ${(totalSpent/1000).toFixed(1)}k`, sub: 'All clients', icon: Star, iconBg: 'bg-rose-50', iconColor: 'text-rose-600',    delta: `AED ${totalSpent.toLocaleString()}`, deltaUp: totalSpent > 0 },
-          { label: 'Repeat Rate',      value: `${repeatRate}%`,           sub: 'Have 2+ bookings', icon: Heart, iconBg: 'bg-pink-50',    iconColor: 'text-pink-600',    delta: `${repeatClients} clients`, deltaUp: repeatRate > 0 },
-        ].map(card => (
-          <div key={card.label} className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all">
-            <div className="flex items-start justify-between mb-4">
-              <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center`}>
-                <card.icon size={18} className={card.iconColor} />
+          { label: 'Total Clients',    value: clients.length,             sub: 'All time',       icon: Users,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: clientDeltaLabel,  deltaUp: newThisMonth >= 0, filter: null },
+          { label: 'Active (30d)',     value: activeClients,              sub: 'Recent activity', icon: TrendingUp, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: `${activeClients} active`, deltaUp: activeClients > 0, filter: 'active' },
+          { label: 'VIP Clients',      value: vipClients,                 sub: 'AED 2k+ spent',  icon: Award,     iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: vipClients > 0 ? `${vipClients} VIP` : 'None', deltaUp: vipClients > 0, filter: 'vip' },
+          { label: 'Avg Lifetime',     value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client', icon: DollarSign, iconBg: 'bg-amber-50',  iconColor: 'text-amber-600',   delta: avgLtv > 0 ? 'Real' : '—', deltaUp: avgLtv > 0, filter: null },
+          { label: 'Total Revenue',    value: `AED ${(totalSpent/1000).toFixed(1)}k`, sub: 'All clients', icon: Star, iconBg: 'bg-rose-50', iconColor: 'text-rose-600',    delta: `AED ${totalSpent.toLocaleString()}`, deltaUp: totalSpent > 0, filter: null },
+          { label: 'Repeat Rate',      value: `${repeatRate}%`,           sub: 'Have 2+ bookings', icon: Heart, iconBg: 'bg-pink-50',    iconColor: 'text-pink-600',    delta: `${repeatClients} clients`, deltaUp: repeatRate > 0, filter: 'repeat' },
+        ].map(card => {
+          const isSelected = filterType === card.filter
+          return (
+            <button
+              key={card.label}
+              onClick={() => setFilterType(isSelected ? null : (card.filter as any))}
+              className={`text-left bg-white rounded-[24px] border-2 shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all cursor-pointer ${
+                isSelected ? 'border-emerald-400 bg-emerald-50/30' : 'border-[#E4E8EC] hover:border-emerald-200'
+              }`}
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center`}>
+                  <card.icon size={18} className={card.iconColor} />
+                </div>
+                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${card.deltaUp ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                  {card.delta}
+                </span>
               </div>
-              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${card.deltaUp ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                {card.delta}
-              </span>
-            </div>
-            <p className="text-2xl font-bold text-[#111827] tracking-tight">{card.value}</p>
-            <p className="text-[12px] font-semibold text-[#111827] mt-1">{card.label}</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">{card.sub}</p>
-          </div>
-        ))}
+              <p className="text-2xl font-bold text-[#111827] tracking-tight">{card.value}</p>
+              <p className="text-[12px] font-semibold text-[#111827] mt-1">{card.label}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">{card.sub}</p>
+            </button>
+          )
+        })}
       </div>
 
       {/* ── Main content: Client list + Sidebar widgets ── */}
