@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, CalendarCheck, Users, UserCheck, MapPin, Map,
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList, MessageCircle,
+  Gift, Target, MessageSquare, CreditCard, RotateCw, FileCheck, Mail, Sparkles,
 } from 'lucide-react'
 import { useCurrentUser, useCanAccess } from '@/store/UserContext'
 
@@ -26,7 +27,24 @@ const financeNav = [
   { to: '/inventory', label: 'Inventory',  icon: Package },
   { to: '/expenses',  label: 'Expenses',   icon: TrendingDown },
   { to: '/reports',   label: 'Reports',    icon: BarChart3 },
-  { to: '/settings',  label: 'Settings',   icon: Settings },
+  { to: '/payments',  label: 'Payments',   icon: CreditCard },
+  { to: '/analytics', label: 'Analytics',  icon: BarChart3 },
+]
+
+const crmNav = [
+  { to: '/leads',            label: 'Lead Management',  icon: Target },
+  { to: '/service-packages', label: 'Service Packages', icon: Package },
+  { to: '/loyalty',          label: 'Loyalty Program',  icon: Gift },
+  { to: '/feedback',         label: 'Feedback Forms',   icon: MessageSquare },
+  { to: '/marketing',        label: 'Marketing',        icon: Mail },
+  { to: '/ai-proposals',     label: 'AI Proposals',     icon: Sparkles },
+]
+
+const operationsNav = [
+  { to: '/subscriptions', label: 'Subscriptions',  icon: RotateCw },
+  { to: '/sms',           label: 'SMS Alerts',     icon: MessageCircle },
+  { to: '/documents',     label: 'Documents',      icon: FileCheck },
+  { to: '/settings',      label: 'Settings',       icon: Settings },
 ]
 
 interface SidebarProps { open: boolean; onClose: () => void }
@@ -106,9 +124,27 @@ function SidebarContent({ onClose, showClose }: { onClose: () => void; showClose
         <div className="my-5 mx-2 border-t border-white/5" />
 
         <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-3 px-3 font-semibold">
-          Finance
+          Sales & CRM
+        </p>
+        {crmNav.map(item => (
+          <NavItem key={item.to} {...item} onClose={onClose} />
+        ))}
+
+        <div className="my-5 mx-2 border-t border-white/5" />
+
+        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-3 px-3 font-semibold">
+          Finance & Operations
         </p>
         {financeNav.map(item => (
+          <NavItem key={item.to} {...item} onClose={onClose} />
+        ))}
+
+        <div className="my-5 mx-2 border-t border-white/5" />
+
+        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-3 px-3 font-semibold">
+          Operations
+        </p>
+        {operationsNav.map(item => (
           <NavItem key={item.to} {...item} onClose={onClose} />
         ))}
       </nav>
