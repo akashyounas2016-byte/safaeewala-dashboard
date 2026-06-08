@@ -3,7 +3,6 @@ import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDr
 import { useDarkMode } from '@/hooks/useDarkMode'
 import { supabase } from '@/lib/supabase'
 import { useIsAdmin, useCurrentUser, useRolePerms, useSetRolePerms, DEFAULT_ROLE_PERMS, ALL_MODULES, type RolePerms, type AppRole } from '@/store/UserContext'
-import { seedDemoData } from '@/lib/seedData'
 import * as XLSX from 'xlsx'
 import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured } from '@/lib/googleDrive'
 import { Button } from '@/components/ui/Button'
@@ -711,8 +710,6 @@ export function Settings() {
   const [driveStatus, setDriveStatus] = useState<'idle' | 'connecting' | 'uploading' | 'done' | 'error'>('idle')
   const [driveLink, setDriveLink]   = useState('')
   const [driveError, setDriveError] = useState('')
-  const [seedLog,    setSeedLog]    = useState<string[]>([])
-  const [seeding,    setSeeding]    = useState(false)
   const [importStatus, setImportStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [importError,  setImportError]  = useState('')
   const importRef = useRef<HTMLInputElement>(null)
@@ -1341,38 +1338,6 @@ export function Settings() {
               Open Supabase Dashboard
             </a>
           </div>
-
-          {/* Demo Data — admin only */}
-          {isAdmin && (
-            <div className="bg-slate-50 border border-[#E4E8EC] rounded-[22px] p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-lg">🗄️</span>
-                <h3 className="text-[14px] font-bold text-slate-700">Demo Data</h3>
-              </div>
-              <p className="text-[11.5px] text-slate-500 mb-3">
-                Seeds realistic demo data into all tables — employees, clients, bookings, invoices, inventory and 7 days of daily job sheet entries.
-              </p>
-              {seedLog.length > 0 && (
-                <div className="bg-white border border-[#E4E8EC] rounded-xl p-3 mb-3 space-y-1 max-h-32 overflow-y-auto">
-                  {seedLog.map((msg, i) => (
-                    <p key={i} className="text-[11px] text-slate-600 font-mono">{msg}</p>
-                  ))}
-                </div>
-              )}
-              <button
-                disabled={seeding}
-                onClick={async () => {
-                  setSeeding(true); setSeedLog([])
-                  await seedDemoData(msg => setSeedLog(p => [...p, msg]))
-                  setSeeding(false)
-                }}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-purple-600 text-white text-[12px] font-semibold hover:bg-purple-700 transition-colors disabled:opacity-60"
-              >
-                {seeding ? 'Loading demo data…' : '🚀 Load Demo Data'}
-              </button>
-              <p className="text-[10px] text-slate-400 text-center mt-2">Safe to run multiple times — uses upsert</p>
-            </div>
-          )}
 
         </div>
       </div>

@@ -481,39 +481,6 @@ export function Overview() {
         onAction={() => setShowNewBooking(true)}
       />
 
-      {/* ── Month-to-Date Summary Strip ── */}
-      {(() => {
-        const mtdKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
-        const mtdBookings = bookings.filter(b => b.scheduled_date.startsWith(mtdKey))
-        const mtdRevenue   = mtdBookings.filter(b => b.status === 'completed' || b.status === 'in_progress').reduce((s, b) => s + b.total_amount, 0)
-        const mtdCompleted = mtdBookings.filter(b => b.status === 'completed').length
-        const mtdPending   = mtdBookings.filter(b => b.status === 'pending' || b.status === 'confirmed').length
-        const mtdExpenses  = dailyExpenses.filter(e => e.date.startsWith(mtdKey)).reduce((s, e) => s + e.amount, 0)
-        const mtdProfit    = mtdRevenue - mtdExpenses
-        return (
-          <section className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-6 py-4 mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-[11px] uppercase tracking-[0.15em] text-[#6B7280] font-semibold">Month to Date</span>
-              <span className="text-[11px] text-slate-400">— {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {[
-                { label: 'Revenue',   value: `AED ${mtdRevenue.toLocaleString()}`,               color: 'text-emerald-600' },
-                { label: 'Expenses',  value: `AED ${mtdExpenses.toLocaleString()}`,              color: 'text-red-500' },
-                { label: 'Net Profit',value: `AED ${mtdProfit.toLocaleString()}`,                color: mtdProfit >= 0 ? 'text-emerald-700' : 'text-red-600' },
-                { label: 'Jobs',      value: `${mtdBookings.length} · ${mtdCompleted} done`,     color: 'text-blue-600' },
-                { label: 'Upcoming',  value: `${mtdPending} pending`,                            color: 'text-amber-600' },
-              ].map(s => (
-                <div key={s.label}>
-                  <p className="text-[11px] text-slate-400 font-medium">{s.label}</p>
-                  <p className={`text-[15px] font-bold mt-0.5 ${s.color}`}>{s.value}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        )
-      })()}
-
       {/* ── KPI Cards ── */}
       <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
         <KpiCard
