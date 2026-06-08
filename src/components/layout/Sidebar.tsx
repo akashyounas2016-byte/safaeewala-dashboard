@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, CalendarCheck, Users, UserCheck, MapPin, Map,
-  FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
+  FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList, MessageCircle,
 } from 'lucide-react'
 import { useCurrentUser, useCanAccess } from '@/store/UserContext'
 
@@ -14,6 +14,7 @@ const workspaceNavBase = [
   { to: '/employees',       label: 'Employees',       icon: UserCheck },
   { to: '/dispatch',        label: 'Dispatch',        icon: MapPin },
   { to: '/map',             label: 'Live Map',        icon: Map },
+  { to: '/whatsapp-crm',    label: 'WhatsApp CRM',    icon: MessageCircle },
 ]
 
 const adminOnlyNav = [
