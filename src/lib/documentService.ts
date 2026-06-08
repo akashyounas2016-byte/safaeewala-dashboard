@@ -295,7 +295,7 @@ export async function getComplianceStatus(): Promise<{
     return {
       allCompliant: false,
       expired: 0,
-      expiringMoon: 0,
+      expiringSoon: 0,
       active: 0,
       documents: [],
     }
