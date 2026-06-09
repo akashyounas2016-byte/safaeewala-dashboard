@@ -25,8 +25,7 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/id_rsa
+          printf '%s' "$SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          scp -o StrictHostKeyChecking=no -r dist/ "$VPS_USER@$VPS_HOST:/root/safaeewala-dashboard/"
-          echo "✅ Deployed successfully"
+          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r dist/ "$VPS_USER@$VPS_HOST:/root/safaeewala-dashboard/"
