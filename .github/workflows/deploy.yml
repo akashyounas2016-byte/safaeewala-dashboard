@@ -30,17 +30,12 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
-          set -x
           mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          echo "SSH key permissions set"
-          ssh-keyscan -H $VPS_HOST >> ~/.ssh/known_hosts 2>/dev/null
-          echo "Host key added"
-          ssh -v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null $VPS_USER@$VPS_HOST "mkdir -p /root/safaeewala-dashboard/dist && ls -la /root/safaeewala-dashboard/"
-          echo "Directory created, now copying files"
-          scp -v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r dist/ "$VPS_USER@$VPS_HOST:/root/safaeewala-dashboard/"
-          echo "Files copied successfully"
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$VPS_USER@$VPS_HOST" "mkdir -p /root/safaeewala-dashboard/dist"
+          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r dist/ "$VPS_USER@$VPS_HOST:/root/safaeewala-dashboard/"
 
       - name: Verify deployment
         env:
