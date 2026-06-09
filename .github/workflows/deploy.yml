@@ -34,8 +34,8 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $VPS_HOST >> ~/.ssh/known_hosts 2>/dev/null
-          ssh $VPS_USER@$VPS_HOST "mkdir -p /root/safaeewala-dashboard/dist"
-          scp -r dist/* $VPS_USER@$VPS_HOST:/root/safaeewala-dashboard/dist/
+          ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_HOST "rm -rf /root/safaeewala-dashboard/dist && mkdir -p /root/safaeewala-dashboard/dist"
+          scp -o StrictHostKeyChecking=no -r dist/ $VPS_USER@$VPS_HOST:/root/safaeewala-dashboard/
 
       - name: Verify deployment
         env:
