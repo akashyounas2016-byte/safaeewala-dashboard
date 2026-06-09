@@ -18,11 +18,15 @@ jobs:
       - name: Build
         run: npm install && npm run build
       
-      - name: Deploy via SCP
+      - name: Deploy to VPS
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
-          scp -r dist/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/root/safaeewala-dashboard/
-          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo 'Deployed at $(date)' >> /var/log/deploy.log"
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          scp -o StrictHostKeyChecking=no -r dist/ "$VPS_USER@$VPS_HOST:/root/safaeewala-dashboard/"
+          echo "✅ Deployed successfully"
