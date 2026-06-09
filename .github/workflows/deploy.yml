@@ -1,0 +1,28 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      
+      - name: Build
+        run: npm install && npm run build
+      
+      - name: Deploy via SCP
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          scp -r dist/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/root/safaeewala-dashboard/
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "echo 'Deployed at $(date)' >> /var/log/deploy.log"
