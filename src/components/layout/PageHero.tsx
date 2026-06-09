@@ -8,6 +8,8 @@ interface PageHeroProps {
   actionLabel?: string
   onAction?: () => void
   searchPlaceholder?: string
+  searchValue?: string
+  onSearch?: (value: string) => void
 }
 
 export function PageHero({
@@ -17,6 +19,8 @@ export function PageHero({
   actionLabel = 'New Booking',
   onAction,
   searchPlaceholder = 'Search…',
+  searchValue = '',
+  onSearch,
 }: PageHeroProps) {
   const { openMenu } = useLayout()
 
@@ -60,6 +64,8 @@ export function PageHero({
             <input
               type="text"
               placeholder={searchPlaceholder}
+              value={searchValue}
+              onChange={(e) => onSearch?.(e.target.value)}
               className="bg-transparent outline-none flex-1 text-sm placeholder:text-white/50 text-white"
             />
             <kbd className="hidden sm:inline text-[10px] border border-white/20 rounded px-1.5 py-0.5 text-white/50 font-mono">

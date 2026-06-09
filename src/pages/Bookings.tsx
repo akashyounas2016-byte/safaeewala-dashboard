@@ -212,6 +212,8 @@ export function Bookings() {
         actionLabel="New Booking"
         onAction={() => setShowModal(true)}
         searchPlaceholder="Search bookings…"
+        searchValue={search}
+        onSearch={setSearch}
       />
 
       {/* ── KPI Cards ── */}
