@@ -21,17 +21,11 @@ import { ClientProfile } from '@/pages/ClientProfile'
 import { Expenses } from '@/pages/Expenses'
 import { LiveMap } from '@/pages/LiveMap'
 import { WhatsAppCRM } from '@/pages/WhatsAppCRM'
-import { ServicePackages } from '@/pages/ServicePackages'
-import { LeadManagement } from '@/pages/LeadManagement'
 import { RecurringSubscriptions } from '@/pages/RecurringSubscriptions'
-import { SMSNotifications } from '@/pages/SMSNotifications'
 import { PaymentProcessing } from '@/pages/PaymentProcessing'
 import { CustomerFeedback } from '@/pages/CustomerFeedback'
-import { LoyaltyProgram } from '@/pages/LoyaltyProgram'
 import { MarketingDashboard } from '@/pages/MarketingDashboard'
-import { DocumentManagement } from '@/pages/DocumentManagement'
 import { BusinessAnalytics } from '@/pages/BusinessAnalytics'
-import { AIProposalGenerator } from '@/pages/AIProposalGenerator'
 
 type ProfileStatus = 'approved' | 'pending' | 'rejected'
 
@@ -151,17 +145,11 @@ function AppRoutes() {
             <Route path="dispatch"   element={<Dispatch />} />
             <Route path="map"        element={<LiveMap />} />
             <Route path="whatsapp-crm" element={<WhatsAppCRM />} />
-            <Route path="service-packages" element={<ServicePackages />} />
-            <Route path="leads" element={<LeadManagement />} />
             <Route path="subscriptions" element={<RecurringSubscriptions />} />
-            <Route path="sms" element={<SMSNotifications />} />
             <Route path="payments" element={<PaymentProcessing />} />
             <Route path="feedback" element={<CustomerFeedback />} />
-            <Route path="loyalty" element={<LoyaltyProgram />} />
             <Route path="marketing" element={<MarketingDashboard />} />
-            <Route path="documents" element={<DocumentManagement />} />
             <Route path="analytics" element={<BusinessAnalytics />} />
-            <Route path="ai-proposals" element={<AIProposalGenerator />} />
             <Route path="invoices"   element={<Invoices />} />
             <Route path="inventory"  element={<Inventory />} />
             <Route path="expenses"   element={<Expenses />} />

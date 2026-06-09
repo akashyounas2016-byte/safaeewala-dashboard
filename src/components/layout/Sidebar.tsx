@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, CalendarCheck, Users, UserCheck, MapPin, Map,
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList, MessageCircle,
-  Gift, Target, MessageSquare, CreditCard, RotateCw, FileCheck, Mail, Sparkles,
+  MessageSquare, CreditCard, RotateCw, Mail,
 } from 'lucide-react'
 import { useCurrentUser, useCanAccess } from '@/store/UserContext'
 
@@ -32,18 +32,12 @@ const financeNav = [
 ]
 
 const crmNav = [
-  { to: '/leads',            label: 'Lead Management',  icon: Target },
-  { to: '/service-packages', label: 'Service Packages', icon: Package },
-  { to: '/loyalty',          label: 'Loyalty Program',  icon: Gift },
   { to: '/feedback',         label: 'Feedback Forms',   icon: MessageSquare },
   { to: '/marketing',        label: 'Marketing',        icon: Mail },
-  { to: '/ai-proposals',     label: 'AI Proposals',     icon: Sparkles },
 ]
 
 const operationsNav = [
   { to: '/subscriptions', label: 'Subscriptions',  icon: RotateCw },
-  { to: '/sms',           label: 'SMS Alerts',     icon: MessageCircle },
-  { to: '/documents',     label: 'Documents',      icon: FileCheck },
   { to: '/settings',      label: 'Settings',       icon: Settings },
 ]
 
