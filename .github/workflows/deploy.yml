@@ -20,12 +20,12 @@ jobs:
       
       - name: Deploy to VPS
         env:
-          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           mkdir -p ~/.ssh
-          printf '%s' "$SSH_KEY" > ~/.ssh/id_rsa
+          echo "$SSH_KEY_B64" | base64 -d > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -r dist/ "$VPS_USER@$VPS_HOST:/root/safaeewala-dashboard/"
