@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, CalendarCheck, Users, UserCheck, MapPin, Map,
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList, MessageCircle,
-  MessageSquare, CreditCard, RotateCw, Mail,
+  MessageSquare, CreditCard, RotateCw, Mail, TrendingUp,
 } from 'lucide-react'
 import { useCurrentUser, useCanAccess } from '@/store/UserContext'
 
@@ -23,12 +23,14 @@ const adminOnlyNav = [
 ]
 
 const financeNav = [
-  { to: '/invoices',  label: 'Invoices',   icon: FileText },
-  { to: '/inventory', label: 'Inventory',  icon: Package },
-  { to: '/expenses',  label: 'Expenses',   icon: TrendingDown },
-  { to: '/reports',   label: 'Reports',    icon: BarChart3 },
-  { to: '/payments',  label: 'Payments',   icon: CreditCard },
-  { to: '/analytics', label: 'Analytics',  icon: BarChart3 },
+  { to: '/invoices',          label: 'Invoices',           icon: FileText },
+  { to: '/inventory',         label: 'Inventory',          icon: Package },
+  { to: '/expenses',          label: 'Expenses',           icon: TrendingDown },
+  { to: '/reports',           label: 'Reports',            icon: BarChart3 },
+  { to: '/payments',          label: 'Payments',           icon: CreditCard },
+  { to: '/analytics',         label: 'Analytics',          icon: BarChart3 },
+  { to: '/monthly-invoices',  label: 'Monthly Invoices',   icon: FileText },
+  { to: '/monthly-clients',   label: 'Monthly Clients',    icon: TrendingUp },
 ]
 
 const crmNav = [

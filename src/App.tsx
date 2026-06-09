@@ -26,6 +26,8 @@ import { PaymentProcessing } from '@/pages/PaymentProcessing'
 import { CustomerFeedback } from '@/pages/CustomerFeedback'
 import { MarketingDashboard } from '@/pages/MarketingDashboard'
 import { BusinessAnalytics } from '@/pages/BusinessAnalytics'
+import { MonthlyInvoices } from '@/pages/MonthlyInvoices'
+import { MonthlyClients } from '@/pages/MonthlyClients'
 
 type ProfileStatus = 'approved' | 'pending' | 'rejected'
 
@@ -150,6 +152,8 @@ function AppRoutes() {
             <Route path="feedback" element={<CustomerFeedback />} />
             <Route path="marketing" element={<MarketingDashboard />} />
             <Route path="analytics" element={<BusinessAnalytics />} />
+            <Route path="monthly-invoices" element={<MonthlyInvoices />} />
+            <Route path="monthly-clients" element={<MonthlyClients />} />
             <Route path="invoices"   element={<Invoices />} />
             <Route path="inventory"  element={<Inventory />} />
             <Route path="expenses"   element={<Expenses />} />
