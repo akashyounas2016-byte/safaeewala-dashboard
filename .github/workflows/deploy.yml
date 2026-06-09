@@ -34,7 +34,8 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H $VPS_HOST >> ~/.ssh/known_hosts 2>/dev/null
-          scp -r dist $VPS_USER@$VPS_HOST:/root/safaeewala-dashboard/
+          ssh $VPS_USER@$VPS_HOST "mkdir -p /root/safaeewala-dashboard"
+          scp -r dist/* $VPS_USER@$VPS_HOST:/root/safaeewala-dashboard/dist/
 
       - name: Verify deployment
         env:
