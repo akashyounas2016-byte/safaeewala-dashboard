@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, CalendarCheck, Users, UserCheck, MapPin, Map,
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList, MessageCircle,
-  MessageSquare, CreditCard, RotateCw, Mail, TrendingUp,
+  CreditCard, RotateCw, TrendingUp,
 } from 'lucide-react'
 import { useCurrentUser, useCanAccess } from '@/store/UserContext'
 
@@ -31,11 +31,6 @@ const financeNav = [
   { to: '/analytics',         label: 'Analytics',          icon: BarChart3 },
   { to: '/monthly-invoices',  label: 'Monthly Invoices',   icon: FileText },
   { to: '/monthly-clients',   label: 'Monthly Clients',    icon: TrendingUp },
-]
-
-const crmNav = [
-  { to: '/feedback',         label: 'Feedback Forms',   icon: MessageSquare },
-  { to: '/marketing',        label: 'Marketing',        icon: Mail },
 ]
 
 const operationsNav = [
@@ -114,15 +109,6 @@ function SidebarContent({ onClose, showClose }: { onClose: () => void; showClose
           Workspace
         </p>
         {workspaceNav.map(item => (
-          <NavItem key={item.to} {...item} onClose={onClose} />
-        ))}
-
-        <div className="my-5 mx-2 border-t border-white/5" />
-
-        <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-3 px-3 font-semibold">
-          Sales & CRM
-        </p>
-        {crmNav.map(item => (
           <NavItem key={item.to} {...item} onClose={onClose} />
         ))}
 
