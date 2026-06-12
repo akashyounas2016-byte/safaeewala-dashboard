@@ -31,6 +31,4 @@ jobs:
           echo "$SSH_KEY_B64" | base64 -d > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" "rm -rf /root/safaeewala-dashboard/dist"
           scp -o StrictHostKeyChecking=no -r dist "$VPS_USER@$VPS_HOST:/root/safaeewala-dashboard/"
-          ssh -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" "pkill -f 'node.*server-entry' || true; sleep 2; cd /root/safaeewala-dashboard && nohup node --max-old-space-size=2048 server-entry.js > app.log 2>&1 &"
