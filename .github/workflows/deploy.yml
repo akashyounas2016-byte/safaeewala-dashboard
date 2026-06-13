@@ -17,8 +17,8 @@ jobs:
       
       - name: Build
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: https://lhkkeikcjgvldtmcrpmx.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_4jUBRey0ygkTnU2vs0zvaw_Fm3syDf7
         run: npm install && npm run build
       
       - name: Deploy to VPS
