@@ -11,7 +11,6 @@ import { Overview } from '@/pages/Overview'
 import { Bookings } from '@/pages/Bookings'
 import { Clients } from '@/pages/Clients'
 import { Employees } from '@/pages/Employees'
-import { Dispatch } from '@/pages/Dispatch'
 import { Invoices } from '@/pages/Invoices'
 import { Inventory } from '@/pages/Inventory'
 import { Reports } from '@/pages/Reports'
@@ -19,8 +18,6 @@ import { Settings } from '@/pages/Settings'
 import { DailyJobSheet } from '@/pages/DailyJobSheet'
 import { ClientProfile } from '@/pages/ClientProfile'
 import { Expenses } from '@/pages/Expenses'
-import { LiveMap } from '@/pages/LiveMap'
-import { WhatsAppCRM } from '@/pages/WhatsAppCRM'
 import { RecurringSubscriptions } from '@/pages/RecurringSubscriptions'
 import { PaymentProcessing } from '@/pages/PaymentProcessing'
 import { CustomerFeedback } from '@/pages/CustomerFeedback'
@@ -144,9 +141,6 @@ function AppRoutes() {
             <Route path="clients"    element={<Clients />} />
             <Route path="clients/:id" element={<ClientProfile />} />
             <Route path="employees"  element={<Employees />} />
-            <Route path="dispatch"   element={<Dispatch />} />
-            <Route path="map"        element={<LiveMap />} />
-            <Route path="whatsapp-crm" element={<WhatsAppCRM />} />
             <Route path="subscriptions" element={<RecurringSubscriptions />} />
             <Route path="payments" element={<PaymentProcessing />} />
             <Route path="feedback" element={<CustomerFeedback />} />
