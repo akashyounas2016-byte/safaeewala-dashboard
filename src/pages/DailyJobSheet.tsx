@@ -24,8 +24,27 @@ function calcHours(start: string, end: string): number {
   return diff > 0 ? Math.round(diff / 60 * 10) / 10 : 0
 }
 
+// Basic hours: 08:00–20:00. Anything after 20:00 is OT.
+function calcOTHours(start: string, end: string): number {
+  if (!start || !end) return 0
+  const [sh, sm] = start.split(':').map(Number)
+  const [eh, em] = end.split(':').map(Number)
+  const endMins   = eh * 60 + em
+  const OT_CUTOFF = 20 * 60 // 8 PM
+  if (endMins <= OT_CUTOFF) return 0
+  const otStartMins = Math.max(sh * 60 + sm, OT_CUTOFF)
+  const otMins = endMins - otStartMins
+  return otMins > 0 ? Math.round(otMins / 60 * 10) / 10 : 0
+}
+
 function fmtDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function rowBg(mode: PaymentMode) {
+  if (mode === 'Monthly') return 'bg-emerald-50 hover:bg-emerald-100/70'
+  if (mode === 'Pending') return 'bg-red-50 hover:bg-red-100/70'
+  return 'hover:bg-slate-50'
 }
 
 function PaymentBadge({ mode }: { mode: PaymentMode }) {
@@ -238,17 +257,23 @@ export function DailyJobSheet() {
 
   // ── Print ──
   function printSheet() {
-    const jobRows = todayJobs.map(j => `
-      <tr>
+    const jobRows = todayJobs.map(j => {
+      const otH = calcOTHours(j.start_time, j.end_time)
+      const rowStyle = j.payment_mode === 'Monthly'
+        ? 'background:#d1fae5'
+        : j.payment_mode === 'Pending'
+          ? 'background:#fee2e2'
+          : ''
+      return `<tr style="${rowStyle}">
         <td>${j.staff_name}</td><td>${j.start_time}</td><td>${j.end_time}</td>
         <td style="text-align:center">${j.duty_hours}h</td>
+        <td style="text-align:center">${otH > 0 ? otH + 'h OT' : '—'}</td>
         <td>${j.address}</td><td>${j.area}</td><td>${j.material}</td>
-        <td style="text-align:right">${j.charges}</td>
-        <td style="text-align:right">${j.received}</td>
+        <td style="text-align:right">${j.payment_mode === 'Monthly' ? 'Monthly' : j.charges}</td>
+        <td style="text-align:right">${j.payment_mode === 'Pending' || j.payment_mode === 'Monthly' ? '—' : j.received}</td>
         <td>${j.payment_mode}</td>
-        <td style="text-align:center">${j.is_overtime ? '✓' : ''}</td>
         <td>${j.remarks}</td>
-      </tr>`).join('')
+      </tr>`}).join('')
 
     const expRows = todayExpenses.map(e => `
       <tr><td>${e.name}</td><td>${e.category}</td><td style="text-align:right">AED ${e.amount}</td></tr>`).join('')
@@ -289,13 +314,13 @@ export function DailyJobSheet() {
         <div class="kpi"><div class="kpi-val">${jobsCount}</div><div class="kpi-lbl">Jobs</div></div>
       </div>
       <table>
-        <thead><tr><th>Staff</th><th>Start</th><th>End</th><th>Hrs</th><th>Address</th><th>Area</th><th>Material</th><th>Charges</th><th>Received</th><th>Mode</th><th>OT</th><th>Remarks</th></tr></thead>
+        <thead><tr><th>Staff</th><th>Start</th><th>End</th><th>Duty Hrs</th><th>OT Hrs</th><th>Address</th><th>Area</th><th>Material</th><th>Charges</th><th>Received</th><th>Mode</th><th>Remarks</th></tr></thead>
         <tbody>${jobRows || '<tr><td colspan="12" style="text-align:center;color:#999">No jobs</td></tr>'}</tbody>
         <tfoot><tr style="font-weight:700;background:#f3f4f6">
-          <td colspan="7">Totals</td>
+          <td colspan="8">Totals</td>
           <td>AED ${todayJobs.reduce((s,j)=>s+j.charges,0).toLocaleString()}</td>
           <td>AED ${grossCollected.toLocaleString()}</td>
-          <td colspan="3"></td>
+          <td colspan="2"></td>
         </tr></tfoot>
       </table>
       <div class="two-col">
@@ -522,58 +547,63 @@ export function DailyJobSheet() {
           <table className="w-full text-[12px]" style={{ minWidth: 1000 }}>
             <thead>
               <tr className="bg-slate-50 border-b border-[#E4E8EC]">
-                {['Staff', 'Start', 'End', 'Hrs', 'Address', 'Area', 'Material', 'Charges', 'Received', 'Pending', 'Mode', 'OT', 'Remarks', ''].map(h => (
+                {['Staff', 'Start', 'End', 'Duty Hrs', 'OT Hrs', 'Address', 'Area', 'Material', 'Charges', 'Received', 'Pending', 'Mode', 'Remarks', ''].map(h => (
                   <th key={h} className="text-left px-3 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-[0.07em] whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E4E8EC]">
-              {todayJobs.map(job => (
-                <tr key={job.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-3 py-3 font-semibold text-[#111827] whitespace-nowrap">{job.staff_name}</td>
-                  <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{job.start_time || '—'}</td>
-                  <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{job.end_time || '—'}</td>
-                  <td className="px-3 py-3 font-semibold text-slate-700 whitespace-nowrap">
-                    {job.duty_hours > 0 ? `${job.duty_hours}h` : '—'}
-                  </td>
-                  <td className="px-3 py-3 text-slate-600 max-w-[160px] truncate">{job.address || '—'}</td>
-                  <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{job.area || '—'}</td>
-                  <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{job.material}</td>
-                  <td className="px-3 py-3 font-semibold text-[#111827] whitespace-nowrap">
-                    {job.payment_mode === 'Monthly' ? <span className="text-purple-600">Monthly</span> : `AED ${job.charges.toLocaleString()}`}
-                  </td>
-                  <td className="px-3 py-3 font-semibold text-emerald-700 whitespace-nowrap">
-                    {job.payment_mode === 'Pending' || job.payment_mode === 'Monthly' ? '—' : `AED ${job.received.toLocaleString()}`}
-                  </td>
-                  <td className="px-3 py-3 font-semibold whitespace-nowrap">
-                    {job.charges > job.received ? (
-                      <span className="text-red-600">AED {(job.charges - job.received).toLocaleString()}</span>
-                    ) : (
-                      <span className="text-emerald-600">—</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-3"><PaymentBadge mode={job.payment_mode} /></td>
-                  <td className="px-3 py-3 text-center">
-                    {job.is_overtime && <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full">OT</span>}
-                  </td>
-                  <td className="px-3 py-3 text-slate-500 max-w-[140px] truncate">{job.remarks || '—'}</td>
-                  <td className="px-3 py-3">
-                    <div className="flex gap-1">
-                      <button onClick={() => setEditJob(job)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="Edit">
-                        <Calendar size={13} />
-                      </button>
-                      <button onClick={() => deleteDailyJob(job.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" title="Delete">
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {todayJobs.map(job => {
+                const otHrs = calcOTHours(job.start_time, job.end_time)
+                return (
+                  <tr key={job.id} className={`transition-colors ${rowBg(job.payment_mode)}`}>
+                    <td className="px-3 py-3 font-semibold text-[#111827] whitespace-nowrap">{job.staff_name}</td>
+                    <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{job.start_time || '—'}</td>
+                    <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{job.end_time || '—'}</td>
+                    <td className="px-3 py-3 font-semibold text-slate-700 whitespace-nowrap">
+                      {job.duty_hours > 0 ? `${job.duty_hours}h` : '—'}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {otHrs > 0
+                        ? <span className="text-[11px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">{otHrs}h OT</span>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-3 py-3 text-slate-600 max-w-[160px] truncate">{job.address || '—'}</td>
+                    <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{job.area || '—'}</td>
+                    <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{job.material}</td>
+                    <td className="px-3 py-3 font-semibold text-[#111827] whitespace-nowrap">
+                      {job.payment_mode === 'Monthly' ? <span className="text-emerald-700 font-bold">Monthly</span> : `AED ${job.charges.toLocaleString()}`}
+                    </td>
+                    <td className="px-3 py-3 font-semibold text-emerald-700 whitespace-nowrap">
+                      {job.payment_mode === 'Pending' || job.payment_mode === 'Monthly' ? '—' : `AED ${job.received.toLocaleString()}`}
+                    </td>
+                    <td className="px-3 py-3 font-semibold whitespace-nowrap">
+                      {job.charges > job.received ? (
+                        <span className="text-red-600">AED {(job.charges - job.received).toLocaleString()}</span>
+                      ) : (
+                        <span className="text-emerald-600">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3"><PaymentBadge mode={job.payment_mode} /></td>
+                    <td className="px-3 py-3 text-slate-500 max-w-[140px] truncate">{job.remarks || '—'}</td>
+                    <td className="px-3 py-3">
+                      <div className="flex gap-1">
+                        <button onClick={() => setEditJob(job)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="Edit">
+                          <Calendar size={13} />
+                        </button>
+                        <button onClick={() => deleteDailyJob(job.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" title="Delete">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
             {todayJobs.length > 0 && (
               <tfoot>
                 <tr className="bg-slate-50 border-t-2 border-[#E4E8EC] font-bold text-[12px]">
-                  <td colSpan={7} className="px-3 py-3 text-slate-600">Totals</td>
+                  <td colSpan={8} className="px-3 py-3 text-slate-600">Totals</td>
                   <td className="px-3 py-3 text-[#111827]">AED {todayJobs.reduce((s, j) => s + j.charges, 0).toLocaleString()}</td>
                   <td className="px-3 py-3 text-emerald-700">AED {grossCollected.toLocaleString()}</td>
                   <td className="px-3 py-3 text-red-600">AED {todayJobs.reduce((s, j) => s + Math.max(0, j.charges - j.received), 0).toLocaleString()}</td>
