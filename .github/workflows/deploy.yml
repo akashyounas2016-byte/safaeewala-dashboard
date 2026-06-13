@@ -31,4 +31,4 @@ jobs:
           echo "$SSH_KEY_B64" | base64 -d > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          scp -o StrictHostKeyChecking=no -r dist/ "$VPS_USER@$VPS_HOST:/root/safaeewala-dashboard/"
+          scp -o StrictHostKeyChecking=no -r dist/ "$VPS_USER@$VPS_HOST:/var/www/safaeewala/"
