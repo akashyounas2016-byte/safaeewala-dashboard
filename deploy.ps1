@@ -9,7 +9,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "📤 Deploying to VPS..." -ForegroundColor Cyan
-scp -r "dist/" root@187.77.116.14:/var/www/safaeewala/
+scp "dist/index.html" "root@187.77.116.14:/var/www/safaeewala/index.html"
+scp -r "dist/assets" "root@187.77.116.14:/var/www/safaeewala/"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Deployment failed!" -ForegroundColor Red
     exit 1
