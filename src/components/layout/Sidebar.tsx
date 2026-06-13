@@ -9,10 +9,11 @@ import {
 import { useCurrentUser, useCanAccess } from '@/store/UserContext'
 
 const workspaceNavBase = [
-  { to: '/',                label: 'Overview',        icon: LayoutDashboard },
-  { to: '/bookings',        label: 'Bookings',        icon: CalendarCheck },
-  { to: '/clients',         label: 'Clients',         icon: Users },
-  { to: '/employees',       label: 'Employees',       icon: UserCheck },
+  { to: '/',                 label: 'Overview',        icon: LayoutDashboard },
+  { to: '/bookings',         label: 'Bookings',        icon: CalendarCheck },
+  { to: '/clients',          label: 'Clients',         icon: Users },
+  { to: '/monthly-clients',  label: 'Monthly Clients', icon: TrendingUp },
+  { to: '/employees',        label: 'Employees',       icon: UserCheck },
 ]
 
 const adminOnlyNav = [
@@ -20,19 +21,18 @@ const adminOnlyNav = [
 ]
 
 const financeNav = [
-  { to: '/invoices',          label: 'Invoices',           icon: FileText },
-  { to: '/inventory',         label: 'Inventory',          icon: Package },
-  { to: '/expenses',          label: 'Expenses',           icon: TrendingDown },
-  { to: '/reports',           label: 'Reports',            icon: BarChart3 },
-  { to: '/payments',          label: 'Payments',           icon: CreditCard },
-  { to: '/analytics',         label: 'Analytics',          icon: BarChart3 },
-  { to: '/monthly-invoices',  label: 'Monthly Invoices',   icon: FileText },
-  { to: '/monthly-clients',   label: 'Monthly Clients',    icon: TrendingUp },
+  { to: '/invoices',         label: 'Invoices',         icon: FileText },
+  { to: '/monthly-invoices', label: 'Monthly Invoices', icon: FileText },
+  { to: '/inventory',        label: 'Inventory',        icon: Package },
+  { to: '/expenses',         label: 'Expenses',         icon: TrendingDown },
+  { to: '/payments',         label: 'Payments',         icon: CreditCard },
 ]
 
 const operationsNav = [
-  { to: '/subscriptions', label: 'Subscriptions',  icon: RotateCw },
-  { to: '/settings',      label: 'Settings',       icon: Settings },
+  { to: '/subscriptions', label: 'Subscriptions', icon: RotateCw },
+  { to: '/reports',       label: 'Reports',       icon: BarChart3 },
+  { to: '/analytics',     label: 'Analytics',     icon: BarChart3 },
+  { to: '/settings',      label: 'Settings',      icon: Settings },
 ]
 
 interface SidebarProps { open: boolean; onClose: () => void }
