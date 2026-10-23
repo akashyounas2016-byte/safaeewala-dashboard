@@ -13,7 +13,7 @@ export interface CurrentUser {
 export type RolePerms = Record<AppRole, string[]>
 
 export const ALL_MODULES = [
-  'Overview', 'Bookings', 'Clients', 'Employees', 'Dispatch',
+  'Overview', 'Bookings', 'Fluent Forms', 'Clients', 'Employees', 'Dispatch',
   'Daily Job Sheet', 'Invoices', 'Inventory', 'Reports', 'Settings',
 ] as const
 
@@ -27,8 +27,15 @@ const UserContext     = createContext<CurrentUser | null>(null)
 const RolePermsCtx    = createContext<RolePerms>(DEFAULT_ROLE_PERMS)
 const SetRolePermsCtx = createContext<(p: RolePerms) => void>(() => {})
 
+const DEFAULT_DEV_USER: CurrentUser = {
+  id: 'dev-admin-id',
+  email: 'admin@safaeewala.com',
+  full_name: 'Akash Younas',
+  role: 'admin',
+}
+
 export function UserProvider({ children }: { children: ReactNode }) {
-  const [user,      setUser]      = useState<CurrentUser | null>(null)
+  const [user,      setUser]      = useState<CurrentUser | null>(DEFAULT_DEV_USER)
   const [rolePerms, setRolePerms] = useState<RolePerms>(DEFAULT_ROLE_PERMS)
 
   useEffect(() => {

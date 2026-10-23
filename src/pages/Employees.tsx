@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import * as XLSX from 'xlsx'
-import { useNavigate } from 'react-router-dom'
-import { Search, AlertTriangle, Phone, Shield, Users, UserCheck, Star, TrendingUp, Trash2, CheckCircle, Upload, Download, FileSpreadsheet } from 'lucide-react'
+import { useNavigate, Link } from 'react-router-dom'
+import { Search, AlertTriangle, Phone, Shield, Users, UserCheck, Star, TrendingUp, Trash2, CheckCircle, Upload, Download, FileSpreadsheet, Clock, ExternalLink, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -9,6 +9,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { formatDate, daysUntil } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { Employee } from '@/types'
+import { getEmployeeDailyJobsHistory, calcJobOTHours } from '@/lib/clientDataSync'
 
 /* ─── Excel import/export helpers ─── */
 function toISODate(val: any): string {
@@ -142,18 +143,32 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export function Employees() {
-  const { employees, bookings, addEmployee, updateEmployee, deleteEmployee } = useData()
+  const { employees, bookings, dailyJobs, addEmployee, updateEmployee, deleteEmployee } = useData()
   const navigate = useNavigate()
   const xlsxInputRef = useRef<HTMLInputElement>(null)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'on_leave'>('all')
   const [expiryFilter, setExpiryFilter] = useState(false)
+  const [otOnlyFilter, setOtOnlyFilter] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<typeof employees[0] | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [importing, setImporting] = useState(false)
+
+  // Map employee stats from Daily Job Sheet
+  const staffJobStats = useMemo(() => {
+    const stats = new Map<string, { shifts: number; dutyHours: number; otHours: number }>()
+    employees.forEach(emp => {
+      const jobs = getEmployeeDailyJobsHistory(emp, dailyJobs)
+      const shifts = jobs.length
+      const dutyHours = Math.round(jobs.reduce((s, j) => s + (Number(j.duty_hours) || 0), 0) * 10) / 10
+      const otHours = Math.round(jobs.reduce((s, j) => s + calcJobOTHours(j), 0) * 10) / 10
+      stats.set(emp.id, { shifts, dutyHours, otHours })
+    })
+    return stats
+  }, [employees, dailyJobs])
 
   const expiringCount = employees.filter(e => {
     const soonest = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry), daysUntil(e.passport_expiry))
@@ -162,19 +177,23 @@ export function Employees() {
 
   const activeCount = employees.filter(e => e.status === 'active').length
   const crewLeads = employees.filter(e => e.role === 'crew_lead').length
-  const totalJobsDone = bookings.filter(b => b.status === 'completed').length
-  const onLeaveCount = employees.filter(e => e.status === 'on_leave').length
+  const totalShiftsLogged = Array.from(staffJobStats.values()).reduce((sum, s) => sum + s.shifts, 0)
+  const totalOTLogged = Math.round(Array.from(staffJobStats.values()).reduce((sum, s) => sum + s.otHours, 0) * 10) / 10
+  const autoSyncedCount = employees.filter(e => e.id.startsWith('emp-dj-')).length
 
   const filtered = employees.filter(e => {
+    const st = staffJobStats.get(e.id)
     const matchSearch = e.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      e.nationality.toLowerCase().includes(search.toLowerCase())
+      e.nationality.toLowerCase().includes(search.toLowerCase()) ||
+      e.phone.toLowerCase().includes(search.toLowerCase())
     const matchRole = roleFilter === 'all' || e.role === roleFilter
     const matchStatus = statusFilter === 'all' || e.status === statusFilter
+    const matchOT = !otOnlyFilter || ((st?.otHours || 0) > 0)
     const matchExpiry = !expiryFilter || (() => {
       const soonest = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry), daysUntil(e.passport_expiry))
       return soonest < 90
     })()
-    return matchSearch && matchRole && matchStatus && matchExpiry
+    return matchSearch && matchRole && matchStatus && matchExpiry && matchOT
   })
 
   /* Aggregate all skills across all employees */
@@ -189,7 +208,7 @@ export function Employees() {
       {/* ── Hero ── */}
       <PageHero
         title="Employees"
-        subtitle={`${employees.length} staff · ${activeCount} active · ${expiringCount} documents expiring soon`}
+        subtitle={`${employees.length} staff (${autoSyncedCount} auto-synced from Daily Job Sheet) · ${totalShiftsLogged} total shifts logged`}
         statusChip={expiringCount > 0 ? `${expiringCount} Alerts` : 'All Clear'}
         actionLabel="Add Employee"
         onAction={() => setShowModal(true)}
@@ -214,18 +233,18 @@ export function Employees() {
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {[
-          { label: 'Total Staff',     value: employees.length,  sub: 'All roles',        icon: Users,      iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '+2',   deltaUp: true  },
-          { label: 'Active',          value: activeCount,           sub: 'Currently working', icon: UserCheck,  iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: '+1',   deltaUp: true  },
-          { label: 'Crew Leads',      value: crewLeads,             sub: 'Senior staff',     icon: Star,       iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: '0',    deltaUp: true  },
-          { label: 'Docs Expiring',   value: expiringCount,         sub: 'Within 90 days',   icon: Shield,     iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: expiringCount > 0 ? `${expiringCount} !` : 'OK', deltaUp: expiringCount === 0 },
-          { label: 'Jobs Completed',  value: totalJobsDone,         sub: 'All time',         icon: CheckCircle, iconBg: 'bg-rose-50',    iconColor: 'text-rose-600',   delta: `${totalJobsDone}`, deltaUp: true  },
-          { label: 'On Leave',        value: onLeaveCount,          sub: 'Currently absent', icon: TrendingUp, iconBg: 'bg-teal-50',    iconColor: 'text-teal-600',    delta: onLeaveCount > 0 ? `${onLeaveCount}` : 'None', deltaUp: onLeaveCount === 0 },
+          { label: 'Total Staff',     value: employees.length,  sub: `${autoSyncedCount} from Job Sheet`, icon: Users,      iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: `+${autoSyncedCount}`, deltaUp: true  },
+          { label: 'Active',          value: activeCount,           sub: 'Available / Working', icon: UserCheck,  iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: '+1',   deltaUp: true  },
+          { label: 'Job Sheet Shifts', value: totalShiftsLogged,    sub: 'Logged in Job Sheet', icon: CheckCircle, iconBg: 'bg-indigo-50',  iconColor: 'text-indigo-600',  delta: `${totalShiftsLogged}`, deltaUp: true  },
+          { label: 'Total Overtime',  value: `${totalOTLogged}h`,   sub: 'OT Hours logged',     icon: Clock,       iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: `${totalOTLogged}h`, deltaUp: true  },
+          { label: 'Crew Leads',      value: crewLeads,             sub: 'Supervisors',         icon: Star,        iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: `${crewLeads}`, deltaUp: true  },
+          { label: 'Docs Expiring',   value: expiringCount,         sub: 'Within 90 days',      icon: Shield,      iconBg: 'bg-rose-50',    iconColor: 'text-rose-600',    delta: expiringCount > 0 ? `${expiringCount} !` : 'OK', deltaUp: expiringCount === 0 },
         ].map(card => {
           let action: (() => void) | null = null
-          if (card.label === 'Active') action = () => { setStatusFilter('active'); setExpiryFilter(false); setRoleFilter('all'); setSearch('') }
-          else if (card.label === 'Crew Leads') action = () => { setRoleFilter('crew_lead'); setStatusFilter('all'); setExpiryFilter(false); setSearch('') }
-          else if (card.label === 'Docs Expiring') action = () => { setExpiryFilter(true); setStatusFilter('all'); setRoleFilter('all'); setSearch('') }
-          else if (card.label === 'On Leave') action = () => { setStatusFilter('on_leave'); setExpiryFilter(false); setRoleFilter('all'); setSearch('') }
+          if (card.label === 'Active') action = () => { setStatusFilter('active'); setExpiryFilter(false); setRoleFilter('all'); setOtOnlyFilter(false); setSearch('') }
+          else if (card.label === 'Crew Leads') action = () => { setRoleFilter('crew_lead'); setStatusFilter('all'); setExpiryFilter(false); setOtOnlyFilter(false); setSearch('') }
+          else if (card.label === 'Docs Expiring') action = () => { setExpiryFilter(true); setStatusFilter('all'); setRoleFilter('all'); setOtOnlyFilter(false); setSearch('') }
+          else if (card.label === 'Total Overtime') action = () => { setOtOnlyFilter(prev => !prev); setExpiryFilter(false); setRoleFilter('all'); setSearch('') }
           return (
           <div key={card.label} onClick={action ?? undefined} className={`bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all ${action ? 'cursor-pointer' : ''}`}>
             <div className="flex items-start justify-between mb-4">
@@ -257,24 +276,34 @@ export function Employees() {
                 <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search by name or nationality…"
+                  placeholder="Search by name, nationality or phone…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   className="w-full text-[13px] pl-10 pr-4 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 focus:bg-white placeholder-slate-400 transition-colors"
                 />
               </div>
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap items-center">
                 {['all', 'crew_lead', 'cleaner'].map(r => (
                   <button
                     key={r}
                     onClick={() => setRoleFilter(r)}
-                    className={`px-3 py-2 rounded-xl text-[12px] font-semibold transition-colors ${
+                    className={`px-3 py-2 rounded-xl text-[12px] font-semibold transition-colors cursor-pointer ${
                       roleFilter === r ? 'bg-[#111827] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
-                    {r === 'all' ? 'All' : r === 'crew_lead' ? 'Crew Leads' : 'Cleaners'}
+                    {r === 'all' ? 'All Roles' : r === 'crew_lead' ? 'Crew Leads' : 'Cleaners'}
                   </button>
                 ))}
+
+                <button
+                  onClick={() => setOtOnlyFilter(prev => !prev)}
+                  className={`px-3 py-2 rounded-xl text-[12px] font-bold transition-colors cursor-pointer border ${
+                    otOnlyFilter ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-slate-100 text-slate-600 border-transparent hover:bg-slate-200'
+                  }`}
+                >
+                  {otOnlyFilter ? '✓ Has Overtime' : 'Filter OT'}
+                </button>
+
                 <input
                   ref={xlsxInputRef}
                   type="file"
@@ -296,13 +325,13 @@ export function Employees() {
                 <button
                   onClick={() => xlsxInputRef.current?.click()}
                   disabled={importing}
-                  className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors disabled:opacity-60"
+                  className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors disabled:opacity-60 cursor-pointer"
                 >
                   <Upload size={13} /> {importing ? 'Importing…' : 'Import Excel'}
                 </button>
                 <button
                   onClick={() => exportEmployeesXLSX(filtered)}
-                  className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors"
+                  className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors cursor-pointer"
                 >
                   <FileSpreadsheet size={13} /> Export Excel
                 </button>
@@ -316,57 +345,96 @@ export function Employees() {
               const safeDay = (d: string | undefined) => d ? daysUntil(d) : Infinity
               const minDays = Math.min(safeDay(emp.visa_expiry), safeDay(emp.work_permit_expiry), safeDay(emp.passport_expiry))
               const hasAlert = isFinite(minDays) && minDays < 90
+              const st = staffJobStats.get(emp.id)
+              const shiftsCount = st?.shifts ?? 0
+              const dutyHours = st?.dutyHours ?? 0
+              const otHours = st?.otHours ?? 0
+              const isJobSheetStaff = emp.id.startsWith('emp-dj-')
+
               return (
                 <div
                   key={emp.id}
                   onClick={() => setSelected(emp)}
-                  className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 cursor-pointer hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] hover:border-emerald-200 transition-all"
+                  className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 cursor-pointer hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] hover:border-purple-300 transition-all flex flex-col justify-between"
                 >
-                  <div className="flex items-start gap-3 mb-4">
-                    <Avatar name={emp.full_name} size="md" idx={idx} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-[14px] font-bold text-[#111827] truncate">{emp.full_name}</p>
-                        {hasAlert && <AlertTriangle size={13} className="text-amber-500 shrink-0" />}
+                  <div>
+                    <div className="flex items-start gap-3 mb-3">
+                      <Avatar name={emp.full_name} size="md" idx={idx} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-[14px] font-bold text-[#111827] truncate">{emp.full_name}</p>
+                          {hasAlert && <AlertTriangle size={13} className="text-amber-500 shrink-0" />}
+                        </div>
+                        <p className="text-[12px] text-slate-500 mt-0.5 truncate">
+                          {emp.role === 'crew_lead' ? 'Crew Lead / Supervisor' : 'Cleaner'} · {emp.nationality || 'Staff'}
+                        </p>
                       </div>
-                      <p className="text-[12px] text-slate-500 mt-0.5">
-                        {emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'} · {emp.nationality}
-                      </p>
+                      <StatusBadge status={emp.status} />
                     </div>
-                    <StatusBadge status={emp.status} />
-                  </div>
 
-                  <div className="space-y-1.5 text-[12px] text-slate-500 mb-4">
-                    <div className="flex items-center gap-2">
-                      <Phone size={12} className="text-slate-400 shrink-0" />
-                      <span>{emp.phone}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Shield size={12} className="text-slate-400 shrink-0" />
-                      <span>Visa: {formatDate(emp.visa_expiry)}</span>
-                      {daysUntil(emp.visa_expiry) < 90 && (
-                        <span className="text-red-600 font-semibold">({daysUntil(emp.visa_expiry)}d)</span>
+                    {/* Job Sheet Performance Summary Strip */}
+                    <div className="bg-[#f8fafc] border border-[#edf2f7] rounded-xl p-2.5 mb-3 flex items-center justify-between text-[11px]">
+                      <div className="flex items-center gap-2">
+                        <Clock size={13} className="text-purple-600" />
+                        <span className="font-bold text-slate-700">{shiftsCount} Shifts</span>
+                        <span className="text-slate-400">·</span>
+                        <span className="text-slate-600">{dutyHours}h Duty</span>
+                      </div>
+                      {otHours > 0 ? (
+                        <span className="bg-amber-100 text-amber-800 font-extrabold px-2 py-0.5 rounded-full text-[10.5px] border border-amber-200">
+                          {otHours}h OT
+                        </span>
+                      ) : (
+                        isJobSheetStaff && (
+                          <span className="bg-purple-50 text-purple-700 font-semibold px-2 py-0.5 rounded-full text-[10px]">
+                            Daily Sheet
+                          </span>
+                        )
                       )}
                     </div>
+
+                    <div className="space-y-1.5 text-[12px] text-slate-500 mb-3">
+                      <div className="flex items-center gap-2">
+                        <Phone size={12} className="text-slate-400 shrink-0" />
+                        <span>{emp.phone || 'No phone recorded'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Shield size={12} className="text-slate-400 shrink-0" />
+                        <span>Visa: {formatDate(emp.visa_expiry)}</span>
+                        {daysUntil(emp.visa_expiry) < 90 && (
+                          <span className="text-red-600 font-semibold">({daysUntil(emp.visa_expiry)}d)</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {emp.skills.slice(0, 3).map(s => (
+                        <span key={s} className="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-medium">{s}</span>
+                      ))}
+                      {emp.skills.length > 3 && <span className="text-[11px] text-slate-400">+{emp.skills.length - 3}</span>}
+                    </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    {emp.skills.slice(0, 3).map(s => (
-                      <span key={s} className="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-medium">{s}</span>
-                    ))}
-                    {emp.skills.length > 3 && <span className="text-[11px] text-slate-400">+{emp.skills.length - 3}</span>}
-                  </div>
-
-                  <div className="flex items-center justify-between pt-3.5 border-t border-[#E4E8EC]">
-                    <span className="text-[12px] text-slate-500">Since {formatDate(emp.joined_date)}</span>
-                    <button
-                      onClick={e => { e.stopPropagation(); deleteEmployee(emp.id) }}
-                      className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
-                      title="Delete employee"
+                  {/* Card Footer: Profile Link + Rate + Delete */}
+                  <div className="flex items-center justify-between pt-3 border-t border-[#E4E8EC] mt-1">
+                    <Link
+                      to={`/employees/${emp.id}`}
+                      onClick={e => e.stopPropagation()}
+                      className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-xl border border-purple-200 transition-colors"
                     >
-                      <Trash2 size={14} />
-                    </button>
-                    <span className="text-[14px] font-bold text-[#111827]">AED {emp.pay_rate_hourly}/hr</span>
+                      <FileText size={12} /> View Profile & History <ExternalLink size={11} />
+                    </Link>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] font-bold text-[#111827]">AED {emp.pay_rate_hourly || 14}/hr</span>
+                      <button
+                        onClick={e => { e.stopPropagation(); deleteEmployee(emp.id) }}
+                        className="p-1 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors cursor-pointer"
+                        title="Delete employee"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
@@ -624,16 +692,26 @@ export function Employees() {
                 </div>
               </div>
             ) : (
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 text-red-600 text-[12px] font-semibold hover:bg-red-50 transition-colors"
+              <div className="space-y-2.5 pt-1">
+                <Link
+                  to={`/employees/${selected.id}`}
+                  onClick={() => setSelected(null)}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-[13px] shadow-xs transition-colors"
                 >
-                  <Trash2 size={13} /> Delete
-                </button>
-                <Button variant="outline" className="flex-1" size="sm" onClick={() => setIsEditing(true)}>Edit</Button>
-                <Button className="flex-1" size="sm" onClick={() => { setSelected(null); setIsEditing(false); navigate('/dispatch') }}>View Schedule</Button>
+                  <FileText size={15} /> Open Full Profile & Service Track Record <ExternalLink size={14} />
+                </Link>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 text-red-600 text-[12px] font-semibold hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 size={13} /> Delete
+                  </button>
+                  <Button variant="outline" className="flex-1" size="sm" onClick={() => setIsEditing(true)}>Edit</Button>
+                  <Button className="flex-1" size="sm" onClick={() => { setSelected(null); setIsEditing(false); navigate('/dispatch') }}>View Schedule</Button>
+                </div>
               </div>
             )}
           </div>

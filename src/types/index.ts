@@ -124,6 +124,7 @@ export interface DailyJob {
   start_time: string
   end_time: string
   duty_hours: number
+  ot_hours?: number
   address: string
   area: string
   material: MaterialType
@@ -132,6 +133,7 @@ export interface DailyJob {
   payment_mode: PaymentMode
   is_overtime: boolean
   remarks: string
+  service?: string
 }
 
 export interface DailyExpense {
@@ -152,4 +154,54 @@ export interface DashboardStats {
   pending_invoices: number
   low_stock_items: number
   avg_rating: number
+}
+
+export interface DailyPendingItem {
+  id: string
+  date: string
+  client: string
+  amount: number
+}
+
+export interface DailyPendingReceivedItem {
+  id: string
+  date: string
+  client: string
+  cash: number
+  online: number
+}
+
+export interface DailyAdvanceItem {
+  id: string
+  date: string
+  client: string
+  received: number
+  advance: number
+}
+
+export type LeadStatus = 'new' | 'contacted' | 'quoted' | 'converted' | 'lost'
+
+export interface FluentFormLead {
+  id: string
+  created_at: string
+  form_id?: string | number
+  form_title: string
+  entry_id?: string | number
+  source_url: string
+  page_source: string
+  category: string
+  client_name: string
+  email: string
+  phone: string
+  whatsapp?: string
+  address?: string
+  area?: string
+  preferred_date?: string
+  preferred_time?: string
+  service?: string
+  message?: string
+  estimated_value?: number
+  status: LeadStatus
+  booking_id?: string
+  raw_data?: Record<string, any>
 }

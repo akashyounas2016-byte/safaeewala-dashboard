@@ -8,6 +8,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { formatDate } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { BookingFrequency } from '@/types'
+import { isMonthlyJob, jobMatchesClient } from '@/lib/clientDataSync'
 
 const serviceTypes = [
   'Standard Clean', 'Deep Clean', 'Move-in', 'Move-out',
@@ -111,7 +112,7 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
 }
 
 export function Clients() {
-  const { clients, bookings, addClient, updateClient, deleteClient, addBooking, invoices } = useData()
+  const { clients, bookings, dailyJobs, addClient, updateClient, deleteClient, addBooking, invoices } = useData()
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<typeof clients[0] | null>(null)
@@ -121,7 +122,7 @@ export function Clients() {
   const [areaFilter, setAreaFilter] = useState('all')
   const [sortOrder, setSortOrder] = useState<'recent' | 'top_spent' | 'name'>('recent')
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [filterType, setFilterType] = useState<'all' | 'active' | 'vip' | 'repeat' | null>(null)
+  const [filterType, setFilterType] = useState<'all' | 'active' | 'vip' | 'repeat' | 'monthly' | null>(null)
 
   const totalSpent    = clients.reduce((s, c) => s + c.total_spent, 0)
   const avgLtv        = Math.round(totalSpent / (clients.length || 1))
@@ -129,6 +130,7 @@ export function Clients() {
   const vipClients    = clients.filter(c => c.total_spent > 2000).length
   const repeatClients = clients.filter(c => c.total_bookings > 1).length
   const repeatRate    = clients.length > 0 ? Math.round((repeatClients / clients.length) * 100) : 0
+  const monthlyCount  = clients.filter(c => dailyJobs.some(j => jobMatchesClient(j, c) && isMonthlyJob(j))).length
 
   // Month-over-month deltas
   const now = new Date()
@@ -139,25 +141,30 @@ export function Clients() {
   const clientDelta   = newThisMonth - newLastMonth
   const clientDeltaLabel = newThisMonth > 0 ? `+${newThisMonth} this month` : '0 this month'
 
-  const areas = [...new Set(clients.map(c => c.area))]
+  const areas = [...new Set(clients.map(c => c.area).filter(Boolean))].sort()
 
   const filtered = (() => {
     const base = clients.filter(c => {
-      const matchSearch = search === '' || c.full_name.toLowerCase().includes(search.toLowerCase()) ||
-        c.phone.includes(search) ||
-        c.area.toLowerCase().includes(search.toLowerCase())
+      const q = search.toLowerCase().trim()
+      const matchSearch = q === '' ||
+        c.full_name.toLowerCase().includes(q) ||
+        (c.phone && c.phone.includes(q)) ||
+        (c.area && c.area.toLowerCase().includes(q)) ||
+        (c.building_name && c.building_name.toLowerCase().includes(q))
       const matchArea = areaFilter === 'all' || c.area === areaFilter
+      const isClientMonthly = dailyJobs.some(j => jobMatchesClient(j, c) && isMonthlyJob(j))
       const matchFilter = !filterType || (
         filterType === 'active' ? (c.last_service && new Date(c.last_service) > new Date('2026-01-01')) :
         filterType === 'vip' ? c.total_spent > 2000 :
         filterType === 'repeat' ? c.total_bookings > 1 :
+        filterType === 'monthly' ? isClientMonthly :
         true
       )
       return matchSearch && matchArea && matchFilter
     })
     if (sortOrder === 'top_spent') return [...base].sort((a, b) => b.total_spent - a.total_spent)
     if (sortOrder === 'name')      return [...base].sort((a, b) => a.full_name.localeCompare(b.full_name))
-    return [...base].sort((a, b) => b.created_at.localeCompare(a.created_at))
+    return [...base].sort((a, b) => (b.last_service || b.created_at || '').localeCompare(a.last_service || a.created_at || ''))
   })()
 
   const topClients = [...clients].sort((a, b) => b.total_spent - a.total_spent).slice(0, 5)
@@ -181,14 +188,15 @@ export function Clients() {
       />
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3.5">
         {[
-          { label: 'Total Clients',    value: clients.length,             sub: 'All time',       icon: Users,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: clientDeltaLabel,  deltaUp: newThisMonth >= 0, filter: null },
+          { label: 'Total Clients',    value: clients.length,             sub: 'All time records', icon: Users,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: clientDeltaLabel,  deltaUp: newThisMonth >= 0, filter: null },
+          { label: 'Monthly Clients',  value: monthlyCount,              sub: 'Job Sheet monthly', icon: Star,     iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: `${monthlyCount} monthly`, deltaUp: monthlyCount > 0, filter: 'monthly' },
           { label: 'Active (30d)',     value: activeClients,              sub: 'Recent activity', icon: TrendingUp, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: `${activeClients} active`, deltaUp: activeClients > 0, filter: 'active' },
-          { label: 'VIP Clients',      value: vipClients,                 sub: 'AED 2k+ spent',  icon: Award,     iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: vipClients > 0 ? `${vipClients} VIP` : 'None', deltaUp: vipClients > 0, filter: 'vip' },
-          { label: 'Avg Lifetime',     value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client', icon: DollarSign, iconBg: 'bg-amber-50',  iconColor: 'text-amber-600',   delta: avgLtv > 0 ? 'Real' : '—', deltaUp: avgLtv > 0, filter: null },
-          { label: 'Total Revenue',    value: `AED ${(totalSpent/1000).toFixed(1)}k`, sub: 'All clients', icon: Star, iconBg: 'bg-rose-50', iconColor: 'text-rose-600',    delta: `AED ${totalSpent.toLocaleString()}`, deltaUp: totalSpent > 0, filter: null },
-          { label: 'Repeat Rate',      value: `${repeatRate}%`,           sub: 'Have 2+ bookings', icon: Heart, iconBg: 'bg-pink-50',    iconColor: 'text-pink-600',    delta: `${repeatClients} clients`, deltaUp: repeatRate > 0, filter: 'repeat' },
+          { label: 'VIP Clients',      value: vipClients,                 sub: 'AED 2k+ spent',  icon: Award,     iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: vipClients > 0 ? `${vipClients} VIP` : 'None', deltaUp: vipClients > 0, filter: 'vip' },
+          { label: 'Avg Lifetime',     value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client', icon: DollarSign, iconBg: 'bg-teal-50',   iconColor: 'text-teal-600',    delta: avgLtv > 0 ? 'Real' : '—', deltaUp: avgLtv > 0, filter: null },
+          { label: 'Total Revenue',    value: `AED ${(totalSpent/1000).toFixed(1)}k`, sub: 'All clients', icon: CheckCircle, iconBg: 'bg-rose-50', iconColor: 'text-rose-600',    delta: `AED ${totalSpent.toLocaleString()}`, deltaUp: totalSpent > 0, filter: null },
+          { label: 'Repeat Rate',      value: `${repeatRate}%`,           sub: 'Have 2+ visits',  icon: Heart,     iconBg: 'bg-pink-50',    iconColor: 'text-pink-600',    delta: `${repeatClients} clients`, deltaUp: repeatRate > 0, filter: 'repeat' },
         ].map(card => {
           const isSelected = filterType === card.filter
           return (
@@ -296,16 +304,29 @@ export function Clients() {
                   const liveBookings = bookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase().trim() === nameLower)
                   const clientInvs   = invoices.filter(i => i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower)
                   const outstanding  = clientInvs.reduce((s, i) => s + i.total, 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
+                  const isMonthly    = dailyJobs.some(j => jobMatchesClient(j, c) && isMonthlyJob(j))
+                  const isFromJobSheet = c.id.startsWith('dj-')
+                  const totalVisits  = Math.max(c.total_bookings, liveBookings.length)
                   return (
                     <div className="flex items-center justify-between mt-4 pt-3.5 border-t border-[#E4E8EC]">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <Link
                           to={`/clients/${c.id}`}
                           onClick={e => e.stopPropagation()}
-                          className="text-[12px] text-slate-500 hover:text-emerald-600 hover:underline transition-colors"
+                          className="text-[12px] text-slate-500 hover:text-emerald-600 hover:underline transition-colors font-medium"
                         >
-                          {liveBookings.length} booking{liveBookings.length !== 1 ? 's' : ''}
+                          {totalVisits} visit{totalVisits !== 1 ? 's' : ''}
                         </Link>
+                        {isMonthly && (
+                          <span className="text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full font-bold">
+                            Monthly
+                          </span>
+                        )}
+                        {isFromJobSheet && !isMonthly && (
+                          <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-semibold">
+                            Job Sheet
+                          </span>
+                        )}
                         {c.pet_info && (
                           <span className="text-[11px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">Pet</span>
                         )}

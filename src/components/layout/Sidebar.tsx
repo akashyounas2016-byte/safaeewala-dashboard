@@ -4,13 +4,14 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, CalendarCheck, Users, UserCheck,
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
-  CreditCard, RotateCw, TrendingUp,
+  CreditCard, RotateCw, TrendingUp, Globe,
 } from 'lucide-react'
 import { useCurrentUser, useCanAccess } from '@/store/UserContext'
 
 const workspaceNavBase = [
   { to: '/',                 label: 'Overview',        icon: LayoutDashboard },
   { to: '/bookings',         label: 'Bookings',        icon: CalendarCheck },
+  { to: '/fluent-forms',     label: 'Fluent Forms',    icon: Globe },
   { to: '/clients',          label: 'Clients',         icon: Users },
   { to: '/monthly-clients',  label: 'Monthly Clients', icon: TrendingUp },
   { to: '/employees',        label: 'Employees',       icon: UserCheck },

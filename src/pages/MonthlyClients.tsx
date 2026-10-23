@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Search, Phone, MapPin, Calendar,
-  Users, TrendingUp, DollarSign, Star, Award, Heart, ExternalLink, Trash2,
+  Users, TrendingUp, DollarSign, Star, Clock, ExternalLink,
+  Trash2, ShieldCheck, CheckCircle, AlertCircle, FileText, Layers,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -10,7 +11,12 @@ import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatDate } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
-import type { BookingFrequency } from '@/types'
+import type { BookingFrequency, DailyJob } from '@/types'
+import {
+  extractMonthlyClientsFromDailyJobs,
+  calcJobOTHours,
+  type MonthlyClientSummary,
+} from '@/lib/clientDataSync'
 
 const serviceTypes = [
   'Standard Clean', 'Deep Clean', 'Move-in', 'Move-out',
@@ -24,28 +30,30 @@ const avatarColors = [
   { bg: '#d6e7f5', text: '#3a7ab8' },
   { bg: '#fcecc8', text: '#a8842a' },
 ]
+
 function Avatar({ name, size = 'md', idx = 0 }: { name: string; size?: 'sm' | 'md' | 'lg'; idx?: number }) {
   const parts = name.trim().split(' ')
-  const init = ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase()
+  const init = ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'MC'
   const dims = size === 'lg' ? 'w-14 h-14 text-[16px]' : size === 'sm' ? 'w-8 h-8 text-[11px]' : 'w-10 h-10 text-[13px]'
   const color = avatarColors[idx % avatarColors.length]
   return (
-    <div className={`${dims} rounded-full flex items-center justify-center font-bold shrink-0`} style={{ background: color.bg, color: color.text }}>
+    <div className={`${dims} rounded-full flex items-center justify-center font-bold shrink-0 shadow-xs`} style={{ background: color.bg, color: color.text }}>
       {init}
     </div>
   )
 }
 
 export function MonthlyClients() {
-  const { clients, bookings, invoices, addClient, updateClient, deleteClient, addBooking } = useData()
+  const { clients, dailyJobs, addClient, updateClient, deleteClient, addBooking } = useData()
 
   const [selectedMonth, setSelectedMonth] = useState(new Date())
-  const [search, setSearch]             = useState('')
-  const [areaFilter, setAreaFilter]     = useState('all')
-  const [sortOrder, setSortOrder]       = useState<'top_spent' | 'name' | 'bookings'>('bookings')
-  const [showModal, setShowModal]       = useState(false)
-  const [selected, setSelected]         = useState<typeof clients[0] | null>(null)
-  const [isEditing, setIsEditing]       = useState(false)
+  const [isAllTime, setIsAllTime]         = useState(false)
+  const [search, setSearch]               = useState('')
+  const [areaFilter, setAreaFilter]       = useState('all')
+  const [sortOrder, setSortOrder]         = useState<'top_charges' | 'top_ot' | 'visits' | 'name'>('top_charges')
+  const [showModal, setShowModal]         = useState(false)
+  const [selectedSummary, setSelectedSummary] = useState<MonthlyClientSummary | null>(null)
+  const [isEditing, setIsEditing]         = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showBookingModal, setShowBookingModal] = useState(false)
   const [bookingClient, setBookingClient] = useState<{ name: string; phone: string } | null>(null)
@@ -53,217 +61,434 @@ export function MonthlyClients() {
   const monthKey  = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`
   const monthName = selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 
-  const prevMonth = () => { const d = new Date(selectedMonth); d.setMonth(d.getMonth() - 1); setSelectedMonth(d) }
-  const nextMonth = () => { const d = new Date(selectedMonth); d.setMonth(d.getMonth() + 1); setSelectedMonth(d) }
+  const prevMonth = () => {
+    setIsAllTime(false)
+    const d = new Date(selectedMonth)
+    d.setMonth(d.getMonth() - 1)
+    setSelectedMonth(d)
+  }
+  const nextMonth = () => {
+    setIsAllTime(false)
+    const d = new Date(selectedMonth)
+    d.setMonth(d.getMonth() + 1)
+    setSelectedMonth(d)
+  }
 
-  // Bookings in this month
-  const monthBookings = bookings.filter(b => b.scheduled_date?.startsWith(monthKey))
-  const monthClientIds = new Set(monthBookings.map(b => b.client_id).filter(Boolean))
-  const monthClientNames = new Set(monthBookings.map(b => b.client_name.toLowerCase().trim()))
+  // Automatically fetch & aggregate ONLY Monthly Clients directly from Daily Job Sheet
+  const monthlySummaries = useMemo(() => {
+    const filterKey = isAllTime ? 'all' : monthKey
+    return extractMonthlyClientsFromDailyJobs(dailyJobs, filterKey, clients)
+  }, [dailyJobs, monthKey, isAllTime, clients])
 
-  // Clients active this month
-  const monthClients = clients.filter(c =>
-    monthClientIds.has(c.id) || monthClientNames.has(c.full_name.toLowerCase().trim())
-  )
+  // Overall KPI aggregates
+  const totalMonthlyCharges = useMemo(() => {
+    return monthlySummaries.reduce((s, c) => s + c.totalCharges, 0)
+  }, [monthlySummaries])
 
-  const monthRevenue  = monthBookings.filter(b => b.status === 'completed').reduce((s, b) => s + b.total_amount, 0)
-  const totalHours    = monthBookings.reduce((s, b) => s + (b.duration_hours || 0), 0)
-  const newClients    = monthClients.filter(c => c.created_at?.startsWith(monthKey)).length
-  const avgValue      = monthClients.length > 0 ? monthRevenue / monthClients.length : 0
+  const totalMonthlyReceived = useMemo(() => {
+    return monthlySummaries.reduce((s, c) => s + c.totalReceived, 0)
+  }, [monthlySummaries])
 
-  const areas = [...new Set(monthClients.map(c => c.area).filter(Boolean))]
+  const totalOTHours = useMemo(() => {
+    const sum = monthlySummaries.reduce((s, c) => s + c.totalOTHours, 0)
+    return Math.round(sum * 10) / 10
+  }, [monthlySummaries])
 
-  const filtered = (() => {
-    const base = monthClients.filter(c => {
-      const matchSearch = !search ||
-        c.full_name.toLowerCase().includes(search.toLowerCase()) ||
-        c.phone?.includes(search) ||
-        c.area?.toLowerCase().includes(search.toLowerCase())
+  const totalDutyHours = useMemo(() => {
+    const sum = monthlySummaries.reduce((s, c) => s + c.totalDutyHours, 0)
+    return Math.round(sum * 10) / 10
+  }, [monthlySummaries])
+
+  const totalVisits = useMemo(() => {
+    return monthlySummaries.reduce((s, c) => s + c.visitsCount, 0)
+  }, [monthlySummaries])
+
+  // Distinct areas for filter dropdown
+  const areas = useMemo(() => {
+    return Array.from(new Set(monthlySummaries.map(c => c.area).filter(Boolean))).sort()
+  }, [monthlySummaries])
+
+  // Filtered & Sorted Monthly Clients
+  const filteredSummaries = useMemo(() => {
+    const base = monthlySummaries.filter(c => {
+      const q = search.toLowerCase().trim()
+      const matchSearch = !q ||
+        c.name.toLowerCase().includes(q) ||
+        c.rawAddress.toLowerCase().includes(q) ||
+        c.area.toLowerCase().includes(q) ||
+        c.cleaners.some(cl => cl.toLowerCase().includes(q))
       const matchArea = areaFilter === 'all' || c.area === areaFilter
       return matchSearch && matchArea
     })
-    if (sortOrder === 'top_spent') return [...base].sort((a, b) => b.total_spent - a.total_spent)
-    if (sortOrder === 'name')      return [...base].sort((a, b) => a.full_name.localeCompare(b.full_name))
-    return [...base].sort((a, b) => {
-      const aB = monthBookings.filter(bk => bk.client_id === a.id || bk.client_name.toLowerCase() === a.full_name.toLowerCase()).length
-      const bB = monthBookings.filter(bk => bk.client_id === b.id || bk.client_name.toLowerCase() === b.full_name.toLowerCase()).length
-      return bB - aB
-    })
-  })()
 
-  const topClients = [...monthClients].sort((a, b) => {
-    const aAmt = monthBookings.filter(bk => bk.client_id === a.id || bk.client_name.toLowerCase() === a.full_name.toLowerCase()).reduce((s, bk) => s + bk.total_amount, 0)
-    const bAmt = monthBookings.filter(bk => bk.client_id === b.id || bk.client_name.toLowerCase() === b.full_name.toLowerCase()).reduce((s, bk) => s + bk.total_amount, 0)
-    return bAmt - aAmt
-  }).slice(0, 5)
+    if (sortOrder === 'top_charges') return [...base].sort((a, b) => b.totalCharges - a.totalCharges)
+    if (sortOrder === 'top_ot')      return [...base].sort((a, b) => b.totalOTHours - a.totalOTHours)
+    if (sortOrder === 'name')        return [...base].sort((a, b) => a.name.localeCompare(b.name))
+    return [...base].sort((a, b) => b.visitsCount - a.visitsCount)
+  }, [monthlySummaries, search, areaFilter, sortOrder])
 
-  const areaCounts = monthClients.reduce((acc, c) => {
-    if (c.area) acc[c.area] = (acc[c.area] || 0) + 1
-    return acc
-  }, {} as Record<string, number>)
+  // Top Spenders & OT Leaders for right sidebar
+  const topClientsByCharges = useMemo(() => {
+    return [...monthlySummaries].sort((a, b) => b.totalCharges - a.totalCharges).slice(0, 5)
+  }, [monthlySummaries])
+
+  const topClientsByOT = useMemo(() => {
+    return [...monthlySummaries].filter(c => c.totalOTHours > 0).sort((a, b) => b.totalOTHours - a.totalOTHours).slice(0, 5)
+  }, [monthlySummaries])
+
+  const areaCounts = useMemo(() => {
+    return monthlySummaries.reduce((acc, c) => {
+      const a = c.area || 'Dubai'
+      acc[a] = (acc[a] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+  }, [monthlySummaries])
 
   return (
     <div className="space-y-6">
       <PageHero
         title="Monthly Clients"
-        subtitle={`${monthClients.length} clients · AED ${monthRevenue.toLocaleString()} revenue`}
-        statusChip={`${monthBookings.length} visits`}
+        subtitle={`${monthlySummaries.length} Monthly Clients · Total Charges: AED ${totalMonthlyCharges.toLocaleString()}`}
+        statusChip={`${totalOTHours} hrs OT · ${totalVisits} Shifts`}
         actionLabel="Add Client"
         onAction={() => setShowModal(true)}
       />
 
-      {/* Month Selector */}
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center justify-between">
-        <button onClick={prevMonth} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-          <ChevronLeft size={20} className="text-slate-600" />
-        </button>
-        <p className="text-[20px] font-bold text-[#111827]">{monthName}</p>
-        <button onClick={nextMonth} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-          <ChevronRight size={20} className="text-slate-600" />
-        </button>
+      {/* Month Selector Bar with All-Time Toggle */}
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={prevMonth}
+            disabled={isAllTime}
+            className="p-2 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-30 disabled:pointer-events-none"
+            title="Previous Month"
+          >
+            <ChevronLeft size={20} className="text-slate-600" />
+          </button>
+          <div className="px-3 py-1">
+            <p className="text-[19px] font-bold text-[#111827]">
+              {isAllTime ? 'All-Time Records' : monthName}
+            </p>
+            <p className="text-[11px] text-slate-400">
+              {isAllTime ? 'Displaying all monthly contracts recorded in Daily Job Sheet' : 'Filtered by selected calendar month'}
+            </p>
+          </div>
+          <button
+            onClick={nextMonth}
+            disabled={isAllTime}
+            className="p-2 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-30 disabled:pointer-events-none"
+            title="Next Month"
+          >
+            <ChevronRight size={20} className="text-slate-600" />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsAllTime(!isAllTime)}
+            className={`px-3.5 py-2 text-[12.5px] font-semibold rounded-xl border transition-all ${
+              isAllTime
+                ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                : 'bg-[#f8fafc] text-slate-700 border-[#E4E8EC] hover:bg-slate-100'
+            }`}
+          >
+            {isAllTime ? '✓ Showing All Time' : 'Show All Time'}
+          </button>
+          {!isAllTime && (
+            <button
+              onClick={() => setSelectedMonth(new Date())}
+              className="px-3 py-2 text-[12px] font-medium text-slate-600 hover:text-emerald-700 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"
+            >
+              Current Month
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards: Charges and Overtime Breakdown */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Active Clients',  value: monthClients.length,            icon: Users,      color: 'text-blue-600',    bg: 'bg-blue-50'    },
-          { label: 'New This Month',  value: newClients,                     icon: Star,       color: 'text-purple-600',  bg: 'bg-purple-50'  },
-          { label: 'Total Revenue',   value: `AED ${monthRevenue.toLocaleString()}`, icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'Total Hours',     value: `${totalHours}h`,               icon: TrendingUp, color: 'text-amber-600',   bg: 'bg-amber-50'   },
+          {
+            label: 'Monthly Clients',
+            value: monthlySummaries.length,
+            sub: `${totalVisits} total visits/shifts`,
+            icon: Users,
+            color: 'text-purple-600',
+            bg: 'bg-purple-50',
+          },
+          {
+            label: 'Total Charges',
+            value: `AED ${totalMonthlyCharges.toLocaleString()}`,
+            sub: totalMonthlyReceived > 0 ? `AED ${totalMonthlyReceived.toLocaleString()} received` : 'Monthly billed',
+            icon: DollarSign,
+            color: 'text-emerald-600',
+            bg: 'bg-emerald-50',
+          },
+          {
+            label: 'Total Overtime (OT)',
+            value: `${totalOTHours} hrs`,
+            sub: `${monthlySummaries.filter(c => c.totalOTHours > 0).length} clients with OT`,
+            icon: Clock,
+            color: 'text-amber-600',
+            bg: 'bg-amber-50',
+          },
+          {
+            label: 'Total Duty Hours',
+            value: `${totalDutyHours} hrs`,
+            sub: `Avg ${(totalDutyHours / (monthlySummaries.length || 1)).toFixed(1)} hrs/client`,
+            icon: TrendingUp,
+            color: 'text-blue-600',
+            bg: 'bg-blue-50',
+          },
         ].map(card => (
           <div key={card.label} className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
             <div className={`w-10 h-10 rounded-xl ${card.bg} flex items-center justify-center mb-3`}>
-              <card.icon size={18} className={card.color} />
+              <card.icon size={19} className={card.color} />
             </div>
             <p className="text-2xl font-bold text-[#111827]">{card.value}</p>
-            <p className="text-[12px] text-slate-500 mt-1">{card.label}</p>
+            <p className="text-[12px] font-semibold text-slate-700 mt-1">{card.label}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">{card.sub}</p>
           </div>
         ))}
       </div>
 
-      {/* Main Content */}
+      {/* Main Content Layout */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
-        {/* Left: Client Cards */}
+        {/* Left 2 Cols: Monthly Clients List */}
         <div className="xl:col-span-2 space-y-4">
 
           {/* Toolbar */}
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4">
             <div className="flex items-center gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[180px]">
+              <div className="relative flex-1 min-w-[200px]">
                 <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search clients…"
+                  placeholder="Search by client name, address, cleaner…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  className="w-full text-[13px] pl-10 pr-4 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 placeholder-slate-400 transition-colors"
+                  className="w-full text-[13px] pl-10 pr-4 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-purple-400 placeholder-slate-400 transition-colors"
                 />
               </div>
-              <select value={areaFilter} onChange={e => setAreaFilter(e.target.value)}
-                className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer">
-                <option value="all">All Areas</option>
+
+              <select
+                value={areaFilter}
+                onChange={e => setAreaFilter(e.target.value)}
+                className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-purple-400 text-slate-700 cursor-pointer"
+              >
+                <option value="all">All Areas ({areas.length})</option>
                 {areas.map(a => <option key={a} value={a}>{a}</option>)}
               </select>
-              <select value={sortOrder} onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
-                className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer">
-                <option value="bookings">Sort: Most Visits</option>
-                <option value="top_spent">Sort: Top Spenders</option>
-                <option value="name">Sort: Name</option>
+
+              <select
+                value={sortOrder}
+                onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
+                className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-purple-400 text-slate-700 cursor-pointer font-medium"
+              >
+                <option value="top_charges">Sort: Highest Charges</option>
+                <option value="top_ot">Sort: Highest Overtime (OT)</option>
+                <option value="visits">Sort: Most Visits</option>
+                <option value="name">Sort: Name (A-Z)</option>
               </select>
             </div>
           </div>
 
-          {/* Cards */}
+          {/* Monthly Client Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filtered.map((c, idx) => {
-              const cBookings = monthBookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase() === c.full_name.toLowerCase())
-              const cRevenue  = cBookings.reduce((s, b) => s + b.total_amount, 0)
-              const cInvs     = invoices.filter(i => i.client_id === c.id || i.client_name.toLowerCase() === c.full_name.toLowerCase())
-              const outstanding = cInvs.reduce((s, i) => s + i.total, 0) - cInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
-              return (
-                <div key={c.id} onClick={() => setSelected(c)}
-                  className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 cursor-pointer hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] hover:border-emerald-200 transition-all">
-                  <div className="flex items-start gap-3 mb-4">
-                    <Avatar name={c.full_name} size="md" idx={idx} />
+            {filteredSummaries.map((c, idx) => (
+              <div
+                key={c.id}
+                onClick={() => setSelectedSummary(c)}
+                className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 cursor-pointer hover:shadow-[0_8px_30px_rgba(147,51,234,0.12)] hover:border-purple-300 transition-all group flex flex-col justify-between"
+              >
+                <div>
+                  {/* Top: Avatar, Name, Charges */}
+                  <div className="flex items-start gap-3 mb-3">
+                    <Avatar name={c.name} size="md" idx={idx} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-[14px] font-bold text-[#111827] truncate">{c.full_name}</p>
-                      <p className="text-[12px] text-slate-500 mt-0.5">{c.nationality || c.city || '—'}</p>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-[14px] font-bold text-[#111827] group-hover:text-purple-700 transition-colors truncate">
+                          {c.name}
+                        </p>
+                        <span className="text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.2 rounded-full uppercase tracking-wider">
+                          Monthly
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-slate-500 mt-0.5 truncate flex items-center gap-1">
+                        <MapPin size={11} className="shrink-0 text-slate-400" />
+                        <span>{c.area || 'Dubai'}</span>
+                      </p>
                     </div>
+
                     <div className="text-right shrink-0">
-                      <p className="text-[15px] font-bold text-[#111827]">AED {cRevenue.toLocaleString()}</p>
-                      <p className="text-[11px] text-slate-400">this month</p>
+                      <p className="text-[15.5px] font-extrabold text-[#111827]">
+                        AED {c.totalCharges.toLocaleString()}
+                      </p>
+                      <p className="text-[10.5px] text-slate-400 font-medium">Charges</p>
                     </div>
                   </div>
-                  <div className="space-y-1.5 text-[12px] text-slate-500">
-                    <div className="flex items-center gap-2"><Phone size={12} className="shrink-0 text-slate-400" /><span>{c.phone}</span></div>
-                    <div className="flex items-center gap-2"><MapPin size={12} className="shrink-0 text-slate-400" /><span className="truncate">{c.building_name ? `${c.building_name}, ` : ''}{c.area}</span></div>
-                    {c.last_service && <div className="flex items-center gap-2"><Calendar size={12} className="shrink-0 text-slate-400" /><span>Last: {formatDate(c.last_service)}</span></div>}
+
+                  {/* Address Details */}
+                  <div className="bg-[#f8fafc] rounded-xl p-2.5 border border-[#edf2f7] mb-3 text-[12px] text-slate-600">
+                    <p className="font-medium text-slate-700 truncate" title={c.rawAddress}>
+                      {c.rawAddress}
+                    </p>
+                    {c.cleaners.length > 0 && (
+                      <p className="text-[11px] text-slate-400 mt-1 truncate">
+                        Cleaners: <span className="text-slate-600 font-medium">{c.cleaners.join(', ')}</span>
+                      </p>
+                    )}
                   </div>
-                  <div className="flex items-center justify-between mt-4 pt-3.5 border-t border-[#E4E8EC]">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[12px] text-slate-500">{cBookings.length} visit{cBookings.length !== 1 ? 's' : ''}</span>
-                      {c.total_spent > 2000 && <span className="text-[11px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-medium">VIP</span>}
-                      {c.pet_info && <span className="text-[11px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">Pet</span>}
-                      {outstanding > 0 && <span className="text-[11px] bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full font-semibold">AED {outstanding.toLocaleString()} owed</span>}
+
+                  {/* Highlights: OT, Duty Hours, Visits */}
+                  <div className="grid grid-cols-3 gap-2 text-center py-2 border-y border-[#edf2f7] mb-3">
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-semibold">Overtime</p>
+                      <p className={`text-[12.5px] font-bold ${c.totalOTHours > 0 ? 'text-amber-600' : 'text-slate-500'}`}>
+                        {c.totalOTHours > 0 ? `${c.totalOTHours}h OT` : '0h'}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button onClick={e => { e.stopPropagation(); deleteClient(c.id) }} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
-                      <Link to={`/clients/${c.id}`} onClick={e => e.stopPropagation()} className="flex items-center gap-1 text-[11.5px] font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors shrink-0">
-                        View Profile <ExternalLink size={11} />
-                      </Link>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-semibold">Duty Hours</p>
+                      <p className="text-[12.5px] font-bold text-slate-700">
+                        {c.totalDutyHours}h
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-semibold">Shifts</p>
+                      <p className="text-[12.5px] font-bold text-slate-700">
+                        {c.visitsCount} visits
+                      </p>
                     </div>
                   </div>
                 </div>
-              )
-            })}
+
+                {/* Card Footer: View Details & Profile Link */}
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                    <Calendar size={11} /> Last: {formatDate(c.lastService)}
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedSummary(c)
+                      }}
+                      className="text-[11.5px] font-semibold text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 px-2.5 py-1 rounded-lg transition-colors"
+                    >
+                      View OT & Shifts
+                    </button>
+                    <Link
+                      to={`/clients/${c.id}`}
+                      onClick={e => e.stopPropagation()}
+                      className="flex items-center gap-1 text-[11.5px] font-semibold text-slate-500 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition-colors"
+                      title="View Full Client Profile"
+                    >
+                      <ExternalLink size={12} />
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
-          {filtered.length === 0 && (
+          {filteredSummaries.length === 0 && (
             <div className="bg-white rounded-[22px] border border-[#E4E8EC] py-16 text-center">
-              <Users className="mx-auto mb-3 text-slate-300" size={40} strokeWidth={1.25} />
-              <p className="text-[13px] text-slate-500">No clients found for {monthName}</p>
+              <Users className="mx-auto mb-3 text-slate-300" size={44} strokeWidth={1.25} />
+              <p className="text-[14px] font-bold text-slate-700">No Monthly Clients Found</p>
+              <p className="text-[12px] text-slate-400 mt-1">
+                {isAllTime
+                  ? 'No clients with monthly payment mode found in Daily Job Sheet.'
+                  : `No monthly records found for ${monthName}. Try clicking "Show All Time" above.`}
+              </p>
             </div>
           )}
         </div>
 
         {/* Right Sidebar */}
         <div className="space-y-5">
+
+          {/* Top Monthly Spenders by Charges */}
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[15px] font-bold text-[#111827]">Top Clients</h3>
-              <span className="text-[11px] text-slate-400">{monthName}</span>
+              <h3 className="text-[15px] font-bold text-[#111827]">Top Monthly Charges</h3>
+              <span className="text-[11px] text-slate-400">{isAllTime ? 'All Time' : monthName}</span>
             </div>
-            {topClients.length === 0 ? (
-              <p className="text-[12px] text-slate-400 text-center py-4">No data</p>
+
+            {topClientsByCharges.length === 0 ? (
+              <p className="text-[12px] text-slate-400 text-center py-4">No records</p>
             ) : (
               <div className="space-y-3">
-                {topClients.map((c, idx) => {
-                  const amt = monthBookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase() === c.full_name.toLowerCase()).reduce((s, b) => s + b.total_amount, 0)
-                  const maxAmt = monthBookings.filter(b => b.client_id === topClients[0].id || b.client_name.toLowerCase() === topClients[0].full_name.toLowerCase()).reduce((s, b) => s + b.total_amount, 0)
-                  const pct = maxAmt > 0 ? Math.round((amt / maxAmt) * 100) : 0
+                {topClientsByCharges.map((c, idx) => {
+                  const maxAmt = topClientsByCharges[0]?.totalCharges || 1
+                  const pct = Math.round((c.totalCharges / maxAmt) * 100)
                   return (
-                    <Link key={c.id} to={`/clients/${c.id}`} className="flex items-center gap-3 hover:bg-slate-50 rounded-xl -mx-2 px-2 py-1 transition-colors">
-                      <span className={`text-[12px] font-bold w-4 shrink-0 ${idx === 0 ? 'text-amber-500' : 'text-slate-400'}`}>{idx + 1}</span>
-                      <Avatar name={c.full_name} size="sm" idx={idx} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-semibold text-[#111827] truncate">{c.full_name}</p>
-                        <div className="mt-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${pct}%` }} />
-                        </div>
+                    <div
+                      key={c.id}
+                      onClick={() => setSelectedSummary(c)}
+                      className="cursor-pointer hover:bg-slate-50 rounded-xl p-2 -mx-2 transition-colors"
+                    >
+                      <div className="flex items-center justify-between text-[12px] mb-1">
+                        <span className="font-bold text-[#111827] truncate mr-2">
+                          <span className={`w-4 inline-block ${idx === 0 ? 'text-amber-500' : 'text-slate-400'}`}>
+                            {idx + 1}.
+                          </span>
+                          {c.name}
+                        </span>
+                        <span className="font-bold text-purple-700 shrink-0">
+                          AED {c.totalCharges.toLocaleString()}
+                        </span>
                       </div>
-                      <span className="text-[12px] font-bold text-[#111827] shrink-0">AED {amt.toLocaleString()}</span>
-                    </Link>
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-purple-500 rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
                   )
                 })}
               </div>
             )}
           </div>
 
+          {/* Overtime (OT) Leaders */}
+          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[15px] font-bold text-[#111827] flex items-center gap-1.5">
+                <Clock size={16} className="text-amber-500" /> Overtime (OT) Leaders
+              </h3>
+              <span className="text-[11px] text-slate-400">Total: {totalOTHours}h</span>
+            </div>
+
+            {topClientsByOT.length === 0 ? (
+              <p className="text-[12px] text-slate-400 text-center py-4">No overtime hours logged</p>
+            ) : (
+              <div className="space-y-2.5">
+                {topClientsByOT.map((c, idx) => (
+                  <div
+                    key={c.id}
+                    onClick={() => setSelectedSummary(c)}
+                    className="flex items-center justify-between text-[12px] p-2 hover:bg-amber-50/60 rounded-xl cursor-pointer transition-colors border border-transparent hover:border-amber-200"
+                  >
+                    <div className="min-w-0 pr-2">
+                      <p className="font-bold text-slate-800 truncate">{c.name}</p>
+                      <p className="text-[11px] text-slate-400 truncate">{c.area} · {c.visitsCount} visits</p>
+                    </div>
+                    <span className="text-[11.5px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-full shrink-0">
+                      {c.totalOTHours}h OT
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Area Density */}
           {Object.keys(areaCounts).length > 0 && (
             <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-[15px] font-bold text-[#111827]">Client Density</h3>
+                <h3 className="text-[15px] font-bold text-[#111827]">Monthly Locations</h3>
                 <span className="text-[11px] text-slate-400">By area</span>
               </div>
               <div className="space-y-2.5">
@@ -277,7 +502,7 @@ export function MonthlyClients() {
                         <span className="text-[12px] font-bold text-[#111827] shrink-0 ml-2">{count}</span>
                       </div>
                       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                        <div className="h-full bg-purple-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
                       </div>
                     </div>
                   )
@@ -287,6 +512,142 @@ export function MonthlyClients() {
           )}
         </div>
       </div>
+
+      {/* Comprehensive Monthly Client Details & Shifts Modal */}
+      {selectedSummary && (
+        <Modal
+          open={!!selectedSummary}
+          onClose={() => setSelectedSummary(null)}
+          title={`Monthly Client Details — ${selectedSummary.name}`}
+          size="xl"
+        >
+          <div className="space-y-5">
+
+            {/* Header info bar */}
+            <div className="bg-gradient-to-r from-purple-50 via-slate-50 to-white rounded-2xl p-4 border border-purple-100 flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <Avatar name={selectedSummary.name} size="lg" idx={0} />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-[17px] font-extrabold text-[#111827]">{selectedSummary.name}</h3>
+                    <span className="text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200 px-2 py-0.5 rounded-full uppercase">
+                      Monthly
+                    </span>
+                  </div>
+                  <p className="text-[12px] text-slate-500 mt-0.5 flex items-center gap-1">
+                    <MapPin size={12} className="text-slate-400" />
+                    <span>{selectedSummary.rawAddress} ({selectedSummary.area})</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Link
+                  to={`/clients/${selectedSummary.id}`}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[12.5px] font-bold transition-all shadow-xs"
+                >
+                  <ExternalLink size={13} /> View Full Profile
+                </Link>
+              </div>
+            </div>
+
+            {/* Summary Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-purple-50/70 border border-purple-100 rounded-xl p-3 text-center">
+                <p className="text-[10.5px] font-bold text-purple-800 uppercase tracking-wider">Total Charges</p>
+                <p className="text-[18px] font-extrabold text-purple-900 mt-0.5">AED {selectedSummary.totalCharges.toLocaleString()}</p>
+              </div>
+              <div className="bg-amber-50/70 border border-amber-100 rounded-xl p-3 text-center">
+                <p className="text-[10.5px] font-bold text-amber-800 uppercase tracking-wider">Total OT Hours</p>
+                <p className="text-[18px] font-extrabold text-amber-900 mt-0.5">{selectedSummary.totalOTHours}h</p>
+              </div>
+              <div className="bg-blue-50/70 border border-blue-100 rounded-xl p-3 text-center">
+                <p className="text-[10.5px] font-bold text-blue-800 uppercase tracking-wider">Duty Hours</p>
+                <p className="text-[18px] font-extrabold text-blue-900 mt-0.5">{selectedSummary.totalDutyHours}h</p>
+              </div>
+              <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl p-3 text-center">
+                <p className="text-[10.5px] font-bold text-emerald-800 uppercase tracking-wider">Total Visits</p>
+                <p className="text-[18px] font-extrabold text-emerald-900 mt-0.5">{selectedSummary.visitsCount} shifts</p>
+              </div>
+            </div>
+
+            {/* Detailed Shifts & Overtime Table from Daily Job Sheet */}
+            <div>
+              <div className="flex items-center justify-between mb-2.5">
+                <h4 className="text-[14px] font-bold text-slate-800 flex items-center gap-1.5">
+                  <FileText size={15} className="text-purple-600" />
+                  Service Shifts & Overtime Breakdown ({selectedSummary.jobs.length})
+                </h4>
+                <span className="text-[11px] text-slate-400">Fetched from Daily Job Sheet</span>
+              </div>
+
+              <div className="border border-[#E4E8EC] rounded-2xl overflow-hidden shadow-xs">
+                <div className="max-h-80 overflow-y-auto">
+                  <table className="w-full text-left border-collapse text-[12px]">
+                    <thead className="bg-[#f8fafc] border-b border-[#E4E8EC] sticky top-0 z-10 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                      <tr>
+                        <th className="py-2.5 px-3.5">Date</th>
+                        <th className="py-2.5 px-3">Cleaner</th>
+                        <th className="py-2.5 px-3">Timing</th>
+                        <th className="py-2.5 px-3 text-center">Duty Hrs</th>
+                        <th className="py-2.5 px-3 text-center">OT Hrs</th>
+                        <th className="py-2.5 px-3 text-right">Charges</th>
+                        <th className="py-2.5 px-3 text-right">Received</th>
+                        <th className="py-2.5 px-3.5">Remarks</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E4E8EC]">
+                      {selectedSummary.jobs.map(job => {
+                        const ot = calcJobOTHours(job)
+                        return (
+                          <tr key={job.id} className="hover:bg-purple-50/40 transition-colors">
+                            <td className="py-2.5 px-3.5 font-semibold text-slate-800 whitespace-nowrap">
+                              {job.date ? formatDate(job.date) : '—'}
+                            </td>
+                            <td className="py-2.5 px-3 font-medium text-slate-700 whitespace-nowrap">
+                              {job.staff_name || '—'}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
+                              {job.start_time || '—'} - {job.end_time || '—'}
+                            </td>
+                            <td className="py-2.5 px-3 text-center font-bold text-slate-700">
+                              {job.duty_hours ? `${job.duty_hours}h` : '—'}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              {ot > 0 ? (
+                                <span className="inline-block bg-amber-100 text-amber-800 font-extrabold px-2 py-0.5 rounded-full text-[11px] border border-amber-200">
+                                  {ot}h OT
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">0h</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-extrabold text-purple-700 whitespace-nowrap">
+                              AED {Number(job.charges || 0).toLocaleString()}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-semibold text-emerald-700 whitespace-nowrap">
+                              AED {Number(job.received || 0).toLocaleString()}
+                            </td>
+                            <td className="py-2.5 px-3.5 text-slate-500 italic max-w-[200px] truncate" title={job.remarks}>
+                              {job.remarks || job.service || '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" onClick={() => setSelectedSummary(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Add Client Modal */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Add New Client" size="lg">
@@ -311,7 +672,7 @@ export function MonthlyClients() {
           setShowModal(false)
         }}>
           <div className="grid grid-cols-2 gap-4">
-            <Input name="full_name" label="Full Name" placeholder="Full name" />
+            <Input name="full_name" label="Full Name" placeholder="Full name" required />
             <Input name="phone" label="Phone" placeholder="+971 50 000 0000" />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -332,90 +693,6 @@ export function MonthlyClients() {
         </form>
       </Modal>
 
-      {/* Client Detail Modal */}
-      <Modal open={!!selected} onClose={() => { setSelected(null); setIsEditing(false); setConfirmDelete(false) }}
-        title={isEditing ? 'Edit Client' : 'Client Profile'} size="lg">
-        {selected && !isEditing && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <Avatar name={selected.full_name} size="lg" idx={0} />
-              <div>
-                <p className="text-[18px] font-bold text-[#111827]">{selected.full_name}</p>
-                <p className="text-[13px] text-slate-500 mt-0.5">Client since {formatDate(selected.created_at)}</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Phone',    value: selected.phone },
-                { label: 'WhatsApp', value: selected.whatsapp ?? selected.phone },
-                { label: 'Email',    value: selected.email ?? '—' },
-                { label: 'Area',     value: `${selected.building_name ? selected.building_name + ', ' : ''}${selected.area}` },
-                { label: 'Total Bookings', value: selected.total_bookings },
-                { label: 'Total Spent', value: `AED ${selected.total_spent.toLocaleString()}` },
-              ].map(({ label, value }) => (
-                <div key={label} className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC]">
-                  <p className="text-[10.5px] text-slate-500 uppercase tracking-[0.08em] font-semibold mb-1">{label}</p>
-                  <p className="text-[13px] font-semibold text-[#111827]">{value}</p>
-                </div>
-              ))}
-            </div>
-            {selected.access_notes && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                <p className="text-[10.5px] text-blue-700 uppercase font-semibold mb-1">Access Notes</p>
-                <p className="text-[13px] text-blue-700">{selected.access_notes}</p>
-              </div>
-            )}
-            {confirmDelete ? (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                <p className="text-[13px] font-semibold text-red-700 mb-1">Delete {selected.full_name}?</p>
-                <p className="text-[12px] text-red-600 mb-3">This cannot be undone.</p>
-                <div className="flex gap-3">
-                  <Button type="button" variant="outline" className="flex-1" size="sm" onClick={() => setConfirmDelete(false)}>Cancel</Button>
-                  <button type="button" className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[13px] font-semibold py-2 rounded-xl transition-colors"
-                    onClick={() => { deleteClient(selected!.id); setSelected(null); setConfirmDelete(false) }}>Yes, Delete</button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex gap-3">
-                <button type="button" onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 text-red-600 text-[12px] font-semibold hover:bg-red-50 transition-colors"><Trash2 size={13} /> Delete</button>
-                <Button variant="outline" className="flex-1" size="sm" onClick={() => setIsEditing(true)}>Edit Profile</Button>
-                <Button className="flex-1" size="sm" onClick={() => { setBookingClient({ name: selected!.full_name, phone: selected!.phone }); setSelected(null); setShowBookingModal(true) }}>New Booking</Button>
-              </div>
-            )}
-          </div>
-        )}
-        {selected && isEditing && (
-          <form className="space-y-4" onSubmit={e => {
-            e.preventDefault()
-            const f = new FormData(e.currentTarget)
-            const patch = { full_name: f.get('full_name') as string, phone: f.get('phone') as string, whatsapp: f.get('whatsapp') as string, email: f.get('email') as string, city: f.get('city') as string, building_name: f.get('building') as string, area: f.get('area') as string, access_notes: f.get('access_notes') as string, pet_info: f.get('pet_info') as string }
-            updateClient(selected.id, patch)
-            setSelected({ ...selected, ...patch })
-            setIsEditing(false)
-          }}>
-            <div className="grid grid-cols-2 gap-4">
-              <Input name="full_name" label="Full Name" defaultValue={selected.full_name} required />
-              <Input name="phone" label="Phone" defaultValue={selected.phone} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Input name="whatsapp" label="WhatsApp" defaultValue={selected.whatsapp ?? ''} />
-              <Input name="email" label="Email" type="email" defaultValue={selected.email ?? ''} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Input name="building" label="Building / Villa" defaultValue={selected.building_name ?? ''} />
-              <Select name="city" label="Emirate" defaultValue={selected.city}><option>Dubai</option><option>Abu Dhabi</option><option>Sharjah</option><option>Ajman</option></Select>
-            </div>
-            <Input name="area" label="Area" defaultValue={selected.area} />
-            <Textarea name="access_notes" label="Access Notes" defaultValue={selected.access_notes ?? ''} rows={2} />
-            <Textarea name="pet_info" label="Pet Information" defaultValue={selected.pet_info ?? ''} rows={2} />
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setIsEditing(false)}>Cancel</Button>
-              <Button type="submit" className="flex-1">Save Changes</Button>
-            </div>
-          </form>
-        )}
-      </Modal>
-
       {/* New Booking Modal */}
       <Modal open={showBookingModal} onClose={() => setShowBookingModal(false)} title="New Booking" size="lg">
         <ClientBookingForm
@@ -434,7 +711,7 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: { client
     <form className="space-y-4" onSubmit={e => {
       e.preventDefault()
       const f = new FormData(e.currentTarget)
-      onAdd({ client_id: '', client_name: clientName, client_phone: clientPhone, service_address: f.get('service_address') as string, service_type: f.get('service_type') as string, frequency: (f.get('frequency') as BookingFrequency) || 'once', scheduled_date: f.get('scheduled_date') as string, scheduled_time: f.get('scheduled_time') as string, duration_hours: Number(f.get('duration_hours')) || 3, total_amount: Number(f.get('total_amount')) || 0, notes: f.get('notes') as string, status: 'pending', assigned_crew: [] })
+      onAdd({ client_id: '', client_name: clientName, client_phone: clientPhone, service_address: f.get('service_address') as string, service_type: f.get('service_type') as string, frequency: (f.get('frequency') as BookingFrequency) || 'monthly', scheduled_date: f.get('scheduled_date') as string, scheduled_time: f.get('scheduled_time') as string, duration_hours: Number(f.get('duration_hours')) || 3, total_amount: Number(f.get('total_amount')) || 0, notes: f.get('notes') as string, status: 'pending', assigned_crew: [] })
     }}>
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC]"><p className="text-[10.5px] text-slate-500 uppercase font-semibold mb-1">Client</p><p className="text-[13px] font-semibold text-[#111827]">{clientName}</p></div>
@@ -443,7 +720,7 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: { client
       <Input name="service_address" label="Service Address" placeholder="Street, unit, neighborhood" />
       <div className="grid grid-cols-2 gap-4">
         <Select name="service_type" label="Service Type"><option value="">Select service…</option>{serviceTypes.map(s => <option key={s}>{s}</option>)}</Select>
-        <Select name="frequency" label="Frequency"><option value="once">One-time</option><option value="weekly">Weekly</option><option value="biweekly">Bi-weekly</option><option value="monthly">Monthly</option></Select>
+        <Select name="frequency" label="Frequency" defaultValue="monthly"><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="biweekly">Bi-weekly</option><option value="once">One-time</option></Select>
       </div>
       <div className="grid grid-cols-3 gap-4">
         <Input name="scheduled_date" label="Date" type="date" required />
