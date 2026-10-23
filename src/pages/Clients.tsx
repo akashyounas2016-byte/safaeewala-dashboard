@@ -184,7 +184,7 @@ export function Clients() {
         statusChip={`${vipClients} VIP`}
         actionLabel="Add Client"
         onAction={() => setShowModal(true)}
-        searchPlaceholder="Search clients…"
+        showSearch={false}
       />
 
       {/* ── KPI Cards ── */}

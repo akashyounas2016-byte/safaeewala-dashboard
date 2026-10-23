@@ -7,6 +7,7 @@ interface PageHeroProps {
   statusChip?: string
   actionLabel?: string
   onAction?: () => void
+  showSearch?: boolean
   searchPlaceholder?: string
   searchValue?: string
   onSearch?: (value: string) => void
@@ -18,6 +19,7 @@ export function PageHero({
   statusChip,
   actionLabel = 'New Booking',
   onAction,
+  showSearch = true,
   searchPlaceholder = 'Search…',
   searchValue = '',
   onSearch,
@@ -59,6 +61,7 @@ export function PageHero({
         <div className="flex items-center gap-3 shrink-0 flex-wrap">
 
           {/* Search */}
+          {showSearch && (
           <div className="flex items-center gap-3 bg-white/10 border border-white/10 rounded-2xl px-4 h-11 backdrop-blur-sm w-full sm:w-[280px] lg:w-[320px]">
             <Search size={14} className="text-white/60 shrink-0" />
             <input
@@ -72,6 +75,7 @@ export function PageHero({
               ⌘K
             </kbd>
           </div>
+          )}
 
           {/* Notification bell */}
           <button className="relative w-11 h-11 rounded-2xl border border-white/10 bg-white/10 flex items-center justify-center backdrop-blur-sm hover:bg-white/20 transition-colors shrink-0">

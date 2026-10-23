@@ -1,20 +1,27 @@
-# Safaeewala Dashboard Deployment Script
+# Safaeewala Booking CRM - Containerized Deployment Script
 # Usage: .\deploy.ps1
 
-Write-Host "🔨 Building application..." -ForegroundColor Cyan
+Write-Host "🔨 Building Safaeewala CRM production bundle..." -ForegroundColor Cyan
 npm run build
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Build failed!" -ForegroundColor Red
+    Write-Host "❌ Local build failed!" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "📤 Deploying to VPS..." -ForegroundColor Cyan
-scp "dist/index.html" "root@187.77.116.14:/var/www/safaeewala/index.html"
-scp -r "dist/assets" "root@187.77.116.14:/var/www/safaeewala/"
+Write-Host "📤 Syncing project and Docker files to VPS (/var/www/safaeewala)..." -ForegroundColor Cyan
+ssh root@187.77.116.14 "mkdir -p /var/www/safaeewala"
+scp -r "dist" "Dockerfile" "nginx.conf" "docker-compose.yml" "root@187.77.116.14:/var/www/safaeewala/"
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Deployment failed!" -ForegroundColor Red
+    Write-Host "❌ File transfer failed!" -ForegroundColor Red
     exit 1
 }
 
-Write-Host "✅ Deployment complete!" -ForegroundColor Green
-Write-Host "🌐 App is live at: http://187.77.116.14:8080/" -ForegroundColor Green
+Write-Host "🐳 Building and starting isolated Docker container on VPS..." -ForegroundColor Cyan
+ssh root@187.77.116.14 "systemctl stop nginx 2>/dev/null; systemctl disable nginx 2>/dev/null; cd /var/www/safaeewala && docker compose up -d --build && docker ps --filter name=safaeewala-booking-crm"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "❌ Container startup failed!" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "✅ Safaeewala CRM Docker container is live and isolated!" -ForegroundColor Green
+Write-Host "🌐 App URL: http://187.77.116.14:8080/" -ForegroundColor Green

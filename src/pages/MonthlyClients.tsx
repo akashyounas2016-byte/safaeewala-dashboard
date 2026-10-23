@@ -4,6 +4,7 @@ import {
   ChevronLeft, ChevronRight, Search, Phone, MapPin, Calendar,
   Users, TrendingUp, DollarSign, Star, Clock, ExternalLink,
   Trash2, ShieldCheck, CheckCircle, AlertCircle, FileText, Layers,
+  ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -17,6 +18,34 @@ import {
   calcJobOTHours,
   type MonthlyClientSummary,
 } from '@/lib/clientDataSync'
+
+export type MonthlyDatePreset =
+  | 'today'
+  | '7days'
+  | '14days'
+  | '28days'
+  | 'this_month'
+  | 'last_month'
+  | 'this_year'
+  | 'last_year'
+  | '2_years_ago'
+  | 'all_time'
+  | 'custom'
+
+function formatDisplayDate(dateStr: string): string {
+  if (!dateStr) return ''
+  try {
+    const parts = dateStr.split('-').map(Number)
+    if (parts.length === 3) {
+      const [y, m, d] = parts
+      const date = new Date(y, m - 1, d)
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    }
+    return dateStr
+  } catch {
+    return dateStr
+  }
+}
 
 const serviceTypes = [
   'Standard Clean', 'Deep Clean', 'Move-in', 'Move-out',
@@ -46,8 +75,12 @@ function Avatar({ name, size = 'md', idx = 0 }: { name: string; size?: 'sm' | 'm
 export function MonthlyClients() {
   const { clients, dailyJobs, addClient, updateClient, deleteClient, addBooking } = useData()
 
-  const [selectedMonth, setSelectedMonth] = useState(new Date())
-  const [isAllTime, setIsAllTime]         = useState(false)
+  const [datePreset, setDatePreset]           = useState<MonthlyDatePreset>('28days')
+  const [customStartDate, setCustomStartDate] = useState<string>('')
+  const [customEndDate, setCustomEndDate]     = useState<string>('')
+  const [showRangeDropdown, setShowRangeDropdown] = useState(false)
+  const [selectedMonth, setSelectedMonth]     = useState(new Date())
+
   const [search, setSearch]               = useState('')
   const [areaFilter, setAreaFilter]       = useState('all')
   const [sortOrder, setSortOrder]         = useState<'top_charges' | 'top_ot' | 'visits' | 'name'>('top_charges')
@@ -58,27 +91,149 @@ export function MonthlyClients() {
   const [showBookingModal, setShowBookingModal] = useState(false)
   const [bookingClient, setBookingClient] = useState<{ name: string; phone: string } | null>(null)
 
-  const monthKey  = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`
-  const monthName = selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  const currentYear = new Date().getFullYear()
+  const lastYear = currentYear - 1
+  const twoYearsAgo = currentYear - 2
 
-  const prevMonth = () => {
-    setIsAllTime(false)
-    const d = new Date(selectedMonth)
-    d.setMonth(d.getMonth() - 1)
-    setSelectedMonth(d)
-  }
-  const nextMonth = () => {
-    setIsAllTime(false)
-    const d = new Date(selectedMonth)
-    d.setMonth(d.getMonth() + 1)
-    setSelectedMonth(d)
-  }
+  const activeRange = useMemo(() => {
+    const now = new Date()
+    const todayStr = now.toISOString().split('T')[0]
+
+    if (datePreset === 'today') {
+      return {
+        start: todayStr,
+        end: todayStr,
+        label: 'Today',
+        sub: formatDisplayDate(todayStr),
+        isAllTime: false,
+      }
+    }
+    if (datePreset === '7days') {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 6)
+      const start = d.toISOString().split('T')[0]
+      return {
+        start,
+        end: todayStr,
+        label: 'Last 7 Days',
+        sub: `${formatDisplayDate(start)} – ${formatDisplayDate(todayStr)}`,
+        isAllTime: false,
+      }
+    }
+    if (datePreset === '14days') {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 13)
+      const start = d.toISOString().split('T')[0]
+      return {
+        start,
+        end: todayStr,
+        label: 'Last 14 Days',
+        sub: `${formatDisplayDate(start)} – ${formatDisplayDate(todayStr)}`,
+        isAllTime: false,
+      }
+    }
+    if (datePreset === '28days') {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 27)
+      const start = d.toISOString().split('T')[0]
+      return {
+        start,
+        end: todayStr,
+        label: 'Last 28 Days',
+        sub: `${formatDisplayDate(start)} – ${formatDisplayDate(todayStr)}`,
+        isAllTime: false,
+      }
+    }
+    if (datePreset === 'this_month') {
+      const y = selectedMonth.getFullYear()
+      const m = String(selectedMonth.getMonth() + 1).padStart(2, '0')
+      const lastDay = new Date(y, selectedMonth.getMonth() + 1, 0).getDate()
+      const start = `${y}-${m}-01`
+      const end = `${y}-${m}-${String(lastDay).padStart(2, '0')}`
+      const mName = selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      return {
+        start,
+        end,
+        label: `Month: ${mName}`,
+        sub: `${formatDisplayDate(start)} – ${formatDisplayDate(end)}`,
+        isAllTime: false,
+      }
+    }
+    if (datePreset === 'last_month') {
+      const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const y = prev.getFullYear()
+      const m = String(prev.getMonth() + 1).padStart(2, '0')
+      const lastDay = new Date(y, prev.getMonth() + 1, 0).getDate()
+      const start = `${y}-${m}-01`
+      const end = `${y}-${m}-${String(lastDay).padStart(2, '0')}`
+      const mName = prev.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      return {
+        start,
+        end,
+        label: `Last Month (${mName})`,
+        sub: `${formatDisplayDate(start)} – ${formatDisplayDate(end)}`,
+        isAllTime: false,
+      }
+    }
+    if (datePreset === 'this_year') {
+      return {
+        start: `${currentYear}-01-01`,
+        end: `${currentYear}-12-31`,
+        label: `This Year (${currentYear})`,
+        sub: `Jan 01, ${currentYear} – Dec 31, ${currentYear}`,
+        isAllTime: false,
+      }
+    }
+    if (datePreset === 'last_year') {
+      return {
+        start: `${lastYear}-01-01`,
+        end: `${lastYear}-12-31`,
+        label: `Last Year (${lastYear})`,
+        sub: `Jan 01, ${lastYear} – Dec 31, ${lastYear}`,
+        isAllTime: false,
+      }
+    }
+    if (datePreset === '2_years_ago') {
+      return {
+        start: `${twoYearsAgo}-01-01`,
+        end: `${twoYearsAgo}-12-31`,
+        label: `2 Years Ago (${twoYearsAgo})`,
+        sub: `Jan 01, ${twoYearsAgo} – Dec 31, ${twoYearsAgo}`,
+        isAllTime: false,
+      }
+    }
+    if (datePreset === 'custom') {
+      return {
+        start: customStartDate,
+        end: customEndDate,
+        label: 'Custom Range',
+        sub: customStartDate && customEndDate
+          ? `${formatDisplayDate(customStartDate)} – ${formatDisplayDate(customEndDate)}`
+          : 'Pick custom start & end date',
+        isAllTime: false,
+      }
+    }
+    // all_time
+    return {
+      start: '',
+      end: '',
+      label: 'All-Time Records',
+      sub: 'All monthly client entries recorded in Daily Job Sheet',
+      isAllTime: true,
+    }
+  }, [datePreset, selectedMonth, customStartDate, customEndDate, currentYear, lastYear, twoYearsAgo])
 
   // Automatically fetch & aggregate ONLY Monthly Clients directly from Daily Job Sheet
   const monthlySummaries = useMemo(() => {
-    const filterKey = isAllTime ? 'all' : monthKey
-    return extractMonthlyClientsFromDailyJobs(dailyJobs, filterKey, clients)
-  }, [dailyJobs, monthKey, isAllTime, clients])
+    if (activeRange.isAllTime) {
+      return extractMonthlyClientsFromDailyJobs(dailyJobs, 'all', clients)
+    }
+    return extractMonthlyClientsFromDailyJobs(
+      dailyJobs,
+      { start: activeRange.start, end: activeRange.end },
+      clients
+    )
+  }, [dailyJobs, activeRange, clients])
 
   // Overall KPI aggregates
   const totalMonthlyCharges = useMemo(() => {
@@ -148,60 +303,229 @@ export function MonthlyClients() {
     <div className="space-y-6">
       <PageHero
         title="Monthly Clients"
-        subtitle={`${monthlySummaries.length} Monthly Clients · Total Charges: AED ${totalMonthlyCharges.toLocaleString()}`}
-        statusChip={`${totalOTHours} hrs OT · ${totalVisits} Shifts`}
+        subtitle={`${monthlySummaries.length} Monthly Clients · Total Charges: AED ${totalMonthlyCharges.toLocaleString()} (${activeRange.label})`}
+        statusChip={`${activeRange.label} · ${totalOTHours} hrs OT · ${totalVisits} Shifts`}
         actionLabel="Add Client"
         onAction={() => setShowModal(true)}
+        showSearch={false}
       />
 
-      {/* Month Selector Bar with All-Time Toggle */}
+      {/* Date Range Filter Bar with Quick Pills and Dropdown Presets */}
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={prevMonth}
-            disabled={isAllTime}
-            className="p-2 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-30 disabled:pointer-events-none"
-            title="Previous Month"
-          >
-            <ChevronLeft size={20} className="text-slate-600" />
-          </button>
-          <div className="px-3 py-1">
-            <p className="text-[19px] font-bold text-[#111827]">
-              {isAllTime ? 'All-Time Records' : monthName}
-            </p>
-            <p className="text-[11px] text-slate-400">
-              {isAllTime ? 'Displaying all monthly contracts recorded in Daily Job Sheet' : 'Filtered by selected calendar month'}
+        {/* Left: Active Date Range Display & Month Stepper (if month mode) */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+            <Calendar size={18} />
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-[17px] font-extrabold text-[#111827]">
+                {activeRange.label}
+              </h2>
+              <span className="text-[10.5px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                {monthlySummaries.length} {monthlySummaries.length === 1 ? 'Client' : 'Clients'}
+              </span>
+            </div>
+            <p className="text-[11.5px] text-slate-400 mt-0.5 font-medium">
+              {activeRange.sub}
             </p>
           </div>
-          <button
-            onClick={nextMonth}
-            disabled={isAllTime}
-            className="p-2 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-30 disabled:pointer-events-none"
-            title="Next Month"
-          >
-            <ChevronRight size={20} className="text-slate-600" />
-          </button>
+
+          {datePreset === 'this_month' && (
+            <div className="flex items-center gap-1 ml-2 pl-3 border-l border-slate-200">
+              <button
+                onClick={() => {
+                  const d = new Date(selectedMonth)
+                  d.setMonth(d.getMonth() - 1)
+                  setSelectedMonth(d)
+                }}
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors cursor-pointer"
+                title="Previous Month"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                onClick={() => {
+                  const d = new Date(selectedMonth)
+                  d.setMonth(d.getMonth() + 1)
+                  setSelectedMonth(d)
+                }}
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors cursor-pointer"
+                title="Next Month"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsAllTime(!isAllTime)}
-            className={`px-3.5 py-2 text-[12.5px] font-semibold rounded-xl border transition-all ${
-              isAllTime
-                ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                : 'bg-[#f8fafc] text-slate-700 border-[#E4E8EC] hover:bg-slate-100'
-            }`}
-          >
-            {isAllTime ? '✓ Showing All Time' : 'Show All Time'}
-          </button>
-          {!isAllTime && (
+        {/* Right: Quick Pills + More Filters Dropdown */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Quick Filter Pills for Instant 1-tap Access */}
+          <div className="flex items-center bg-slate-100/90 p-1 rounded-xl border border-[#E4E8EC] gap-0.5 text-[11.5px] font-bold">
+            {(
+              [
+                { id: 'today', label: 'Today' },
+                { id: '7days', label: 'Last 7 Days' },
+                { id: '14days', label: 'Last 14 Days' },
+                { id: '28days', label: 'Last 28 Days' },
+                { id: 'this_month', label: 'This Month' },
+                { id: 'this_year', label: `${currentYear}` },
+                { id: 'last_year', label: `${lastYear}` },
+              ] as const
+            ).map(preset => {
+              const isSelected = datePreset === preset.id
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setDatePreset(preset.id)}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* More Presets & Custom Dropdown Button */}
+          <div className="relative">
             <button
-              onClick={() => setSelectedMonth(new Date())}
-              className="px-3 py-2 text-[12px] font-medium text-slate-600 hover:text-emerald-700 bg-slate-50 hover:bg-slate-100 rounded-xl transition-colors"
+              type="button"
+              onClick={() => setShowRangeDropdown(p => !p)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[12px] font-semibold transition-all cursor-pointer ${
+                showRangeDropdown || datePreset === '2_years_ago' || datePreset === 'all_time' || datePreset === 'custom' || datePreset === 'last_month'
+                  ? 'border-purple-500 bg-purple-50 text-purple-900 shadow-xs'
+                  : 'border-[#E4E8EC] bg-slate-50 text-slate-700 hover:bg-slate-100'
+              }`}
+              title="All Date Range Options"
             >
-              Current Month
+              <Calendar size={13} className="text-purple-600" />
+              <span>More Filters</span>
+              <ChevronDown size={13} className="text-slate-400" />
             </button>
-          )}
+
+            {showRangeDropdown && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowRangeDropdown(false)} />
+                <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-[#E4E8EC] rounded-2xl shadow-2xl z-50 p-4 animate-in fade-in zoom-in-95">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#E4E8EC]">
+                    <span className="text-[12px] font-bold text-slate-800">Select Date Range</span>
+                    <button
+                      onClick={() => {
+                        setDatePreset('28days')
+                        setShowRangeDropdown(false)
+                      }}
+                      className="text-[11px] font-semibold text-purple-600 hover:text-purple-700 hover:underline cursor-pointer"
+                    >
+                      Reset (28 Days)
+                    </button>
+                  </div>
+
+                  {/* Section: Short-term presets */}
+                  <div className="mb-2">
+                    <p className="text-[10px] uppercase font-bold text-slate-400 px-2 mb-1 tracking-wider">Quick Presets</p>
+                    <div className="grid grid-cols-2 gap-1">
+                      {[
+                        { id: 'today', label: 'Today' },
+                        { id: '7days', label: 'Last 7 Days' },
+                        { id: '14days', label: 'Last 14 Days' },
+                        { id: '28days', label: 'Last 28 Days' },
+                      ].map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            setDatePreset(p.id as MonthlyDatePreset)
+                            setShowRangeDropdown(false)
+                          }}
+                          className={`text-left px-2.5 py-1.5 rounded-lg text-[12px] font-medium transition-colors cursor-pointer flex items-center justify-between ${
+                            datePreset === p.id ? 'bg-purple-50 text-purple-800 font-bold' : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span>{p.label}</span>
+                          {datePreset === p.id && <span className="w-1.5 h-1.5 rounded-full bg-purple-600" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Section: Months & Previous Years */}
+                  <div className="mb-2 pt-2 border-t border-slate-100">
+                    <p className="text-[10px] uppercase font-bold text-slate-400 px-2 mb-1 tracking-wider">Months & Previous Years</p>
+                    <div className="grid grid-cols-2 gap-1">
+                      {[
+                        { id: 'this_month', label: 'This Month' },
+                        { id: 'last_month', label: 'Last Month' },
+                        { id: 'this_year', label: `This Year (${currentYear})` },
+                        { id: 'last_year', label: `Last Year (${lastYear})` },
+                        { id: '2_years_ago', label: `2 Years Ago (${twoYearsAgo})` },
+                        { id: 'all_time', label: 'All-Time Records' },
+                      ].map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            setDatePreset(p.id as MonthlyDatePreset)
+                            setShowRangeDropdown(false)
+                          }}
+                          className={`text-left px-2.5 py-1.5 rounded-lg text-[12px] font-medium transition-colors cursor-pointer flex items-center justify-between ${
+                            datePreset === p.id ? 'bg-purple-50 text-purple-800 font-bold' : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span className="truncate">{p.label}</span>
+                          {datePreset === p.id && <span className="w-1.5 h-1.5 rounded-full bg-purple-600 shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Section: Custom Date Range */}
+                  <div className="pt-2 border-t border-slate-100">
+                    <p className="text-[10px] uppercase font-bold text-slate-400 px-2 mb-2 tracking-wider">Custom Date Range</p>
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10.5px] font-medium text-slate-500 block mb-0.5">Start Date</label>
+                          <input
+                            type="date"
+                            value={customStartDate}
+                            onChange={e => setCustomStartDate(e.target.value)}
+                            className="w-full text-[11px] px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:border-purple-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10.5px] font-medium text-slate-500 block mb-0.5">End Date</label>
+                          <input
+                            type="date"
+                            value={customEndDate}
+                            onChange={e => setCustomEndDate(e.target.value)}
+                            className="w-full text-[11px] px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:border-purple-400"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={!customStartDate || !customEndDate}
+                        onClick={() => {
+                          if (customStartDate && customEndDate) {
+                            setDatePreset('custom')
+                            setShowRangeDropdown(false)
+                          }
+                        }}
+                        className="w-full py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11.5px] font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs"
+                      >
+                        Apply Custom Range
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -400,9 +724,9 @@ export function MonthlyClients() {
               <Users className="mx-auto mb-3 text-slate-300" size={44} strokeWidth={1.25} />
               <p className="text-[14px] font-bold text-slate-700">No Monthly Clients Found</p>
               <p className="text-[12px] text-slate-400 mt-1">
-                {isAllTime
+                {activeRange.isAllTime
                   ? 'No clients with monthly payment mode found in Daily Job Sheet.'
-                  : `No monthly records found for ${monthName}. Try clicking "Show All Time" above.`}
+                  : `No monthly records found for ${activeRange.label}. Try selecting another date range above.`}
               </p>
             </div>
           )}
@@ -415,7 +739,7 @@ export function MonthlyClients() {
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[15px] font-bold text-[#111827]">Top Monthly Charges</h3>
-              <span className="text-[11px] text-slate-400">{isAllTime ? 'All Time' : monthName}</span>
+              <span className="text-[11px] text-slate-400">{activeRange.label}</span>
             </div>
 
             {topClientsByCharges.length === 0 ? (

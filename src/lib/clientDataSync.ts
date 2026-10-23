@@ -144,19 +144,40 @@ export interface MonthlyClientSummary {
   matchedClientId?: string
 }
 
+export type DateRangeFilter =
+  | string // 'all', '2026-10', '2026-10-23'
+  | { start?: string; end?: string }
+  | ((date: string) => boolean)
+
 /**
  * Extracts and aggregates all Monthly Clients directly from DailyJobSheet
  */
 export function extractMonthlyClientsFromDailyJobs(
   dailyJobs: DailyJob[],
-  monthFilter: string | 'all' = 'all',
+  dateFilter: DateRangeFilter = 'all',
   registeredClients: Client[] = []
 ): MonthlyClientSummary[] {
   // 1. Filter for monthly jobs only, excluding bogus rows
   const monthlyJobs = dailyJobs.filter(j => {
     if (!isMonthlyJob(j)) return false
-    if (monthFilter !== 'all') {
-      return j.date && j.date.startsWith(monthFilter)
+    if (!dateFilter || dateFilter === 'all') return true
+
+    const jobDate = (j.date || '').trim()
+    if (!jobDate) return false
+
+    if (typeof dateFilter === 'function') {
+      return dateFilter(jobDate)
+    }
+    if (typeof dateFilter === 'object') {
+      if (dateFilter.start && jobDate < dateFilter.start) return false
+      if (dateFilter.end && jobDate > dateFilter.end) return false
+      return true
+    }
+    if (typeof dateFilter === 'string') {
+      if (dateFilter === 'all') return true
+      if (dateFilter.length === 7) return jobDate.startsWith(dateFilter)
+      if (dateFilter.length === 10) return jobDate === dateFilter
+      return jobDate.startsWith(dateFilter)
     }
     return true
   })

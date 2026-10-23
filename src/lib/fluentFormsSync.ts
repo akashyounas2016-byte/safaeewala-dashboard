@@ -4,223 +4,26 @@ import * as XLSX from 'xlsx'
 
 const STORAGE_KEY = 'safaeewala_fluent_form_leads'
 
-/* ─── Default Sample Leads from Website Fluent Forms ─── */
-export const DEFAULT_FLUENT_FORM_LEADS: FluentFormLead[] = [
-  {
-    id: 'lead-ff-101',
-    created_at: new Date(Date.now() - 1000 * 60 * 35).toISOString(), // 35 mins ago
-    form_id: 3,
-    form_title: 'Deep Cleaning Quick Quote Form',
-    entry_id: 1042,
-    source_url: 'https://safaeewala.com/services/deep-cleaning',
-    page_source: '/services/deep-cleaning',
-    category: 'Deep Cleaning',
-    client_name: 'Dr. Tariq Al-Mansoor',
-    email: 'tariq.mansoor@gmail.com',
-    phone: '+971 50 847 2910',
-    whatsapp: '+971508472910',
-    address: 'Villa 14, Saheel 2, Arabian Ranches',
-    area: 'Arabian Ranches',
-    preferred_date: new Date(Date.now() + 1000 * 60 * 60 * 48).toISOString().split('T')[0],
-    preferred_time: '09:00 AM',
-    service: 'Villa Deep Cleaning (4 Bedroom)',
-    message: 'Need complete deep cleaning with kitchen degreasing and tile scrubbing before family arrives.',
-    estimated_value: 1200,
-    status: 'new',
-  },
-  {
-    id: 'lead-ff-102',
-    created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(), // 2 hours ago
-    form_id: 5,
-    form_title: 'Move In / Move Out Cleaning Booking',
-    entry_id: 1041,
-    source_url: 'https://safaeewala.com/services/move-in-out-cleaning',
-    page_source: '/services/move-in-out-cleaning',
-    category: 'Move In / Out',
-    client_name: 'Elena Rostova',
-    email: 'elena.rostova@outlook.com',
-    phone: '+971 52 931 4452',
-    whatsapp: '+971529314452',
-    address: 'Apartment 1804, Marina Gate 1, Dubai Marina',
-    area: 'Dubai Marina',
-    preferred_date: new Date(Date.now() + 1000 * 60 * 60 * 72).toISOString().split('T')[0],
-    preferred_time: '10:00 AM',
-    service: 'Move-In Deep Cleaning (2 BHK)',
-    message: 'Tenants moving out tomorrow. Landlord inspection scheduled for Saturday. Need steam cleaning.',
-    estimated_value: 750,
-    status: 'contacted',
-  },
-  {
-    id: 'lead-ff-103',
-    created_at: new Date(Date.now() - 1000 * 60 * 360).toISOString(), // 6 hours ago
-    form_id: 2,
-    form_title: 'Sofa & Carpet Steam Shampooing',
-    entry_id: 1040,
-    source_url: 'https://safaeewala.com/services/sofa-carpet-shampooing',
-    page_source: '/services/sofa-carpet-shampooing',
-    category: 'Sofa & Carpet',
-    client_name: 'Khurram Shehzad',
-    email: 'khurram.s@yahoo.com',
-    phone: '+971 55 412 8890',
-    whatsapp: '+971554128890',
-    address: 'Townhouse 89, Mira Oasis 3',
-    area: 'Reem',
-    preferred_date: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString().split('T')[0],
-    preferred_time: '02:00 PM',
-    service: '7-Seater L-Shape Sofa & 2 Area Rugs',
-    message: 'Got stain marks on beige fabric sofa. Need injection extraction and deep shampoo.',
-    estimated_value: 380,
-    status: 'quoted',
-  },
-  {
-    id: 'lead-ff-104',
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // Yesterday
-    form_id: 3,
-    form_title: 'Deep Cleaning Quick Quote Form',
-    entry_id: 1039,
-    source_url: 'https://safaeewala.com/services/deep-cleaning',
-    page_source: '/services/deep-cleaning',
-    category: 'Deep Cleaning',
-    client_name: 'Jessica Miller',
-    email: 'jessica.m@ae.pwc.com',
-    phone: '+971 56 120 7733',
-    whatsapp: '+971561207733',
-    address: 'Villa 22, Whispering Pines, Jumeirah Golf Estates',
-    area: 'JGE',
-    preferred_date: new Date().toISOString().split('T')[0],
-    preferred_time: '08:30 AM',
-    service: 'Luxury Villa Deep Cleaning',
-    message: 'Booking confirmed for Friday crew of 4 cleaners with supervisor.',
-    estimated_value: 1600,
-    status: 'converted',
-  },
-  {
-    id: 'lead-ff-105',
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 30).toISOString(),
-    form_id: 1,
-    form_title: 'Regular Maid & Cleaning Service',
-    entry_id: 1038,
-    source_url: 'https://safaeewala.com/services/regular-maid-service',
-    page_source: '/services/regular-maid-service',
-    category: 'General Cleaning',
-    client_name: 'Mohammed Al-Hashmi',
-    email: 'm.hashmi@dubaiholdings.ae',
-    phone: '+971 50 339 1284',
-    whatsapp: '+971503391284',
-    address: 'Flat 402, Building 4, City Walk',
-    area: 'City Walk',
-    preferred_date: new Date(Date.now() + 1000 * 60 * 60 * 96).toISOString().split('T')[0],
-    preferred_time: '09:00 AM',
-    service: 'Weekly Recurring Maid (4 Hours twice a week)',
-    message: 'Looking for a reliable cleaner on Sundays and Thursdays.',
-    estimated_value: 480,
-    status: 'contacted',
-  },
-  {
-    id: 'lead-ff-106',
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-    form_id: 5,
-    form_title: 'Move In / Move Out Cleaning Booking',
-    entry_id: 1037,
-    source_url: 'https://safaeewala.com/services/move-in-out-cleaning',
-    page_source: '/services/move-in-out-cleaning',
-    category: 'Move In / Out',
-    client_name: 'Amir Reza',
-    email: 'amir.reza@gmail.com',
-    phone: '+971 54 882 1902',
-    whatsapp: '+971548821902',
-    address: 'Villa 310, Al Furjan West',
-    area: 'Al Furjan',
-    preferred_date: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString().split('T')[0],
-    preferred_time: '09:00 AM',
-    service: 'Move-Out Cleaning 3-Bed Villa',
-    message: 'Full cleaning completed by Safaeewala team with certificate for security deposit refund.',
-    estimated_value: 950,
-    status: 'converted',
-  },
-  {
-    id: 'lead-ff-107',
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 72).toISOString(),
-    form_id: 4,
-    form_title: 'Villa Exterior & Window Cleaning',
-    entry_id: 1036,
-    source_url: 'https://safaeewala.com/services/villa-cleaning',
-    page_source: '/services/villa-cleaning',
-    category: 'Villa Cleaning',
-    client_name: 'Suresh Patel',
-    email: 'suresh.patel@emiratesnbd.com',
-    phone: '+971 52 771 9043',
-    whatsapp: '+971527719043',
-    address: 'Villa 55, Meadows 6',
-    area: 'Meadows',
-    preferred_date: new Date(Date.now() + 1000 * 60 * 60 * 120).toISOString().split('T')[0],
-    preferred_time: '08:00 AM',
-    service: 'Villa Glass & Facade Pressure Washing',
-    message: 'Double story villa exterior window cleaning and interlock pressure wash.',
-    estimated_value: 850,
-    status: 'quoted',
-  },
-  {
-    id: 'lead-ff-108',
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 96).toISOString(),
-    form_id: 6,
-    form_title: 'Contact Us & General Inquiry',
-    entry_id: 1035,
-    source_url: 'https://safaeewala.com/contact-us',
-    page_source: '/contact-us',
-    category: 'General Cleaning',
-    client_name: 'Fatima Zahra',
-    email: 'fatima.z@gmail.com',
-    phone: '+971 55 902 4311',
-    whatsapp: '+971559024311',
-    address: 'Burj Crown, Downtown Dubai',
-    area: 'Downtown Dubai',
-    service: 'General Sanitization',
-    message: 'Do you offer steam sanitization for baby rooms?',
-    estimated_value: 250,
-    status: 'lost',
-  },
-  {
-    id: 'lead-ff-109',
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 120).toISOString(),
-    form_id: 3,
-    form_title: 'Deep Cleaning Quick Quote Form',
-    entry_id: 1034,
-    source_url: 'https://safaeewala.com/services/deep-cleaning',
-    page_source: '/services/deep-cleaning',
-    category: 'Deep Cleaning',
-    client_name: 'Zaid Al-Khateeb',
-    email: 'zaid.k@khateeb.net',
-    phone: '+971 50 671 2289',
-    whatsapp: '+971506712289',
-    address: 'Penthouse 45, Bluewaters Residences',
-    area: 'Bluewaters',
-    service: 'Penthouse Deep Cleaning',
-    message: 'High floor penthouse deep cleaning including balcony glass.',
-    estimated_value: 2200,
-    status: 'converted',
-  },
-  {
-    id: 'lead-ff-110',
-    created_at: new Date(Date.now() - 1000 * 60 * 60 * 140).toISOString(),
-    form_id: 7,
-    form_title: 'Online Price Calculator Inquiry',
-    entry_id: 1033,
-    source_url: 'https://safaeewala.com/pricing',
-    page_source: '/pricing',
-    category: 'Deep Cleaning',
-    client_name: 'Rahul Khanna',
-    email: 'rahul.khanna@dubaimedia.ae',
-    phone: '+971 52 334 9180',
-    whatsapp: '+971523349180',
-    address: 'Apt 1102, Executive Towers, Business Bay',
-    area: 'Business Bay',
-    service: '3 Bedroom Deep Cleaning',
-    message: 'Calculated 650 AED on website calculator, please confirm availability for Saturday.',
-    estimated_value: 650,
-    status: 'new',
-  },
-]
+/* ─── Default Sample Leads from Website Fluent Forms (Empty by default: only real live data) ─── */
+export const DEFAULT_FLUENT_FORM_LEADS: FluentFormLead[] = []
+
+/* ─── Detect Dummy / Seed Leads to Ensure Only Real Live Data ─── */
+export function isDummyLead(lead: Partial<FluentFormLead> | null | undefined): boolean {
+  if (!lead) return false
+  const dummyIds = [
+    'lead-ff-101', 'lead-ff-102', 'lead-ff-103', 'lead-ff-104', 'lead-ff-105',
+    'lead-ff-106', 'lead-ff-107', 'lead-ff-108', 'lead-ff-109', 'lead-ff-110'
+  ]
+  if (lead.id && dummyIds.includes(lead.id)) return true
+  if (lead.id && /^lead-ff-10\d$/.test(lead.id)) return true
+  const dummyNames = [
+    'Dr. Tariq Al-Mansoor', 'Elena Rostova', 'Rashid Al-Nuaimi', 'Sarah Jenkins',
+    'Mohammad Al-Qasimi', 'Vikram Patel', 'Fatima Al-Zahra', 'Marcus Dupont',
+    'Sheikha Maryam', 'Rahul Khanna'
+  ]
+  if (lead.client_name && dummyNames.includes(lead.client_name.trim())) return true
+  return false
+}
 
 /* ─── Normalize Page Source ─── */
 export function cleanPageSource(url: string): string {
@@ -250,6 +53,25 @@ export function cleanCategory(cat: string, serviceName: string = '', pageUrl: st
   if (text.includes('window') || text.includes('glass')) return 'Window Cleaning'
   if (text.includes('maid') || text.includes('hourly') || text.includes('regular') || text.includes('general')) return 'General Cleaning'
   return cat.trim() || 'General Cleaning'
+}
+
+/* ─── Normalize Property Type ─── */
+export function resolvePropertyType(lead: {
+  property_type?: string
+  address?: string
+  service?: string
+  category?: string
+  message?: string
+  form_title?: string
+}): string {
+  if (lead.property_type && lead.property_type.trim()) return lead.property_type.trim()
+  const combined = `${lead.address || ''} ${lead.service || ''} ${lead.category || ''} ${lead.message || ''} ${lead.form_title || ''}`.toLowerCase()
+  if (combined.includes('villa') || combined.includes('mansion') || combined.includes('compound')) return 'Villa'
+  if (combined.includes('townhouse') || combined.includes('town house')) return 'Townhouse'
+  if (combined.includes('penthouse')) return 'Penthouse'
+  if (combined.includes('office') || combined.includes('commercial') || combined.includes('shop') || combined.includes('warehouse')) return 'Office'
+  if (combined.includes('apartment') || combined.includes('apt') || combined.includes('flat') || combined.includes('tower') || combined.includes('studio') || combined.includes('bhk') || combined.includes('1 bedroom') || combined.includes('2 bedroom') || combined.includes('3 bedroom')) return 'Apartment'
+  return 'Apartment'
 }
 
 /* ─── Extract and Normalize Fluent Forms Webhook Payload ─── */
@@ -287,6 +109,17 @@ export function parseFluentFormWebhook(payload: Record<string, any>): FluentForm
   const address = String(data.address || data.property_address || data.location || data.villa_apt || '').trim()
   const area = String(data.area || data.community || data.city || 'Dubai').trim()
 
+  // Property Type
+  const rawPropType = String(data.property_type || data.property || data.building_type || data.type || '').trim()
+  const property_type = resolvePropertyType({
+    property_type: rawPropType,
+    address,
+    service: rawService,
+    category,
+    message: String(data.message || ''),
+    form_title: String(payload.form_title || data.form_title || ''),
+  })
+
   // Value & Timing
   const estimated_value = Number(data.estimated_value || data.price || data.total || data.calculated_price) || 500
   const preferred_date = String(data.preferred_date || data.date || data.booking_date || '').trim() || undefined
@@ -310,6 +143,7 @@ export function parseFluentFormWebhook(payload: Record<string, any>): FluentForm
     whatsapp,
     address,
     area,
+    property_type,
     preferred_date,
     preferred_time,
     service: rawService || `${category} Service`,
@@ -328,9 +162,10 @@ export async function fetchFluentFormLeads(): Promise<FluentFormLead[]> {
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (!error && data && data.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-      return data as FluentFormLead[]
+    if (!error && data && Array.isArray(data)) {
+      const realData = (data as FluentFormLead[]).filter(l => !isDummyLead(l))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(realData))
+      return realData
     }
   } catch {}
 
@@ -339,22 +174,25 @@ export async function fetchFluentFormLeads(): Promise<FluentFormLead[]> {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved) {
       const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed
+      if (Array.isArray(parsed)) {
+        const realSaved = (parsed as FluentFormLead[]).filter(l => !isDummyLead(l))
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(realSaved))
+        return realSaved
       }
     }
   } catch {}
 
-  // Default seed
+  // Empty state by default — only real live webhook data
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_FLUENT_FORM_LEADS))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([]))
   } catch {}
-  return DEFAULT_FLUENT_FORM_LEADS
+  return []
 }
 
 export function saveLeadsLocally(leads: FluentFormLead[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(leads))
+    const realOnly = leads.filter(l => !isDummyLead(l))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(realOnly))
   } catch {}
 }
 

@@ -212,7 +212,7 @@ export function Employees() {
         statusChip={expiringCount > 0 ? `${expiringCount} Alerts` : 'All Clear'}
         actionLabel="Add Employee"
         onAction={() => setShowModal(true)}
-        searchPlaceholder="Search employees…"
+        showSearch={false}
       />
 
       {/* ── Compliance Alert Banner ── */}

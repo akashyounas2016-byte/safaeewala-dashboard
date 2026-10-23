@@ -6,7 +6,7 @@ import {
   Trash2, AlertCircle, TrendingUp, Users, Briefcase, CloudUpload,
   Upload, CheckCircle, FileSpreadsheet, SlidersHorizontal,
   Clock, DollarSign, Wallet, Search, Filter, X, Pencil, MoreVertical, ChevronDown,
-  Receipt, CreditCard,
+  Receipt, CreditCard, Eye, Settings,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -18,20 +18,7 @@ import type {
 } from '@/types'
 import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured } from '@/lib/googleDrive'
 
-const DEFAULT_SAMPLE_PENDING_RCVD: DailyPendingReceivedItem[] = [
-  { id: 'pr-1', date: '2026-10-22', client: 'Villa 63B Street 62B', cash: 880, online: 0 },
-  { id: 'pr-2', date: '2026-10-22', client: 'Villa 5 Street 67B', cash: 0, online: 17.5 },
-  { id: 'pr-3', date: '2026-10-22', client: 'Villa 96C', cash: 0, online: 135 },
-  { id: 'pr-4', date: '2026-10-22', client: '105 P1 Bldg', cash: 0, online: 300 },
-  { id: 'pr-5', date: '2026-10-22', client: 'Flat 309 Bldg 31 A(Feb Monthly)', cash: 0, online: 420 },
-  { id: 'pr-6', date: '2026-10-22', client: '505 The Nad Residence', cash: 0, online: 280 },
-  { id: 'pr-7', date: '2026-10-22', client: '807 Nilofer(Monthly)', cash: 0, online: 1449 },
-]
 
-const DEFAULT_SAMPLE_ADVANCE: DailyAdvanceItem[] = [
-  { id: 'adv-1', date: '2026-10-22', client: '615 Zarooni 2', received: 700, advance: 300 },
-  { id: 'adv-2', date: '2026-10-22', client: '206 Spain Cluster S24(Right Move)', received: 1000, advance: 100 },
-]
 
 const MATERIALS: MaterialType[] = ['No', 'Yes', 'Sofa', 'Ladder', 'Sofa Seat']
 const PAYMENT_MODES: PaymentMode[] = ['Cash', 'Online', 'Pending', 'Monthly', 'Above']
@@ -489,7 +476,7 @@ function AddJobForm({
 
 /* ─── Main Page ─── */
 export function DailyJobSheet() {
-  const { dailyJobs, dailyExpenses, employees, addDailyJob, updateDailyJob, deleteDailyJob, addDailyExpense, updateDailyExpense, deleteDailyExpense, clearDailyData } = useData()
+  const { dailyJobs, dailyExpenses, employees, loading, addDailyJob, updateDailyJob, deleteDailyJob, addDailyExpense, updateDailyExpense, deleteDailyExpense, clearDailyData } = useData()
 
   const [searchParams, setSearchParams] = useSearchParams()
   const qDate = searchParams.get('date')
@@ -531,7 +518,7 @@ export function DailyJobSheet() {
   const [driveStatus, setDriveStatus]       = useState<'idle' | 'connecting' | 'uploading' | 'done' | 'error'>('idle')
   const [driveLink, setDriveLink]           = useState('')
   const [driveError, setDriveError]         = useState('')
-  const [importNotice, setImportNotice]     = useState<{ jobs: number; expenses: number; date: string; pendingCount?: number; pendingRcvdCount?: number; advanceCount?: number } | null>(null)
+  const [importNotice, setImportNotice]     = useState<{ jobs: number; expenses: number; date: string; pendingCount?: number; pendingRcvdCount?: number; advanceCount?: number; fileName?: string } | null>(null)
 
   // Pagination & View All state
   const [pageSize, setPageSize]       = useState<number | 'all'>(10)
@@ -539,26 +526,62 @@ export function DailyJobSheet() {
   const [selectedLetter, setSelectedLetter] = useState<string>('ALL')
 
   // Search & Payment Category Filters
-  const [showSearchWidget, setShowSearchWidget] = useState(false)
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false)
   const [searchQuery, setSearchQuery]           = useState('')
   const [paymentFilter, setPaymentFilter]       = useState<'ALL' | 'Monthly' | 'Cash' | 'Online' | 'Pending'>('ALL')
   const searchInputRef                          = useRef<HTMLInputElement>(null)
+  const searchContainerRef                      = useRef<HTMLDivElement>(null)
+
+  // Collapse search input on outside click when query is empty
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        if (!searchQuery) {
+          setIsSearchExpanded(false)
+        }
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [searchQuery])
 
   // Header 3-dot dropdown menu state
   const [showHeaderMenu, setShowHeaderMenu] = useState(false)
 
-  // Date Range state & presets (Today, Last 7 Days, Last 14 Days, Last 28 Days)
-  type DateRangePreset = 'today' | '7days' | '14days' | '28days'
+  // Date Range state & presets (Today, Last 7 Days, Last 14 Days, Last 28 Days, Last 3 Months, Last 6 Months, One Year, Two Years)
+  type DateRangePreset =
+    | 'today'
+    | '7days'
+    | '14days'
+    | '28days'
+    | '3months'
+    | '6months'
+    | '1year'
+    | '2years'
+
   const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>('today')
   const [rangeStartDate, setRangeStartDate] = useState<string>('')
   const [rangeEndDate, setRangeEndDate] = useState<string>('')
   const [showRangeMenu, setShowRangeMenu] = useState(false)
 
-  const getRangeBounds = (preset: '7days' | '14days' | '28days') => {
+  const getRangeBounds = (preset: Exclude<DateRangePreset, 'today'>) => {
     const end = selectedDate || new Date().toISOString().split('T')[0]
     const d = new Date(end + 'T00:00:00')
-    const days = preset === '7days' ? 6 : preset === '14days' ? 13 : 27
-    d.setDate(d.getDate() - days)
+    if (preset === '7days') {
+      d.setDate(d.getDate() - 6)
+    } else if (preset === '14days') {
+      d.setDate(d.getDate() - 13)
+    } else if (preset === '28days') {
+      d.setDate(d.getDate() - 27)
+    } else if (preset === '3months') {
+      d.setMonth(d.getMonth() - 3)
+    } else if (preset === '6months') {
+      d.setMonth(d.getMonth() - 6)
+    } else if (preset === '1year') {
+      d.setFullYear(d.getFullYear() - 1)
+    } else if (preset === '2years') {
+      d.setFullYear(d.getFullYear() - 2)
+    }
     const start = d.toISOString().split('T')[0]
     return { start, end }
   }
@@ -632,17 +655,29 @@ export function DailyJobSheet() {
   const [pendingRcvdList, setPendingRcvdList] = useState<DailyPendingReceivedItem[]>(() => {
     try {
       const saved = localStorage.getItem('safaeewala_daily_pending_rcvd_items')
-      if (saved) return JSON.parse(saved)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) {
+          // Purge legacy mock data (pr-1 .. pr-7)
+          return parsed.filter(item => !item.id?.startsWith('pr-'))
+        }
+      }
     } catch {}
-    return DEFAULT_SAMPLE_PENDING_RCVD
+    return []
   })
 
   const [advanceList, setAdvanceList] = useState<DailyAdvanceItem[]>(() => {
     try {
       const saved = localStorage.getItem('safaeewala_daily_advance_items')
-      if (saved) return JSON.parse(saved)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) {
+          // Purge legacy mock data (adv-1 .. adv-2)
+          return parsed.filter(item => !item.id?.startsWith('adv-'))
+        }
+      }
     } catch {}
-    return DEFAULT_SAMPLE_ADVANCE
+    return []
   })
 
   const [showAddPending, setShowAddPending]         = useState(false)
@@ -676,12 +711,14 @@ export function DailyJobSheet() {
     setViewAllDrivers(false)
   }, [selectedDate, pageSize, selectedLetter])
 
-  // Helper to identify and skip accidental imported sheet total/summary rows
+  // Helper to identify and skip accidental imported sheet total/summary rows or empty stubs
   const isBogusSummaryJob = (j: DailyJob) => {
     const noAddress = !j.address || j.address === '—' || j.address.trim() === ''
     const noTimes = (!j.start_time || j.start_time === '—') && (!j.end_time || j.end_time === '—')
     const hasSummaryNums = cleanNum(j.duty_hours) > 24 || cleanNum(j.charges) > 2000 || cleanNum(j.received) > 2000
-    return (noAddress && noTimes) || (noAddress && hasSummaryNums) || cleanNum(j.duty_hours) > 24
+    // Detect empty/broken stub jobs that have no address, 0 charges, 0 received, and no service/remarks
+    const isEmptyStub = noAddress && cleanNum(j.charges) === 0 && cleanNum(j.received) === 0 && (!j.service || j.service === '—') && (!j.remarks || j.remarks === '—')
+    return (noAddress && noTimes) || (noAddress && hasSummaryNums) || cleanNum(j.duty_hours) > 24 || isEmptyStub
   }
 
   const todayJobs     = dailyJobs.filter(j => isDateInRange(j.date) && !isBogusSummaryJob(j))
@@ -750,7 +787,9 @@ export function DailyJobSheet() {
     return Array.from(map.values())
   }, [employees, dailyJobs])
 
-  const nilRows: Array<any> = allKnownCleaners
+  // Absentees / active employees with nil records (0 jobs today) placed at the bottom
+  // Guard: if data is still loading and store has no jobs yet, do NOT falsely show everyone as absent
+  const nilRows: Array<any> = (loading && dailyJobs.length === 0) ? [] : allKnownCleaners
     .filter(name => !activeStaffSet.has(name.trim().toLowerCase()))
     .sort((a, b) => a.localeCompare(b))
     .map(name => ({
@@ -1302,6 +1341,120 @@ export function DailyJobSheet() {
     }
   }
 
+  /**
+   * Resolves date strictly from the uploaded Excel filename.
+   * Rules: FILE KA NAME HI DATE HOGI.
+   * Supports:
+   * - YYYY-MM-DD, YYYY_MM_DD, YYYY.MM.DD (e.g. "2026-10-23.xlsx")
+   * - DD-MM-YYYY, DD_MM_YYYY, DD.MM.YYYY (e.g. "23-10-2026.xlsx")
+   * - YYYYMMDD (e.g. "20261023.xlsx")
+   * - DDMMYYYY (e.g. "23102026.xlsx")
+   * - Month text: "Apr 26", "26 Apr 2026", "26-October-2026", "Oct 23 Schedule.xlsx"
+   * - Single day: "23.xlsx", "Day 23.xlsx" (infers year & month from selectedDate)
+   * - Fallback: selectedDate
+   */
+  function extractDateFromFilename(fileName: string, fallbackDate: string): string {
+    if (!fileName) return fallbackDate
+
+    // Clean extension
+    const base = fileName.replace(/\.[^/.]+$/, '').trim()
+
+    // 1. Check YYYY-MM-DD or YYYY.MM.DD or YYYY_MM_DD
+    const ymd = base.match(/\b(20\d{2})[-_.](\d{1,2})[-_.](\d{1,2})\b/)
+    if (ymd) {
+      const y = ymd[1]
+      const m = String(parseInt(ymd[2], 10)).padStart(2, '0')
+      const d = String(parseInt(ymd[3], 10)).padStart(2, '0')
+      const mNum = parseInt(m, 10)
+      const dNum = parseInt(d, 10)
+      if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
+        return `${y}-${m}-${d}`
+      }
+    }
+
+    // 2. Check DD-MM-YYYY or DD.MM.YYYY or DD_MM_YYYY
+    const dmy = base.match(/\b(\d{1,2})[-_.](\d{1,2})[-_.](20\d{2})\b/)
+    if (dmy) {
+      const d = String(parseInt(dmy[1], 10)).padStart(2, '0')
+      const m = String(parseInt(dmy[2], 10)).padStart(2, '0')
+      const y = dmy[3]
+      const mNum = parseInt(m, 10)
+      const dNum = parseInt(d, 10)
+      if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
+        return `${y}-${m}-${d}`
+      }
+    }
+
+    // 3. Month text: e.g. "Apr 26", "26 Apr 2026", "26 October 2026", "Oct-26-2026"
+    const monthNames = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?'
+    const monthMap: Record<string, string> = {
+      jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+      jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+    }
+
+    // Case 3a: Month Day Year (e.g. "Oct 23 2026" or "October 23, 2026" or "Oct-23")
+    const mdyRegex = new RegExp(`\\b(${monthNames})[\\s_-]*(\\d{1,2})(?:st|nd|rd|th)?[\\s,_-]*(?:(20\\d{2}|\\d{2}))?\\b`, 'i')
+    const mdyMatch = base.match(mdyRegex)
+    if (mdyMatch) {
+      const mKey = mdyMatch[1].toLowerCase().slice(0, 3)
+      const m = monthMap[mKey]
+      const d = String(parseInt(mdyMatch[2], 10)).padStart(2, '0')
+      let y = mdyMatch[3] ? mdyMatch[3] : (fallbackDate.split('-')[0] || String(new Date().getFullYear()))
+      if (y.length === 2) y = '20' + y
+      return `${y}-${m}-${d}`
+    }
+
+    // Case 3b: Day Month Year (e.g. "23 Oct 2026" or "23rd October 2026" or "23-Oct")
+    const dmyTextRegex = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?[\\s,_-]*(${monthNames})[\\s,_-]*(?:(20\\d{2}|\\d{2}))?\\b`, 'i')
+    const dmyTextMatch = base.match(dmyTextRegex)
+    if (dmyTextMatch) {
+      const d = String(parseInt(dmyTextMatch[1], 10)).padStart(2, '0')
+      const mKey = dmyTextMatch[2].toLowerCase().slice(0, 3)
+      const m = monthMap[mKey]
+      let y = dmyTextMatch[3] ? dmyTextMatch[3] : (fallbackDate.split('-')[0] || String(new Date().getFullYear()))
+      if (y.length === 2) y = '20' + y
+      return `${y}-${m}-${d}`
+    }
+
+    // 4. Compact numeric: YYYYMMDD (8 digits)
+    const compactYMD = base.match(/\b(20\d{2})(\d{2})(\d{2})\b/)
+    if (compactYMD) {
+      const y = compactYMD[1]
+      const m = compactYMD[2]
+      const d = compactYMD[3]
+      const mNum = parseInt(m, 10)
+      const dNum = parseInt(d, 10)
+      if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
+        return `${y}-${m}-${d}`
+      }
+    }
+
+    // 5. Compact numeric: DDMMYYYY (8 digits)
+    const compactDMY = base.match(/\b(\d{2})(\d{2})(20\d{2})\b/)
+    if (compactDMY) {
+      const d = compactDMY[1]
+      const m = compactDMY[2]
+      const y = compactDMY[3]
+      const mNum = parseInt(m, 10)
+      const dNum = parseInt(d, 10)
+      if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
+        return `${y}-${m}-${d}`
+      }
+    }
+
+    // 6. Isolated day number only: e.g. "23.xlsx", "Day 23", "Sheet 23"
+    const dayOnlyMatch = base.match(/(?:^|\b)(?:day[\s_-]*)?([1-9]|[12]\d|3[01])(?:st|nd|rd|th)?(?:\b|$)/i)
+    if (dayOnlyMatch) {
+      const d = String(parseInt(dayOnlyMatch[1], 10)).padStart(2, '0')
+      const parts = fallbackDate.split('-')
+      const y = parts[0] || String(new Date().getFullYear())
+      const m = parts[1] || '01'
+      return `${y}-${m}-${d}`
+    }
+
+    return fallbackDate
+  }
+
   const importRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
 
@@ -1312,39 +1465,79 @@ export function DailyJobSheet() {
       const buf  = await file.arrayBuffer()
       const wb   = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true })
 
-      // Auto-detect target date from filename (e.g. "Apr 26 Schedule" -> "2026-04-26")
-      let targetDate = selectedDate
-      const nameMatch = file.name.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s_-]*(\d{1,2})(?:[a-z]*[\s_-]*(\d{2,4}))?/i)
-      if (nameMatch) {
-        const monthMap: Record<string, string> = {
-          jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
-          jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
-        }
-        const m = monthMap[nameMatch[1].toLowerCase().slice(0, 3)]
-        const d = String(parseInt(nameMatch[2], 10)).padStart(2, '0')
-        let y = nameMatch[3] ? nameMatch[3] : String(new Date().getFullYear())
-        if (y.length === 2) y = '20' + y
-        targetDate = `${y}-${m}-${d}`
-        setSelectedDate(targetDate)
-      }
+      // FILE KA NAME HI DATE HOGI: Extract authoritative date from filename
+      const targetDate = extractDateFromFilename(file.name, selectedDate)
+
+      // Reset date range presets so view immediately switches to the imported date
+      setDateRangePreset('today')
+      setRangeStartDate('')
+      setRangeEndDate('')
+      setSelectedDate(targetDate)
 
       // Clear existing data for this target date so re-importing updates cleanly without duplicating
       clearDailyData(targetDate)
 
-      // Smart sheet matching:
-      // 1. Check if 'Jobs' sheet exists
-      // 2. Or check if any sheet matches the day number of targetDate (e.g. "1st Wed" or "1")
-      // 3. Fallback to first sheet
+      // Smart sheet matching with Header Scoring:
+      // Real job sheets contain: Staff, Address, Charges, Received, Location, Duty Hrs, Mode, Service
+      const REQUIRED_JOB_COLS = ['staff', 'address', 'charges', 'received', 'location', 'start time', 'end time', 'duty hrs', 'mode', 'service']
+
+      const scoreSheet = (sheet: XLSX.WorkSheet | undefined): number => {
+        if (!sheet || !sheet['!ref']) return 0
+        const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 })
+        if (!rows || rows.length === 0) return 0
+        let bestScore = 0
+        for (let r = 0; r < Math.min(rows.length, 6); r++) {
+          const row = rows[r]
+          if (!Array.isArray(row)) continue
+          let s = 0
+          const texts = row.map(cell => String(cell || '').toLowerCase().replace(/[^a-z0-9]/g, ''))
+          REQUIRED_JOB_COLS.forEach(col => {
+            const normalized = col.replace(/[^a-z0-9]/g, '')
+            if (texts.some(t => t.includes(normalized))) s += 2
+          })
+          if (texts.some(t => t.includes('expense'))) s += 1
+          if (texts.some(t => t.includes('pending'))) s += 1
+          if (texts.some(t => t.includes('advance'))) s += 1
+          if (s > bestScore) bestScore = s
+        }
+        return bestScore
+      }
+
       const dayNum = parseInt(targetDate.split('-')[2] || '0', 10)
+      const scoredSheets = wb.SheetNames.map(sn => ({
+        name: sn,
+        score: scoreSheet(wb.Sheets[sn]),
+        isDayMatch: dayNum > 0 && Boolean(sn.match(/^(\d+)/) && parseInt(sn.match(/^(\d+)/)![1], 10) === dayNum),
+        isJobsName: sn.toLowerCase() === 'jobs' || sn.toLowerCase().includes('job sheet') || sn.toLowerCase().includes('schedule')
+      }))
+
+      // Prefer sheets with real job columns (score >= 4)
+      const validSheets = scoredSheets.filter(s => s.score >= 4)
+
       let sheetName = wb.SheetNames[0]
-      if (wb.SheetNames.includes('Jobs')) {
-        sheetName = 'Jobs'
-      } else if (dayNum > 0) {
-        const matchingSheet = wb.SheetNames.find(sn => {
-          const m = sn.match(/^(\d+)/)
-          return m && parseInt(m[1], 10) === dayNum
-        })
-        if (matchingSheet) sheetName = matchingSheet
+      if (validSheets.length > 0) {
+        const dayMatch = validSheets.find(s => s.isDayMatch)
+        if (dayMatch) {
+          sheetName = dayMatch.name
+        } else {
+          const jobsMatch = validSheets.find(s => s.isJobsName)
+          if (jobsMatch) {
+            sheetName = jobsMatch.name
+          } else {
+            validSheets.sort((a, b) => b.score - a.score)
+            sheetName = validSheets[0].name
+          }
+        }
+      } else {
+        if (wb.SheetNames.includes('Jobs')) {
+          sheetName = 'Jobs'
+        } else if (dayNum > 0) {
+          const matchingSheet = wb.SheetNames.find(sn => {
+            const m = sn.match(/^(\d+)/)
+            return m && parseInt(m[1], 10) === dayNum
+          })
+          if (matchingSheet) sheetName = matchingSheet
+        }
       }
 
       const rows = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[sheetName])
@@ -1407,8 +1600,8 @@ export function DailyJobSheet() {
           lastStaff = rawStaff
         }
 
-        // A valid job has an address OR valid start time OR charges > 0
-        const hasJobInfo = Boolean(rawAddress) || (Boolean(rawStart) && String(rawStart).trim() !== '—') || cleanNum(rawCharges) > 0
+        // A valid job has an address OR valid start and end times OR charges > 0
+        const hasJobInfo = Boolean(rawAddress) || cleanNum(rawCharges) > 0 || (Boolean(rawStart) && Boolean(rawEnd) && String(rawStart).trim() !== '—' && String(rawEnd).trim() !== '—')
 
         if (hasJobInfo && lastStaff) {
           const sTime = formatTimeOnly(rawStart)
@@ -1433,7 +1626,7 @@ export function DailyJobSheet() {
           const modeVal = (String(nm('Mode', 'Mod', 'payment_mode') || 'Cash').trim()) as PaymentMode
 
           addDailyJob({
-            date:         toDate(nm('Date', 'date')),
+            date:         targetDate, // FILE KA NAME HI DATE HOGI! Strict and authoritative date source
             staff_name:   lastStaff,
             start_time:   sTime,
             end_time:     eTime,
@@ -1641,6 +1834,7 @@ export function DailyJobSheet() {
         pendingRcvdCount: importedPendingRcvdCount,
         advanceCount: importedAdvanceCount,
         date: targetDate,
+        fileName: file.name,
       })
     } catch (err: any) {
       alert('Failed to import Excel: ' + (err.message || String(err)))
@@ -1656,15 +1850,20 @@ export function DailyJobSheet() {
 
       {/* ── Import Notice Banner ── */}
       {importNotice && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl px-5 py-3.5 flex items-center justify-between text-[13px] shadow-sm animate-in fade-in">
-          <div className="flex items-center gap-2.5">
-            <CheckCircle size={18} className="text-emerald-600 flex-shrink-0" />
-            <span>
-              Excel sheet imported successfully! Added <strong>{importNotice.jobs} jobs</strong>, <strong>{importNotice.expenses} expenses</strong>
-              {importNotice.pendingRcvdCount ? <>, <strong>{importNotice.pendingRcvdCount} pending received</strong></> : null}
-              {importNotice.advanceCount ? <>, <strong>{importNotice.advanceCount} advance</strong></> : null}
-              {importNotice.pendingCount ? <>, <strong>{importNotice.pendingCount} pending</strong></> : null} for <strong>{fmtDate(importNotice.date)}</strong>.
-            </span>
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl px-5 py-3.5 flex items-center justify-between text-[13px] shadow-sm animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <CheckCircle size={20} className="text-emerald-600 flex-shrink-0" />
+            <div>
+              <p className="font-semibold text-emerald-900">
+                Excel Sheet <code className="bg-emerald-100/80 text-emerald-900 px-1.5 py-0.5 rounded text-[12px] font-mono">{importNotice.fileName || 'Uploaded Sheet'}</code> Imported Successfully!
+              </p>
+              <p className="text-[12px] text-emerald-700 mt-0.5">
+                Target Date (derived from file name): <strong className="text-emerald-950 font-bold">{fmtDate(importNotice.date)} ({importNotice.date})</strong> · Added <strong>{importNotice.jobs} jobs</strong>, <strong>{importNotice.expenses} expenses</strong>
+                {importNotice.pendingRcvdCount ? <>, <strong>{importNotice.pendingRcvdCount} pending received</strong></> : null}
+                {importNotice.advanceCount ? <>, <strong>{importNotice.advanceCount} advance</strong></> : null}
+                {importNotice.pendingCount ? <>, <strong>{importNotice.pendingCount} pending</strong></> : null}.
+              </p>
+            </div>
           </div>
           <button
             onClick={() => setImportNotice(null)}
@@ -1751,7 +1950,15 @@ export function DailyJobSheet() {
                       ? 'Last 7 Days'
                       : dateRangePreset === '14days'
                         ? 'Last 14 Days'
-                        : 'Last 28 Days'}
+                        : dateRangePreset === '28days'
+                          ? 'Last 28 Days'
+                          : dateRangePreset === '3months'
+                            ? 'Last 3 Months'
+                            : dateRangePreset === '6months'
+                              ? 'Last 6 Months'
+                              : dateRangePreset === '1year'
+                                ? 'One Year'
+                                : 'Two Years'}
                 </span>
                 <ChevronDown size={13} className={isDateRange ? 'text-indigo-200 ml-0.5' : 'text-emerald-600 ml-0.5'} />
               </button>
@@ -1759,7 +1966,7 @@ export function DailyJobSheet() {
               {showRangeMenu && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowRangeMenu(false)} />
-                  <div className="absolute left-0 top-full mt-1.5 w-64 bg-white rounded-2xl border border-[#E4E8EC] shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="absolute left-0 top-full mt-1.5 w-72 bg-white rounded-2xl border border-[#E4E8EC] shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-100 max-h-[460px] overflow-y-auto">
                     <div className="px-3 pb-2 mb-1 border-b border-slate-100">
                       <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider">Date Presets</p>
                     </div>
@@ -1779,6 +1986,10 @@ export function DailyJobSheet() {
                       </div>
                       <span className="text-[11px] text-slate-400 font-normal">Single Day</span>
                     </button>
+
+                    <div className="px-3 pt-2 pb-1 border-t border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Recent Days</p>
+                    </div>
 
                     <button
                       type="button"
@@ -1834,6 +2045,82 @@ export function DailyJobSheet() {
                       </span>
                     </button>
 
+                    <div className="px-3 pt-2 pb-1 border-t border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Extended History</p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => selectPreset('3months')}
+                      className={`w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] transition-colors cursor-pointer ${
+                        dateRangePreset === '3months'
+                          ? 'bg-indigo-50 text-indigo-900 font-bold'
+                          : 'text-slate-700 hover:bg-slate-50 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '3months' ? 'bg-indigo-600' : 'bg-transparent'}`} />
+                        <span>Last 3 Months</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 font-normal">
+                        {fmtDate(getRangeBounds('3months').start)} – {fmtDate(getRangeBounds('3months').end)}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => selectPreset('6months')}
+                      className={`w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] transition-colors cursor-pointer ${
+                        dateRangePreset === '6months'
+                          ? 'bg-indigo-50 text-indigo-900 font-bold'
+                          : 'text-slate-700 hover:bg-slate-50 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '6months' ? 'bg-indigo-600' : 'bg-transparent'}`} />
+                        <span>Last 6 Months</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 font-normal">
+                        {fmtDate(getRangeBounds('6months').start)} – {fmtDate(getRangeBounds('6months').end)}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => selectPreset('1year')}
+                      className={`w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] transition-colors cursor-pointer ${
+                        dateRangePreset === '1year'
+                          ? 'bg-indigo-50 text-indigo-900 font-bold'
+                          : 'text-slate-700 hover:bg-slate-50 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '1year' ? 'bg-indigo-600' : 'bg-transparent'}`} />
+                        <span>One Year</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 font-normal">
+                        {fmtDate(getRangeBounds('1year').start)} – {fmtDate(getRangeBounds('1year').end)}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => selectPreset('2years')}
+                      className={`w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] transition-colors cursor-pointer ${
+                        dateRangePreset === '2years'
+                          ? 'bg-indigo-50 text-indigo-900 font-bold'
+                          : 'text-slate-700 hover:bg-slate-50 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '2years' ? 'bg-indigo-600' : 'bg-transparent'}`} />
+                        <span>Two Years</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 font-normal">
+                        {fmtDate(getRangeBounds('2years').start)} – {fmtDate(getRangeBounds('2years').end)}
+                      </span>
+                    </button>
+
                     {isDateRange && (
                       <div className="pt-2 mt-1 border-t border-slate-100 px-3">
                         <button
@@ -1881,6 +2168,7 @@ export function DailyJobSheet() {
             <button
               onClick={() => importRef.current?.click()}
               disabled={importing}
+              title="Import Excel: Sheet ki date file name say automatically set hoti hai (e.g. 2026-10-23.xlsx ya 23 Oct.xlsx)"
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#E4E8EC] text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-60 cursor-pointer"
             >
               <Upload size={13} /> {importing ? 'Importing…' : 'Import'}
@@ -2246,7 +2534,15 @@ export function DailyJobSheet() {
                         ? 'Last 7 Days'
                         : dateRangePreset === '14days'
                           ? 'Last 14 Days'
-                          : 'Last 28 Days'
+                          : dateRangePreset === '28days'
+                            ? 'Last 28 Days'
+                            : dateRangePreset === '3months'
+                              ? 'Last 3 Months'
+                              : dateRangePreset === '6months'
+                                ? 'Last 6 Months'
+                                : dateRangePreset === '1year'
+                                  ? 'One Year'
+                                  : 'Two Years'
                     })`
                   : fmtDate(selectedDate)}
               </span>
@@ -2295,28 +2591,76 @@ export function DailyJobSheet() {
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Search Toggle Icon Button */}
-            <button
-              type="button"
+            {/* Expandable Inline Search Bar */}
+            <div
+              ref={searchContainerRef}
+              className={`relative flex items-center transition-all duration-300 ease-in-out h-8.5 rounded-xl border overflow-hidden ${
+                isSearchExpanded || searchQuery
+                  ? 'w-52 sm:w-64 md:w-72 bg-white border-emerald-500 ring-2 ring-emerald-500/10 shadow-xs'
+                  : 'w-9 bg-slate-50 border-[#E4E8EC] hover:bg-slate-100 hover:border-slate-300 cursor-pointer'
+              }`}
               onClick={() => {
-                setShowSearchWidget(p => !p)
-                if (!showSearchWidget) {
-                  setTimeout(() => searchInputRef.current?.focus(), 80)
+                if (!isSearchExpanded) {
+                  setIsSearchExpanded(true)
+                  setTimeout(() => searchInputRef.current?.focus(), 50)
                 }
               }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[12px] font-semibold transition-all cursor-pointer ${
-                showSearchWidget || searchQuery
-                  ? 'border-emerald-500 bg-emerald-50 text-emerald-800 shadow-xs'
-                  : 'border-[#E4E8EC] bg-slate-50 text-slate-700 hover:bg-slate-100'
-              }`}
-              title="Click to search cleaner, address, area, service, remarks"
+              title={!isSearchExpanded && !searchQuery ? "Search jobs, cleaner, address, service..." : undefined}
             >
-              <Search size={13} className={showSearchWidget || searchQuery ? 'text-emerald-600' : 'text-slate-500'} />
-              <span>Search</span>
-              {searchQuery && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (!isSearchExpanded) {
+                    setIsSearchExpanded(true)
+                    setTimeout(() => searchInputRef.current?.focus(), 50)
+                  } else if (!searchQuery) {
+                    setIsSearchExpanded(false)
+                  }
+                }}
+                className="h-full px-2.5 flex items-center justify-center shrink-0 cursor-pointer text-slate-500 hover:text-emerald-600 transition-colors"
+                aria-label="Search"
+              >
+                <Search
+                  size={14}
+                  className={isSearchExpanded || searchQuery ? 'text-emerald-600' : 'text-slate-500'}
+                />
+              </button>
+
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onFocus={() => setIsSearchExpanded(true)}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    if (searchQuery) setSearchQuery('')
+                    else setIsSearchExpanded(false)
+                  }
+                }}
+                placeholder="Search staff, address, mode..."
+                className={`w-full h-full text-[12px] bg-transparent text-slate-800 placeholder-slate-400 focus:outline-none transition-opacity duration-200 ${
+                  isSearchExpanded || searchQuery ? 'opacity-100 pr-7' : 'opacity-0 pointer-events-none w-0'
+                }`}
+              />
+
+              {(isSearchExpanded || searchQuery) && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setSearchQuery('')
+                    setIsSearchExpanded(false)
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Clear and close search"
+                  aria-label="Clear and close search"
+                >
+                  <X size={13} />
+                </button>
               )}
-            </button>
+            </div>
 
             {/* Payment Category Filters (Monthly, Cash, Online, Pending) */}
             <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-[#E4E8EC] text-[11.5px] font-bold">
@@ -2365,14 +2709,14 @@ export function DailyJobSheet() {
             <div className="relative">
               <button
                 onClick={() => setShowColMenu(p => !p)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#E4E8EC] bg-slate-50 text-[12px] font-semibold text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors cursor-pointer"
-                title="Hide or Show Columns"
+                className="flex items-center justify-center w-9 h-8.5 rounded-xl border border-[#E4E8EC] bg-slate-50 text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors cursor-pointer relative"
+                title="Customize Columns (Show / Hide)"
+                aria-label="Customize Columns"
               >
-                <SlidersHorizontal size={13} className="text-slate-500" />
-                <span>Columns</span>
-                <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 font-bold">
-                  {Object.values(visibleColumns).filter(Boolean).length}/{ALL_COLUMNS.length}
-                </span>
+                <Eye size={15} className="text-slate-600" />
+                {Object.values(visibleColumns).filter(Boolean).length < ALL_COLUMNS.length && (
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white" title="Some columns are hidden" />
+                )}
               </button>
 
               {showColMenu && (
@@ -2415,77 +2759,21 @@ export function DailyJobSheet() {
             </div>
 
             {/* View All / Page size selector */}
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Show:</span>
+            <div className="flex items-center">
               <select
                 value={pageSize}
                 onChange={e => setPageSize(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                className="text-[12px] font-semibold text-slate-700 bg-slate-50 border border-[#E4E8EC] rounded-xl px-3 py-1.5 focus:outline-none focus:border-emerald-400 cursor-pointer"
+                className="text-[12px] font-semibold text-slate-700 bg-slate-50 border border-[#E4E8EC] rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-emerald-400 cursor-pointer"
+                title="Rows Per Page"
               >
-                <option value={10}>10 rows per page</option>
-                <option value={20}>20 rows per page</option>
-                <option value={50}>50 rows per page</option>
+                <option value={10}>10 Rows Per Page</option>
+                <option value={20}>20 Rows Per Page</option>
+                <option value={50}>50 Rows Per Page</option>
                 <option value="all">View All ({totalRows} entries)</option>
               </select>
             </div>
           </div>
         </div>
-
-        {/* Search Widget Bar (Collapsible) */}
-        {showSearchWidget && (
-          <div className="px-5 py-3 bg-gradient-to-r from-slate-50 via-emerald-50/20 to-slate-50 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-3 animate-in fade-in slide-in-from-top-2 duration-150">
-            <div className="flex-1 min-w-[260px] max-w-lg relative">
-              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search staff, address, location, service, remarks, mode..."
-                className="w-full text-[12.5px] pl-9.5 pr-8 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-slate-800 placeholder-slate-400 shadow-xs"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 rounded-full hover:bg-slate-100 transition-colors"
-                  title="Clear search"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="text-[12px] text-slate-600 font-medium">
-                Found <strong className="text-slate-900">{filteredActiveJobRows.length}</strong> {filteredActiveJobRows.length === 1 ? 'job' : 'jobs'}
-                {paymentFilter !== 'ALL' && <span className="text-emerald-700 font-bold ml-1">in {paymentFilter}</span>}
-              </div>
-
-              {(searchQuery || paymentFilter !== 'ALL') && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery('')
-                    setPaymentFilter('ALL')
-                  }}
-                  className="text-[11.5px] font-bold text-red-600 hover:text-red-700 hover:underline cursor-pointer px-2 py-1 rounded-lg hover:bg-red-50 transition-colors"
-                >
-                  Reset All Filters
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setShowSearchWidget(false)}
-                className="text-[12px] text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
-                title="Close Search Widget"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* ── Table Container with Vertical A-Z Rail (Matching red line in user image) ── */}
         <div className="flex">

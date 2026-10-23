@@ -85,17 +85,55 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [employees,     setEmployees]     = useState<Employee[]>([])
   const [invoices,      setInvoices]      = useState<Invoice[]>([])
   const [inventory,     setInventory]     = useState<InventoryItem[]>([])
-  const [dailyJobs,     setDailyJobs]     = useState<DailyJob[]>([])
-  const [dailyExpenses, setDailyExpenses] = useState<DailyExpense[]>([])
+  const [dailyJobs,     setDailyJobs]     = useState<DailyJob[]>(() => {
+    try {
+      const savedJobs = localStorage.getItem('safaeewala_daily_jobs')
+      if (savedJobs) {
+        const parsed = JSON.parse(savedJobs)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
+    } catch {}
+    return []
+  })
+  const [dailyExpenses, setDailyExpenses] = useState<DailyExpense[]>(() => {
+    try {
+      const savedExp = localStorage.getItem('safaeewala_daily_expenses')
+      if (savedExp) {
+        const parsed = JSON.parse(savedExp)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
+    } catch {}
+    return []
+  })
   const [loading,       setLoading]       = useState(true)
   const [companyTRN,    setCompanyTRN]    = useState('100234567890003')
 
-  /* ── Load all data on mount — each table is fetched independently so a
-       missing table (e.g. daily_jobs not created yet) never blocks the others ── */
+  // Auto-persist dailyJobs and dailyExpenses to localStorage for instant 0ms loads
+  useEffect(() => {
+    if (dailyJobs.length > 0) {
+      try {
+        localStorage.setItem('safaeewala_daily_jobs', JSON.stringify(dailyJobs))
+      } catch {}
+    }
+  }, [dailyJobs])
+
+  useEffect(() => {
+    if (dailyExpenses.length > 0) {
+      try {
+        localStorage.setItem('safaeewala_daily_expenses', JSON.stringify(dailyExpenses))
+      } catch {}
+    }
+  }, [dailyExpenses])
+
+  /* ── Load all data on mount with fast timeout guard so offline database never hangs ── */
   useEffect(() => {
     const q = async (table: string, order = 'created_at'): Promise<any[]> => {
       try {
-        const { data } = await supabase.from(table).select('*').order(order, { ascending: false })
+        const timeoutPromise = new Promise<any[]>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 2000)
+        )
+        const fetchPromise = supabase.from(table).select('*').order(order, { ascending: false }).then(r => r.data ?? [])
+        const data = await Promise.race([fetchPromise, timeoutPromise])
         return data ?? []
       } catch { return [] }
     }
@@ -126,25 +164,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ot_hours: safeNum(j.ot_hours),
         service: j.service || '',
       }))
-      if (initialJobs.length === 0) {
+      if (initialJobs.length > 0) {
+        setDailyJobs(initialJobs)
+      } else {
         try {
           const savedJobs = localStorage.getItem('safaeewala_daily_jobs')
-          if (savedJobs) initialJobs = JSON.parse(savedJobs)
+          if (savedJobs) setDailyJobs(JSON.parse(savedJobs))
         } catch {}
       }
-      setDailyJobs(initialJobs)
 
       let initialExp = ((de || []) as any[]).map(x => ({
         ...x,
         amount: safeNum(x.amount),
       }))
-      if (initialExp.length === 0) {
+      if (initialExp.length > 0) {
+        setDailyExpenses(initialExp)
+      } else {
         try {
           const savedExp = localStorage.getItem('safaeewala_daily_expenses')
-          if (savedExp) initialExp = JSON.parse(savedExp)
+          if (savedExp) setDailyExpenses(JSON.parse(savedExp))
         } catch {}
       }
-      setDailyExpenses(initialExp)
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])

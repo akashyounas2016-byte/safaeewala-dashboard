@@ -196,6 +196,7 @@ export interface FluentFormLead {
   whatsapp?: string
   address?: string
   area?: string
+  property_type?: string
   preferred_date?: string
   preferred_time?: string
   service?: string

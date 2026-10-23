@@ -3,9 +3,9 @@ import {
   Globe, Send, Search, Filter, ExternalLink, Calendar, Phone,
   Mail, MessageSquare, CheckCircle, Clock, AlertTriangle, ArrowUpRight,
   TrendingUp, BarChart3, Plus, Trash2, Eye, Copy, Check, RefreshCw,
-  FileSpreadsheet, Sparkles, Building, ChevronRight, X
+  FileSpreadsheet, Sparkles, Building, ChevronRight, X, SlidersHorizontal, Bell
 } from 'lucide-react'
-import { PageHero } from '@/components/layout/PageHero'
+import { useLayout } from '@/components/layout/Layout'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -15,14 +15,41 @@ import type { FluentFormLead, LeadStatus } from '@/types'
 import {
   fetchFluentFormLeads,
   saveLeadsLocally,
-  insertFluentFormLead,
   updateFluentFormLeadStatus,
   deleteFluentFormLeadRemote,
   exportLeadsToXLSX,
   getWebhookConfig,
-  parseFluentFormWebhook,
-  DEFAULT_FLUENT_FORM_LEADS
+  resolvePropertyType,
+  isDummyLead
 } from '@/lib/fluentFormsSync'
+
+/* ─── Column Customization Definitions ─── */
+interface FluentColDef {
+  id: string
+  label: string
+}
+
+export const ALL_FLUENT_COLS: FluentColDef[] = [
+  { id: 'submitted_at',   label: 'Submitted At' },
+  { id: 'client_contact', label: 'Client & Contact' },
+  { id: 'service_needed', label: 'Service Needed' },
+  { id: 'property_type',  label: 'Property Type' },
+  { id: 'area_location',  label: 'Area / Location' },
+  { id: 'page_source',    label: 'Page Source' },
+  { id: 'status',         label: 'Status' },
+  { id: 'actions',        label: 'Actions' },
+]
+
+export const DEFAULT_VISIBLE_FLUENT_COLS: Record<string, boolean> = {
+  submitted_at: true,
+  client_contact: true,
+  service_needed: true,
+  property_type: true,
+  area_location: true,
+  page_source: true,
+  status: true,
+  actions: true,
+}
 
 /* ─── Status Styles ─── */
 const statusBadgeConfig: Record<LeadStatus, { label: string; bg: string; text: string; border: string }> = {
@@ -47,6 +74,7 @@ const categoryColors: Record<string, { bg: string; text: string }> = {
 
 export function FluentFormsLeads() {
   const { addBooking } = useData()
+  const { openMenu } = useLayout()
 
   const [leads, setLeads]               = useState<FluentFormLead[]>([])
   const [loading, setLoading]           = useState(true)
@@ -54,23 +82,55 @@ export function FluentFormsLeads() {
   const [pageFilter, setPageFilter]     = useState('ALL')
   const [catFilter, setCatFilter]       = useState('ALL')
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
-  const [datePreset, setDatePreset]     = useState<'all' | 'today' | '7days' | '30days'>('all')
+
+  // Date filters: 3 days, 7 days, 30 days, 3 months, 6 months, 1 year, custom
+  type FluentDatePreset = 'all' | '3days' | '7days' | '30days' | '3months' | '6months' | '1year' | 'custom'
+  const [datePreset, setDatePreset]           = useState<FluentDatePreset>('all')
+  const [customStartDate, setCustomStartDate] = useState<string>('')
+  const [customEndDate, setCustomEndDate]     = useState<string>('')
+
+  // Column Visibility state
+  const [showColMenu, setShowColMenu] = useState(false)
+  const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('safaeewala_fluent_form_cols')
+      if (saved) return { ...DEFAULT_VISIBLE_FLUENT_COLS, ...JSON.parse(saved) }
+    } catch {}
+    return DEFAULT_VISIBLE_FLUENT_COLS
+  })
+
+  const toggleColumn = (colId: string) => {
+    setVisibleCols(prev => {
+      const next = { ...prev, [colId]: !prev[colId] }
+      try {
+        localStorage.setItem('safaeewala_fluent_form_cols', JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  }
+
+  const resetColumns = () => {
+    setVisibleCols(DEFAULT_VISIBLE_FLUENT_COLS)
+    try {
+      localStorage.removeItem('safaeewala_fluent_form_cols')
+    } catch {}
+  }
 
   // Modals state
   const [showWebhookModal, setShowWebhookModal] = useState(false)
-  const [showSimulateModal, setShowSimulateModal] = useState(false)
   const [selectedLead, setSelectedLead]         = useState<FluentFormLead | null>(null)
   const [convertingLead, setConvertingLead]     = useState<FluentFormLead | null>(null)
   const [copiedUrl, setCopiedUrl]               = useState(false)
   const [copiedCurl, setCopiedCurl]             = useState(false)
   const [toastNotice, setToastNotice]           = useState<string | null>(null)
 
-  // Load leads on mount
+  // Load leads on mount (guaranteeing only real live data)
   useEffect(() => {
     let mounted = true
     fetchFluentFormLeads().then(data => {
       if (mounted) {
-        setLeads(data)
+        const realData = (data || []).filter(l => !isDummyLead(l))
+        setLeads(realData)
         setLoading(false)
       }
     })
@@ -148,75 +208,7 @@ export function FluentFormsLeads() {
     triggerToast(`✓ Successfully converted ${convertingLead.client_name} into an official Booking!`)
   }
 
-  // Simulate new incoming webhook from WordPress Fluent Forms
-  const handleSimulateWebhook = (preset: 'deep' | 'villa' | 'movein' | 'sofa') => {
-    const presets: Record<string, any> = {
-      deep: {
-        form_title: 'Deep Cleaning Quick Quote Form',
-        source_url: 'https://safaeewala.com/services/deep-cleaning',
-        full_name: 'Hamza Tariq',
-        phone: '+971 50 719 3321',
-        email: 'hamza.tariq@gmail.com',
-        category: 'Deep Cleaning',
-        service: '3 Bedroom Apartment Deep Cleaning',
-        address: 'Tower B, Downtown Views, Downtown Dubai',
-        area: 'Downtown Dubai',
-        estimated_value: 850,
-        message: 'Looking for full deep steam cleaning including kitchen appliances.',
-      },
-      villa: {
-        form_title: 'Villa Exterior & Window Cleaning',
-        source_url: 'https://safaeewala.com/services/villa-cleaning',
-        full_name: 'Sheikha Maryam',
-        phone: '+971 55 882 4410',
-        email: 'm.sheikha@almaktoum.ae',
-        category: 'Villa Cleaning',
-        service: 'Villa Glass Facade & Patio Washing',
-        address: 'Villa 108, District One, MBR City',
-        area: 'District One',
-        estimated_value: 1500,
-        message: 'Need high-pressure floor washing and double-height glass cleaning.',
-      },
-      movein: {
-        form_title: 'Move In / Move Out Cleaning Booking',
-        source_url: 'https://safaeewala.com/services/move-in-out-cleaning',
-        full_name: 'David & Sarah Jenkins',
-        phone: '+971 52 449 1802',
-        email: 'david.j@gmail.com',
-        category: 'Move In / Out',
-        service: 'Move-In Deep Sanitization',
-        address: 'Villa 32, Maple 1, Dubai Hills Estate',
-        area: 'Dubai Hills',
-        estimated_value: 1100,
-        message: 'New tenants moving in this Sunday. Need full disinfection certificate.',
-      },
-      sofa: {
-        form_title: 'Sofa & Carpet Steam Shampooing',
-        source_url: 'https://safaeewala.com/services/sofa-carpet-shampooing',
-        full_name: 'Nadia Kamran',
-        phone: '+971 56 312 9081',
-        email: 'nadia.kamran@hotmail.com',
-        category: 'Sofa & Carpet',
-        service: '5-Seater Sofa & Mattress Cleaning',
-        address: 'Apartment 402, Shoreline 8, Palm Jumeirah',
-        area: 'Palm Jumeirah',
-        estimated_value: 450,
-        message: 'Need urgent steam stain removal for living room sofa.',
-      },
-    }
 
-    const payload = presets[preset]
-    const newLead = parseFluentFormWebhook(payload)
-
-    setLeads(prev => {
-      const updated = [newLead, ...prev]
-      saveLeadsLocally(updated)
-      return updated
-    })
-    insertFluentFormLead(newLead)
-    setShowSimulateModal(false)
-    triggerToast(`🚀 Received new Fluent Forms Webhook from ${newLead.page_source}!`)
-  }
 
   // Filtered Leads
   const filteredLeads = useMemo(() => {
@@ -241,23 +233,47 @@ export function FluentFormsLeads() {
       // 4. Status filter
       const matchStatus = statusFilter === 'ALL' || l.status === statusFilter
 
-      // 5. Date filter
+      // 5. Date filter (3 days, 7 days, 30 days, 3 months, 6 months, 1 year, custom)
       const leadDate = l.created_at.split('T')[0]
-      const today = new Date().toISOString().split('T')[0]
       let matchDate = true
-      if (datePreset === 'today') {
-        matchDate = leadDate === today
+
+      if (datePreset === '3days') {
+        const d = new Date()
+        d.setDate(d.getDate() - 2)
+        matchDate = leadDate >= d.toISOString().split('T')[0]
       } else if (datePreset === '7days') {
-        const d7 = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-        matchDate = leadDate >= d7
+        const d = new Date()
+        d.setDate(d.getDate() - 6)
+        matchDate = leadDate >= d.toISOString().split('T')[0]
       } else if (datePreset === '30days') {
-        const d30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-        matchDate = leadDate >= d30
+        const d = new Date()
+        d.setDate(d.getDate() - 29)
+        matchDate = leadDate >= d.toISOString().split('T')[0]
+      } else if (datePreset === '3months') {
+        const d = new Date()
+        d.setMonth(d.getMonth() - 3)
+        matchDate = leadDate >= d.toISOString().split('T')[0]
+      } else if (datePreset === '6months') {
+        const d = new Date()
+        d.setMonth(d.getMonth() - 6)
+        matchDate = leadDate >= d.toISOString().split('T')[0]
+      } else if (datePreset === '1year') {
+        const d = new Date()
+        d.setFullYear(d.getFullYear() - 1)
+        matchDate = leadDate >= d.toISOString().split('T')[0]
+      } else if (datePreset === 'custom') {
+        if (customStartDate && customEndDate) {
+          matchDate = leadDate >= customStartDate && leadDate <= customEndDate
+        } else if (customStartDate) {
+          matchDate = leadDate >= customStartDate
+        } else if (customEndDate) {
+          matchDate = leadDate <= customEndDate
+        }
       }
 
       return matchSearch && matchPage && matchCat && matchStatus && matchDate
     })
-  }, [leads, search, pageFilter, catFilter, statusFilter, datePreset])
+  }, [leads, search, pageFilter, catFilter, statusFilter, datePreset, customStartDate, customEndDate])
 
   /* ─── Page Source Performance Analytics ─── */
   const pageAnalytics = useMemo(() => {
@@ -354,62 +370,93 @@ export function FluentFormsLeads() {
         </div>
       )}
 
-      {/* ── Page Hero ── */}
-      <PageHero
-        title="Fluent Forms & Website Leads"
-        subtitle={`Live Webhook receiver from safaeewala.com WordPress Fluent Forms · ${totalLeads} total inquiries analyzed`}
-        statusChip="Webhook Active · Listening"
-        actionLabel="Webhook Setup"
-        onAction={() => setShowWebhookModal(true)}
-        searchPlaceholder="Search leads, phone, page URL…"
-      />
+      {/* ── Single Merged Hero Header ── */}
+      <section className="gradient-card rounded-[24px] px-6 sm:px-7 py-5 sm:py-6 text-white shadow-[0_8px_32px_rgba(15,23,42,0.25)] ring-1 ring-black/10 relative overflow-hidden">
+        {/* Glow */}
+        <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* ── Quick Action Strip ── */}
-      <div className="flex items-center justify-between flex-wrap gap-3 bg-white rounded-[22px] border border-[#E4E8EC] p-4 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
-            <Globe size={18} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] font-bold text-[#111827]">WordPress Fluent Forms Webhook Sync</span>
-              <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Live Receiving
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          {/* Left: Title + White "Live and Connected" Tag + Live Subtitle */}
+          <div className="min-w-0">
+            {/* Mobile hamburger */}
+            <button
+              onClick={openMenu}
+              className="lg:hidden mb-3 w-9 h-9 rounded-xl flex items-center justify-center bg-white/10 border border-white/10 text-white/80 hover:text-white hover:bg-white/20 transition-colors cursor-pointer"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+
+            <div className="flex items-center gap-3 flex-wrap mb-2">
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+                Safaeewala Website Leads
+              </h1>
+
+              {/* White Tag: Live and Connected */}
+              <span className="inline-flex items-center gap-2 px-3 py-1 bg-white text-emerald-900 font-extrabold text-[12px] rounded-full shadow-md border border-white/90">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-600" />
+                </span>
+                Live and Connected
               </span>
             </div>
-            <p className="text-[12px] text-slate-500 mt-0.5">
-              All website form submissions automatically land here in real time.
-            </p>
+
+            <div className="flex flex-wrap items-center gap-2 text-white/80 text-[13px]">
+              <span>WordPress Fluent Forms Webhook is actively syncing in real-time from safaeewala.com</span>
+              <span className="text-white/40 hidden sm:inline">·</span>
+              <span className="text-emerald-300 font-semibold">
+                {totalLeads} Total Inquiries Analyzed
+              </span>
+              <span className="text-white/40 hidden sm:inline">·</span>
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-white/95 bg-white/15 px-2.5 py-0.5 rounded-md border border-white/20">
+                Endpoint: 200 OK Listening
+              </span>
+            </div>
+          </div>
+
+          {/* Right: Merged Export Excel + Notification Icon & Webhook Setup (Search widget removed) */}
+          <div className="flex items-center gap-3 shrink-0 flex-wrap">
+            {/* Merged Export Excel Button with Notification Icon */}
+            <div className="flex items-center bg-white/10 hover:bg-white/15 border border-white/20 rounded-2xl p-1 backdrop-blur-md shadow-sm transition-all">
+              <button
+                type="button"
+                onClick={() => exportLeadsToXLSX(filteredLeads)}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-white font-bold text-[12.5px] hover:bg-white/15 transition-all cursor-pointer"
+                title="Export Filtered Leads to Excel (.xlsx)"
+              >
+                <FileSpreadsheet size={15} className="text-emerald-300" />
+                <span>Export Excel</span>
+              </button>
+              <div className="w-[1px] h-5 bg-white/25 mx-0.5" />
+              <button
+                type="button"
+                onClick={() => triggerToast('Fluent Forms Webhook is actively syncing in real-time · Endpoint: 200 OK Listening')}
+                className="relative w-9 h-9 rounded-xl flex items-center justify-center text-white/90 hover:bg-white/15 hover:text-white transition-all cursor-pointer"
+                title="Webhook Notifications & Live Status"
+              >
+                <Bell size={16} />
+                <span className="absolute top-2 right-2 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
+                <span className="absolute top-2 right-2 w-2 h-2 bg-emerald-400 rounded-full" />
+              </button>
+            </div>
+
+            {/* Webhook Setup CTA Button */}
+            <button
+              type="button"
+              onClick={() => setShowWebhookModal(true)}
+              className="h-11 px-4.5 rounded-2xl bg-white text-emerald-800 font-extrabold text-[12.5px] shadow-lg hover:bg-emerald-50 transition-all shrink-0 flex items-center gap-2 cursor-pointer"
+            >
+              <Send size={14} className="text-emerald-700" />
+              <span>Webhook Setup</span>
+            </button>
           </div>
         </div>
+      </section>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setShowSimulateModal(true)}
-            className="flex items-center gap-1.5 text-[12px] font-bold px-3.5 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl hover:from-blue-100 hover:to-indigo-100 transition-all cursor-pointer shadow-xs"
-          >
-            <Sparkles size={13} className="text-indigo-600" /> Simulate Test Lead
-          </button>
-
-          <button
-            onClick={() => setShowWebhookModal(true)}
-            className="flex items-center gap-1.5 text-[12px] font-bold px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all cursor-pointer"
-          >
-            <Send size={13} /> Webhook Endpoint URL
-          </button>
-
-          <button
-            onClick={() => exportLeadsToXLSX(filteredLeads)}
-            className="flex items-center gap-1.5 text-[12px] font-bold px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl transition-all cursor-pointer"
-          >
-            <FileSpreadsheet size={13} /> Export Excel
-          </button>
-        </div>
-      </div>
-
-      {/* ── 6 Performance KPI Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      {/* ── 5 Performance KPI Cards (Real live metrics) ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {[
           {
             label: 'Total Inquiries',
@@ -422,22 +469,22 @@ export function FluentFormsLeads() {
           },
           {
             label: 'Best Performing Page',
-            value: bestPage ? bestPage.page : '/deep-cleaning',
-            sub: `${bestPage?.leadsCount || 0} leads (${bestPage?.share || 0}% share)`,
+            value: bestPage ? bestPage.page : '—',
+            sub: bestPage ? `${bestPage.leadsCount} leads (${bestPage.share}% share)` : 'No live inquiries yet',
             icon: TrendingUp,
             iconBg: 'bg-emerald-50',
             iconColor: 'text-emerald-600',
-            highlight: 'Top Driver',
+            highlight: bestPage ? 'Top Driver' : 'None',
             isSmallText: true,
           },
           {
             label: 'Top Category',
-            value: topCategory ? topCategory.category : 'Deep Cleaning',
-            sub: `${topCategory?.count || 0} inquiries · AED ${(topCategory?.totalValue || 0).toLocaleString()}`,
+            value: topCategory ? topCategory.category : '—',
+            sub: topCategory ? `${topCategory.count} inquiries · Top requested` : 'No live data yet',
             icon: BarChart3,
             iconBg: 'bg-purple-50',
             iconColor: 'text-purple-600',
-            highlight: 'High Demand',
+            highlight: topCategory ? 'High Demand' : 'None',
             isSmallText: true,
           },
           {
@@ -447,16 +494,7 @@ export function FluentFormsLeads() {
             icon: CheckCircle,
             iconBg: 'bg-indigo-50',
             iconColor: 'text-indigo-600',
-            highlight: '+12% vs last mo',
-          },
-          {
-            label: 'Pipeline Value',
-            value: `AED ${totalPipeline.toLocaleString()}`,
-            sub: `Avg AED ${Math.round(totalPipeline / (totalLeads || 1))} / inquiry`,
-            icon: ArrowUpRight,
-            iconBg: 'bg-amber-50',
-            iconColor: 'text-amber-600',
-            highlight: 'Potential',
+            highlight: totalLeads > 0 ? `${totalConverted} of ${totalLeads}` : '0% Live',
           },
           {
             label: 'Action Required',
@@ -494,146 +532,6 @@ export function FluentFormsLeads() {
         ))}
       </div>
 
-      {/* ── Analytics Visual Section: Page Source vs Category ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* 1. Page Source Performance */}
-        <div className="bg-white rounded-[22px] border border-[#E4E8EC] p-6 shadow-[0_4px_20px_rgba(15,23,42,0.05)] flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Globe size={16} className="text-indigo-600" />
-                <h3 className="text-[15px] font-bold text-[#111827]">Page Source Performance</h3>
-              </div>
-              <span className="text-[11px] font-semibold text-slate-400">Website Traffic Drivers</span>
-            </div>
-            <p className="text-[12px] text-slate-500 mb-4">
-              Shows which landing pages generate the highest volume and best conversion rates.
-            </p>
-
-            <div className="space-y-3">
-              {pageAnalytics.slice(0, 5).map(pa => (
-                <div
-                  key={pa.page}
-                  onClick={() => setPageFilter(pageFilter === pa.page ? 'ALL' : pa.page)}
-                  className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                    pageFilter === pa.page
-                      ? 'border-indigo-400 bg-indigo-50/50 shadow-xs'
-                      : 'border-[#edf2f7] bg-[#f8fafc] hover:bg-slate-100/60'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <div className="flex items-center gap-2 truncate">
-                      <span className="font-bold text-[13px] text-slate-800 truncate">{pa.page}</span>
-                      <span className="text-[10px] font-bold bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full border border-purple-200 shrink-0">
-                        Top: {pa.topCat}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[12px] font-extrabold text-indigo-700">{pa.leadsCount} leads</span>
-                      <span className="text-[11px] text-slate-400">({pa.share}%)</span>
-                    </div>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mb-1.5">
-                    <div
-                      className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
-                      style={{ width: `${pa.share}%` }}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-500">
-                    <span>Conv. Rate: <strong className="text-emerald-700">{pa.convRate}%</strong> ({pa.convertedCount} bookings)</span>
-                    <span>Value: <strong className="text-slate-700">AED {pa.pipelineValue.toLocaleString()}</strong></span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {pageFilter !== 'ALL' && (
-            <div className="mt-4 pt-3 border-t border-[#edf2f7] flex items-center justify-between text-[12px]">
-              <span className="text-indigo-700 font-semibold">Filtering table by page: <strong>{pageFilter}</strong></span>
-              <button
-                onClick={() => setPageFilter('ALL')}
-                className="text-slate-500 hover:text-slate-800 font-bold underline"
-              >
-                Clear Filter
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* 2. Category Breakdown */}
-        <div className="bg-white rounded-[22px] border border-[#E4E8EC] p-6 shadow-[0_4px_20px_rgba(15,23,42,0.05)] flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <BarChart3 size={16} className="text-emerald-600" />
-                <h3 className="text-[15px] font-bold text-[#111827]">Category & Service Performance</h3>
-              </div>
-              <span className="text-[11px] font-semibold text-slate-400">Service Popularity</span>
-            </div>
-            <p className="text-[12px] text-slate-500 mb-4">
-              Breakdown of demand, average quote size, and booking conversion by service category.
-            </p>
-
-            <div className="space-y-3">
-              {categoryAnalytics.map(ca => {
-                const colors = categoryColors[ca.category] || { bg: 'bg-slate-50', text: 'text-slate-700' }
-                return (
-                  <div
-                    key={ca.category}
-                    onClick={() => setCatFilter(catFilter === ca.category ? 'ALL' : ca.category)}
-                    className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                      catFilter === ca.category
-                        ? 'border-emerald-400 bg-emerald-50/50 shadow-xs'
-                        : 'border-[#edf2f7] bg-[#f8fafc] hover:bg-slate-100/60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${colors.bg} ${colors.text}`}>
-                          {ca.category}
-                        </span>
-                      </div>
-                      <span className="text-[12px] font-extrabold text-[#111827]">
-                        {ca.count} Inquiries
-                      </span>
-                    </div>
-
-                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mb-1.5">
-                      <div
-                        className="h-full bg-emerald-500 rounded-full"
-                        style={{ width: `${Math.round((ca.count / (totalLeads || 1)) * 100)}%` }}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between text-[11px] text-slate-500">
-                      <span>Conv. Rate: <strong className="text-emerald-700">{ca.convRate}%</strong> ({ca.converted} bookings)</span>
-                      <span>Avg Ticket: <strong className="text-slate-700">AED {ca.avgTicket}</strong> · Total: <strong>AED {ca.totalValue.toLocaleString()}</strong></span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {catFilter !== 'ALL' && (
-            <div className="mt-4 pt-3 border-t border-[#edf2f7] flex items-center justify-between text-[12px]">
-              <span className="text-emerald-700 font-semibold">Filtering table by category: <strong>{catFilter}</strong></span>
-              <button
-                onClick={() => setCatFilter('ALL')}
-                className="text-slate-500 hover:text-slate-800 font-bold underline"
-              >
-                Clear Filter
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* ── Toolbar & Filters ── */}
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] p-5 shadow-[0_4px_20px_rgba(15,23,42,0.05)] space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -649,20 +547,25 @@ export function FluentFormsLeads() {
           </div>
 
           {/* Date Range Presets */}
-          <div className="flex items-center gap-1.5 bg-[#f8fafc] p-1 rounded-xl border border-[#E4E8EC]">
+          <div className="flex items-center gap-1 bg-[#f8fafc] p-1 rounded-xl border border-[#E4E8EC] flex-wrap">
             {[
-              { id: 'all',    label: 'All Time' },
-              { id: 'today',  label: 'Today' },
-              { id: '7days',  label: 'Last 7 Days' },
-              { id: '30days', label: 'Last 30 Days' },
+              { id: 'all',     label: 'All Time' },
+              { id: '3days',   label: '3 Days' },
+              { id: '7days',   label: '7 Days' },
+              { id: '30days',  label: '30 Days' },
+              { id: '3months', label: '3 Months' },
+              { id: '6months', label: '6 Months' },
+              { id: '1year',   label: '1 Year' },
+              { id: 'custom',  label: 'Custom Range' },
             ].map(p => (
               <button
                 key={p.id}
-                onClick={() => setDatePreset(p.id as any)}
-                className={`text-[11.5px] font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                type="button"
+                onClick={() => setDatePreset(p.id as FluentDatePreset)}
+                className={`text-[11.5px] font-bold px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
                   datePreset === p.id
-                    ? 'bg-white text-indigo-700 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                 }`}
               >
                 {p.label}
@@ -670,6 +573,43 @@ export function FluentFormsLeads() {
             ))}
           </div>
         </div>
+
+        {/* Custom Date Range Picker Strip */}
+        {datePreset === 'custom' && (
+          <div className="flex items-center gap-3 bg-indigo-50/70 border border-indigo-200 p-2.5 rounded-xl text-[12px] flex-wrap animate-in fade-in">
+            <span className="font-bold text-indigo-950 flex items-center gap-1.5">
+              <Calendar size={14} className="text-indigo-600" />
+              <span>Custom Date Range:</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-slate-500">From</span>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={e => setCustomStartDate(e.target.value)}
+                className="px-2.5 py-1 rounded-lg border border-[#E4E8EC] bg-white text-slate-800 text-[11.5px] font-semibold focus:outline-none focus:border-indigo-500 shadow-xs cursor-pointer"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-slate-500">To</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={e => setCustomEndDate(e.target.value)}
+                className="px-2.5 py-1 rounded-lg border border-[#E4E8EC] bg-white text-slate-800 text-[11.5px] font-semibold focus:outline-none focus:border-indigo-500 shadow-xs cursor-pointer"
+              />
+            </div>
+            {(customStartDate || customEndDate) && (
+              <button
+                type="button"
+                onClick={() => { setCustomStartDate(''); setCustomEndDate('') }}
+                className="text-[11px] font-bold text-rose-600 hover:text-rose-800 underline ml-2 cursor-pointer"
+              >
+                Clear Dates
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Dropdowns row */}
         <div className="flex items-center gap-3 flex-wrap pt-2 border-t border-[#edf2f7]">
@@ -727,7 +667,7 @@ export function FluentFormsLeads() {
             </div>
           </div>
 
-          {(search || pageFilter !== 'ALL' || catFilter !== 'ALL' || statusFilter !== 'ALL' || datePreset !== 'all') && (
+          {(search || pageFilter !== 'ALL' || catFilter !== 'ALL' || statusFilter !== 'ALL' || datePreset !== 'all' || customStartDate || customEndDate) && (
             <button
               onClick={() => {
                 setSearch('')
@@ -735,6 +675,8 @@ export function FluentFormsLeads() {
                 setCatFilter('ALL')
                 setStatusFilter('ALL')
                 setDatePreset('all')
+                setCustomStartDate('')
+                setCustomEndDate('')
               }}
               className="text-[11.5px] font-bold text-rose-600 hover:text-rose-800 ml-auto cursor-pointer"
             >
@@ -746,7 +688,7 @@ export function FluentFormsLeads() {
 
       {/* ── Fluent Forms Leads Table ── */}
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-2">
+        <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-3">
           <div>
             <h3 className="text-[15px] font-bold text-[#111827]">
               Form Submissions ({filteredLeads.length})
@@ -755,17 +697,80 @@ export function FluentFormsLeads() {
               Showing leads sorted chronologically by submission timestamp
             </p>
           </div>
-          <span className="text-[12px] font-bold text-slate-500">
-            Total Pipeline in view: <strong className="text-emerald-700">AED {filteredLeads.reduce((s, l) => s + (Number(l.estimated_value) || 0), 0).toLocaleString()}</strong>
-          </span>
+
+          <div className="flex items-center gap-3">
+            <span className="text-[12px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl">
+              {filteredLeads.length} Inquiries
+            </span>
+
+            {/* Customize Columns Toggle Button */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowColMenu(p => !p)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[12px] font-bold transition-all cursor-pointer ${
+                  showColMenu
+                    ? 'border-indigo-400 bg-indigo-50 text-indigo-900 shadow-xs'
+                    : 'border-[#E4E8EC] bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+                title="Show or hide table columns"
+              >
+                <SlidersHorizontal size={13} className="text-slate-500" />
+                <span>Columns</span>
+              </button>
+
+              {showColMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowColMenu(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-60 bg-white border border-[#E4E8EC] rounded-2xl shadow-2xl z-50 p-3.5 animate-in fade-in zoom-in-95">
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#E4E8EC]">
+                      <span className="text-[12px] font-bold text-slate-800">Customize Columns</span>
+                      <button
+                        type="button"
+                        onClick={resetColumns}
+                        className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                      >
+                        Reset All
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      {ALL_FLUENT_COLS.map(col => (
+                        <label
+                          key={col.id}
+                          className="flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-[12px] transition-colors select-none"
+                        >
+                          <span className={`font-medium ${visibleCols[col.id] ? 'text-slate-800' : 'text-slate-400'}`}>
+                            {col.label}
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={!!visibleCols[col.id]}
+                            onChange={() => toggleColumn(col.id)}
+                            className="w-4 h-4 rounded accent-indigo-600 cursor-pointer"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <div className="mt-2 pt-2 border-t border-[#E4E8EC] text-[10.5px] text-slate-400 text-center">
+                      Auto-saved to your browser
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
 
         {filteredLeads.length === 0 ? (
           <div className="py-16 text-center">
             <Globe className="mx-auto mb-3 text-slate-300" size={42} strokeWidth={1.25} />
-            <p className="text-[15px] font-bold text-slate-700">No Form Leads Match Criteria</p>
-            <p className="text-[12px] text-slate-400 mt-1 max-w-sm mx-auto">
-              Try resetting your filters or click "Simulate Test Lead" to send a sample WordPress Fluent Forms payload.
+            <p className="text-[15px] font-bold text-slate-700">
+              {leads.length === 0 ? 'No Website Form Leads Yet' : 'No Form Leads Match Current Filters'}
+            </p>
+            <p className="text-[12px] text-slate-400 mt-1 max-w-md mx-auto">
+              {leads.length === 0
+                ? 'Webhook endpoint is active and listening. Live inquiries submitted on safaeewala.com will appear here in real-time.'
+                : 'Try adjusting or clearing your date range, page, or category filters.'}
             </p>
           </div>
         ) : (
@@ -773,14 +778,14 @@ export function FluentFormsLeads() {
             <table className="w-full text-left border-collapse text-[12px]">
               <thead className="bg-[#f8fafc] border-b border-[#E4E8EC] text-[11px] font-bold text-slate-600 uppercase tracking-wider">
                 <tr>
-                  <th className="py-3 px-4">Submitted At</th>
-                  <th className="py-3 px-3">Client & Contact</th>
-                  <th className="py-3 px-3">Page Source</th>
-                  <th className="py-3 px-3">Category & Service</th>
-                  <th className="py-3 px-4">Message / Requirements</th>
-                  <th className="py-3 px-3 text-right">Est. Value</th>
-                  <th className="py-3 px-3 text-center">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  {visibleCols.submitted_at && <th className="py-3 px-4">Submitted At</th>}
+                  {visibleCols.client_contact && <th className="py-3 px-3">Client & Contact</th>}
+                  {visibleCols.service_needed && <th className="py-3 px-3">Service Needed</th>}
+                  {visibleCols.property_type && <th className="py-3 px-3">Property Type</th>}
+                  {visibleCols.area_location && <th className="py-3 px-3">Area / Location</th>}
+                  {visibleCols.page_source && <th className="py-3 px-3">Page Source</th>}
+                  {visibleCols.status && <th className="py-3 px-3 text-center">Status</th>}
+                  {visibleCols.actions && <th className="py-3 px-4 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E4E8EC]">
@@ -792,138 +797,164 @@ export function FluentFormsLeads() {
                   return (
                     <tr key={lead.id} className="hover:bg-indigo-50/20 transition-colors">
                       {/* Date & Time */}
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <p className="font-bold text-slate-800">{formatDate(lead.created_at)}</p>
-                        <p className="text-[10.5px] text-slate-400 mt-0.5">
-                          {new Date(lead.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </td>
+                      {visibleCols.submitted_at && (
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <p className="font-bold text-slate-800">{formatDate(lead.created_at)}</p>
+                          <p className="text-[10.5px] text-slate-400 mt-0.5">
+                            {new Date(lead.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </td>
+                      )}
 
                       {/* Client & Contact */}
-                      <td className="py-3 px-3 min-w-[160px]">
-                        <p className="font-bold text-[#111827]">{lead.client_name}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <a
-                            href={`tel:${lead.phone}`}
-                            className="inline-flex items-center gap-1 text-[11px] text-slate-600 hover:text-emerald-700 font-medium"
-                            title="Call client"
-                          >
-                            <Phone size={11} className="text-slate-400" /> {lead.phone}
-                          </a>
-                          {waNumber && (
+                      {visibleCols.client_contact && (
+                        <td className="py-3 px-3 min-w-[160px]">
+                          <p className="font-bold text-[#111827]">{lead.client_name}</p>
+                          <div className="flex items-center gap-2 mt-1">
                             <a
-                              href={`https://wa.me/${waNumber}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[10px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 px-1.5 py-0.5 rounded transition-colors"
-                              title="Chat on WhatsApp"
+                              href={`tel:${lead.phone}`}
+                              className="inline-flex items-center gap-1 text-[11px] text-slate-600 hover:text-emerald-700 font-medium"
+                              title="Call client"
                             >
-                              WhatsApp
+                              <Phone size={11} className="text-slate-400" /> {lead.phone}
                             </a>
+                            {waNumber && (
+                              <a
+                                href={`https://wa.me/${waNumber}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[10px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 px-1.5 py-0.5 rounded transition-colors"
+                                title="Chat on WhatsApp"
+                              >
+                                WhatsApp
+                              </a>
+                            )}
+                          </div>
+                          {lead.email && (
+                            <p className="text-[10.5px] text-slate-400 truncate max-w-[180px] mt-0.5">{lead.email}</p>
                           )}
-                        </div>
-                        {lead.email && (
-                          <p className="text-[10.5px] text-slate-400 truncate max-w-[180px] mt-0.5">{lead.email}</p>
-                        )}
-                      </td>
+                        </td>
+                      )}
 
-                      {/* Page Source */}
-                      <td className="py-3 px-3 min-w-[140px] max-w-[180px]">
-                        <a
-                          href={lead.source_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-[11.5px] font-bold text-indigo-700 hover:text-indigo-900 truncate"
-                          title={lead.source_url}
-                        >
-                          <Globe size={11} className="shrink-0" />
-                          <span className="truncate">{lead.page_source}</span>
-                          <ExternalLink size={10} className="shrink-0 text-indigo-400" />
-                        </a>
-                        <p className="text-[10px] text-slate-400 truncate mt-0.5">{lead.form_title}</p>
-                      </td>
-
-                      {/* Category & Service */}
-                      <td className="py-3 px-3 min-w-[140px]">
-                        <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-full ${catCfg.bg} ${catCfg.text}`}>
-                          {lead.category}
-                        </span>
-                        <p className="text-[11.5px] font-medium text-slate-700 mt-1 truncate" title={lead.service}>
-                          {lead.service || `${lead.category} Inquiry`}
-                        </p>
-                        {lead.area && (
-                          <p className="text-[10.5px] text-slate-400 truncate">Area: {lead.area}</p>
-                        )}
-                      </td>
-
-                      {/* Message / Requirements */}
-                      <td className="py-3 px-4 max-w-[220px]">
-                        <p className="text-slate-700 text-[11.5px] line-clamp-2" title={lead.message}>
-                          {lead.message || 'No additional notes provided'}
-                        </p>
-                        {lead.preferred_date && (
-                          <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">
-                            Pref: {lead.preferred_date} {lead.preferred_time ? `@ ${lead.preferred_time}` : ''}
+                      {/* Service Needed (New Column replacing Category & Service) */}
+                      {visibleCols.service_needed && (
+                        <td className="py-3 px-3 min-w-[150px]">
+                          <p className="font-bold text-[#111827] text-[12px]" title={lead.service || `${lead.category} Cleaning`}>
+                            {lead.service || `${lead.category} Cleaning`}
                           </p>
-                        )}
-                      </td>
+                          <span className={`inline-block text-[10.5px] font-semibold px-2 py-0.5 rounded-full mt-1 ${catCfg.bg} ${catCfg.text}`}>
+                            {lead.category}
+                          </span>
+                        </td>
+                      )}
 
-                      {/* Est. Value */}
-                      <td className="py-3 px-3 text-right whitespace-nowrap">
-                        <span className="font-extrabold text-[#111827] text-[13px]">
-                          AED {Number(lead.estimated_value || 0).toLocaleString()}
-                        </span>
-                      </td>
+                      {/* Property Type (New Column) */}
+                      {visibleCols.property_type && (
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          {(() => {
+                            const pType = resolvePropertyType(lead)
+                            const propStyles: Record<string, string> = {
+                              Villa: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                              Townhouse: 'bg-amber-50 text-amber-800 border-amber-200',
+                              Apartment: 'bg-sky-50 text-sky-800 border-sky-200',
+                              Office: 'bg-purple-50 text-purple-800 border-purple-200',
+                              Penthouse: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+                            }
+                            const badgeClass = propStyles[pType] || 'bg-slate-100 text-slate-700 border-slate-200'
+                            return (
+                              <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-xl border ${badgeClass}`}>
+                                <Building size={11} /> {pType}
+                              </span>
+                            )
+                          })()}
+                        </td>
+                      )}
+
+                      {/* Area / Location (New Column) */}
+                      {visibleCols.area_location && (
+                        <td className="py-3 px-3 min-w-[140px]">
+                          <p className="font-bold text-[#111827] text-[12px]">
+                            {lead.area || 'Dubai'}
+                          </p>
+                          {lead.address && lead.address !== lead.area && (
+                            <p className="text-[10.5px] text-slate-500 truncate max-w-[180px] mt-0.5" title={lead.address}>
+                              {lead.address}
+                            </p>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Page Source (Moved to the end) */}
+                      {visibleCols.page_source && (
+                        <td className="py-3 px-3 min-w-[140px] max-w-[180px]">
+                          <a
+                            href={lead.source_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-[11.5px] font-bold text-indigo-700 hover:text-indigo-900 truncate"
+                            title={lead.source_url}
+                          >
+                            <Globe size={11} className="shrink-0" />
+                            <span className="truncate">{lead.page_source}</span>
+                            <ExternalLink size={10} className="shrink-0 text-indigo-400" />
+                          </a>
+                          <p className="text-[10px] text-slate-400 truncate mt-0.5">{lead.form_title}</p>
+                        </td>
+                      )}
 
                       {/* Status Selector */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
-                        <select
-                          value={lead.status}
-                          onChange={e => handleStatusChange(lead.id, e.target.value as LeadStatus)}
-                          className={`text-[11px] font-bold px-2.5 py-1 rounded-full border cursor-pointer focus:outline-none ${stCfg.bg} ${stCfg.text} ${stCfg.border}`}
-                        >
-                          <option value="new">New Lead</option>
-                          <option value="contacted">Contacted</option>
-                          <option value="quoted">Quoted</option>
-                          <option value="converted">Converted</option>
-                          <option value="lost">Lost</option>
-                        </select>
-                      </td>
+                      {visibleCols.status && (
+                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                          <select
+                            value={lead.status}
+                            onChange={e => handleStatusChange(lead.id, e.target.value as LeadStatus)}
+                            className={`text-[11px] font-bold px-2.5 py-1 rounded-full border cursor-pointer focus:outline-none ${stCfg.bg} ${stCfg.text} ${stCfg.border}`}
+                          >
+                            <option value="new">New Lead</option>
+                            <option value="contacted">Contacted</option>
+                            <option value="quoted">Quoted</option>
+                            <option value="converted">Converted</option>
+                            <option value="lost">Lost</option>
+                          </select>
+                        </td>
+                      )}
 
                       {/* Actions */}
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {lead.status !== 'converted' ? (
+                      {visibleCols.actions && (
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {lead.status !== 'converted' ? (
+                              <button
+                                onClick={() => setConvertingLead(lead)}
+                                className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-xl shadow-xs transition-colors cursor-pointer"
+                                title="Confirmation: Convert inquiry to official Booking"
+                              >
+                                <Plus size={12} /> Confirmation
+                              </button>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg">
+                                <CheckCircle size={12} /> Booked
+                              </span>
+                            )}
+
                             <button
-                              onClick={() => setConvertingLead(lead)}
-                              className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-xl shadow-xs transition-colors cursor-pointer"
-                              title="Convert inquiry to official Booking"
+                              onClick={() => setSelectedLead(lead)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                              title="View full lead submission payload"
                             >
-                              <Plus size={12} /> Convert
+                              <Eye size={13} />
                             </button>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg">
-                              <CheckCircle size={12} /> Booked
-                            </span>
-                          )}
 
-                          <button
-                            onClick={() => setSelectedLead(lead)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                            title="View full lead submission payload"
-                          >
-                            <Eye size={13} />
-                          </button>
-
-                          <button
-                            onClick={() => handleDeleteLead(lead.id)}
-                            className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
-                            title="Delete lead"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
+                            <button
+                              onClick={() => handleDeleteLead(lead.id)}
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
+                              title="Delete lead"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   )
                 })}
@@ -931,6 +962,162 @@ export function FluentFormsLeads() {
             </table>
           </div>
         )}
+      </div>
+
+{/* ── Analytics Visual Section: Page Source vs Category ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* 1. Page Source Performance */}
+        <div className="bg-white rounded-[22px] border border-[#E4E8EC] p-6 shadow-[0_4px_20px_rgba(15,23,42,0.05)] flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Globe size={16} className="text-indigo-600" />
+                <h3 className="text-[15px] font-bold text-[#111827]">Page Source Performance</h3>
+              </div>
+              <span className="text-[11px] font-semibold text-slate-400">Website Traffic Drivers</span>
+            </div>
+            <p className="text-[12px] text-slate-500 mb-4">
+              Shows which landing pages generate the highest volume and best conversion rates.
+            </p>
+
+            {pageAnalytics.length === 0 ? (
+              <div className="py-8 px-4 text-center bg-[#f8fafc] rounded-xl border border-dashed border-slate-200">
+                <Globe className="mx-auto mb-2 text-slate-300" size={26} />
+                <p className="text-[13px] font-bold text-slate-600">No Page Source Inquiries Yet</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Real landing page metrics will appear as website visitors submit forms on safaeewala.com</p>
+              </div>
+            ) : (
+            <div className="space-y-3">
+              {pageAnalytics.slice(0, 5).map(pa => (
+                <div
+                  key={pa.page}
+                  onClick={() => setPageFilter(pageFilter === pa.page ? 'ALL' : pa.page)}
+                  className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                    pageFilter === pa.page
+                      ? 'border-indigo-400 bg-indigo-50/50 shadow-xs'
+                      : 'border-[#edf2f7] bg-[#f8fafc] hover:bg-slate-100/60'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-bold text-[13px] text-slate-800 truncate">{pa.page}</span>
+                      <span className="text-[10px] font-bold bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full border border-purple-200 shrink-0">
+                        Top: {pa.topCat}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[12px] font-extrabold text-indigo-700">{pa.leadsCount} leads</span>
+                      <span className="text-[11px] text-slate-400">({pa.share}%)</span>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mb-1.5">
+                    <div
+                      className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
+                      style={{ width: `${pa.share}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <span>Conv. Rate: <strong className="text-emerald-700">{pa.convRate}%</strong> ({pa.convertedCount} bookings)</span>
+                    <span>Value: <strong className="text-slate-700">AED {pa.pipelineValue.toLocaleString()}</strong></span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            )}
+          </div>
+
+          {pageFilter !== 'ALL' && (
+            <div className="mt-4 pt-3 border-t border-[#edf2f7] flex items-center justify-between text-[12px]">
+              <span className="text-indigo-700 font-semibold">Filtering table by page: <strong>{pageFilter}</strong></span>
+              <button
+                onClick={() => setPageFilter('ALL')}
+                className="text-slate-500 hover:text-slate-800 font-bold underline"
+              >
+                Clear Filter
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 2. Category Breakdown */}
+        <div className="bg-white rounded-[22px] border border-[#E4E8EC] p-6 shadow-[0_4px_20px_rgba(15,23,42,0.05)] flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <BarChart3 size={16} className="text-emerald-600" />
+                <h3 className="text-[15px] font-bold text-[#111827]">Category & Service Performance</h3>
+              </div>
+              <span className="text-[11px] font-semibold text-slate-400">Service Popularity</span>
+            </div>
+            <p className="text-[12px] text-slate-500 mb-4">
+              Breakdown of demand, average quote size, and booking conversion by service category.
+            </p>
+
+            {categoryAnalytics.length === 0 ? (
+              <div className="py-8 px-4 text-center bg-[#f8fafc] rounded-xl border border-dashed border-slate-200">
+                <BarChart3 className="mx-auto mb-2 text-slate-300" size={26} />
+                <p className="text-[13px] font-bold text-slate-600">No Category Inquiries Yet</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Real service category breakdowns will populate automatically upon form submissions</p>
+              </div>
+            ) : (
+            <div className="space-y-3">
+              {categoryAnalytics.map(ca => {
+                const colors = categoryColors[ca.category] || { bg: 'bg-slate-50', text: 'text-slate-700' }
+                return (
+                  <div
+                    key={ca.category}
+                    onClick={() => setCatFilter(catFilter === ca.category ? 'ALL' : ca.category)}
+                    className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                      catFilter === ca.category
+                        ? 'border-emerald-400 bg-emerald-50/50 shadow-xs'
+                        : 'border-[#edf2f7] bg-[#f8fafc] hover:bg-slate-100/60'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ${colors.bg} ${colors.text}`}>
+                          {ca.category}
+                        </span>
+                      </div>
+                      <span className="text-[12px] font-extrabold text-[#111827]">
+                        {ca.count} Inquiries
+                      </span>
+                    </div>
+
+                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mb-1.5">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full"
+                        style={{ width: `${Math.round((ca.count / (totalLeads || 1)) * 100)}%` }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                      <span>Conv. Rate: <strong className="text-emerald-700">{ca.convRate}%</strong> ({ca.converted} bookings)</span>
+                      <span>Avg Ticket: <strong className="text-slate-700">AED {ca.avgTicket}</strong> · Total: <strong>AED {ca.totalValue.toLocaleString()}</strong></span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            )}
+          </div>
+
+          {catFilter !== 'ALL' && (
+            <div className="mt-4 pt-3 border-t border-[#edf2f7] flex items-center justify-between text-[12px]">
+              <span className="text-emerald-700 font-semibold">Filtering table by category: <strong>{catFilter}</strong></span>
+              <button
+                onClick={() => setCatFilter('ALL')}
+                className="text-slate-500 hover:text-slate-800 font-bold underline"
+              >
+                Clear Filter
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Modal 1: Webhook Setup & Documentation ── */}
@@ -1053,92 +1240,19 @@ export function FluentFormsLeads() {
         </div>
       </Modal>
 
-      {/* ── Modal 2: Simulate Test Webhook Lead ── */}
-      <Modal
-        open={showSimulateModal}
-        onClose={() => setShowSimulateModal(false)}
-        title="Simulate Incoming Fluent Forms Lead"
-        size="md"
-      >
-        <div className="space-y-4">
-          <p className="text-[13px] text-slate-600">
-            Select a landing page and service preset to simulate a live Fluent Forms submission from your website:
-          </p>
 
-          <div className="space-y-2.5">
-            {[
-              {
-                id: 'deep',
-                title: 'Deep Cleaning Inquiry',
-                page: '/services/deep-cleaning',
-                client: 'Hamza Tariq (Downtown Views)',
-                amount: 'AED 850',
-                color: 'border-teal-300 hover:bg-teal-50/40',
-              },
-              {
-                id: 'villa',
-                title: 'Villa Exterior Glass & Facade',
-                page: '/services/villa-cleaning',
-                client: 'Sheikha Maryam (District One)',
-                amount: 'AED 1,500',
-                color: 'border-emerald-300 hover:bg-emerald-50/40',
-              },
-              {
-                id: 'movein',
-                title: 'Move-In Deep Sanitization',
-                page: '/services/move-in-out-cleaning',
-                client: 'David & Sarah (Dubai Hills)',
-                amount: 'AED 1,100',
-                color: 'border-indigo-300 hover:bg-indigo-50/40',
-              },
-              {
-                id: 'sofa',
-                title: 'Sofa & Carpet Shampooing',
-                page: '/services/sofa-carpet-shampooing',
-                client: 'Nadia Kamran (Palm Jumeirah)',
-                amount: 'AED 450',
-                color: 'border-amber-300 hover:bg-amber-50/40',
-              },
-            ].map(p => (
-              <div
-                key={p.id}
-                onClick={() => handleSimulateWebhook(p.id as any)}
-                className={`p-3.5 rounded-xl border bg-white cursor-pointer transition-all flex items-center justify-between ${p.color}`}
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-[13px] font-bold text-[#111827]">{p.title}</p>
-                    <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
-                      {p.page}
-                    </span>
-                  </div>
-                  <p className="text-[12px] text-slate-500 mt-0.5">{p.client}</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-[13px] font-extrabold text-indigo-700">{p.amount}</span>
-                  <span className="text-[11px] block text-emerald-600 font-bold mt-0.5">Send Webhook &rarr;</span>
-                </div>
-              </div>
-            ))}
-          </div>
 
-          <div className="flex justify-end pt-2">
-            <Button variant="outline" onClick={() => setShowSimulateModal(false)}>Cancel</Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ── Modal 3: Convert Lead to Booking ── */}
+      {/* ── Modal 3: Lead Confirmation & Booking Creation ── */}
       <Modal
         open={!!convertingLead}
         onClose={() => setConvertingLead(null)}
-        title="Convert Lead to Confirmed Booking"
+        title="Lead Confirmation: Create Official Booking"
         size="lg"
       >
         {convertingLead && (
           <form onSubmit={handleConvertBooking} className="space-y-4">
             <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-[12.5px] leading-relaxed">
-              Converting lead for <strong>{convertingLead.client_name}</strong> from <strong>{convertingLead.page_source}</strong>. This will automatically create an official Booking in your calendar and register the client.
+              Confirming lead for <strong>{convertingLead.client_name}</strong> from <strong>{convertingLead.page_source}</strong>. This will automatically create an official Booking in your calendar and register the client.
             </div>
 
             <div className="grid grid-cols-2 gap-4">
