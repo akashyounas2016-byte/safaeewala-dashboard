@@ -13,4 +13,22 @@ export default defineConfig({
   server: {
     port: 5058,
   },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes('node_modules')) {
+            if (id.includes('xlsx')) return 'vendor-xlsx'
+            if (id.includes('recharts')) return 'vendor-charts'
+            if (id.includes('@supabase')) return 'vendor-supabase'
+            if (id.includes('lucide-react')) return 'vendor-lucide'
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              return 'vendor-react'
+            }
+          }
+        },
+      },
+    },
+  },
 })
