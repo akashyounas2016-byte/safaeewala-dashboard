@@ -77,22 +77,22 @@ export function PageHero({
           </div>
           )}
 
-          {/* Notification bell */}
-          <button className="relative w-11 h-11 rounded-2xl border border-white/10 bg-white/10 flex items-center justify-center backdrop-blur-sm hover:bg-white/20 transition-colors shrink-0">
-            <Bell size={16} className="text-white/80" />
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full" />
-          </button>
-
-          {/* Primary CTA */}
+          {/* Primary CTA (e.g. New Booking) */}
           {actionLabel && (
             <button
               onClick={onAction}
-              className="h-11 px-5 rounded-2xl bg-white text-emerald-700 font-semibold text-sm shadow-lg hover:bg-emerald-50 transition-colors shrink-0 flex items-center gap-2"
+              className="h-11 px-5 rounded-2xl bg-white text-emerald-700 font-semibold text-sm shadow-lg hover:bg-emerald-50 transition-colors shrink-0 flex items-center gap-2 cursor-pointer"
             >
               <Plus size={15} strokeWidth={2.5} />
               {actionLabel}
             </button>
           )}
+
+          {/* Notification bell */}
+          <button className="relative w-11 h-11 rounded-2xl border border-white/10 bg-white/10 flex items-center justify-center backdrop-blur-sm hover:bg-white/20 transition-colors shrink-0 cursor-pointer" title="Notifications">
+            <Bell size={16} className="text-white/80" />
+            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full" />
+          </button>
 
         </div>
       </div>

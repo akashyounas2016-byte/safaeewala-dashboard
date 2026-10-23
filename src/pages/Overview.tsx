@@ -479,6 +479,7 @@ export function Overview() {
         statusChip="On track"
         actionLabel="New Booking"
         onAction={() => setShowNewBooking(true)}
+        showSearch={false}
       />
 
       {/* ── KPI Cards ── */}
