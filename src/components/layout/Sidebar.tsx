@@ -4,14 +4,14 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, CalendarCheck, Users, UserCheck,
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
-  CreditCard, RotateCw, TrendingUp, Globe,
+  CreditCard, TrendingUp, Globe,
 } from 'lucide-react'
 import { useCurrentUser, useCanAccess } from '@/store/UserContext'
 
-const workspaceNavBase = [
-  { to: '/',                 label: 'Overview',        icon: LayoutDashboard },
-  { to: '/bookings',         label: 'Bookings',        icon: CalendarCheck },
-  { to: '/fluent-forms',     label: 'Fluent Forms',    icon: Globe },
+const workspaceNavBase: Array<{ to: string; label: string; icon: ElementType; tag?: string }> = [
+  { to: '/',                 label: 'Overview',        icon: LayoutDashboard, tag: 'Coming Soon' },
+  { to: '/bookings',         label: 'Bookings',        icon: CalendarCheck,   tag: 'Coming Soon' },
+  { to: '/fluent-forms',     label: 'Fluent Forms',    icon: Globe,           tag: 'Coming Soon' },
   { to: '/clients',          label: 'Clients',         icon: Users },
   { to: '/monthly-clients',  label: 'Monthly Clients', icon: TrendingUp },
   { to: '/employees',        label: 'Employees',       icon: UserCheck },
@@ -30,7 +30,6 @@ const financeNav = [
 ]
 
 const operationsNav = [
-  { to: '/subscriptions', label: 'Subscriptions', icon: RotateCw },
   { to: '/reports',       label: 'Reports',       icon: BarChart3 },
   { to: '/analytics',     label: 'Analytics',     icon: BarChart3 },
   { to: '/settings',      label: 'Settings',      icon: Settings },
@@ -38,7 +37,7 @@ const operationsNav = [
 
 interface SidebarProps { open: boolean; onClose: () => void }
 
-function NavItem({ to, label, icon: Icon, onClose }: { to: string; label: string; icon: ElementType; onClose: () => void }) {
+function NavItem({ to, label, icon: Icon, onClose, tag }: { to: string; label: string; icon: ElementType; onClose: () => void; tag?: string }) {
   return (
     <NavLink
       to={to}
@@ -58,7 +57,19 @@ function NavItem({ to, label, icon: Icon, onClose }: { to: string; label: string
             className={cn('shrink-0', isActive ? 'text-[#34d399]' : 'text-[#64748b]')}
           />
           <span className="flex-1 truncate">{label}</span>
-          {isActive && (
+          {tag && (
+            <span
+              className={cn(
+                'px-2 py-0.5 rounded-full text-[9.5px] font-bold tracking-wide uppercase shrink-0 transition-colors',
+                isActive
+                  ? 'bg-amber-400 text-amber-950 font-extrabold shadow-xs'
+                  : 'bg-amber-400/10 text-amber-300 border border-amber-400/25'
+              )}
+            >
+              {tag}
+            </span>
+          )}
+          {isActive && !tag && (
             <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] shrink-0" />
           )}
         </>

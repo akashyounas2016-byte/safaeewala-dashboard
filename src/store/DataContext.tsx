@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useMemo, type ReactNode
 import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense } from '../types'
 import { supabase } from '@/lib/supabase'
 import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs } from '@/lib/clientDataSync'
+import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 
 interface DataStore {
   bookings:  Booking[]
@@ -40,6 +41,7 @@ interface DataStore {
   updateDailyExpense: (id: string, patch: Partial<DailyExpense>) => void
   deleteDailyExpense: (id: string) => void
   clearDailyData:     (date: string) => void
+  clearAllDailyData:  () => Promise<void>
 }
 
 const DataContext = createContext<DataStore | null>(null)
@@ -85,43 +87,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [employees,     setEmployees]     = useState<Employee[]>([])
   const [invoices,      setInvoices]      = useState<Invoice[]>([])
   const [inventory,     setInventory]     = useState<InventoryItem[]>([])
-  const [dailyJobs,     setDailyJobs]     = useState<DailyJob[]>(() => {
-    try {
-      const savedJobs = localStorage.getItem('safaeewala_daily_jobs')
-      if (savedJobs) {
-        const parsed = JSON.parse(savedJobs)
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed
-      }
-    } catch {}
-    return []
-  })
-  const [dailyExpenses, setDailyExpenses] = useState<DailyExpense[]>(() => {
-    try {
-      const savedExp = localStorage.getItem('safaeewala_daily_expenses')
-      if (savedExp) {
-        const parsed = JSON.parse(savedExp)
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed
-      }
-    } catch {}
-    return []
-  })
+  const [dailyJobs,     setDailyJobs]     = useState<DailyJob[]>(() =>
+    safeLocalStorageGet<DailyJob[]>('safaeewala_daily_jobs', [])
+  )
+  const [dailyExpenses, setDailyExpenses] = useState<DailyExpense[]>(() =>
+    safeLocalStorageGet<DailyExpense[]>('safaeewala_daily_expenses', [])
+  )
   const [loading,       setLoading]       = useState(true)
   const [companyTRN,    setCompanyTRN]    = useState('100234567890003')
 
-  // Auto-persist dailyJobs and dailyExpenses to localStorage for instant 0ms loads
+  // Auto-persist dailyJobs and dailyExpenses to localStorage for instant 0ms loads (safe quota handling)
   useEffect(() => {
     if (dailyJobs.length > 0) {
-      try {
-        localStorage.setItem('safaeewala_daily_jobs', JSON.stringify(dailyJobs))
-      } catch {}
+      safeLocalStorageSet('safaeewala_daily_jobs', dailyJobs)
     }
   }, [dailyJobs])
 
   useEffect(() => {
     if (dailyExpenses.length > 0) {
-      try {
-        localStorage.setItem('safaeewala_daily_expenses', JSON.stringify(dailyExpenses))
-      } catch {}
+      safeLocalStorageSet('safaeewala_daily_expenses', dailyExpenses)
     }
   }, [dailyExpenses])
 
@@ -167,10 +151,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (initialJobs.length > 0) {
         setDailyJobs(initialJobs)
       } else {
-        try {
-          const savedJobs = localStorage.getItem('safaeewala_daily_jobs')
-          if (savedJobs) setDailyJobs(JSON.parse(savedJobs))
-        } catch {}
+        const savedJobs = safeLocalStorageGet<DailyJob[]>('safaeewala_daily_jobs', [])
+        if (savedJobs.length > 0) setDailyJobs(savedJobs)
       }
 
       let initialExp = ((de || []) as any[]).map(x => ({
@@ -180,10 +162,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (initialExp.length > 0) {
         setDailyExpenses(initialExp)
       } else {
-        try {
-          const savedExp = localStorage.getItem('safaeewala_daily_expenses')
-          if (savedExp) setDailyExpenses(JSON.parse(savedExp))
-        } catch {}
+        const savedExp = safeLocalStorageGet<DailyExpense[]>('safaeewala_daily_expenses', [])
+        if (savedExp.length > 0) setDailyExpenses(savedExp)
       }
       setLoading(false)
     }).catch(() => setLoading(false))
@@ -399,7 +379,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
       setDailyJobs(p => {
         const next = [row, ...p]
-        try { localStorage.setItem('safaeewala_daily_jobs', JSON.stringify(next)) } catch {}
+        safeLocalStorageSet('safaeewala_daily_jobs', next)
         return next
       })
       supabase.from('daily_jobs').insert(row).then(({ error }) => { if (error) console.error(error) })
@@ -413,7 +393,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if ('service' in patch) sanitizedPatch.service = patch.service || ''
       setDailyJobs(p => {
         const next = p.map(j => j.id === id ? { ...j, ...sanitizedPatch } : j)
-        try { localStorage.setItem('safaeewala_daily_jobs', JSON.stringify(next)) } catch {}
+        safeLocalStorageSet('safaeewala_daily_jobs', next)
         return next
       })
       supabase.from('daily_jobs').update(sanitizedPatch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
@@ -421,7 +401,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     deleteDailyJob: (id) => {
       setDailyJobs(p => {
         const next = p.filter(j => j.id !== id)
-        try { localStorage.setItem('safaeewala_daily_jobs', JSON.stringify(next)) } catch {}
+        safeLocalStorageSet('safaeewala_daily_jobs', next)
         return next
       })
       supabase.from('daily_jobs').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
@@ -430,7 +410,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const row = { ...e, amount: safeNum(e.amount), id: uid(), created_at: now() }
       setDailyExpenses(p => {
         const next = [row, ...p]
-        try { localStorage.setItem('safaeewala_daily_expenses', JSON.stringify(next)) } catch {}
+        safeLocalStorageSet('safaeewala_daily_expenses', next)
         return next
       })
       supabase.from('daily_expenses').insert(row).then(({ error }) => { if (error) console.error(error) })
@@ -440,7 +420,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if ('amount' in sanitizedPatch) sanitizedPatch.amount = safeNum(sanitizedPatch.amount)
       setDailyExpenses(p => {
         const next = p.map(e => e.id === id ? { ...e, ...sanitizedPatch } : e)
-        try { localStorage.setItem('safaeewala_daily_expenses', JSON.stringify(next)) } catch {}
+        safeLocalStorageSet('safaeewala_daily_expenses', next)
         return next
       })
       supabase.from('daily_expenses').update(sanitizedPatch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
@@ -448,7 +428,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     deleteDailyExpense: (id) => {
       setDailyExpenses(p => {
         const next = p.filter(e => e.id !== id)
-        try { localStorage.setItem('safaeewala_daily_expenses', JSON.stringify(next)) } catch {}
+        safeLocalStorageSet('safaeewala_daily_expenses', next)
         return next
       })
       supabase.from('daily_expenses').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
@@ -456,16 +436,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
     clearDailyData: (date) => {
       setDailyJobs(p => {
         const next = p.filter(j => j.date !== date)
-        try { localStorage.setItem('safaeewala_daily_jobs', JSON.stringify(next)) } catch {}
+        safeLocalStorageSet('safaeewala_daily_jobs', next)
         return next
       })
       setDailyExpenses(p => {
         const next = p.filter(e => e.date !== date)
-        try { localStorage.setItem('safaeewala_daily_expenses', JSON.stringify(next)) } catch {}
+        safeLocalStorageSet('safaeewala_daily_expenses', next)
         return next
       })
       supabase.from('daily_jobs').delete().eq('date', date).then(({ error }) => { if (error) console.error(error) })
       supabase.from('daily_expenses').delete().eq('date', date).then(({ error }) => { if (error) console.error(error) })
+    },
+    clearAllDailyData: async () => {
+      setDailyJobs([])
+      setDailyExpenses([])
+      safeLocalStorageSet('safaeewala_daily_jobs', [])
+      safeLocalStorageSet('safaeewala_daily_expenses', [])
+      try {
+        await Promise.allSettled([
+          supabase.from('daily_jobs').delete().not('id', 'is', null),
+          supabase.from('daily_expenses').delete().not('id', 'is', null),
+        ])
+      } catch (err) {
+        console.error('Error clearing all daily data from Supabase:', err)
+      }
     },
 
     reorderItem: (id) => {

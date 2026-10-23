@@ -8,8 +8,11 @@ services:
     restart: unless-stopped
     ports:
       - "8080:80"
+    volumes:
+      - ./data:/data
     environment:
       - NODE_ENV=production
+      - DATA_DIR=/data
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:80/ || exit 1"]
       interval: 30s

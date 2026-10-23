@@ -9,8 +9,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "📤 Syncing project and Docker files to VPS (/var/www/safaeewala)..." -ForegroundColor Cyan
-ssh root@187.77.116.14 "mkdir -p /var/www/safaeewala"
-scp -r "dist" "Dockerfile" "nginx.conf" "docker-compose.yml" "root@187.77.116.14:/var/www/safaeewala/"
+ssh root@187.77.116.14 "mkdir -p /var/www/safaeewala/data"
+scp -r "dist" "Dockerfile" "nginx.conf" "docker-compose.yml" "webhookServer.cjs" "entrypoint.sh" "root@187.77.116.14:/var/www/safaeewala/"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ File transfer failed!" -ForegroundColor Red
     exit 1

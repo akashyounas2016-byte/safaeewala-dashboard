@@ -15,7 +15,6 @@ const Clients                = lazy(() => import('@/pages/Clients').then(m => ({
 const ClientProfile          = lazy(() => import('@/pages/ClientProfile').then(m => ({ default: m.ClientProfile })))
 const Employees              = lazy(() => import('@/pages/Employees').then(m => ({ default: m.Employees })))
 const EmployeeProfile        = lazy(() => import('@/pages/EmployeeProfile').then(m => ({ default: m.EmployeeProfile })))
-const RecurringSubscriptions = lazy(() => import('@/pages/RecurringSubscriptions').then(m => ({ default: m.RecurringSubscriptions })))
 const PaymentProcessing      = lazy(() => import('@/pages/PaymentProcessing').then(m => ({ default: m.PaymentProcessing })))
 const CustomerFeedback       = lazy(() => import('@/pages/CustomerFeedback').then(m => ({ default: m.CustomerFeedback })))
 const MarketingDashboard     = lazy(() => import('@/pages/MarketingDashboard').then(m => ({ default: m.MarketingDashboard })))
@@ -114,7 +113,7 @@ function AppRoutes() {
               <Route path="clients/:id" element={<ClientProfile />} />
               <Route path="employees"  element={<Employees />} />
               <Route path="employees/:id" element={<EmployeeProfile />} />
-              <Route path="subscriptions" element={<RecurringSubscriptions />} />
+              <Route path="subscriptions" element={<Navigate to="/monthly-clients" replace />} />
               <Route path="payments" element={<PaymentProcessing />} />
               <Route path="feedback" element={<CustomerFeedback />} />
               <Route path="marketing" element={<MarketingDashboard />} />

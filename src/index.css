@@ -86,3 +86,10 @@ body {
   background: rgba(255, 255, 255, 0.05);
   color: #e2e8f0;
 }
+
+/* Auto-dismiss progress bar */
+@keyframes autoDismissBar {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+

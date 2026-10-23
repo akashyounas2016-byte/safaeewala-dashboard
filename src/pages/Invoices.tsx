@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react'
-import { Search, Download, Send, AlertCircle, TrendingUp, CheckCircle, Clock, FileText, Percent, Trash2, DollarSign } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { Search, Download, Send, AlertCircle, TrendingUp, CheckCircle, Clock, FileText, Percent, Trash2, DollarSign, User, MapPin, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatDate } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
-import type { Invoice } from '@/types'
+import type { Invoice, Client } from '@/types'
 
 const COMPANY = {
   name: 'Safaeewala Cleaning & Maintenance LLC',
@@ -415,12 +415,112 @@ export function Invoices() {
   )
 }
 
+function formatClientAddress(c: Client): string {
+  const cleanStr = (s?: string) => s ? s.replace(/\s*\([^)]*(monthly|cash|pending|online|above)[^)]*\)/gi, '').trim() : ''
+  const apt = cleanStr(c.apartment)
+  const bldg = cleanStr(c.building_name)
+  const area = cleanStr(c.area)
+  const city = cleanStr(c.city)
+
+  const parts: string[] = []
+  if (apt) parts.push(apt)
+  if (bldg) parts.push(bldg)
+  if (area && (!bldg || !bldg.toLowerCase().includes(area.toLowerCase()))) {
+    parts.push(area)
+  }
+  if (city && !parts.some(p => p.toLowerCase().includes(city.toLowerCase()))) {
+    parts.push(city)
+  }
+  return parts.filter(Boolean).join(', ') || bldg || area || city || ''
+}
+
 function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Omit<Invoice, 'id' | 'created_at'>) => void }) {
+  const { clients } = useData()
   const [qty, setQty] = useState(1)
   const [unitPrice, setUnitPrice] = useState(0)
   const subtotal = qty * unitPrice
   const vatAmount = Math.round(subtotal * 0.05 * 100) / 100
   const total = subtotal + vatAmount
+
+  const [clientName, setClientName] = useState('')
+  const [clientAddress, setClientAddress] = useState('')
+  const [clientId, setClientId] = useState('')
+  const [trn, setTrn] = useState('')
+  const defaultDueDate = useMemo(() => new Date(Date.now() + 10 * 86400000).toISOString().split('T')[0], [])
+  const [dueDate, setDueDate] = useState(defaultDueDate)
+
+  const [showNameSuggestions, setShowNameSuggestions] = useState(false)
+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false)
+
+  const nameBoxRef = useRef<HTMLDivElement>(null)
+  const addressBoxRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (nameBoxRef.current && !nameBoxRef.current.contains(e.target as Node)) {
+        setShowNameSuggestions(false)
+      }
+      if (addressBoxRef.current && !addressBoxRef.current.contains(e.target as Node)) {
+        setShowAddressSuggestions(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Filter clients for Name input
+  const filteredNameClients = useMemo(() => {
+    const q = clientName.toLowerCase().trim()
+    const list = clients.filter(c => {
+      if (!c.full_name) return false
+      if (!q) return true
+      return (
+        c.full_name.toLowerCase().includes(q) ||
+        (c.phone && c.phone.includes(q)) ||
+        (c.building_name && c.building_name.toLowerCase().includes(q)) ||
+        (c.area && c.area.toLowerCase().includes(q))
+      )
+    })
+
+    const seen = new Set<string>()
+    const deduped: Client[] = []
+    for (const c of list) {
+      const key = c.full_name.toLowerCase().trim()
+      if (!seen.has(key)) {
+        seen.add(key)
+        deduped.push(c)
+      }
+    }
+    return deduped.slice(0, 8)
+  }, [clients, clientName])
+
+  // Filter clients for Address input
+  const filteredAddressClients = useMemo(() => {
+    const q = clientAddress.toLowerCase().trim()
+    const list = clients.filter(c => {
+      const addr = formatClientAddress(c)
+      if (!addr && !c.building_name && !c.area) return false
+      if (!q) return true
+      return (
+        (addr && addr.toLowerCase().includes(q)) ||
+        (c.building_name && c.building_name.toLowerCase().includes(q)) ||
+        (c.area && c.area.toLowerCase().includes(q)) ||
+        (c.full_name && c.full_name.toLowerCase().includes(q))
+      )
+    })
+
+    const seen = new Set<string>()
+    const deduped: Client[] = []
+    for (const c of list) {
+      const addr = formatClientAddress(c).toLowerCase().trim()
+      const key = addr || c.building_name?.toLowerCase().trim() || c.area?.toLowerCase().trim() || c.id
+      if (!seen.has(key)) {
+        seen.add(key)
+        deduped.push(c)
+      }
+    }
+    return deduped.slice(0, 8)
+  }, [clients, clientAddress])
 
   return (
     <form className="space-y-4" onSubmit={e => {
@@ -430,28 +530,200 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
       const invoiceNum = `INV-${Date.now().toString().slice(-6)}`
       onAdd({
         invoice_number: invoiceNum,
-        client_id: '',
-        client_name: fd.get('client_name') as string,
-        client_address: fd.get('client_address') as string,
-        trn: fd.get('trn') as string,
+        client_id: clientId || '',
+        client_name: clientName.trim(),
+        client_address: clientAddress.trim(),
+        trn: trn.trim(),
         company_trn: '100234567890003',
-        due_date: fd.get('due_date') as string,
+        due_date: dueDate,
         status: 'sent',
         subtotal,
         vat_rate: 5,
         vat_amount: vatAmount,
         total,
         line_items: [{ description: desc, quantity: qty, unit_price: unitPrice, amount: subtotal }],
-        notes: fd.get('notes') as string,
+        notes: (fd.get('notes') as string) || '',
       })
     }}>
       <div className="grid grid-cols-2 gap-4">
-        <Input name="client_name" label="Client Name" placeholder="Full name" required />
-        <Input name="client_address" label="Client Address" placeholder="Full address" />
+        {/* Client Name with Auto-Suggest */}
+        <div className="relative" ref={nameBoxRef}>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-ink-soft">Client Name</label>
+            {clientId ? (
+              <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 rounded">
+                <CheckCircle size={10} /> Client Linked
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                <Sparkles size={10} className="text-emerald-500" /> Auto-suggest
+              </span>
+            )}
+          </div>
+          <Input
+            name="client_name"
+            placeholder="Search or enter client name…"
+            value={clientName}
+            icon={<User size={14} className="text-slate-400" />}
+            onChange={e => {
+              setClientName(e.target.value)
+              setClientId('')
+              setShowNameSuggestions(true)
+            }}
+            onFocus={() => setShowNameSuggestions(true)}
+            onKeyDown={e => { if (e.key === 'Escape') setShowNameSuggestions(false) }}
+            required
+            autoComplete="off"
+          />
+
+          {/* Suggestions Dropdown */}
+          {showNameSuggestions && (
+            <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden text-left">
+              <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+                <span className="flex items-center gap-1.5">
+                  <Sparkles size={12} className="text-emerald-500" />
+                  <span>Clients Database ({filteredNameClients.length})</span>
+                </span>
+                <span className="text-[10px] text-slate-400">Click to auto-fill</span>
+              </div>
+              <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
+                {filteredNameClients.length > 0 ? (
+                  filteredNameClients.map(c => {
+                    const addr = formatClientAddress(c)
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50/70 transition-colors flex items-start gap-3 group cursor-pointer"
+                        onClick={() => {
+                          setClientName(c.full_name)
+                          if (addr) setClientAddress(addr)
+                          setClientId(c.id)
+                          setShowNameSuggestions(false)
+                        }}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                          {c.full_name.charAt(0).toUpperCase() || 'C'}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[13px] font-semibold text-slate-800 group-hover:text-emerald-700 truncate">
+                              {c.full_name}
+                            </span>
+                            {c.area && (
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0">
+                                {c.area}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500 truncate mt-0.5 flex items-center gap-2">
+                            {addr ? <span className="truncate">{addr}</span> : <span className="text-slate-400 italic">No address on file</span>}
+                            {c.phone && <span className="shrink-0 text-slate-400">· {c.phone}</span>}
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })
+                ) : (
+                  <div className="px-4 py-3 text-center text-[12px] text-slate-400">
+                    No matching clients found in database
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Client Address with Auto-Suggest */}
+        <div className="relative" ref={addressBoxRef}>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-ink-soft">Client Address</label>
+            <span className="text-[10px] text-slate-400 flex items-center gap-1">
+              <MapPin size={10} className="text-blue-500" /> Auto-suggest
+            </span>
+          </div>
+          <Input
+            name="client_address"
+            placeholder="Search address or enter location…"
+            value={clientAddress}
+            icon={<MapPin size={14} className="text-slate-400" />}
+            onChange={e => {
+              setClientAddress(e.target.value)
+              setShowAddressSuggestions(true)
+            }}
+            onFocus={() => setShowAddressSuggestions(true)}
+            onKeyDown={e => { if (e.key === 'Escape') setShowAddressSuggestions(false) }}
+            autoComplete="off"
+          />
+
+          {/* Suggestions Dropdown */}
+          {showAddressSuggestions && (
+            <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden text-left">
+              <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+                <span className="flex items-center gap-1.5">
+                  <MapPin size={12} className="text-blue-500" />
+                  <span>Matching Addresses ({filteredAddressClients.length})</span>
+                </span>
+                <span className="text-[10px] text-slate-400">Click to auto-fill</span>
+              </div>
+              <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
+                {filteredAddressClients.length > 0 ? (
+                  filteredAddressClients.map(c => {
+                    const addr = formatClientAddress(c)
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="w-full text-left px-3.5 py-2.5 hover:bg-blue-50/70 transition-colors flex items-start gap-3 group cursor-pointer"
+                        onClick={() => {
+                          setClientAddress(addr || c.building_name || c.area || '')
+                          if (!clientName.trim()) setClientName(c.full_name)
+                          setClientId(c.id)
+                          setShowAddressSuggestions(false)
+                        }}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                          <MapPin size={14} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[13px] font-semibold text-slate-800 group-hover:text-blue-700 truncate">
+                            {addr || c.building_name || c.area}
+                          </div>
+                          <div className="text-[11px] text-slate-500 truncate mt-0.5 flex items-center gap-1.5">
+                            <span className="font-medium text-slate-600">{c.full_name}</span>
+                            {c.phone && <span className="text-slate-400">· {c.phone}</span>}
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })
+                ) : (
+                  <div className="px-4 py-3 text-center text-[12px] text-slate-400">
+                    No matching addresses found in database
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+
       <div className="grid grid-cols-2 gap-4">
-        <Input name="trn" label="Client TRN (optional)" placeholder="Tax Registration Number" />
-        <Input name="due_date" label="Due Date" type="date" required />
+        <Input
+          name="trn"
+          label="Client TRN (optional)"
+          placeholder="Tax Registration Number"
+          value={trn}
+          onChange={e => setTrn(e.target.value)}
+        />
+        <Input
+          name="due_date"
+          label="Due Date"
+          type="date"
+          value={dueDate}
+          onChange={e => setDueDate(e.target.value)}
+          required
+        />
       </div>
       <div className="bg-slate-50 rounded-xl p-4 space-y-3 border border-[#E4E8EC]">
         <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.1em]">Line Item</p>

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import {
   ChevronLeft, ChevronRight, Calendar, Printer, Download, Plus,
-  Trash2, AlertCircle, TrendingUp, Users, Briefcase, CloudUpload,
+  Trash2, AlertCircle, AlertTriangle, TrendingUp, Users, Briefcase, CloudUpload,
   Upload, CheckCircle, FileSpreadsheet, SlidersHorizontal,
   Clock, DollarSign, Wallet, Search, Filter, X, Pencil, MoreVertical, ChevronDown,
   Receipt, CreditCard, Eye, Settings,
@@ -16,467 +16,57 @@ import type {
   DailyJob, DailyExpense, PaymentMode, MaterialType,
   DailyPendingItem, DailyPendingReceivedItem, DailyAdvanceItem,
 } from '@/types'
-import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured } from '@/lib/googleDrive'
+import {
+  authorizeGoogleDrive,
+  getAccessToken,
+  uploadToDrive,
+  gdriveConfigured,
+  getDriveWebhookUrl,
+  sendDailySheetBackupViaWebhook,
+} from '@/lib/googleDrive'
+import { useLayout } from '@/components/layout/Layout'
 
-
-
-const MATERIALS: MaterialType[] = ['No', 'Yes', 'Sofa', 'Ladder', 'Sofa Seat']
-const PAYMENT_MODES: PaymentMode[] = ['Cash', 'Online', 'Pending', 'Monthly', 'Above']
-const EXPENSE_CATEGORIES = ['Fuel', 'Parking', 'Toll', 'Vehicle maintenance', 'Supplies', 'Other']
-const COMMON_SERVICES = ['House', 'Deep', 'Sofa', 'Window', 'Office', 'Villa', 'Apartment', 'Carpet', 'Move-in', 'Move-out', 'Other']
-
-function cleanNum(val: any): number {
-  if (val === null || val === undefined || val === '') return 0
-  if (typeof val === 'number') return isNaN(val) ? 0 : val
-  const str = String(val).trim()
-  if (!str || str === '—' || str === '-' || str.toLowerCase() === 'nil' || str.toLowerCase() === 'pending' || str.toLowerCase() === 'monthly' || str.toLowerCase() === 'n/a') return 0
-  const cleaned = str.replace(/[^0-9.-]/g, '').trim()
-  const num = parseFloat(cleaned)
-  return isNaN(num) ? 0 : num
-}
-
-function formatTimeOnly(val: any): string {
-  if (val === null || val === undefined || val === '') return '—'
-  if (typeof val === 'number') {
-    if (isNaN(val)) return '—'
-    // Excel time is stored as fraction of 24h day (e.g. 0.4166666666666667 = 10:00, 0.625 = 15:00)
-    const frac = val >= 1 ? val - Math.floor(val) : val
-    if (frac >= 0) {
-      const totalMinutes = Math.round(frac * 24 * 60)
-      const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, '0')
-      const mm = String(totalMinutes % 60).padStart(2, '0')
-      return `${hh}:${mm}`
-    }
-  }
-  if (val instanceof Date) {
-    const hh = String(val.getHours()).padStart(2, '0')
-    const mm = String(val.getMinutes()).padStart(2, '0')
-    return `${hh}:${mm}`
-  }
-  const str = String(val).trim()
-  if (!str || str === '—') return '—'
-
-  // Match 12-hour AM/PM format (e.g. "10:00 AM", "03:00 PM")
-  const ampmMatch = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)\b/i)
-  if (ampmMatch) {
-    let hh = parseInt(ampmMatch[1], 10)
-    const mm = ampmMatch[2]
-    const mer = ampmMatch[3].toUpperCase()
-    if (mer === 'PM' && hh < 12) hh += 12
-    if (mer === 'AM' && hh === 12) hh = 0
-    return `${String(hh).padStart(2, '0')}:${mm}`
-  }
-
-  // Match HH:MM or HH:MM:SS in string (e.g. "09:00", "09:00:00", "Sat Dec 30 1899 09:00:00 GMT...")
-  const timeMatch = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\b/)
-  if (timeMatch) {
-    const hh = timeMatch[1].padStart(2, '0')
-    const mm = timeMatch[2]
-    return `${hh}:${mm}`
-  }
-
-  // Fallback try Date parse
-  const parsed = new Date(str)
-  if (!isNaN(parsed.getTime())) {
-    const hh = String(parsed.getHours()).padStart(2, '0')
-    const mm = String(parsed.getMinutes()).padStart(2, '0')
-    return `${hh}:${mm}`
-  }
-
-  return str
-}
-
-function calcHours(start: string, end: string): number {
-  const s = formatTimeOnly(start)
-  const e = formatTimeOnly(end)
-  if (s === '—' || e === '—' || !s.includes(':') || !e.includes(':')) return 0
-  const [sh, sm] = s.split(':').map(Number)
-  const [eh, em] = e.split(':').map(Number)
-  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return 0
-  let diff = eh * 60 + em - (sh * 60 + sm)
-  if (diff < 0) diff += 24 * 60
-  return diff > 0 ? Math.round(diff / 60 * 10) / 10 : 0
-}
-
-// Basic hours: 08:00–20:00. Anything after 20:00 is OT.
-function calcOTHours(start: string, end: string): number {
-  const s = formatTimeOnly(start)
-  const e = formatTimeOnly(end)
-  if (s === '—' || e === '—' || !s.includes(':') || !e.includes(':')) return 0
-  const [sh, sm] = s.split(':').map(Number)
-  const [eh, em] = e.split(':').map(Number)
-  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return 0
-  const endMins   = eh * 60 + em
-  const OT_CUTOFF = 20 * 60 // 8 PM
-  if (endMins <= OT_CUTOFF) return 0
-  const otStartMins = Math.max(sh * 60 + sm, OT_CUTOFF)
-  const otMins = endMins - otStartMins
-  return otMins > 0 ? Math.round(otMins / 60 * 10) / 10 : 0
-}
-
-function fmtDate(d: string) {
-  if (!d) return '—'
-  const parsed = new Date(d.includes('T') ? d : d + 'T00:00:00')
-  if (isNaN(parsed.getTime())) return d
-  return parsed.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-interface StaffPalette {
-  name: string
-  rowBg: string
-  borderLeft: string
-  nameColor: string
-  avatarBg: string
-  badgeBg: string
-}
-
-const STAFF_COLOR_PALETTES: StaffPalette[] = [
-  {
-    name: 'Emerald',
-    rowBg: 'bg-emerald-50/70 hover:bg-emerald-100/70',
-    borderLeft: 'border-l-[5px] border-l-emerald-500',
-    nameColor: 'text-emerald-950 font-bold',
-    avatarBg: 'bg-emerald-600 text-white',
-    badgeBg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-  },
-  {
-    name: 'Sky Blue',
-    rowBg: 'bg-sky-50/70 hover:bg-sky-100/70',
-    borderLeft: 'border-l-[5px] border-l-sky-500',
-    nameColor: 'text-sky-950 font-bold',
-    avatarBg: 'bg-sky-600 text-white',
-    badgeBg: 'bg-sky-100 text-sky-800 border-sky-200',
-  },
-  {
-    name: 'Violet',
-    rowBg: 'bg-purple-50/70 hover:bg-purple-100/70',
-    borderLeft: 'border-l-[5px] border-l-purple-500',
-    nameColor: 'text-purple-950 font-bold',
-    avatarBg: 'bg-purple-600 text-white',
-    badgeBg: 'bg-purple-100 text-purple-800 border-purple-200',
-  },
-  {
-    name: 'Amber',
-    rowBg: 'bg-amber-50/70 hover:bg-amber-100/70',
-    borderLeft: 'border-l-[5px] border-l-amber-500',
-    nameColor: 'text-amber-950 font-bold',
-    avatarBg: 'bg-amber-600 text-white',
-    badgeBg: 'bg-amber-100 text-amber-800 border-amber-200',
-  },
-  {
-    name: 'Teal',
-    rowBg: 'bg-teal-50/70 hover:bg-teal-100/70',
-    borderLeft: 'border-l-[5px] border-l-teal-500',
-    nameColor: 'text-teal-950 font-bold',
-    avatarBg: 'bg-teal-600 text-white',
-    badgeBg: 'bg-teal-100 text-teal-800 border-teal-200',
-  },
-  {
-    name: 'Indigo',
-    rowBg: 'bg-indigo-50/70 hover:bg-indigo-100/70',
-    borderLeft: 'border-l-[5px] border-l-indigo-500',
-    nameColor: 'text-indigo-950 font-bold',
-    avatarBg: 'bg-indigo-600 text-white',
-    badgeBg: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-  },
-  {
-    name: 'Rose',
-    rowBg: 'bg-rose-50/70 hover:bg-rose-100/70',
-    borderLeft: 'border-l-[5px] border-l-rose-500',
-    nameColor: 'text-rose-950 font-bold',
-    avatarBg: 'bg-rose-600 text-white',
-    badgeBg: 'bg-rose-100 text-rose-800 border-rose-200',
-  },
-  {
-    name: 'Orange',
-    rowBg: 'bg-orange-50/70 hover:bg-orange-100/70',
-    borderLeft: 'border-l-[5px] border-l-orange-500',
-    nameColor: 'text-orange-950 font-bold',
-    avatarBg: 'bg-orange-600 text-white',
-    badgeBg: 'bg-orange-100 text-orange-800 border-orange-200',
-  },
-]
-
-function PaymentBadge({ mode }: { mode: PaymentMode }) {
-  const cfg: Record<PaymentMode, string> = {
-    Cash:    'bg-emerald-50 text-emerald-800 border-emerald-300',
-    Online:  'bg-blue-50 text-blue-800 border-blue-300',
-    Pending: 'bg-red-50 text-red-700 border-red-300',
-    Monthly: 'bg-purple-50 text-purple-800 border-purple-300',
-    Above:   'bg-amber-50 text-amber-800 border-amber-300',
-  }
-  return (
-    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap shadow-xs ${cfg[mode]}`}>
-      {mode}
-    </span>
-  )
-}
-
-/* ── Interactive Address Hover Cell with Instant Popover (Light Theme) ── */
-function AddressCell({ address, area, isDark }: { address: string; area?: string; isDark?: boolean }) {
-  const [copied, setCopied] = useState(false)
-  const [showPopover, setShowPopover] = useState(false)
-  const [coords, setCoords] = useState<{ x: number; y: number } | null>(null)
-
-  if (!address || address === '—' || address === '-') {
-    return <span className={isDark ? "text-emerald-700 font-medium" : "text-slate-400"}>—</span>
-  }
-
-  const handleMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    setCoords({ x: rect.left, y: rect.top })
-    setShowPopover(true)
-  }
-
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    navigator.clipboard.writeText(address)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  return (
-    <div
-      className="relative inline-block max-w-[170px] group select-none"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={() => setShowPopover(false)}
-    >
-      <div className={`truncate font-medium cursor-pointer flex items-center gap-1 ${
-        isDark
-          ? 'text-emerald-950 group-hover:text-emerald-700 group-hover:underline'
-          : 'text-slate-700 group-hover:text-emerald-700 group-hover:underline'
-      }`}>
-        <span className="truncate">{address}</span>
-      </div>
-
-      {showPopover && coords && (
-        <div
-          className="fixed z-50 w-80 p-3.5 bg-white text-slate-800 rounded-2xl shadow-2xl border border-slate-200 text-[12px] animate-in fade-in zoom-in-95 pointer-events-auto ring-1 ring-slate-900/10"
-          style={{
-            left: Math.max(10, Math.min(coords.x, window.innerWidth - 340)),
-            top: coords.y - 8,
-            transform: 'translateY(-100%)',
-          }}
-          onMouseEnter={() => setShowPopover(true)}
-          onMouseLeave={() => setShowPopover(false)}
-        >
-          <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-100">
-            <span className="text-[10.5px] font-black uppercase tracking-wider text-emerald-700 flex items-center gap-1">
-              📍 Full Address
-            </span>
-            <button
-              onClick={handleCopy}
-              className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-[10.5px] font-bold text-slate-700 flex items-center gap-1 transition-colors cursor-pointer border border-slate-200"
-              title="Copy to clipboard"
-            >
-              {copied ? <span className="text-emerald-600 font-bold">✓ Copied</span> : <span>📋 Copy</span>}
-            </button>
-          </div>
-          <p className="font-semibold text-[13px] leading-relaxed text-slate-800 break-words select-text">
-            {address}
-          </p>
-          {area && (
-            <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-              <span>Location / Zone:</span>
-              <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">{area}</span>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ── Columns Configuration for Custom Visibility ── */
-interface ColumnConfig {
-  id: string
-  label: string
-}
-
-const ALL_COLUMNS: ColumnConfig[] = [
-  { id: 'staff',        label: 'Staff' },
-  { id: 'start_time',   label: 'Start Time' },
-  { id: 'end_time',     label: 'End Time' },
-  { id: 'address',      label: 'Address' },
-  { id: 'area',         label: 'Location / Zone' },
-  { id: 'charges',      label: 'Charges' },
-  { id: 'received',     label: 'Received' },
-  { id: 'pending',      label: 'Pending' },
-  { id: 'duty_hours',   label: 'Duty Hrs' },
-  { id: 'ot_hours',     label: 'OT Hrs' },
-  { id: 'material',     label: 'Material' },
-  { id: 'payment_mode', label: 'Payment Mode' },
-  { id: 'remarks',      label: 'Remarks' },
-  { id: 'service',      label: 'Service' },
-  { id: 'actions',      label: 'Actions' },
-]
-
-const DEFAULT_VISIBLE_COLUMNS: Record<string, boolean> = {
-  staff:        true,
-  start_time:   true,
-  end_time:     true,
-  address:      true,
-  area:         true,
-  charges:      true,
-  received:     true,
-  pending:      true,
-  duty_hours:   true,
-  ot_hours:     true,
-  material:     true,
-  payment_mode: true,
-  remarks:      true,
-  service:      true,
-  actions:      true,
-}
-
-/* ─── Add Job Form ─── */
-function AddJobForm({
-  employees, onSave, onClose, initial,
-}: {
-  employees: { full_name: string }[]
-  onSave: (j: Omit<DailyJob, 'id' | 'created_at'>) => void
-  onClose: () => void
-  initial?: Partial<DailyJob>
-}) {
-  const [startTime, setStartTime] = useState(initial?.start_time ?? '')
-  const [endTime, setEndTime]     = useState(initial?.end_time ?? '')
-  const dutyHours = calcHours(startTime, endTime)
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const fd = new FormData(e.currentTarget as HTMLFormElement)
-    onSave({
-      date:         fd.get('date') as string,
-      staff_name:   fd.get('staff_name') as string,
-      start_time:   startTime,
-      end_time:     endTime,
-      duty_hours:   dutyHours,
-      ot_hours:     cleanNum(fd.get('ot_hours')),
-      address:      fd.get('address') as string,
-      area:         fd.get('area') as string,
-      material:     (fd.get('material') as MaterialType) || 'No',
-      charges:      cleanNum(fd.get('charges')),
-      received:     cleanNum(fd.get('received')),
-      payment_mode: (fd.get('payment_mode') as PaymentMode) || 'Cash',
-      is_overtime:  fd.get('is_overtime') === 'on' || cleanNum(fd.get('ot_hours')) > 0,
-      remarks:      fd.get('remarks') as string,
-      service:      (fd.get('service') as string)?.trim() || '',
-    })
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Staff Name</label>
-          <select
-            name="staff_name"
-            defaultValue={initial?.staff_name ?? ''}
-            required
-            className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400 text-slate-700"
-          >
-            <option value="">Select staff…</option>
-            {employees.map(e => <option key={e.full_name} value={e.full_name}>{e.full_name}</option>)}
-          </select>
-        </div>
-        <Input name="date" label="Date" type="date" defaultValue={initial?.date ?? new Date().toISOString().split('T')[0]} required />
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Start Time</label>
-          <input
-            type="time"
-            value={startTime}
-            onChange={e => setStartTime(e.target.value)}
-            className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">End Time</label>
-          <input
-            type="time"
-            value={endTime}
-            onChange={e => setEndTime(e.target.value)}
-            className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Duty Hours</label>
-          <div className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-100 text-slate-700 font-bold">
-            {dutyHours > 0 ? `${dutyHours}h` : '—'}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <Input name="address" label="Address" defaultValue={initial?.address ?? ''} placeholder="e.g. 202 Escape Tower, 608 altelal…" />
-        <Input name="area" label="Location / Area" defaultValue={initial?.area ?? ''} placeholder="e.g. Buz Bay, NH, Mirdif…" />
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        <Input name="charges" label="Charges (AED)" type="number" min="0" step="0.01" defaultValue={initial?.charges ?? ''} placeholder="0.00" />
-        <Input name="received" label="Received (AED)" type="number" min="0" step="0.01" defaultValue={initial?.received ?? ''} placeholder="0.00" />
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Payment Mode</label>
-          <select name="payment_mode" defaultValue={initial?.payment_mode ?? 'Cash'} className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400 text-slate-700">
-            {PAYMENT_MODES.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Service</label>
-          <input
-            name="service"
-            list="service-options"
-            defaultValue={initial?.service ?? ''}
-            placeholder="e.g. Sofa, Deep, House…"
-            className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400 text-slate-700"
-          />
-          <datalist id="service-options">
-            {COMMON_SERVICES.map(s => <option key={s} value={s} />)}
-          </datalist>
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Material</label>
-          <select name="material" defaultValue={initial?.material ?? 'No'} className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400 text-slate-700">
-            {MATERIALS.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">OT Hours</label>
-          <input
-            name="ot_hours"
-            type="number"
-            step="0.5"
-            min="0"
-            defaultValue={initial?.ot_hours ?? ''}
-            placeholder="0.0"
-            className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400 text-slate-700"
-          />
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <input type="checkbox" id="is_overtime" name="is_overtime" defaultChecked={initial?.is_overtime} className="w-4 h-4 rounded accent-emerald-500" />
-        <label htmlFor="is_overtime" className="text-[13px] font-medium text-slate-700 cursor-pointer">Overtime (OT) Flag</label>
-      </div>
-
-      <Input name="remarks" label="Remarks" defaultValue={initial?.remarks ?? ''} placeholder="e.g. Deep clean, Sofa machine, Online…" />
-
-      <div className="flex gap-3 pt-2">
-        <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-        <Button type="submit" className="flex-1">Save Job</Button>
-      </div>
-    </form>
-  )
-}
+import {
+  MATERIALS,
+  PAYMENT_MODES,
+  EXPENSE_CATEGORIES,
+  COMMON_SERVICES,
+  cleanNum,
+  formatTimeOnly,
+  calcHours,
+  calcOTHours,
+  fmtDate,
+  addDaysToYMD,
+  STAFF_COLOR_PALETTES,
+  PaymentBadge,
+  AddressCell,
+  ALL_COLUMNS,
+  DEFAULT_VISIBLE_COLUMNS,
+  type ColumnConfig,
+  type StaffPalette,
+} from '@/components/dailyJobSheet/jobSheetUtils'
+import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
+import {
+  AddExpenseModal,
+  EditExpenseModal,
+  DeleteDayConfirmModal,
+  DeleteAllConfirmModal,
+  DriverStaffModal,
+  AddPendingModal,
+  EditPendingModal,
+  AddPendingReceivedModal,
+  EditPendingReceivedModal,
+  AddAdvanceModal,
+  EditAdvanceModal,
+  PendingDetailsModal,
+} from '@/components/dailyJobSheet/DailyJobModals'
+import { GoogleDriveWebhookModal } from '@/components/dailyJobSheet/GoogleDriveWebhookModal'
+import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 
 /* ─── Main Page ─── */
 export function DailyJobSheet() {
-  const { dailyJobs, dailyExpenses, employees, loading, addDailyJob, updateDailyJob, deleteDailyJob, addDailyExpense, updateDailyExpense, deleteDailyExpense, clearDailyData } = useData()
+  const { openMenu } = useLayout()
+  const { dailyJobs, dailyExpenses, employees, loading, addDailyJob, updateDailyJob, deleteDailyJob, addDailyExpense, updateDailyExpense, deleteDailyExpense, clearDailyData, clearAllDailyData } = useData()
 
   const [searchParams, setSearchParams] = useSearchParams()
   const qDate = searchParams.get('date')
@@ -514,11 +104,31 @@ export function DailyJobSheet() {
     isJob: boolean
   } | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false)
   const [deleteSuccessNotice, setDeleteSuccessNotice] = useState<string | null>(null)
   const [driveStatus, setDriveStatus]       = useState<'idle' | 'connecting' | 'uploading' | 'done' | 'error'>('idle')
   const [driveLink, setDriveLink]           = useState('')
   const [driveError, setDriveError]         = useState('')
+  const [showDriveModal, setShowDriveModal] = useState(false)
   const [importNotice, setImportNotice]     = useState<{ jobs: number; expenses: number; date: string; pendingCount?: number; pendingRcvdCount?: number; advanceCount?: number; fileName?: string } | null>(null)
+
+  // Auto-dismiss import notification after 30 seconds
+  useEffect(() => {
+    if (!importNotice) return
+    const timer = setTimeout(() => {
+      setImportNotice(null)
+    }, 30000)
+    return () => clearTimeout(timer)
+  }, [importNotice])
+
+  // Auto-dismiss delete notification after 10 seconds
+  useEffect(() => {
+    if (!deleteSuccessNotice) return
+    const timer = setTimeout(() => {
+      setDeleteSuccessNotice(null)
+    }, 10000)
+    return () => clearTimeout(timer)
+  }, [deleteSuccessNotice])
 
   // Pagination & View All state
   const [pageSize, setPageSize]       = useState<number | 'all'>(10)
@@ -566,23 +176,22 @@ export function DailyJobSheet() {
 
   const getRangeBounds = (preset: Exclude<DateRangePreset, 'today'>) => {
     const end = selectedDate || new Date().toISOString().split('T')[0]
-    const d = new Date(end + 'T00:00:00')
+    let start = end
     if (preset === '7days') {
-      d.setDate(d.getDate() - 6)
+      start = addDaysToYMD(end, -6)
     } else if (preset === '14days') {
-      d.setDate(d.getDate() - 13)
+      start = addDaysToYMD(end, -13)
     } else if (preset === '28days') {
-      d.setDate(d.getDate() - 27)
+      start = addDaysToYMD(end, -27)
     } else if (preset === '3months') {
-      d.setMonth(d.getMonth() - 3)
+      start = addDaysToYMD(end, -90)
     } else if (preset === '6months') {
-      d.setMonth(d.getMonth() - 6)
+      start = addDaysToYMD(end, -180)
     } else if (preset === '1year') {
-      d.setFullYear(d.getFullYear() - 1)
+      start = addDaysToYMD(end, -365)
     } else if (preset === '2years') {
-      d.setFullYear(d.getFullYear() - 2)
+      start = addDaysToYMD(end, -730)
     }
-    const start = d.toISOString().split('T')[0]
     return { start, end }
   }
 
@@ -600,6 +209,20 @@ export function DailyJobSheet() {
     setRangeEndDate(end)
     setDateRangePreset(preset)
     setShowRangeMenu(false)
+  }
+
+  const getPresetDisplayName = (preset: DateRangePreset): string => {
+    switch (preset) {
+      case 'today': return 'Today'
+      case '7days': return 'Last 7 Days'
+      case '14days': return 'Last 14 Days'
+      case '28days': return 'Last 28 Days'
+      case '3months': return 'Last 3 Months'
+      case '6months': return 'Last 6 Months'
+      case '1year': return 'One Year'
+      case '2years': return 'Two Years'
+      default: return 'Today'
+    }
   }
 
   const isDateRange = dateRangePreset !== 'today'
@@ -644,40 +267,18 @@ export function DailyJobSheet() {
   const [viewAllDrivers, setViewAllDrivers] = useState(false)
 
   // Extra reconciliation widgets state (Pending, Pending Received, Advance)
-  const [pendingList, setPendingList] = useState<DailyPendingItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('safaeewala_daily_pending_items')
-      if (saved) return JSON.parse(saved)
-    } catch {}
-    return []
-  })
+  const [pendingList, setPendingList] = useState<DailyPendingItem[]>(() =>
+    safeLocalStorageGet<DailyPendingItem[]>('safaeewala_daily_pending_items', [])
+  )
 
   const [pendingRcvdList, setPendingRcvdList] = useState<DailyPendingReceivedItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('safaeewala_daily_pending_rcvd_items')
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed)) {
-          // Purge legacy mock data (pr-1 .. pr-7)
-          return parsed.filter(item => !item.id?.startsWith('pr-'))
-        }
-      }
-    } catch {}
-    return []
+    const list = safeLocalStorageGet<DailyPendingReceivedItem[]>('safaeewala_daily_pending_rcvd_items', [])
+    return Array.isArray(list) ? list.filter(item => !item.id?.startsWith('pr-')) : []
   })
 
   const [advanceList, setAdvanceList] = useState<DailyAdvanceItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('safaeewala_daily_advance_items')
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        if (Array.isArray(parsed)) {
-          // Purge legacy mock data (adv-1 .. adv-2)
-          return parsed.filter(item => !item.id?.startsWith('adv-'))
-        }
-      }
-    } catch {}
-    return []
+    const list = safeLocalStorageGet<DailyAdvanceItem[]>('safaeewala_daily_advance_items', [])
+    return Array.isArray(list) ? list.filter(item => !item.id?.startsWith('adv-')) : []
   })
 
   const [showAddPending, setShowAddPending]         = useState(false)
@@ -688,21 +289,15 @@ export function DailyJobSheet() {
   const [editingAdvance, setEditingAdvance]         = useState<DailyAdvanceItem | null>(null)
 
   useEffect(() => {
-    try {
-      localStorage.setItem('safaeewala_daily_pending_items', JSON.stringify(pendingList))
-    } catch {}
+    safeLocalStorageSet('safaeewala_daily_pending_items', pendingList)
   }, [pendingList])
 
   useEffect(() => {
-    try {
-      localStorage.setItem('safaeewala_daily_pending_rcvd_items', JSON.stringify(pendingRcvdList))
-    } catch {}
+    safeLocalStorageSet('safaeewala_daily_pending_rcvd_items', pendingRcvdList)
   }, [pendingRcvdList])
 
   useEffect(() => {
-    try {
-      localStorage.setItem('safaeewala_daily_advance_items', JSON.stringify(advanceList))
-    } catch {}
+    safeLocalStorageSet('safaeewala_daily_advance_items', advanceList)
   }, [advanceList])
 
   useEffect(() => {
@@ -788,8 +383,9 @@ export function DailyJobSheet() {
   }, [employees, dailyJobs])
 
   // Absentees / active employees with nil records (0 jobs today) placed at the bottom
-  // Guard: if data is still loading and store has no jobs yet, do NOT falsely show everyone as absent
-  const nilRows: Array<any> = (loading && dailyJobs.length === 0) ? [] : allKnownCleaners
+  // Guard: if no data has been uploaded/imported for this date (todayJobs is empty),
+  // or if store is loading, keep nilRows empty so staff names/absent rows do not appear on empty days.
+  const nilRows: Array<any> = (todayJobs.length === 0 || (loading && dailyJobs.length === 0)) ? [] : allKnownCleaners
     .filter(name => !activeStaffSet.has(name.trim().toLowerCase()))
     .sort((a, b) => a.localeCompare(b))
     .map(name => ({
@@ -1022,16 +618,14 @@ export function DailyJobSheet() {
 
   const displayedDrivers = viewAllDrivers ? sortedDrivers : sortedDrivers.slice(0, 3)
 
-  // ── Date navigation ──
+  // ── Date navigation (Timezone-safe without day skipping or date freeze) ──
   function prevDay() {
     setDateRangePreset('today')
-    const d = new Date(selectedDate + 'T00:00:00'); d.setDate(d.getDate() - 1)
-    setSelectedDate(d.toISOString().split('T')[0])
+    setSelectedDate(addDaysToYMD(selectedDate, -1))
   }
   function nextDay() {
     setDateRangePreset('today')
-    const d = new Date(selectedDate + 'T00:00:00'); d.setDate(d.getDate() + 1)
-    setSelectedDate(d.toISOString().split('T')[0])
+    setSelectedDate(addDaysToYMD(selectedDate, 1))
   }
 
   // Smooth scroll helper with highlight pulse for card navigation
@@ -1321,24 +915,79 @@ export function DailyJobSheet() {
     win.document.close()
   }
 
-  // ── Google Drive backup ──
+  // ── Google Drive & n8n Backup ──
   async function backupToDrive() {
-    try {
-      setDriveStatus('connecting')
-      setDriveError('')
-      let token = getAccessToken()
-      if (!token) token = await authorizeGoogleDrive()
-      setDriveStatus('uploading')
-      const wb = buildWorkbook()
-      const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
-      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const link = await uploadToDrive(blob, `DailyJobSheet-${selectedDate}.xlsx`, token)
-      setDriveLink(link)
-      setDriveStatus('done')
-    } catch (err: any) {
-      setDriveError(err.message || 'Upload failed')
-      setDriveStatus('error')
+    const webhookUrl = getDriveWebhookUrl()
+
+    // 1. Preferred Automation: n8n / Webhook Backup
+    if (webhookUrl) {
+      try {
+        setDriveStatus('uploading')
+        setDriveError('')
+        const wb = buildWorkbook()
+        const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+        const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+        const filename = `DailyJobSheet-${selectedDate}.xlsx`
+
+        const summary = {
+          date: selectedDate,
+          total_charges: totalCharges,
+          gross_collected: grossCollected,
+          pending_cash_received: pendingCashRcvdForNet,
+          expenses: totalExpenses,
+          net_total: netTotal,
+          pending: pendingTotal,
+          online: onlineTotal,
+          ot_hours: totalOTHours,
+          staff_on_duty: staffOnDuty,
+          jobs_count: jobsCount,
+        }
+
+        const result = await sendDailySheetBackupViaWebhook({
+          date: selectedDate,
+          filename,
+          blob,
+          summary,
+          jobs: todayJobs,
+          expenses: todayExpenses,
+          pending: todayPendingItems,
+          webhookUrl,
+        })
+
+        if (result.driveUrl) {
+          setDriveLink(result.driveUrl)
+        }
+        setDriveStatus('done')
+      } catch (err: any) {
+        setDriveError(err.message || 'Webhook backup failed')
+        setDriveStatus('error')
+      }
+      return
     }
+
+    // 2. Direct Google Drive OAuth fallback (if CLIENT_ID configured)
+    if (gdriveConfigured) {
+      try {
+        setDriveStatus('connecting')
+        setDriveError('')
+        let token = getAccessToken()
+        if (!token) token = await authorizeGoogleDrive()
+        setDriveStatus('uploading')
+        const wb = buildWorkbook()
+        const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+        const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+        const link = await uploadToDrive(blob, `DailyJobSheet-${selectedDate}.xlsx`, token)
+        setDriveLink(link)
+        setDriveStatus('done')
+      } catch (err: any) {
+        setDriveError(err.message || 'Upload failed')
+        setDriveStatus('error')
+      }
+      return
+    }
+
+    // 3. If no webhook and no Google Client ID configured, prompt setup modal
+    setShowDriveModal(true)
   }
 
   /**
@@ -1848,16 +1497,26 @@ export function DailyJobSheet() {
   return (
     <div className="space-y-6 pb-10">
 
-      {/* ── Import Notice Banner ── */}
+      {/* ── Import Notice Banner (with 30s auto-dismiss progress) ── */}
       {importNotice && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl px-5 py-3.5 flex items-center justify-between text-[13px] shadow-sm animate-in fade-in">
+        <div className="relative overflow-hidden bg-gradient-to-r from-emerald-50 via-teal-50/40 to-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-[13px] shadow-sm animate-in fade-in">
           <div className="flex items-center gap-3">
-            <CheckCircle size={20} className="text-emerald-600 flex-shrink-0" />
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-emerald-600/30">
+              <CheckCircle size={20} />
+            </div>
             <div>
-              <p className="font-semibold text-emerald-900">
-                Excel Sheet <code className="bg-emerald-100/80 text-emerald-900 px-1.5 py-0.5 rounded text-[12px] font-mono">{importNotice.fileName || 'Uploaded Sheet'}</code> Imported Successfully!
-              </p>
-              <p className="text-[12px] text-emerald-700 mt-0.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-bold text-emerald-950 text-[13.5px]">
+                  Excel Sheet Imported Successfully!
+                </p>
+                <code className="bg-emerald-100/90 text-emerald-900 px-2 py-0.5 rounded-md text-[12px] font-mono font-semibold">
+                  {importNotice.fileName || 'Uploaded Sheet'}
+                </code>
+                <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/70 border border-emerald-200/80 px-2 py-0.5 rounded-full">
+                  Auto-closes in 30s
+                </span>
+              </div>
+              <p className="text-[12px] text-emerald-800 mt-1">
                 Target Date (derived from file name): <strong className="text-emerald-950 font-bold">{fmtDate(importNotice.date)} ({importNotice.date})</strong> · Added <strong>{importNotice.jobs} jobs</strong>, <strong>{importNotice.expenses} expenses</strong>
                 {importNotice.pendingRcvdCount ? <>, <strong>{importNotice.pendingRcvdCount} pending received</strong></> : null}
                 {importNotice.advanceCount ? <>, <strong>{importNotice.advanceCount} advance</strong></> : null}
@@ -1867,10 +1526,16 @@ export function DailyJobSheet() {
           </div>
           <button
             onClick={() => setImportNotice(null)}
-            className="text-emerald-700 hover:text-emerald-900 font-bold text-[14px] px-2 py-0.5 rounded-lg hover:bg-emerald-100 transition-colors"
+            className="text-emerald-700 hover:text-emerald-950 font-bold text-[13px] px-2.5 py-1 rounded-lg hover:bg-emerald-100/80 transition-colors shrink-0 self-end sm:self-center"
+            title="Dismiss now"
           >
-            ✕
+            Dismiss ✕
           </button>
+          {/* Animated 30-second countdown indicator line */}
+          <div
+            className="absolute bottom-0 left-0 h-[3px] bg-emerald-500 rounded-full"
+            style={{ animation: 'autoDismissBar 30s linear forwards' }}
+          />
         </div>
       )}
 
@@ -1892,81 +1557,121 @@ export function DailyJobSheet() {
         </div>
       )}
 
-      {/* ── Top bar ── */}
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-[20px] font-black text-[#111827] tracking-tight">Daily Job Sheet</h1>
-            <p className="text-[12px] text-slate-500 mt-0.5">Admin view · All data saved to Supabase</p>
+      {/* ── Single Merged Hero Header (Green Gradient matching Clients & Fluent Forms) ── */}
+      <section className="gradient-card rounded-[24px] px-6 sm:px-7 py-4 sm:py-5 text-white shadow-[0_8px_32px_rgba(15,23,42,0.25)] ring-1 ring-black/10 relative z-30">
+        {/* Isolated Glow Container (overflow-hidden keeps glow inside rounded card while letting popups overflow) */}
+        <div className="absolute inset-0 rounded-[24px] overflow-hidden pointer-events-none">
+          <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
+        </div>
+
+        <div className="relative z-10 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
+          {/* Left: Title + Scope Tag + Live Subtitle */}
+          <div className="min-w-0">
+            {/* Mobile hamburger */}
+            <button
+              onClick={openMenu}
+              className="lg:hidden mb-3 w-9 h-9 rounded-xl flex items-center justify-center bg-white/10 border border-white/10 text-white/80 hover:text-white hover:bg-white/20 transition-colors cursor-pointer"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+
+            <div className="flex items-center gap-3 flex-wrap mb-1.5">
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+                Daily Job Sheet
+              </h1>
+
+              {/* Status Badge */}
+              <span className="inline-flex items-center gap-2 px-3 py-1 bg-white text-emerald-900 font-extrabold text-[12px] rounded-full shadow-md border border-white/90">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-600" />
+                </span>
+                {isDateRange ? getPresetDisplayName(dateRangePreset) : 'Live Daily Schedule'}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-white/80 text-[13px]">
+              <span>Operations & Scheduling · {isDateRange ? getPresetDisplayName(dateRangePreset) : fmtDate(selectedDate)}</span>
+              <span className="text-white/40 hidden sm:inline">·</span>
+              <span className="text-emerald-300 font-semibold">{jobsCount} Active Jobs</span>
+              <span className="text-white/40 hidden sm:inline">·</span>
+              <span className="text-white/95">{staffOnDuty} Staff on Duty</span>
+            </div>
           </div>
 
-          {/* Date navigation & Date Range Picker */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={prevDay}
-              className="p-2 rounded-xl border border-[#E4E8EC] hover:bg-slate-50 transition-colors cursor-pointer"
-              title="Previous Day"
-            >
-              <ChevronLeft size={16} className="text-slate-600" />
-            </button>
-            <div className="relative">
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={e => {
-                  setDateRangePreset('today')
-                  setSelectedDate(e.target.value)
-                }}
-                className={`text-[13px] font-semibold px-4 py-2 border rounded-xl bg-slate-50 focus:outline-none focus:border-emerald-400 cursor-pointer transition-colors ${
-                  isDateRange ? 'border-indigo-300 text-indigo-900 bg-indigo-50/40' : 'border-[#E4E8EC] text-[#111827]'
-                }`}
-                title={isDateRange ? `Anchor Date (Range ends: ${selectedDate})` : 'Select Date'}
-              />
-            </div>
-            <button
-              onClick={nextDay}
-              className="p-2 rounded-xl border border-[#E4E8EC] hover:bg-slate-50 transition-colors cursor-pointer"
-              title="Next Day"
-            >
-              <ChevronRight size={16} className="text-slate-600" />
-            </button>
+          {/* Right: Date navigation & Action Buttons */}
+          <div className="flex items-center gap-3 shrink-0 flex-wrap">
+            {/* Date Navigation (Previous Day, Date Picker, Next Day) - Sleek unified capsule without bulky nested box */}
+            <div className="h-11 flex items-center bg-white/10 hover:bg-white/15 border border-white/20 rounded-2xl backdrop-blur-md shadow-sm transition-all">
+              <button
+                type="button"
+                onClick={prevDay}
+                className="h-full px-2.5 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/15 rounded-l-2xl transition-colors cursor-pointer"
+                title="Previous Day"
+              >
+                <ChevronLeft size={17} />
+              </button>
 
-            {/* Date Range Picker Dropdown (replacing "Today" button) */}
+              <div className="w-px h-5 bg-white/20" />
+
+              <div className="relative flex items-center px-1">
+                {isDateRange ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowRangeMenu(true)}
+                    className="h-10 px-3 flex items-center gap-1.5 text-white font-bold text-[12.5px] hover:text-emerald-200 transition-colors cursor-pointer"
+                    title="Active Preset (Click to change)"
+                  >
+                    <span>{getPresetDisplayName(dateRangePreset)}</span>
+                  </button>
+                ) : (
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={e => {
+                      setDateRangePreset('today')
+                      setSelectedDate(e.target.value)
+                    }}
+                    className="h-10 px-2.5 bg-transparent text-white font-bold text-[12.5px] focus:outline-none cursor-pointer transition-all [color-scheme:dark]"
+                    title="Select Date"
+                  />
+                )}
+              </div>
+
+              <div className="w-px h-5 bg-white/20" />
+
+              <button
+                type="button"
+                onClick={nextDay}
+                className="h-full px-2.5 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/15 rounded-r-2xl transition-colors cursor-pointer"
+                title="Next Day"
+              >
+                <ChevronRight size={17} />
+              </button>
+            </div>
+
+            {/* Date Range Preset Dropdown */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowRangeMenu(p => !p)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[12px] font-bold transition-all cursor-pointer ${
-                  isDateRange
-                    ? 'border-indigo-400 bg-indigo-600 text-white shadow-xs hover:bg-indigo-700'
-                    : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                className={`h-11 px-3.5 rounded-2xl border text-[12.5px] font-bold transition-all cursor-pointer backdrop-blur-md shadow-sm flex items-center gap-2 ${
+                  isDateRange || showRangeMenu
+                    ? 'bg-white text-emerald-900 border-white shadow-md'
+                    : 'bg-white/10 hover:bg-white/20 border-white/20 text-white'
                 }`}
               >
-                <Calendar size={13} className={isDateRange ? 'text-indigo-200' : 'text-emerald-700'} />
-                <span>
-                  {dateRangePreset === 'today'
-                    ? 'Today'
-                    : dateRangePreset === '7days'
-                      ? 'Last 7 Days'
-                      : dateRangePreset === '14days'
-                        ? 'Last 14 Days'
-                        : dateRangePreset === '28days'
-                          ? 'Last 28 Days'
-                          : dateRangePreset === '3months'
-                            ? 'Last 3 Months'
-                            : dateRangePreset === '6months'
-                              ? 'Last 6 Months'
-                              : dateRangePreset === '1year'
-                                ? 'One Year'
-                                : 'Two Years'}
-                </span>
-                <ChevronDown size={13} className={isDateRange ? 'text-indigo-200 ml-0.5' : 'text-emerald-600 ml-0.5'} />
+                <Calendar size={14} className={isDateRange || showRangeMenu ? 'text-emerald-700' : 'text-emerald-300'} />
+                <span>{getPresetDisplayName(dateRangePreset)}</span>
+                <ChevronDown size={14} className={isDateRange || showRangeMenu ? 'text-emerald-700' : 'text-white/70'} />
               </button>
 
               {showRangeMenu && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowRangeMenu(false)} />
-                  <div className="absolute left-0 top-full mt-1.5 w-72 bg-white rounded-2xl border border-[#E4E8EC] shadow-xl py-2 z-50 animate-in fade-in zoom-in-95 duration-100 max-h-[460px] overflow-y-auto">
+                  <div className="absolute left-0 sm:right-0 sm:left-auto top-full mt-2 w-56 bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_16px_48px_rgba(15,23,42,0.22)] py-2 z-50 animate-in fade-in zoom-in-95 duration-100 max-h-[min(480px,calc(100vh-200px))] overflow-y-auto text-slate-800">
                     <div className="px-3 pb-2 mb-1 border-b border-slate-100">
                       <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider">Date Presets</p>
                     </div>
@@ -1984,7 +1689,6 @@ export function DailyJobSheet() {
                         <span className={`w-2 h-2 rounded-full ${dateRangePreset === 'today' ? 'bg-emerald-500' : 'bg-transparent'}`} />
                         <span>Today</span>
                       </div>
-                      <span className="text-[11px] text-slate-400 font-normal">Single Day</span>
                     </button>
 
                     <div className="px-3 pt-2 pb-1 border-t border-slate-100">
@@ -1996,17 +1700,14 @@ export function DailyJobSheet() {
                       onClick={() => selectPreset('7days')}
                       className={`w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] transition-colors cursor-pointer ${
                         dateRangePreset === '7days'
-                          ? 'bg-indigo-50 text-indigo-900 font-bold'
+                          ? 'bg-emerald-50 text-emerald-800 font-bold'
                           : 'text-slate-700 hover:bg-slate-50 font-medium'
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '7days' ? 'bg-indigo-600' : 'bg-transparent'}`} />
+                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '7days' ? 'bg-emerald-600' : 'bg-transparent'}`} />
                         <span>Last 7 Days</span>
                       </div>
-                      <span className="text-[11px] text-slate-400 font-normal">
-                        {fmtDate(getRangeBounds('7days').start).replace(/\s\d{4}$/, '')} – {fmtDate(getRangeBounds('7days').end).replace(/\s\d{4}$/, '')}
-                      </span>
                     </button>
 
                     <button
@@ -2014,17 +1715,14 @@ export function DailyJobSheet() {
                       onClick={() => selectPreset('14days')}
                       className={`w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] transition-colors cursor-pointer ${
                         dateRangePreset === '14days'
-                          ? 'bg-indigo-50 text-indigo-900 font-bold'
+                          ? 'bg-emerald-50 text-emerald-800 font-bold'
                           : 'text-slate-700 hover:bg-slate-50 font-medium'
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '14days' ? 'bg-indigo-600' : 'bg-transparent'}`} />
+                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '14days' ? 'bg-emerald-600' : 'bg-transparent'}`} />
                         <span>Last 14 Days</span>
                       </div>
-                      <span className="text-[11px] text-slate-400 font-normal">
-                        {fmtDate(getRangeBounds('14days').start).replace(/\s\d{4}$/, '')} – {fmtDate(getRangeBounds('14days').end).replace(/\s\d{4}$/, '')}
-                      </span>
                     </button>
 
                     <button
@@ -2032,17 +1730,14 @@ export function DailyJobSheet() {
                       onClick={() => selectPreset('28days')}
                       className={`w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] transition-colors cursor-pointer ${
                         dateRangePreset === '28days'
-                          ? 'bg-indigo-50 text-indigo-900 font-bold'
+                          ? 'bg-emerald-50 text-emerald-800 font-bold'
                           : 'text-slate-700 hover:bg-slate-50 font-medium'
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '28days' ? 'bg-indigo-600' : 'bg-transparent'}`} />
+                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '28days' ? 'bg-emerald-600' : 'bg-transparent'}`} />
                         <span>Last 28 Days</span>
                       </div>
-                      <span className="text-[11px] text-slate-400 font-normal">
-                        {fmtDate(getRangeBounds('28days').start).replace(/\s\d{4}$/, '')} – {fmtDate(getRangeBounds('28days').end).replace(/\s\d{4}$/, '')}
-                      </span>
                     </button>
 
                     <div className="px-3 pt-2 pb-1 border-t border-slate-100">
@@ -2054,17 +1749,14 @@ export function DailyJobSheet() {
                       onClick={() => selectPreset('3months')}
                       className={`w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] transition-colors cursor-pointer ${
                         dateRangePreset === '3months'
-                          ? 'bg-indigo-50 text-indigo-900 font-bold'
+                          ? 'bg-emerald-50 text-emerald-800 font-bold'
                           : 'text-slate-700 hover:bg-slate-50 font-medium'
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '3months' ? 'bg-indigo-600' : 'bg-transparent'}`} />
+                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '3months' ? 'bg-emerald-600' : 'bg-transparent'}`} />
                         <span>Last 3 Months</span>
                       </div>
-                      <span className="text-[11px] text-slate-400 font-normal">
-                        {fmtDate(getRangeBounds('3months').start)} – {fmtDate(getRangeBounds('3months').end)}
-                      </span>
                     </button>
 
                     <button
@@ -2072,17 +1764,14 @@ export function DailyJobSheet() {
                       onClick={() => selectPreset('6months')}
                       className={`w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] transition-colors cursor-pointer ${
                         dateRangePreset === '6months'
-                          ? 'bg-indigo-50 text-indigo-900 font-bold'
+                          ? 'bg-emerald-50 text-emerald-800 font-bold'
                           : 'text-slate-700 hover:bg-slate-50 font-medium'
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '6months' ? 'bg-indigo-600' : 'bg-transparent'}`} />
+                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '6months' ? 'bg-emerald-600' : 'bg-transparent'}`} />
                         <span>Last 6 Months</span>
                       </div>
-                      <span className="text-[11px] text-slate-400 font-normal">
-                        {fmtDate(getRangeBounds('6months').start)} – {fmtDate(getRangeBounds('6months').end)}
-                      </span>
                     </button>
 
                     <button
@@ -2090,17 +1779,14 @@ export function DailyJobSheet() {
                       onClick={() => selectPreset('1year')}
                       className={`w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] transition-colors cursor-pointer ${
                         dateRangePreset === '1year'
-                          ? 'bg-indigo-50 text-indigo-900 font-bold'
+                          ? 'bg-emerald-50 text-emerald-800 font-bold'
                           : 'text-slate-700 hover:bg-slate-50 font-medium'
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '1year' ? 'bg-indigo-600' : 'bg-transparent'}`} />
+                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '1year' ? 'bg-emerald-600' : 'bg-transparent'}`} />
                         <span>One Year</span>
                       </div>
-                      <span className="text-[11px] text-slate-400 font-normal">
-                        {fmtDate(getRangeBounds('1year').start)} – {fmtDate(getRangeBounds('1year').end)}
-                      </span>
                     </button>
 
                     <button
@@ -2108,17 +1794,14 @@ export function DailyJobSheet() {
                       onClick={() => selectPreset('2years')}
                       className={`w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] transition-colors cursor-pointer ${
                         dateRangePreset === '2years'
-                          ? 'bg-indigo-50 text-indigo-900 font-bold'
+                          ? 'bg-emerald-50 text-emerald-800 font-bold'
                           : 'text-slate-700 hover:bg-slate-50 font-medium'
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '2years' ? 'bg-indigo-600' : 'bg-transparent'}`} />
+                        <span className={`w-2 h-2 rounded-full ${dateRangePreset === '2years' ? 'bg-emerald-600' : 'bg-transparent'}`} />
                         <span>Two Years</span>
                       </div>
-                      <span className="text-[11px] text-slate-400 font-normal">
-                        {fmtDate(getRangeBounds('2years').start)} – {fmtDate(getRangeBounds('2years').end)}
-                      </span>
                     </button>
 
                     {isDateRange && (
@@ -2137,23 +1820,7 @@ export function DailyJobSheet() {
               )}
             </div>
 
-            {isDateRange && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-800 text-[11.5px] font-bold">
-                <span>{fmtDate(effectiveStartDate)} – {fmtDate(effectiveEndDate)}</span>
-                <button
-                  type="button"
-                  onClick={() => selectPreset('today')}
-                  className="hover:text-red-600 transition-colors cursor-pointer ml-1"
-                  title="Clear range"
-                >
-                  ✕
-                </button>
-              </span>
-            )}
-          </div>
-
-          {/* Actions (Clean Header: Import, Add Job, and 3-dot Menu) */}
-          <div className="flex items-center gap-2">
+            {/* Hidden Excel Import File Input */}
             <input
               ref={importRef}
               type="file"
@@ -2165,38 +1832,48 @@ export function DailyJobSheet() {
                 e.target.value = ''
               }}
             />
+
+            {/* Import Button */}
             <button
+              type="button"
               onClick={() => importRef.current?.click()}
               disabled={importing}
-              title="Import Excel: Sheet ki date file name say automatically set hoti hai (e.g. 2026-10-23.xlsx ya 23 Oct.xlsx)"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#E4E8EC] text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-60 cursor-pointer"
+              title="Import Excel: Sheet ki date file name say automatically set hoti hai"
+              className="h-11 px-4 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-[12.5px] shadow-sm backdrop-blur-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60"
             >
-              <Upload size={13} /> {importing ? 'Importing…' : 'Import'}
+              <Upload size={15} className="text-emerald-300" />
+              <span>{importing ? 'Importing…' : 'Import'}</span>
             </button>
 
-            <Button size="sm" onClick={() => setShowAddJob(true)}>
-              <Plus size={13} className="mr-1" /> Add Job
-            </Button>
+            {/* Primary Action: Add Job Button (Solid White with Green text, matching Clients/Fluent Forms) */}
+            <button
+              type="button"
+              onClick={() => setShowAddJob(true)}
+              className="h-11 px-5 rounded-2xl bg-white text-emerald-800 font-extrabold text-[13px] shadow-lg hover:bg-emerald-50 transition-all shrink-0 flex items-center gap-2 cursor-pointer"
+            >
+              <Plus size={16} strokeWidth={2.5} className="text-emerald-700" />
+              <span>Add Job</span>
+            </button>
 
-            {/* Three-dot dropdown menu containing Print, Export, Template, Delete */}
+            {/* Three-dot menu containing Print, Export, Template, Delete */}
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowHeaderMenu(p => !p)}
-                className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                className={`h-11 w-11 rounded-2xl border transition-all cursor-pointer flex items-center justify-center backdrop-blur-md shadow-sm ${
                   showHeaderMenu
-                    ? 'border-emerald-400 bg-emerald-50 text-emerald-700 shadow-xs'
-                    : 'border-[#E4E8EC] text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    ? 'bg-white text-emerald-800 border-white shadow-md'
+                    : 'bg-white/10 hover:bg-white/20 border-white/20 text-white'
                 }`}
                 title="More actions (Print, Export, Template, Delete)"
               >
-                <MoreVertical size={16} />
+                <MoreVertical size={18} />
               </button>
 
               {showHeaderMenu && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowHeaderMenu(false)} />
-                  <div className="absolute right-0 top-full mt-1.5 w-56 bg-white rounded-2xl border border-[#E4E8EC] shadow-xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="absolute right-0 top-full mt-2 w-60 bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_16px_48px_rgba(15,23,42,0.22)] py-2 z-50 animate-in fade-in zoom-in-95 duration-100 text-slate-800">
                     <button
                       type="button"
                       onClick={() => { setShowHeaderMenu(false); printSheet() }}
@@ -2221,17 +1898,34 @@ export function DailyJobSheet() {
                       <FileSpreadsheet size={15} className="text-emerald-600" />
                       <span>Download Template</span>
                     </button>
-                    {gdriveConfigured && (
-                      <button
-                        type="button"
-                        disabled={driveStatus === 'connecting' || driveStatus === 'uploading'}
-                        onClick={() => { setShowHeaderMenu(false); backupToDrive() }}
-                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[12.5px] font-semibold text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer text-left disabled:opacity-50"
-                      >
-                        <CloudUpload size={15} className="text-blue-600" />
-                        <span>Google Drive Backup</span>
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      disabled={driveStatus === 'connecting' || driveStatus === 'uploading'}
+                      onClick={() => {
+                        setShowHeaderMenu(false)
+                        const webhookUrl = getDriveWebhookUrl()
+                        if (!webhookUrl && !gdriveConfigured) {
+                          setShowDriveModal(true)
+                        } else {
+                          backupToDrive()
+                        }
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[12.5px] font-semibold text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer text-left disabled:opacity-50"
+                    >
+                      <CloudUpload size={15} className="text-blue-600" />
+                      <span>Send to Google Drive</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowHeaderMenu(false)
+                        setShowDriveModal(true)
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-[11px] font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors cursor-pointer text-left pl-9"
+                    >
+                      <Settings size={13} className="text-slate-400" />
+                      <span>Drive & n8n Settings</span>
+                    </button>
                     <div className="my-1 border-t border-slate-100" />
                     <button
                       type="button"
@@ -2242,6 +1936,15 @@ export function DailyJobSheet() {
                       <Trash2 size={15} className="text-red-500" />
                       <span>Delete Day's Data</span>
                     </button>
+                    <button
+                      type="button"
+                      disabled={dailyJobs.length === 0 && dailyExpenses.length === 0}
+                      onClick={() => { setShowHeaderMenu(false); setShowDeleteAllConfirm(true) }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[12.5px] font-bold text-red-700 hover:bg-red-100/70 transition-colors cursor-pointer text-left disabled:opacity-40 disabled:cursor-not-allowed border-t border-red-100/60 bg-red-50/40"
+                    >
+                      <AlertTriangle size={15} className="text-red-600" />
+                      <span>Delete All Data</span>
+                    </button>
                   </div>
                 </>
               )}
@@ -2249,19 +1952,53 @@ export function DailyJobSheet() {
           </div>
         </div>
 
+        {/* Delete Feedback */}
+        {deleteSuccessNotice && (
+          <div className="mt-4 bg-white/15 border border-white/20 rounded-xl px-4 py-2.5 flex items-center justify-between text-white backdrop-blur-md animate-in fade-in duration-200">
+            <p className="text-[12px] font-bold text-white flex items-center gap-2">
+              <CheckCircle size={15} className="text-emerald-300" />
+              <span>✓ {deleteSuccessNotice}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => setDeleteSuccessNotice(null)}
+              className="text-white/70 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         {/* Drive feedback */}
         {driveStatus === 'done' && (
-          <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 flex items-center justify-between">
-            <p className="text-[12px] text-emerald-700 font-semibold">Uploaded to Google Drive</p>
-            <a href={driveLink} target="_blank" rel="noopener noreferrer" className="text-[12px] text-emerald-600 underline font-medium">Open file</a>
+          <div className="mt-4 bg-white/15 border border-white/20 rounded-xl px-4 py-2.5 flex items-center justify-between text-white backdrop-blur-md">
+            <p className="text-[12px] font-bold text-white">✓ Daily Job Sheet backed up to Google Drive</p>
+            {driveLink ? (
+              <a href={driveLink} target="_blank" rel="noopener noreferrer" className="text-[12px] text-emerald-300 underline font-semibold flex items-center gap-1">Open file ↗</a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowDriveModal(true)}
+                className="text-[11.5px] text-emerald-200 hover:text-white underline font-semibold cursor-pointer"
+              >
+                View Details
+              </button>
+            )}
           </div>
         )}
         {driveStatus === 'error' && (
-          <div className="mt-3 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
-            <p className="text-[12px] text-red-700">{driveError}</p>
+          <div className="mt-4 bg-red-500/20 border border-red-400/30 rounded-xl px-4 py-2.5 flex items-center justify-between text-white backdrop-blur-md">
+            <p className="text-[12px] font-semibold">{driveError}</p>
+            <button
+              type="button"
+              onClick={() => setShowDriveModal(true)}
+              className="text-[11.5px] underline font-bold text-amber-200 hover:text-white cursor-pointer"
+            >
+              Configure n8n Webhook
+            </button>
           </div>
         )}
-      </div>
+      </section>
 
       {/* ── KPI Cards (Structured 2-Row Modern Executive Layout - Clickable) ── */}
       <div className="space-y-3 sm:space-y-3.5">
@@ -2270,14 +2007,16 @@ export function DailyJobSheet() {
           {[
             {
               id: 'charges',
-              label: 'Charges',
+              label: 'CHARGES',
               sublabel: 'Total billed amount',
               value: `AED ${totalCharges.toLocaleString()}`,
-              color: 'text-indigo-700',
-              bg: 'bg-indigo-50/70 hover:bg-indigo-100/70',
-              border: 'border-indigo-200/80',
+              valueColor: 'text-indigo-950',
+              labelColor: 'text-indigo-700',
+              sublabelColor: 'text-slate-500',
+              bg: 'bg-gradient-to-br from-indigo-50/95 via-indigo-50/40 to-white hover:from-indigo-100/90 hover:to-indigo-50/70',
+              border: 'border-2 border-indigo-200 hover:border-indigo-400',
               icon: Receipt,
-              iconBg: 'bg-indigo-100 text-indigo-700',
+              iconBg: 'bg-[#4f46e5] text-white shadow-md shadow-indigo-500/25',
               tooltip: 'Click to view Jobs Table & Charges column',
               onClick: () => {
                 setPaymentFilter('ALL')
@@ -2286,14 +2025,16 @@ export function DailyJobSheet() {
             },
             {
               id: 'collection',
-              label: isDateRange ? 'Gross Collected' : 'Today Collection',
+              label: isDateRange ? 'GROSS COLLECTED' : 'TODAY COLLECTION',
               sublabel: isDateRange ? 'Direct collections' : 'Cash & direct today',
               value: `AED ${grossCollected.toLocaleString()}`,
-              color: 'text-emerald-700',
-              bg: 'bg-emerald-50/70 hover:bg-emerald-100/70',
-              border: 'border-emerald-200/80',
+              valueColor: 'text-emerald-950',
+              labelColor: 'text-emerald-700',
+              sublabelColor: 'text-slate-500',
+              bg: 'bg-gradient-to-br from-emerald-50/95 via-emerald-50/40 to-white hover:from-emerald-100/90 hover:to-emerald-50/70',
+              border: 'border-2 border-emerald-300 hover:border-emerald-400',
               icon: Wallet,
-              iconBg: 'bg-emerald-100 text-emerald-700',
+              iconBg: 'bg-[#059669] text-white shadow-md shadow-emerald-500/25',
               tooltip: 'Click to view Driver & Staff Collections Summary',
               onClick: () => {
                 scrollToElement('driver-summary-widget')
@@ -2301,14 +2042,16 @@ export function DailyJobSheet() {
             },
             {
               id: 'pending-rcvd',
-              label: 'Pending Cash Received',
+              label: 'PENDING CASH RECEIVED',
               sublabel: 'Recovered cash dues',
               value: `AED ${pendingCashRcvdForNet.toLocaleString()}`,
-              color: 'text-teal-700',
-              bg: 'bg-teal-50/70 hover:bg-teal-100/70',
-              border: 'border-teal-200/80',
+              valueColor: 'text-[#0f766e]',
+              labelColor: 'text-teal-700',
+              sublabelColor: 'text-slate-500',
+              bg: 'bg-gradient-to-br from-teal-50/95 via-teal-50/40 to-white hover:from-teal-100/90 hover:to-teal-50/70',
+              border: 'border-2 border-teal-300 hover:border-teal-400',
               icon: CheckCircle,
-              iconBg: 'bg-teal-100 text-teal-700',
+              iconBg: 'bg-[#008f7a] text-white shadow-md shadow-teal-500/25',
               tooltip: 'Click to view Pending Received Reconciliation widget',
               onClick: () => {
                 scrollToElement('pending-received-widget')
@@ -2316,14 +2059,16 @@ export function DailyJobSheet() {
             },
             {
               id: 'expenses',
-              label: 'Expenses',
+              label: 'EXPENSES',
               sublabel: 'Fuel, supplies & others',
               value: `AED ${totalExpenses.toLocaleString()}`,
-              color: 'text-amber-700',
-              bg: 'bg-amber-50/70 hover:bg-amber-100/70',
-              border: 'border-amber-200/80',
+              valueColor: 'text-[#b45309]',
+              labelColor: 'text-amber-800',
+              sublabelColor: 'text-slate-500',
+              bg: 'bg-gradient-to-br from-amber-50/95 via-amber-50/40 to-white hover:from-amber-100/90 hover:to-amber-50/70',
+              border: 'border-2 border-amber-300 hover:border-amber-400',
               icon: TrendingUp,
-              iconBg: 'bg-amber-100 text-amber-700',
+              iconBg: 'bg-[#ea580c] text-white shadow-md shadow-amber-500/25',
               tooltip: 'Click to view Expenses Log widget',
               onClick: () => {
                 scrollToElement('expenses-log-widget')
@@ -2331,17 +2076,18 @@ export function DailyJobSheet() {
             },
             {
               id: 'net-total',
-              label: 'Net Total',
+              label: 'NET TOTAL',
               sublabel: 'Net bottom line in hand',
               value: `AED ${netTotal.toLocaleString()}`,
-              isHero: true,
-              color: 'text-white',
+              valueColor: 'text-white drop-shadow-xs',
+              labelColor: 'text-white/95',
+              sublabelColor: 'text-emerald-100',
               bg: netTotal >= 0
-                ? 'bg-gradient-to-br from-emerald-600 via-emerald-600 to-teal-700 shadow-md shadow-emerald-600/20 text-white hover:brightness-105'
-                : 'bg-gradient-to-br from-red-600 to-rose-700 shadow-md shadow-red-600/20 text-white hover:brightness-105',
-              border: netTotal >= 0 ? 'border-emerald-500' : 'border-red-500',
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30'
+                : 'bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/30',
+              border: netTotal >= 0 ? 'border-2 border-emerald-400/90' : 'border-2 border-rose-400/90',
               icon: DollarSign,
-              iconBg: 'bg-white/20 text-white',
+              iconBg: 'bg-white/20 text-white ring-1 ring-white/30 backdrop-blur-xs shadow-xs',
               tooltip: 'Click to view Financial Breakdown & Summary',
               onClick: () => {
                 scrollToElement('bottom-panels-section')
@@ -2355,43 +2101,26 @@ export function DailyJobSheet() {
                 type="button"
                 onClick={c.onClick}
                 title={c.tooltip}
-                className={`group relative rounded-2xl border ${c.border} ${c.bg} p-3.5 sm:p-4 transition-all duration-200 hover:-translate-y-1 hover:shadow-md active:scale-[0.98] cursor-pointer flex flex-col justify-between text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1`}
+                className={`group relative rounded-[22px] ${c.border} ${c.bg} p-4 sm:p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg active:scale-[0.98] cursor-pointer flex flex-col justify-between text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1`}
               >
-                <div className="flex items-center justify-between gap-2 mb-2 w-full">
-                  <span
-                    className={`text-[11px] font-bold tracking-tight uppercase truncate ${
-                      c.isHero ? 'text-emerald-100' : 'text-slate-500'
-                    }`}
-                  >
+                <div className="flex items-start justify-between gap-2 mb-2 w-full">
+                  <span className={`text-[11px] font-bold tracking-wider uppercase truncate ${c.labelColor}`}>
                     {c.label}
                   </span>
                   <div
-                    className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-110 ${c.iconBg}`}
+                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 ${c.iconBg}`}
                   >
-                    <Icon size={14} />
+                    <Icon size={18} strokeWidth={2.2} />
                   </div>
                 </div>
 
                 <div className="w-full">
-                  <p className={`text-[19px] sm:text-[21px] font-black tracking-tight leading-tight truncate ${c.color}`}>
+                  <p className={`text-[23px] sm:text-[26px] font-black tracking-tight leading-tight truncate ${c.valueColor}`}>
                     {c.value}
                   </p>
-                  <div className="flex items-center justify-between gap-1 mt-1">
-                    <p
-                      className={`text-[10.5px] font-medium truncate ${
-                        c.isHero ? 'text-emerald-200/90' : 'text-slate-400'
-                      }`}
-                    >
-                      {c.sublabel}
-                    </p>
-                    <span
-                      className={`text-[9.5px] font-semibold opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ${
-                        c.isHero ? 'text-emerald-100' : 'text-slate-400'
-                      }`}
-                    >
-                      View ↓
-                    </span>
-                  </div>
+                  <p className={`text-[11px] sm:text-[11.5px] font-medium mt-1 truncate ${c.sublabelColor}`}>
+                    {c.sublabel}
+                  </p>
                 </div>
               </button>
             )
@@ -2403,14 +2132,16 @@ export function DailyJobSheet() {
           {[
             {
               id: 'pending',
-              label: 'Pending',
+              label: 'PENDING',
               sublabel: 'Uncollected balances',
               value: `AED ${pendingTotal.toLocaleString()}`,
-              color: 'text-rose-700',
-              bg: 'bg-rose-50/70 hover:bg-rose-100/70',
-              border: 'border-rose-200/80',
+              valueColor: 'text-rose-900',
+              labelColor: 'text-rose-700',
+              sublabelColor: 'text-slate-500',
+              bg: 'bg-gradient-to-br from-rose-50/95 via-rose-50/40 to-white hover:from-rose-100/90 hover:to-rose-50/70',
+              border: 'border-2 border-rose-300 hover:border-rose-400',
               icon: AlertCircle,
-              iconBg: 'bg-rose-100 text-rose-700',
+              iconBg: 'bg-[#e11d48] text-white shadow-md shadow-rose-500/25',
               tooltip: 'Click to view Today Pending Records widget',
               onClick: () => {
                 scrollToElement('today-pending-widget')
@@ -2418,14 +2149,16 @@ export function DailyJobSheet() {
             },
             {
               id: 'online',
-              label: 'Online',
+              label: 'ONLINE',
               sublabel: 'Card & bank transfers',
               value: `AED ${onlineTotal.toLocaleString()}`,
-              color: 'text-sky-700',
-              bg: 'bg-sky-50/70 hover:bg-sky-100/70',
-              border: 'border-sky-200/80',
+              valueColor: 'text-sky-900',
+              labelColor: 'text-sky-700',
+              sublabelColor: 'text-slate-500',
+              bg: 'bg-gradient-to-br from-sky-50/95 via-sky-50/40 to-white hover:from-sky-100/90 hover:to-sky-50/70',
+              border: 'border-2 border-sky-300 hover:border-sky-400',
               icon: CreditCard,
-              iconBg: 'bg-sky-100 text-sky-700',
+              iconBg: 'bg-[#0284c7] text-white shadow-md shadow-sky-500/25',
               tooltip: 'Click to filter Jobs Table by Online Mode',
               onClick: () => {
                 setPaymentFilter('Online')
@@ -2434,14 +2167,16 @@ export function DailyJobSheet() {
             },
             {
               id: 'ot',
-              label: 'OT (Overtime)',
+              label: 'OT (OVERTIME)',
               sublabel: 'Total approved OT',
               value: `${totalOTHours}h`,
-              color: 'text-orange-700',
-              bg: 'bg-orange-50/70 hover:bg-orange-100/70',
-              border: 'border-orange-200/80',
+              valueColor: 'text-[#c2410c]',
+              labelColor: 'text-orange-800',
+              sublabelColor: 'text-slate-500',
+              bg: 'bg-gradient-to-br from-orange-50/95 via-orange-50/40 to-white hover:from-orange-100/90 hover:to-orange-50/70',
+              border: 'border-2 border-orange-300 hover:border-orange-400',
               icon: Clock,
-              iconBg: 'bg-orange-100 text-orange-700',
+              iconBg: 'bg-[#ea580c] text-white shadow-md shadow-orange-500/25',
               tooltip: 'Click to view Overtime in Jobs Table',
               onClick: () => {
                 if (!visibleColumns.ot_hours) {
@@ -2452,14 +2187,16 @@ export function DailyJobSheet() {
             },
             {
               id: 'staff',
-              label: isDateRange ? 'Active Staff' : 'Staff on Duty',
+              label: isDateRange ? 'ACTIVE STAFF' : 'STAFF ON DUTY',
               sublabel: isDateRange ? 'Cleaners deployed' : 'Present on shift',
               value: String(staffOnDuty),
-              color: 'text-purple-700',
-              bg: 'bg-purple-50/70 hover:bg-purple-100/70',
-              border: 'border-purple-200/80',
+              valueColor: 'text-[#065f46]',
+              labelColor: 'text-emerald-800',
+              sublabelColor: 'text-slate-500',
+              bg: 'bg-gradient-to-br from-emerald-50/95 via-emerald-50/40 to-white hover:from-emerald-100/90 hover:to-emerald-50/70',
+              border: 'border-2 border-emerald-300 hover:border-emerald-400',
               icon: Users,
-              iconBg: 'bg-purple-100 text-purple-700',
+              iconBg: 'bg-[#047857] text-white shadow-md shadow-emerald-500/25',
               tooltip: 'Click to view Driver / Staff Summary widget',
               onClick: () => {
                 scrollToElement('driver-summary-widget')
@@ -2467,14 +2204,16 @@ export function DailyJobSheet() {
             },
             {
               id: 'jobs',
-              label: isDateRange ? 'Total Jobs' : 'Jobs Today',
+              label: isDateRange ? 'TOTAL JOBS' : 'JOBS TODAY',
               sublabel: isDateRange ? 'Total assignments' : 'Bookings scheduled',
               value: String(jobsCount),
-              color: 'text-slate-800',
-              bg: 'bg-slate-100/80 hover:bg-slate-200/80',
-              border: 'border-slate-200',
+              valueColor: 'text-blue-950',
+              labelColor: 'text-blue-700',
+              sublabelColor: 'text-slate-500',
+              bg: 'bg-gradient-to-br from-blue-50/95 via-blue-50/40 to-white hover:from-blue-100/90 hover:to-blue-50/70',
+              border: 'border-2 border-blue-300 hover:border-blue-400',
               icon: Briefcase,
-              iconBg: 'bg-slate-200 text-slate-700',
+              iconBg: 'bg-[#2563eb] text-white shadow-md shadow-blue-500/25',
               tooltip: 'Click to view All Jobs in Table',
               onClick: () => {
                 setPaymentFilter('ALL')
@@ -2489,31 +2228,26 @@ export function DailyJobSheet() {
                 type="button"
                 onClick={c.onClick}
                 title={c.tooltip}
-                className={`group relative rounded-2xl border ${c.border} ${c.bg} p-3.5 sm:p-4 transition-all duration-200 hover:-translate-y-1 hover:shadow-md active:scale-[0.98] cursor-pointer flex flex-col justify-between text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1`}
+                className={`group relative rounded-[22px] ${c.border} ${c.bg} p-4 sm:p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg active:scale-[0.98] cursor-pointer flex flex-col justify-between text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1`}
               >
-                <div className="flex items-center justify-between gap-2 mb-2 w-full">
-                  <span className="text-[11px] font-bold tracking-tight uppercase text-slate-500 truncate">
+                <div className="flex items-start justify-between gap-2 mb-2 w-full">
+                  <span className={`text-[11px] font-bold tracking-wider uppercase truncate ${c.labelColor}`}>
                     {c.label}
                   </span>
                   <div
-                    className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-110 ${c.iconBg}`}
+                    className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 ${c.iconBg}`}
                   >
-                    <Icon size={14} />
+                    <Icon size={18} strokeWidth={2.2} />
                   </div>
                 </div>
 
                 <div className="w-full">
-                  <p className={`text-[19px] sm:text-[21px] font-black tracking-tight leading-tight truncate ${c.color}`}>
+                  <p className={`text-[23px] sm:text-[26px] font-black tracking-tight leading-tight truncate ${c.valueColor}`}>
                     {c.value}
                   </p>
-                  <div className="flex items-center justify-between gap-1 mt-1">
-                    <p className="text-[10.5px] font-medium text-slate-400 mt-1 truncate">
-                      {c.sublabel}
-                    </p>
-                    <span className="text-[9.5px] font-semibold text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                      View ↓
-                    </span>
-                  </div>
+                  <p className={`text-[11px] sm:text-[11.5px] font-medium mt-1 truncate ${c.sublabelColor}`}>
+                    {c.sublabel}
+                  </p>
                 </div>
               </button>
             )
@@ -2528,29 +2262,18 @@ export function DailyJobSheet() {
             <h3 className="text-[15px] font-bold text-[#111827]">
               Jobs —{' '}
               <span className="text-slate-400 font-normal">
-                {isDateRange
-                  ? `${fmtDate(effectiveStartDate)} – ${fmtDate(effectiveEndDate)} (${
-                      dateRangePreset === '7days'
-                        ? 'Last 7 Days'
-                        : dateRangePreset === '14days'
-                          ? 'Last 14 Days'
-                          : dateRangePreset === '28days'
-                            ? 'Last 28 Days'
-                            : dateRangePreset === '3months'
-                              ? 'Last 3 Months'
-                              : dateRangePreset === '6months'
-                                ? 'Last 6 Months'
-                                : dateRangePreset === '1year'
-                                  ? 'One Year'
-                                  : 'Two Years'
-                    })`
-                  : fmtDate(selectedDate)}
+                {isDateRange ? getPresetDisplayName(dateRangePreset) : fmtDate(selectedDate)}
               </span>
             </h3>
             <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
-              <span>
-                {filteredActiveJobRows.length} active {filteredActiveJobRows.length === 1 ? 'job' : 'jobs'} · {filteredNilRows.length} absentees / nil
-              </span>
+              {todayJobs.length === 0 ? (
+                <span>No jobs recorded for this date</span>
+              ) : (
+                <span>
+                  {filteredActiveJobRows.length} active {filteredActiveJobRows.length === 1 ? 'job' : 'jobs'}
+                  {filteredNilRows.length > 0 && ` · ${filteredNilRows.length} absentees / nil`}
+                </span>
+              )}
               {paymentFilter !== 'ALL' && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10.5px]">
                   Mode: {paymentFilter}
@@ -3641,457 +3364,148 @@ CREATE TABLE daily_expenses (
       </Modal>
 
       {/* ── Add Expense Modal ── */}
-      <Modal open={showAddExpense} onClose={() => setShowAddExpense(false)} title="Add Expense" size="sm">
-        <form className="space-y-4" onSubmit={e => {
-          e.preventDefault()
-          const fd = new FormData(e.currentTarget as HTMLFormElement)
-          addDailyExpense({
-            date:     selectedDate,
-            name:     fd.get('name') as string,
-            category: fd.get('category') as string,
-            amount:   cleanNum(fd.get('amount')),
-          })
-          setShowAddExpense(false)
-        }}>
-          <Input name="name" label="Driver / Person Name" placeholder="e.g. Ahmed, Raju…" required />
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Category</label>
-            <select name="category" className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400 text-slate-700">
-              {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <Input name="amount" label="Amount (AED)" type="number" min="0" step="0.01" placeholder="0.00" required />
-          <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowAddExpense(false)}>Cancel</Button>
-            <Button type="submit" className="flex-1">Add Expense</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* ── Confirm Delete Day Data Modal ── */}
-      <Modal open={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="Delete Day's Data" size="sm">
-        <div className="space-y-4 pt-1">
-          <div className="flex items-start gap-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
-              <AlertCircle size={22} />
-            </div>
-            <div>
-              <h4 className="text-[14px] font-bold text-slate-900">
-                Delete all data for {fmtDate(selectedDate)}?
-              </h4>
-              <p className="text-[12px] text-slate-600 mt-1 leading-relaxed">
-                This will permanently delete all <strong>{todayJobs.length} jobs</strong> and <strong>{todayExpenses.length} expenses</strong> recorded for this date.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-red-50/80 border border-red-200 rounded-xl p-3 text-[11.5px] text-red-700 leading-relaxed">
-            ⚠️ <strong>Warning:</strong> This action cannot be undone. All entries for this day will be permanently removed.
-          </div>
-
-          <div className="flex items-center gap-3 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={() => setShowDeleteConfirm(false)}
-            >
-              Cancel
-            </Button>
-            <button
-              type="button"
-              onClick={() => {
-                clearDailyData(selectedDate)
-                setPendingList(prev => prev.filter(x => x.date !== selectedDate))
-                setPendingRcvdList(prev => prev.filter(x => x.date !== selectedDate))
-                setAdvanceList(prev => prev.filter(x => x.date !== selectedDate))
-                setShowDeleteConfirm(false)
-                setDeleteSuccessNotice(fmtDate(selectedDate))
-              }}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-[13px] shadow-sm transition-all cursor-pointer"
-            >
-              Yes, Delete All
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ── Add Pending Item Modal ── */}
-      <Modal open={showAddPending} onClose={() => setShowAddPending(false)} title="Add Pending Item" size="sm">
-        <form
-          onSubmit={e => {
-            e.preventDefault()
-            const fd = new FormData(e.currentTarget)
-            const client = String(fd.get('client') || '').trim()
-            const amount = cleanNum(fd.get('amount'))
-            if (!client) return
-            setPendingList(prev => [
-              {
-                id: `p-${Date.now()}`,
-                date: selectedDate,
-                client,
-                amount,
-              },
-              ...prev,
-            ])
-            setShowAddPending(false)
-          }}
-          className="space-y-4 pt-2"
-        >
-          <Input name="client" label="Client Name / Description" placeholder="e.g. Villa 96C, Office 12..." required autoFocus />
-          <Input name="amount" label="Pending Amount (AED)" type="number" step="0.01" min="0" placeholder="0.00" required />
-          <div className="flex gap-2 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowAddPending(false)}>Cancel</Button>
-            <Button type="submit" className="flex-1 bg-red-600 hover:bg-red-700 text-white">Add Pending</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* ── Add Pending Received Item Modal ── */}
-      <Modal open={showAddPendingRcvd} onClose={() => setShowAddPendingRcvd(false)} title="Add Pending Received Item" size="sm">
-        <form
-          onSubmit={e => {
-            e.preventDefault()
-            const fd = new FormData(e.currentTarget)
-            const client = String(fd.get('client') || '').trim()
-            const cash = cleanNum(fd.get('cash'))
-            const online = cleanNum(fd.get('online'))
-            if (!client) return
-            setPendingRcvdList(prev => [
-              {
-                id: `pr-${Date.now()}`,
-                date: selectedDate,
-                client,
-                cash,
-                online,
-              },
-              ...prev,
-            ])
-            setShowAddPendingRcvd(false)
-          }}
-          className="space-y-4 pt-2"
-        >
-          <Input name="client" label="Client Name / Description" placeholder="e.g. Villa 63B Street 62B..." required autoFocus />
-          <div className="grid grid-cols-2 gap-3">
-            <Input name="cash" label="Cash Amount (AED)" type="number" step="0.01" min="0" placeholder="0.00" defaultValue="0" />
-            <Input name="online" label="Online Amount (AED)" type="number" step="0.01" min="0" placeholder="0.00" defaultValue="0" />
-          </div>
-          <div className="flex gap-2 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowAddPendingRcvd(false)}>Cancel</Button>
-            <Button type="submit" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white">Add Record</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* ── Add Advance Item Modal ── */}
-      <Modal open={showAddAdvance} onClose={() => setShowAddAdvance(false)} title="Add Advance Item" size="sm">
-        <form
-          onSubmit={e => {
-            e.preventDefault()
-            const fd = new FormData(e.currentTarget)
-            const client = String(fd.get('client') || '').trim()
-            const received = cleanNum(fd.get('received'))
-            const advance = cleanNum(fd.get('advance'))
-            if (!client) return
-            setAdvanceList(prev => [
-              {
-                id: `adv-${Date.now()}`,
-                date: selectedDate,
-                client,
-                received,
-                advance,
-              },
-              ...prev,
-            ])
-            setShowAddAdvance(false)
-          }}
-          className="space-y-4 pt-2"
-        >
-          <Input name="client" label="Client Name / Description" placeholder="e.g. 615 Zarooni 2..." required autoFocus />
-          <div className="grid grid-cols-2 gap-3">
-            <Input name="received" label="Received Amount (AED)" type="number" step="0.01" min="0" placeholder="0.00" defaultValue="0" />
-            <Input name="advance" label="Advance Amount (AED)" type="number" step="0.01" min="0" placeholder="0.00" required />
-          </div>
-          <div className="flex gap-2 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowAddAdvance(false)}>Cancel</Button>
-            <Button type="submit" className="flex-1 bg-amber-600 hover:bg-amber-700 text-white">Add Advance</Button>
-          </div>
-        </form>
-      </Modal>
+      <AddExpenseModal
+        open={showAddExpense}
+        onClose={() => setShowAddExpense(false)}
+        selectedDate={selectedDate}
+        onAdd={addDailyExpense}
+      />
 
       {/* ── Edit Expense Modal ── */}
-      <Modal open={!!editExpense} onClose={() => setEditExpense(null)} title="Edit Expense" size="sm">
-        {editExpense && (
-          <form
-            className="space-y-4 pt-1"
-            onSubmit={e => {
-              e.preventDefault()
-              const fd = new FormData(e.currentTarget as HTMLFormElement)
-              updateDailyExpense(editExpense.id, {
-                name:     fd.get('name') as string,
-                category: fd.get('category') as string,
-                amount:   cleanNum(fd.get('amount')),
-              })
-              setEditExpense(null)
-            }}
-          >
-            <Input name="name" label="Driver / Person Name" defaultValue={editExpense.name} required />
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Category</label>
-              <select
-                name="category"
-                defaultValue={editExpense.category}
-                className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400 text-slate-700"
-              >
-                {EXPENSE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <Input name="amount" label="Amount (AED)" type="number" min="0" step="0.01" defaultValue={editExpense.amount} required />
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditExpense(null)}>Cancel</Button>
-              <Button type="submit" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white">Save Changes</Button>
-            </div>
-          </form>
-        )}
-      </Modal>
+      <EditExpenseModal
+        expense={editExpense}
+        onClose={() => setEditExpense(null)}
+        onUpdate={updateDailyExpense}
+      />
+
+      {/* ── Confirm Delete Day Data Modal ── */}
+      <DeleteDayConfirmModal
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        selectedDate={selectedDate}
+        jobsCount={todayJobs.length}
+        expensesCount={todayExpenses.length}
+        onConfirm={() => {
+          clearDailyData(selectedDate)
+          setPendingList(prev => prev.filter(x => x.date !== selectedDate))
+          setPendingRcvdList(prev => prev.filter(x => x.date !== selectedDate))
+          setAdvanceList(prev => prev.filter(x => x.date !== selectedDate))
+          setShowDeleteConfirm(false)
+          setDeleteSuccessNotice(fmtDate(selectedDate) + " data deleted")
+        }}
+      />
+
+      {/* ── Confirm Delete All Data Modal ── */}
+      <DeleteAllConfirmModal
+        open={showDeleteAllConfirm}
+        onClose={() => setShowDeleteAllConfirm(false)}
+        totalJobsCount={dailyJobs.length}
+        totalExpensesCount={dailyExpenses.length}
+        onConfirm={async () => {
+          await clearAllDailyData()
+          setPendingList([])
+          setPendingRcvdList([])
+          setAdvanceList([])
+          safeLocalStorageSet('safaeewala_daily_pending_items', [])
+          safeLocalStorageSet('safaeewala_daily_pending_rcvd_items', [])
+          safeLocalStorageSet('safaeewala_daily_advance_items', [])
+          setShowDeleteAllConfirm(false)
+          setDeleteSuccessNotice('All database records have been permanently deleted')
+        }}
+      />
 
       {/* ── Edit Driver / Staff Summary Modal ── */}
-      <Modal
-        open={!!editingDriverStaff}
+      <DriverStaffModal
+        staff={editingDriverStaff}
+        selectedDate={selectedDate}
+        todayJobs={todayJobs}
         onClose={() => setEditingDriverStaff(null)}
-        title={`Staff / Driver — ${editingDriverStaff?.name ?? ''}`}
-        size="md"
-      >
-        {editingDriverStaff && (() => {
-          const staffJobs = todayJobs.filter(j => j.staff_name.trim().toLowerCase() === editingDriverStaff.name.trim().toLowerCase())
-          return (
-            <div className="space-y-4 pt-1">
-              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-[12.5px]">
-                <div>
-                  <span className="text-emerald-800 font-semibold">Staff Member:</span>{' '}
-                  <strong className="text-emerald-950 font-bold">{editingDriverStaff.name}</strong>
-                  <span className="text-slate-500 ml-2">({staffJobs.length} job{staffJobs.length !== 1 ? 's' : ''} on {fmtDate(selectedDate)})</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[11px] text-emerald-700 font-medium">Total Collected:</span>{' '}
-                  <span className="text-[14px] font-black text-emerald-900">AED {editingDriverStaff.currentAmount.toLocaleString()}</span>
-                </div>
-              </div>
+        onEditJob={job => setEditJob(job)}
+      />
 
-              <div>
-                <h5 className="text-[12px] font-bold text-slate-700 uppercase tracking-wider mb-2">Assigned Jobs & Received Amounts</h5>
-                {staffJobs.length === 0 ? (
-                  <p className="text-[12px] text-slate-400 py-3 text-center">No active jobs found for {editingDriverStaff.name}</p>
-                ) : (
-                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
-                    {staffJobs.map(job => (
-                      <div key={job.id} className="p-3 flex items-center justify-between gap-3 text-[12px] hover:bg-slate-50 transition-colors">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-slate-800 truncate">{job.address || 'No address'}</p>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            {formatTimeOnly(job.start_time)} – {formatTimeOnly(job.end_time)} · Mode: <strong className="text-slate-600">{job.payment_mode}</strong> · Charges: AED {cleanNum(job.charges)}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2.5">
-                          <div className="text-right">
-                            <span className="text-[10px] text-slate-400 block font-medium">Received</span>
-                            <span className="font-bold text-emerald-700">AED {cleanNum(job.received)}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingDriverStaff(null)
-                              setEditJob(job)
-                            }}
-                            className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
-                            title="Edit this job"
-                          >
-                            <Pencil size={12} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <Button type="button" variant="outline" onClick={() => setEditingDriverStaff(null)}>
-                  Close
-                </Button>
-              </div>
-            </div>
-          )
-        })()}
-      </Modal>
+      {/* ── Add Pending Item Modal ── */}
+      <AddPendingModal
+        open={showAddPending}
+        selectedDate={selectedDate}
+        onClose={() => setShowAddPending(false)}
+        onAdd={item => setPendingList(prev => [item, ...prev])}
+      />
 
       {/* ── Edit Pending Item Modal ── */}
-      <Modal open={!!editingPending} onClose={() => setEditingPending(null)} title="Edit Pending Item" size="sm">
-        {editingPending && (
-          <form
-            onSubmit={e => {
-              e.preventDefault()
-              const fd = new FormData(e.currentTarget)
-              const client = String(fd.get('client') || '').trim()
-              const amount = cleanNum(fd.get('amount'))
-              if (!client) return
-              setPendingList(prev => prev.map(x => x.id === editingPending.id ? { ...x, client, amount } : x))
-              setEditingPending(null)
-            }}
-            className="space-y-4 pt-2"
-          >
-            <Input name="client" label="Client Name / Description" defaultValue={editingPending.client} required autoFocus />
-            <Input name="amount" label="Pending Amount (AED)" type="number" step="0.01" min="0" defaultValue={editingPending.amount} required />
-            <div className="flex gap-2 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditingPending(null)}>Cancel</Button>
-              <Button type="submit" className="flex-1 bg-red-600 hover:bg-red-700 text-white">Save Changes</Button>
-            </div>
-          </form>
-        )}
-      </Modal>
+      <EditPendingModal
+        item={editingPending}
+        onClose={() => setEditingPending(null)}
+        onSave={(id, client, amount) => {
+          setPendingList(prev => prev.map(x => x.id === id ? { ...x, client, amount } : x))
+        }}
+      />
+
+      {/* ── Add Pending Received Item Modal ── */}
+      <AddPendingReceivedModal
+        open={showAddPendingRcvd}
+        selectedDate={selectedDate}
+        onClose={() => setShowAddPendingRcvd(false)}
+        onAdd={item => setPendingRcvdList(prev => [item, ...prev])}
+      />
 
       {/* ── Edit Pending Received Item Modal ── */}
-      <Modal open={!!editingPendingRcvd} onClose={() => setEditingPendingRcvd(null)} title="Edit Pending Received Item" size="sm">
-        {editingPendingRcvd && (
-          <form
-            onSubmit={e => {
-              e.preventDefault()
-              const fd = new FormData(e.currentTarget)
-              const client = String(fd.get('client') || '').trim()
-              const cash = cleanNum(fd.get('cash'))
-              const online = cleanNum(fd.get('online'))
-              if (!client) return
-              setPendingRcvdList(prev => prev.map(x => x.id === editingPendingRcvd.id ? { ...x, client, cash, online } : x))
-              setEditingPendingRcvd(null)
-            }}
-            className="space-y-4 pt-2"
-          >
-            <Input name="client" label="Client Name / Description" defaultValue={editingPendingRcvd.client} required autoFocus />
-            <div className="grid grid-cols-2 gap-3">
-              <Input name="cash" label="Cash Amount (AED)" type="number" step="0.01" min="0" defaultValue={editingPendingRcvd.cash} />
-              <Input name="online" label="Online Amount (AED)" type="number" step="0.01" min="0" defaultValue={editingPendingRcvd.online} />
-            </div>
-            <div className="flex gap-2 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditingPendingRcvd(null)}>Cancel</Button>
-              <Button type="submit" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white">Save Changes</Button>
-            </div>
-          </form>
-        )}
-      </Modal>
+      <EditPendingReceivedModal
+        item={editingPendingRcvd}
+        onClose={() => setEditingPendingRcvd(null)}
+        onSave={(id, client, cash, online) => {
+          setPendingRcvdList(prev => prev.map(x => x.id === id ? { ...x, client, cash, online } : x))
+        }}
+      />
+
+      {/* ── Add Advance Item Modal ── */}
+      <AddAdvanceModal
+        open={showAddAdvance}
+        selectedDate={selectedDate}
+        onClose={() => setShowAddAdvance(false)}
+        onAdd={item => setAdvanceList(prev => [item, ...prev])}
+      />
 
       {/* ── Edit Advance Item Modal ── */}
-      <Modal open={!!editingAdvance} onClose={() => setEditingAdvance(null)} title="Edit Advance Item" size="sm">
-        {editingAdvance && (
-          <form
-            onSubmit={e => {
-              e.preventDefault()
-              const fd = new FormData(e.currentTarget)
-              const client = String(fd.get('client') || '').trim()
-              const received = cleanNum(fd.get('received'))
-              const advance = cleanNum(fd.get('advance'))
-              if (!client) return
-              setAdvanceList(prev => prev.map(x => x.id === editingAdvance.id ? { ...x, client, received, advance } : x))
-              setEditingAdvance(null)
-            }}
-            className="space-y-4 pt-2"
-          >
-            <Input name="client" label="Client Name / Description" defaultValue={editingAdvance.client} required autoFocus />
-            <div className="grid grid-cols-2 gap-3">
-              <Input name="received" label="Received Amount (AED)" type="number" step="0.01" min="0" defaultValue={editingAdvance.received} />
-              <Input name="advance" label="Advance Amount (AED)" type="number" step="0.01" min="0" defaultValue={editingAdvance.advance} required />
-            </div>
-            <div className="flex gap-2 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditingAdvance(null)}>Cancel</Button>
-              <Button type="submit" className="flex-1 bg-amber-600 hover:bg-amber-700 text-white">Save Changes</Button>
-            </div>
-          </form>
-        )}
-      </Modal>
+      <EditAdvanceModal
+        item={editingAdvance}
+        onClose={() => setEditingAdvance(null)}
+        onSave={(id, client, received, advance) => {
+          setAdvanceList(prev => prev.map(x => x.id === id ? { ...x, client, received, advance } : x))
+        }}
+      />
 
       {/* ── Today Pending Details Pop-up Modal ── */}
-      <Modal
-        open={!!selectedPendingDetails}
+      <PendingDetailsModal
+        details={selectedPendingDetails}
         onClose={() => setSelectedPendingDetails(null)}
-        title="Pending Job Details"
-        size="sm"
-      >
-        {selectedPendingDetails && (
-          <div className="space-y-4 pt-1">
-            <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl flex items-center justify-between">
-              <div>
-                <span className="text-[10.5px] uppercase tracking-wider font-bold text-red-800 block">Amount Due</span>
-                <span className="text-[20px] font-black text-red-700">AED {selectedPendingDetails.amount.toLocaleString()}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-[10.5px] text-slate-500 block">Date</span>
-                <span className="text-[12px] font-bold text-slate-800">{fmtDate(selectedPendingDetails.date)}</span>
-              </div>
-            </div>
+        onEditJob={job => setEditJob(job)}
+        onEditPending={item => setEditingPending(item)}
+        onMarkCollected={details => {
+          if (details.job) {
+            updateDailyJob(details.job.id, {
+              payment_mode: 'Cash',
+              received: cleanNum(details.job.charges),
+            })
+          } else {
+            setPendingList(prev => prev.filter(x => x.id !== details.id))
+          }
+        }}
+      />
 
-            <div className="space-y-2.5 text-[12.5px] bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-              <div className="flex items-center justify-between border-b border-slate-200/70 pb-2">
-                <span className="text-slate-500 font-medium">Staff:</span>
-                <strong className="text-slate-900 font-bold">{selectedPendingDetails.staff}</strong>
-              </div>
-              <div className="flex items-start justify-between border-b border-slate-200/70 pb-2 gap-3">
-                <span className="text-slate-500 font-medium shrink-0">Address:</span>
-                <span className="text-slate-800 font-semibold text-right break-words">{selectedPendingDetails.address || '—'}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-slate-200/70 pb-2">
-                <span className="text-slate-500 font-medium">Area / Zone:</span>
-                <span className="text-slate-800 font-semibold">{selectedPendingDetails.area || '—'}</span>
-              </div>
-              <div className="flex items-start justify-between gap-3">
-                <span className="text-slate-500 font-medium shrink-0">Remarks:</span>
-                <span className="text-slate-700 italic text-right break-words">{selectedPendingDetails.remarks || '—'}</span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                onClick={() => setSelectedPendingDetails(null)}
-              >
-                Close
-              </Button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedPendingDetails.job) {
-                    setEditJob(selectedPendingDetails.job)
-                  } else {
-                    setEditingPending(selectedPendingDetails as any)
-                  }
-                  setSelectedPendingDetails(null)
-                }}
-                className="px-3 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-emerald-700 hover:bg-slate-50 transition-colors cursor-pointer flex items-center gap-1.5 font-semibold text-[12px]"
-                title="Edit Job / Entry"
-              >
-                <Pencil size={13} /> Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedPendingDetails.job) {
-                    updateDailyJob(selectedPendingDetails.job.id, {
-                      payment_mode: 'Cash',
-                      received: cleanNum(selectedPendingDetails.job.charges),
-                    })
-                  } else {
-                    setPendingList(prev => prev.filter(x => x.id !== selectedPendingDetails.id))
-                  }
-                  setSelectedPendingDetails(null)
-                }}
-                className="flex-[1.5] px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[13px] shadow-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <CheckCircle size={14} /> Mark as Collected
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      {/* ── Google Drive & n8n Automation Modal ── */}
+      <GoogleDriveWebhookModal
+        open={showDriveModal}
+        onClose={() => setShowDriveModal(false)}
+        selectedDate={selectedDate}
+        todayJobsCount={todayJobs.length}
+        onSendBackupNow={async () => {
+          await backupToDrive()
+        }}
+        isUploading={driveStatus === 'uploading' || driveStatus === 'connecting'}
+        driveStatus={driveStatus}
+        driveLink={driveLink}
+        driveError={driveError}
+      />
 
     </div>
   )

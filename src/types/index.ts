@@ -206,3 +206,19 @@ export interface FluentFormLead {
   booking_id?: string
   raw_data?: Record<string, any>
 }
+
+export interface RecurringContract {
+  id: string
+  clientName: string
+  clientEmail?: string
+  clientPhone?: string
+  serviceType: string
+  frequency: 'weekly' | 'biweekly' | 'monthly'
+  amount: number
+  startDate: string
+  renewalDate: string
+  status: 'active' | 'paused' | 'cancelled'
+  lastBilled: string
+  nextBillingDate: string
+  notes?: string
+}

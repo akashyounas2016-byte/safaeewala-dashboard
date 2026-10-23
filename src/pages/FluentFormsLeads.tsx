@@ -72,6 +72,38 @@ const categoryColors: Record<string, { bg: string; text: string }> = {
   'Window Cleaning': { bg: 'bg-sky-50',     text: 'text-sky-700' },
 }
 
+/* ─── Local Date Helpers (Safe against UTC / local time mismatches) ─── */
+function getLeadLocalDate(raw: string | undefined): string {
+  if (!raw) return ''
+  try {
+    const d = new Date(raw)
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const day = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${day}`
+    }
+  } catch {}
+  return (raw || '').split('T')[0]
+}
+
+function getTodayLocalDate(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function getDaysAgoLocalDate(days: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - days)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 export function FluentFormsLeads() {
   const { addBooking } = useData()
   const { openMenu } = useLayout()
@@ -123,24 +155,64 @@ export function FluentFormsLeads() {
   const [copiedUrl, setCopiedUrl]               = useState(false)
   const [copiedCurl, setCopiedCurl]             = useState(false)
   const [toastNotice, setToastNotice]           = useState<string | null>(null)
-
-  // Load leads on mount (guaranteeing only real live data)
-  useEffect(() => {
-    let mounted = true
-    fetchFluentFormLeads().then(data => {
-      if (mounted) {
-        const realData = (data || []).filter(l => !isDummyLead(l))
-        setLeads(realData)
-        setLoading(false)
-      }
-    })
-    return () => { mounted = false }
-  }, [])
+  const [testingWebhook, setTestingWebhook]     = useState(false)
 
   // Show toast notification
   const triggerToast = (msg: string) => {
     setToastNotice(msg)
     setTimeout(() => setToastNotice(null), 4000)
+  }
+
+  // Load leads on mount and auto-poll every 12 seconds for incoming form submissions
+  useEffect(() => {
+    let mounted = true
+    const loadData = async () => {
+      try {
+        const data = await fetchFluentFormLeads()
+        if (mounted) {
+          const realData = (data || []).filter(l => !isDummyLead(l))
+          setLeads(realData)
+          setLoading(false)
+        }
+      } catch {}
+    }
+    loadData()
+    const timer = setInterval(loadData, 12000)
+    return () => {
+      mounted = false
+      clearInterval(timer)
+    }
+  }, [])
+
+  // Send a test lead directly to verify the webhook receiver
+  const handleSendTestLead = async () => {
+    setTestingWebhook(true)
+    try {
+      const res = await fetch('/api/webhook/fluent-forms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          your_name: 'Tariq Mehmood',
+          phone: '+971 50 123 4567',
+          service_needed: 'Deep Cleaning',
+          property_type: 'Apartment',
+          area_location: 'Shoreline Apartments # 6',
+          preferred_date: new Date().toISOString().split('T')[0],
+          source_url: 'https://safaeewala.com/services/deep-cleaning',
+        })
+      })
+      if (res.ok) {
+        const fresh = await fetchFluentFormLeads()
+        setLeads((fresh || []).filter(l => !isDummyLead(l)))
+        triggerToast('✓ Test lead successfully received & added to CRM table!')
+      } else {
+        triggerToast('Webhook server responded with an error.')
+      }
+    } catch (e: any) {
+      triggerToast(`Could not send test lead: ${e.message}`)
+    } finally {
+      setTestingWebhook(false)
+    }
   }
 
   // Update lead status
@@ -234,33 +306,37 @@ export function FluentFormsLeads() {
       const matchStatus = statusFilter === 'ALL' || l.status === statusFilter
 
       // 5. Date filter (3 days, 7 days, 30 days, 3 months, 6 months, 1 year, custom)
-      const leadDate = l.created_at.split('T')[0]
+      const leadDate = getLeadLocalDate(l.created_at)
+      const curToday = getTodayLocalDate()
       let matchDate = true
 
       if (datePreset === '3days') {
-        const d = new Date()
-        d.setDate(d.getDate() - 2)
-        matchDate = leadDate >= d.toISOString().split('T')[0]
+        matchDate = leadDate >= getDaysAgoLocalDate(2) && leadDate <= curToday
       } else if (datePreset === '7days') {
-        const d = new Date()
-        d.setDate(d.getDate() - 6)
-        matchDate = leadDate >= d.toISOString().split('T')[0]
+        matchDate = leadDate >= getDaysAgoLocalDate(6) && leadDate <= curToday
       } else if (datePreset === '30days') {
-        const d = new Date()
-        d.setDate(d.getDate() - 29)
-        matchDate = leadDate >= d.toISOString().split('T')[0]
+        matchDate = leadDate >= getDaysAgoLocalDate(29) && leadDate <= curToday
       } else if (datePreset === '3months') {
         const d = new Date()
         d.setMonth(d.getMonth() - 3)
-        matchDate = leadDate >= d.toISOString().split('T')[0]
+        const y = d.getFullYear()
+        const m = String(d.getMonth() + 1).padStart(2, '0')
+        const day = String(d.getDate()).padStart(2, '0')
+        matchDate = leadDate >= `${y}-${m}-${day}` && leadDate <= curToday
       } else if (datePreset === '6months') {
         const d = new Date()
         d.setMonth(d.getMonth() - 6)
-        matchDate = leadDate >= d.toISOString().split('T')[0]
+        const y = d.getFullYear()
+        const m = String(d.getMonth() + 1).padStart(2, '0')
+        const day = String(d.getDate()).padStart(2, '0')
+        matchDate = leadDate >= `${y}-${m}-${day}` && leadDate <= curToday
       } else if (datePreset === '1year') {
         const d = new Date()
         d.setFullYear(d.getFullYear() - 1)
-        matchDate = leadDate >= d.toISOString().split('T')[0]
+        const y = d.getFullYear()
+        const m = String(d.getMonth() + 1).padStart(2, '0')
+        const day = String(d.getDate()).padStart(2, '0')
+        matchDate = leadDate >= `${y}-${m}-${day}` && leadDate <= curToday
       } else if (datePreset === 'custom') {
         if (customStartDate && customEndDate) {
           matchDate = leadDate >= customStartDate && leadDate <= customEndDate
@@ -344,6 +420,44 @@ export function FluentFormsLeads() {
   }, [leads])
 
   // Key KPI summaries
+  const todayStr = getTodayLocalDate()
+  const yesterdayStr = getDaysAgoLocalDate(1)
+  const days7Min = getDaysAgoLocalDate(6)
+  const days30Min = getDaysAgoLocalDate(29)
+  const days3Min = getDaysAgoLocalDate(2)
+
+  const todayLeads = useMemo(() => {
+    return leads.filter(l => getLeadLocalDate(l.created_at) === todayStr)
+  }, [leads, todayStr])
+  const todayLeadsCount = todayLeads.length
+  const todayNewCount = todayLeads.filter(l => l.status === 'new').length
+
+  const yesterdayLeads = useMemo(() => {
+    return leads.filter(l => getLeadLocalDate(l.created_at) === yesterdayStr)
+  }, [leads, yesterdayStr])
+  const yesterdayLeadsCount = yesterdayLeads.length
+
+  const count7Days = useMemo(() => {
+    return leads.filter(l => {
+      const ld = getLeadLocalDate(l.created_at)
+      return ld >= days7Min && ld <= todayStr
+    }).length
+  }, [leads, days7Min, todayStr])
+
+  const count30Days = useMemo(() => {
+    return leads.filter(l => {
+      const ld = getLeadLocalDate(l.created_at)
+      return ld >= days30Min && ld <= todayStr
+    }).length
+  }, [leads, days30Min, todayStr])
+
+  const count3Days = useMemo(() => {
+    return leads.filter(l => {
+      const ld = getLeadLocalDate(l.created_at)
+      return ld >= days3Min && ld <= todayStr
+    }).length
+  }, [leads, days3Min, todayStr])
+
   const totalLeads = leads.length
   const totalConverted = leads.filter(l => l.status === 'converted').length
   const overallConvRate = totalLeads > 0 ? Math.round((totalConverted / totalLeads) * 100) : 0
@@ -407,7 +521,11 @@ export function FluentFormsLeads() {
               <span>WordPress Fluent Forms Webhook is actively syncing in real-time from safaeewala.com</span>
               <span className="text-white/40 hidden sm:inline">·</span>
               <span className="text-emerald-300 font-semibold">
-                {totalLeads} Total Inquiries Analyzed
+                {datePreset === '7days'
+                  ? `${count7Days} Inquiries in Last 7 Days`
+                  : datePreset === '30days'
+                  ? `${count30Days} Inquiries in Last 30 Days`
+                  : `${totalLeads} Total Inquiries Analyzed`}
               </span>
               <span className="text-white/40 hidden sm:inline">·</span>
               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-white/95 bg-white/15 px-2.5 py-0.5 rounded-md border border-white/20">
@@ -416,33 +534,20 @@ export function FluentFormsLeads() {
             </div>
           </div>
 
-          {/* Right: Merged Export Excel + Notification Icon & Webhook Setup (Search widget removed) */}
+          {/* Right: Separated Export, Webhook Setup & Notification Icon */}
           <div className="flex items-center gap-3 shrink-0 flex-wrap">
-            {/* Merged Export Excel Button with Notification Icon */}
-            <div className="flex items-center bg-white/10 hover:bg-white/15 border border-white/20 rounded-2xl p-1 backdrop-blur-md shadow-sm transition-all">
-              <button
-                type="button"
-                onClick={() => exportLeadsToXLSX(filteredLeads)}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-white font-bold text-[12.5px] hover:bg-white/15 transition-all cursor-pointer"
-                title="Export Filtered Leads to Excel (.xlsx)"
-              >
-                <FileSpreadsheet size={15} className="text-emerald-300" />
-                <span>Export Excel</span>
-              </button>
-              <div className="w-[1px] h-5 bg-white/25 mx-0.5" />
-              <button
-                type="button"
-                onClick={() => triggerToast('Fluent Forms Webhook is actively syncing in real-time · Endpoint: 200 OK Listening')}
-                className="relative w-9 h-9 rounded-xl flex items-center justify-center text-white/90 hover:bg-white/15 hover:text-white transition-all cursor-pointer"
-                title="Webhook Notifications & Live Status"
-              >
-                <Bell size={16} />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-emerald-400 rounded-full" />
-              </button>
-            </div>
+            {/* 1. Export Button (Renamed from "Export Excel" to "Export") */}
+            <button
+              type="button"
+              onClick={() => exportLeadsToXLSX(filteredLeads)}
+              className="h-11 px-4 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-[12.5px] shadow-sm backdrop-blur-md transition-all flex items-center gap-2 cursor-pointer"
+              title="Export Filtered Leads to Excel (.xlsx)"
+            >
+              <FileSpreadsheet size={16} className="text-emerald-300" />
+              <span>Export</span>
+            </button>
 
-            {/* Webhook Setup CTA Button */}
+            {/* 2. Webhook Setup CTA Button */}
             <button
               type="button"
               onClick={() => setShowWebhookModal(true)}
@@ -450,6 +555,19 @@ export function FluentFormsLeads() {
             >
               <Send size={14} className="text-emerald-700" />
               <span>Webhook Setup</span>
+            </button>
+
+            {/* 3. Notification Icon (Separated & displayed prominently after Webhook Setup) */}
+            <button
+              type="button"
+              onClick={() => triggerToast('Fluent Forms Webhook is actively syncing in real-time · Endpoint: 200 OK Listening')}
+              className="relative h-11 w-11 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center text-white/95 shadow-sm backdrop-blur-md transition-all cursor-pointer"
+              title="Live Webhook Activity & Notifications"
+              aria-label="Notifications"
+            >
+              <Bell size={18} />
+              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
+              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-emerald-400 rounded-full" />
             </button>
           </div>
         </div>
@@ -459,23 +577,22 @@ export function FluentFormsLeads() {
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {[
           {
-            label: 'Total Inquiries',
-            value: totalLeads,
-            sub: `${newLeadsCount} new unread`,
-            icon: Globe,
-            iconBg: 'bg-blue-50',
-            iconColor: 'text-blue-600',
-            highlight: 'All Time',
-          },
-          {
-            label: 'Best Performing Page',
-            value: bestPage ? bestPage.page : '—',
-            sub: bestPage ? `${bestPage.leadsCount} leads (${bestPage.share}% share)` : 'No live inquiries yet',
-            icon: TrendingUp,
+            label: 'Today Inquiries',
+            value: todayLeadsCount,
+            sub: todayLeadsCount > 0 ? `${todayNewCount} new unread today` : 'No inquiries yet today',
+            icon: Clock,
             iconBg: 'bg-emerald-50',
             iconColor: 'text-emerald-600',
-            highlight: bestPage ? 'Top Driver' : 'None',
-            isSmallText: true,
+            highlight: 'Today',
+          },
+          {
+            label: 'Yesterday Inquiries',
+            value: yesterdayLeadsCount,
+            sub: yesterdayLeadsCount > 0 ? `${yesterdayLeadsCount} inquiries yesterday` : 'No inquiries yesterday',
+            icon: Calendar,
+            iconBg: 'bg-blue-50',
+            iconColor: 'text-blue-600',
+            highlight: 'Yesterday',
           },
           {
             label: 'Top Category',
@@ -546,13 +663,13 @@ export function FluentFormsLeads() {
             />
           </div>
 
-          {/* Date Range Presets */}
+          {/* Date Range Presets with Live Inquiry Counts */}
           <div className="flex items-center gap-1 bg-[#f8fafc] p-1 rounded-xl border border-[#E4E8EC] flex-wrap">
             {[
-              { id: 'all',     label: 'All Time' },
-              { id: '3days',   label: '3 Days' },
-              { id: '7days',   label: '7 Days' },
-              { id: '30days',  label: '30 Days' },
+              { id: 'all',     label: 'All Time',     count: totalLeads },
+              { id: '3days',   label: '3 Days',       count: count3Days },
+              { id: '7days',   label: '7 Days',       count: count7Days },
+              { id: '30days',  label: '30 Days',      count: count30Days },
               { id: '3months', label: '3 Months' },
               { id: '6months', label: '6 Months' },
               { id: '1year',   label: '1 Year' },
@@ -562,17 +679,65 @@ export function FluentFormsLeads() {
                 key={p.id}
                 type="button"
                 onClick={() => setDatePreset(p.id as FluentDatePreset)}
-                className={`text-[11.5px] font-bold px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                className={`text-[11.5px] font-bold px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
                   datePreset === p.id
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                 }`}
               >
-                {p.label}
+                <span>{p.label}</span>
+                {typeof p.count === 'number' && (
+                  <span
+                    className={`text-[10px] font-extrabold px-1.5 py-0.2 rounded-full ${
+                      datePreset === p.id
+                        ? 'bg-white/25 text-white'
+                        : 'bg-slate-200/80 text-slate-700'
+                    }`}
+                  >
+                    {p.count}
+                  </span>
+                )}
               </button>
             ))}
           </div>
         </div>
+
+        {/* Selected Period Inquiries Counter Indicator Banner */}
+        {datePreset === '7days' && (
+          <div className="flex items-center justify-between bg-indigo-50/90 border border-indigo-200/90 px-4 py-2.5 rounded-xl text-[12.5px] animate-in fade-in">
+            <div className="flex items-center gap-2 text-indigo-950 font-bold">
+              <Calendar size={15} className="text-indigo-600" />
+              <span>Last 7 Days Total Inquiries:</span>
+              <span className="px-2.5 py-0.5 rounded-lg bg-indigo-600 text-white font-black text-[13px] shadow-xs">
+                {count7Days}
+              </span>
+              <span className="text-slate-500 font-medium text-[11.5px] hidden sm:inline">
+                (Total website inquiries received in the last 7 days)
+              </span>
+            </div>
+            <span className="text-[11.5px] font-bold text-indigo-700">
+              Showing {filteredLeads.length} matching table records
+            </span>
+          </div>
+        )}
+
+        {datePreset === '30days' && (
+          <div className="flex items-center justify-between bg-indigo-50/90 border border-indigo-200/90 px-4 py-2.5 rounded-xl text-[12.5px] animate-in fade-in">
+            <div className="flex items-center gap-2 text-indigo-950 font-bold">
+              <Calendar size={15} className="text-indigo-600" />
+              <span>Last 30 Days Total Inquiries:</span>
+              <span className="px-2.5 py-0.5 rounded-lg bg-indigo-600 text-white font-black text-[13px] shadow-xs">
+                {count30Days}
+              </span>
+              <span className="text-slate-500 font-medium text-[11.5px] hidden sm:inline">
+                (Total website inquiries received in the last 30 days)
+              </span>
+            </div>
+            <span className="text-[11.5px] font-bold text-indigo-700">
+              Showing {filteredLeads.length} matching table records
+            </span>
+          </div>
+        )}
 
         {/* Custom Date Range Picker Strip */}
         {datePreset === 'custom' && (
@@ -690,9 +855,21 @@ export function FluentFormsLeads() {
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h3 className="text-[15px] font-bold text-[#111827]">
-              Form Submissions ({filteredLeads.length})
-            </h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-[15px] font-bold text-[#111827]">
+                Form Submissions ({filteredLeads.length})
+              </h3>
+              {datePreset === '7days' && (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  Last 7 Days: {count7Days} Inquiries
+                </span>
+              )}
+              {datePreset === '30days' && (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  Last 30 Days: {count30Days} Inquiries
+                </span>
+              )}
+            </div>
             <p className="text-[12px] text-slate-500 mt-0.5">
               Showing leads sorted chronologically by submission timestamp
             </p>
@@ -1128,24 +1305,26 @@ export function FluentFormsLeads() {
         size="lg"
       >
         <div className="space-y-5">
-          <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200">
-            <h4 className="text-[14px] font-bold text-indigo-950 flex items-center gap-2 mb-1">
-              <Globe size={16} className="text-indigo-600" />
-              Fluent Forms Webhook Receiver Endpoint
+          {/* Why Error 1006 happened & Resolution */}
+          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
+            <h4 className="text-[13.5px] font-bold text-emerald-950 flex items-center gap-2 mb-1">
+              <CheckCircle size={16} className="text-emerald-600" />
+              Direct Live VPS Webhook Endpoint (No DNS Error 1006)
             </h4>
-            <p className="text-[12px] text-indigo-800 leading-relaxed">
-              In your WordPress dashboard, navigate to <strong>Fluent Forms &rarr; Select Form &rarr; Settings & Integrations &rarr; Webhooks</strong>. Click <strong>Add Webhook</strong> and configure with the endpoint URL below.
+            <p className="text-[12px] text-emerald-900 leading-relaxed">
+              Previously, ReqBin returned <em>&quot;Could not resolve the host name. Error code: 1006&quot;</em> because the previous instructions contained a sample placeholder domain (<code>your-project.supabase.co</code>).
+              We have now created a <strong>built-in dedicated Webhook Engine</strong> directly on your live VPS. It requires <strong>no authentication headers</strong> and processes submissions instantly!
             </p>
           </div>
 
           <div>
-            <label className="text-[12px] font-bold text-slate-700 block mb-1">Webhook Endpoint URL (POST)</label>
+            <label className="text-[12px] font-bold text-slate-700 block mb-1">Live Webhook Endpoint URL (POST)</label>
             <div className="flex items-center gap-2">
               <input
                 type="text"
                 readOnly
                 value={webhookConfig.restEndpoint}
-                className="flex-1 text-[12px] font-mono p-2.5 bg-slate-50 border border-[#E4E8EC] rounded-xl text-slate-800 select-all"
+                className="flex-1 text-[12.5px] font-mono p-2.5 bg-slate-50 border border-[#E4E8EC] rounded-xl text-slate-900 select-all font-bold"
               />
               <button
                 onClick={() => {
@@ -1153,10 +1332,10 @@ export function FluentFormsLeads() {
                   setCopiedUrl(true)
                   setTimeout(() => setCopiedUrl(false), 2000)
                 }}
-                className="flex items-center gap-1.5 px-4 py-2.5 bg-[#111827] text-white rounded-xl text-[12px] font-bold hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-[12px] font-bold hover:bg-emerald-700 transition-colors cursor-pointer shrink-0 shadow-sm"
               >
-                {copiedUrl ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                {copiedUrl ? 'Copied!' : 'Copy URL'}
+                {copiedUrl ? <Check size={14} className="text-white" /> : <Copy size={14} />}
+                {copiedUrl ? 'Copied!' : 'Copy Live URL'}
               </button>
             </div>
           </div>
@@ -1168,55 +1347,65 @@ export function FluentFormsLeads() {
             </div>
             <div className="p-3 bg-slate-50 rounded-xl border border-[#edf2f7]">
               <span className="text-slate-400 font-bold block text-[10px] uppercase">Request Format</span>
-              <strong className="text-[#111827] text-[13px]">JSON</strong>
+              <strong className="text-[#111827] text-[13px]">JSON or Form-Data (Auto-detected)</strong>
             </div>
           </div>
 
+          {/* Form Fields matching the screenshot */}
           <div>
-            <label className="text-[12px] font-bold text-slate-700 block mb-1">Recommended Field Mappings</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[12px] font-bold text-slate-700">Form Field Mappings (Matches Your Website Form)</label>
+              <span className="text-[11px] font-medium text-slate-500">Form ID: [fluentform id=&#39;40&#39;]</span>
+            </div>
             <div className="border border-[#E4E8EC] rounded-xl overflow-hidden text-[11.5px]">
               <table className="w-full text-left">
-                <thead className="bg-[#f8fafc] text-slate-600 font-bold border-b border-[#E4E8EC]">
+                <thead className="bg-[#f8fafc] text-slate-700 font-bold border-b border-[#E4E8EC]">
                   <tr>
-                    <th className="py-2 px-3">Field in CRM</th>
-                    <th className="py-2 px-3">Fluent Forms Parameter</th>
-                    <th className="py-2 px-3">Purpose</th>
+                    <th className="py-2 px-3">Form Label (Screenshot)</th>
+                    <th className="py-2 px-3">Fluent Form Parameter</th>
+                    <th className="py-2 px-3">Saved in CRM As</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#edf2f7] text-slate-700">
                   <tr>
-                    <td className="py-2 px-3 font-mono font-bold text-indigo-700">client_name</td>
-                    <td className="py-2 px-3 font-mono">{'{inputs.names}'} or {'{inputs.full_name}'}</td>
-                    <td className="py-2 px-3">Customer name</td>
+                    <td className="py-2 px-3 font-semibold text-slate-900">Your Name *</td>
+                    <td className="py-2 px-3 font-mono text-indigo-700 font-bold">{'{inputs.your_name}'} / {'{inputs.names}'}</td>
+                    <td className="py-2 px-3 font-medium text-emerald-800">Client Name</td>
                   </tr>
                   <tr>
-                    <td className="py-2 px-3 font-mono font-bold text-indigo-700">phone</td>
-                    <td className="py-2 px-3 font-mono">{'{inputs.phone}'} or {'{inputs.mobile}'}</td>
-                    <td className="py-2 px-3">Customer phone number</td>
+                    <td className="py-2 px-3 font-semibold text-slate-900">Phone / Whatsapp *</td>
+                    <td className="py-2 px-3 font-mono text-indigo-700 font-bold">{'{inputs.phone_whatsapp}'} / {'{inputs.phone}'}</td>
+                    <td className="py-2 px-3 font-medium text-emerald-800">Phone & WhatsApp</td>
                   </tr>
                   <tr>
-                    <td className="py-2 px-3 font-mono font-bold text-indigo-700">source_url</td>
-                    <td className="py-2 px-3 font-mono">{'{embedded_url}'} or {'{http_referer}'}</td>
-                    <td className="py-2 px-3">Landing page for attribution</td>
+                    <td className="py-2 px-3 font-semibold text-slate-900">Service Needed</td>
+                    <td className="py-2 px-3 font-mono text-indigo-700 font-bold">{'{inputs.service_needed}'}</td>
+                    <td className="py-2 px-3 font-medium text-emerald-800">Service Category & Type</td>
                   </tr>
                   <tr>
-                    <td className="py-2 px-3 font-mono font-bold text-indigo-700">category</td>
-                    <td className="py-2 px-3 font-mono">{'{inputs.service}'} or Deep Cleaning / Villa</td>
-                    <td className="py-2 px-3">Service category</td>
+                    <td className="py-2 px-3 font-semibold text-slate-900">Property Type</td>
+                    <td className="py-2 px-3 font-mono text-indigo-700 font-bold">{'{inputs.property_type}'}</td>
+                    <td className="py-2 px-3 font-medium text-emerald-800">Property Type (Apartment, Villa, etc.)</td>
                   </tr>
                   <tr>
-                    <td className="py-2 px-3 font-mono font-bold text-indigo-700">message</td>
-                    <td className="py-2 px-3 font-mono">{'{inputs.message}'} or {'{inputs.notes}'}</td>
-                    <td className="py-2 px-3">Customer requirements</td>
+                    <td className="py-2 px-3 font-semibold text-slate-900">Area / Location</td>
+                    <td className="py-2 px-3 font-mono text-indigo-700 font-bold">{'{inputs.area_location}'}</td>
+                    <td className="py-2 px-3 font-medium text-emerald-800">Area / Address</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 px-3 font-semibold text-slate-900">Preferred Date</td>
+                    <td className="py-2 px-3 font-mono text-indigo-700 font-bold">{'{inputs.preferred_date}'}</td>
+                    <td className="py-2 px-3 font-medium text-emerald-800">Preferred Booking Date</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
 
+          {/* cURL Command matching Screenshot 1 & 2 */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="text-[12px] font-bold text-slate-700">Test cURL Command</label>
+              <label className="text-[12px] font-bold text-slate-700">Test cURL Command (Ready for ReqBin or Terminal)</label>
               <button
                 onClick={() => {
                   navigator.clipboard.writeText(webhookConfig.sampleCurl)
@@ -1229,12 +1418,22 @@ export function FluentFormsLeads() {
                 {copiedCurl ? 'Copied' : 'Copy cURL'}
               </button>
             </div>
-            <pre className="text-[11px] font-mono p-3 bg-slate-900 text-slate-100 rounded-xl overflow-x-auto">
+            <pre className="text-[11px] font-mono p-3 bg-slate-900 text-slate-100 rounded-xl overflow-x-auto leading-relaxed">
               {webhookConfig.sampleCurl}
             </pre>
           </div>
 
-          <div className="flex justify-end pt-2">
+          {/* Test Trigger Button */}
+          <div className="flex items-center justify-between pt-2 border-t border-[#E4E8EC]">
+            <Button
+              type="button"
+              onClick={handleSendTestLead}
+              disabled={testingWebhook}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-2 text-[12px] py-2 px-4 rounded-xl cursor-pointer"
+            >
+              <Send size={14} className={testingWebhook ? 'animate-spin' : ''} />
+              {testingWebhook ? 'Submitting Test Lead...' : 'Send Live Test Lead Now'}
+            </Button>
             <Button onClick={() => setShowWebhookModal(false)}>Close Guide</Button>
           </div>
         </div>
