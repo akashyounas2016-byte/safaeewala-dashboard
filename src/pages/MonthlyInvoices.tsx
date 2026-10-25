@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, MessageCircle, Mail,
   DollarSign, Clock, Users, TrendingUp, MapPin, Phone,
   LayoutGrid, List, AlignJustify, Pencil, X, Check,
+  FileText, CalendarCheck, ArrowLeft,
 } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
 import { Input, Textarea } from '@/components/ui/Input'
@@ -58,6 +60,7 @@ interface ClientStatement {
 
 export function MonthlyInvoices() {
   const { bookings, clients, updateBooking } = useData()
+  const navigate = useNavigate()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [viewMode, setViewMode]           = useState<ViewMode>('card')
   const [editVisit, setEditVisit]         = useState<(Visit & { clientName: string }) | null>(null)
@@ -150,7 +153,56 @@ export function MonthlyInvoices() {
         title="Monthly Statements"
         subtitle={`${statements.length} clients · AED ${totalRevenue.toFixed(0)} total`}
         statusChip={`${totalHours}h worked`}
+        showSearch={false}
+        actions={
+          <button
+            type="button"
+            onClick={() => navigate('/invoices')}
+            className="h-11 px-4 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-[13px] backdrop-blur-sm transition-all shrink-0 flex items-center justify-center gap-2 cursor-pointer"
+            title="Switch to Standard Invoices"
+          >
+            <FileText size={14} />
+            <span>Standard Invoices</span>
+          </button>
+        }
       />
+
+      {/* ── Invoice Modules Navigation Tabs ── */}
+      <div className="flex items-center justify-between gap-4 flex-wrap bg-white rounded-[22px] border border-[#E4E8EC] p-3 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
+        <div className="flex items-center gap-2 p-1 bg-slate-100/80 rounded-xl">
+          <button
+            type="button"
+            onClick={() => navigate('/invoices')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/60 transition-colors cursor-pointer"
+          >
+            <FileText size={15} className="text-slate-400" />
+            <span>Standard Invoices</span>
+          </button>
+
+          <button
+            type="button"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-bold bg-white text-slate-900 shadow-xs border border-slate-200/60 cursor-default"
+          >
+            <CalendarCheck size={15} className="text-emerald-600" />
+            <span>Monthly Invoices</span>
+            <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+              {statements.length} Clients
+            </span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 pr-2">
+          <span className="text-[12px] text-slate-500 hidden sm:inline">Switch back to individual tax invoices?</span>
+          <button
+            type="button"
+            onClick={() => navigate('/invoices')}
+            className="inline-flex items-center gap-1.5 text-[12px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3.5 py-1.5 rounded-xl border border-slate-200 transition-colors cursor-pointer"
+          >
+            <ArrowLeft size={13} />
+            <span>Standard Invoices</span>
+          </button>
+        </div>
+      </div>
 
       {/* Month Selector + View Toggle */}
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center justify-between gap-4">

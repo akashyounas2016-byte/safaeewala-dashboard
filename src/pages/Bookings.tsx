@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import {
   Search, Calendar as CalendarIcon, Clock, MapPin, Phone,
   ChevronLeft, ChevronRight, List, CalendarDays, Columns3,
   TrendingUp, CheckCircle, AlertCircle, Upload, Download,
-  FileSpreadsheet, MessageCircle, RefreshCw,
+  FileSpreadsheet, MessageCircle, RefreshCw, RotateCcw,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -14,6 +14,9 @@ import { PageHero } from '@/components/layout/PageHero'
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { Booking, BookingStatus, BookingFrequency } from '@/types'
+import { SourceOriginTag, resolveBookingSource } from '@/lib/sourceTracking'
+
+export type BookingDatePreset = 'today' | '7days' | '30days' | '3months' | '6months' | '1year' | 'all' | 'custom'
 
 /* ─── Filter chips ─── */
 const statusFilters = [
@@ -162,44 +165,86 @@ export function Bookings() {
   const [view, setView] = useState<'list' | 'calendar' | 'kanban'>('list')
   const xlsxInputRef = useRef<HTMLInputElement>(null)
   const [importing,   setImporting]   = useState(false)
-  const [dateFilter,  setDateFilter]  = useState('all')
+  const [datePreset,  setDatePreset]  = useState<BookingDatePreset>('all')
+  const [customStartDate, setCustomStartDate] = useState('')
+  const [customEndDate,   setCustomEndDate]   = useState('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [serviceFilter, setServiceFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState<typeof bookings[0] | null>(null)
 
-  const todayStr    = new Date().toISOString().split('T')[0]
-  const monthKey    = todayStr.slice(0, 7)
-  const last30      = new Date(); last30.setDate(last30.getDate() - 30)
-  const last30Str   = last30.toISOString().split('T')[0]
-  const weekStart   = (() => { const d = new Date(); d.setDate(d.getDate() - d.getDay()); return d.toISOString().split('T')[0] })()
+  const activeDateRange = useMemo(() => {
+    const now = new Date()
+    const todayStr = now.toISOString().split('T')[0]
+    if (datePreset === 'today') {
+      return { start: todayStr, end: todayStr, label: 'Today' }
+    }
+    if (datePreset === '7days') {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 7)
+      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 7 Days' }
+    }
+    if (datePreset === '30days') {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 30)
+      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 30 Days' }
+    }
+    if (datePreset === '3months') {
+      const d = new Date(now)
+      d.setMonth(d.getMonth() - 3)
+      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 3 Months' }
+    }
+    if (datePreset === '6months') {
+      const d = new Date(now)
+      d.setMonth(d.getMonth() - 6)
+      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 6 Months' }
+    }
+    if (datePreset === '1year') {
+      const d = new Date(now)
+      d.setFullYear(d.getFullYear() - 1)
+      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 1 Year' }
+    }
+    if (datePreset === 'custom') {
+      const label = customStartDate && customEndDate ? `${customStartDate} to ${customEndDate}` : 'Custom Range'
+      return { start: customStartDate, end: customEndDate, label }
+    }
+    return { start: '', end: '', label: 'All Time' }
+  }, [datePreset, customStartDate, customEndDate])
 
-  const filtered = bookings.filter((b) => {
-    const matchSearch = b.client_name.toLowerCase().includes(search.toLowerCase()) ||
-      b.service_type.toLowerCase().includes(search.toLowerCase()) ||
-      b.service_address.toLowerCase().includes(search.toLowerCase())
-    const matchStatus  = statusFilter === 'all' || b.status === statusFilter
-    const matchService = serviceFilter === 'all' || b.service_type === serviceFilter
-    const matchDate    = dateFilter === 'all'        ? true
-                       : dateFilter === 'today'      ? b.scheduled_date === todayStr
-                       : dateFilter === 'this_week'  ? b.scheduled_date >= weekStart
-                       : dateFilter === 'this_month' ? b.scheduled_date.startsWith(monthKey)
-                       : dateFilter === 'last_30'    ? b.scheduled_date >= last30Str
-                       : true
-    return matchSearch && matchStatus && matchService && matchDate
-  })
+  // Filter bookings by active date range
+  const dateFilteredBookings = useMemo(() => {
+    return bookings.filter(b => {
+      const bDate = b.scheduled_date || (b.created_at ? b.created_at.split('T')[0] : '')
+      if (activeDateRange.start && bDate < activeDateRange.start) return false
+      if (activeDateRange.end && bDate > activeDateRange.end) return false
+      return true
+    })
+  }, [bookings, activeDateRange])
+
+  // Filter by search, status, and service type
+  const filtered = useMemo(() => {
+    return dateFilteredBookings.filter((b) => {
+      const matchSearch = b.client_name.toLowerCase().includes(search.toLowerCase()) ||
+        b.service_type.toLowerCase().includes(search.toLowerCase()) ||
+        b.service_address.toLowerCase().includes(search.toLowerCase())
+      const matchStatus  = statusFilter === 'all' || b.status === statusFilter
+      const matchService = serviceFilter === 'all' || b.service_type === serviceFilter
+      return matchSearch && matchStatus && matchService
+    })
+  }, [dateFilteredBookings, search, statusFilter, serviceFilter])
 
   const counts = {
-    pending:     bookings.filter(b => b.status === 'pending').length,
-    confirmed:   bookings.filter(b => b.status === 'confirmed').length,
-    in_progress: bookings.filter(b => b.status === 'in_progress').length,
-    completed:   bookings.filter(b => b.status === 'completed').length,
+    total:       dateFilteredBookings.length,
+    pending:     dateFilteredBookings.filter(b => b.status === 'pending').length,
+    confirmed:   dateFilteredBookings.filter(b => b.status === 'confirmed').length,
+    in_progress: dateFilteredBookings.filter(b => b.status === 'in_progress').length,
+    completed:   dateFilteredBookings.filter(b => b.status === 'completed').length,
   }
 
-  const totalRevenue = bookings
+  const totalRevenue = dateFilteredBookings
     .filter(b => b.status === 'completed')
-    .reduce((s, b) => s + b.total_amount, 0)
+    .reduce((s, b) => s + (b.total_amount || 0), 0)
 
   return (
     <div className="space-y-6">
@@ -207,8 +252,8 @@ export function Bookings() {
       {/* ── Hero ── */}
       <PageHero
         title="Bookings"
-        subtitle={`${bookings.length} jobs · ${counts.in_progress} live now · ${counts.pending} need confirmation`}
-        statusChip={`${counts.in_progress} Active`}
+        subtitle={`${activeDateRange.label} · ${counts.total} jobs · ${counts.in_progress} live now · ${counts.pending} need confirmation`}
+        statusChip={datePreset === 'all' ? `${counts.in_progress} Active` : activeDateRange.label}
         actionLabel="New Booking"
         onAction={() => setShowModal(true)}
         searchPlaceholder="Search bookings…"
@@ -285,7 +330,8 @@ export function Bookings() {
       </div>
 
       {/* ── Filters + View Toggle ── */}
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4">
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4 space-y-3.5">
+        {/* Row 1: Search, Service Filter, Import/Export, and View Toggle */}
         <div className="flex flex-wrap items-center gap-3">
 
           {/* Search */}
@@ -304,23 +350,10 @@ export function Bookings() {
           <select
             value={serviceFilter}
             onChange={e => setServiceFilter(e.target.value)}
-            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer"
+            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer font-medium"
           >
             <option value="all">All Services</option>
             {serviceTypes.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-
-          {/* Date range */}
-          <select
-            value={dateFilter}
-            onChange={e => setDateFilter(e.target.value)}
-            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer"
-          >
-            <option value="all">All Time</option>
-            <option value="today">Today</option>
-            <option value="this_week">This Week</option>
-            <option value="this_month">This Month</option>
-            <option value="last_30">Last 30 Days</option>
           </select>
 
           {/* Import / Export */}
@@ -345,13 +378,13 @@ export function Bookings() {
           <button
             onClick={() => xlsxInputRef.current?.click()}
             disabled={importing}
-            className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors disabled:opacity-60"
+            className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors disabled:opacity-60 cursor-pointer"
           >
             <Upload size={13} /> {importing ? 'Importing…' : 'Import Excel'}
           </button>
           <button
             onClick={() => exportBookingsXLSX(filtered)}
-            className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors"
+            className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors cursor-pointer"
           >
             <FileSpreadsheet size={13} /> Export Excel
           </button>
@@ -366,7 +399,7 @@ export function Bookings() {
               <button
                 key={v.key}
                 onClick={() => setView(v.key)}
-                className={`text-[12px] px-3 py-1.5 rounded-lg font-medium inline-flex items-center gap-1.5 transition-all ${view === v.key ? 'bg-white text-[#111827] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`text-[12px] px-3 py-1.5 rounded-lg font-medium inline-flex items-center gap-1.5 transition-all cursor-pointer ${view === v.key ? 'bg-white text-[#111827] shadow-sm font-bold' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 <v.icon size={13} /> {v.label}
               </button>
@@ -374,21 +407,120 @@ export function Bookings() {
           </div>
         </div>
 
-        {/* Status chips */}
-        <div className="flex gap-2 flex-wrap mt-3 pt-3 border-t border-[#E4E8EC]">
-          {statusFilters.map(f => (
+        {/* Row 2: Date Range Filter Bar (Today, 7 Days, 30 Days, 3 Months, 6 Months, 1 Year, All Time, Custom Range) */}
+        <div className="pt-3 border-t border-[#E4E8EC] flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[12px] font-bold text-slate-700 mr-1 flex items-center gap-1.5">
+              <CalendarIcon size={14} className="text-emerald-600" />
+              <span>Date Filter:</span>
+            </span>
+
+            {[
+              { id: 'today',   label: 'Today' },
+              { id: '7days',   label: '7 Days' },
+              { id: '30days',  label: '30 Days' },
+              { id: '3months', label: '3 Months' },
+              { id: '6months', label: '6 Months' },
+              { id: '1year',   label: '1 Year' },
+              { id: 'all',     label: 'All Time' },
+              { id: 'custom',  label: 'Custom Range' },
+            ].map(preset => {
+              const active = datePreset === preset.id
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setDatePreset(preset.id as BookingDatePreset)}
+                  className={`px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all cursor-pointer ${
+                    active
+                      ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0 flex-wrap">
+            {/* Custom Date Pickers */}
+            {datePreset === 'custom' && (
+              <div className="flex items-center gap-2 bg-[#f8fafc] border border-emerald-200 rounded-xl px-3 py-1.5 animate-in fade-in duration-150">
+                <span className="text-[11px] font-bold text-emerald-700">From:</span>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={e => setCustomStartDate(e.target.value)}
+                  className="text-[12px] px-2 py-1 bg-white border border-[#E4E8EC] rounded-lg focus:outline-none focus:border-emerald-500 font-medium"
+                />
+                <span className="text-[11px] font-bold text-emerald-700">To:</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={e => setCustomEndDate(e.target.value)}
+                  className="text-[12px] px-2 py-1 bg-white border border-[#E4E8EC] rounded-lg focus:outline-none focus:border-emerald-500 font-medium"
+                />
+              </div>
+            )}
+
+            {datePreset !== 'all' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDatePreset('all')
+                  setCustomStartDate('')
+                  setCustomEndDate('')
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-bold text-slate-500 hover:text-emerald-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                title="Reset date filter to All Time"
+              >
+                <RotateCcw size={12} />
+                <span>Reset Date</span>
+              </button>
+            )}
+
+            <span className="text-[12px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/60">
+              Showing: <span className="text-emerald-600 font-extrabold">{filtered.length}</span> jobs ({activeDateRange.label})
+            </span>
+          </div>
+        </div>
+
+        {/* Row 3: Status chips & Reset All */}
+        <div className="flex items-center justify-between gap-2 flex-wrap pt-3 border-t border-[#E4E8EC]">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[12px] font-bold text-slate-500 mr-1">Status:</span>
+            {statusFilters.map(f => (
+              <button
+                key={f.value}
+                onClick={() => setStatusFilter(f.value)}
+                className={`px-3 py-1 rounded-full text-[12px] font-semibold transition-colors cursor-pointer ${
+                  statusFilter === f.value
+                    ? 'bg-[#111827] text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {(search || serviceFilter !== 'all' || statusFilter !== 'all' || datePreset !== 'all') && (
             <button
-              key={f.value}
-              onClick={() => setStatusFilter(f.value)}
-              className={`px-3 py-1 rounded-full text-[12px] font-semibold transition-colors ${
-                statusFilter === f.value
-                  ? 'bg-[#111827] text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+              type="button"
+              onClick={() => {
+                setSearch('')
+                setServiceFilter('all')
+                setStatusFilter('all')
+                setDatePreset('all')
+                setCustomStartDate('')
+                setCustomEndDate('')
+              }}
+              className="text-[11.5px] font-bold text-rose-600 hover:text-rose-800 cursor-pointer"
             >
-              {f.label}
+              ✕ Clear All Filters
             </button>
-          ))}
+          )}
         </div>
       </div>
 
@@ -407,7 +539,10 @@ export function Bookings() {
                   <div className="flex items-center gap-3 min-w-0">
                     <Initials name={b.client_name} idx={idx} />
                     <div className="min-w-0">
-                      <p className="text-[14px] font-semibold text-[#111827] truncate">{b.client_name}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-[14px] font-semibold text-[#111827] truncate">{b.client_name}</p>
+                        <SourceOriginTag source={resolveBookingSource(b)} />
+                      </div>
                       <p className="text-[12px] text-slate-500 mt-0.5 capitalize">{b.service_type} · {b.frequency}</p>
                     </div>
                   </div>
@@ -926,7 +1061,10 @@ function BookingDetail({ booking, onUpdate, onDelete, invoices, onUpdateInvoice 
         <div className="flex items-center gap-3">
           <Initials name={booking.client_name} idx={0} size="lg" />
           <div>
-            <p className="font-bold text-[#111827] text-[16px]">{booking.client_name}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-bold text-[#111827] text-[16px]">{booking.client_name}</p>
+              <SourceOriginTag source={resolveBookingSource(booking)} />
+            </div>
             <p className="text-[12.5px] text-slate-500 mt-0.5">{booking.client_phone}</p>
           </div>
         </div>

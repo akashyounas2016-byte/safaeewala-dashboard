@@ -173,7 +173,7 @@ export function RecurringSubscriptions() {
       <PageHero
         title="Recurring Subscriptions"
         subtitle="Manage recurring cleaning contracts and auto-billing"
-        actionLabel="+ New Contract"
+        actionLabel="New Contract"
         onAction={handleAdd}
       />
 

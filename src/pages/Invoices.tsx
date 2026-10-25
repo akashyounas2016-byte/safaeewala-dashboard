@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { Search, Download, Send, AlertCircle, TrendingUp, CheckCircle, Clock, FileText, Percent, Trash2, DollarSign, User, MapPin, Sparkles } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Search, Download, Send, AlertCircle, TrendingUp, CheckCircle, Clock, FileText, Percent, Trash2, DollarSign, User, MapPin, Sparkles, CalendarCheck, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -103,6 +104,7 @@ function printInvoice(invoice: Invoice) {
 
 export function Invoices() {
   const { invoices, addInvoice, updateInvoice, deleteInvoice } = useData()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
@@ -142,10 +144,61 @@ export function Invoices() {
         title="Invoices"
         subtitle={`${invoices.length} invoices · AED ${totalPaid.toLocaleString()} collected · AED ${totalOverdue.toLocaleString()} overdue`}
         statusChip={overdueInvoices.length > 0 ? `${overdueInvoices.length} Overdue` : 'All Clear'}
+        actions={
+          <button
+            type="button"
+            onClick={() => navigate('/monthly-invoices')}
+            className="h-11 px-4 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-[13px] backdrop-blur-sm transition-all shrink-0 flex items-center justify-center gap-2 cursor-pointer"
+            title="Switch to Monthly Invoices & Statements"
+          >
+            <CalendarCheck size={14} />
+            <span>Monthly Invoices</span>
+          </button>
+        }
         actionLabel="New Invoice"
         onAction={() => setShowModal(true)}
         searchPlaceholder="Search invoices…"
       />
+
+      {/* ── Invoice Modules Navigation Tabs ── */}
+      <div className="flex items-center justify-between gap-4 flex-wrap bg-white rounded-[22px] border border-[#E4E8EC] p-3 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
+        <div className="flex items-center gap-2 p-1 bg-slate-100/80 rounded-xl">
+          <button
+            type="button"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-bold bg-white text-slate-900 shadow-xs border border-slate-200/60 cursor-default"
+          >
+            <FileText size={15} className="text-emerald-600" />
+            <span>Standard Invoices</span>
+            <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+              {invoices.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate('/monthly-invoices')}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold text-slate-600 hover:text-slate-900 hover:bg-white/60 transition-colors cursor-pointer"
+          >
+            <CalendarCheck size={15} className="text-slate-400" />
+            <span>Monthly Invoices</span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200/70 text-slate-600 uppercase tracking-wide">
+              Statements
+            </span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 pr-2">
+          <span className="text-[12px] text-slate-500 hidden sm:inline">Need contract monthly statements?</span>
+          <button
+            type="button"
+            onClick={() => navigate('/monthly-invoices')}
+            className="inline-flex items-center gap-1.5 text-[12px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3.5 py-1.5 rounded-xl border border-emerald-200/70 transition-colors cursor-pointer"
+          >
+            <span>Open Monthly Invoices</span>
+            <ArrowRight size={13} />
+          </button>
+        </div>
+      </div>
 
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">

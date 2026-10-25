@@ -4,14 +4,17 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, CalendarCheck, Users, UserCheck,
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
-  CreditCard, TrendingUp, Globe,
+  CreditCard, TrendingUp, Globe, Clock, MessageSquare, LogOut,
 } from 'lucide-react'
 import { useCurrentUser, useCanAccess } from '@/store/UserContext'
+import { useFluentFormsUnreadCount, markFluentFormsAsRead } from '@/lib/fluentFormsSync'
+import { useSimpleAuth, isLocalEnvironment } from '@/lib/simpleAuth'
 
 const workspaceNavBase: Array<{ to: string; label: string; icon: ElementType; tag?: string }> = [
   { to: '/',                 label: 'Overview',        icon: LayoutDashboard, tag: 'Coming Soon' },
   { to: '/bookings',         label: 'Bookings',        icon: CalendarCheck,   tag: 'Coming Soon' },
-  { to: '/fluent-forms',     label: 'Fluent Forms',    icon: Globe,           tag: 'Coming Soon' },
+  { to: '/fluent-forms',     label: 'Fluent Forms',    icon: Globe },
+  { to: '/whatsapp-crm',     label: 'WhatsApp CRM',    icon: MessageSquare,   tag: 'Coming Soon' },
   { to: '/clients',          label: 'Clients',         icon: Users },
   { to: '/monthly-clients',  label: 'Monthly Clients', icon: TrendingUp },
   { to: '/employees',        label: 'Employees',       icon: UserCheck },
@@ -23,10 +26,10 @@ const adminOnlyNav = [
 
 const financeNav = [
   { to: '/invoices',         label: 'Invoices',         icon: FileText },
-  { to: '/monthly-invoices', label: 'Monthly Invoices', icon: FileText },
   { to: '/inventory',        label: 'Inventory',        icon: Package },
   { to: '/expenses',         label: 'Expenses',         icon: TrendingDown },
   { to: '/payments',         label: 'Payments',         icon: CreditCard },
+  { to: '/pending',          label: 'Pending',          icon: Clock },
 ]
 
 const operationsNav = [
@@ -37,12 +40,27 @@ const operationsNav = [
 
 interface SidebarProps { open: boolean; onClose: () => void }
 
-function NavItem({ to, label, icon: Icon, onClose, tag }: { to: string; label: string; icon: ElementType; onClose: () => void; tag?: string }) {
+interface NavItemProps {
+  to: string
+  label: string
+  icon: ElementType
+  onClose: () => void
+  tag?: string
+  badge?: number
+  onClick?: () => void
+}
+
+function NavItem({ to, label, icon: Icon, onClose, tag, badge, onClick }: NavItemProps) {
+  const handleClick = () => {
+    onClose()
+    if (onClick) onClick()
+  }
+
   return (
     <NavLink
       to={to}
       end={to === '/'}
-      onClick={onClose}
+      onClick={handleClick}
       className={({ isActive }) =>
         cn(
           'flex items-center gap-3 px-4 py-3 rounded-2xl text-[14px] font-medium transition-all duration-150',
@@ -69,7 +87,15 @@ function NavItem({ to, label, icon: Icon, onClose, tag }: { to: string; label: s
               {tag}
             </span>
           )}
-          {isActive && !tag && (
+          {typeof badge === 'number' && badge > 0 && !tag && (
+            <span
+              title={`${badge} new form submission${badge > 1 ? 's' : ''}`}
+              className="inline-flex items-center justify-center px-2 py-0.5 min-w-[20px] h-5 rounded-full text-[11px] font-black bg-[#34d399] text-[#064e3b] shadow-[0_2px_10px_rgba(52,211,153,0.45)] animate-pulse shrink-0"
+            >
+              {badge > 99 ? '99+' : badge}
+            </span>
+          )}
+          {isActive && !tag && !(typeof badge === 'number' && badge > 0) && (
             <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] shrink-0" />
           )}
         </>
@@ -80,8 +106,10 @@ function NavItem({ to, label, icon: Icon, onClose, tag }: { to: string; label: s
 
 function SidebarContent({ onClose, showClose }: { onClose: () => void; showClose?: boolean }) {
   const currentUser    = useCurrentUser()
+  const { logout, currentUser: authUser } = useSimpleAuth()
   const canAccessDJS   = useCanAccess('Daily Job Sheet')
   const workspaceNav   = canAccessDJS ? [...workspaceNavBase, ...adminOnlyNav] : workspaceNavBase
+  const fluentUnreadCount = useFluentFormsUnreadCount()
 
   return (
     <div className="flex flex-col h-full sidebar-bg">
@@ -117,9 +145,18 @@ function SidebarContent({ onClose, showClose }: { onClose: () => void; showClose
         <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-3 px-3 font-semibold">
           Workspace
         </p>
-        {workspaceNav.map(item => (
-          <NavItem key={item.to} {...item} onClose={onClose} />
-        ))}
+        {workspaceNav.map(item => {
+          const isFluent = item.to === '/fluent-forms'
+          return (
+            <NavItem
+              key={item.to}
+              {...item}
+              badge={isFluent ? fluentUnreadCount : undefined}
+              onClick={isFluent ? () => markFluentFormsAsRead() : undefined}
+              onClose={onClose}
+            />
+          )
+        })}
 
         <div className="my-5 mx-2 border-t border-white/5" />
 
@@ -140,20 +177,44 @@ function SidebarContent({ onClose, showClose }: { onClose: () => void; showClose
         ))}
       </nav>
 
-      {/* User card */}
+      {/* User card with Sign Out button */}
       <div className="px-4 pb-5 shrink-0">
         <div className="border-t border-white/5 mb-4" />
-        <div className="flex items-center gap-3 px-3 py-3 rounded-2xl bg-white/5 border border-white/10">
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 text-black"
-            style={{ background: 'linear-gradient(135deg, #fbbf24, #f97316)' }}
+        <div className="flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-2xl bg-white/5 border border-white/10">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 text-black shadow-sm"
+              style={{ background: 'linear-gradient(135deg, #fbbf24, #f97316)' }}
+            >
+              AY
+            </div>
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-white truncate leading-tight">
+                {authUser || currentUser?.full_name || 'Akash Younas'}
+              </p>
+              <p className="text-[10.5px] text-emerald-400 truncate mt-0.5 font-medium flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Admin · Active</span>
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (isLocalEnvironment()) {
+                alert('Local Environment: Password & Login screen are disabled locally. The login screen is active on the VPS production server.')
+                return
+              }
+              if (window.confirm('Kiya aap Safaeewala CRM se Sign Out karna chahtay hain?')) {
+                logout()
+              }
+            }}
+            className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer shrink-0"
+            title="Sign Out / Lock CRM"
           >
-            AY
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[14px] font-semibold text-white truncate leading-tight">Akash Younas</p>
-            <p className="text-[11px] text-slate-400 truncate mt-0.5">Owner · Admin</p>
-          </div>
+            <LogOut size={16} />
+          </button>
         </div>
       </div>
 

@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { FluentFormLead, LeadStatus } from '@/types'
 import * as XLSX from 'xlsx'
@@ -34,7 +35,16 @@ export function cleanPageSource(url: string): string {
     if (path.endsWith('/') && path.length > 1) {
       path = path.slice(0, -1)
     }
-    return path || '/home'
+    if (!path || path === '/' || path === '/home') {
+      if (parsed.searchParams.get('preview_id')) {
+        return `Form #${parsed.searchParams.get('preview_id')} (Preview)`
+      }
+      if (parsed.searchParams.get('fluent_forms_pages')) {
+        return `Website Booking Form`
+      }
+      return '/home'
+    }
+    return path
   } catch {
     const clean = url.replace(/^https?:\/\/[^/]+/i, '').split('?')[0]
     return clean || '/home'
@@ -46,16 +56,16 @@ export function cleanCategory(cat: string, serviceName: string = '', pageUrl: st
   const text = `${cat} ${serviceName} ${pageUrl}`.toLowerCase()
   if (text.includes('move') || text.includes('relocation') || text.includes('tenancy')) return 'Move In / Out'
   if (text.includes('sofa') || text.includes('carpet') || text.includes('curtain') || text.includes('mattress') || text.includes('upholstery')) return 'Sofa & Carpet'
-  if (text.includes('villa') || text.includes('exterior') || text.includes('facade') || text.includes('pressure')) return 'Villa Cleaning'
+  if (text.includes('villa') || text.includes('house') || text.includes('mansion') || text.includes('exterior') || text.includes('facade') || text.includes('pressure')) return 'Villa Cleaning'
   if (text.includes('deep') || text.includes('steam') || text.includes('kitchen degrease')) return 'Deep Cleaning'
-  if (text.includes('office') || text.includes('commercial')) return 'Office Cleaning'
+  if (text.includes('office') || text.includes('commercial') || text.includes('warehouse')) return 'Office Cleaning'
   if (text.includes('duct') || text.includes('ac')) return 'AC Duct'
   if (text.includes('window') || text.includes('glass')) return 'Window Cleaning'
   if (text.includes('maid') || text.includes('hourly') || text.includes('regular') || text.includes('general')) return 'General Cleaning'
   return cat.trim() || 'General Cleaning'
 }
 
-/* ─── Normalize Property Type ─── */
+/* ─── Normalize Property Type According to Form Submissions ─── */
 export function resolvePropertyType(lead: {
   property_type?: string
   address?: string
@@ -63,158 +73,225 @@ export function resolvePropertyType(lead: {
   category?: string
   message?: string
   form_title?: string
+  raw_data?: Record<string, any>
 }): string {
-  if (lead.property_type && lead.property_type.trim()) return lead.property_type.trim()
-  const combined = `${lead.address || ''} ${lead.service || ''} ${lead.category || ''} ${lead.message || ''} ${lead.form_title || ''}`.toLowerCase()
+  // 1. Check direct property_type if provided and not a placeholder
+  if (lead.property_type && lead.property_type.trim()) {
+    const pt = lead.property_type.trim()
+    const lpt = pt.toLowerCase()
+    if (lpt !== 'not specified' && lpt !== 'undefined' && pt !== 'null' && pt !== '') {
+      // Standardize casing if matching known types, otherwise preserve form submission text
+      if (lpt === 'villa' || lpt.includes('villa') || lpt.includes('mansion')) return 'Villa'
+      if (lpt === 'house' || lpt.includes('house') || lpt.includes('home')) return 'House'
+      if (lpt === 'townhouse' || lpt.includes('town house') || lpt.includes('townhouse')) return 'Townhouse'
+      if (lpt === 'penthouse' || lpt.includes('penthouse')) return 'Penthouse'
+      if (lpt === 'office' || lpt.includes('office') || lpt.includes('commercial')) return 'Office'
+      if (lpt === 'studio' || lpt.includes('studio')) return 'Studio'
+      if (lpt === 'apartment' || lpt.includes('apartment') || lpt.includes('flat') || lpt.includes('bhk')) return 'Apartment'
+      return pt
+    }
+  }
+
+  // 2. Check raw form submission payload for dropdown_1 or custom property keys
+  if (lead.raw_data && typeof lead.raw_data === 'object') {
+    const raw = lead.raw_data
+    const val = raw.property_type || raw.dropdown_1 || raw.property || raw.propertyType || raw.type_of_property || raw.property_size || raw.building_type
+    if (val && typeof val === 'string' && val.trim() && val.trim().toLowerCase() !== 'not specified') {
+      const trimmed = val.trim()
+      const lval = trimmed.toLowerCase()
+      if (lval === 'villa' || lval.includes('villa')) return 'Villa'
+      if (lval === 'house' || lval.includes('house')) return 'House'
+      if (lval === 'townhouse' || lval.includes('town house')) return 'Townhouse'
+      if (lval === 'penthouse' || lval.includes('penthouse')) return 'Penthouse'
+      if (lval === 'office' || lval.includes('commercial')) return 'Office'
+      if (lval === 'studio' || lval.includes('studio')) return 'Studio'
+      if (lval === 'apartment' || lval.includes('flat') || lval.includes('bhk')) return 'Apartment'
+      return trimmed
+    }
+  }
+
+  // 3. Fallback to parsing message or address if specifically mentioned
+  const combined = `${lead.address || ''} ${lead.message || ''}`.toLowerCase()
   if (combined.includes('villa') || combined.includes('mansion') || combined.includes('compound')) return 'Villa'
   if (combined.includes('townhouse') || combined.includes('town house')) return 'Townhouse'
   if (combined.includes('penthouse')) return 'Penthouse'
   if (combined.includes('office') || combined.includes('commercial') || combined.includes('shop') || combined.includes('warehouse')) return 'Office'
-  if (combined.includes('apartment') || combined.includes('apt') || combined.includes('flat') || combined.includes('tower') || combined.includes('studio') || combined.includes('bhk') || combined.includes('1 bedroom') || combined.includes('2 bedroom') || combined.includes('3 bedroom')) return 'Apartment'
-  return 'Apartment'
+  if (combined.includes('studio')) return 'Studio'
+  if (combined.includes('apartment') || combined.includes('flat')) return 'Apartment'
+
+  return 'Not Specified'
+}
+
+export interface ParsedFluentFormPayload {
+  client_name: string
+  phone: string
+  service_needed: string
+  property_type: string
+  area_location: string
+  preferred_date: string
+  source_url: string
+  raw_payload: any
+}
+
+/**
+ * Resilient Multi-Key Fallback Parser for Fluent Forms Payloads
+ * Supports both custom field names (your_name, service_needed, etc.)
+ * and default WordPress Fluent Forms field names (name object, dropdown, dropdown_1, input_text, date, _wp_http_referer).
+ */
+export function parseFluentFormPayload(payload: any): ParsedFluentFormPayload {
+  if (!payload || typeof payload !== 'object') {
+    return {
+      client_name: 'Guest',
+      phone: '',
+      service_needed: 'General Cleaning',
+      property_type: 'Not Specified',
+      area_location: '',
+      preferred_date: '',
+      source_url: 'Website Form',
+      raw_payload: payload,
+    }
+  }
+
+  // Handle nested containers if sent via Fluent Forms webhook or WP integrations
+  const sub = (payload.__submission && typeof payload.__submission === 'object') ? payload.__submission : {}
+  const userInputs = (sub.user_inputs && typeof sub.user_inputs === 'object') ? sub.user_inputs : {}
+  const inputs = (payload.inputs && typeof payload.inputs === 'object') ? payload.inputs : {}
+  const data = (payload.data && typeof payload.data === 'object') ? payload.data : {}
+  const p: Record<string, any> = Object.assign({}, sub, data, inputs, userInputs, payload)
+
+  // 1. Client Name (Handle object or string)
+  let name = 'Guest'
+  if (typeof p.your_name === 'string' && p.your_name.trim()) {
+    name = p.your_name.trim()
+  } else if (p.name && typeof p.name === 'object') {
+    const first = (p.name.first_name || '').trim()
+    const last = (p.name.last_name || '').trim()
+    name = `${first} ${last}`.trim() || 'Guest'
+  } else if (typeof p.name === 'string' && p.name.trim()) {
+    name = p.name.trim()
+  } else if (typeof p.first_name === 'string' && p.first_name.trim()) {
+    const last = typeof p.last_name === 'string' ? p.last_name.trim() : ''
+    name = `${p.first_name.trim()} ${last}`.trim() || 'Guest'
+  } else if (typeof p.client_name === 'string' && p.client_name.trim()) {
+    name = p.client_name.trim()
+  }
+
+  // 2. Extract Phone & WhatsApp
+  const phone = (p.phone || p.phone_whatsapp || p.inputs_phone || p.mobile || '').toString().trim()
+
+  // 3. Extract Service Needed / Category
+  const service = (p.service_needed || p.dropdown || p.service || 'General Cleaning').toString().trim() || 'General Cleaning'
+
+  // 4. Extract Property Type
+  const propertyType = (p.property_type || p.dropdown_1 || 'Not Specified').toString().trim() || 'Not Specified'
+
+  // 5. Extract Location / Area / Address
+  const areaLocation = (p.area_location || p.input_text || p.address || '').toString().trim()
+
+  // 6. Extract Preferred Booking Date
+  const preferredDate = (p.preferred_date || p.date || '').toString().trim()
+
+  // 7. Extract Source URL / Lead Source
+  const sourceUrl = (p.source_url || p._wp_http_referer || 'Website Form').toString().trim() || 'Website Form'
+
+  return {
+    client_name: name,
+    phone,
+    service_needed: service,
+    property_type: propertyType,
+    area_location: areaLocation,
+    preferred_date: preferredDate,
+    source_url: sourceUrl,
+    raw_payload: payload,
+  }
 }
 
 /* ─── Extract and Normalize Fluent Forms Webhook Payload ─── */
 export function parseFluentFormWebhook(payload: Record<string, any>): FluentFormLead {
-  // Support nested inputs (e.g. payload.inputs || payload.data || payload)
-  const data = payload.inputs || payload.data || payload
+  const parsed = parseFluentFormPayload(payload)
 
-  // 1. Client Name (supports: your_name, names, full_name, client_name, name, etc.)
-  let client_name = ''
-  if (data.names && typeof data.names === 'object') {
-    client_name = [data.names.first_name, data.names.middle_name, data.names.last_name].filter(Boolean).join(' ').trim()
-  }
-  if (!client_name) {
-    client_name = String(
-      data.your_name ||
-      data['your-name'] ||
-      data['Your Name'] ||
-      data.full_name ||
-      data.client_name ||
-      data.name ||
-      data.first_name ||
-      data.customer_name ||
-      data.input_text ||
-      'Website Lead'
-    ).trim()
-  }
+  const sub = (payload && payload.__submission && typeof payload.__submission === 'object') ? payload.__submission : {}
+  const merged: Record<string, any> = Object.assign({}, sub, payload?.data, payload?.inputs, payload?.user_inputs, payload)
 
-  // 2. Phone / WhatsApp
-  const rawPhone = String(
-    data.phone_whatsapp ||
-    data['phone_whatsapp'] ||
-    data['Phone / Whatsapp'] ||
-    data['phone / whatsapp'] ||
-    data.phone ||
-    data.whatsapp ||
-    data.mobile ||
-    data.phone_number ||
-    data.contact_number ||
-    data['your-phone'] ||
-    data.numeric_field ||
-    '+971 50 000 0000'
-  ).trim()
-  const phone = rawPhone
-  const whatsapp = rawPhone ? rawPhone.replace(/[^0-9+]/g, '') : undefined
+  const rawPhone = parsed.phone || '+971 50 000 0000'
+  const cleanDigits = rawPhone.replace(/[^0-9+]/g, '')
+  const whatsapp = cleanDigits ? (cleanDigits.startsWith('+') ? cleanDigits : `+${cleanDigits}`) : undefined
 
-  // 3. Service Needed
-  const rawService = String(
-    data.service_needed ||
-    data['service_needed'] ||
-    data['Service Needed'] ||
-    data.service ||
-    data.service_type ||
-    data.cleaning_service ||
-    data.selected_service ||
-    data.dropdown ||
-    data.category ||
-    'Deep Cleaning'
-  ).trim()
+  const rawService = parsed.service_needed || 'General Cleaning'
+  const category = cleanCategory(rawService, rawService, parsed.source_url)
 
-  // 4. Property Type
-  const rawPropType = String(
-    data.property_type ||
-    data['property_type'] ||
-    data['Property Type'] ||
-    data.property ||
-    data.building_type ||
-    data.dropdown_1 ||
-    data.type ||
-    'Apartment'
-  ).trim()
-
-  // 5. Area / Location
-  const address = String(
-    data.area_location ||
-    data['area_location'] ||
-    data['Area / Location'] ||
-    data.address ||
-    data.property_address ||
-    data.location ||
-    data.villa_apt ||
-    data.area ||
-    data.community ||
-    'Dubai'
-  ).trim()
+  const rawPropertyType = parsed.property_type || 'Not Specified'
+  const address = parsed.area_location || 'Dubai'
   const area = address
 
-  // 6. Preferred Date
-  const preferred_date = String(
-    data.preferred_date ||
-    data['preferred_date'] ||
-    data['Preferred Date'] ||
-    data.date ||
-    data.booking_date ||
-    data.datetime ||
-    ''
-  ).trim() || undefined
-
-  // 7. Page source & URL
-  const source_url = String(data.source_url || data.page_url || data.embedded_url || data._wp_http_referer || payload.source_url || 'https://safaeewala.com').trim()
-  const page_source = cleanPageSource(source_url)
-  const rawCat = String(data.category || data.form_category || rawService).trim()
-  const category = cleanCategory(rawCat, rawService, source_url)
-
   const property_type = resolvePropertyType({
-    property_type: rawPropType,
+    property_type: rawPropertyType !== 'Not Specified' ? rawPropertyType : undefined,
     address,
     service: rawService,
     category,
-    message: String(data.message || ''),
-    form_title: String(payload.form_title || data.form_title || ''),
+    message: String(merged.message || merged.notes || ''),
+    form_title: String(payload?.form_title || merged.form_title || ''),
   })
 
-  // Value & Timing
-  const estimated_value = Number(data.estimated_value || data.price || data.total || data.calculated_price) || 500
-  const preferred_time = String(data.preferred_time || data.time || data.slot || '').trim() || undefined
-  const email = String(data.email || data.user_email || data['your-email'] || '').trim()
-  const message = String(data.message || data.notes || data.details || data.requirements || data.comment || '').trim()
+  const preferred_date = parsed.preferred_date || undefined
+  const source_url = (parsed.source_url && parsed.source_url !== 'Website Form')
+    ? parsed.source_url
+    : (sub.source_url || 'https://safaeewala.com')
+  const page_source = cleanPageSource(source_url)
 
+  const email = String(merged.email || merged.user_email || merged.your_email || '').trim()
+  const message = String(merged.message || merged.notes || merged.details || merged.requirements || '').trim()
+  const preferred_time = String(merged.preferred_time || merged.time || merged.slot || '').trim() || undefined
+
+  const estimated_value = Number(merged.estimated_value || merged.price || merged.total || merged.calculated_price) || 500
   const id = `lead-ff-${Date.now()}-${Math.floor(Math.random() * 1000)}`
 
   return {
     id,
-    created_at: new Date().toISOString(),
-    form_id: payload.form_id || data.form_id || 40,
-    form_title: String(payload.form_title || data.form_title || data.form_name || 'Website Cleaning Form'),
-    entry_id: payload.entry_id || data.entry_id,
+    created_at: sub.created_at ? new Date(sub.created_at).toISOString() : new Date().toISOString(),
+    form_id: Number(sub.form_id || payload?.form_id || merged.form_id || payload?.__fluent_form_embded_post_id) || 40,
+    form_title: String(payload?.form_title || merged.form_title || (merged.form_type ? `${merged.form_type} Request` : 'Website Cleaning Form')),
+    entry_id: sub.id || payload?.entry_id || merged.entry_id || undefined,
     source_url,
     page_source,
     category,
-    client_name,
+    client_name: parsed.client_name,
     email,
-    phone,
+    phone: rawPhone,
     whatsapp,
     address,
     area,
     property_type,
     preferred_date,
     preferred_time,
-    service: rawService || `${category} Service`,
+    service: rawService,
     message,
     estimated_value,
     status: 'new',
     raw_data: payload,
+  }
+}
+
+/* ─── Auto-Heal / Normalize Stored Lead using raw_data ─── */
+export function normalizeLeadWithRaw(lead: FluentFormLead): FluentFormLead {
+  if (!lead.raw_data || typeof lead.raw_data !== 'object') {
+    return lead
+  }
+  const extracted = parseFluentFormWebhook(lead.raw_data)
+  return {
+    ...lead,
+    client_name: (extracted.client_name && extracted.client_name !== 'Guest' && extracted.client_name !== 'Website Lead') ? extracted.client_name : lead.client_name,
+    phone: (extracted.phone && extracted.phone !== '+971 50 000 0000') ? extracted.phone : lead.phone,
+    whatsapp: extracted.whatsapp || lead.whatsapp,
+    service: (extracted.service && extracted.service !== 'General Cleaning') ? extracted.service : (lead.service || extracted.service),
+    property_type: (extracted.property_type && extracted.property_type !== 'Not Specified') ? extracted.property_type : (lead.property_type || extracted.property_type),
+    area: (extracted.area && extracted.area !== 'Dubai') ? extracted.area : (lead.area || extracted.area),
+    address: extracted.address || lead.address,
+    preferred_date: extracted.preferred_date || lead.preferred_date,
+    preferred_time: extracted.preferred_time || lead.preferred_time,
+    page_source: (extracted.page_source && extracted.page_source !== '/home') ? extracted.page_source : (lead.page_source || extracted.page_source),
+    category: extracted.category || lead.category,
+    entry_id: extracted.entry_id || lead.entry_id,
   }
 }
 
@@ -226,7 +303,9 @@ export async function fetchFluentFormLeads(): Promise<FluentFormLead[]> {
     if (res.ok) {
       const data = await res.json()
       if (Array.isArray(data)) {
-        const realData = (data as FluentFormLead[]).filter(l => !isDummyLead(l))
+        const realData = (data as FluentFormLead[])
+          .filter(l => !isDummyLead(l))
+          .map(l => normalizeLeadWithRaw(l))
         localStorage.setItem(STORAGE_KEY, JSON.stringify(realData))
         return realData
       }
@@ -241,7 +320,9 @@ export async function fetchFluentFormLeads(): Promise<FluentFormLead[]> {
       .order('created_at', { ascending: false })
 
     if (!error && data && Array.isArray(data) && data.length > 0) {
-      const realData = (data as FluentFormLead[]).filter(l => !isDummyLead(l))
+      const realData = (data as FluentFormLead[])
+        .filter(l => !isDummyLead(l))
+        .map(l => normalizeLeadWithRaw(l))
       localStorage.setItem(STORAGE_KEY, JSON.stringify(realData))
       return realData
     }
@@ -253,7 +334,9 @@ export async function fetchFluentFormLeads(): Promise<FluentFormLead[]> {
     if (saved) {
       const parsed = JSON.parse(saved)
       if (Array.isArray(parsed)) {
-        const realSaved = (parsed as FluentFormLead[]).filter(l => !isDummyLead(l))
+        const realSaved = (parsed as FluentFormLead[])
+          .filter(l => !isDummyLead(l))
+          .map(l => normalizeLeadWithRaw(l))
         return realSaved
       }
     }
@@ -286,6 +369,22 @@ export async function insertFluentFormLead(lead: FluentFormLead): Promise<void> 
   // 2. Post to Supabase if available
   try {
     await supabase.from('fluent_form_leads').insert(lead)
+  } catch {}
+}
+
+export async function updateFluentFormLead(id: string, updates: Partial<FluentFormLead>): Promise<void> {
+  // 1. Update on self-hosted VPS endpoint
+  try {
+    await fetch(`/api/webhook/fluent-forms/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    })
+  } catch {}
+
+  // 2. Update on Supabase if available
+  try {
+    await supabase.from('fluent_form_leads').update(updates).eq('id', id)
   } catch {}
 }
 
@@ -381,4 +480,121 @@ export function getWebhookConfig() {
     restEndpoint,
     sampleCurl,
   }
+}
+
+/* ─── Unread / New Form Dynamic Counter & Reset on Read Logic ─── */
+const READ_TIMESTAMP_KEY = 'safaeewala_fluent_forms_last_read_time'
+const READ_IDS_KEY = 'safaeewala_fluent_forms_read_ids'
+
+export function getReadFluentFormLeadIds(): string[] {
+  try {
+    const raw = localStorage.getItem(READ_IDS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+export function markFluentFormsAsRead(leads?: FluentFormLead[] | string[]): void {
+  try {
+    const now = Date.now()
+    localStorage.setItem(READ_TIMESTAMP_KEY, String(now))
+
+    let idsToAdd: string[] = []
+    if (leads && leads.length > 0) {
+      if (typeof leads[0] === 'string') {
+        idsToAdd = leads as string[]
+      } else {
+        idsToAdd = (leads as FluentFormLead[]).map(l => l.id)
+      }
+    }
+
+    const existing = getReadFluentFormLeadIds()
+    const merged = Array.from(new Set([...existing, ...idsToAdd]))
+    localStorage.setItem(READ_IDS_KEY, JSON.stringify(merged))
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('safaeewala_fluent_forms_read'))
+    }
+  } catch {}
+}
+
+export function markSingleFluentFormAsRead(id: string): void {
+  try {
+    const existing = getReadFluentFormLeadIds()
+    if (!existing.includes(id)) {
+      existing.push(id)
+      localStorage.setItem(READ_IDS_KEY, JSON.stringify(existing))
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('safaeewala_fluent_forms_read'))
+    }
+  } catch {}
+}
+
+export function countUnreadFluentForms(leads: FluentFormLead[]): number {
+  if (!leads || leads.length === 0) return 0
+
+  const readIds = getReadFluentFormLeadIds()
+  const readTimestampStr = localStorage.getItem(READ_TIMESTAMP_KEY)
+  const lastReadTime = readTimestampStr ? Number(readTimestampStr) : 0
+
+  return leads.filter(lead => {
+    if (isDummyLead(lead)) return false
+    if (readIds.includes(lead.id)) return false
+    if (lead.status && lead.status !== 'new') return false
+
+    if (lastReadTime > 0) {
+      const createdTime = new Date(lead.created_at).getTime()
+      if (!isNaN(createdTime)) {
+        return createdTime > lastReadTime
+      }
+    }
+    return lead.status === 'new'
+  }).length
+}
+
+export function useFluentFormsUnreadCount() {
+  const [unreadCount, setUnreadCount] = useState<number>(0)
+
+  useEffect(() => {
+    let mounted = true
+
+    const checkCount = async () => {
+      try {
+        const leads = await fetchFluentFormLeads()
+        if (mounted) {
+          const count = countUnreadFluentForms(leads)
+          setUnreadCount(count)
+        }
+      } catch {}
+    }
+
+    checkCount()
+
+    const handleRead = () => {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY)
+        const leads = raw ? JSON.parse(raw) : []
+        setUnreadCount(countUnreadFluentForms(leads))
+      } catch {
+        setUnreadCount(0)
+      }
+    }
+
+    window.addEventListener('safaeewala_fluent_forms_read', handleRead)
+    window.addEventListener('storage', handleRead)
+    const interval = setInterval(checkCount, 12000)
+
+    return () => {
+      mounted = false
+      window.removeEventListener('safaeewala_fluent_forms_read', handleRead)
+      window.removeEventListener('storage', handleRead)
+      clearInterval(interval)
+    }
+  }, [])
+
+  return unreadCount
 }

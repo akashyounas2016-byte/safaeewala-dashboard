@@ -1,6 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign, Heart, Award, CheckCircle, Trash2, ExternalLink } from 'lucide-react'
+import {
+  Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign,
+  Heart, Award, CheckCircle, Trash2, ExternalLink, ArrowUpDown, RotateCcw, X, Filter
+} from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -9,6 +12,9 @@ import { formatDate } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { BookingFrequency } from '@/types'
 import { isMonthlyJob, jobMatchesClient } from '@/lib/clientDataSync'
+import { SourceOriginTag, resolveClientSource } from '@/lib/sourceTracking'
+
+export type ClientDatePreset = 'all' | '7days' | '30days' | '3months' | '6months' | '1year' | 'custom'
 
 const serviceTypes = [
   'Standard Clean', 'Deep Clean', 'Move-in', 'Move-out',
@@ -123,6 +129,119 @@ export function Clients() {
   const [sortOrder, setSortOrder] = useState<'recent' | 'top_spent' | 'name'>('recent')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [filterType, setFilterType] = useState<'all' | 'active' | 'vip' | 'repeat' | 'monthly' | null>(null)
+  const [datePreset, setDatePreset] = useState<ClientDatePreset>('all')
+  const [customStartDate, setCustomStartDate] = useState('')
+  const [customEndDate, setCustomEndDate] = useState('')
+
+  // Helper to extract YYYY-MM-DD
+  const extractDateStr = (val?: string | null): string => {
+    if (!val) return ''
+    try {
+      return val.split('T')[0]
+    } catch {
+      return ''
+    }
+  }
+
+  // Active Date Range based on selected preset
+  const activeDateRange = useMemo(() => {
+    const today = new Date()
+    const todayStr = today.toISOString().split('T')[0]
+
+    if (datePreset === '7days') {
+      const d = new Date(today)
+      d.setDate(d.getDate() - 6)
+      return {
+        start: d.toISOString().split('T')[0],
+        end: todayStr,
+        label: 'Last 7 Days',
+      }
+    }
+    if (datePreset === '30days') {
+      const d = new Date(today)
+      d.setDate(d.getDate() - 29)
+      return {
+        start: d.toISOString().split('T')[0],
+        end: todayStr,
+        label: 'Last 30 Days',
+      }
+    }
+    if (datePreset === '3months') {
+      const d = new Date(today)
+      d.setMonth(d.getMonth() - 3)
+      return {
+        start: d.toISOString().split('T')[0],
+        end: todayStr,
+        label: 'Last 3 Months',
+      }
+    }
+    if (datePreset === '6months') {
+      const d = new Date(today)
+      d.setMonth(d.getMonth() - 6)
+      return {
+        start: d.toISOString().split('T')[0],
+        end: todayStr,
+        label: 'Last 6 Months',
+      }
+    }
+    if (datePreset === '1year') {
+      const d = new Date(today)
+      d.setFullYear(d.getFullYear() - 1)
+      return {
+        start: d.toISOString().split('T')[0],
+        end: todayStr,
+        label: 'Last 1 Year',
+      }
+    }
+    if (datePreset === 'custom') {
+      return {
+        start: customStartDate,
+        end: customEndDate,
+        label: 'Custom Range',
+      }
+    }
+    return {
+      start: '',
+      end: '',
+      label: 'All Time',
+    }
+  }, [datePreset, customStartDate, customEndDate])
+
+  // Check if a client has activity or registration in active date range
+  const isClientInDateRange = (c: typeof clients[0]): boolean => {
+    if (datePreset === 'all') return true
+    const { start, end } = activeDateRange
+    if (!start && !end) return true
+
+    const isDateBetween = (dStr: string) => {
+      if (!dStr) return false
+      if (start && dStr < start) return false
+      if (end && dStr > end) return false
+      return true
+    }
+
+    // 1. Last service date
+    if (isDateBetween(extractDateStr(c.last_service))) return true
+
+    // 2. Client joined / created_at date
+    if (isDateBetween(extractDateStr(c.created_at))) return true
+
+    // 3. Daily Job Sheet shifts for this client
+    if (dailyJobs.some(j => jobMatchesClient(j, c) && isDateBetween(extractDateStr(j.date)))) {
+      return true
+    }
+
+    // 4. Bookings for this client
+    const nameLower = c.full_name.toLowerCase().trim()
+    if (bookings.some(b => 
+      (b.client_id === c.id || b.client_name.toLowerCase().trim() === nameLower) &&
+      (isDateBetween(extractDateStr(b.scheduled_date)) || isDateBetween(extractDateStr(b.created_at)))
+    )) {
+      return true
+    }
+
+    return false
+  }
 
   const totalSpent    = clients.reduce((s, c) => s + c.total_spent, 0)
   const avgLtv        = Math.round(totalSpent / (clients.length || 1))
@@ -160,7 +279,8 @@ export function Clients() {
         filterType === 'monthly' ? isClientMonthly :
         true
       )
-      return matchSearch && matchArea && matchFilter
+      const matchDate = isClientInDateRange(c)
+      return matchSearch && matchArea && matchFilter && matchDate
     })
     if (sortOrder === 'top_spent') return [...base].sort((a, b) => b.total_spent - a.total_spent)
     if (sortOrder === 'name')      return [...base].sort((a, b) => a.full_name.localeCompare(b.full_name))
@@ -191,7 +311,7 @@ export function Clients() {
       <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3.5">
         {[
           { label: 'Total Clients',    value: clients.length,             sub: 'All time records', icon: Users,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: clientDeltaLabel,  deltaUp: newThisMonth >= 0, filter: null },
-          { label: 'Monthly Clients',  value: monthlyCount,              sub: 'Job Sheet monthly', icon: Star,     iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: `${monthlyCount} monthly`, deltaUp: monthlyCount > 0, filter: 'monthly' },
+          { label: 'Monthly Clients',  value: monthlyCount,              sub: 'Job Sheet monthly', icon: Star,     iconBg: 'bg-teal-50',    iconColor: 'text-teal-600',    delta: `${monthlyCount} monthly`, deltaUp: monthlyCount > 0, filter: 'monthly' },
           { label: 'Active (30d)',     value: activeClients,              sub: 'Recent activity', icon: TrendingUp, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: `${activeClients} active`, deltaUp: activeClients > 0, filter: 'active' },
           { label: 'VIP Clients',      value: vipClients,                 sub: 'AED 2k+ spent',  icon: Award,     iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: vipClients > 0 ? `${vipClients} VIP` : 'None', deltaUp: vipClients > 0, filter: 'vip' },
           { label: 'Avg Lifetime',     value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client', icon: DollarSign, iconBg: 'bg-teal-50',   iconColor: 'text-teal-600',    delta: avgLtv > 0 ? 'Real' : '—', deltaUp: avgLtv > 0, filter: null },
@@ -223,44 +343,160 @@ export function Clients() {
         })}
       </div>
 
-      {/* ── Main content: Client list + Sidebar widgets ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-
-        {/* ── Left: Filters + Client Grid ── */}
-        <div className="xl:col-span-2 space-y-4">
-
-          {/* Toolbar */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search by name, phone, area…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="w-full text-[13px] pl-10 pr-4 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 focus:bg-white placeholder-slate-400 transition-colors"
-                />
-              </div>
-              <select
-                value={areaFilter}
-                onChange={e => setAreaFilter(e.target.value)}
-                className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer"
+      {/* ── Single Unified Filter & Search Bar directly below summary cards ── */}
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 sm:p-5 space-y-3.5">
+        
+        {/* Main Controls Row: Search + Area Filter + Sort Filter + Reset & Counter */}
+        <div className="flex items-center gap-3 flex-wrap">
+          
+          {/* Search bar */}
+          <div className="relative flex-1 min-w-[240px]">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search by client name, phone, area, building…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full text-[13px] pl-10 pr-9 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500 focus:bg-white placeholder-slate-400 transition-colors"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                title="Clear search"
               >
-                <option value="all">All Areas</option>
-                {areas.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-              <select
-                value={sortOrder}
-                onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
-                className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer"
-              >
-                <option value="recent">Sort by: Recent</option>
-                <option value="top_spent">Sort by: Top Spenders</option>
-                <option value="name">Sort by: Name</option>
-              </select>
-            </div>
+                <X size={14} />
+              </button>
+            )}
           </div>
+
+          {/* Area Filter */}
+          <div className="relative shrink-0">
+            <select
+              value={areaFilter}
+              onChange={e => setAreaFilter(e.target.value)}
+              className="text-[13px] pl-3.5 pr-8 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500 text-slate-700 font-medium cursor-pointer appearance-none transition-colors"
+            >
+              <option value="all">All Areas</option>
+              {areas.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <MapPin size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+
+          {/* Sort Filter */}
+          <div className="relative shrink-0">
+            <select
+              value={sortOrder}
+              onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
+              className="text-[13px] pl-3.5 pr-8 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500 text-slate-700 font-medium cursor-pointer appearance-none transition-colors"
+            >
+              <option value="recent">Sort by: Recent</option>
+              <option value="top_spent">Sort by: Top Spenders</option>
+              <option value="name">Sort by: Name (A-Z)</option>
+            </select>
+            <ArrowUpDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+
+          {/* Reset button if active */}
+          {(search || areaFilter !== 'all' || sortOrder !== 'recent' || datePreset !== 'all' || filterType) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('')
+                setAreaFilter('all')
+                setSortOrder('recent')
+                setDatePreset('all')
+                setFilterType(null)
+                setCustomStartDate('')
+                setCustomEndDate('')
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold text-slate-500 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-xl transition-colors shrink-0"
+              title="Reset all filters"
+            >
+              <RotateCcw size={12} />
+              <span>Reset</span>
+            </button>
+          )}
+
+          {/* Result counter */}
+          <div className="ml-auto text-right shrink-0">
+            <span className="text-[12px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/60">
+              Showing <span className="text-emerald-600 font-extrabold">{filtered.length}</span> of {clients.length} clients
+            </span>
+          </div>
+        </div>
+
+        {/* Date Range Filter Row: 7 Days, 30 Days, 3 Months, 6 Months, 1 Year, Custom Range */}
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[12px] font-semibold text-slate-500 mr-1 flex items-center gap-1.5">
+              <Calendar size={13} className="text-emerald-600" />
+              <span>Date Filter:</span>
+            </span>
+
+            {[
+              { id: 'all',     label: 'All Time' },
+              { id: '7days',   label: '7 Days' },
+              { id: '30days',  label: '30 Days' },
+              { id: '3months', label: '3 Months' },
+              { id: '6months', label: '6 Months' },
+              { id: '1year',   label: '1 Year' },
+              { id: 'custom',  label: 'Custom Range' },
+            ].map(preset => {
+              const active = datePreset === preset.id
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setDatePreset(preset.id as ClientDatePreset)}
+                  className={`px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${
+                    active
+                      ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
+                      : 'bg-slate-100/80 hover:bg-slate-200/70 text-slate-600'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Custom Date Pickers */}
+          {datePreset === 'custom' && (
+            <div className="flex items-center gap-2 bg-[#f8fafc] border border-emerald-200 rounded-xl px-3 py-1.5 animate-in fade-in duration-150">
+              <span className="text-[11px] font-bold text-emerald-700">From:</span>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={e => setCustomStartDate(e.target.value)}
+                className="text-[12px] px-2 py-1 bg-white border border-[#E4E8EC] rounded-lg focus:outline-none focus:border-emerald-500 font-medium"
+              />
+              <span className="text-[11px] font-bold text-emerald-700">To:</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={e => setCustomEndDate(e.target.value)}
+                className="text-[12px] px-2 py-1 bg-white border border-[#E4E8EC] rounded-lg focus:outline-none focus:border-emerald-500 font-medium"
+              />
+            </div>
+          )}
+
+          {/* Active Range sub-label */}
+          {datePreset !== 'all' && datePreset !== 'custom' && (
+            <span className="text-[11.5px] font-medium text-slate-400 ml-auto">
+              {activeDateRange.start} to {activeDateRange.end}
+            </span>
+          )}
+        </div>
+
+      </div>
+
+      {/* ── Main content: Client list + Sidebar widgets (Equal top height) ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+
+        {/* ── Left: Client Grid (at equal height with Top Clients widget) ── */}
+        <div className="xl:col-span-2 space-y-4">
 
           {/* Client cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -273,7 +509,10 @@ export function Clients() {
                 <div className="flex items-start gap-3 mb-4">
                   <Avatar name={c.full_name} size="md" idx={idx} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-[14px] font-bold text-[#111827] truncate">{c.full_name}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-[14px] font-bold text-[#111827] truncate">{c.full_name}</p>
+                      <SourceOriginTag source={resolveClientSource(c, bookings)} />
+                    </div>
                     <p className="text-[12px] text-slate-500 mt-0.5">{c.nationality}</p>
                   </div>
                   <div className="text-right shrink-0">
@@ -318,13 +557,8 @@ export function Clients() {
                           {totalVisits} visit{totalVisits !== 1 ? 's' : ''}
                         </Link>
                         {isMonthly && (
-                          <span className="text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full font-bold">
+                          <span className="text-[10px] bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full font-bold">
                             Monthly
-                          </span>
-                        )}
-                        {isFromJobSheet && !isMonthly && (
-                          <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-semibold">
-                            Job Sheet
                           </span>
                         )}
                         {c.pet_info && (
@@ -405,6 +639,34 @@ export function Clients() {
             </div>
           </div>
 
+          {/* Top Locations by Area */}
+          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[15px] font-bold text-[#111827]">Top Locations</h3>
+              <span className="text-[11px] text-slate-400">By area</span>
+            </div>
+            <div className="space-y-2.5">
+              {Object.entries(areaCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 6)
+                .map(([area, count]) => {
+                  const maxCount = Math.max(...Object.values(areaCounts))
+                  const pct = Math.round((count / maxCount) * 100)
+                  return (
+                    <div key={area}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[12px] font-medium text-slate-700 truncate">{area}</span>
+                        <span className="text-[12px] font-bold text-[#111827] shrink-0 ml-2">{count}</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  )
+                })}
+            </div>
+          </div>
+
           {/* Recent Bookings (real) */}
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
             <div className="flex items-center justify-between mb-4">
@@ -445,34 +707,6 @@ export function Clients() {
                   })}
               </div>
             )}
-          </div>
-
-          {/* Client Density by Area */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[15px] font-bold text-[#111827]">Client Density</h3>
-              <span className="text-[11px] text-slate-400">By area</span>
-            </div>
-            <div className="space-y-2.5">
-              {Object.entries(areaCounts)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 6)
-                .map(([area, count]) => {
-                  const maxCount = Math.max(...Object.values(areaCounts))
-                  const pct = Math.round((count / maxCount) * 100)
-                  return (
-                    <div key={area}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[12px] font-medium text-slate-700 truncate">{area}</span>
-                        <span className="text-[12px] font-bold text-[#111827] shrink-0 ml-2">{count}</span>
-                      </div>
-                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                  )
-                })}
-            </div>
           </div>
 
         </div>

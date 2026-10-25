@@ -204,3 +204,6 @@ export async function seedDemoData(onProgress: (msg: string) => void) {
   await insert('daily_expenses', dailyExpenses)
   onProgress('Done! Refresh the page to see demo data.')
 }
+
+export { employees as seedEmployees, clients as seedClients, bookings as seedBookings, invoices as seedInvoices, inventory as seedInventory, dailyJobs as seedDailyJobs, dailyExpenses as seedDailyExpenses }
+

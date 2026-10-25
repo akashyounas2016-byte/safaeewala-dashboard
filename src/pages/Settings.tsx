@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle, Clock, Moon, Sun } from 'lucide-react'
+import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle, Clock, Moon, Sun, CheckCircle2, XCircle, Loader2, Send, Key, Link2, Eye, EyeOff, Sparkles, ChevronDown, ChevronUp, Mail } from 'lucide-react'
 import { useDarkMode } from '@/hooks/useDarkMode'
 import { supabase } from '@/lib/supabase'
 import { useIsAdmin, useCurrentUser, useRolePerms, useSetRolePerms, DEFAULT_ROLE_PERMS, ALL_MODULES, type RolePerms, type AppRole } from '@/store/UserContext'
@@ -11,6 +11,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
+import { getGHLConfig, saveGHLConfig, testGHLConnection, type GHLConfig } from '@/lib/ghlService'
 
 const ROLE_META: Record<AppRole, { label: string; badge: string; desc: string }> = {
   admin:     { label: 'Admin',     badge: 'bg-purple-50 text-purple-700 border-purple-200', desc: 'Full access to all modules including user management and daily job sheet' },
@@ -287,6 +288,283 @@ function Toggle({ label, description, checked, onChange }: {
   )
 }
 
+/* ─── GoHighLevel (GHL) Integration Panel ─── */
+function GHLPanel() {
+  const [config, setConfig] = useState<GHLConfig>(() => getGHLConfig())
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [saved, setSaved] = useState(false)
+  const [guideOpen, setGuideOpen] = useState(false)
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+
+  const handleSave = () => {
+    saveGHLConfig(config)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  const handleTest = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const res = await testGHLConnection(config)
+      setTestResult(res)
+      if (res.success) {
+        const now = new Date().toISOString()
+        setConfig(prev => ({ ...prev, lastConnectedAt: now, enabled: true }))
+      }
+    } catch (e: any) {
+      setTestResult({ success: false, message: e.message || 'Error testing GHL connection' })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const copyToClipboard = (text: string, key: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedKey(key)
+    setTimeout(() => setCopiedKey(null), 2000)
+  }
+
+  return (
+    <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-[#E4E8EC] flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-slate-50 via-white to-blue-50/40">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-sm font-black text-[13px] tracking-wider shrink-0">
+            GHL
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-[15px] font-bold text-[#111827]">GoHighLevel (GHL) Connection</h3>
+              {config.enabled ? (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active
+                </span>
+              ) : (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
+                  Disabled
+                </span>
+              )}
+            </div>
+            <p className="text-[12px] text-slate-500 mt-0.5">
+              Automate booking confirmation emails, client SMS, and workflow triggers
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 cursor-pointer text-[12px] font-bold text-slate-700">
+            <span>Enable Integration</span>
+            <input
+              type="checkbox"
+              checked={config.enabled}
+              onChange={e => setConfig(prev => ({ ...prev, enabled: e.target.checked }))}
+              className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="p-6 space-y-5">
+        {/* Recommended callout */}
+        <div className="bg-blue-50/60 border border-blue-200/80 rounded-xl p-4 flex items-start gap-3">
+          <Sparkles className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+          <div className="text-[12.5px] text-blue-900 leading-relaxed">
+            <span className="font-bold">Recommended GHL Setup:</span> Create an Automation Workflow in GoHighLevel with the trigger <code className="bg-blue-100/80 text-blue-800 px-1.5 py-0.5 rounded font-mono text-[11.5px]">Inbound Webhook</code>. Paste the Webhook URL below. Whenever a lead is marked <span className="font-bold text-emerald-700">"Converted"</span> in Fluent Forms or scheduled in Bookings, CRM will post the complete booking data to GHL to dispatch confirmation emails instantly.
+          </div>
+        </div>
+
+        {/* Webhook URL Input */}
+        <div>
+          <label className="block text-[12.5px] font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+            <Link2 size={14} className="text-blue-600" />
+            GHL Inbound Webhook URL <span className="text-emerald-600 text-[11px] font-semibold">(Primary / Recommended)</span>
+          </label>
+          <input
+            type="url"
+            value={config.webhookUrl}
+            onChange={e => setConfig(prev => ({ ...prev, webhookUrl: e.target.value.trim() }))}
+            placeholder="https://services.leadconnectorhq.com/hooks/YOUR_WORKFLOW_ID/..."
+            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-900 font-mono placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+          />
+          <p className="text-[11.5px] text-slate-500 mt-1">
+            Copy the Inbound Webhook URL from your GoHighLevel Workflow trigger.
+          </p>
+        </div>
+
+        {/* API Credentials */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          <div>
+            <label className="block text-[12.5px] font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
+              <Key size={14} className="text-slate-500" />
+              Location ID (Sub-Account ID) <span className="text-slate-400 text-[11px] font-normal">(Optional)</span>
+            </label>
+            <input
+              type="text"
+              value={config.locationId}
+              onChange={e => setConfig(prev => ({ ...prev, locationId: e.target.value.trim() }))}
+              placeholder="e.g. ve9AqTZQg2j82VTuFG8U"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-900 font-mono placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">GHL Settings → Business Profile → General → Location ID</p>
+          </div>
+
+          <div>
+            <label className="block text-[12.5px] font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Key size={14} className="text-slate-500" />
+                API Key / Private Token <span className="text-slate-400 text-[11px] font-normal">(Optional)</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="text-[11px] text-slate-500 hover:text-slate-800 flex items-center gap-1 cursor-pointer"
+              >
+                {showApiKey ? <EyeOff size={12} /> : <Eye size={12} />}
+                <span>{showApiKey ? 'Hide' : 'Show'}</span>
+              </button>
+            </label>
+            <input
+              type={showApiKey ? 'text' : 'password'}
+              value={config.apiKey}
+              onChange={e => setConfig(prev => ({ ...prev, apiKey: e.target.value.trim() }))}
+              placeholder="pit-..."
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-900 font-mono placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">GHL Settings → Developers → Private Integration Access Token</p>
+          </div>
+        </div>
+
+        {/* Automation Toggles */}
+        <div className="border border-slate-200 rounded-xl p-4 divide-y divide-slate-100 bg-slate-50/50">
+          <Toggle
+            label="Auto-trigger confirmation on Fluent Form 'Converted'"
+            description="When a lead status is changed to 'Converted', automatically send booking details to GoHighLevel."
+            checked={config.autoSendOnConvert}
+            onChange={v => setConfig(prev => ({ ...prev, autoSendOnConvert: v }))}
+          />
+          <Toggle
+            label="Auto-trigger confirmation on Bookings tab Confirmed"
+            description="When an operator schedules or confirms a booking in the Bookings tab, dispatch confirmation details to GoHighLevel."
+            checked={config.autoSendOnBooking}
+            onChange={v => setConfig(prev => ({ ...prev, autoSendOnBooking: v }))}
+          />
+        </div>
+
+        {/* Live Feedback banner */}
+        {testResult && (
+          <div className={cn(
+            'p-4 rounded-xl border flex items-start gap-3 transition-all',
+            testResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
+          )}>
+            {testResult.success ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            ) : (
+              <XCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            )}
+            <div className="text-[12.5px] leading-relaxed flex-1">
+              <p className="font-bold">{testResult.success ? 'Connection Successful!' : 'Connection Test Failed'}</p>
+              <p className="mt-0.5">{testResult.message}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+          <button
+            type="button"
+            disabled={testing}
+            onClick={handleTest}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[13px] font-bold transition-all disabled:opacity-50 cursor-pointer"
+          >
+            {testing ? (
+              <>
+                <Loader2 size={14} className="animate-spin text-blue-600" />
+                <span>Testing Connection...</span>
+              </>
+            ) : (
+              <>
+                <Send size={14} className="text-blue-600" />
+                <span>Test GHL Connection</span>
+              </>
+            )}
+          </button>
+
+          <Button
+            type="button"
+            onClick={handleSave}
+            className="min-w-[140px]"
+          >
+            {saved ? (
+              <>
+                <CheckCircle2 size={14} className="mr-1.5" />
+                <span>Saved!</span>
+              </>
+            ) : (
+              <>
+                <Save size={14} className="mr-1.5" />
+                <span>Save GHL Settings</span>
+              </>
+            )}
+          </Button>
+        </div>
+
+        {/* Mapping guide accordion */}
+        <div className="border border-slate-200 rounded-xl overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setGuideOpen(!guideOpen)}
+            className="w-full px-4 py-3 bg-slate-50 hover:bg-slate-100 flex items-center justify-between text-left transition-colors cursor-pointer"
+          >
+            <span className="text-[13px] font-bold text-slate-800 flex items-center gap-2">
+              <Mail size={15} className="text-blue-600" />
+              <span>GHL Email Template Merge Tags Guide (Click to View)</span>
+            </span>
+            {guideOpen ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+          </button>
+
+          {guideOpen && (
+            <div className="p-4 bg-white border-t border-slate-200 space-y-3">
+              <p className="text-[12px] text-slate-600">
+                Inside your GoHighLevel Workflow, when editing the <strong>Send Email</strong> or <strong>Send SMS</strong> action, use these webhook variables:
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[12px]">
+                {[
+                  { tag: '{{webhook.client_name}}', desc: 'Client full name' },
+                  { tag: '{{webhook.client_phone}}', desc: 'Client phone number' },
+                  { tag: '{{webhook.client_email}}', desc: 'Client email address' },
+                  { tag: '{{webhook.service_type}}', desc: 'Service (e.g. Deep Cleaning)' },
+                  { tag: '{{webhook.scheduled_date}}', desc: 'Booking / service date' },
+                  { tag: '{{webhook.scheduled_time}}', desc: 'Booking / service time' },
+                  { tag: '{{webhook.service_address}}', desc: 'Client address & area' },
+                  { tag: '{{webhook.total_amount}}', desc: 'Total quotation amount (AED)' },
+                  { tag: '{{webhook.notes}}', desc: 'Special notes / requests' },
+                ].map(({ tag, desc }) => (
+                  <div
+                    key={tag}
+                    onClick={() => copyToClipboard(tag, tag)}
+                    className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 cursor-pointer transition-colors"
+                  >
+                    <div>
+                      <code className="text-blue-700 font-bold font-mono text-[11.5px]">{tag}</code>
+                      <p className="text-[11px] text-slate-500">{desc}</p>
+                    </div>
+                    <span className="text-[11px] font-semibold text-slate-500 px-2 py-0.5 rounded bg-white border border-slate-200">
+                      {copiedKey === tag ? 'Copied!' : 'Copy'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ─── Integration connection modal ─── */
 interface IntegrationInfo {
   name: string
@@ -380,6 +658,14 @@ function IntegrationModal({ info, onClose }: { info: IntegrationInfo; onClose: (
 
 /* ─── Integration data ─── */
 const integrations: IntegrationInfo[] = [
+  {
+    name: 'GoHighLevel (GHL)',
+    desc: 'Automated booking confirmation emails, client SMS & CRM workflows',
+    logo: '🚀',
+    status: 'connected',
+    docsUrl: 'https://help.gohighlevel.com',
+    note: 'GoHighLevel connection is configured in the panel above. Dispatches confirmation emails and SMS directly via Inbound Webhooks.',
+  },
   {
     name: 'Supabase',
     desc: 'Database, Auth & File Storage',
@@ -822,31 +1108,31 @@ export function Settings() {
         searchPlaceholder="Search settings…"
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      {/* ── Full Width Tab Navigation Bar ── */}
+      <div className="w-full bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-2.5 sm:p-3">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {tabs.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-all cursor-pointer',
+                activeTab === t.id
+                  ? 'bg-[#111827] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              )}
+            >
+              <t.icon size={15} className="shrink-0" />
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
-        {/* ── Left: Tab nav + Content ── */}
-        <div className="xl:col-span-2 space-y-4">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
 
-          {/* Tab nav */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-3 py-3">
-            <div className="flex gap-1 flex-wrap">
-              {tabs.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setActiveTab(t.id)}
-                  className={cn(
-                    'flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-colors cursor-pointer',
-                    activeTab === t.id
-                      ? 'bg-[#111827] text-white'
-                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
-                  )}
-                >
-                  <t.icon size={15} className="shrink-0" />
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
+        {/* ── Left: Tab Content ── */}
+        <div className="xl:col-span-2 space-y-5">
 
           {/* ── Appearance ── */}
           {activeTab === 'appearance' && <AppearancePanel />}
@@ -1097,12 +1383,16 @@ export function Settings() {
 
           {/* ── Integrations ── */}
           {activeTab === 'integrations' && (
-            <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
-              <div className="px-6 py-4 border-b border-[#E4E8EC]">
-                <h3 className="text-[15px] font-bold text-[#111827]">Integrations</h3>
-                <p className="text-[12px] text-slate-500 mt-1">Click any integration to see setup instructions.</p>
-              </div>
-              <div className="p-6 space-y-3">
+            <div className="space-y-6">
+              {/* GoHighLevel Dedicated Integration Panel */}
+              <GHLPanel />
+
+              <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+                <div className="px-6 py-4 border-b border-[#E4E8EC]">
+                  <h3 className="text-[15px] font-bold text-[#111827]">Connected & Available Services</h3>
+                  <p className="text-[12px] text-slate-500 mt-1">Click any integration to see setup instructions and API status.</p>
+                </div>
+                <div className="p-6 space-y-3">
                 {integrations.map(int => (
                   <div key={int.name} className="flex items-center justify-between p-3.5 border border-[#E4E8EC] rounded-xl hover:border-slate-300 transition-colors">
                     <div className="flex items-center gap-3">
@@ -1133,6 +1423,7 @@ export function Settings() {
                 ))}
               </div>
             </div>
+          </div>
           )}
 
           {/* ── Activity Log ── */}

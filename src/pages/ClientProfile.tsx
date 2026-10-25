@@ -12,6 +12,8 @@ import { Modal } from '@/components/ui/Modal'
 import type { Booking, PaymentMode } from '@/types'
 import { getClientDailyJobsHistory, calcJobOTHours, isMonthlyJob } from '@/lib/clientDataSync'
 
+import { SourceOriginTag, resolveClientSource } from '@/lib/sourceTracking'
+
 /* ─── Avatar ─── */
 const avatarColors = [
   { bg: '#dcefe7', text: '#0d8a72' },
@@ -213,14 +215,10 @@ export function ClientProfile() {
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-1">
               <h1 className="text-[22px] font-bold text-[#111827]">{client.full_name}</h1>
+              <SourceOriginTag source={resolveClientSource(client, bookings)} />
               {isClientMonthly && (
                 <span className="text-[11px] bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-0.5 rounded-full font-bold">
                   Monthly Client
-                </span>
-              )}
-              {client.id.startsWith('dj-') && !isClientMonthly && (
-                <span className="text-[11px] bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-0.5 rounded-full font-semibold">
-                  Job Sheet Client
                 </span>
               )}
               {totalLifetimeSpent > 2000 && (

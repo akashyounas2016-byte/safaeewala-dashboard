@@ -93,3 +93,20 @@ body {
   to { width: 0%; }
 }
 
+/* Scroll performance & smoothness */
+html, body {
+  scroll-behavior: smooth;
+  overscroll-behavior-y: none;
+}
+
+main {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll-container {
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+

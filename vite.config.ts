@@ -12,6 +12,13 @@ export default defineConfig({
   },
   server: {
     port: 5058,
+    proxy: {
+      '/api': {
+        target: 'https://crm.srv1646539.hstgr.cloud',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   build: {
     chunkSizeWarningLimit: 1000,

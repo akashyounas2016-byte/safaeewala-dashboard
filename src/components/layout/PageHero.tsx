@@ -11,6 +11,7 @@ interface PageHeroProps {
   searchPlaceholder?: string
   searchValue?: string
   onSearch?: (value: string) => void
+  actions?: React.ReactNode
 }
 
 export function PageHero({
@@ -23,18 +24,22 @@ export function PageHero({
   searchPlaceholder = 'Search…',
   searchValue = '',
   onSearch,
+  actions,
 }: PageHeroProps) {
   const { openMenu } = useLayout()
+
+  // Clean any leading "+" sign to prevent double "+" icons
+  const cleanActionLabel = actionLabel ? actionLabel.replace(/^\+\s*/, '') : ''
 
   return (
     <section className="gradient-card rounded-[24px] px-7 py-6 text-white shadow-[0_8px_32px_rgba(15,23,42,0.28)] ring-1 ring-black/10 mb-7 relative overflow-hidden">
       {/* Glow */}
       <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="relative z-10 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
+      <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
 
         {/* Left: title + subtitle */}
-        <div className="min-w-0">
+        <div className="min-w-0 flex flex-col justify-center">
           {/* Mobile hamburger */}
           <button
             onClick={openMenu}
@@ -57,8 +62,8 @@ export function PageHero({
           </div>
         </div>
 
-        {/* Right: search + bell + CTA */}
-        <div className="flex items-center gap-3 shrink-0 flex-wrap">
+        {/* Right: search + custom actions + CTA + bell */}
+        <div className="flex items-center gap-3 shrink-0 flex-wrap my-auto">
 
           {/* Search */}
           {showSearch && (
@@ -77,19 +82,27 @@ export function PageHero({
           </div>
           )}
 
-          {/* Primary CTA (e.g. New Booking) */}
-          {actionLabel && (
+          {/* Custom actions slot (e.g. Add Client, New Contract) */}
+          {actions}
+
+          {/* Primary CTA (e.g. Record Payment / New Booking) */}
+          {cleanActionLabel && onAction && (
             <button
+              type="button"
               onClick={onAction}
-              className="h-11 px-5 rounded-2xl bg-white text-emerald-700 font-semibold text-sm shadow-lg hover:bg-emerald-50 transition-colors shrink-0 flex items-center gap-2 cursor-pointer"
+              className="h-11 px-5 rounded-2xl bg-white text-emerald-700 font-semibold text-sm shadow-lg hover:bg-emerald-50 transition-colors shrink-0 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Plus size={15} strokeWidth={2.5} />
-              {actionLabel}
+              <span>{cleanActionLabel}</span>
             </button>
           )}
 
           {/* Notification bell */}
-          <button className="relative w-11 h-11 rounded-2xl border border-white/10 bg-white/10 flex items-center justify-center backdrop-blur-sm hover:bg-white/20 transition-colors shrink-0 cursor-pointer" title="Notifications">
+          <button
+            type="button"
+            className="relative w-11 h-11 rounded-2xl border border-white/10 bg-white/10 flex items-center justify-center backdrop-blur-sm hover:bg-white/20 transition-colors shrink-0 cursor-pointer"
+            title="Notifications"
+          >
             <Bell size={16} className="text-white/80" />
             <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full" />
           </button>

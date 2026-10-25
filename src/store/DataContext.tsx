@@ -3,6 +3,8 @@ import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, Daily
 import { supabase } from '@/lib/supabase'
 import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
+import { seedBookings, seedInvoices, seedInventory } from '@/lib/seedData'
+
 
 interface DataStore {
   bookings:  Booking[]
@@ -82,11 +84,20 @@ function safeNum(val: any): number {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [bookings,      setBookings]      = useState<Booking[]>([])
+  const [bookings,      setBookings]      = useState<Booking[]>(() => {
+    const saved = safeLocalStorageGet<Booking[]>('safaeewala_bookings', [])
+    return saved.length > 0 ? saved : (seedBookings as Booking[])
+  })
   const [clients,       setClients]       = useState<Client[]>([])
   const [employees,     setEmployees]     = useState<Employee[]>([])
-  const [invoices,      setInvoices]      = useState<Invoice[]>([])
-  const [inventory,     setInventory]     = useState<InventoryItem[]>([])
+  const [invoices,      setInvoices]      = useState<Invoice[]>(() => {
+    const saved = safeLocalStorageGet<Invoice[]>('safaeewala_invoices', [])
+    return saved.length > 0 ? saved : (seedInvoices as Invoice[])
+  })
+  const [inventory,     setInventory]     = useState<InventoryItem[]>(() => {
+    const saved = safeLocalStorageGet<InventoryItem[]>('safaeewala_inventory', [])
+    return saved.length > 0 ? saved : (seedInventory as InventoryItem[])
+  })
   const [dailyJobs,     setDailyJobs]     = useState<DailyJob[]>(() =>
     safeLocalStorageGet<DailyJob[]>('safaeewala_daily_jobs', [])
   )
@@ -96,7 +107,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [loading,       setLoading]       = useState(true)
   const [companyTRN,    setCompanyTRN]    = useState('100234567890003')
 
-  // Auto-persist dailyJobs and dailyExpenses to localStorage for instant 0ms loads (safe quota handling)
+  // Auto-persist bookings, invoices, inventory, dailyJobs, dailyExpenses to localStorage
+  useEffect(() => {
+    if (bookings.length > 0) {
+      safeLocalStorageSet('safaeewala_bookings', bookings)
+    }
+  }, [bookings])
+
+  useEffect(() => {
+    if (invoices.length > 0) {
+      safeLocalStorageSet('safaeewala_invoices', invoices)
+    }
+  }, [invoices])
+
+  useEffect(() => {
+    if (inventory.length > 0) {
+      safeLocalStorageSet('safaeewala_inventory', inventory)
+    }
+  }, [inventory])
+
   useEffect(() => {
     if (dailyJobs.length > 0) {
       safeLocalStorageSet('safaeewala_daily_jobs', dailyJobs)
@@ -135,11 +164,38 @@ export function DataProvider({ children }: { children: ReactNode }) {
       q('daily_jobs',     'date'),
       q('daily_expenses', 'date'),
     ]).then(([b, c, e, i, inv, dj, de]) => {
-      setBookings(b     as Booking[])
-      setClients(c      as Client[])
-      setEmployees(e    as Employee[])
-      setInvoices(i     as Invoice[])
-      setInventory(inv  as InventoryItem[])
+      if (b && b.length > 0) {
+        setBookings(b as Booking[])
+      } else {
+        const saved = safeLocalStorageGet<Booking[]>('safaeewala_bookings', [])
+        if (saved.length > 0) setBookings(saved)
+        else setBookings(seedBookings as Booking[])
+      }
+
+      if (c && c.length > 0) {
+        setClients(c as Client[])
+      }
+
+      if (e && e.length > 0) {
+        setEmployees(e as Employee[])
+      }
+
+      if (i && i.length > 0) {
+        setInvoices(i as Invoice[])
+      } else {
+        const saved = safeLocalStorageGet<Invoice[]>('safaeewala_invoices', [])
+        if (saved.length > 0) setInvoices(saved)
+        else setInvoices(seedInvoices as Invoice[])
+      }
+
+      if (inv && inv.length > 0) {
+        setInventory(inv as InventoryItem[])
+      } else {
+        const saved = safeLocalStorageGet<InventoryItem[]>('safaeewala_inventory', [])
+        if (saved.length > 0) setInventory(saved)
+        else setInventory(seedInventory as InventoryItem[])
+      }
+
       let initialJobs = ((dj || []) as any[]).map(j => ({
         ...j,
         charges: safeNum(j.charges),
@@ -190,6 +246,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       let resolvedClientId = b.client_id || ''
       if (matchedClient) {
         resolvedClientId = matchedClient.id
+        if (!matchedClient.source && b.source) {
+          const updated = { ...matchedClient, source: b.source }
+          setClients(p => p.map(c => c.id === matchedClient.id ? updated : c))
+          supabase.from('clients').update({ source: b.source }).eq('id', matchedClient.id).then(() => {})
+        }
       } else if (!resolvedClientId) {
         const newClient: Client = {
           id: uid(), created_at: now(),
@@ -197,6 +258,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           area: '', city: 'Dubai',
           total_bookings: 0, total_spent: 0,
           last_service: b.scheduled_date,
+          source: b.source || undefined,
         }
         resolvedClientId = newClient.id
         setClients(p => [newClient, ...p])

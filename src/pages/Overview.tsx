@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type ElementType } from 'react'
+import { useState, useRef, useEffect, useMemo, type ElementType } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -7,6 +7,7 @@ import {
   CalendarCheck, Users, DollarSign, Star,
   ArrowUpRight, ArrowDownRight, Minus, ArrowRight,
   AlertCircle, Clock, CalendarPlus, FileText, UserCheck, ShoppingCart,
+  Calendar, RotateCcw,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -15,12 +16,40 @@ import { formatTime } from '@/lib/utils'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import { useCurrentUser } from '@/store/UserContext'
-import type { Booking, BookingFrequency } from '@/types'
+import type { Booking, BookingFrequency, DailyJob, DailyPendingItem, DailyPendingReceivedItem, Invoice } from '@/types'
+import { cleanClientNameFromAddress } from '@/lib/clientDataSync'
+import { safeLocalStorageGet } from '@/lib/storageUtils'
+
+function cleanNum(val: any): number {
+  if (val === null || val === undefined || val === '') return 0
+  if (typeof val === 'number') return isNaN(val) ? 0 : val
+  const str = String(val).trim()
+  if (!str || str === '—' || str === '-' || str.toLowerCase() === 'nil' || str.toLowerCase() === 'pending' || str.toLowerCase() === 'monthly' || str.toLowerCase() === 'n/a') return 0
+  const cleaned = str.replace(/[^0-9.-]/g, '').trim()
+  const num = parseFloat(cleaned)
+  return isNaN(num) ? 0 : num
+}
+
+function isBogusSummaryJob(j: DailyJob): boolean {
+  if (!j) return true
+  const address = (j.address || '').trim()
+  const noAddress = !address || address === '—' || address === '-'
+  const noTimes = (!j.start_time || j.start_time === '—') && (!j.end_time || j.end_time === '—')
+  const duty = Number(j.duty_hours) || 0
+  const charges = Number(j.charges) || 0
+  const received = Number(j.received) || 0
+  const summaryWords = ['gross', 'pending rcvd', 'total', 'expences', 'net total', 'summary']
+  const combined = `${j.staff_name || ''} ${address} ${j.area || ''} ${j.remarks || ''}`.toLowerCase()
+  if (summaryWords.some(w => combined.includes(w))) return true
+  const isEmptyStub = noAddress && charges === 0 && received === 0 && (!j.service || j.service === '—')
+  return (noAddress && noTimes) || (noAddress && (charges > 1500 || received > 1500)) || duty > 24 || isEmptyStub
+}
 
 const serviceTypes = [
   'Standard Clean', 'Deep Clean', 'Move-in', 'Move-out',
   'Commercial', 'Post-construction', 'Office', 'Carpet', 'Window',
 ]
+
 
 function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (ids: string[]) => void }) {
   const { employees } = useData()
@@ -235,7 +264,17 @@ function KpiCard({ label, value, sub, delta, trend = 'neutral', icon: Icon, icon
 }
 
 /* ─── Revenue chart ─── */
-function RevenueChart({ bookings }: { bookings: Booking[] }) {
+function RevenueChart({
+  bookings,
+  dailyJobs,
+  monthlyPayments,
+  invoices,
+}: {
+  bookings: Booking[]
+  dailyJobs: DailyJob[]
+  monthlyPayments: Array<{ amount: number; date: string }>
+  invoices: Invoice[]
+}) {
   const [range, setRange] = useState<'3M' | '6M' | '1Y'>('6M')
   const count = range === '3M' ? 3 : range === '6M' ? 6 : 12
 
@@ -251,12 +290,40 @@ function RevenueChart({ bookings }: { bookings: Booking[] }) {
     }
   })
 
+  // 1. From Bookings
   bookings
     .filter(b => b.status === 'completed' || b.status === 'in_progress')
     .forEach(b => {
-      const key = b.scheduled_date.slice(0, 7)
+      const key = (b.scheduled_date || '').slice(0, 7)
       const m = months.find(m => m.key === key)
-      if (m) m.revenue += b.total_amount
+      if (m) m.revenue += cleanNum(b.total_amount)
+    })
+
+  // 2. From Daily Jobs Sheet collections
+  dailyJobs
+    .filter(j => !isBogusSummaryJob(j))
+    .forEach(j => {
+      const key = (j.date || '').slice(0, 7)
+      const m = months.find(m => m.key === key)
+      if (m) {
+        m.revenue += cleanNum(j.received) || (j.payment_mode !== 'Pending' ? cleanNum(j.charges) : 0)
+      }
+    })
+
+  // 3. From Monthly Client Payments
+  monthlyPayments.forEach(p => {
+    const key = (p.date || '').slice(0, 7)
+    const m = months.find(m => m.key === key)
+    if (m) m.revenue += cleanNum(p.amount)
+  })
+
+  // 4. From Paid Invoices
+  invoices
+    .filter(i => i.status === 'paid')
+    .forEach(i => {
+      const key = (i.paid_date || i.due_date || (i.created_at ? i.created_at.slice(0, 7) : '')).slice(0, 7)
+      const m = months.find(m => m.key === key)
+      if (m) m.revenue += cleanNum(i.total)
     })
 
   // Target = 110% of average revenue across displayed months (min AED 5,000)
@@ -275,7 +342,7 @@ function RevenueChart({ bookings }: { bookings: Booking[] }) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h3 className="text-xl font-bold text-[#111827]">Revenue vs Target</h3>
-          <p className="text-sm text-[#6B7280] mt-1">Business growth performance overview</p>
+          <p className="text-sm text-[#6B7280] mt-1">Business growth performance overview (all unified income streams)</p>
         </div>
         <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
           {(['3M', '6M', '1Y'] as const).map(t => (
@@ -291,7 +358,7 @@ function RevenueChart({ bookings }: { bookings: Booking[] }) {
         <div>
           <p className="text-sm text-[#6B7280] mb-1">Total Revenue</p>
           <h4 className="text-xl font-bold text-[#111827]">AED {totalRevenue.toLocaleString()}</h4>
-          <p className="text-sm font-semibold text-[#059669] mt-1">All completed jobs</p>
+          <p className="text-sm font-semibold text-[#059669] mt-1">All collected payments</p>
         </div>
         <div>
           <p className="text-sm text-[#6B7280] mb-1">Target Hit</p>
@@ -307,7 +374,7 @@ function RevenueChart({ bookings }: { bookings: Booking[] }) {
 
       {totalRevenue === 0 ? (
         <div className="flex items-center justify-center h-[200px] text-slate-400 text-sm">
-          Complete bookings to see revenue data
+          No revenue recorded for selected period
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={200}>
@@ -350,14 +417,23 @@ function RevenueChart({ bookings }: { bookings: Booking[] }) {
 /* ─── Service mix donut ─── */
 const CIRC = 238.76
 const donutColors = ['#059669', '#0ea5e9', '#f59e0b', '#8b5cf6', '#cbd5e1']
-function ServiceMixDonut({ bookings }: { bookings: Booking[] }) {
+function ServiceMixDonut({ bookings, dailyJobs }: { bookings: Booking[]; dailyJobs: DailyJob[] }) {
   const counts: Record<string, number> = {}
-  bookings.forEach(b => { counts[b.service_type] = (counts[b.service_type] || 0) + 1 })
-  const total = bookings.length || 1
+  bookings.forEach(b => {
+    if (b.service_type) counts[b.service_type] = (counts[b.service_type] || 0) + 1
+  })
+  dailyJobs
+    .filter(j => !isBogusSummaryJob(j))
+    .forEach(j => {
+      const s = (j.service || '').trim()
+      if (s && s !== '—') counts[s] = (counts[s] || 0) + 1
+    })
+
+  const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1
   const breakdown = Object.entries(counts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map(([name, count]) => ({ name, value: Math.round((count / total) * 100) }))
+    .map(([name, count]) => ({ name, value: Math.round((count / total) * 100), count }))
 
   let offset = 0
   const segments = breakdown.map(s => {
@@ -371,7 +447,7 @@ function ServiceMixDonut({ bookings }: { bookings: Booking[] }) {
     <div className="bg-white rounded-[22px] p-5 border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)]">
       <div className="mb-5">
         <h3 className="text-xl font-bold text-[#111827]">Service Mix</h3>
-        <p className="text-sm text-[#6B7280] mt-1">Most booked cleaning services</p>
+        <p className="text-sm text-[#6B7280] mt-1">Most booked cleaning services (all operational records)</p>
       </div>
 
       <div className="flex justify-center my-2">
@@ -390,14 +466,14 @@ function ServiceMixDonut({ bookings }: { bookings: Booking[] }) {
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
             <p className="text-[10px] uppercase tracking-[0.1em] text-[#94a3b8] font-semibold">Jobs</p>
-            <p className="text-[28px] font-bold text-[#111827] leading-none mt-0.5">{bookings.length}</p>
+            <p className="text-[28px] font-bold text-[#111827] leading-none mt-0.5">{total}</p>
             <p className="text-[11px] text-[#94a3b8] mt-0.5">total</p>
           </div>
         </div>
       </div>
 
       {breakdown.length === 0 ? (
-        <p className="text-center text-sm text-slate-400 mt-4">No bookings yet</p>
+        <p className="text-center text-sm text-slate-400 mt-4">No jobs recorded yet</p>
       ) : (
         <div className="mt-6 space-y-4">
           {breakdown.map((s, i) => (
@@ -406,7 +482,10 @@ function ServiceMixDonut({ bookings }: { bookings: Booking[] }) {
                 <span className="w-3 h-3 rounded-full shrink-0" style={{ background: donutColors[i % donutColors.length] }} />
                 <p className="text-sm font-medium text-[#111827]">{s.name}</p>
               </div>
-              <span className="text-sm font-semibold text-[#111827]">{s.value}%</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">{s.count} jobs</span>
+                <span className="text-sm font-semibold text-[#111827]">{s.value}%</span>
+              </div>
             </div>
           ))}
         </div>
@@ -415,96 +494,440 @@ function ServiceMixDonut({ bookings }: { bookings: Booking[] }) {
   )
 }
 
+
+export type OverviewDatePreset = 'today' | 'yesterday' | '7days' | '30days' | '3months' | '6months' | '1year' | 'all' | 'custom'
+
 /* ─── Overview page ─── */
 export function Overview() {
-  const { bookings, clients, employees, invoices, inventory, addBooking, dailyExpenses } = useData()
+  const { bookings, clients, employees, invoices, inventory, addBooking, dailyExpenses, dailyJobs } = useData()
   const currentUser = useCurrentUser()
   const [showNewBooking, setShowNewBooking] = useState(false)
   const navigate = useNavigate()
+
+  // Synced local collections and pending records from other screens
+  const [monthlyPayments] = useState<Array<{ amount: number; date: string }>>(() =>
+    safeLocalStorageGet<Array<{ amount: number; date: string }>>('safaeewala_monthly_client_payments', [])
+  )
+  const [pendingList] = useState<DailyPendingItem[]>(() =>
+    safeLocalStorageGet<DailyPendingItem[]>('safaeewala_daily_pending_items', [])
+  )
+  const [pendingRcvdList] = useState<DailyPendingReceivedItem[]>(() =>
+    safeLocalStorageGet<DailyPendingReceivedItem[]>('safaeewala_daily_pending_rcvd_items', [])
+  )
+
+  // Date filter state
+  const [datePreset, setDatePreset] = useState<OverviewDatePreset>('today')
+  const [customStartDate, setCustomStartDate] = useState('')
+  const [customEndDate, setCustomEndDate] = useState('')
+  const [dispatchTab, setDispatchTab] = useState<'all' | 'live' | 'scheduled' | 'completed'>('all')
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const firstName = currentUser?.full_name?.split(' ')[0] || 'there'
 
-  const nonCancelledCount = bookings.length - bookings.filter(b => b.status === 'cancelled').length
-  const completionRatePct = nonCancelledCount > 0
-    ? Math.round((bookings.filter(b => b.status === 'completed').length / nonCancelledCount) * 100)
+  // Calculate active date range
+  const activeDateRange = useMemo(() => {
+    const now = new Date()
+    const todayStr = now.toISOString().split('T')[0]
+
+    if (datePreset === 'today') {
+      return { start: todayStr, end: todayStr, label: 'Today' }
+    }
+    if (datePreset === 'yesterday') {
+      const y = new Date(now)
+      y.setDate(y.getDate() - 1)
+      const yStr = y.toISOString().split('T')[0]
+      return { start: yStr, end: yStr, label: 'Yesterday' }
+    }
+    if (datePreset === '7days') {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 6)
+      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 7 Days' }
+    }
+    if (datePreset === '30days') {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 29)
+      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 30 Days' }
+    }
+    if (datePreset === '3months') {
+      const d = new Date(now)
+      d.setMonth(d.getMonth() - 3)
+      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 3 Months' }
+    }
+    if (datePreset === '6months') {
+      const d = new Date(now)
+      d.setMonth(d.getMonth() - 6)
+      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 6 Months' }
+    }
+    if (datePreset === '1year') {
+      const d = new Date(now)
+      d.setFullYear(d.getFullYear() - 1)
+      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 1 Year' }
+    }
+    if (datePreset === 'custom') {
+      const label = customStartDate && customEndDate ? `${customStartDate} to ${customEndDate}` : 'Custom Range'
+      return { start: customStartDate, end: customEndDate, label }
+    }
+    return { start: '', end: '', label: 'All Time' }
+  }, [datePreset, customStartDate, customEndDate])
+
+  // Helper: check if date is in active range
+  const isDateInRange = useMemo(() => {
+    return (dateStr?: string) => {
+      if (!activeDateRange.start && !activeDateRange.end) return true
+      if (!dateStr) return false
+      const d = dateStr.split('T')[0]
+      if (activeDateRange.start && d < activeDateRange.start) return false
+      if (activeDateRange.end && d > activeDateRange.end) return false
+      return true
+    }
+  }, [activeDateRange])
+
+  // Valid non-bogus Daily Jobs
+  const validDailyJobs = useMemo(() => dailyJobs.filter(j => !isBogusSummaryJob(j)), [dailyJobs])
+
+  // Filtered Daily Jobs in period
+  const periodDailyJobs = useMemo(() => {
+    return validDailyJobs.filter(j => isDateInRange(j.date))
+  }, [validDailyJobs, isDateInRange])
+
+  // Filtered Bookings in period
+  const periodBookings = useMemo(() => {
+    return bookings.filter(b => {
+      const bDate = b.scheduled_date || (b.created_at ? b.created_at.split('T')[0] : '')
+      return isDateInRange(bDate)
+    })
+  }, [bookings, isDateInRange])
+
+  // ── Unified Operational Jobs for table & counts ──
+  const unifiedJobs = useMemo(() => {
+    const list: Array<{
+      id: string
+      date: string
+      time: string
+      clientName: string
+      address: string
+      area: string
+      service: string
+      status: 'in_progress' | 'confirmed' | 'completed' | 'pending' | 'cancelled'
+      amount: number
+      paymentMode: string
+      staff: string
+      source: 'Daily Job Sheet' | 'Booking'
+    }> = []
+
+    // 1. Daily Jobs in period
+    periodDailyJobs.forEach(j => {
+      const cleanClient = cleanClientNameFromAddress(j.address || j.area || 'Client')
+      const isPending = j.payment_mode === 'Pending' || (cleanNum(j.charges) > cleanNum(j.received) && cleanNum(j.received) === 0)
+      const status: 'in_progress' | 'confirmed' | 'completed' | 'pending' = isPending
+        ? 'pending'
+        : (j.end_time && j.end_time !== '—' ? 'completed' : 'in_progress')
+      list.push({
+        id: `dj-${j.id}`,
+        date: j.date || '',
+        time: j.start_time && j.end_time ? `${j.start_time} - ${j.end_time}` : (j.start_time || '—'),
+        clientName: cleanClient,
+        address: j.address || j.area || 'Dubai',
+        area: j.area || 'Dubai',
+        service: j.service || 'Cleaning Shift',
+        status,
+        amount: cleanNum(j.charges) || cleanNum(j.received),
+        paymentMode: j.payment_mode || 'Cash',
+        staff: j.staff_name || 'Staff',
+        source: 'Daily Job Sheet',
+      })
+    })
+
+    // 2. Bookings in period
+    periodBookings.forEach(b => {
+      list.push({
+        id: b.id,
+        date: b.scheduled_date,
+        time: b.scheduled_time || '—',
+        clientName: b.client_name,
+        address: b.service_address,
+        area: b.service_address.split(',')[1]?.trim() || b.service_address.split(',')[0]?.trim() || 'Dubai',
+        service: b.service_type,
+        status: b.status as any,
+        amount: cleanNum(b.total_amount),
+        paymentMode: 'Online / Invoiced',
+        staff: b.assigned_crew?.length ? `${b.assigned_crew.length} cleaner(s)` : 'Assigned',
+        source: 'Booking',
+      })
+    })
+
+    // Sort chronologically (newest first)
+    list.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''))
+    return list
+  }, [periodDailyJobs, periodBookings])
+
+  const nonCancelledJobs  = unifiedJobs.filter(j => j.status !== 'cancelled')
+  const periodCompleted   = unifiedJobs.filter(j => j.status === 'completed')
+  const periodLive        = unifiedJobs.filter(j => j.status === 'in_progress')
+  const periodConfirmed   = unifiedJobs.filter(j => j.status === 'confirmed')
+
+  const completionRatePct = nonCancelledJobs.length > 0
+    ? Math.round((periodCompleted.length / nonCancelledJobs.length) * 100)
+    : (unifiedJobs.length > 0 ? 100 : 0)
+
+  // ── Unified Revenue / Collections in period ──
+  const periodRevenue = useMemo(() => {
+    // 1. Daily Jobs collections
+    const djRec = periodDailyJobs.reduce((s, j) => {
+      const rec = cleanNum(j.received)
+      if (rec > 0) return s + rec
+      if (j.payment_mode !== 'Pending' && cleanNum(j.charges) > 0) return s + cleanNum(j.charges)
+      return s
+    }, 0)
+
+    // 2. Monthly Client Payments
+    const monthlyRec = monthlyPayments
+      .filter(p => isDateInRange(p.date))
+      .reduce((s, p) => s + cleanNum(p.amount), 0)
+
+    // 3. Pending Recoveries
+    const pendingRec = pendingRcvdList
+      .filter(p => isDateInRange(p.date))
+      .reduce((s, p) => s + cleanNum(p.cash) + cleanNum(p.online), 0)
+
+    // 4. Bookings Completed
+    const bookingsRec = periodBookings
+      .filter(b => b.status === 'completed' || b.status === 'in_progress')
+      .reduce((s, b) => s + cleanNum(b.total_amount), 0)
+
+    return djRec + monthlyRec + pendingRec + bookingsRec
+  }, [periodDailyJobs, monthlyPayments, pendingRcvdList, periodBookings, isDateInRange])
+
+  // ── Unified System-Wide Pending Payments & Outstanding Dues ──
+  const { totalPendingAmount, totalPendingCount, dailyPendingCount, sidePendingCount, invoicePendingCount } = useMemo(() => {
+    // 1. Daily Jobs with pending dues
+    const djPendingList = validDailyJobs.filter(j => {
+      const chg = cleanNum(j.charges)
+      const rec = cleanNum(j.received)
+      return (chg > rec) || j.payment_mode === 'Pending'
+    })
+    const djPendingAmt = djPendingList.reduce((s, j) => {
+      const chg = cleanNum(j.charges)
+      const rec = cleanNum(j.received)
+      const diff = chg - rec
+      return s + (diff > 0 ? diff : chg)
+    }, 0)
+
+    // 2. Side table pending items
+    const sideAmt = pendingList.reduce((s, i) => s + cleanNum(i.amount), 0)
+
+    // 3. Unpaid / overdue invoices
+    const pInvoices = invoices.filter(i => i.status === 'sent' || i.status === 'overdue')
+    const invAmt = pInvoices.reduce((s, i) => s + cleanNum(i.total), 0)
+
+    return {
+      totalPendingAmount: djPendingAmt + sideAmt + invAmt,
+      totalPendingCount: djPendingList.length + pendingList.length + pInvoices.length,
+      dailyPendingCount: djPendingList.length,
+      sidePendingCount: pendingList.length,
+      invoicePendingCount: pInvoices.length,
+    }
+  }, [validDailyJobs, pendingList, invoices])
+
+  // ── Staff & Utilization ──
+  const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project' || !e.status)
+  const lowStockItems = inventory.filter(i => i.current_stock <= i.min_stock)
+
+  const dispatchedStaffSet = useMemo(() => {
+    const s = new Set<string>()
+    periodDailyJobs.forEach(j => {
+      if (j.staff_name && j.staff_name.trim()) s.add(j.staff_name.trim().toLowerCase())
+    })
+    periodBookings.forEach(b => {
+      (b.assigned_crew || []).forEach(id => {
+        const emp = employees.find(e => e.id === id)
+        if (emp) s.add(emp.full_name.trim().toLowerCase())
+      })
+    })
+    return s
+  }, [periodDailyJobs, periodBookings, employees])
+
+  const crewUtilization = activeEmps.length > 0
+    ? Math.min(100, Math.round((dispatchedStaffSet.size / activeEmps.length) * 100))
     : 0
 
-  const today = new Date().toISOString().split('T')[0]
-  const todayBookings = bookings.filter(b => b.scheduled_date === today)
-  const liveCount = todayBookings.filter(b => b.status === 'in_progress').length
-  const scheduledCount = todayBookings.filter(b => b.status === 'confirmed').length
-
-  const activeEmps = employees.filter(e => e.status === 'active')
-  const pendingInvoices = invoices.filter(i => i.status === 'sent' || i.status === 'overdue')
-  const lowStockItems = inventory.filter(i => i.current_stock <= i.min_stock)
-  const todayRevenue = todayBookings
-    .filter(b => b.status === 'completed' || b.status === 'in_progress')
-    .reduce((sum, b) => sum + b.total_amount, 0)
-  const dispatchedToday = todayBookings.filter(b => b.status !== 'cancelled' && b.status !== 'pending').length
-  const crewUtilization = activeEmps.length > 0 ? Math.round((dispatchedToday / activeEmps.length) * 100) : 0
+  // Filtered Dispatch Table rows
+  const displayDispatchBookings = useMemo(() => {
+    if (dispatchTab === 'live') return unifiedJobs.filter(j => j.status === 'in_progress')
+    if (dispatchTab === 'scheduled') return unifiedJobs.filter(j => j.status === 'confirmed')
+    if (dispatchTab === 'completed') return unifiedJobs.filter(j => j.status === 'completed')
+    return unifiedJobs
+  }, [unifiedJobs, dispatchTab])
 
   /* ── Live Activity from real data ── */
   const liveEvents: { icon: string; title: string; sub: string; bg: string; route: string }[] = []
-  const recentBookings = [...bookings].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 2)
+  
+  // Recent Daily Jobs
+  const recentJobs = [...validDailyJobs].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 2)
+  recentJobs.forEach(j => {
+    const cleanClient = cleanClientNameFromAddress(j.address || j.area || 'Client')
+    liveEvents.push({
+      icon: '🧹', bg: 'bg-emerald-100', route: '/daily-jobs',
+      title: `Job: ${cleanClient}`,
+      sub: `${j.service || 'Cleaning'} · ${j.staff_name} · AED ${(cleanNum(j.charges) || cleanNum(j.received)).toLocaleString()}`,
+    })
+  })
+
+  // Recent Bookings
+  const recentBookings = [...bookings].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 1)
   recentBookings.forEach(b => liveEvents.push({
-    icon: '📅', bg: 'bg-emerald-100', route: '/bookings',
+    icon: '📅', bg: 'bg-teal-100', route: '/bookings',
     title: `Booking: ${b.client_name}`,
     sub: `${b.service_type} · ${b.scheduled_date}`,
   }))
+
+  // Recent Paid Invoices
   const recentPaid = [...invoices].filter(i => i.status === 'paid').sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 1)
   recentPaid.forEach(i => liveEvents.push({
     icon: '💳', bg: 'bg-sky-100', route: '/invoices',
     title: `Invoice paid: ${i.client_name}`,
     sub: `AED ${i.total.toLocaleString()} received`,
   }))
+
   if (lowStockItems.length > 0) liveEvents.push({
     icon: '⚠️', bg: 'bg-red-100', route: '/inventory',
     title: `${lowStockItems[0].name} stock low`,
     sub: `${lowStockItems[0].current_stock} ${lowStockItems[0].unit} remaining · reorder needed`,
   })
-  const displayEvents = liveEvents.length > 0 ? liveEvents.slice(0, 4) : [
-    { icon: '👋', bg: 'bg-slate-100', route: '', title: 'No activity yet', sub: 'Add a booking or invoice to see events here' },
-  ]
 
-  const todayDisplay = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const displayEvents = liveEvents.length > 0 ? liveEvents.slice(0, 4) : [
+    { icon: '👋', bg: 'bg-slate-100', route: '', title: 'No activity yet', sub: 'Add a job or invoice to see events here' },
+  ]
 
   return (
     <div>
       {/* ── Page Hero ── */}
       <PageHero
         title={`${greeting}, ${firstName} 👋`}
-        subtitle={`${todayDisplay} · ${todayBookings.length} jobs scheduled · ${liveCount} live now`}
-        statusChip="On track"
+        subtitle={`${activeDateRange.label} · ${unifiedJobs.length} operational jobs · ${periodLive.length} live now · AED ${periodRevenue.toLocaleString()} revenue collected`}
+        statusChip={datePreset === 'today' ? 'On track' : activeDateRange.label}
         actionLabel="New Booking"
         onAction={() => setShowNewBooking(true)}
         showSearch={false}
       />
 
+      {/* ── Date Filters Bar ── */}
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-3.5 sm:p-4 mb-6">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[12.5px] font-bold text-slate-700 flex items-center gap-1.5 mr-1">
+              <Calendar size={15} className="text-emerald-600" />
+              <span>Date Filter:</span>
+            </span>
+
+            {[
+              { id: 'today',     label: 'Today' },
+              { id: 'yesterday', label: 'Yesterday' },
+              { id: '7days',     label: '7 Days' },
+              { id: '30days',    label: '30 Days' },
+              { id: '3months',   label: '3 Months' },
+              { id: '6months',   label: '6 Months' },
+              { id: '1year',     label: '1 Year' },
+              { id: 'all',       label: 'All Time' },
+              { id: 'custom',    label: 'Custom Range' },
+            ].map(preset => {
+              const active = datePreset === preset.id
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setDatePreset(preset.id as OverviewDatePreset)}
+                  className={`px-3.5 py-1.5 rounded-xl text-[12px] font-bold transition-all cursor-pointer ${
+                    active
+                      ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/25'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0 flex-wrap">
+            {datePreset === 'custom' && (
+              <div className="flex items-center gap-2 bg-[#f8fafc] border border-emerald-200 rounded-xl px-3 py-1.5 animate-in fade-in duration-150">
+                <span className="text-[11px] font-bold text-emerald-700">From:</span>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={e => setCustomStartDate(e.target.value)}
+                  className="text-[12px] px-2 py-1 bg-white border border-[#E4E8EC] rounded-lg focus:outline-none focus:border-emerald-500 font-medium"
+                />
+                <span className="text-[11px] font-bold text-emerald-700">To:</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={e => setCustomEndDate(e.target.value)}
+                  className="text-[12px] px-2 py-1 bg-white border border-[#E4E8EC] rounded-lg focus:outline-none focus:border-emerald-500 font-medium"
+                />
+              </div>
+            )}
+
+            {datePreset !== 'today' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDatePreset('today')
+                  setCustomStartDate('')
+                  setCustomEndDate('')
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-bold text-slate-500 hover:text-emerald-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                title="Reset date filter to Today"
+              >
+                <RotateCcw size={12} />
+                <span>Reset to Today</span>
+              </button>
+            )}
+
+            <span className="text-[12px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/60">
+              Showing: <span className="text-emerald-600 font-extrabold">{unifiedJobs.length}</span> jobs ({activeDateRange.label})
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* ── KPI Cards ── */}
       <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
         <KpiCard
-          label="Jobs Today" value={todayBookings.length} sub={`${liveCount} live · ${scheduledCount} scheduled`}
-          delta={todayBookings.length > 0 ? `+${todayBookings.length}` : '0'} trend={todayBookings.length > 0 ? 'up' : 'neutral'}
+          label={datePreset === 'today' ? 'Jobs Today' : datePreset === 'yesterday' ? 'Jobs Yesterday' : datePreset === 'all' ? 'Total Jobs' : `Jobs (${activeDateRange.label})`}
+          value={unifiedJobs.length}
+          sub={`${periodLive.length} live · ${periodConfirmed.length} scheduled · ${periodCompleted.length} done`}
+          delta={unifiedJobs.length > 0 ? `+${unifiedJobs.length}` : '0'}
+          trend={unifiedJobs.length > 0 ? 'up' : 'neutral'}
           icon={CalendarCheck} iconBg="#d1fae5" iconColor="#059669"
-          onClick={() => navigate('/bookings')}
+          onClick={() => navigate('/daily-jobs')}
         />
         <KpiCard
-          label="Revenue Today" value={`AED ${todayRevenue.toLocaleString()}`} sub="Completed + live jobs"
-          delta={todayRevenue > 0 ? '+today' : 'AED 0'} trend={todayRevenue > 0 ? 'up' : 'neutral'}
+          label={datePreset === 'today' ? 'Revenue Today' : datePreset === 'yesterday' ? 'Revenue Yesterday' : datePreset === 'all' ? 'Total Revenue' : `Revenue (${activeDateRange.label})`}
+          value={`AED ${periodRevenue.toLocaleString()}`}
+          sub={`From ${periodCompleted.length + periodLive.length} completed & live jobs`}
+          delta={periodRevenue > 0 ? `AED ${periodRevenue.toLocaleString()}` : 'AED 0'}
+          trend={periodRevenue > 0 ? 'up' : 'neutral'}
           icon={DollarSign} iconBg="#e0f2fe" iconColor="#0369a1"
-          onClick={() => navigate('/reports')}
+          onClick={() => navigate('/payment-processing')}
         />
         <KpiCard
-          label="Active Cleaners" value={activeEmps.length} sub={`${employees.length} total staff`}
-          delta={`${activeEmps.length} active`} trend="neutral"
+          label="Active Cleaners"
+          value={activeEmps.length}
+          sub={`${employees.length} total staff · ${dispatchedStaffSet.size} dispatched`}
+          delta={`${activeEmps.length} active`}
+          trend="neutral"
           icon={Users} iconBg="#fef3c7" iconColor="#d97706"
           onClick={() => navigate('/employees')}
         />
         <KpiCard
-          label="Completion Rate" value={`${completionRatePct}%`} sub="Completed vs active"
-          delta={`${bookings.filter(b=>b.status==='completed').length} done`} trend="up"
+          label="Completion Rate"
+          value={`${completionRatePct}%`}
+          sub={`${periodCompleted.length} of ${nonCancelledJobs.length} active jobs`}
+          delta={`${completionRatePct}% rate`}
+          trend="up"
           icon={Star} iconBg="#ede9fe" iconColor="#7c3aed"
           onClick={() => navigate('/reports')}
         />
@@ -520,10 +943,10 @@ export function Overview() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { icon: CalendarPlus, label: 'New Booking',    sub: 'Create customer appointment', bg: 'bg-emerald-100', color: 'text-emerald-600', hover: 'hover:bg-emerald-50', action: () => setShowNewBooking(true) },
-              { icon: FileText,     label: 'Create Invoice', sub: 'Generate VAT invoice',         bg: 'bg-sky-100',     color: 'text-sky-600',     hover: 'hover:bg-sky-50',     action: () => navigate('/invoices') },
-              { icon: UserCheck,    label: 'Assign Crew',    sub: 'Manage cleaner schedules',     bg: 'bg-amber-100',   color: 'text-amber-600',   hover: 'hover:bg-amber-50',   action: () => navigate('/dispatch') },
-              { icon: ShoppingCart, label: 'Purchase Order', sub: 'Restock cleaning supplies',    bg: 'bg-purple-100',  color: 'text-purple-600',  hover: 'hover:bg-purple-50',  action: () => navigate('/inventory') },
+              { icon: CalendarPlus, label: 'New Booking',     sub: 'Create customer appointment', bg: 'bg-emerald-100', color: 'text-emerald-600', hover: 'hover:bg-emerald-50', action: () => setShowNewBooking(true) },
+              { icon: FileText,     label: 'Daily Job Sheet', sub: 'Record staff shifts & cash',   bg: 'bg-teal-100',    color: 'text-teal-600',    hover: 'hover:bg-teal-50',    action: () => navigate('/daily-jobs') },
+              { icon: UserCheck,    label: 'Pending Dues',    sub: 'Recover uncollected cash',     bg: 'bg-rose-100',    color: 'text-rose-600',    hover: 'hover:bg-rose-50',    action: () => navigate('/pending') },
+              { icon: ShoppingCart, label: 'Purchase Order',  sub: 'Restock cleaning supplies',    bg: 'bg-purple-100',  color: 'text-purple-600',  hover: 'hover:bg-purple-50',  action: () => navigate('/inventory') },
             ].map(action => (
               <button key={action.label}
                 onClick={action.action}
@@ -571,30 +994,33 @@ export function Overview() {
       {/* ── Ops Alert Cards ── */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
         <div
-          onClick={() => navigate('/invoices')}
-          className="bg-red-50 border border-red-100 rounded-3xl p-6 cursor-pointer hover:shadow-md transition-all hover:border-red-300"
+          onClick={() => navigate('/pending')}
+          className="bg-red-50 border border-red-100 rounded-3xl p-6 cursor-pointer hover:shadow-md transition-all hover:border-red-300 group"
         >
           <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center group-hover:scale-105 transition-transform">
               <AlertCircle size={20} className="text-red-600" />
             </div>
-            <span className="text-red-700 font-semibold text-sm">Action Required</span>
+            <span className="text-red-700 font-bold text-xs bg-red-100 px-3 py-1 rounded-full flex items-center gap-1">
+              <span>{totalPendingCount > 0 ? 'Pending Collection' : 'All Settled'}</span>
+              <ArrowRight size={12} />
+            </span>
           </div>
-          <h3 className="text-2xl font-bold text-red-700">{pendingInvoices.length}</h3>
-          <p className="font-semibold text-[#111827] mt-1">Pending Invoices</p>
+          <h3 className="text-2xl font-bold text-red-700">AED {totalPendingAmount.toLocaleString()}</h3>
+          <p className="font-semibold text-[#111827] mt-1">Pending Payments & Receivables</p>
           <p className="text-sm text-red-600 mt-2">
-            {pendingInvoices.length > 0
-              ? `AED ${pendingInvoices.reduce((s, i) => s + i.total, 0).toLocaleString()} outstanding`
-              : 'All invoices paid'}
+            {totalPendingCount > 0
+              ? `${totalPendingCount} pending items (${dailyPendingCount + sidePendingCount} Job Sheet · ${invoicePendingCount} Invoices)`
+              : 'Zero outstanding balances · All payments collected'}
           </p>
         </div>
 
         <div
           onClick={() => navigate('/inventory')}
-          className="bg-amber-50 border border-amber-100 rounded-3xl p-6 cursor-pointer hover:shadow-md transition-all hover:border-amber-300"
+          className="bg-amber-50 border border-amber-100 rounded-3xl p-6 cursor-pointer hover:shadow-md transition-all hover:border-amber-300 group"
         >
           <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center group-hover:scale-105 transition-transform">
               <AlertCircle size={20} className="text-amber-600" />
             </div>
             <span className="text-amber-700 font-semibold text-sm">Inventory Alert</span>
@@ -607,18 +1033,20 @@ export function Overview() {
         </div>
 
         <div
-          onClick={() => navigate('/dispatch')}
-          className="bg-emerald-50 border border-emerald-100 rounded-3xl p-6 cursor-pointer hover:shadow-md transition-all hover:border-emerald-300"
+          onClick={() => navigate('/employees')}
+          className="bg-emerald-50 border border-emerald-100 rounded-3xl p-6 cursor-pointer hover:shadow-md transition-all hover:border-emerald-300 group"
         >
           <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center group-hover:scale-105 transition-transform">
               <Clock size={20} className="text-emerald-600" />
             </div>
             <span className="text-emerald-700 font-semibold text-sm">{crewUtilization >= 70 ? 'Healthy' : 'Low'}</span>
           </div>
           <h3 className="text-2xl font-bold text-emerald-700">{crewUtilization}%</h3>
           <p className="font-semibold text-[#111827] mt-1">Crew Utilization</p>
-          <p className="text-sm text-emerald-600 mt-2">{dispatchedToday} cleaners dispatched today</p>
+          <p className="text-sm text-emerald-600 mt-2">
+            {dispatchedStaffSet.size} cleaners dispatched {datePreset === 'today' ? 'today' : 'in period'}
+          </p>
         </div>
       </section>
 
@@ -626,10 +1054,6 @@ export function Overview() {
       <section className="grid grid-cols-1 xl:grid-cols-4 gap-5 mb-6">
         {/* Business Performance */}
         {(() => {
-          const allCompleted = bookings.filter(b => b.status === 'completed')
-          const allActive    = bookings.filter(b => b.status !== 'cancelled')
-          const completionPct = allActive.length > 0 ? Math.round((allCompleted.length / allActive.length) * 100) : 0
-          const totalRevenue  = allCompleted.reduce((s, b) => s + b.total_amount, 0)
           const repeatClients = clients.filter(c => c.total_bookings > 1).length
           const repeatRate    = clients.length > 0 ? Math.round((repeatClients / clients.length) * 100) : 0
           return (
@@ -637,14 +1061,16 @@ export function Overview() {
               <div className="flex items-center justify-between mb-5">
                 <div>
                   <h3 className="text-lg font-bold text-[#111827]">Business Health</h3>
-                  <p className="text-sm text-[#6B7280]">All-time performance</p>
+                  <p className="text-sm text-[#6B7280]">
+                    {datePreset === 'today' ? 'Today performance' : `${activeDateRange.label} performance`}
+                  </p>
                 </div>
-                <span className="text-2xl">{completionPct >= 80 ? '🟢' : completionPct >= 60 ? '🟡' : '🔴'}</span>
+                <span className="text-2xl">{completionRatePct >= 80 ? '🟢' : completionRatePct >= 60 ? '🟡' : '🔴'}</span>
               </div>
               <div className="space-y-3.5">
                 {[
-                  { label: 'Total Revenue', value: `AED ${totalRevenue.toLocaleString()}`, pct: Math.min(100, Math.round((totalRevenue / 100000) * 100)), color: '#059669' },
-                  { label: 'Completion Rate', value: `${completionPct}%`, pct: completionPct, color: '#0369a1' },
+                  { label: 'Revenue', value: `AED ${periodRevenue.toLocaleString()}`, pct: Math.min(100, Math.round((periodRevenue / 100000) * 100)), color: '#059669' },
+                  { label: 'Completion Rate', value: `${completionRatePct}%`, pct: completionRatePct, color: '#0369a1' },
                   { label: 'Repeat Client Rate', value: `${repeatRate}%`, pct: repeatRate, color: '#d97706' },
                 ].map(item => (
                   <div key={item.label}>
@@ -676,7 +1102,7 @@ export function Overview() {
           ) : (
             <div className="space-y-4">
               {activeEmps.slice(0, 3).map((emp, i) => {
-                const currentJob = todayBookings.find(b => b.assigned_crew.includes(emp.id) && b.status === 'in_progress')
+                const currentJob = unifiedJobs.find(b => (b.staff.toLowerCase().includes(emp.full_name.toLowerCase()) || emp.full_name.toLowerCase().includes(b.staff.toLowerCase())) && b.status === 'in_progress')
                 const initials = emp.full_name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()
                 const colors = [{ bg: 'bg-emerald-100', text: 'text-emerald-700' }, { bg: 'bg-amber-100', text: 'text-amber-700' }, { bg: 'bg-sky-100', text: 'text-sky-700' }]
                 const c = colors[i % colors.length]
@@ -686,7 +1112,7 @@ export function Overview() {
                       <div className={`w-10 h-10 rounded-full ${c.bg} flex items-center justify-center font-bold text-sm ${c.text}`}>{initials}</div>
                       <div>
                         <p className="font-medium text-sm text-[#111827]">{emp.full_name}</p>
-                        <p className="text-xs text-[#6B7280]">{currentJob ? currentJob.service_address.split(',')[0] : 'Available'}</p>
+                        <p className="text-xs text-[#6B7280]">{currentJob ? currentJob.address.split(',')[0] : 'Available'}</p>
                       </div>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${currentJob ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>
@@ -699,21 +1125,23 @@ export function Overview() {
           )}
         </div>
 
-        {/* Today's Coverage */}
+        {/* Coverage */}
         <div className="xl:col-span-2 bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h3 className="text-lg font-bold text-[#111827]">Today's Coverage</h3>
-              <p className="text-sm text-[#6B7280]">Active service areas — {todayBookings.length} jobs</p>
+              <h3 className="text-lg font-bold text-[#111827]">
+                {datePreset === 'today' ? "Today's Coverage" : `Coverage (${activeDateRange.label})`}
+              </h3>
+              <p className="text-sm text-[#6B7280]">Active service areas — {unifiedJobs.length} jobs</p>
             </div>
-            <button onClick={() => navigate('/dispatch')} className="px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 text-sm font-semibold hover:bg-emerald-200 transition-colors">
-              Open Dispatch
+            <button onClick={() => navigate('/daily-jobs')} className="px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 text-sm font-semibold hover:bg-emerald-200 transition-colors">
+              Open Daily Sheet
             </button>
           </div>
-          {todayBookings.length === 0 ? (
+          {unifiedJobs.length === 0 ? (
             <div className="h-[180px] rounded-[20px] bg-slate-50 border border-[#E4E8EC] flex items-center justify-center">
               <div className="text-center">
-                <p className="text-slate-400 text-sm">No jobs today</p>
+                <p className="text-slate-400 text-sm">No jobs in this period</p>
                 <button onClick={() => setShowNewBooking(true)} className="mt-2 text-emerald-600 font-semibold text-sm hover:underline">+ Schedule a job</button>
               </div>
             </div>
@@ -721,15 +1149,14 @@ export function Overview() {
             <div className="space-y-2.5">
               {(() => {
                 const areas: Record<string, { total: number; live: number; done: number }> = {}
-                todayBookings.forEach(b => {
-                  const parts = b.service_address.split(',')
-                  const area = (parts[parts.length - 1] ?? b.service_address).trim() || 'Unknown'
+                unifiedJobs.forEach(b => {
+                  const area = b.area || b.address.split(',')[1]?.trim() || b.address.split(',')[0]?.trim() || 'Dubai'
                   if (!areas[area]) areas[area] = { total: 0, live: 0, done: 0 }
                   areas[area].total++
                   if (b.status === 'in_progress') areas[area].live++
                   if (b.status === 'completed')   areas[area].done++
                 })
-                return Object.entries(areas).sort((a, b) => b[1].total - a[1].total).map(([area, counts]) => (
+                return Object.entries(areas).sort((a, b) => b[1].total - a[1].total).slice(0, 4).map(([area, counts]) => (
                   <div key={area} className="flex items-center gap-4 p-3 rounded-xl bg-slate-50 border border-[#E4E8EC]">
                     <div className={`w-2 h-2 rounded-full shrink-0 ${counts.live > 0 ? 'bg-emerald-500' : counts.done === counts.total ? 'bg-slate-400' : 'bg-blue-400'}`} />
                     <span className="text-[13px] font-semibold text-[#111827] flex-1 truncate">{area}</span>
@@ -747,64 +1174,116 @@ export function Overview() {
 
       {/* ── Charts ── */}
       <section className="grid grid-cols-1 lg:grid-cols-[1.65fr_1fr] gap-5 mb-6">
-        <RevenueChart bookings={bookings} />
-        <ServiceMixDonut bookings={bookings} />
+        <RevenueChart
+          bookings={bookings}
+          dailyJobs={validDailyJobs}
+          monthlyPayments={monthlyPayments}
+          invoices={invoices}
+        />
+        <ServiceMixDonut
+          bookings={periodBookings.length > 0 ? periodBookings : bookings}
+          dailyJobs={periodDailyJobs.length > 0 ? periodDailyJobs : validDailyJobs}
+        />
       </section>
 
-      {/* ── Today's Dispatch ── */}
+      {/* ── Dispatch & Bookings Table ── */}
       <section className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
-        <div className="p-5 border-b border-[#E4E8EC] flex items-center justify-between">
+        <div className="p-5 border-b border-[#E4E8EC] flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h3 className="text-xl font-bold text-[#111827] mb-1">Today's Dispatch</h3>
-            <p className="text-sm text-[#6B7280]">{todayBookings.length} jobs · {liveCount} live, {scheduledCount} scheduled</p>
+            <h3 className="text-xl font-bold text-[#111827] mb-1">
+              {datePreset === 'today' ? "Today's Dispatch & Shifts" : `Operational Jobs & Dispatch (${activeDateRange.label})`}
+            </h3>
+            <p className="text-sm text-[#6B7280]">
+              {displayDispatchBookings.length} jobs · {periodLive.length} live, {periodConfirmed.length} scheduled, {periodCompleted.length} completed
+            </p>
           </div>
-          <div className="flex bg-slate-100 rounded-2xl p-1">
-            {['All', 'Live', 'Scheduled'].map((f, i) => (
-              <button key={f}
-                className={`px-5 py-2 text-sm font-semibold rounded-xl transition-all ${i === 0 ? 'bg-white shadow-sm text-[#111827]' : 'text-[#6B7280]'}`}>
-                {f}
+          <div className="flex bg-slate-100 rounded-2xl p-1 gap-1">
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'live', label: 'Live' },
+              { id: 'scheduled', label: 'Scheduled' },
+              { id: 'completed', label: 'Completed' },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setDispatchTab(tab.id as any)}
+                className={`px-4 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  dispatchTab === tab.id
+                    ? 'bg-white shadow-xs text-[#111827]'
+                    : 'text-[#6B7280] hover:text-[#111827]'
+                }`}
+              >
+                {tab.label}
               </button>
             ))}
           </div>
         </div>
 
-        {todayBookings.length === 0 ? (
+        {displayDispatchBookings.length === 0 ? (
           <div className="py-16 text-center">
-            <p className="text-slate-400 text-[15px]">No bookings scheduled for today</p>
-            <button onClick={() => setShowNewBooking(true)} className="mt-4 text-emerald-600 font-semibold text-sm hover:underline">
-              + Add a booking
-            </button>
+            <p className="text-slate-400 text-[15px]">
+              No jobs or bookings {datePreset === 'today' ? 'scheduled for today' : `found for ${activeDateRange.label}`}
+            </p>
+            <div className="flex items-center justify-center gap-4 mt-4">
+              <button onClick={() => setShowNewBooking(true)} className="text-emerald-600 font-semibold text-sm hover:underline">
+                + Add a booking
+              </button>
+              <button onClick={() => navigate('/daily-jobs')} className="text-teal-600 font-semibold text-sm hover:underline">
+                → Open Daily Job Sheet
+              </button>
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px]">
               <thead className="bg-slate-50 text-left text-sm text-[#6B7280]">
                 <tr>
-                  <th className="px-7 py-4 font-semibold">Time</th>
+                  <th className="px-7 py-4 font-semibold">{datePreset === 'today' ? 'Time' : 'Date & Time'}</th>
                   <th className="px-7 py-4 font-semibold">Client</th>
                   <th className="px-7 py-4 font-semibold">Service</th>
+                  <th className="px-7 py-4 font-semibold">Staff / Crew</th>
                   <th className="px-7 py-4 font-semibold">Status</th>
                   <th className="px-7 py-4 font-semibold">Amount</th>
                 </tr>
               </thead>
               <tbody>
-                {todayBookings.map((b, idx) => (
+                {displayDispatchBookings.map((b, idx) => (
                   <tr key={b.id} className="border-t border-[#E4E8EC] hover:bg-slate-50 transition-all">
                     <td className="px-7 py-5 font-semibold text-[#111827]">
-                      {formatTime(`${today}T${b.scheduled_time}`)}
+                      {datePreset === 'today' ? (
+                        formatTime(`${b.date}T${b.time}`) || b.time
+                      ) : (
+                        <div>
+                          <p className="font-bold text-[#111827] text-[13px]">{b.date}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{b.time}</p>
+                        </div>
+                      )}
                     </td>
                     <td className="px-7 py-5">
                       <div className="flex items-center gap-4">
-                        <Avatar name={b.client_name} idx={idx} />
+                        <Avatar name={b.clientName} idx={idx} />
                         <div>
-                          <p className="font-semibold text-[#111827]">{b.client_name}</p>
-                          <p className="text-sm text-[#6B7280]">{b.service_address.split(',')[1]?.trim() || b.service_address}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-[#111827]">{b.clientName}</p>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                              {b.source}
+                            </span>
+                          </div>
+                          <p className="text-sm text-[#6B7280]">{b.address}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-7 py-5 font-medium text-[#111827]">{b.service_type}</td>
+                    <td className="px-7 py-5 font-medium text-[#111827]">{b.service}</td>
+                    <td className="px-7 py-5 text-sm text-slate-600 font-medium">{b.staff}</td>
                     <td className="px-7 py-5"><StatusPill status={b.status} /></td>
-                    <td className="px-7 py-5 font-bold text-[#111827]">AED {b.total_amount.toLocaleString()}</td>
+                    <td className="px-7 py-5 font-bold text-[#111827]">
+                      AED {b.amount.toLocaleString()}
+                      {b.paymentMode && (
+                        <span className="block text-[11px] font-normal text-slate-400 mt-0.5">
+                          {b.paymentMode}
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -813,10 +1292,17 @@ export function Overview() {
         )}
 
         <div className="p-6 border-t border-[#E4E8EC] flex justify-between items-center">
-          <p className="text-sm text-[#6B7280]">Showing {todayBookings.length} today · {bookings.length} total bookings</p>
-          <Link to="/bookings" className="text-[#059669] font-semibold hover:underline flex items-center gap-2">
-            View all bookings <ArrowRight size={14} />
-          </Link>
+          <p className="text-sm text-[#6B7280]">
+            Showing {displayDispatchBookings.length} {activeDateRange.label} · {unifiedJobs.length} total period records
+          </p>
+          <div className="flex items-center gap-4">
+            <Link to="/daily-jobs" className="text-[#059669] font-semibold hover:underline flex items-center gap-1.5 text-sm">
+              Daily Job Sheet <ArrowRight size={14} />
+            </Link>
+            <Link to="/bookings" className="text-[#059669] font-semibold hover:underline flex items-center gap-1.5 text-sm">
+              Bookings <ArrowRight size={14} />
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -827,3 +1313,4 @@ export function Overview() {
     </div>
   )
 }
+

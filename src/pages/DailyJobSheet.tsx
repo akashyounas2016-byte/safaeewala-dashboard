@@ -2501,7 +2501,7 @@ export function DailyJobSheet() {
         {/* ── Table Container with Vertical A-Z Rail (Matching red line in user image) ── */}
         <div className="flex">
           {/* Vertical A-Z Rail */}
-          <div className="w-[34px] sm:w-[38px] flex-shrink-0 bg-[#f8fafc] border-r border-[#E4E8EC] py-2 flex flex-col items-center gap-0.5 select-none text-[10px] max-h-[calc(100vh-210px)] overflow-y-auto">
+          <div className="w-[34px] sm:w-[38px] flex-shrink-0 bg-[#f8fafc] border-r border-[#E4E8EC] py-2 flex flex-col items-center gap-0.5 select-none text-[10px] max-h-[calc(100vh-210px)] overflow-y-auto overscroll-contain">
             <button
               onClick={() => setSelectedLetter('ALL')}
               title="Show All Cleaners"
@@ -2537,28 +2537,28 @@ export function DailyJobSheet() {
           </div>
 
           {/* Main Table Area */}
-          <div className="flex-1 overflow-auto max-h-[calc(100vh-210px)] min-w-0 relative">
+          <div className="flex-1 overflow-auto max-h-[calc(100vh-210px)] min-w-0 relative overscroll-contain table-scroll-container">
             <table
               className="w-full text-[12px] border-collapse relative"
               style={{ minWidth: Math.max(500, Object.values(visibleColumns).filter(Boolean).length * 80) }}
             >
               <thead className="sticky top-0 z-30 shadow-[0_2px_4px_rgba(0,0,0,0.06)] bg-slate-100">
-                <tr className="bg-slate-100/95 backdrop-blur-xs border-b border-[#E4E8EC]">
-                  {visibleColumns.staff && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Staff</th>}
-                  {visibleColumns.start_time && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Start</th>}
-                  {visibleColumns.end_time && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">End</th>}
-                  {visibleColumns.address && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Address</th>}
-                  {visibleColumns.area && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Location</th>}
-                  {visibleColumns.charges && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Charges</th>}
-                  {visibleColumns.received && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Received</th>}
-                  {visibleColumns.pending && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Pending</th>}
-                  {visibleColumns.duty_hours && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Duty Hrs</th>}
-                  {visibleColumns.ot_hours && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">OT Hrs</th>}
-                  {visibleColumns.material && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Material</th>}
-                  {visibleColumns.payment_mode && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Mode</th>}
-                  {visibleColumns.remarks && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Remarks</th>}
-                  {visibleColumns.service && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Service</th>}
-                  {visibleColumns.actions && <th className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]"></th>}
+                <tr className="bg-slate-100 border-b border-[#E4E8EC]">
+                  {visibleColumns.staff && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Staff</th>}
+                  {visibleColumns.start_time && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Start</th>}
+                  {visibleColumns.end_time && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">End</th>}
+                  {visibleColumns.address && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Address</th>}
+                  {visibleColumns.area && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Location</th>}
+                  {visibleColumns.charges && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Charges</th>}
+                  {visibleColumns.received && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Received</th>}
+                  {visibleColumns.pending && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Pending</th>}
+                  {visibleColumns.duty_hours && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Duty Hrs</th>}
+                  {visibleColumns.ot_hours && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">OT Hrs</th>}
+                  {visibleColumns.material && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Material</th>}
+                  {visibleColumns.payment_mode && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Mode</th>}
+                  {visibleColumns.remarks && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Remarks</th>}
+                  {visibleColumns.service && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Service</th>}
+                  {visibleColumns.actions && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]"></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E4E8EC]/70">

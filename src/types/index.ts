@@ -29,6 +29,7 @@ export interface Booking {
   notes?: string
   total_amount: number
   created_at: string
+  source?: 'fluent_forms' | 'whatsapp' | 'manual' | 'daily_job_sheet' | string
 }
 
 export interface Client {
@@ -43,6 +44,7 @@ export interface Client {
   area: string
   city: string
   access_notes?: string
+  source?: 'fluent_forms' | 'whatsapp' | 'manual' | 'daily_job_sheet' | string
   pet_info?: string
   preferred_cleaner?: string
   total_bookings: number
@@ -143,6 +145,11 @@ export interface DailyExpense {
   name: string
   category: string
   amount: number
+  source?: 'Daily Job Sheet' | 'Direct Expense' | string
+  payment_method?: 'Cash' | 'Credit Card' | 'Bank Transfer' | 'Petty Cash' | 'Online' | string
+  reference_number?: string
+  vendor?: string
+  notes?: string
 }
 
 export interface DashboardStats {
