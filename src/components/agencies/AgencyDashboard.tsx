@@ -2084,7 +2084,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   </span>
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800">
-                      {agency.quota_cleaners || 5} Cleaners / Technicians Minimum
+                      {isParentAgency ? `${employees.length} Cleaners (Total Fleet Pool)` : `${agency.quota_cleaners || 5} Cleaners / Technicians Minimum`}
                     </span>
                     <span className="text-[11px] font-black px-2 py-0.5 rounded-md bg-teal-100 text-teal-800">
                       Supplied: {agencyStaff.length}

@@ -877,7 +877,8 @@ export function Agencies() {
                           {isParent ? (
                             <>
                               <Users size={12} className="text-teal-400" />
-                              <span>{safaeewalaActiveCleanersCount} Active Cleaners</span>
+                              <span>{safaeewalaActiveCleanersCount} Active</span>
+                              <span className="text-teal-400/80 font-semibold text-[11px]">/ {employees.length} Total</span>
                             </>
                           ) : (
                             <>
@@ -1119,12 +1120,12 @@ export function Agencies() {
                       <p className={`text-[14px] font-black mt-0.5 truncate ${
                         isParent ? 'text-white' : 'text-slate-900'
                       }`}>
-                        {agency.quota_cleaners || count || 0} Staff
+                        {isParent ? `${employees.length} Cleaners` : `${agency.quota_cleaners || count || 0} Staff`}
                       </p>
                       <p className={`text-[10px] font-semibold mt-0.5 truncate ${
                         isParent ? 'text-teal-300/70' : 'text-slate-500'
                       }`}>
-                        Contract Target
+                        {isParent ? 'Total Cleaners' : 'Contract Target'}
                       </p>
                     </div>
 
@@ -1221,7 +1222,7 @@ export function Agencies() {
                         handleOpenAgency(agency)
                       }
                     }}
-                    className={`flex items-center justify-between p-2.5 rounded-xl border mb-4 shadow-2xs transition-all cursor-pointer ${
+                    className={`flex items-center justify-between p-2.5 rounded-xl border mb-4 shadow-2xs transition-all cursor-pointer flex-nowrap ${
                       isParent
                         ? 'bg-slate-900/70 border-teal-500/40 hover:border-teal-400 hover:bg-slate-900/95 ring-1 ring-teal-500/20'
                         : 'bg-white/80 border-slate-200/80 hover:border-teal-400 hover:bg-teal-50/40'
@@ -1232,26 +1233,26 @@ export function Agencies() {
                         : "Click to view assigned cleaners list in Agency Profile"
                     }
                   >
-                    <span className={`text-[12px] font-bold flex items-center gap-1.5 ${
+                    <span className={`text-[12px] font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                       isParent ? 'text-teal-200' : 'text-slate-800'
                     }`}>
-                      <Users size={14} className={isParent ? 'text-teal-400' : 'text-teal-700'} />
-                      <span>{isParent ? 'Active Cleaners (Safaeewala)' : 'Supplied Cleaners (Active)'}</span>
+                      <Users size={14} className={isParent ? 'text-teal-400 shrink-0' : 'text-teal-700 shrink-0'} />
+                      <span>{isParent ? 'Active Cleaners' : 'Supplied Cleaners (Active)'}</span>
                     </span>
-                    <div className="flex items-center gap-1.5">
-                      <span className={`text-[13px] font-black px-2.5 py-0.5 rounded-lg border shadow-2xs ${
+                    <div className="flex items-center gap-1.5 whitespace-nowrap shrink-0 ml-2">
+                      <span className={`text-[13px] font-black px-2.5 py-0.5 rounded-lg border shadow-2xs whitespace-nowrap ${
                         isParent
                           ? 'bg-teal-950/90 text-teal-300 border-teal-500/50 shadow-xs'
                           : 'bg-white text-slate-900 border-slate-200'
                       }`}>
-                        {isParent ? `${safaeewalaActiveCleanersCount} Active Cleaners` : `${count} Active`}
+                        {isParent ? `${safaeewalaActiveCleanersCount} Active` : `${count} Active`}
                       </span>
                       {!isParent && agency.quota_cleaners ? (
-                        <span className={`text-[11px] font-semibold ${isParent ? 'text-slate-400' : 'text-slate-500'}`}>
+                        <span className={`text-[11px] font-semibold whitespace-nowrap ${isParent ? 'text-slate-400' : 'text-slate-500'}`}>
                           / {agency.quota_cleaners}
                         </span>
                       ) : null}
-                      <ArrowRight size={12} className={isParent ? 'text-teal-400' : 'text-teal-700'} />
+                      <ArrowRight size={12} className={isParent ? 'text-teal-400 shrink-0' : 'text-teal-700 shrink-0'} />
                     </div>
                   </div>
 
