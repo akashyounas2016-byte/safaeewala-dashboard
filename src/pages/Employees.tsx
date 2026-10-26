@@ -68,6 +68,17 @@ function parseEmpStatus(v: string): Employee['status'] {
   return 'active'
 }
 
+export function getEmployeeAgencySource(emp: { agency_id?: string; agency_name?: string; email?: string | null }): string {
+  if (isParentCompanyEmployee(emp) || !emp.agency_name) {
+    return 'Safaeewala Cleaning & Technical Services LLC'
+  }
+  const cleanName = emp.agency_name.trim()
+  if (cleanName.toLowerCase().includes('in-house') || cleanName.toLowerCase().includes('direct')) {
+    return 'Safaeewala Cleaning & Technical Services LLC'
+  }
+  return cleanName
+}
+
 function exportEmployeesXLSX(
   employees: Employee[],
   statsMap: Map<string, { shifts: number; dutyHours: number; otHours: number }>
@@ -88,7 +99,7 @@ function exportEmployeesXLSX(
       'Total Hours':               totalHours,
       'Total Shifts':              st?.shifts ?? 0,
       'Monthly Salary (AED)':      monthlySalary,
-      'Agency':                    e.agency_name || 'In-House / Direct Hire',
+      'Agency':                    getEmployeeAgencySource(e),
       'Phone':                     e.phone,
       'Nationality':               e.nationality,
       'Emirates ID':               e.emirates_id,
@@ -858,14 +869,10 @@ export function Employees() {
                     <span className={`inline-block text-[10.5px] font-bold px-2 py-0.5 rounded-md border ${getRoleBadgeStyle(emp.role)}`}>
                       {formatEmpRole(emp.role)}
                     </span>
-                    {emp.agency_name ? (
-                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-teal-800 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">
-                        <Building2 size={10} className="text-teal-600" />
-                        {emp.agency_name}
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-slate-400 font-medium">In-House</span>
-                    )}
+                    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-teal-800 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">
+                      <Building2 size={10} className="text-teal-600" />
+                      {getEmployeeAgencySource(emp)}
+                    </span>
                     <span>·</span>
                     <span>{emp.nationality || 'Staff'}</span>
                   </div>
@@ -1106,11 +1113,10 @@ export function Employees() {
                         <p className="font-bold text-slate-900">{emp.full_name}</p>
                         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                           <span className="text-[11px] text-slate-500">{emp.phone || emp.nationality || 'Staff'}</span>
-                          {emp.agency_name && (
-                            <span className="text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.2 rounded">
-                              {emp.agency_name}
-                            </span>
-                          )}
+                          <span className="text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                            <Building2 size={9} className="text-teal-600" />
+                            {getEmployeeAgencySource(emp)}
+                          </span>
                           {emp.assigned_client_ids && emp.assigned_client_ids.length > 0 && (
                             <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded">
                               {emp.assigned_client_ids.length} client{emp.assigned_client_ids.length > 1 ? 's' : ''}
@@ -1419,21 +1425,18 @@ export function Employees() {
 
       </div>
 
-      {/* ── Unified Filter & Control Bar (Professional & Clean) ── */}
-      <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4 sm:p-5 space-y-4">
-
-        {/* Row 1: Search + Role Pills + OT Filters + View Switcher */}
-        <div className="flex items-center gap-3 flex-wrap">
-
-          {/* Search Input */}
-          <div className="relative flex-1 min-w-[200px] sm:min-w-[240px]">
+      {/* ── Unified Filter & Control Bar (Consolidated Single Row) ── */}
+      <div className="bg-white rounded-[24px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-3.5 space-y-2.5">
+        <div className="flex flex-wrap lg:flex-nowrap items-center gap-2.5">
+          {/* 1. Search Input */}
+          <div className="relative flex-1 min-w-[200px]">
             <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
               placeholder="Search staff by name, nationality, phone, or ID…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full text-[13px] pl-10 pr-9 py-2.5 bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 placeholder-slate-400 font-medium text-slate-800 transition-all"
+              className="w-full text-[12.5px] pl-10 pr-9 py-2 bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 placeholder-slate-400 font-medium text-slate-800 transition-all"
             />
             {search && (
               <button
@@ -1446,12 +1449,12 @@ export function Employees() {
             )}
           </div>
 
-          {/* Role Filter Dropdown Menu (All roles in a single dropdown) */}
-          <div className="relative min-w-[170px]">
+          {/* 2. Role Filter */}
+          <div className="relative min-w-[145px] shrink-0">
             <select
               value={roleFilter}
               onChange={e => setRoleFilter(e.target.value as any)}
-              className="w-full text-[12.5px] font-bold pl-3.5 pr-8 py-2.5 bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 text-slate-800 cursor-pointer transition-all appearance-none"
+              className="w-full text-[12px] font-bold pl-3 pr-7 py-2 bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 text-slate-800 cursor-pointer transition-all appearance-none"
             >
               <option value="all">👥 All Roles</option>
               <option value="cleaner">🧹 Cleaners</option>
@@ -1460,199 +1463,151 @@ export function Employees() {
               <option value="store_cleaner">🏬 Store Cleaners</option>
               <option value="driver">🚗 Drivers</option>
             </select>
-            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
 
-          {/* Agency Filter Dropdown Menu */}
-          <div className="relative min-w-[185px]">
+          {/* 3. Period Filter (Compact Dropdown) */}
+          <div className="relative min-w-[135px] shrink-0">
             <select
-              value={agencyFilter}
-              onChange={e => handleAgencyFilterChange(e.target.value)}
-              className={`w-full text-[12.5px] font-bold pl-3.5 pr-8 py-2.5 rounded-xl focus:outline-none cursor-pointer transition-all appearance-none border ${
-                agencyFilter !== 'all'
-                  ? 'bg-indigo-50 border-indigo-300 text-indigo-900 ring-2 ring-indigo-500/10'
+              value={datePreset}
+              onChange={e => setDatePreset(e.target.value as EmployeeDatePreset)}
+              className={`w-full text-[12px] font-bold pl-7 pr-7 py-2 rounded-xl focus:outline-none cursor-pointer transition-all appearance-none border ${
+                datePreset !== 'all'
+                  ? 'bg-teal-50 border-teal-300 text-teal-900 ring-2 ring-teal-500/10'
                   : 'bg-slate-50 hover:bg-slate-100/80 focus:bg-white border-slate-200 text-slate-800 focus:border-teal-600'
               }`}
             >
-              <option value="all">🏢 All Fleets & Agencies</option>
-              <option value="third_party">🏢 Third-Party Agencies (Supplied Cleaners Only)</option>
-              <option value="safaeewala">👑 Safaeewala In-House Cleaners (Parent Company Only)</option>
-              <optgroup label="Partner Agencies">
+              <option value="all">📅 All Time</option>
+              <option value="today">📅 Today</option>
+              <option value="yesterday">📅 Yesterday</option>
+              <option value="7days">📅 Last 7 Days</option>
+              <option value="30days">📅 Last 30 Days</option>
+              <option value="3months">📅 Last 3 Months</option>
+              <option value="6months">📅 Last 6 Months</option>
+              <option value="custom">📅 Custom Range</option>
+            </select>
+            <Calendar size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-teal-600 pointer-events-none" />
+            <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+
+          {/* 4. Sort & Agency Filter (Unified Single Dropdown) */}
+          <div className="relative min-w-[210px] shrink-0">
+            <select
+              value={agencyFilter !== 'all' ? `agency:${agencyFilter}` : sortBy}
+              onChange={e => {
+                const val = e.target.value
+                if (val.startsWith('agency:')) {
+                  const ag = val.replace('agency:', '')
+                  handleAgencyFilterChange(ag)
+                } else {
+                  setSortBy(val as SortBy)
+                  if (val === 'working_today') {
+                    handleAgencyFilterChange('all')
+                  }
+                }
+              }}
+              className={`w-full text-[12px] font-bold pl-3 pr-7 py-2 rounded-xl focus:outline-none cursor-pointer transition-all appearance-none border ${
+                agencyFilter !== 'all'
+                  ? 'bg-indigo-50 border-indigo-300 text-indigo-900 ring-2 ring-indigo-500/10'
+                  : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200 text-slate-700 focus:border-teal-500'
+              }`}
+            >
+              <optgroup label="🟢 Roster Sort">
+                <option value="working_today">🟢 Working Today (On Duty First)</option>
+                <option value="ot_desc">🔥 Highest OT Hours</option>
+                <option value="duty_desc">💼 Highest Duty Hours</option>
+                <option value="shifts_desc">📊 Most Shifts</option>
+                <option value="name_asc">👤 Name (A-Z)</option>
+                <option value="rate_desc">💵 Highest Monthly Salary</option>
+              </optgroup>
+
+              <optgroup label="🏢 Filter by Agency / Vendor">
+                <option value="agency:all">🌐 All Fleets & Agencies</option>
+                <option value="agency:third_party">🏢 Third-Party Agencies (Supplied Cleaners Only)</option>
+                <option value="agency:safaeewala">👑 Safaeewala Cleaning & Technical Services LLC</option>
                 {agencies
                   .filter(a => a.company_type !== 'Parent Company' && a.id !== 'agency-safaeewala' && !a.name.toLowerCase().includes('safaeewala'))
                   .map(ag => (
-                    <option key={ag.id} value={ag.id}>
+                    <option key={ag.id} value={`agency:${ag.id}`}>
                       🤝 {ag.name}
                     </option>
                   ))}
               </optgroup>
             </select>
-            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
 
-          {/* Sort & Working Today / Agency Selector */}
-          <div className="flex items-center gap-1.5 ml-auto">
-            <span className="text-[11.5px] font-semibold text-slate-400 hidden sm:inline">Sort / Filter:</span>
-            <div className="relative">
-              <select
-                value={agencyFilter !== 'all' ? `agency:${agencyFilter}` : sortBy}
-                onChange={e => {
-                  const val = e.target.value
-                  if (val.startsWith('agency:')) {
-                    const ag = val.replace('agency:', '')
-                    handleAgencyFilterChange(ag)
-                  } else {
-                    setSortBy(val as SortBy)
-                    if (val === 'working_today') {
-                      handleAgencyFilterChange('all')
-                    }
-                  }
-                }}
-                className={`text-[12px] font-bold pl-3 pr-8 py-2 rounded-xl focus:outline-none cursor-pointer transition-colors appearance-none border ${
-                  agencyFilter !== 'all'
-                    ? 'bg-indigo-50 border-indigo-300 text-indigo-900 ring-2 ring-indigo-500/10'
-                    : 'bg-slate-100 hover:bg-slate-200/80 border-slate-200 text-slate-700 focus:border-teal-500'
-                }`}
-              >
-                <optgroup label="🟢 Working Today & Roster Sort">
-                  <option value="working_today">🟢 Working Today (On Duty First)</option>
-                  <option value="ot_desc">🔥 Highest OT Hours</option>
-                  <option value="duty_desc">💼 Highest Duty Hours</option>
-                  <option value="shifts_desc">📊 Most Shifts</option>
-                  <option value="name_asc">👤 Name (A-Z)</option>
-                  <option value="rate_desc">💵 Highest Monthly Salary</option>
-                </optgroup>
-
-                <optgroup label="🏢 Filter by Agency / Vendor">
-                  <option value="agency:all">🌐 All Fleets (Agencies + Parent Company)</option>
-                  <option value="agency:third_party">🏢 Third-Party Agencies (Supplied Cleaners Only)</option>
-                  <option value="agency:safaeewala">👑 Safaeewala In-House Cleaners (Parent Company Only)</option>
-                  {agencies
-                    .filter(a => a.company_type !== 'Parent Company' && a.id !== 'agency-safaeewala' && !a.name.toLowerCase().includes('safaeewala'))
-                    .map(ag => (
-                      <option key={ag.id} value={`agency:${ag.id}`}>
-                        🤝 {ag.name}
-                      </option>
-                    ))}
-                </optgroup>
-              </select>
-              <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            </div>
-
-            {/* View Mode Switcher */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80">
-              <button
-                type="button"
-                onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                  viewMode === 'grid' ? 'bg-white text-teal-700 shadow-xs' : 'text-slate-400 hover:text-slate-600'
-                }`}
-                title="Grid Card View"
-              >
-                <LayoutGrid size={15} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                  viewMode === 'table' ? 'bg-white text-teal-700 shadow-xs' : 'text-slate-400 hover:text-slate-600'
-                }`}
-                title="Table View (Dense Duty & OT Roster)"
-              >
-                <List size={15} />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Row 2: Date Presets & Custom Pickers + Reset */}
-        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[12px] font-bold text-slate-500 mr-1 flex items-center gap-1.5">
-              <Calendar size={13} className="text-teal-600" />
-              <span>Period:</span>
-            </span>
-
-            {[
-              { id: 'all',       label: 'All Time' },
-              { id: 'today',     label: 'Today' },
-              { id: 'yesterday', label: 'Yesterday' },
-              { id: '7days',     label: '7 Days' },
-              { id: '30days',    label: '30 Days' },
-              { id: '3months',   label: '3 Months' },
-              { id: '6months',   label: '6 Months' },
-              { id: 'custom',    label: 'Custom Range' },
-            ].map(preset => {
-              const active = datePreset === preset.id
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => setDatePreset(preset.id as EmployeeDatePreset)}
-                  className={`px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all cursor-pointer ${
-                    active
-                      ? 'bg-teal-700 text-white shadow-xs shadow-teal-700/20'
-                      : 'bg-slate-100/90 hover:bg-slate-200/80 text-slate-600'
-                  }`}
-                >
-                  {preset.label}
-                </button>
-              )
-            })}
+          {/* 5. View Mode Switcher */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 shrink-0">
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                viewMode === 'grid' ? 'bg-white text-teal-700 shadow-xs' : 'text-slate-400 hover:text-slate-600'
+              }`}
+              title="Grid Card View"
+            >
+              <LayoutGrid size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                viewMode === 'table' ? 'bg-white text-teal-700 shadow-xs' : 'text-slate-400 hover:text-slate-600'
+              }`}
+              title="Table View (Dense Duty & OT Roster)"
+            >
+              <List size={15} />
+            </button>
           </div>
 
-          {/* Custom Date Pickers */}
-          {datePreset === 'custom' && (
-            <div className="flex items-center gap-2 bg-teal-50/70 border border-teal-200 rounded-xl px-3 py-1.5 animate-in fade-in duration-150">
-              <span className="text-[11px] font-bold text-teal-800">From:</span>
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={e => setCustomStartDate(e.target.value)}
-                className="text-[12px] px-2 py-1 bg-white border border-teal-200 rounded-lg focus:outline-none focus:border-teal-500 font-semibold text-slate-800"
-              />
-              <span className="text-[11px] font-bold text-teal-800">To:</span>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={e => setCustomEndDate(e.target.value)}
-                className="text-[12px] px-2 py-1 bg-white border border-teal-200 rounded-lg focus:outline-none focus:border-teal-500 font-semibold text-slate-800"
-              />
-            </div>
+          {/* 6. Reset Filters Button */}
+          {(search || roleFilter !== 'all' || agencyFilter !== 'all' || datePreset !== 'all' || sortBy !== 'working_today') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('')
+                setRoleFilter('all')
+                handleAgencyFilterChange('all')
+                setDatePreset('all')
+                setCustomStartDate('')
+                setCustomEndDate('')
+                setSortBy('working_today')
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11.5px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer shrink-0 border border-rose-200/60"
+              title="Reset all filters"
+            >
+              <RotateCcw size={12} />
+              <span>Reset</span>
+            </button>
           )}
 
-          {/* Reset Filters & Count */}
-          <div className="flex items-center gap-3 ml-auto">
-            {(search || roleFilter !== 'all' || agencyFilter !== 'all' || workFilter !== 'all' || datePreset !== 'all' || statusFilter !== 'all' || expiryFilter) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch('')
-                  setRoleFilter('all')
-                  handleAgencyFilterChange('all')
-                  setWorkFilter('all')
-                  setDatePreset('all')
-                  setStatusFilter('all')
-                  setExpiryFilter(false)
-                  setCustomStartDate('')
-                  setCustomEndDate('')
-                  setSortBy('working_today')
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
-                title="Reset all filters"
-              >
-                <RotateCcw size={12} />
-                <span>Reset Filters</span>
-              </button>
-            )}
-
-            <span className="text-[12px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/70">
-              Showing <span className="text-teal-700 font-black">{filtered.length}</span> of {employees.length} staff
-            </span>
-          </div>
-
+          {/* Showing Count */}
+          <span className="text-[11.5px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200/70 shrink-0 whitespace-nowrap ml-auto">
+            <span className="text-teal-700 font-black">{filtered.length}</span> / {employees.length}
+          </span>
         </div>
 
+        {/* Custom Date Pickers (Shown only when datePreset === 'custom') */}
+        {datePreset === 'custom' && (
+          <div className="flex items-center gap-2 bg-teal-50/70 border border-teal-200 rounded-xl px-3 py-1.5 animate-in fade-in duration-150 text-[12px]">
+            <span className="font-bold text-teal-800">Custom Date Range:</span>
+            <span className="text-[11px] font-semibold text-slate-600">From:</span>
+            <input
+              type="date"
+              value={customStartDate}
+              onChange={e => setCustomStartDate(e.target.value)}
+              className="px-2 py-1 bg-white border border-teal-200 rounded-lg focus:outline-none focus:border-teal-500 font-semibold text-slate-800"
+            />
+            <span className="text-[11px] font-semibold text-slate-600">To:</span>
+            <input
+              type="date"
+              value={customEndDate}
+              onChange={e => setCustomEndDate(e.target.value)}
+              className="px-2 py-1 bg-white border border-teal-200 rounded-lg focus:outline-none focus:border-teal-500 font-semibold text-slate-800"
+            />
+          </div>
+        )}
       </div>
 
       {/* ── Active Agency Filter Notification Banner ── */}
@@ -1667,7 +1622,7 @@ export function Employees() {
                 {agencyFilter === 'third_party' || agencyFilter === 'third-party' ? (
                   <>🏢 Showing Third-Party Supplied Cleaners Only <span className="text-rose-700 font-black">(Parent Company Staff Hidden)</span></>
                 ) : agencyFilter === 'parent_company' || agencyFilter === 'parent' || agencyFilter === 'safaeewala' ? (
-                  <>👑 Showing Safaeewala In-House Cleaners Only <span className="text-emerald-800 font-black">(Third-Party Staff Hidden)</span></>
+                  <>👑 Showing Safaeewala Cleaners (Parent Company Only) <span className="text-emerald-800 font-black">(Third-Party Staff Hidden)</span></>
                 ) : (
                   <>🏢 Filtered by Agency: <span className="font-black text-indigo-950">{agencies.find(a => a.id === agencyFilter)?.name || agencyFilter}</span></>
                 )}
@@ -1802,9 +1757,9 @@ export function Employees() {
               <option value="driver">Driver</option>
             </Select>
 
-            <Select name="agency_id" label="Agency / Sourcing Vendor">
-              <option value="">Direct / In-House Hire</option>
-              {agencies.map(a => (
+            <Select name="agency_id" label="Agency / Sourcing Source">
+              <option value="">Safaeewala Cleaning & Technical Services LLC (Parent Company)</option>
+              {agencies.filter(a => a.id !== 'agency-safaeewala' && a.company_type !== 'Parent Company' && !a.name.toLowerCase().includes('safaeewala')).map(a => (
                 <option key={a.id} value={a.id}>
                   {a.name} ({a.status})
                 </option>
@@ -1959,14 +1914,10 @@ export function Employees() {
                     <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-md border ${getRoleBadgeStyle(selected.role)}`}>
                       {formatEmpRole(selected.role)}
                     </span>
-                    {selected.agency_name ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-md">
-                        <Building2 size={11} className="text-teal-600" />
-                        {selected.agency_name}
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-slate-400 font-medium">In-House</span>
-                    )}
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-md">
+                      <Building2 size={11} className="text-teal-600" />
+                      {getEmployeeAgencySource(selected)}
+                    </span>
                     <span>·</span>
                     <span className="text-[12px] text-slate-600">{selected.nationality || 'Staff'}</span>
                   </div>
@@ -2010,7 +1961,7 @@ export function Employees() {
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: 'Monthly Salary', value: `AED ${(selected.monthly_salary || (selected.pay_rate_hourly ? Math.round(selected.pay_rate_hourly * 200) : 2500)).toLocaleString()}/mo` },
-                  { label: 'Agency Vendor',  value: selected.agency_name || 'Direct / In-House' },
+                  { label: 'Agency Source',  value: getEmployeeAgencySource(selected) },
                   { label: 'Joining Date',   value: formatDate(selected.joined_date) },
                   { label: 'End Date',       value: selected.end_date ? formatDate(selected.end_date) : 'Active / Indefinite' },
                   { label: 'Phone',          value: selected.phone || 'Not recorded' },
@@ -2179,9 +2130,9 @@ export function Employees() {
                 <option value="driver">Driver</option>
               </Select>
 
-              <Select name="agency_id" label="Agency / Sourcing Vendor" defaultValue={selected.agency_id || ''}>
-                <option value="">Direct / In-House (No Agency)</option>
-                {agencies.map(a => (
+              <Select name="agency_id" label="Agency / Sourcing Source" defaultValue={selected.agency_id || ''}>
+                <option value="">Safaeewala Cleaning & Technical Services LLC (Parent Company)</option>
+                {agencies.filter(a => a.id !== 'agency-safaeewala' && a.company_type !== 'Parent Company' && !a.name.toLowerCase().includes('safaeewala')).map(a => (
                   <option key={a.id} value={a.id}>{a.name} ({a.status})</option>
                 ))}
               </Select>

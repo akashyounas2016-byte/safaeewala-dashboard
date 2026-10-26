@@ -77,6 +77,9 @@ export interface AgencyCommissionPayout {
   payment_method: 'bank_transfer' | 'cheque' | 'cash' | 'credit'
   reference_no?: string
   status: 'paid' | 'pending' | 'processing'
+  payment_type?: 'salary' | 'advance'
+  cleaner_id?: string
+  cleaner_name?: string
   notes?: string
   created_at: string
 }
@@ -240,6 +243,7 @@ export interface DailyJob {
   remarks: string
   service?: string
   booking_id?: string
+  status?: string
 }
 
 export interface DailyExpense {

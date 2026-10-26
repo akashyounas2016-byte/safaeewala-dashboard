@@ -782,7 +782,7 @@ export function Agencies() {
                             <p className={`text-[11.5px] truncate mt-0.5 ${
                               isParent ? 'text-teal-300/80 font-bold' : 'text-slate-500'
                             }`}>
-                              {isParent ? 'Direct Corporate Fleet' : (agency.contact_person || 'Vendor Partner')}
+                              {isParent ? 'Safaeewala Cleaning & Technical Services LLC' : (agency.contact_person || 'Vendor Partner')}
                             </p>
                           </div>
                         </div>
@@ -1040,7 +1040,7 @@ export function Agencies() {
                         <p className={`text-[11.5px] truncate mt-0.5 ${
                           isParent ? 'text-teal-300/90 font-bold' : 'text-slate-600'
                         }`}>
-                          {isParent ? 'Direct Corporate Fleet • In-House Master' : (agency.contact_person || 'Vendor Partner')}
+                          {isParent ? 'Corporate Fleet Headquarters' : (agency.contact_person || 'Vendor Partner')}
                         </p>
                       </div>
                     </div>

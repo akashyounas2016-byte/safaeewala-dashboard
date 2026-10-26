@@ -6,7 +6,7 @@ import {
   Shield, CheckCircle, ExternalLink, Plus, Search, X, Award, AlertTriangle,
   Landmark, UserCheck, UserPlus, Briefcase, ChevronRight, FileCheck, ArrowUpRight, TrendingUp,
   LayoutGrid, List, Lock, Wallet, ShieldCheck, History, Download, Eye, Paperclip, Upload,
-  Sparkles, Check, FileSpreadsheet, Layers
+  Sparkles, Check, FileSpreadsheet, Layers, Trash2, Zap
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -179,6 +179,13 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
   const [showAddStaffModal, setShowAddStaffModal] = useState(false)
   const [unassignTarget, setUnassignTarget] = useState<Employee | null>(null)
 
+  // ── Salary Payout & Advance Form State ──
+  const [payoutFormType, setPayoutFormType] = useState<'salary' | 'advance'>('salary')
+  const [payoutCleanerId, setPayoutCleanerId] = useState<string>('')
+  const [payoutTypeFilter, setPayoutTypeFilter] = useState<'all' | 'salary' | 'advance'>('all')
+  const [shiftsSearch, setShiftsSearch] = useState<string>('')
+  const [shiftsStaffFilter, setShiftsStaffFilter] = useState<string>('all')
+
   // ── Document Preview & Direct Upload Modals ──
   const [previewDoc, setPreviewDoc] = useState<AgencyDocument | null>(null)
   const [showUploadDocModal, setShowUploadDocModal] = useState(false)
@@ -222,11 +229,14 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
 
   // ── Cleaners / Staff belonging to this Agency ──
   const agencyStaff = useMemo(() => {
+    if (isParentAgency) {
+      return employees.filter(isParentCompanyEmployee)
+    }
     return employees.filter(e =>
       e.agency_id === agency.id ||
       (e.agency_name && e.agency_name.toLowerCase().trim() === agency.name.toLowerCase().trim())
     )
-  }, [employees, agency])
+  }, [employees, agency, isParentAgency])
 
   // ── Candidate Cleaners who can be assigned to this agency ──
   const assignableStaff = useMemo(() => {
@@ -281,25 +291,43 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
     return items.sort((a, b) => (b.job.date || '').localeCompare(a.job.date || ''))
   }, [agencyStaff, dailyJobs])
 
-  // ── Financial Metrics ──
+  // ── Financial Metrics (Salary Payouts, Advance History, & Daily Job Sheet Sync) ──
   const financials = useMemo(() => {
     const totalRevenue = staffJobsData.reduce((acc, item) => acc + item.revenue, 0)
     const totalSalaryAllocated = agency.contracted_amount
       ? agency.contracted_amount
       : (agency.price ? agency.price : staffJobsData.reduce((acc, item) => acc + item.salaryShare, 0))
     const payouts = agency.payouts || []
-    const totalPaid = payouts.filter(p => p.status === 'paid').reduce((acc, p) => acc + p.amount, 0)
-    const totalPending = payouts.filter(p => p.status === 'pending' || p.status === 'processing').reduce((acc, p) => acc + p.amount, 0)
+
+    const totalSalaryPaid = payouts
+      .filter(p => (p.payment_type !== 'advance') && p.status === 'paid')
+      .reduce((acc, p) => acc + p.amount, 0)
+
+    const totalAdvances = payouts
+      .filter(p => p.payment_type === 'advance' && p.status === 'paid')
+      .reduce((acc, p) => acc + p.amount, 0)
+
+    const totalPaid = totalSalaryPaid + totalAdvances
+    const totalPending = payouts
+      .filter(p => p.status === 'pending' || p.status === 'processing')
+      .reduce((acc, p) => acc + p.amount, 0)
+
     const netBalance = Math.max(0, totalSalaryAllocated - totalPaid)
+    const totalDutyHours = staffJobsData.reduce((acc, item) => acc + (Number(item.job.duty_hours) || 0), 0)
 
     return {
       totalRevenue,
       totalSalaryAllocated,
+      totalSalaryPaid,
+      totalAdvances,
       totalPaid,
       totalPending,
       netBalance,
       payoutsCount: payouts.length,
+      salaryCount: payouts.filter(p => p.payment_type !== 'advance').length,
+      advanceCount: payouts.filter(p => p.payment_type === 'advance').length,
       jobsCount: staffJobsData.length,
+      totalDutyHours,
     }
   }, [staffJobsData, agency.payouts, agency.contracted_amount, agency.price])
 
@@ -566,11 +594,15 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
     const paymentMethod = (fd.get('payment_method') as AgencySalaryPayout['payment_method']) || 'bank_transfer'
     const referenceNo = (fd.get('reference_no') as string) || ''
     const status = (fd.get('status') as AgencySalaryPayout['status']) || 'paid'
-    const notes = (fd.get('notes') as string) || 'Staff salary payout settlement'
+    const notes = (fd.get('notes') as string) || (payoutFormType === 'advance' ? 'Staff advance payment' : 'Staff salary payout settlement')
+    const selectedEmp = payoutCleanerId ? agencyStaff.find(s => s.id === payoutCleanerId) : null
 
     const newPayout: AgencySalaryPayout = {
       id: `payout-${Date.now()}`,
       agency_id: agency.id,
+      payment_type: payoutFormType,
+      cleaner_id: selectedEmp?.id || undefined,
+      cleaner_name: selectedEmp?.full_name || undefined,
       amount,
       payment_date: paymentDate,
       payment_method: paymentMethod,
@@ -585,6 +617,16 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
       payouts: [newPayout, ...currentPayouts],
     })
     setShowLogPayoutModal(false)
+    setPayoutCleanerId('')
+    setPayoutFormType('salary')
+  }
+
+  const handleDeletePayout = (payoutId: string) => {
+    if (!window.confirm('Are you sure you want to delete this payment record?')) return
+    const updated = (agency.payouts || []).filter(p => p.id !== payoutId)
+    updateAgency(agency.id, {
+      payouts: updated,
+    })
   }
 
   return (
@@ -615,10 +657,13 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
           <Button
             type="button"
             className="text-[12.5px] font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-sm cursor-pointer flex items-center gap-1.5"
-            onClick={() => setShowLogPayoutModal(true)}
+            onClick={() => {
+              setPayoutFormType('salary')
+              setShowLogPayoutModal(true)
+            }}
           >
-            <Lock size={14} className="mr-0.5" />
-            Lock Salary Payout
+            <Wallet size={14} className="mr-0.5" />
+            Salary Payout
           </Button>
         </div>
       </div>
@@ -790,7 +835,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
             )}
           </p>
           <p className="text-[11.5px] font-bold text-slate-600 mt-0.5">
-            {isParentAgency ? 'Safaeewala In-House Fleet Cleaners' : `${staffDutyStats.standbyCount} Available / Standby`}
+            {isParentAgency ? 'Safaeewala Corporate Fleet Cleaners' : `${staffDutyStats.standbyCount} Available / Standby`}
           </p>
         </div>
 
@@ -870,8 +915,8 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
-          <Lock size={16} />
-          <span>Staff Salaries & Payouts ({formatCurrency(financials.totalSalaryAllocated)})</span>
+          <Wallet size={16} />
+          <span>Staff & Salaries Payout ({formatCurrency(financials.totalSalaryAllocated)})</span>
         </button>
 
         <button
@@ -1754,7 +1799,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
-          TAB 2: SALARY & FINANCIAL SETTLEMENTS
+          TAB 2: STAFF & SALARIES PAYOUT (LIVE SYNCED WITH DAILY JOB SHEET)
          ══════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'payouts' && (
         <div className="space-y-6">
@@ -1763,34 +1808,44 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
             <div className="relative z-10">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-700/60 pb-6 mb-6">
                 <div>
-                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-teal-400">
-                    Salary & Contract Disbursements
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-teal-400">
+                      Salary & Advance Disbursements
+                    </span>
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                      Daily Job Sheet Synced
+                    </span>
+                  </div>
                   <h2 className="text-xl md:text-2xl font-black mt-1">
-                    Staff Salary & Vendor Payout Ledger
+                    Staff & Salaries Payout Ledger
                   </h2>
                   <p className="text-[13px] text-slate-300 mt-0.5">
-                    Managing monthly salary settlements and disbursements for staff supplied by {agency.name}. Payment Terms: <strong className="text-white">{agency.payment_terms || 'Monthly (Net 15)'}</strong>.
+                    Live synchronization with Daily Job Sheet shifts, duty hours, salary settlements, and staff advance history for <strong>{agency.name}</strong>. Payment Terms: <strong className="text-white">{agency.payment_terms || 'Monthly (Net 15)'}</strong>.
                   </p>
                 </div>
 
                 <Button
                   type="button"
                   className="bg-teal-500 hover:bg-teal-600 text-white font-bold text-[13px] shadow-sm w-fit shrink-0 cursor-pointer flex items-center gap-1.5"
-                  onClick={() => setShowLogPayoutModal(true)}
+                  onClick={() => {
+                    setPayoutFormType('salary')
+                    setShowLogPayoutModal(true)
+                  }}
                 >
-                  <Lock size={15} />
-                  <span>Lock Salary Payout</span>
+                  <Wallet size={15} />
+                  <span>Salary Payout</span>
                 </Button>
               </div>
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gross Staff Revenue</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gross Shifts Revenue</p>
                   <p className="text-2xl font-black text-white mt-1">
                     {formatCurrency(financials.totalRevenue)}
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Across {financials.jobsCount} client shifts</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Across {financials.jobsCount} shifts ({financials.totalDutyHours}h logged)
+                  </p>
                 </div>
 
                 <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
@@ -1798,15 +1853,19 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   <p className="text-2xl font-black text-teal-400 mt-1">
                     {formatCurrency(financials.totalSalaryAllocated)}
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">{agency.contracted_amount ? `AED ${agency.contracted_amount} contracted` : 'Staff duty compensation'}</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {agency.contracted_amount ? `AED ${agency.contracted_amount} contracted` : 'Duty hour compensation'}
+                  </p>
                 </div>
 
                 <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Settled / Paid</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Settled & Advances</p>
                   <p className="text-2xl font-black text-emerald-400 mt-1">
                     {formatCurrency(financials.totalPaid)}
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">{financials.payoutsCount} recorded settlements</p>
+                  <p className="text-[11px] text-emerald-300/80 mt-0.5">
+                    Salary: {formatCurrency(financials.totalSalaryPaid)} · Advance: {formatCurrency(financials.totalAdvances)}
+                  </p>
                 </div>
 
                 <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
@@ -1814,37 +1873,84 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   <p className="text-2xl font-black text-amber-400 mt-1">
                     {formatCurrency(financials.netBalance)}
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Due per {agency.payment_terms || 'terms'}</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Across {agencyStaff.length} active cleaners</p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Section: Salary Payouts History */}
-          <div className="bg-white rounded-[24px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-5">
-            <div className="flex items-center justify-between mb-4">
+          {/* Section 1: Salary Payouts & Advance Payment History */}
+          <div className="bg-white rounded-[24px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-[16px] font-black text-slate-900">Salary Payout History</h3>
-                <p className="text-[12px] text-slate-500">Record of disbursements and settlements made to {agency.name}.</p>
+                <h3 className="text-[16px] font-black text-slate-900 flex items-center gap-2">
+                  <Wallet size={18} className="text-teal-600" />
+                  <span>Salary Payout & Advance Payment History</span>
+                </h3>
+                <p className="text-[12px] text-slate-500">
+                  Audit trail of all salary disbursements and staff advances issued for {agency.name}.
+                </p>
               </div>
 
-              <Button
-                type="button"
-                variant="outline"
-                className="text-[12px] font-bold border-slate-200 flex items-center gap-1.5"
-                onClick={() => setShowLogPayoutModal(true)}
-              >
-                <Lock size={13} className="text-teal-600" />
-                <span>Lock Salary Payout</span>
-              </Button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Filter Pills for All / Salary / Advance */}
+                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 text-[11.5px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setPayoutTypeFilter('all')}
+                    className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                      payoutTypeFilter === 'all'
+                        ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    All ({financials.payoutsCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPayoutTypeFilter('salary')}
+                    className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                      payoutTypeFilter === 'salary'
+                        ? 'bg-white text-teal-700 shadow-2xs font-extrabold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Salaries ({financials.salaryCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPayoutTypeFilter('advance')}
+                    className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                      payoutTypeFilter === 'advance'
+                        ? 'bg-white text-amber-700 shadow-2xs font-extrabold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Advances ({financials.advanceCount})
+                  </button>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="text-[12px] font-bold border-slate-200 flex items-center gap-1.5"
+                  onClick={() => {
+                    setPayoutFormType('salary')
+                    setShowLogPayoutModal(true)
+                  }}
+                >
+                  <Plus size={13} className="text-teal-600" />
+                  <span>Record Payment</span>
+                </Button>
+              </div>
             </div>
 
             {(!agency.payouts || agency.payouts.length === 0) ? (
               <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-100">
                 <CreditCard size={28} className="mx-auto text-slate-400 mb-2" />
-                <p className="text-[14px] font-bold text-slate-700">No Salary Payouts Logged Yet</p>
+                <p className="text-[14px] font-bold text-slate-700">No Salary Payouts or Advances Logged Yet</p>
                 <p className="text-[12px] text-slate-500 mt-0.5">
-                  Click "Lock Salary Payout" when you disburse funds to this partner.
+                  Click "Salary Payout" or "Record Payment" to record a salary settlement or staff advance.
                 </p>
               </div>
             ) : (
@@ -1853,57 +1959,147 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   <thead>
                     <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
                       <th className="py-3 px-4">Payment Date</th>
+                      <th className="py-3 px-4">Type</th>
+                      <th className="py-3 px-4">Recipient / Staff</th>
                       <th className="py-3 px-4">Reference / Tx No</th>
                       <th className="py-3 px-4">Method</th>
-                      <th className="py-3 px-4">Amount</th>
+                      <th className="py-3 px-4 text-right">Amount</th>
                       <th className="py-3 px-4">Status</th>
                       <th className="py-3 px-4">Notes</th>
+                      <th className="py-3 px-4 text-center">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-[13px]">
-                    {agency.payouts.map(p => (
-                      <tr key={p.id} className="hover:bg-slate-50/60">
-                        <td className="py-3 px-4 font-semibold text-slate-900">
-                          {formatDate(p.payment_date)}
-                        </td>
-                        <td className="py-3 px-4 text-[12px] font-mono text-slate-600">
-                          {p.reference_no || '—'}
-                        </td>
-                        <td className="py-3 px-4 capitalize text-[12px] font-medium text-slate-700">
-                          {p.payment_method.replace('_', ' ')}
-                        </td>
-                        <td className="py-3 px-4 font-black text-emerald-700 text-[14px]">
-                          {formatCurrency(p.amount)}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span
-                            className={`text-[10.5px] font-black uppercase px-2 py-0.5 rounded-full ${
-                              p.status === 'paid'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-amber-100 text-amber-800'
-                            }`}
-                          >
-                            {p.status}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-[12px] text-slate-500 italic max-w-xs truncate">
-                          {p.notes || '—'}
-                        </td>
-                      </tr>
-                    ))}
+                  <tbody className="divide-y divide-slate-100 text-[12.5px]">
+                    {(agency.payouts || [])
+                      .filter(p => {
+                        if (payoutTypeFilter === 'advance') return p.payment_type === 'advance'
+                        if (payoutTypeFilter === 'salary') return p.payment_type !== 'advance'
+                        return true
+                      })
+                      .map(p => {
+                        const isAdvance = p.payment_type === 'advance'
+                        return (
+                          <tr key={p.id} className="hover:bg-slate-50/60 transition-colors">
+                            <td className="py-3 px-4 font-semibold text-slate-900 whitespace-nowrap">
+                              {formatDate(p.payment_date)}
+                            </td>
+                            <td className="py-3 px-4">
+                              {isAdvance ? (
+                                <span className="inline-flex items-center gap-1 text-[10.5px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                                  <Zap size={10} className="fill-amber-600 text-amber-600" />
+                                  <span>Advance</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10.5px] font-black uppercase px-2 py-0.5 rounded-md bg-teal-100 text-teal-900 border border-teal-300">
+                                  <Wallet size={10} className="text-teal-700" />
+                                  <span>Salary Payout</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              {p.cleaner_name ? (
+                                <div className="flex items-center gap-1.5">
+                                  <Users size={12} className="text-teal-600 shrink-0" />
+                                  <span className="font-bold text-slate-800">{p.cleaner_name}</span>
+                                </div>
+                              ) : (
+                                <span className="text-slate-500 font-medium">🏢 General Agency Fleet</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-[11.5px] font-mono text-slate-600">
+                              {p.reference_no || '—'}
+                            </td>
+                            <td className="py-3 px-4 capitalize text-[12px] font-medium text-slate-700">
+                              {p.payment_method.replace('_', ' ')}
+                            </td>
+                            <td className={`py-3 px-4 text-right font-black text-[13.5px] ${
+                              isAdvance ? 'text-amber-800' : 'text-emerald-700'
+                            }`}>
+                              {formatCurrency(p.amount)}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span
+                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  p.status === 'paid'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {p.status}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-[12px] text-slate-500 italic max-w-xs truncate">
+                              {p.notes || '—'}
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePayout(p.id)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                title="Delete payment record"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
                   </tbody>
                 </table>
               </div>
             )}
           </div>
 
-          {/* Section: Sourced Shifts & Duty Allocation Table */}
-          <div className="bg-white rounded-[24px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-5">
-            <div className="mb-4">
-              <h3 className="text-[16px] font-black text-slate-900">Staff Shifts & Duty Allocation</h3>
-              <p className="text-[12px] text-slate-500">
-                Detailed audit trail showing client bookings executed by {agency.name}'s staff and duty pay.
-              </p>
+          {/* Section 2: Live Sourced Shifts & Duty Allocation (Synced with Daily Job Sheet) */}
+          <div className="bg-white rounded-[24px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-[16px] font-black text-slate-900 flex items-center gap-2">
+                  <FileSpreadsheet size={18} className="text-teal-600" />
+                  <span>Live Clean Shifts & Duty Allocation (Daily Job Sheet Sync)</span>
+                </h3>
+                <p className="text-[12px] text-slate-500">
+                  Real-time audit trail of client bookings executed by {agency.name}'s staff and calculated duty salary.
+                </p>
+              </div>
+
+              {/* Shift Search & Cleaner Filter */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative min-w-[200px]">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search shifts, client, area..."
+                    value={shiftsSearch}
+                    onChange={e => setShiftsSearch(e.target.value)}
+                    className="w-full text-[12px] pl-8.5 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium"
+                  />
+                  {shiftsSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setShiftsSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+
+                {agencyStaff.length > 1 && (
+                  <select
+                    value={shiftsStaffFilter}
+                    onChange={e => setShiftsStaffFilter(e.target.value)}
+                    className="text-[12px] px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-700 cursor-pointer"
+                  >
+                    <option value="all">👥 All Staff ({agencyStaff.length})</option>
+                    {agencyStaff.map(emp => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.full_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
             </div>
 
             {staffJobsData.length === 0 ? (
@@ -1911,58 +2107,106 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                 <FileText size={28} className="mx-auto text-slate-400 mb-2" />
                 <p className="text-[14px] font-bold text-slate-700">No Service Shifts Found</p>
                 <p className="text-[12px] text-slate-500 mt-0.5">
-                  When assigned cleaners complete bookings on the Daily Job Sheet, their duty and salary allocation will appear here automatically.
+                  When assigned cleaners complete bookings on the Daily Job Sheet, their duty hours and salary allocation will appear here automatically.
                 </p>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
-                      <th className="py-3 px-4">Date</th>
-                      <th className="py-3 px-4">Staff Member</th>
-                      <th className="py-3 px-4">Client / Location</th>
-                      <th className="py-3 px-4">Service</th>
-                      <th className="py-3 px-4 text-center">Duty</th>
-                      <th className="py-3 px-4 text-right">Job Revenue</th>
-                      <th className="py-3 px-4 text-right">Duty Salary (AED)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-[13px]">
-                    {staffJobsData.slice(0, 30).map(({ job, employee, revenue, salaryShare }, idx) => (
-                      <tr key={`${job.id || idx}-${job.date}`} className="hover:bg-slate-50/60">
-                        <td className="py-2.5 px-4 font-semibold text-slate-900 whitespace-nowrap">
-                          {formatDate(job.date)}
-                        </td>
-                        <td className="py-2.5 px-4">
-                          <Link
-                            to={`/employees/${employee.id}`}
-                            className="font-bold text-slate-800 hover:text-teal-700"
-                          >
-                            {employee.full_name}
-                          </Link>
-                        </td>
-                        <td className="py-2.5 px-4 text-[12px] text-slate-600 max-w-[200px] truncate">
-                          {job.address || job.area || 'Direct Client'}
-                        </td>
-                        <td className="py-2.5 px-4 text-[12px] text-slate-600">
-                          {job.service || 'Cleaning'}
-                        </td>
-                        <td className="py-2.5 px-4 text-center text-[12px] font-bold text-slate-700">
-                          {job.duty_hours || '—'}h
-                        </td>
-                        <td className="py-2.5 px-4 text-right font-semibold text-slate-800">
-                          {formatCurrency(revenue)}
-                        </td>
-                        <td className="py-2.5 px-4 text-right font-black text-teal-700">
-                          {formatCurrency(salaryShare)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            ) : (() => {
+              const q = shiftsSearch.toLowerCase().trim()
+              const visibleShifts = staffJobsData.filter(item => {
+                if (shiftsStaffFilter !== 'all' && item.employee.id !== shiftsStaffFilter) return false
+                if (!q) return true
+                return (
+                  (item.employee.full_name || '').toLowerCase().includes(q) ||
+                  (item.job.address || '').toLowerCase().includes(q) ||
+                  (item.job.area || '').toLowerCase().includes(q) ||
+                  (item.job.service || '').toLowerCase().includes(q) ||
+                  (item.job.date || '').includes(q)
+                )
+              })
+
+              const visibleTotalRev = visibleShifts.reduce((acc, s) => acc + s.revenue, 0)
+              const visibleTotalSalary = visibleShifts.reduce((acc, s) => acc + s.salaryShare, 0)
+              const visibleTotalDuty = visibleShifts.reduce((acc, s) => acc + (Number(s.job.duty_hours) || 0), 0)
+
+              return (
+                <div className="space-y-3">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                          <th className="py-3 px-4">Date</th>
+                          <th className="py-3 px-4">Staff Member</th>
+                          <th className="py-3 px-4">Client / Location</th>
+                          <th className="py-3 px-4">Service</th>
+                          <th className="py-3 px-4 text-center">Duty</th>
+                          <th className="py-3 px-4 text-right">Job Revenue</th>
+                          <th className="py-3 px-4 text-right">Duty Salary (AED)</th>
+                          <th className="py-3 px-4 text-center">Job Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-[12.5px]">
+                        {visibleShifts.slice(0, 40).map(({ job, employee, revenue, salaryShare }, idx) => (
+                          <tr key={`${job.id || idx}-${job.date}`} className="hover:bg-slate-50/60 transition-colors">
+                            <td className="py-2.5 px-4 font-semibold text-slate-900 whitespace-nowrap">
+                              {formatDate(job.date)}
+                            </td>
+                            <td className="py-2.5 px-4">
+                              <Link
+                                to={`/employees/${employee.id}`}
+                                className="font-bold text-slate-800 hover:text-teal-700 flex items-center gap-1.5"
+                              >
+                                <span className="w-6 h-6 rounded-lg bg-teal-50 text-teal-800 text-[10px] font-extrabold flex items-center justify-center">
+                                  {(employee.full_name || 'S').slice(0, 2).toUpperCase()}
+                                </span>
+                                <span>{employee.full_name}</span>
+                              </Link>
+                            </td>
+                            <td className="py-2.5 px-4 text-[12px] text-slate-600 max-w-[200px] truncate">
+                              {job.address || job.area || 'Client Booking'}
+                            </td>
+                            <td className="py-2.5 px-4 text-[12px] text-slate-600">
+                              {job.service || 'Cleaning'}
+                            </td>
+                            <td className="py-2.5 px-4 text-center text-[12px] font-bold text-slate-700">
+                              <span className="bg-slate-100 px-2 py-0.5 rounded-md">
+                                {job.duty_hours || '4'}h
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-semibold text-slate-800">
+                              {formatCurrency(revenue)}
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-black text-teal-700">
+                              {formatCurrency(salaryShare)}
+                            </td>
+                            <td className="py-2.5 px-4 text-center">
+                              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                (job.payment_mode as string) === 'Paid' || (job.received >= job.charges && job.charges > 0)
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-teal-100 text-teal-800'
+                              }`}>
+                                {job.payment_mode || job.status || 'Completed'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Summary Bar */}
+                  <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-200/80 flex items-center justify-between text-[12px] font-bold text-slate-700 flex-wrap gap-2">
+                    <span>
+                      Showing {Math.min(visibleShifts.length, 40)} of {visibleShifts.length} Shifts
+                    </span>
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <span>Total Duty: <strong className="text-slate-900">{visibleTotalDuty}h</strong></span>
+                      <span>Total Revenue: <strong className="text-slate-900">{formatCurrency(visibleTotalRev)}</strong></span>
+                      <span>Total Duty Pay: <strong className="text-teal-700">{formatCurrency(visibleTotalSalary)}</strong></span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
         </div>
       )}
@@ -2141,18 +2385,27 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
           MODALS
          ══════════════════════════════════════════════════════════════════════ */}
 
-      {/* ── 1. Lock Salary Payout Modal ── */}
+      {/* ── 1. Salary Payout & Advance Payment Modal ── */}
       <Modal
         open={showLogPayoutModal}
-        onClose={() => setShowLogPayoutModal(false)}
-        title="Lock Salary Payout"
+        onClose={() => {
+          setShowLogPayoutModal(false)
+          setPayoutCleanerId('')
+          setPayoutFormType('salary')
+        }}
+        title={`Record Salary Payment & Advances — ${agency.name}`}
+        size="md"
         headerActions={
           <div className="flex items-center gap-2">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setShowLogPayoutModal(false)}
+              onClick={() => {
+                setShowLogPayoutModal(false)
+                setPayoutCleanerId('')
+                setPayoutFormType('salary')
+              }}
               className="h-8 px-3 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
             >
               Cancel
@@ -2163,20 +2416,85 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
               size="sm"
               className="h-8 px-3 text-[11.5px] bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer shadow-xs flex items-center gap-1.5"
             >
-              <Lock size={12} />
-              <span>Lock Salary Payout</span>
+              <Check size={13} className="stroke-[2.5]" />
+              <span>Record Payment</span>
             </Button>
           </div>
         }
       >
         <form id="log-payout-form" className="space-y-4" onSubmit={handleLogPayout}>
-          <div className="p-3.5 rounded-xl bg-teal-50 border border-teal-200 text-teal-900 text-[12.5px]">
+          {/* Payment Type Switcher: Salary Settlement vs Staff Advance */}
+          <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setPayoutFormType('salary')}
+              className={`py-2 px-3 rounded-lg text-[12px] font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                payoutFormType === 'salary'
+                  ? 'bg-white text-teal-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Wallet size={14} />
+              <span>Salary Settlement</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPayoutFormType('advance')}
+              className={`py-2 px-3 rounded-lg text-[12px] font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                payoutFormType === 'advance'
+                  ? 'bg-white text-amber-800 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Zap size={14} className="text-amber-500 fill-amber-500" />
+              <span>Staff Advance</span>
+            </button>
+          </div>
+
+          <div className={`p-3.5 rounded-xl border text-[12px] space-y-1 ${
+            payoutFormType === 'advance'
+              ? 'bg-amber-50 border-amber-200 text-amber-900'
+              : 'bg-teal-50 border-teal-200 text-teal-900'
+          }`}>
             <p className="font-bold flex items-center gap-1.5">
-              <Lock size={14} className="text-teal-700" />
-              <span>Lock Salary Settlement for {agency.name}</span>
+              {payoutFormType === 'advance' ? (
+                <>
+                  <Zap size={14} className="text-amber-600 fill-amber-600" />
+                  <span>Issuing Advance Payment</span>
+                </>
+              ) : (
+                <>
+                  <Wallet size={14} className="text-teal-700" />
+                  <span>Settling Accrued Salary / Contract</span>
+                </>
+              )}
             </p>
-            <p className="text-[11.5px] text-teal-700 mt-0.5">
-              Outstanding accrued salary balance: <strong>{formatCurrency(financials.netBalance)}</strong>
+            <p className="text-[11.5px] opacity-90">
+              Outstanding Salary Balance: <strong>{formatCurrency(financials.netBalance)}</strong> · Advances Paid: <strong>{formatCurrency(financials.totalAdvances)}</strong>
+            </p>
+          </div>
+
+          {/* Cleaner / Staff Member Selector */}
+          <div>
+            <label className="text-[11.5px] font-bold text-slate-700 block mb-1">
+              Recipient / Staff Member {payoutFormType === 'advance' ? '*' : '(Optional)'}
+            </label>
+            <select
+              value={payoutCleanerId}
+              onChange={e => setPayoutCleanerId(e.target.value)}
+              className="w-full text-[12.5px] px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
+            >
+              <option value="">🏢 Entire Agency Fleet / General Settlement</option>
+              {agencyStaff.map(emp => (
+                <option key={emp.id} value={emp.id}>
+                  👤 {emp.full_name} ({emp.role || 'Cleaner'}) — {emp.phone || emp.nationality || 'Staff'}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-slate-400 mt-1">
+              {payoutFormType === 'advance'
+                ? 'Select the specific cleaner receiving this advance against their monthly salary.'
+                : 'Select a specific cleaner, or leave as General for vendor fleet disbursement.'}
             </p>
           </div>
 
@@ -2186,7 +2504,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
               label="Payout Amount (AED) *"
               type="number"
               placeholder="e.g. 1500"
-              defaultValue={financials.netBalance > 0 ? String(financials.netBalance) : '1000'}
+              defaultValue={payoutFormType === 'salary' && financials.netBalance > 0 ? String(financials.netBalance) : '500'}
               required
             />
             <Input
@@ -2201,8 +2519,8 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select name="payment_method" label="Payment Method">
               <option value="bank_transfer">Bank Wire / Transfer</option>
+              <option value="cash">Cash in Hand</option>
               <option value="cheque">Cheque</option>
-              <option value="cash">Cash</option>
               <option value="credit">Account Credit / Offset</option>
             </Select>
 
@@ -2222,7 +2540,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
           <Input
             name="notes"
             label="Payment Remarks & Period"
-            placeholder="e.g. October 2026 settlement"
+            placeholder={payoutFormType === 'advance' ? 'e.g. Advance issued against upcoming salary' : 'e.g. Monthly salary settlement'}
           />
         </form>
       </Modal>
@@ -2266,7 +2584,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                       <p className="font-bold text-slate-900 text-[13px]">{emp.full_name}</p>
                       <p className="text-[11.5px] text-slate-500">
                         {(emp.role || 'cleaner').replace('_', ' ')} • {emp.phone || 'No phone'}
-                        {emp.agency_name ? ` (Current: ${emp.agency_name})` : ' (In-House / Unassigned)'}
+                        {emp.agency_name ? ` (Current: ${emp.agency_name})` : ' (Safaeewala Fleet / Unassigned)'}
                       </p>
                     </div>
                   </div>
@@ -2397,7 +2715,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
               Are you sure you want to unlink <strong>{unassignTarget.full_name}</strong> from <strong>{agency.name}</strong>?
             </p>
             <p className="text-[12px] text-slate-500">
-              This cleaner's profile and past booking history will be preserved as an in-house staff member.
+              This cleaner's profile and past booking history will be preserved as a Safaeewala staff member.
             </p>
           </div>
         </Modal>

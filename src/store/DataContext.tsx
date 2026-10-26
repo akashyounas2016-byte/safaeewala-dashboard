@@ -9,7 +9,7 @@ import { addHoursToTime } from '@/lib/utils'
 export const defaultAgencies: Agency[] = [
   {
     id: 'agency-safaeewala',
-    name: 'Safaeewala Cleaning & Maintenance LLC',
+    name: 'Safaeewala Cleaning & Technical Services LLC',
     company_type: 'Parent Company',
     contact_person: 'Corporate Operations Desk',
     contact_persons: [
@@ -23,7 +23,7 @@ export const defaultAgencies: Agency[] = [
     commission_type: 'percentage',
     payment_terms: 'Internal Corporate / Parent HQ',
     termination_notice: 'Not Applicable (Parent Company)',
-    notes: 'Parent Company Headquarters & Master In-House Fleet for Safaeewala Group',
+    notes: 'Parent Company Headquarters & Corporate Master Fleet for Safaeewala Group',
     status: 'active',
     contract_ref: 'PARENT-HQ-SAFAEEWALA',
     contract_start_date: '2023-01-01',
@@ -33,12 +33,12 @@ export const defaultAgencies: Agency[] = [
     noc_no: 'NOC-DXB-2023-001',
     quota_cleaners: 12,
     contracted_amount: 0,
-    replacement_guarantee: 'In-House Direct Pool',
+    replacement_guarantee: 'Safaeewala Corporate Fleet Pool',
     replacement_guarantee_enabled: true,
     bank_details: {
       bank_name: 'Emirates NBD',
       iban: 'AE990260001009876543210',
-      account_title: 'Safaeewala Cleaning & Maintenance LLC'
+      account_title: 'Safaeewala Cleaning & Technical Services LLC'
     },
     created_at: new Date('2023-01-01').toISOString(),
   },
@@ -262,6 +262,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return d ? {
           ...d,
           ...a,
+          name: (a.id === 'agency-safaeewala' || a.name.toLowerCase().includes('safaeewala'))
+            ? 'Safaeewala Cleaning & Technical Services LLC'
+            : a.name,
           noc_no: a.noc_no || d.noc_no,
           trade_license_no: a.trade_license_no || d.trade_license_no,
           license_issue_date: a.license_issue_date || d.license_issue_date,
