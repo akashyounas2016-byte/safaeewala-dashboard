@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Building2, ArrowLeft, Users, Percent, CreditCard, FileText, CheckCircle2,
   AlertCircle, Edit2, Phone, Mail, MapPin, Calendar, Clock, DollarSign,
@@ -141,15 +141,32 @@ interface AgencyDashboardProps {
 }
 
 export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboardProps) {
-  const { agencies, employees, dailyJobs, updateAgency, updateEmployee, addEmployee } = useData()
+  const { agencies, employees, dailyJobs, clients, updateAgency, updateEmployee, addEmployee } = useData()
+  const navigate = useNavigate()
 
   // Always use the live agency record from DataContext store so updates reflect instantly
   const agency = useMemo(() => {
     return agencies.find(a => a.id === initialAgency.id) || initialAgency
   }, [agencies, initialAgency])
 
+  const isParentAgency = agency.company_type === 'Parent Company' || agency.id === 'agency-safaeewala' || agency.name.toLowerCase().includes('safaeewala')
+
+  // Safaeewala active clients count
+  const safaeewalaActiveClientsCount = useMemo(() => {
+    return (clients || []).filter(c => Boolean(c.last_service && new Date(c.last_service) > new Date('2026-01-01'))).length
+  }, [clients])
+
   // ── Active Tab: 'staff' | 'documents' | 'payouts' | 'contract' ──
-  const [activeTab, setActiveTab] = useState<'staff' | 'documents' | 'payouts' | 'contract'>('staff')
+  const [activeTab, setActiveTab] = useState<'staff' | 'documents' | 'payouts' | 'contract'>(() => {
+    return isParentAgency ? 'documents' : 'staff'
+  })
+
+  // Ensure Master Agency never stays on Sourced Employees tab
+  useEffect(() => {
+    if (isParentAgency && activeTab === 'staff') {
+      setActiveTab('documents')
+    }
+  }, [isParentAgency, activeTab])
 
   // ── Filter State for Sourced Staff ──
   const [staffSearch, setStaffSearch] = useState('')
@@ -603,16 +620,6 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
             <Lock size={14} className="mr-0.5" />
             Lock Salary Payout
           </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            className="text-[12.5px] font-bold border-teal-200 text-teal-800 bg-teal-50/50 hover:bg-teal-100/60"
-            onClick={() => setShowAssignStaffModal(true)}
-          >
-            <UserPlus size={14} className="mr-1.5 text-teal-700" />
-            Assign Cleaner
-          </Button>
         </div>
       </div>
 
@@ -741,26 +748,49 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
           </p>
         </div>
 
-        {/* Card 2: Sourced Cleaners */}
-        <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5">
+        {/* Card 2: Sourced Cleaners (or Active Clients for Master Agency) */}
+        <div
+          onClick={() => {
+            if (isParentAgency) {
+              navigate('/clients?filter=active&agency=safaeewala')
+            }
+          }}
+          className={`bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 ${
+            isParentAgency ? 'cursor-pointer hover:border-teal-400 hover:shadow-md transition-all group' : ''
+          }`}
+          title={isParentAgency ? "Click to view Safaeewala's Active Clients" : undefined}
+        >
           <div className="flex items-start justify-between mb-2">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center">
-              <Users size={18} />
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+              isParentAgency ? 'bg-teal-50 text-teal-700 group-hover:bg-teal-600 group-hover:text-white transition-colors' : 'bg-indigo-50 text-indigo-700'
+            }`}>
+              {isParentAgency ? <UserCheck size={18} /> : <Users size={18} />}
             </div>
-            <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
-              {staffDutyStats.workingTodayCount} Working Today
+            <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full ${
+              isParentAgency ? 'bg-teal-100 text-teal-800 flex items-center gap-1' : 'bg-indigo-100 text-indigo-800'
+            }`}>
+              {isParentAgency ? (
+                <>
+                  <span>Active Clients</span>
+                  <ArrowUpRight size={10} />
+                </>
+              ) : (
+                `${staffDutyStats.workingTodayCount} Working Today`
+              )}
             </span>
           </div>
           <p className="text-2xl font-black text-slate-900 tracking-tight">
-            {agencyStaff.length}
-            {agency.quota_cleaners ? (
+            {isParentAgency ? safaeewalaActiveClientsCount : agencyStaff.length}
+            {isParentAgency ? (
+              <span className="text-[12px] font-bold text-slate-400 ml-1">Direct Clients</span>
+            ) : agency.quota_cleaners ? (
               <span className="text-[13px] font-bold text-slate-400 ml-1">/ {agency.quota_cleaners} Quota</span>
             ) : (
               <span className="text-[12px] font-bold text-slate-400 ml-1">Staff</span>
             )}
           </p>
           <p className="text-[11.5px] font-bold text-slate-600 mt-0.5">
-            {staffDutyStats.standbyCount} Available / Standby
+            {isParentAgency ? 'Safaeewala Corporate Client Base' : `${staffDutyStats.standbyCount} Available / Standby`}
           </p>
         </div>
 
@@ -803,18 +833,20 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
 
       {/* ── Navigation Tabs ── */}
       <div className="flex items-center gap-2 border-b border-slate-200/80 pb-2">
-        <button
-          type="button"
-          onClick={() => setActiveTab('staff')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-[13px] transition-all cursor-pointer ${
-            activeTab === 'staff'
-              ? 'bg-teal-600 text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-          }`}
-        >
-          <Users size={16} />
-          <span>Sourced Employees ({agencyStaff.length})</span>
-        </button>
+        {!isParentAgency && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('staff')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-[13px] transition-all cursor-pointer ${
+              activeTab === 'staff'
+                ? 'bg-teal-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Users size={16} />
+            <span>Sourced Employees ({agencyStaff.length})</span>
+          </button>
+        )}
 
         <button
           type="button"
@@ -857,9 +889,9 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          TAB 1: SOURCED EMPLOYEES & STAFF DATA
+          TAB 1: SOURCED EMPLOYEES & STAFF DATA (Third-Party Agencies Only)
          ══════════════════════════════════════════════════════════════════════ */}
-      {activeTab === 'staff' && (
+      {!isParentAgency && activeTab === 'staff' && (
         <div className="space-y-4">
           {/* Controls Bar */}
           <div className="bg-white rounded-[24px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">

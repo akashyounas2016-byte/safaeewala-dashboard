@@ -1,6 +1,6 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import * as XLSX from 'xlsx'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import {
   Search, AlertTriangle, Phone, Shield, Users, UserCheck, Star,
   TrendingUp, Trash2, CheckCircle, Upload, Download, FileSpreadsheet,
@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
-import { formatDate, daysUntil } from '@/lib/utils'
+import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { Employee, DailyJob, EmployeeRole, Agency } from '@/types'
 import { getEmployeeDailyJobsHistory, calcJobOTHours } from '@/lib/clientDataSync'
@@ -211,7 +211,32 @@ type ViewMode = 'grid' | 'table'
 export function Employees() {
   const { employees, bookings, dailyJobs, clients, agencies, addEmployee, updateEmployee, deleteEmployee } = useData()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const xlsxInputRef = useRef<HTMLInputElement>(null)
+
+  const initialAgencyParam = searchParams.get('agency') || searchParams.get('filter') || 'all'
+  const [agencyFilter, setAgencyFilter] = useState<string>(initialAgencyParam)
+
+  useEffect(() => {
+    const p = searchParams.get('agency') || searchParams.get('filter')
+    if (p) {
+      setAgencyFilter(p)
+    } else if (!searchParams.has('agency') && !searchParams.has('filter')) {
+      setAgencyFilter('all')
+    }
+  }, [searchParams])
+
+  const handleAgencyFilterChange = (val: string) => {
+    setAgencyFilter(val)
+    const next = new URLSearchParams(searchParams)
+    if (val === 'all') {
+      next.delete('agency')
+      next.delete('filter')
+    } else {
+      next.set('agency', val)
+    }
+    setSearchParams(next, { replace: true })
+  }
 
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<'all' | 'cleaner' | 'supervisor' | 'crew_lead' | 'ducting' | 'store_cleaner' | 'driver'>('all')
@@ -400,6 +425,24 @@ export function Employees() {
     }
   }
 
+  // Agency Scoped Employees (Filters out Parent Company when viewing Third-Party Supplied Cleaners)
+  const agencyScopedEmployees = useMemo(() => {
+    if (agencyFilter === 'third_party' || agencyFilter === 'third-party') {
+      return employees.filter(isThirdPartyEmployee)
+    }
+    if (agencyFilter === 'parent_company' || agencyFilter === 'parent' || agencyFilter === 'safaeewala') {
+      return employees.filter(isParentCompanyEmployee)
+    }
+    if (agencyFilter !== 'all') {
+      return employees.filter(e =>
+        e.agency_id === agencyFilter ||
+        (e.agency_name && e.agency_name.toLowerCase().includes(agencyFilter.toLowerCase())) ||
+        agencies.some(a => a.id === agencyFilter && (e.agency_id === a.id || e.agency_name === a.name))
+      )
+    }
+    return employees
+  }, [employees, agencyFilter, agencies])
+
   // Summary aggregation metrics for actual employee work
   const summaryMetrics = useMemo(() => {
     let totalDutyHours = 0
@@ -410,7 +453,7 @@ export function Employees() {
     let highOTCount = 0
     let activeWorkingTodayCount = 0
 
-    employees.forEach(emp => {
+    agencyScopedEmployees.forEach(emp => {
       const st = staffJobStats.get(emp.id)
       if (st) {
         totalDutyHours += st.dutyHours
@@ -430,7 +473,7 @@ export function Employees() {
     totalOTHours = Math.round(totalOTHours * 10) / 10
     const totalWorkHours = Math.round((totalDutyHours + totalOTHours) * 10) / 10
     const otRatio = totalWorkHours > 0 ? Math.round((totalOTHours / totalWorkHours) * 100) : 0
-    const avgDutyPerStaff = employees.length > 0 ? Math.round((totalDutyHours / employees.length) * 10) / 10 : 0
+    const avgDutyPerStaff = agencyScopedEmployees.length > 0 ? Math.round((totalDutyHours / agencyScopedEmployees.length) * 10) / 10 : 0
 
     return {
       totalDutyHours,
@@ -444,16 +487,16 @@ export function Employees() {
       otRatio,
       avgDutyPerStaff,
     }
-  }, [employees, staffJobStats])
+  }, [agencyScopedEmployees, staffJobStats])
 
-  const expiringCount = employees.filter(e => {
+  const expiringCount = agencyScopedEmployees.filter(e => {
     const soonest = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry), daysUntil(e.passport_expiry))
     return soonest < 90
   }).length
 
-  const activeCount = employees.filter(e => e.status === 'active').length
-  const crewLeads = employees.filter(e => e.role === 'crew_lead').length
-  const autoSyncedCount = employees.filter(e => e.id.startsWith('emp-dj-')).length
+  const activeCount = agencyScopedEmployees.filter(e => e.status === 'active').length
+  const crewLeads = agencyScopedEmployees.filter(e => e.role === 'crew_lead').length
+  const autoSyncedCount = agencyScopedEmployees.filter(e => e.id.startsWith('emp-dj-')).length
 
   // Filter & Sort
   const filtered = useMemo(() => {
@@ -462,6 +505,19 @@ export function Employees() {
     return employees.filter(e => {
       const st = staffJobStats.get(e.id)
       const todaySt = getTodayStatus(e)
+
+      // Agency Filter: Only third-party staff show; Parent Company staff hidden when filtering third_party
+      if (agencyFilter === 'third_party' || agencyFilter === 'third-party') {
+        if (!isThirdPartyEmployee(e)) return false
+      } else if (agencyFilter === 'parent_company' || agencyFilter === 'parent' || agencyFilter === 'safaeewala') {
+        if (!isParentCompanyEmployee(e)) return false
+      } else if (agencyFilter !== 'all') {
+        const matches =
+          e.agency_id === agencyFilter ||
+          (e.agency_name && e.agency_name.toLowerCase().includes(agencyFilter.toLowerCase())) ||
+          agencies.some(a => a.id === agencyFilter && (e.agency_id === a.id || e.agency_name === a.name))
+        if (!matches) return false
+      }
 
       const matchSearch = q === '' ||
         e.full_name.toLowerCase().includes(q) ||
@@ -520,11 +576,11 @@ export function Employees() {
       }
       return a.full_name.localeCompare(b.full_name)
     })
-  }, [employees, search, roleFilter, statusFilter, workFilter, expiryFilter, sortBy, staffJobStats])
+  }, [employees, search, roleFilter, agencyFilter, statusFilter, workFilter, expiryFilter, sortBy, staffJobStats, agencies])
 
   /* Overtime Top Performers Leaderboard */
   const topOTStaff = useMemo(() => {
-    return [...employees]
+    return [...agencyScopedEmployees]
       .map(emp => ({
         emp,
         stats: staffJobStats.get(emp.id),
@@ -532,7 +588,7 @@ export function Employees() {
       .filter(item => (item.stats?.otHours ?? 0) > 0)
       .sort((a, b) => (b.stats?.otHours ?? 0) - (a.stats?.otHours ?? 0))
       .slice(0, 5)
-  }, [employees, staffJobStats])
+  }, [agencyScopedEmployees, staffJobStats])
 
   /* Aggregate skills */
   const skillCounts = employees.reduce((acc, e) => {
@@ -1241,7 +1297,7 @@ export function Employees() {
 
         {/* Card 1: Total Staff */}
         <div
-          onClick={() => { setStatusFilter('all'); setRoleFilter('all'); setWorkFilter('all'); setExpiryFilter(false); setSearch('') }}
+          onClick={() => { setStatusFilter('all'); setRoleFilter('all'); handleAgencyFilterChange('all'); setWorkFilter('all'); setExpiryFilter(false); setSearch('') }}
           className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] hover:border-slate-300 transition-all cursor-pointer group"
         >
           <div className="flex items-start justify-between mb-3">
@@ -1252,8 +1308,10 @@ export function Employees() {
               {crewLeads} Leads
             </span>
           </div>
-          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{employees.length}</p>
-          <p className="text-[12px] font-bold text-slate-800 mt-0.5">Total Staff</p>
+          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{agencyScopedEmployees.length}</p>
+          <p className="text-[12px] font-bold text-slate-800 mt-0.5">
+            {agencyFilter === 'third_party' || agencyFilter === 'third-party' ? 'Supplied Cleaners' : agencyFilter === 'parent_company' ? 'Parent Fleet Staff' : 'Total Staff'}
+          </p>
           <p className="text-[11px] text-slate-500 mt-0.5">{autoSyncedCount} auto-synced roster</p>
         </div>
 
@@ -1405,21 +1463,78 @@ export function Employees() {
             <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
 
-          {/* Sort Selector (Including Working Today) */}
+          {/* Agency Filter Dropdown Menu */}
+          <div className="relative min-w-[185px]">
+            <select
+              value={agencyFilter}
+              onChange={e => handleAgencyFilterChange(e.target.value)}
+              className={`w-full text-[12.5px] font-bold pl-3.5 pr-8 py-2.5 rounded-xl focus:outline-none cursor-pointer transition-all appearance-none border ${
+                agencyFilter !== 'all'
+                  ? 'bg-indigo-50 border-indigo-300 text-indigo-900 ring-2 ring-indigo-500/10'
+                  : 'bg-slate-50 hover:bg-slate-100/80 focus:bg-white border-slate-200 text-slate-800 focus:border-teal-600'
+              }`}
+            >
+              <option value="all">🏢 All Fleets & Agencies</option>
+              <option value="third_party">🏢 Third-Party Agencies (Supplied Cleaners Only)</option>
+              <option value="parent_company">👑 Parent Company (Safaeewala In-House Only)</option>
+              <optgroup label="Partner Agencies">
+                {agencies
+                  .filter(a => a.company_type !== 'Parent Company' && a.id !== 'agency-safaeewala' && !a.name.toLowerCase().includes('safaeewala'))
+                  .map(ag => (
+                    <option key={ag.id} value={ag.id}>
+                      🤝 {ag.name}
+                    </option>
+                  ))}
+              </optgroup>
+            </select>
+            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+
+          {/* Sort & Working Today / Agency Selector */}
           <div className="flex items-center gap-1.5 ml-auto">
-            <span className="text-[11.5px] font-semibold text-slate-400 hidden sm:inline">Sort:</span>
+            <span className="text-[11.5px] font-semibold text-slate-400 hidden sm:inline">Sort / Filter:</span>
             <div className="relative">
               <select
-                value={sortBy}
-                onChange={e => setSortBy(e.target.value as SortBy)}
-                className="text-[12px] font-bold pl-3 pr-8 py-2 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 cursor-pointer transition-colors appearance-none"
+                value={agencyFilter !== 'all' ? `agency:${agencyFilter}` : sortBy}
+                onChange={e => {
+                  const val = e.target.value
+                  if (val.startsWith('agency:')) {
+                    const ag = val.replace('agency:', '')
+                    handleAgencyFilterChange(ag)
+                  } else {
+                    setSortBy(val as SortBy)
+                    if (val === 'working_today') {
+                      handleAgencyFilterChange('all')
+                    }
+                  }
+                }}
+                className={`text-[12px] font-bold pl-3 pr-8 py-2 rounded-xl focus:outline-none cursor-pointer transition-colors appearance-none border ${
+                  agencyFilter !== 'all'
+                    ? 'bg-indigo-50 border-indigo-300 text-indigo-900 ring-2 ring-indigo-500/10'
+                    : 'bg-slate-100 hover:bg-slate-200/80 border-slate-200 text-slate-700 focus:border-teal-500'
+                }`}
               >
-                <option value="working_today">🟢 Working Today (On Duty First)</option>
-                <option value="ot_desc">🔥 Highest OT Hours</option>
-                <option value="duty_desc">💼 Highest Duty Hours</option>
-                <option value="shifts_desc">📊 Most Shifts</option>
-                <option value="name_asc">👤 Name (A-Z)</option>
-                <option value="rate_desc">💵 Highest Monthly Salary</option>
+                <optgroup label="🟢 Working Today & Roster Sort">
+                  <option value="working_today">🟢 Working Today (On Duty First)</option>
+                  <option value="ot_desc">🔥 Highest OT Hours</option>
+                  <option value="duty_desc">💼 Highest Duty Hours</option>
+                  <option value="shifts_desc">📊 Most Shifts</option>
+                  <option value="name_asc">👤 Name (A-Z)</option>
+                  <option value="rate_desc">💵 Highest Monthly Salary</option>
+                </optgroup>
+
+                <optgroup label="🏢 Filter by Agency / Vendor">
+                  <option value="agency:all">🌐 All Fleets (Agencies + Parent Company)</option>
+                  <option value="agency:third_party">🏢 Third-Party Agencies (Supplied Cleaners Only)</option>
+                  <option value="agency:parent_company">👑 Parent Company (Safaeewala In-House Only)</option>
+                  {agencies
+                    .filter(a => a.company_type !== 'Parent Company' && a.id !== 'agency-safaeewala' && !a.name.toLowerCase().includes('safaeewala'))
+                    .map(ag => (
+                      <option key={ag.id} value={`agency:${ag.id}`}>
+                        🤝 {ag.name}
+                      </option>
+                    ))}
+                </optgroup>
               </select>
               <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             </div>
@@ -1508,12 +1623,13 @@ export function Employees() {
 
           {/* Reset Filters & Count */}
           <div className="flex items-center gap-3 ml-auto">
-            {(search || roleFilter !== 'all' || workFilter !== 'all' || datePreset !== 'all' || statusFilter !== 'all' || expiryFilter) && (
+            {(search || roleFilter !== 'all' || agencyFilter !== 'all' || workFilter !== 'all' || datePreset !== 'all' || statusFilter !== 'all' || expiryFilter) && (
               <button
                 type="button"
                 onClick={() => {
                   setSearch('')
                   setRoleFilter('all')
+                  handleAgencyFilterChange('all')
                   setWorkFilter('all')
                   setDatePreset('all')
                   setStatusFilter('all')
@@ -1538,6 +1654,39 @@ export function Employees() {
         </div>
 
       </div>
+
+      {/* ── Active Agency Filter Notification Banner ── */}
+      {agencyFilter !== 'all' && (
+        <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-indigo-50/90 via-sky-50/70 to-indigo-50/90 border border-indigo-200/90 rounded-2xl text-[12.5px] text-indigo-950 shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs shadow-indigo-600/30">
+              <Building2 size={16} />
+            </div>
+            <div>
+              <p className="font-extrabold text-indigo-950 leading-tight">
+                {agencyFilter === 'third_party' || agencyFilter === 'third-party' ? (
+                  <>🏢 Showing Third-Party Supplied Cleaners Only <span className="text-rose-700 font-black">(Parent Company Staff Hidden)</span></>
+                ) : agencyFilter === 'parent_company' || agencyFilter === 'parent' || agencyFilter === 'safaeewala' ? (
+                  <>👑 Showing Safaeewala In-House Fleet <span className="text-slate-600 font-medium">(Parent Company Only)</span></>
+                ) : (
+                  <>🏢 Filtered by Agency: <span className="font-black text-indigo-950">{agencies.find(a => a.id === agencyFilter)?.name || agencyFilter}</span></>
+                )}
+              </p>
+              <p className="text-[11.5px] text-indigo-700/80 font-medium mt-0.5">
+                Displaying {filtered.length} matching staff members out of {employees.length} total.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleAgencyFilterChange('all')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-100 border border-indigo-200 text-indigo-900 font-bold text-[11.5px] transition-colors cursor-pointer shadow-2xs shrink-0"
+          >
+            <X size={13} />
+            <span>Clear Filter / Show All</span>
+          </button>
+        </div>
+      )}
 
       {/* ── Main Layout: Full Width Table View with Widgets Underneath OR Grid View ── */}
       {viewMode === 'table' ? (

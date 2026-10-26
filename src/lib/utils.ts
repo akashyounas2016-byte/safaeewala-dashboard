@@ -112,3 +112,23 @@ export function subtractHoursFromTime(timeStr: string, durationHours: number): s
   const newM = totalM % 60
   return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`
 }
+
+/**
+ * Determines if an employee belongs to the Parent Company (Safaeewala in-house fleet).
+ */
+export function isParentCompanyEmployee(e: { agency_id?: string; agency_name?: string; email?: string | null }): boolean {
+  if (e.agency_id === 'agency-safaeewala') return true
+  const name = (e.agency_name || '').toLowerCase()
+  if (name.includes('safaeewala') || name.includes('parent company') || name.includes('in-house') || name.includes('direct hire')) return true
+  if (e.email && e.email.toLowerCase().includes('safaeewala.com')) return true
+  // If no agency is attached, they are in-house direct Safaeewala staff
+  if (!e.agency_id && !e.agency_name) return true
+  return false
+}
+
+/**
+ * Determines if an employee is supplied by an external third-party manpower agency.
+ */
+export function isThirdPartyEmployee(e: { agency_id?: string; agency_name?: string; email?: string | null }): boolean {
+  return !isParentCompanyEmployee(e)
+}

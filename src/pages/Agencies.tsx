@@ -5,7 +5,7 @@ import {
   Percent, CreditCard, FileText, CheckCircle2, AlertCircle,
   Edit2, Trash2, ExternalLink, RotateCcw, X, Shield, ArrowUpRight,
   ArrowRight, LayoutGrid, List, Check, Paperclip, Upload, Eye, Download,
-  Pin, Crown, Sparkles
+  Pin, Crown, Sparkles, UserCheck
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -13,7 +13,7 @@ import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData, defaultAgencies } from '@/store/DataContext'
 import type { Agency, AgencyContactPerson, AgencyDocument } from '@/types'
-import { formatDate } from '@/lib/utils'
+import { formatDate, isThirdPartyEmployee } from '@/lib/utils'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { AgencyDashboard } from '@/components/agencies/AgencyDashboard'
 
@@ -358,7 +358,12 @@ function InputFieldWithUpload({
 
 export function Agencies() {
   const navigate = useNavigate()
-  const { agencies, addAgency, updateAgency, deleteAgency, employees } = useData()
+  const { agencies, addAgency, updateAgency, deleteAgency, employees, clients } = useData()
+
+  // ── Safaeewala Active Clients Count ──
+  const safaeewalaActiveClientsCount = useMemo(() => {
+    return (clients || []).filter(c => Boolean(c.last_service && new Date(c.last_service) > new Date('2026-01-01'))).length
+  }, [clients])
 
   // ── View Mode Switcher (Grid vs Table) ──
   const [viewMode, setViewMode] = useState<'grid' | 'table'>(() => {
@@ -517,7 +522,7 @@ export function Agencies() {
   const summaryMetrics = useMemo(() => {
     const total = agencies.length
     const active = agencies.filter(a => a.status === 'active').length
-    const totalStaffFromAgencies = employees.filter(e => e.agency_id || e.agency_name).length
+    const totalStaffFromAgencies = employees.filter(isThirdPartyEmployee).length
     const licensedAgencies = agencies.filter(a => a.trade_license_no || a.license_expiry_date || a.license_issue_date).length
 
     return { total, active, totalStaffFromAgencies, licensedAgencies }
@@ -576,9 +581,9 @@ export function Agencies() {
         </div>
 
         <div
-          onClick={() => navigate('/employees')}
+          onClick={() => navigate('/employees?agency=third_party')}
           className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-indigo-400 group"
-          title="Click to view all cleaners in Employees directory"
+          title="Click to view all third-party supplied cleaners in Employees directory"
         >
           <div className="flex items-start justify-between mb-2.5">
             <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
@@ -855,12 +860,34 @@ export function Agencies() {
                       </td>
 
                       <td className="py-3.5 px-4 text-center">
-                        <span className="inline-flex items-center gap-1 text-[12px] font-black text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded-full">
-                          <Users size={12} className="text-teal-600" />
-                          <span>{count} Active</span>
-                          {agency.quota_cleaners ? (
-                            <span className="text-slate-400 font-semibold text-[11px]">/ {agency.quota_cleaners} Quota</span>
-                          ) : null}
+                        <span
+                          onClick={(e) => {
+                            if (isParent) {
+                              e.stopPropagation()
+                              navigate('/clients?filter=active&agency=safaeewala')
+                            }
+                          }}
+                          className={`inline-flex items-center gap-1 text-[12px] font-black px-2.5 py-0.5 rounded-full ${
+                            isParent
+                              ? 'text-teal-200 bg-teal-950/90 border border-teal-500/50 hover:bg-teal-900 hover:border-teal-400 cursor-pointer shadow-xs'
+                              : 'text-slate-800 bg-slate-100'
+                          }`}
+                          title={isParent ? "Click to view Safaeewala's Active Clients" : undefined}
+                        >
+                          {isParent ? (
+                            <>
+                              <UserCheck size={12} className="text-teal-400" />
+                              <span>{safaeewalaActiveClientsCount} Active Clients</span>
+                            </>
+                          ) : (
+                            <>
+                              <Users size={12} className="text-teal-600" />
+                              <span>{count} Active</span>
+                              {agency.quota_cleaners ? (
+                                <span className="text-slate-400 font-semibold text-[11px]">/ {agency.quota_cleaners} Quota</span>
+                              ) : null}
+                            </>
+                          )}
                         </span>
                       </td>
 
@@ -1184,34 +1211,51 @@ export function Agencies() {
                     </div>
                   </div>
 
-                  {/* Sourced Staff Counter (Clickable to jump directly to Cleaners list) */}
+                  {/* Sourced Staff / Active Clients Counter */}
                   <div
                     onClick={(e) => {
                       e.stopPropagation()
-                      handleOpenAgency(agency)
+                      if (isParent) {
+                        navigate('/clients?filter=active&agency=safaeewala')
+                      } else {
+                        handleOpenAgency(agency)
+                      }
                     }}
                     className={`flex items-center justify-between p-2.5 rounded-xl border mb-4 shadow-2xs transition-all cursor-pointer ${
                       isParent
-                        ? 'bg-slate-900/70 border-teal-500/30 hover:border-teal-400 hover:bg-slate-900/90'
+                        ? 'bg-slate-900/70 border-teal-500/40 hover:border-teal-400 hover:bg-slate-900/95 ring-1 ring-teal-500/20'
                         : 'bg-white/80 border-slate-200/80 hover:border-teal-400 hover:bg-teal-50/40'
                     }`}
-                    title="Click to view assigned cleaners list in Agency Profile"
+                    title={
+                      isParent
+                        ? "Click to view Safaeewala's Active Clients"
+                        : "Click to view assigned cleaners list in Agency Profile"
+                    }
                   >
                     <span className={`text-[12px] font-bold flex items-center gap-1.5 ${
-                      isParent ? 'text-slate-200' : 'text-slate-800'
+                      isParent ? 'text-teal-200' : 'text-slate-800'
                     }`}>
-                      <Users size={14} className={isParent ? 'text-teal-400' : 'text-teal-700'} />
-                      <span>Supplied Cleaners (Active)</span>
+                      {isParent ? (
+                        <>
+                          <UserCheck size={14} className="text-teal-400" />
+                          <span>Active Clients (Safaeewala)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Users size={14} className="text-teal-700" />
+                          <span>Supplied Cleaners (Active)</span>
+                        </>
+                      )}
                     </span>
                     <div className="flex items-center gap-1.5">
                       <span className={`text-[13px] font-black px-2.5 py-0.5 rounded-lg border shadow-2xs ${
                         isParent
-                          ? 'bg-teal-950/80 text-teal-300 border-teal-500/40'
+                          ? 'bg-teal-950/90 text-teal-300 border-teal-500/50 shadow-xs'
                           : 'bg-white text-slate-900 border-slate-200'
                       }`}>
-                        {count} Active
+                        {isParent ? `${safaeewalaActiveClientsCount} Active Clients` : `${count} Active`}
                       </span>
-                      {agency.quota_cleaners ? (
+                      {!isParent && agency.quota_cleaners ? (
                         <span className={`text-[11px] font-semibold ${isParent ? 'text-slate-400' : 'text-slate-500'}`}>
                           / {agency.quota_cleaners}
                         </span>

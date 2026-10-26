@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign,
   Heart, Award, CheckCircle, Trash2, ExternalLink, ArrowUpDown, RotateCcw, X, Filter, Clock,
@@ -123,6 +123,28 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
 
 export function Clients() {
   const { clients, bookings, dailyJobs, employees, addClient, updateClient, deleteClient, addBooking, invoices } = useData()
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const initialFilter = searchParams.get('filter') || searchParams.get('type')
+  const [filterType, setFilterType] = useState<'all' | 'active' | 'vip' | 'repeat' | 'monthly' | null>(
+    initialFilter === 'active' || initialFilter === 'vip' || initialFilter === 'repeat' || initialFilter === 'monthly' ? initialFilter : null
+  )
+  const initialAgency = searchParams.get('agency') || searchParams.get('source') || ''
+  const [agencyFilter, setAgencyFilter] = useState<string>(initialAgency)
+
+  useEffect(() => {
+    const f = searchParams.get('filter') || searchParams.get('type')
+    if (f === 'active' || f === 'vip' || f === 'repeat' || f === 'monthly') {
+      setFilterType(f)
+    } else if (f === 'all') {
+      setFilterType(null)
+    }
+    const a = searchParams.get('agency') || searchParams.get('source')
+    if (a) {
+      setAgencyFilter(a)
+    }
+  }, [searchParams])
+
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<typeof clients[0] | null>(null)
@@ -132,7 +154,6 @@ export function Clients() {
   const [areaFilter, setAreaFilter] = useState('all')
   const [sortOrder, setSortOrder] = useState<'recent' | 'top_spent' | 'name'>('recent')
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [filterType, setFilterType] = useState<'all' | 'active' | 'vip' | 'repeat' | 'monthly' | null>(null)
   const [datePreset, setDatePreset] = useState<ClientDatePreset>('all')
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
@@ -688,7 +709,7 @@ export function Clients() {
           </div>
 
           {/* Reset button if active */}
-          {(search || areaFilter !== 'all' || sortOrder !== 'recent' || datePreset !== 'all' || filterType) && (
+          {(search || areaFilter !== 'all' || sortOrder !== 'recent' || datePreset !== 'all' || filterType || agencyFilter) && (
             <button
               type="button"
               onClick={() => {
@@ -697,8 +718,10 @@ export function Clients() {
                 setSortOrder('recent')
                 setDatePreset('all')
                 setFilterType(null)
+                setAgencyFilter('')
                 setCustomStartDate('')
                 setCustomEndDate('')
+                setSearchParams({}, { replace: true })
               }}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold text-slate-500 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-xl transition-colors shrink-0"
               title="Reset all filters"
@@ -804,6 +827,37 @@ export function Clients() {
         </div>
 
       </div>
+
+      {/* ── Active Agency / Safaeewala Filter Banner ── */}
+      {(agencyFilter === 'safaeewala' || (filterType === 'active' && agencyFilter)) && (
+        <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-teal-50 via-emerald-50 to-teal-50/60 border border-teal-200/90 rounded-2xl text-[12.5px] text-teal-950 shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0 shadow-xs shadow-teal-600/30">
+              <UserCheck size={16} />
+            </div>
+            <div>
+              <p className="font-extrabold text-teal-950 leading-tight">
+                🏢 Filtered: Showing Safaeewala Active Clients
+              </p>
+              <p className="text-[11.5px] text-teal-700 font-medium mt-0.5">
+                Displaying {filtered.length} active client{filtered.length !== 1 ? 's' : ''} in the Safaeewala master portfolio.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setFilterType(null)
+              setAgencyFilter('')
+              setSearchParams({}, { replace: true })
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-teal-100 border border-teal-200 text-teal-900 font-bold text-[11.5px] transition-colors cursor-pointer shadow-2xs shrink-0"
+          >
+            <X size={13} />
+            <span>Show All Clients</span>
+          </button>
+        </div>
+      )}
 
       {/* ── Main Layout: Full Width Table View with Widgets Underneath OR Grid View ── */}
       {viewMode === 'table' ? (
