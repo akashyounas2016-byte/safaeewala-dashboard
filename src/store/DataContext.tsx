@@ -1,15 +1,155 @@
 import { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react'
-import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense } from '../types'
+import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency } from '../types'
 import { supabase } from '@/lib/supabase'
 import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
-import { seedBookings, seedInvoices, seedInventory } from '@/lib/seedData'
+import { seedBookings, seedClients, seedInvoices, seedInventory, seedEmployees } from '@/lib/seedData'
+import { addHoursToTime } from '@/lib/utils'
 
+export const defaultAgencies: Agency[] = [
+  {
+    id: 'agency-safaeewala',
+    name: 'Safaeewala Cleaning & Maintenance LLC',
+    company_type: 'Parent Company',
+    contact_person: 'Corporate Operations Desk',
+    contact_persons: [
+      { id: 'cp-saf-1', name: 'Corporate Operations Desk', phone: '+971 4 800 7232', email: 'operations@safaeewala.com', role: 'Head of Operations' },
+      { id: 'cp-saf-2', name: 'Compliance & Fleet Director', phone: '+971 50 123 4567', email: 'compliance@safaeewala.com', role: 'Compliance Officer' }
+    ],
+    phone: '+971 4 800 7232',
+    email: 'info@safaeewala.com',
+    address: 'Al Barsha 1, Sheikh Zayed Road, Dubai, UAE',
+    commission_rate: 0,
+    commission_type: 'percentage',
+    payment_terms: 'Internal Corporate / Parent HQ',
+    termination_notice: 'Not Applicable (Parent Company)',
+    notes: 'Parent Company Headquarters & Master In-House Fleet for Safaeewala Group',
+    status: 'active',
+    contract_ref: 'PARENT-HQ-SAFAEEWALA',
+    contract_start_date: '2023-01-01',
+    contract_end_date: '2030-12-31',
+    trade_license_no: 'TL-DXB-982103',
+    trn_no: '100452391000003',
+    noc_no: 'NOC-DXB-2023-001',
+    quota_cleaners: 12,
+    contracted_amount: 0,
+    replacement_guarantee: 'In-House Direct Pool',
+    replacement_guarantee_enabled: true,
+    bank_details: {
+      bank_name: 'Emirates NBD',
+      iban: 'AE990260001009876543210',
+      account_title: 'Safaeewala Cleaning & Maintenance LLC'
+    },
+    created_at: new Date('2023-01-01').toISOString(),
+  },
+  {
+    id: 'agency-1',
+    name: 'Al Safa Manpower Agency LLC',
+    company_type: 'Third Party',
+    contact_person: 'Tariq Al Mansoori',
+    phone: '+971 4 398 2211',
+    email: 'info@alsafamanpower.ae',
+    address: 'Deira Business Center, Office 304, Dubai',
+    commission_rate: 15,
+    commission_type: 'percentage',
+    payment_terms: 'Monthly (Net 15)',
+    notes: 'Primary vendor for Deep Clean & Window technicians',
+    status: 'active',
+    contract_ref: 'AGR-2024-ALSAFA-08',
+    contract_start_date: '2024-01-01',
+    contract_end_date: '2027-12-31',
+    trade_license_no: 'CN-1829472',
+    trn_no: '100234567800001',
+    noc_no: 'NOC-DXB-2024-008',
+    license_issue_date: '2024-01-01',
+    license_expiry_date: '2027-12-31',
+    sla_terms: 'Staff replacement within 24h. Minimum 98% attendance SLA required across all assigned shifts.',
+    replacement_guarantee: '24 Hours Guarantee',
+    quota_cleaners: 6,
+    bank_details: {
+      bank_name: 'Emirates NBD',
+      iban: 'AE120260001002345678901',
+      account_title: 'Al Safa Manpower Agency LLC'
+    },
+    payouts: [
+      { id: 'pay-1', agency_id: 'agency-1', amount: 3200, payment_date: '2026-09-30', payment_method: 'bank_transfer', reference_no: 'FT2627391001', status: 'paid', notes: 'September 2026 staff salary settlement', created_at: '2026-09-30T10:00:00Z' },
+      { id: 'pay-2', agency_id: 'agency-1', amount: 2800, payment_date: '2026-08-31', payment_method: 'bank_transfer', reference_no: 'FT2624388192', status: 'paid', notes: 'August 2026 staff salary settlement', created_at: '2026-08-31T11:00:00Z' }
+    ],
+    created_at: new Date('2024-01-15').toISOString(),
+  },
+  {
+    id: 'agency-2',
+    name: 'Gulf Star Recruitment & Facilities',
+    contact_person: 'Rajesh Sharma',
+    phone: '+971 4 223 8844',
+    email: 'operations@gulfstarcleaning.ae',
+    address: 'Al Quoz Industrial Area 3, Dubai',
+    commission_rate: 12,
+    commission_type: 'percentage',
+    payment_terms: 'Bi-Weekly',
+    notes: 'Specialized in Ducting technicians and commercial store cleaners',
+    status: 'active',
+    contract_ref: 'AGR-2024-GULF-03',
+    contract_start_date: '2024-02-01',
+    contract_end_date: '2027-06-30',
+    trade_license_no: 'CN-2049182',
+    trn_no: '100492817200003',
+    noc_no: 'NOC-DXB-2024-019',
+    license_issue_date: '2024-02-01',
+    license_expiry_date: '2027-06-30',
+    sla_terms: 'Emergency technician dispatch within 4 hours. Specialized ducting tools and PPE provided.',
+    replacement_guarantee: '48 Hours Guarantee',
+    quota_cleaners: 4,
+    bank_details: {
+      bank_name: 'Mashreq Bank',
+      iban: 'AE890330002938475610293',
+      account_title: 'Gulf Star Recruitment & Facilities'
+    },
+    payouts: [
+      { id: 'pay-3', agency_id: 'agency-2', amount: 1950, payment_date: '2026-10-15', payment_method: 'bank_transfer', reference_no: 'TX99281726', status: 'paid', notes: 'First half of October payout', created_at: '2026-10-15T12:00:00Z' }
+    ],
+    created_at: new Date('2024-02-10').toISOString(),
+  },
+  {
+    id: 'agency-3',
+    name: 'Emirates Fleet Staffing Services',
+    contact_person: 'Hamza Farooq',
+    phone: '+971 50 882 1930',
+    email: 'dispatch@emiratesfleetstaffing.com',
+    address: 'Business Bay, Bay Square Tower 4, Dubai',
+    commission_rate: 10,
+    commission_type: 'percentage',
+    payment_terms: 'Monthly',
+    notes: 'Provides commercial licensed drivers and transport crews',
+    status: 'active',
+    contract_ref: 'AGR-2024-EMIR-11',
+    contract_start_date: '2024-03-01',
+    contract_end_date: '2027-03-01',
+    trade_license_no: 'CN-3918201',
+    trn_no: '100918273600002',
+    noc_no: 'NOC-DXB-2024-042',
+    license_issue_date: '2024-03-01',
+    license_expiry_date: '2027-03-01',
+    sla_terms: 'Valid RTA commercial driving licenses guaranteed. Clean driving history certified.',
+    replacement_guarantee: 'Immediate Same-Day Driver Swap',
+    quota_cleaners: 3,
+    bank_details: {
+      bank_name: 'Dubai Islamic Bank',
+      iban: 'AE440240003928174829104',
+      account_title: 'Emirates Fleet Staffing Services'
+    },
+    payouts: [
+      { id: 'pay-4', agency_id: 'agency-3', amount: 1500, payment_date: '2026-09-30', payment_method: 'cheque', reference_no: 'CHQ-882910', status: 'paid', notes: 'September transport & staff salary settlement', created_at: '2026-09-30T15:00:00Z' }
+    ],
+    created_at: new Date('2024-03-01').toISOString(),
+  },
+]
 
 interface DataStore {
   bookings:  Booking[]
   clients:   Client[]
   employees: Employee[]
+  agencies:  Agency[]
   invoices:  Invoice[]
   inventory: InventoryItem[]
   loading:   boolean
@@ -25,6 +165,10 @@ interface DataStore {
   addEmployee:     (e: Omit<Employee, 'id' | 'created_at'>) => void
   updateEmployee:  (id: string, patch: Partial<Employee>) => void
   deleteEmployee:  (id: string) => void
+
+  addAgency:       (a: Omit<Agency, 'id' | 'created_at'>) => void
+  updateAgency:    (id: string, patch: Partial<Agency>) => void
+  deleteAgency:    (id: string) => void
 
   addInvoice:      (i: Omit<Invoice, 'id' | 'created_at'>) => void
   updateInvoice:   (id: string, patch: Partial<Invoice>) => void
@@ -88,8 +232,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const saved = safeLocalStorageGet<Booking[]>('safaeewala_bookings', [])
     return saved.length > 0 ? saved : (seedBookings as Booking[])
   })
-  const [clients,       setClients]       = useState<Client[]>([])
-  const [employees,     setEmployees]     = useState<Employee[]>([])
+  const [clients,       setClients]       = useState<Client[]>(() => {
+    const saved = safeLocalStorageGet<Client[]>('safaeewala_clients', [])
+    return saved.length > 0 ? saved : (seedClients as unknown as Client[])
+  })
+  const [employees,     setEmployees]     = useState<Employee[]>(() => {
+    const saved = safeLocalStorageGet<Employee[]>('safaeewala_employees', [])
+    return saved.length > 0 ? saved : (seedEmployees as Employee[])
+  })
   const [invoices,      setInvoices]      = useState<Invoice[]>(() => {
     const saved = safeLocalStorageGet<Invoice[]>('safaeewala_invoices', [])
     return saved.length > 0 ? saved : (seedInvoices as Invoice[])
@@ -104,15 +254,59 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [dailyExpenses, setDailyExpenses] = useState<DailyExpense[]>(() =>
     safeLocalStorageGet<DailyExpense[]>('safaeewala_daily_expenses', [])
   )
+  const [agencies, setAgencies] = useState<Agency[]>(() => {
+    const saved = safeLocalStorageGet<Agency[]>('safaeewala_agencies', [])
+    if (saved.length > 0) {
+      const merged = saved.map(a => {
+        const d = defaultAgencies.find(x => x.id === a.id)
+        return d ? {
+          ...d,
+          ...a,
+          noc_no: a.noc_no || d.noc_no,
+          trade_license_no: a.trade_license_no || d.trade_license_no,
+          license_issue_date: a.license_issue_date || d.license_issue_date,
+          license_expiry_date: a.license_expiry_date || d.license_expiry_date,
+          payouts: a.payouts || d.payouts
+        } : a
+      })
+      const hasSafaeewala = merged.some(a => a.id === 'agency-safaeewala' || a.name.toLowerCase().includes('safaeewala'))
+      if (!hasSafaeewala) {
+        const saf = defaultAgencies.find(d => d.id === 'agency-safaeewala')
+        if (saf) merged.unshift(saf)
+      }
+      return merged
+    }
+    return defaultAgencies
+  })
   const [loading,       setLoading]       = useState(true)
   const [companyTRN,    setCompanyTRN]    = useState('100234567890003')
 
-  // Auto-persist bookings, invoices, inventory, dailyJobs, dailyExpenses to localStorage
+  // Auto-persist agencies to localStorage
+  useEffect(() => {
+    if (agencies.length > 0) {
+      safeLocalStorageSet('safaeewala_agencies', agencies)
+    }
+  }, [agencies])
+
+  // Auto-persist employees to localStorage
+  useEffect(() => {
+    if (employees.length > 0) {
+      safeLocalStorageSet('safaeewala_employees', employees)
+    }
+  }, [employees])
+
+  // Auto-persist bookings, clients, invoices, inventory, dailyJobs, dailyExpenses to localStorage
   useEffect(() => {
     if (bookings.length > 0) {
       safeLocalStorageSet('safaeewala_bookings', bookings)
     }
   }, [bookings])
+
+  useEffect(() => {
+    if (clients.length > 0) {
+      safeLocalStorageSet('safaeewala_clients', clients)
+    }
+  }, [clients])
 
   useEffect(() => {
     if (invoices.length > 0) {
@@ -174,10 +368,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       if (c && c.length > 0) {
         setClients(c as Client[])
+      } else {
+        const saved = safeLocalStorageGet<Client[]>('safaeewala_clients', [])
+        if (saved.length > 0) setClients(saved)
+        else setClients(seedClients as unknown as Client[])
       }
 
       if (e && e.length > 0) {
         setEmployees(e as Employee[])
+      } else {
+        const saved = safeLocalStorageGet<Employee[]>('safaeewala_employees', [])
+        if (saved.length > 0) setEmployees(saved)
+        else setEmployees(seedEmployees as Employee[])
       }
 
       if (i && i.length > 0) {
@@ -234,7 +436,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [dailyJobs, employees])
 
   const store: DataStore = {
-    bookings, clients: allClients, employees: allEmployees, invoices, inventory, loading,
+    bookings, clients: allClients, employees: allEmployees, agencies, invoices, inventory, loading,
     dailyJobs, dailyExpenses,
 
     /* ── Bookings ── */
@@ -269,12 +471,63 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setBookings(p => [row, ...p])
       supabase.from('bookings').insert(row).then(({ error }) => { if (error) console.error(error) })
       logAudit('created', 'booking', row.id, b.client_name, `${b.service_type} · ${b.scheduled_date}`)
+
+      // Automatically synchronize with Daily Job Sheet
+      const jobRow: DailyJob = {
+        id: uid(),
+        created_at: now(),
+        date: b.scheduled_date || new Date().toISOString().split('T')[0],
+        staff_name: b.assigned_crew && b.assigned_crew.length > 0 ? b.assigned_crew.join(', ') : 'Unassigned',
+        start_time: b.scheduled_time || '09:00',
+        end_time: b.end_time || addHoursToTime(b.scheduled_time || '09:00', b.duration_hours || 3),
+        duty_hours: safeNum(b.duration_hours || 3),
+        ot_hours: 0,
+        address: b.service_address || `${b.client_name} - Dubai`,
+        area: 'Dubai',
+        material: 'No',
+        charges: safeNum(b.total_amount || 0),
+        received: b.status === 'completed' ? safeNum(b.total_amount || 0) : 0,
+        payment_mode: b.frequency === 'monthly' ? 'Monthly' : 'Cash',
+        is_overtime: false,
+        remarks: b.notes ? `[Booking] ${b.notes}` : `Booking: ${b.service_type || 'Standard Clean'}`,
+        service: b.service_type || 'Standard Clean',
+        booking_id: row.id,
+      }
+      setDailyJobs(p => {
+        const next = [jobRow, ...p]
+        safeLocalStorageSet('safaeewala_daily_jobs', next)
+        return next
+      })
+      supabase.from('daily_jobs').insert(jobRow).then(({ error }) => { if (error) console.error(error) })
     },
     updateBooking: (id, patch) => {
       const booking = bookings.find(b => b.id === id)
       setBookings(p => p.map(b => b.id === id ? { ...b, ...patch } : b))
       supabase.from('bookings').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
       if (patch.status && booking) logAudit('status_changed', 'booking', id, booking.client_name, `${booking.status} → ${patch.status}`)
+
+      // Update synchronized DailyJob row if exists
+      setDailyJobs(p => {
+        const hasLinked = p.some(j => j.booking_id === id)
+        if (!hasLinked) return p
+        const next = p.map(j => {
+          if (j.booking_id !== id) return j
+          return {
+            ...j,
+            date: patch.scheduled_date ?? j.date,
+            start_time: patch.scheduled_time ?? j.start_time,
+            end_time: patch.end_time ?? j.end_time,
+            duty_hours: patch.duration_hours ? safeNum(patch.duration_hours) : j.duty_hours,
+            staff_name: patch.assigned_crew && patch.assigned_crew.length > 0 ? patch.assigned_crew.join(', ') : j.staff_name,
+            address: patch.service_address ?? j.address,
+            charges: patch.total_amount !== undefined ? safeNum(patch.total_amount) : j.charges,
+            service: patch.service_type ?? j.service,
+            received: patch.status === 'completed' ? (patch.total_amount !== undefined ? safeNum(patch.total_amount) : j.charges) : j.received,
+          }
+        })
+        safeLocalStorageSet('safaeewala_daily_jobs', next)
+        return next
+      })
 
       // When a booking is marked completed for the first time:
       if (patch.status === 'completed' && booking && booking.status !== 'completed') {
@@ -334,6 +587,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const b = bookings.find(b => b.id === id)
       setBookings(p => p.filter(b => b.id !== id))
       supabase.from('bookings').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      setDailyJobs(p => {
+        const next = p.filter(j => j.booking_id !== id)
+        safeLocalStorageSet('safaeewala_daily_jobs', next)
+        return next
+      })
+      supabase.from('daily_jobs').delete().eq('booking_id', id).then(({ error }) => { if (error) console.error(error) })
       if (b) logAudit('deleted', 'booking', id, b.client_name)
     },
 
@@ -395,6 +654,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setEmployees(p => p.filter(e => e.id !== id))
       supabase.from('employees').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
       if (e) logAudit('deleted', 'employee', id, e.full_name)
+    },
+
+    /* ── Agencies ── */
+    addAgency: (a) => {
+      const row: Agency = { ...a, id: uid(), created_at: now() }
+      setAgencies(p => {
+        const next = [row, ...p]
+        safeLocalStorageSet('safaeewala_agencies', next)
+        return next
+      })
+      logAudit('created', 'agency', row.id, a.name)
+    },
+    updateAgency: (id, patch) => {
+      setAgencies(p => {
+        const next = p.map(a => a.id === id ? { ...a, ...patch } : a)
+        safeLocalStorageSet('safaeewala_agencies', next)
+        return next
+      })
+      logAudit('updated', 'agency', id, patch.name || id)
+    },
+    deleteAgency: (id) => {
+      const a = agencies.find(a => a.id === id)
+      setAgencies(p => {
+        const next = p.filter(a => a.id !== id)
+        safeLocalStorageSet('safaeewala_agencies', next)
+        return next
+      })
+      if (a) logAudit('deleted', 'agency', id, a.name)
     },
 
     /* ── Invoices ── */

@@ -1,18 +1,101 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   ArrowLeft, Phone, Mail, MapPin, Calendar, Star, MessageCircle,
   Copy, CheckCircle, User, Clock, ExternalLink, Pencil, FileText, Search,
+  Wallet, DollarSign, TrendingUp, AlertCircle, Plus, Download, Check, X,
+  Tag, FileSpreadsheet, RotateCcw, Filter, AlertTriangle, ShieldCheck,
+  CreditCard, ChevronRight, Receipt, Trash2, Save, ChevronDown, Users
 } from 'lucide-react'
 import { useData } from '@/store/DataContext'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import type { Booking, PaymentMode } from '@/types'
-import { getClientDailyJobsHistory, calcJobOTHours, isMonthlyJob } from '@/lib/clientDataSync'
-
+import type { Booking, PaymentMode, DailyJob, Invoice, DailyAdvanceItem, Client } from '@/types'
+import { getClientDailyJobsHistory, calcJobOTHours, isMonthlyJob, normalizeKey, isMonthlyClient } from '@/lib/clientDataSync'
+import { formatTimeOnly, cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { SourceOriginTag, resolveClientSource } from '@/lib/sourceTracking'
+import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
+import { ClientModalForm } from '@/components/clients/ClientModalForm'
+
+/* ─── Client Financial Adjustment & Advance Types ─── */
+export interface ClientFinancialAdjustment {
+  id: string
+  client_id: string
+  client_name?: string
+  date: string
+  type: 'discount' | 'waiver' | 'advance' | 'credit' | 'settlement' | 'correction' | 'advance_deduction'
+  amount: number
+  reference_job_id?: string
+  notes: string
+  created_at: string
+}
+
+export function advanceMatchesClient(adv: DailyAdvanceItem, client: Client): boolean {
+  if (!adv || !client || !adv.client) return false
+  const advRaw = adv.client.trim().toLowerCase()
+  const cName = client.full_name?.trim().toLowerCase() || ''
+  const cBldg = client.building_name?.trim().toLowerCase() || ''
+  const cApt = client.apartment?.trim().toLowerCase() || ''
+
+  if (cName && (advRaw === cName || advRaw.includes(cName) || cName.includes(advRaw))) return true
+  if (cBldg && (advRaw === cBldg || advRaw.includes(cBldg))) return true
+  if (cApt && cBldg && advRaw.includes(cApt) && advRaw.includes(cBldg)) return true
+
+  const advNorm = normalizeKey(adv.client)
+  const nameNorm = normalizeKey(client.full_name)
+  const bldgNorm = normalizeKey(client.building_name || '')
+  if (advNorm && nameNorm && (advNorm === nameNorm || (nameNorm.length >= 4 && advNorm.includes(nameNorm)))) return true
+  if (advNorm && bldgNorm && (advNorm === bldgNorm || (bldgNorm.length >= 4 && advNorm.includes(bldgNorm)))) return true
+  if (advNorm === normalizeKey(client.id)) return true
+
+  return false
+}
+
+export const defaultClientAdjustments: ClientFinancialAdjustment[] = [
+  {
+    id: 'adj-seed-1',
+    client_id: 'c1000001-0000-0000-0000-000000000001', // Sarah Johnson
+    client_name: 'Sarah Johnson',
+    date: '2026-10-20',
+    type: 'discount',
+    amount: 50,
+    notes: 'Loyalty discount applied on Deep Clean service',
+    created_at: new Date('2026-10-20T10:00:00Z').toISOString(),
+  },
+  {
+    id: 'adj-seed-2',
+    client_id: 'c1000001-0000-0000-0000-000000000001', // Sarah Johnson
+    client_name: 'Sarah Johnson',
+    date: '2026-10-15',
+    type: 'advance',
+    amount: 150,
+    notes: 'Advance cash deposit for upcoming cleaning sessions',
+    created_at: new Date('2026-10-15T14:30:00Z').toISOString(),
+  },
+  {
+    id: 'adj-seed-3',
+    client_id: 'c1000001-0000-0000-0000-000000000002', // Mohammed Al Hamdan
+    client_name: 'Mohammed Al Hamdan',
+    date: '2026-10-18',
+    type: 'waiver',
+    amount: 75,
+    notes: 'Seasonal promotional credit waiver',
+    created_at: new Date('2026-10-18T11:00:00Z').toISOString(),
+  },
+]
+
+function extractAdjustmentFromRemarks(remarks?: string): number {
+  if (!remarks) return 0
+  const m = remarks.match(/(?:adj(?:ustment)?|discount|waiver|credit)[\s:]*(?:aed)?\s*([0-9]+(?:\.[0-9]+)?)/i)
+  if (m && m[1]) {
+    const val = parseFloat(m[1])
+    return isNaN(val) ? 0 : val
+  }
+  return 0
+}
 
 /* ─── Avatar ─── */
 const avatarColors = [
@@ -84,18 +167,76 @@ export function ClientProfile() {
   const { id } = useParams<{ id: string }>()
   const { clients, bookings, employees, invoices, dailyJobs, updateClient } = useData()
 
-  const [activeTab,     setActiveTab]     = useState<'job_sheet' | 'bookings' | 'info'>('job_sheet')
+  const [activeTab,     setActiveTab]     = useState<'job_sheet' | 'financial_history' | 'bookings' | 'info'>('job_sheet')
   const [jobSearch,     setJobSearch]     = useState('')
+  const [ledgerSearch,  setLedgerSearch]  = useState('')
+  const [ledgerFilter,  setLedgerFilter]  = useState<'all' | 'pending' | 'advance' | 'adjustment' | 'invoices'>('all')
   const [reviewBooking, setReviewBooking] = useState<Booking | null>(null)
   const [reviewMap,     setReviewMap]     = useState<Record<string, string>>({})
   const [copied,        setCopied]        = useState(false)
   const [editOpen,      setEditOpen]      = useState(false)
   const [editSaving,    setEditSaving]    = useState(false)
 
+
+
+  // ── Financial Adjustments & Advances ──
+  const [adjustments, setAdjustments] = useState<ClientFinancialAdjustment[]>(() => {
+    const stored = safeLocalStorageGet<ClientFinancialAdjustment[]>('safaeewala_client_adjustments', [])
+    if (!stored || stored.length === 0) {
+      safeLocalStorageSet('safaeewala_client_adjustments', defaultClientAdjustments)
+      return defaultClientAdjustments
+    }
+    return stored
+  })
+
+  // Load Daily Advance Items from Advance widget
+  const [dailyAdvanceItems, setDailyAdvanceItems] = useState<DailyAdvanceItem[]>(() => {
+    return safeLocalStorageGet<DailyAdvanceItem[]>('safaeewala_daily_advance_items', [])
+  })
+
+  useEffect(() => {
+    const refreshAdvances = () => {
+      setDailyAdvanceItems(safeLocalStorageGet<DailyAdvanceItem[]>('safaeewala_daily_advance_items', []))
+    }
+    window.addEventListener('storage', refreshAdvances)
+    return () => window.removeEventListener('storage', refreshAdvances)
+  }, [])
+
+  const [newAdjModalOpen, setNewAdjModalOpen] = useState(false)
+  const [newAdjType, setNewAdjType] = useState<ClientFinancialAdjustment['type']>('discount')
+  const [newAdjAmount, setNewAdjAmount] = useState('')
+  const [newAdjDate, setNewAdjDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [newAdjNotes, setNewAdjNotes] = useState('')
+  const [newAdjJobId, setNewAdjJobId] = useState('')
+
+  const saveAdjustments = (newList: ClientFinancialAdjustment[]) => {
+    setAdjustments(newList)
+    safeLocalStorageSet('safaeewala_client_adjustments', newList)
+  }
+
   useEffect(() => { setReviewMap(loadReviews()) }, [])
 
   const client    = clients.find(c => c.id === id)
   const clientIdx = clients.findIndex(c => c.id === id)
+
+  // Filter adjustments for this specific client
+  const clientAdjustments = useMemo(() => {
+    if (!client) return []
+    return adjustments.filter(a =>
+      a.client_id === client.id ||
+      (a.client_name && a.client_name.toLowerCase().trim() === client.full_name.toLowerCase().trim())
+    )
+  }, [adjustments, client])
+
+  // Advances from the Daily Job Sheet Advance Widget
+  const matchedAdvanceWidgetItems = useMemo(() => {
+    if (!client) return []
+    return dailyAdvanceItems.filter(item => advanceMatchesClient(item, client))
+  }, [dailyAdvanceItems, client])
+
+  const widgetAdvanceTotal = useMemo(() => {
+    return matchedAdvanceWidgetItems.reduce((s, a) => s + cleanNum(a.advance), 0)
+  }, [matchedAdvanceWidgetItems])
 
   // Automatically fetch complete Daily Job Sheet history for this client
   const clientDailyJobs = useMemo(() => {
@@ -121,6 +262,77 @@ export function ClientProfile() {
     }
   }, [id, clientDailyJobs.length, clientBookings.length])
 
+  // Enrich each job with parsed adjustment, pending, and advance amounts
+  // Per business rule: If service amount is deducted from advance, consider it an adjustment with 'ADJ' tag
+  const enrichedDailyJobs = useMemo(() => {
+    return clientDailyJobs.map(job => {
+      const charges = cleanNum(job.charges)
+      const received = cleanNum(job.received)
+      const ot = calcJobOTHours(job)
+
+      // Linked manual adjustments
+      const linkedAdj = clientAdjustments.filter(a => a.reference_job_id === job.id && a.type !== 'advance')
+      const linkedAdjSum = linkedAdj.reduce((s, a) => s + cleanNum(a.amount), 0)
+      const linkedAdvDeduct = linkedAdj.filter(a => a.type === 'advance_deduction').reduce((s, a) => s + cleanNum(a.amount), 0)
+
+      // Remarks & payment mode detection for advance deduction
+      const inlineAdj = extractAdjustmentFromRemarks(job.remarks)
+      const remarksLower = (job.remarks || '').toLowerCase()
+      const isRemarkDeduction = /(?:deduct|from\s*adv|above|paid\s*by\s*adv)/i.test(remarksLower) || job.payment_mode === 'Above'
+
+      // Is service amount deducted from advance?
+      const isAdvanceDeducted = linkedAdvDeduct > 0 || isRemarkDeduction
+      const advanceDeductionAmount = linkedAdvDeduct > 0
+        ? linkedAdvDeduct
+        : (isRemarkDeduction ? charges : 0)
+
+      // Total adjustment for this job (includes advance deduction per user rule:
+      // "Agar service amount advance mein say deduct ho, toh usay adjustment amount consider kartay huay us par 'ADJ' ka tag lagaya jaye.")
+      const baseAdjustment = linkedAdjSum || inlineAdj
+      const totalJobAdjustment = baseAdjustment + (isAdvanceDeducted && !linkedAdvDeduct ? advanceDeductionAmount : 0)
+
+      const effectiveDue = Math.max(0, charges - totalJobAdjustment)
+      const pending = (job.payment_mode === 'Pending' && received === 0 && !isAdvanceDeducted)
+        ? effectiveDue
+        : Math.max(0, effectiveDue - received)
+
+      const advance = received > effectiveDue && !isAdvanceDeducted
+        ? received - effectiveDue
+        : 0
+
+      return {
+        ...job,
+        cleanCharges: charges,
+        cleanReceived: received,
+        otHours: ot,
+        adjustment: totalJobAdjustment,
+        pending,
+        advance,
+        isAdvanceDeducted,
+        advanceDeductionAmount,
+      }
+    })
+  }, [clientDailyJobs, clientAdjustments])
+
+  const handleDeductJobFromAdvance = (job: any) => {
+    if (!client) return
+    const amt = job.cleanCharges || cleanNum(job.charges)
+    if (amt <= 0) return
+
+    const newRecord: ClientFinancialAdjustment = {
+      id: `adj-adv-${Date.now()}`,
+      client_id: client.id,
+      client_name: client.full_name,
+      date: job.date || new Date().toISOString().split('T')[0],
+      type: 'advance_deduction',
+      amount: amt,
+      notes: `Service charges deducted from client advance balance [ADJ] (${job.service || 'Shift'})`,
+      reference_job_id: job.id,
+      created_at: new Date().toISOString(),
+    }
+    saveAdjustments([newRecord, ...adjustments])
+  }
+
   if (!client) {
     return (
       <div className="space-y-6">
@@ -139,12 +351,38 @@ export function ClientProfile() {
   const bookingSpent  = completed.reduce((s, b) => s + b.total_amount, 0)
   const reviewedCount = completed.filter(b => reviewMap[b.id]).length
 
-  // Financial summary from Job Sheet
-  const totalDJCharges = clientDailyJobs.reduce((s, j) => s + (Number(j.charges) || 0), 0)
-  const totalDJReceived = clientDailyJobs.reduce((s, j) => s + (Number(j.received) || 0), 0)
-  const totalDJOTHours = Math.round(clientDailyJobs.reduce((s, j) => s + calcJobOTHours(j), 0) * 10) / 10
+  // Financial summary from Job Sheet & Adjustments
+  const totalDJCharges = enrichedDailyJobs.reduce((s, j) => s + j.cleanCharges, 0)
+  const totalDJReceived = enrichedDailyJobs.reduce((s, j) => s + j.cleanReceived, 0)
+  const totalDJOTHours = Math.round(enrichedDailyJobs.reduce((s, j) => s + j.otHours, 0) * 10) / 10
   const totalDJDutyHours = Math.round(clientDailyJobs.reduce((s, j) => s + (Number(j.duty_hours) || 0), 0) * 10) / 10
-  const isClientMonthly = clientDailyJobs.some(isMonthlyJob)
+  const isClientMonthly = useMemo(() => {
+    if (!client) return false
+    return isMonthlyClient(client, clientDailyJobs)
+  }, [client, clientDailyJobs])
+
+  // Standalone adjustments (not tied to specific job) + initial client adjustment
+  const standaloneAdjustments = clientAdjustments.filter(a => !a.reference_job_id && a.type !== 'advance' && a.type !== 'advance_deduction')
+  const standaloneAdjSum = standaloneAdjustments.reduce((s, a) => s + cleanNum(a.amount), 0)
+  const standaloneAdvanceDeductions = clientAdjustments.filter(a => !a.reference_job_id && a.type === 'advance_deduction').reduce((s, a) => s + cleanNum(a.amount), 0)
+
+  // Total adjustments includes all job adjustments (including advance deductions tagged with ADJ), standalone adjustments, and initial adjustment
+  const totalDJAdjustment = enrichedDailyJobs.reduce((s, j) => s + j.adjustment, 0) + standaloneAdjSum + standaloneAdvanceDeductions + (client.adjustment_amount || 0)
+
+  // Standalone advance payments + initial client advance + widget advances
+  const standaloneAdvance = clientAdjustments.filter(a => a.type === 'advance').reduce((s, a) => s + cleanNum(a.amount), 0)
+  const initialClientAdvance = cleanNum(client.advance_amount)
+  const totalGrossAdvance = initialClientAdvance + standaloneAdvance + widgetAdvanceTotal + enrichedDailyJobs.reduce((s, j) => s + (!j.isAdvanceDeducted ? j.advance : 0), 0)
+
+  // Total service amount deducted from advance
+  const jobsAdvanceDeductionTotal = enrichedDailyJobs.filter(j => j.isAdvanceDeducted).reduce((s, j) => s + j.advanceDeductionAmount, 0)
+  const totalServiceDeductedFromAdvance = jobsAdvanceDeductionTotal + standaloneAdvanceDeductions
+
+  // Net remaining advance available
+  const netRemainingAdvance = Math.max(0, totalGrossAdvance - totalServiceDeductedFromAdvance)
+
+  // Total Pending factoring in initial pending
+  const totalDJPending = Math.max(0, enrichedDailyJobs.reduce((s, j) => s + j.pending, 0) + (client.pending_amount || 0))
 
   // Overall totals
   const totalLifetimeSpent = Math.max(client.total_spent, bookingSpent + totalDJCharges)
@@ -159,7 +397,7 @@ export function ClientProfile() {
   const outstanding   = totalInvoiced - totalPaid
 
   // Filtered Job Sheet rows by live search
-  const filteredDailyJobs = clientDailyJobs.filter(j => {
+  const filteredDailyJobs = enrichedDailyJobs.filter(j => {
     const q = jobSearch.toLowerCase().trim()
     if (!q) return true
     return (
@@ -171,6 +409,170 @@ export function ClientProfile() {
       (j.address && j.address.toLowerCase().includes(q))
     )
   })
+
+  // Unified Comprehensive Financial History Ledger
+  type LedgerSource = 'job_sheet' | 'invoice' | 'adjustment' | 'advance' | 'advance_widget'
+  interface LedgerEntry {
+    id: string
+    date: string
+    source: LedgerSource
+    title: string
+    refNumber: string
+    details: string
+    cleaner?: string
+    charges: number
+    received: number
+    pending: number
+    advance: number
+    adjustment: number
+    otHours: number
+    status: 'paid' | 'pending' | 'advance' | 'adjusted' | 'draft'
+  }
+
+  const allLedgerEntries: LedgerEntry[] = [
+    // 1. Every Job Sheet Shift
+    ...enrichedDailyJobs.map((job): LedgerEntry => {
+      const isDeducted = job.isAdvanceDeducted
+      return {
+        id: `job-${job.id}`,
+        date: job.date || '—',
+        source: 'job_sheet',
+        title: isDeducted ? `${job.service || 'Cleaning Shift'} [ADJ - From Advance]` : (job.service || 'Cleaning Shift'),
+        refNumber: isDeducted
+          ? `ADJ-SHIFT (${formatTimeOnly(job.start_time)} - ${formatTimeOnly(job.end_time)})`
+          : `Shift (${formatTimeOnly(job.start_time)} - ${formatTimeOnly(job.end_time)})`,
+        details: [
+          job.staff_name ? `Cleaner: ${job.staff_name}` : '',
+          job.address || '',
+          isDeducted ? `[ADJ] AED ${job.advanceDeductionAmount} deducted from advance credit` : '',
+          job.remarks || '',
+        ].filter(Boolean).join(' · '),
+        cleaner: job.staff_name,
+        charges: job.cleanCharges,
+        received: job.cleanReceived,
+        pending: job.pending,
+        advance: job.advance,
+        adjustment: job.adjustment,
+        otHours: job.otHours,
+        status: job.pending > 0 ? 'pending' : job.advance > 0 ? 'advance' : job.adjustment > 0 ? 'adjusted' : 'paid',
+      }
+    }),
+
+    // 2. Invoices
+    ...clientInvoices.map((inv): LedgerEntry => {
+      const invPaid = inv.status === 'paid' ? inv.total : 0
+      const invPending = inv.status === 'paid' ? 0 : inv.total
+      return {
+        id: `inv-${inv.id}`,
+        date: inv.created_at ? inv.created_at.split('T')[0] : inv.due_date || '—',
+        source: 'invoice',
+        title: `Tax Invoice`,
+        refNumber: inv.invoice_number,
+        details: inv.line_items?.map(l => l.description).join(', ') || 'Cleaning & Maintenance Services',
+        charges: inv.total,
+        received: invPaid,
+        pending: invPending,
+        advance: 0,
+        adjustment: 0,
+        otHours: 0,
+        status: inv.status === 'paid' ? 'paid' : 'pending',
+      }
+    }),
+
+    // 3. Standalone Client Adjustments & Advance Deposits
+    ...clientAdjustments.map((adj): LedgerEntry => {
+      const isAdv = adj.type === 'advance'
+      const isAdvDeduct = adj.type === 'advance_deduction'
+      const adjAmt = cleanNum(adj.amount)
+      return {
+        id: `adj-${adj.id}`,
+        date: adj.date || '—',
+        source: isAdv ? 'advance' : 'adjustment',
+        title: isAdv
+          ? 'Advance Payment Deposit'
+          : isAdvDeduct
+            ? 'Service Deducted from Advance [ADJ]'
+            : `Financial Adjustment (${adj.type.toUpperCase()}) [ADJ]`,
+        refNumber: isAdvDeduct ? 'ADJ-DEDUCT' : isAdv ? `ADV-${adj.id.slice(-4)}` : `ADJ-${adj.id.slice(-4)}`,
+        details: adj.notes || (isAdvDeduct ? 'Service charges deducted from client advance balance [ADJ]' : `${adj.type} recorded for client account`),
+        charges: 0,
+        received: isAdv ? adjAmt : 0,
+        pending: 0,
+        advance: isAdv ? adjAmt : 0,
+        adjustment: isAdv ? 0 : adjAmt,
+        otHours: 0,
+        status: isAdv ? 'advance' : 'adjusted',
+      }
+    }),
+
+    // 4. Advances recorded from Daily Job Sheet Advance Widget
+    ...matchedAdvanceWidgetItems.map((advItem): LedgerEntry => ({
+      id: `adv-widget-${advItem.id}`,
+      date: advItem.date || '—',
+      source: 'advance_widget',
+      title: `Daily Job Sheet Advance Widget`,
+      refNumber: `ADV-WIDGET`,
+      details: `Advance credit logged on Daily Job Sheet for "${advItem.client}" · Received: AED ${cleanNum(advItem.received).toLocaleString()}`,
+      charges: 0,
+      received: cleanNum(advItem.received),
+      pending: 0,
+      advance: cleanNum(advItem.advance),
+      adjustment: 0,
+      otHours: 0,
+      status: 'advance',
+    })),
+  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+
+  // Filtered Ledger Entries
+  const filteredLedgerEntries = allLedgerEntries.filter(item => {
+    // Type filter
+    if (ledgerFilter === 'pending' && item.pending <= 0) return false
+    if (ledgerFilter === 'advance' && item.advance <= 0) return false
+    if (ledgerFilter === 'adjustment' && item.adjustment <= 0) return false
+    if (ledgerFilter === 'invoices' && item.source !== 'invoice') return false
+
+    // Search filter
+    const q = ledgerSearch.toLowerCase().trim()
+    if (!q) return true
+    return (
+      item.date.includes(q) ||
+      item.title.toLowerCase().includes(q) ||
+      item.refNumber.toLowerCase().includes(q) ||
+      item.details.toLowerCase().includes(q) ||
+      (item.cleaner && item.cleaner.toLowerCase().includes(q))
+    )
+  })
+
+  const handleCreateAdjustment = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!client) return
+    const amt = cleanNum(newAdjAmount)
+    if (amt <= 0) return
+
+    const newRecord: ClientFinancialAdjustment = {
+      id: `adj-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      client_id: client.id,
+      client_name: client.full_name,
+      date: newAdjDate || new Date().toISOString().split('T')[0],
+      type: newAdjType,
+      amount: amt,
+      notes: newAdjNotes.trim(),
+      reference_job_id: newAdjJobId || undefined,
+      created_at: new Date().toISOString(),
+    }
+
+    saveAdjustments([newRecord, ...adjustments])
+    setNewAdjModalOpen(false)
+    setNewAdjAmount('')
+    setNewAdjNotes('')
+    setNewAdjJobId('')
+  }
+
+  const handleDeleteAdjustment = (adjId: string) => {
+    if (confirm('Are you sure you want to delete this financial adjustment record?')) {
+      saveAdjustments(adjustments.filter(a => a.id !== adjId))
+    }
+  }
 
   function crewNames(ids: string[]) {
     return ids.map(cid => employees.find(e => e.id === cid)?.full_name ?? '').filter(Boolean).join(', ')
@@ -202,7 +604,7 @@ export function ClientProfile() {
         </Link>
         <button
           onClick={() => setEditOpen(true)}
-          className="flex items-center gap-2 text-[13px] font-semibold px-4 py-2 rounded-xl border border-[#E4E8EC] bg-white text-slate-700 hover:bg-slate-50 shadow-xs transition-colors"
+          className="flex items-center gap-2 text-[13px] font-semibold px-4 py-2 rounded-xl border border-[#E4E8EC] bg-white text-slate-700 hover:bg-slate-50 shadow-xs transition-colors cursor-pointer"
         >
           <Pencil size={13} /> Edit Profile
         </button>
@@ -217,8 +619,8 @@ export function ClientProfile() {
               <h1 className="text-[22px] font-bold text-[#111827]">{client.full_name}</h1>
               <SourceOriginTag source={resolveClientSource(client, bookings)} />
               {isClientMonthly && (
-                <span className="text-[11px] bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-0.5 rounded-full font-bold">
-                  Monthly Client
+                <span className="text-[10px] bg-emerald-600 text-white font-extrabold px-2.5 py-0.5 rounded-full shadow-2xs tracking-wider uppercase">
+                  Monthly
                 </span>
               )}
               {totalLifetimeSpent > 2000 && (
@@ -264,19 +666,53 @@ export function ClientProfile() {
         </div>
 
         {/* Quick Stats Grid: Lifetime Figures */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-5 border-t border-[#E4E8EC]">
-          {[
-            { label: 'Total Services / Shifts', value: totalServices,                                sub: `${clientDailyJobs.length} job sheet + ${clientBookings.length} bookings` },
-            { label: 'Lifetime Spent',          value: `AED ${totalLifetimeSpent.toLocaleString()}`, sub: 'Total charges billed' },
-            { label: 'Overtime (OT) Logged',    value: `${totalDJOTHours}h OT`,                      sub: `${clientDailyJobs.filter(j => calcJobOTHours(j) > 0).length} OT shifts` },
-            { label: 'Total Duty Hours',        value: `${totalDJDutyHours}h`,                       sub: `Across all service shifts` },
-          ].map(s => (
-            <div key={s.label} className="text-center p-2 rounded-xl bg-[#f8fafc] border border-[#edf2f7]">
-              <p className="text-[18px] font-extrabold text-[#111827]">{s.value}</p>
-              <p className="text-[11.5px] font-bold text-slate-700 mt-0.5">{s.label}</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">{s.sub}</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-5 border-t border-[#E4E8EC]">
+          <div className="text-center p-3 rounded-xl bg-[#f8fafc] border border-[#edf2f7]">
+            <p className="text-[17px] font-extrabold text-[#111827]">AED {totalDJCharges.toLocaleString()}</p>
+            <p className="text-[11px] font-bold text-slate-700 mt-0.5">Total Charges</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Total billed amount</p>
+          </div>
+          <div className="text-center p-3 rounded-xl bg-emerald-50/50 border border-emerald-100">
+            <p className="text-[17px] font-extrabold text-emerald-700">AED {totalDJReceived.toLocaleString()}</p>
+            <p className="text-[11px] font-bold text-slate-700 mt-0.5">Total Received</p>
+            <p className="text-[10px] text-emerald-600 mt-0.5">Cash & online paid</p>
+          </div>
+          <div className="text-center p-3 rounded-xl bg-amber-50/50 border border-amber-100">
+            <p className="text-[17px] font-extrabold text-amber-700">{totalDJOTHours}h OT</p>
+            <p className="text-[11px] font-bold text-slate-700 mt-0.5">Total Overtime</p>
+            <p className="text-[10px] text-amber-600 mt-0.5">Logged shift overtime</p>
+          </div>
+          <div className="text-center p-3 rounded-xl bg-red-50/40 border border-red-200">
+            <p className="text-[17px] font-extrabold text-red-600">AED {totalDJPending.toLocaleString()}</p>
+            <p className="text-[11px] font-bold text-slate-700 mt-0.5">Pending Amount</p>
+            <p className="text-[10px] text-red-500 mt-0.5">Outstanding dues</p>
+          </div>
+          <div className="text-center p-3 rounded-xl bg-emerald-50/40 border border-emerald-200">
+            <div className="flex items-center justify-center gap-1.5">
+              <p className="text-[17px] font-extrabold text-emerald-700">AED {netRemainingAdvance.toLocaleString()}</p>
+              {matchedAdvanceWidgetItems.length > 0 && (
+                <span className="text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.2 rounded-full" title="Advances logged via Daily Job Sheet Advance Widget">
+                  {matchedAdvanceWidgetItems.length} Widget
+                </span>
+              )}
             </div>
-          ))}
+            <p className="text-[11px] font-bold text-slate-700 mt-0.5">Advance Amount</p>
+            <p className="text-[10px] text-emerald-600 mt-0.5">
+              {totalServiceDeductedFromAdvance > 0 ? `AED ${totalServiceDeductedFromAdvance.toLocaleString()} deducted [ADJ]` : 'Available advance credit'}
+            </p>
+          </div>
+          <div className="text-center p-3 rounded-xl bg-indigo-50/50 border border-indigo-200">
+            <div className="flex items-center justify-center gap-1.5">
+              <span className="bg-indigo-700 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase">
+                ADJ
+              </span>
+              <p className="text-[17px] font-extrabold text-indigo-700">AED {totalDJAdjustment.toLocaleString()}</p>
+            </div>
+            <p className="text-[11px] font-bold text-slate-700 mt-0.5">Adjustment Amount</p>
+            <p className="text-[10px] text-indigo-500 mt-0.5">
+              {totalServiceDeductedFromAdvance > 0 ? `Includes AED ${totalServiceDeductedFromAdvance.toLocaleString()} adv deductions` : 'Discounts & waivers'}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -299,6 +735,21 @@ export function ClientProfile() {
               >
                 <FileText size={14} />
                 Daily Job Sheet History ({clientDailyJobs.length})
+              </button>
+
+              <button
+                onClick={() => setActiveTab('financial_history')}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-all cursor-pointer ${
+                  activeTab === 'financial_history'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100'
+                }`}
+              >
+                <Wallet size={14} />
+                <span>Financial History & Ledger ({allLedgerEntries.length})</span>
+                <span className="text-[9px] bg-indigo-600 text-white font-black px-1.5 py-0.2 rounded uppercase">
+                  ADJ
+                </span>
               </button>
 
               <button
@@ -356,22 +807,42 @@ export function ClientProfile() {
               </div>
 
               {/* Financial & OT summary strip */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-4 bg-[#f8fafc] border-b border-[#E4E8EC] text-center">
-                <div className="p-2.5 bg-white rounded-xl border border-[#E4E8EC]">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 p-4 bg-[#f8fafc] border-b border-[#E4E8EC] text-center">
+                <div className="p-2.5 bg-white rounded-xl border border-[#E4E8EC] shadow-2xs">
                   <p className="text-[10px] uppercase font-bold text-slate-400">Total Charges</p>
                   <p className="text-[15px] font-extrabold text-purple-700">AED {totalDJCharges.toLocaleString()}</p>
                 </div>
-                <div className="p-2.5 bg-white rounded-xl border border-[#E4E8EC]">
+                <div className="p-2.5 bg-white rounded-xl border border-[#E4E8EC] shadow-2xs">
                   <p className="text-[10px] uppercase font-bold text-slate-400">Total Received</p>
                   <p className="text-[15px] font-extrabold text-emerald-700">AED {totalDJReceived.toLocaleString()}</p>
                 </div>
-                <div className="p-2.5 bg-white rounded-xl border border-[#E4E8EC]">
+                <div className="p-2.5 bg-white rounded-xl border border-[#E4E8EC] shadow-2xs">
                   <p className="text-[10px] uppercase font-bold text-slate-400">Total Overtime</p>
                   <p className="text-[15px] font-extrabold text-amber-600">{totalDJOTHours}h OT</p>
                 </div>
-                <div className="p-2.5 bg-white rounded-xl border border-[#E4E8EC]">
-                  <p className="text-[10px] uppercase font-bold text-slate-400">Duty Hours</p>
-                  <p className="text-[15px] font-extrabold text-slate-700">{totalDJDutyHours}h</p>
+                <div className="p-2.5 bg-white rounded-xl border border-red-200 shadow-2xs bg-red-50/30">
+                  <p className="text-[10px] uppercase font-bold text-red-500">Pending Amount</p>
+                  <p className="text-[15px] font-extrabold text-red-600">AED {totalDJPending.toLocaleString()}</p>
+                </div>
+                <div className="p-2.5 bg-white rounded-xl border border-emerald-200 shadow-2xs bg-emerald-50/30">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <p className="text-[10px] uppercase font-bold text-emerald-600">Advance Amount</p>
+                    {matchedAdvanceWidgetItems.length > 0 && (
+                      <span className="text-[8.5px] font-extrabold bg-amber-100 text-amber-800 px-1 py-0.2 rounded">
+                        {matchedAdvanceWidgetItems.length} Widget
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[15px] font-extrabold text-emerald-700">AED {netRemainingAdvance.toLocaleString()}</p>
+                </div>
+                <div className="p-2.5 bg-white rounded-xl border border-indigo-200 shadow-2xs bg-indigo-50/40">
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <p className="text-[10px] uppercase font-bold text-indigo-700">Adjustment Amount</p>
+                    <span className="bg-indigo-700 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase">
+                      ADJ
+                    </span>
+                  </div>
+                  <p className="text-[15px] font-extrabold text-indigo-700">AED {totalDJAdjustment.toLocaleString()}</p>
                 </div>
               </div>
 
@@ -396,17 +867,20 @@ export function ClientProfile() {
                         <th className="py-3 px-3">Cleaner</th>
                         <th className="py-3 px-3">Timing</th>
                         <th className="py-3 px-2 text-center">Duty</th>
-                        <th className="py-3 px-2 text-center">OT</th>
-                        <th className="py-3 px-3 text-right">Charges</th>
-                        <th className="py-3 px-3 text-right">Received</th>
+                        <th className="py-3 px-2 text-center">Total OT</th>
+                        <th className="py-3 px-3 text-right">Total Charges</th>
+                        <th className="py-3 px-3 text-right">Total Received</th>
+                        <th className="py-3 px-3 text-right">Pending Amount</th>
+                        <th className="py-3 px-3 text-right">Advance Amount</th>
+                        <th className="py-3 px-3 text-center">Adjustment Amount</th>
                         <th className="py-3 px-3">Mode</th>
                         <th className="py-3 px-3">Material</th>
                         <th className="py-3 px-4">Service & Remarks</th>
+                        <th className="py-3 px-3 text-center">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E4E8EC]">
                       {filteredDailyJobs.map(job => {
-                        const ot = calcJobOTHours(job)
                         return (
                           <tr key={job.id} className="hover:bg-purple-50/30 transition-colors">
                             <td className="py-3 px-4 font-bold text-slate-800 whitespace-nowrap">
@@ -416,28 +890,70 @@ export function ClientProfile() {
                               {job.staff_name || '—'}
                             </td>
                             <td className="py-3 px-3 text-slate-500 whitespace-nowrap">
-                              {job.start_time || '—'} - {job.end_time || '—'}
+                              {formatTimeOnly(job.start_time)} - {formatTimeOnly(job.end_time)}
                             </td>
                             <td className="py-3 px-2 text-center font-bold text-slate-700">
-                              {job.duty_hours ? `${job.duty_hours}h` : '—'}
+                              {cleanNum(job.duty_hours) ? `${cleanNum(job.duty_hours)}h` : '—'}
                             </td>
                             <td className="py-3 px-2 text-center">
-                              {ot > 0 ? (
+                              {job.otHours > 0 ? (
                                 <span className="inline-block bg-amber-100 text-amber-800 font-extrabold px-2 py-0.5 rounded-full text-[10.5px] border border-amber-200">
-                                  {ot}h OT
+                                  {job.otHours}h OT
                                 </span>
                               ) : (
                                 <span className="text-slate-400">0h</span>
                               )}
                             </td>
                             <td className="py-3 px-3 text-right font-extrabold text-purple-700 whitespace-nowrap">
-                              AED {Number(job.charges || 0).toLocaleString()}
+                              AED {job.cleanCharges.toLocaleString()}
                             </td>
                             <td className="py-3 px-3 text-right font-semibold text-emerald-700 whitespace-nowrap">
-                              AED {Number(job.received || 0).toLocaleString()}
+                              AED {job.cleanReceived.toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3 text-right font-bold whitespace-nowrap">
+                              {job.pending > 0 ? (
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-600 border border-red-200">
+                                  AED {job.pending.toLocaleString()}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 font-medium">—</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-right font-bold whitespace-nowrap">
+                              {job.advance > 0 ? (
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  AED {job.advance.toLocaleString()}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 font-medium">—</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              {job.adjustment > 0 ? (
+                                <span className="inline-flex items-center gap-1.5 font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full text-[11px] shadow-2xs">
+                                  <span className="bg-indigo-700 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase">
+                                    ADJ
+                                  </span>
+                                  <span>AED {job.adjustment.toLocaleString()}</span>
+                                  {job.isAdvanceDeducted && (
+                                    <span className="text-[8.5px] bg-purple-100 text-purple-700 px-1 py-0.2 rounded font-extrabold">
+                                      From Adv
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 font-medium">—</span>
+                              )}
                             </td>
                             <td className="py-3 px-3 whitespace-nowrap">
-                              <PaymentModeBadge mode={job.payment_mode} />
+                              <div className="flex items-center gap-1">
+                                <PaymentModeBadge mode={job.isAdvanceDeducted ? 'Advance' : job.payment_mode} />
+                                {job.isAdvanceDeducted && (
+                                  <span className="bg-indigo-700 text-white text-[8.5px] font-black px-1.5 py-0.2 rounded uppercase" title="Deducted from Advance (Adjustment)">
+                                    ADJ
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
                               {job.material || 'No'}
@@ -445,6 +961,322 @@ export function ClientProfile() {
                             <td className="py-3 px-4 text-slate-600 max-w-[220px] truncate" title={job.remarks || job.service}>
                               {job.service && <span className="font-semibold text-slate-700 mr-1.5">{job.service}</span>}
                               {job.remarks || (!job.service ? '—' : '')}
+                            </td>
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              {job.isAdvanceDeducted ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                                  <Check size={10} className="text-emerald-600" /> Settled [ADJ]
+                                </span>
+                              ) : job.pending > 0 && netRemainingAdvance > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeductJobFromAdvance(job)}
+                                  className="inline-flex items-center gap-1 text-[10.5px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                                  title="Deduct service charges from client advance balance and tag with ADJ"
+                                >
+                                  <span className="bg-indigo-700 text-white text-[8px] font-black px-1 py-0.2 rounded">
+                                    ADJ
+                                  </span>
+                                  <span>Deduct Adv</span>
+                                </button>
+                              ) : (
+                                <span className="text-slate-300 font-medium">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Financial History & Ledger Tab ── */}
+          {activeTab === 'financial_history' && (
+            <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden space-y-4">
+              
+              {/* Header with Title and Add Adjustment button */}
+              <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-3 bg-gradient-to-r from-emerald-50/50 via-white to-indigo-50/30">
+                <div>
+                  <h3 className="text-[16px] font-bold text-[#111827] flex items-center gap-2">
+                    <Wallet size={18} className="text-emerald-700" />
+                    Complete Financial History & Ledger
+                    <span className="text-[10px] bg-indigo-700 text-white font-black px-2 py-0.5 rounded-full uppercase shadow-xs">
+                      ADJ Verified
+                    </span>
+                  </h3>
+                  <p className="text-[12px] text-slate-500 mt-0.5">
+                    Chronological audit trail of all charges, receipts, advances, pending balances, and adjustments
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewAdjModalOpen(true)}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-[12px] font-bold shadow-xs transition-all cursor-pointer"
+                  >
+                    <Plus size={13} />
+                    <span>Record Adjustment / Advance</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Account Balance Overview Banner */}
+              <div className="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 bg-[#f8fafc] border-b border-[#E4E8EC]">
+                <div className="p-3 bg-white rounded-xl border border-[#E4E8EC] shadow-2xs">
+                  <p className="text-[10px] uppercase font-bold text-slate-400">Total Billed Charges</p>
+                  <p className="text-[16px] font-black text-purple-700">AED {totalDJCharges.toLocaleString()}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{clientDailyJobs.length} service shifts</p>
+                </div>
+                <div className="p-3 bg-white rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-2xs">
+                  <p className="text-[10px] uppercase font-bold text-emerald-700">Total Received / Collected</p>
+                  <p className="text-[16px] font-black text-emerald-700">AED {totalDJReceived.toLocaleString()}</p>
+                  <p className="text-[10px] text-emerald-600 mt-0.5">Cash + online direct</p>
+                </div>
+                <div className="p-3 bg-white rounded-xl border border-red-200 bg-red-50/30 shadow-2xs">
+                  <p className="text-[10px] uppercase font-bold text-red-600">Pending Amount (Due)</p>
+                  <p className="text-[16px] font-black text-red-600">AED {totalDJPending.toLocaleString()}</p>
+                  <p className="text-[10px] text-red-500 mt-0.5">Balance to collect</p>
+                </div>
+                <div className="p-3 bg-white rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] uppercase font-bold text-emerald-700">Advance Available</p>
+                    {matchedAdvanceWidgetItems.length > 0 && (
+                      <span className="text-[8.5px] font-extrabold bg-amber-100 text-amber-800 px-1 py-0.2 rounded border border-amber-300">
+                        {matchedAdvanceWidgetItems.length} Widget
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[16px] font-black text-emerald-700">AED {netRemainingAdvance.toLocaleString()}</p>
+                  <p className="text-[10px] text-emerald-600 mt-0.5">
+                    {totalServiceDeductedFromAdvance > 0 ? `AED ${totalServiceDeductedFromAdvance.toLocaleString()} used [ADJ]` : 'Active advance balance'}
+                  </p>
+                </div>
+                <div className="p-3 bg-white rounded-xl border border-indigo-200 bg-indigo-50/40 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] uppercase font-bold text-indigo-700">Total Adjustment</p>
+                    <span className="bg-indigo-700 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase">
+                      ADJ
+                    </span>
+                  </div>
+                  <p className="text-[16px] font-black text-indigo-700">AED {totalDJAdjustment.toLocaleString()}</p>
+                  <p className="text-[10px] text-indigo-500 mt-0.5">
+                    {totalServiceDeductedFromAdvance > 0 ? `Includes AED ${totalServiceDeductedFromAdvance.toLocaleString()} adv deductions` : `${clientAdjustments.length} records`}
+                  </p>
+                </div>
+              </div>
+
+              {/* ── Daily Job Sheet Advance Widget Records Banner ── */}
+              <div className="p-4 bg-amber-50/50 border-b border-amber-200">
+                <div className="flex items-center justify-between mb-2.5 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-lg bg-amber-200/70 text-amber-900">
+                      <Wallet size={15} />
+                    </span>
+                    <div>
+                      <h4 className="text-[13px] font-bold text-slate-900 flex items-center gap-2">
+                        <span>Advance Widget Records (Daily Job Sheet)</span>
+                        <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-2 py-0.2 rounded-full border border-amber-300">
+                          {matchedAdvanceWidgetItems.length} Recorded
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Advances logged via the Daily Job Sheet Advance Widget matching this client
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10.5px] text-slate-500 font-bold block uppercase tracking-wider">Total Widget Advance</span>
+                    <span className="text-[16px] font-black text-amber-800">AED {widgetAdvanceTotal.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                {matchedAdvanceWidgetItems.length === 0 ? (
+                  <div className="p-3 bg-white/80 rounded-xl border border-amber-200/60 text-[12px] text-slate-500 italic">
+                    No advances currently logged for "{client.full_name}" in the Daily Job Sheet Advance Widget. Any advance added in the Daily Job Sheet widget will instantly appear here.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {matchedAdvanceWidgetItems.map(item => (
+                      <div key={item.id} className="bg-white p-3 rounded-xl border border-amber-200 shadow-2xs flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded border border-amber-200">
+                              ADV-WIDGET
+                            </span>
+                            <span className="text-[11px] text-slate-400 font-semibold">{item.date ? formatDate(item.date) : 'Recent'}</span>
+                          </div>
+                          <p className="text-[12.5px] font-bold text-slate-800 truncate max-w-[170px]" title={item.client}>
+                            {item.client}
+                          </p>
+                          <span className="text-[11px] text-emerald-600 font-medium">Received: AED {cleanNum(item.received).toLocaleString()}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] uppercase font-bold text-amber-700 block">Advance Credit</span>
+                          <span className="text-[15px] font-black text-amber-800">AED {cleanNum(item.advance).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Filter and Search Bar */}
+              <div className="px-6 py-2 flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-1.5 flex-wrap text-[12px]">
+                  {(['all', 'pending', 'advance', 'adjustment', 'invoices'] as const).map(filterKey => {
+                    const isSel = ledgerFilter === filterKey
+                    const label = filterKey === 'all'
+                      ? `All (${allLedgerEntries.length})`
+                      : filterKey === 'pending'
+                        ? `Pending Due (${allLedgerEntries.filter(i => i.pending > 0).length})`
+                        : filterKey === 'advance'
+                          ? `Advance Deposits (${allLedgerEntries.filter(i => i.advance > 0).length})`
+                          : filterKey === 'adjustment'
+                            ? `Adjustments [ADJ] (${allLedgerEntries.filter(i => i.adjustment > 0).length})`
+                            : `Invoices (${allLedgerEntries.filter(i => i.source === 'invoice').length})`
+
+                    return (
+                      <button
+                        key={filterKey}
+                        type="button"
+                        onClick={() => setLedgerFilter(filterKey)}
+                        className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                          isSel
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="relative">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search ledger entries..."
+                    value={ledgerSearch}
+                    onChange={e => setLedgerSearch(e.target.value)}
+                    className="text-[12px] pl-8 pr-3 py-1.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 w-52"
+                  />
+                </div>
+              </div>
+
+              {/* Detailed Financial Ledger Table */}
+              {filteredLedgerEntries.length === 0 ? (
+                <div className="py-16 text-center">
+                  <Wallet className="mx-auto mb-3 text-slate-300" size={36} strokeWidth={1.25} />
+                  <p className="text-[13px] text-slate-500 font-medium">No financial transactions match your filter.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-[12px]">
+                    <thead className="bg-[#f8fafc] border-b border-[#E4E8EC] text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                      <tr>
+                        <th className="py-3 px-4">Date</th>
+                        <th className="py-3 px-3">Type & Reference</th>
+                        <th className="py-3 px-4">Description / Notes</th>
+                        <th className="py-3 px-3 text-right">Charges</th>
+                        <th className="py-3 px-3 text-right">Received</th>
+                        <th className="py-3 px-3 text-right">Pending</th>
+                        <th className="py-3 px-3 text-right">Advance</th>
+                        <th className="py-3 px-3 text-center">Adjustment (ADJ)</th>
+                        <th className="py-3 px-3 text-center">Status</th>
+                        <th className="py-3 px-3 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E4E8EC]">
+                      {filteredLedgerEntries.map(item => {
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-4 font-bold text-slate-800 whitespace-nowrap">
+                              {item.date && item.date !== '—' ? formatDate(item.date) : '—'}
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10.5px] font-bold border ${
+                                item.source === 'job_sheet'
+                                  ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                  : item.source === 'invoice'
+                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                    : item.source === 'advance_widget'
+                                      ? 'bg-amber-100 text-amber-850 border-amber-300 font-extrabold'
+                                      : item.source === 'advance'
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                              }`}>
+                                {item.refNumber}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-slate-700 max-w-[240px] truncate" title={item.details}>
+                              <span className="font-semibold block text-slate-800">{item.title}</span>
+                              <span className="text-[11px] text-slate-500">{item.details}</span>
+                            </td>
+                            <td className="py-3 px-3 text-right font-bold text-slate-800 whitespace-nowrap">
+                              {item.charges > 0 ? `AED ${item.charges.toLocaleString()}` : '—'}
+                            </td>
+                            <td className="py-3 px-3 text-right font-bold text-emerald-700 whitespace-nowrap">
+                              {item.received > 0 ? `AED ${item.received.toLocaleString()}` : '—'}
+                            </td>
+                            <td className="py-3 px-3 text-right font-bold whitespace-nowrap">
+                              {item.pending > 0 ? (
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-600 border border-red-200">
+                                  AED {item.pending.toLocaleString()}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 font-medium">—</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-right font-bold whitespace-nowrap">
+                              {item.advance > 0 ? (
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  AED {item.advance.toLocaleString()}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 font-medium">—</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              {item.adjustment > 0 ? (
+                                <span className="inline-flex items-center gap-1 font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full text-[11px] shadow-2xs">
+                                  <span className="bg-indigo-700 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase">
+                                    ADJ
+                                  </span>
+                                  <span>AED {item.adjustment.toLocaleString()}</span>
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 font-medium">—</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                                item.status === 'paid'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : item.status === 'pending'
+                                    ? 'bg-red-100 text-red-800'
+                                    : item.status === 'advance'
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : 'bg-indigo-100 text-indigo-800'
+                              }`}>
+                                {item.status}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              {item.id.startsWith('adj-') && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteAdjustment(item.id.replace('adj-', ''))}
+                                  className="text-slate-400 hover:text-red-600 transition-colors cursor-pointer p-1"
+                                  title="Delete manual entry"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              )}
                             </td>
                           </tr>
                         )
@@ -526,7 +1358,7 @@ export function ClientProfile() {
                 <h3 className="text-[15px] font-bold text-[#111827]">Client Details</h3>
                 <button
                   onClick={() => setEditOpen(true)}
-                  className="text-[12px] font-semibold text-purple-600 hover:underline"
+                  className="text-[12px] font-semibold text-purple-600 hover:underline cursor-pointer"
                 >
                   Edit Information
                 </button>
@@ -552,16 +1384,32 @@ export function ClientProfile() {
                     </div>
                   ))}
                 </div>
-                {client.access_notes && (
+                {(client.remarks || client.access_notes) && (
                   <div className="mt-4">
-                    <p className="text-[12px] font-bold text-slate-500 uppercase tracking-[0.08em] mb-2">Access Notes</p>
-                    <p className="text-[13px] text-slate-700 bg-amber-50 border border-amber-100 rounded-xl p-3">{client.access_notes}</p>
+                    <p className="text-[12px] font-bold text-slate-500 uppercase tracking-[0.08em] mb-2">Remarks / Notes</p>
+                    <p className="text-[13px] text-slate-700 bg-amber-50 border border-amber-100 rounded-xl p-3">{client.remarks || client.access_notes}</p>
                   </div>
                 )}
-                {client.pet_info && (
-                  <div className="mt-4">
-                    <p className="text-[12px] font-bold text-slate-500 uppercase tracking-[0.08em] mb-2">Pet Info</p>
-                    <p className="text-[13px] text-slate-700 bg-amber-50 border border-amber-100 rounded-xl p-3">{client.pet_info}</p>
+                {((client.advance_amount ?? 0) > 0 || (client.adjustment_amount ?? 0) > 0 || (client.pending_amount ?? 0) > 0) && (
+                  <div className="mt-4 bg-slate-50 border border-[#E4E8EC] rounded-xl p-3">
+                    <p className="text-[12px] font-bold text-slate-500 uppercase tracking-[0.08em] mb-2">Initial Financial Balances</p>
+                    <div className="grid grid-cols-3 gap-2 text-[12px]">
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-center">
+                        <p className="text-[10px] text-emerald-700 font-bold uppercase">Advance</p>
+                        <p className="font-extrabold text-emerald-800">AED {(client.advance_amount ?? 0).toLocaleString()}</p>
+                      </div>
+                      <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-2 text-center">
+                        <p className="text-[10px] text-indigo-700 font-bold uppercase flex items-center justify-center gap-1">
+                          <span>Adjustment</span>
+                          <span className="bg-indigo-700 text-white text-[7.5px] font-black px-1 rounded">ADJ</span>
+                        </p>
+                        <p className="font-extrabold text-indigo-800">AED {(client.adjustment_amount ?? 0).toLocaleString()}</p>
+                      </div>
+                      <div className="bg-rose-50 border border-rose-200 rounded-lg p-2 text-center">
+                        <p className="text-[10px] text-rose-700 font-bold uppercase">Pending</p>
+                        <p className="font-extrabold text-rose-800">AED {(client.pending_amount ?? 0).toLocaleString()}</p>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -666,34 +1514,73 @@ export function ClientProfile() {
 
           {/* Financial summary */}
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="text-lg">💳</span>
-              <h3 className="text-[15px] font-bold text-[#111827]">Financials</h3>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">💳</span>
+                <h3 className="text-[15px] font-bold text-[#111827]">Financial Summary</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('financial_history')
+                  setNewAdjModalOpen(true)
+                }}
+                className="text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200 transition-colors cursor-pointer"
+              >
+                + ADJ / Advance
+              </button>
             </div>
-            {clientInvoices.length === 0 ? (
-              <p className="text-[12px] text-slate-400 text-center py-3">No invoices yet</p>
-            ) : (
-              <>
-                {[
-                  { label: 'Total Invoiced', value: `AED ${totalInvoiced.toLocaleString()}`, color: 'text-[#111827]' },
-                  { label: 'Total Paid',     value: `AED ${totalPaid.toLocaleString()}`,     color: 'text-emerald-600' },
-                  { label: 'Outstanding',    value: `AED ${outstanding.toLocaleString()}`,   color: outstanding > 0 ? 'text-red-600 font-bold' : 'text-emerald-600' },
-                  { label: 'Invoices',       value: `${clientInvoices.length} total`,        color: 'text-slate-600' },
-                ].map(r => (
-                  <div key={r.label} className="flex justify-between py-2 border-b border-[#E4E8EC] last:border-0">
-                    <span className="text-[12px] text-slate-500">{r.label}</span>
-                    <span className={`text-[12px] ${r.color}`}>{r.value}</span>
-                  </div>
-                ))}
-                {outstanding > 0 && (
-                  <Link
-                    to="/invoices"
-                    className="mt-3 block bg-red-50 border border-red-200 rounded-xl p-2.5 text-center hover:bg-red-100 transition-colors"
-                  >
-                    <p className="text-[11px] font-semibold text-red-700">AED {outstanding.toLocaleString()} unpaid — view invoices →</p>
-                  </Link>
-                )}
-              </>
+            
+            <div className="space-y-2 text-[12px]">
+              <div className="flex justify-between py-1.5 border-b border-[#E4E8EC]">
+                <span className="text-slate-500">Total Charges</span>
+                <span className="font-extrabold text-[#111827]">AED {totalDJCharges.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-[#E4E8EC]">
+                <span className="text-slate-500">Total Received</span>
+                <span className="font-bold text-emerald-700">AED {totalDJReceived.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-[#E4E8EC]">
+                <span className="text-slate-500">Pending Amount</span>
+                <span className={`font-bold ${totalDJPending > 0 ? 'text-red-600 font-extrabold' : 'text-slate-400'}`}>
+                  {totalDJPending > 0 ? `AED ${totalDJPending.toLocaleString()}` : 'Nil'}
+                </span>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-[#E4E8EC]">
+                <span className="text-slate-500">Advance Amount</span>
+                <span className="font-bold text-emerald-700">
+                  {netRemainingAdvance > 0 ? `AED ${netRemainingAdvance.toLocaleString()}` : '—'}
+                </span>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-[#E4E8EC] items-center">
+                <span className="text-slate-500 flex items-center gap-1.5">
+                  Adjustment
+                  <span className="bg-indigo-700 text-white text-[8.5px] font-black px-1.5 py-0.2 rounded uppercase">
+                    ADJ
+                  </span>
+                </span>
+                <span className="font-bold text-indigo-700">
+                  {totalDJAdjustment > 0 ? `AED ${totalDJAdjustment.toLocaleString()}` : '—'}
+                </span>
+              </div>
+              {clientInvoices.length > 0 && (
+                <div className="flex justify-between py-1.5 border-b border-[#E4E8EC]">
+                  <span className="text-slate-500">Invoices</span>
+                  <span className="text-slate-600">{clientInvoices.length} total</span>
+                </div>
+              )}
+            </div>
+
+            {totalDJPending > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('financial_history')}
+                className="w-full mt-3.5 block bg-red-50 border border-red-200 rounded-xl p-2.5 text-center hover:bg-red-100 transition-colors cursor-pointer"
+              >
+                <p className="text-[11px] font-semibold text-red-700">
+                  AED {totalDJPending.toLocaleString()} pending balance — view ledger →
+                </p>
+              </button>
             )}
           </div>
 
@@ -707,60 +1594,59 @@ export function ClientProfile() {
         </div>
       </div>
 
-      {/* ── Edit Client Modal ── */}
-      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Client" size="lg">
-        <form
-          className="space-y-4"
-          onSubmit={async e => {
-            e.preventDefault()
-            const fd = new FormData(e.currentTarget as HTMLFormElement)
-            setEditSaving(true)
-            updateClient(client.id, {
-              full_name:         fd.get('full_name') as string,
-              phone:             fd.get('phone') as string,
-              whatsapp:          fd.get('whatsapp') as string || undefined,
-              email:             fd.get('email') as string || undefined,
-              nationality:       fd.get('nationality') as string || undefined,
-              building_name:     fd.get('building_name') as string || undefined,
-              apartment:         fd.get('apartment') as string || undefined,
-              area:              fd.get('area') as string,
-              city:              fd.get('city') as string,
-              preferred_cleaner: fd.get('preferred_cleaner') as string || undefined,
-              access_notes:      fd.get('access_notes') as string || undefined,
-              pet_info:          fd.get('pet_info') as string || undefined,
-            })
-            setEditSaving(false)
-            setEditOpen(false)
-          }}
-        >
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="full_name"     label="Full Name"    defaultValue={client.full_name}     required />
-            <Input name="phone"         label="Phone"        defaultValue={client.phone} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="whatsapp"      label="WhatsApp"     defaultValue={client.whatsapp ?? ''} />
-            <Input name="email"         label="Email"        defaultValue={client.email ?? ''}    type="email" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="nationality"   label="Nationality"  defaultValue={client.nationality ?? ''} />
-            <Input name="building_name" label="Building"     defaultValue={client.building_name ?? ''} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="apartment"     label="Apartment"    defaultValue={client.apartment ?? ''} />
-            <Input name="area"          label="Area"         defaultValue={client.area}           required />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="city"              label="City"               defaultValue={client.city || 'Dubai'} required />
-            <Input name="preferred_cleaner" label="Preferred Cleaner"  defaultValue={client.preferred_cleaner ?? ''} />
-          </div>
-          <Textarea name="access_notes" label="Access Notes" defaultValue={client.access_notes ?? ''} rows={2} />
-          <Textarea name="pet_info"     label="Pet Info"     defaultValue={client.pet_info ?? ''}     rows={2} />
-          <div className="flex gap-3 pt-2">
-            <Button type="button" variant="secondary" className="flex-1" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button type="submit" className="flex-1" disabled={editSaving}>{editSaving ? 'Saving…' : 'Save Changes'}</Button>
-          </div>
-        </form>
-      </Modal>
+      {/* ── Edit Client Modal (Unified with Add New Client pop-up) ── */}
+      <ClientModalForm
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        initialClient={client}
+        employees={employees}
+        isMonthly={isClientMonthly}
+        isSaving={editSaving}
+        onSave={async patch => {
+          if (!client) return
+          setEditSaving(true)
+          updateClient(client.id, patch)
+
+          // Sync initial advance or adjustment to financial adjustments ledger if changed
+          const adv = patch.advance_amount ?? 0
+          const adj = patch.adjustment_amount ?? 0
+          if (adv > 0 || adj > 0) {
+            const todayStr = new Date().toISOString().split('T')[0]
+            const existingAdjs = safeLocalStorageGet<ClientFinancialAdjustment[]>('safaeewala_client_adjustments', []) || []
+            let newEntries = [...existingAdjs]
+
+            if (adv > 0 && adv !== (client.advance_amount ?? 0)) {
+              newEntries.push({
+                id: 'adj-adv-' + Date.now(),
+                client_id: client.id,
+                client_name: patch.full_name || client.full_name,
+                date: todayStr,
+                type: 'advance',
+                amount: adv,
+                notes: 'Updated opening advance balance',
+                created_at: new Date().toISOString(),
+              })
+            }
+            if (adj > 0 && adj !== (client.adjustment_amount ?? 0)) {
+              newEntries.push({
+                id: 'adj-adj-' + Date.now(),
+                client_id: client.id,
+                client_name: patch.full_name || client.full_name,
+                date: todayStr,
+                type: 'discount',
+                amount: adj,
+                notes: 'Updated opening adjustment balance (ADJ)',
+                created_at: new Date().toISOString(),
+              })
+            }
+            safeLocalStorageSet('safaeewala_client_adjustments', newEntries)
+            setAdjustments(newEntries)
+          }
+
+          setEditSaving(false)
+          setEditOpen(false)
+        }}
+      />
 
       {/* ── Review Request Modal ── */}
       <Modal
@@ -832,6 +1718,115 @@ export function ClientProfile() {
             )}
           </div>
         )}
+      </Modal>
+
+      {/* ── Record Financial Adjustment / Advance Modal ── */}
+      <Modal
+        open={newAdjModalOpen}
+        onClose={() => setNewAdjModalOpen(false)}
+        title="Record Financial Adjustment / Advance"
+        size="md"
+      >
+        <form onSubmit={handleCreateAdjustment} className="space-y-4">
+          <div>
+            <label className="block text-[12px] font-bold text-slate-700 mb-1">
+              Transaction / Adjustment Type
+            </label>
+            <select
+              value={newAdjType}
+              onChange={e => setNewAdjType(e.target.value as any)}
+              className="w-full text-[13px] bg-slate-50 border border-[#E4E8EC] rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-emerald-500"
+            >
+              <option value="discount">Service Discount (ADJ tag)</option>
+              <option value="waiver">Goodwill Waiver (ADJ tag)</option>
+              <option value="advance_deduction">Service Deducted from Advance (ADJ tag)</option>
+              <option value="credit">Account Credit Adjustment (ADJ tag)</option>
+              <option value="settlement">Settlement Adjustment (ADJ tag)</option>
+              <option value="correction">Billing Correction (ADJ tag)</option>
+              <option value="advance">Advance Payment Deposit</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[12px] font-bold text-slate-700 mb-1">
+                Amount (AED) *
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                required
+                placeholder="e.g. 50"
+                value={newAdjAmount}
+                onChange={e => setNewAdjAmount(e.target.value)}
+                className="w-full text-[13px] font-bold bg-slate-50 border border-[#E4E8EC] rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-[12px] font-bold text-slate-700 mb-1">
+                Date *
+              </label>
+              <input
+                type="date"
+                required
+                value={newAdjDate}
+                onChange={e => setNewAdjDate(e.target.value)}
+                className="w-full text-[13px] bg-slate-50 border border-[#E4E8EC] rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+          </div>
+
+          {clientDailyJobs.length > 0 && (
+            <div>
+              <label className="block text-[12px] font-bold text-slate-700 mb-1">
+                Attach to Specific Shift (Optional)
+              </label>
+              <select
+                value={newAdjJobId}
+                onChange={e => setNewAdjJobId(e.target.value)}
+                className="w-full text-[12px] bg-slate-50 border border-[#E4E8EC] rounded-xl px-3 py-2 font-medium focus:outline-none focus:border-emerald-500"
+              >
+                <option value="">— Standalone Client Adjustment (General) —</option>
+                {clientDailyJobs.slice(0, 10).map(j => (
+                  <option key={j.id} value={j.id}>
+                    {j.date} · {j.service || 'Shift'} by {j.staff_name} (AED {cleanNum(j.charges)})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-[12px] font-bold text-slate-700 mb-1">
+              Reason / Notes *
+            </label>
+            <textarea
+              required
+              rows={3}
+              placeholder="e.g. Loyalty discount agreed with client, advance cash deposit for upcoming sessions, etc."
+              value={newAdjNotes}
+              onChange={e => setNewAdjNotes(e.target.value)}
+              className="w-full text-[12px] bg-slate-50 border border-[#E4E8EC] rounded-xl p-3 focus:outline-none focus:border-emerald-500 resize-none"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E4E8EC]">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setNewAdjModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold"
+            >
+              Save Financial Entry
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   )

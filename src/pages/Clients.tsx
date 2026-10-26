@@ -2,17 +2,21 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign,
-  Heart, Award, CheckCircle, Trash2, ExternalLink, ArrowUpDown, RotateCcw, X, Filter
+  Heart, Award, CheckCircle, Trash2, ExternalLink, ArrowUpDown, RotateCcw, X, Filter, Clock,
+  Save, Check, ChevronDown, UserCheck, Edit2, LayoutGrid, List
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
-import { formatDate } from '@/lib/utils'
+import { formatDate, addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { BookingFrequency } from '@/types'
-import { isMonthlyJob, jobMatchesClient } from '@/lib/clientDataSync'
+import { isMonthlyJob, jobMatchesClient, isMonthlyClient, extractMonthlyClientsFromDailyJobs } from '@/lib/clientDataSync'
 import { SourceOriginTag, resolveClientSource } from '@/lib/sourceTracking'
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
+import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
+import { ClientModalForm } from '@/components/clients/ClientModalForm'
 
 export type ClientDatePreset = 'all' | '7days' | '30days' | '3months' | '6months' | '1year' | 'custom'
 
@@ -118,7 +122,7 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
 }
 
 export function Clients() {
-  const { clients, bookings, dailyJobs, addClient, updateClient, deleteClient, addBooking, invoices } = useData()
+  const { clients, bookings, dailyJobs, employees, addClient, updateClient, deleteClient, addBooking, invoices } = useData()
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<typeof clients[0] | null>(null)
@@ -132,6 +136,23 @@ export function Clients() {
   const [datePreset, setDatePreset] = useState<ClientDatePreset>('all')
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>(() => {
+    return safeLocalStorageGet<'grid' | 'table'>('clients_view_mode', 'grid')
+  })
+  useEffect(() => {
+    safeLocalStorageSet('clients_view_mode', viewMode)
+  }, [viewMode])
+
+  // ── Synchronized Monthly Clients Summaries (Single Source of Truth) ──
+  const allMonthlySummaries = useMemo(() => {
+    return extractMonthlyClientsFromDailyJobs(dailyJobs, 'all', clients)
+  }, [dailyJobs, clients])
+
+  // Check if selected client is a recurring Monthly Client
+  const isSelectedMonthly = useMemo(() => {
+    if (!selected) return false
+    return isMonthlyClient(selected, dailyJobs, allMonthlySummaries)
+  }, [selected, dailyJobs, allMonthlySummaries])
 
   // Helper to extract YYYY-MM-DD
   const extractDateStr = (val?: string | null): string => {
@@ -249,7 +270,9 @@ export function Clients() {
   const vipClients    = clients.filter(c => c.total_spent > 2000).length
   const repeatClients = clients.filter(c => c.total_bookings > 1).length
   const repeatRate    = clients.length > 0 ? Math.round((repeatClients / clients.length) * 100) : 0
-  const monthlyCount  = clients.filter(c => dailyJobs.some(j => jobMatchesClient(j, c) && isMonthlyJob(j))).length
+  const monthlyCount  = useMemo(() => {
+    return clients.filter(c => isMonthlyClient(c, dailyJobs, allMonthlySummaries)).length
+  }, [clients, dailyJobs, allMonthlySummaries])
 
   // Month-over-month deltas
   const now = new Date()
@@ -271,7 +294,7 @@ export function Clients() {
         (c.area && c.area.toLowerCase().includes(q)) ||
         (c.building_name && c.building_name.toLowerCase().includes(q))
       const matchArea = areaFilter === 'all' || c.area === areaFilter
-      const isClientMonthly = dailyJobs.some(j => jobMatchesClient(j, c) && isMonthlyJob(j))
+      const isClientMonthly = isMonthlyClient(c, dailyJobs, allMonthlySummaries)
       const matchFilter = !filterType || (
         filterType === 'active' ? (c.last_service && new Date(c.last_service) > new Date('2026-01-01')) :
         filterType === 'vip' ? c.total_spent > 2000 :
@@ -294,6 +317,272 @@ export function Clients() {
     return acc
   }, {} as Record<string, number>)
 
+  // ── Modular Widgets ──
+  const renderTopClientsWidget = () => (
+    <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[15px] font-bold text-[#111827]">Top Clients</h3>
+        <span className="text-[11px] text-slate-400">By lifetime value</span>
+      </div>
+      <div className="space-y-3">
+        {topClients.map((c, idx) => {
+          const pct = Math.round((c.total_spent / (topClients[0]?.total_spent || 1)) * 100)
+          const isMonthly = isMonthlyClient(c, dailyJobs, allMonthlySummaries)
+          return (
+            <Link key={c.id} to={`/clients/${c.id}`} className="flex items-center gap-3 hover:bg-slate-50 rounded-xl -mx-2 px-2 py-1 transition-colors">
+              <span className={`text-[12px] font-bold w-4 shrink-0 ${idx === 0 ? 'text-amber-500' : 'text-slate-400'}`}>
+                {idx + 1}
+              </span>
+              <Avatar name={c.full_name} size="sm" idx={idx} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="text-[12px] font-semibold text-[#111827] truncate">{c.full_name}</p>
+                  {isMonthly && (
+                    <span className="text-[9px] bg-emerald-600 text-white font-extrabold px-1.5 py-0.2 rounded-full uppercase tracking-wider">
+                      Monthly
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+              <span className="text-[12px] font-bold text-[#111827] shrink-0">AED {c.total_spent.toLocaleString()}</span>
+            </Link>
+          )
+        })}
+      </div>
+    </div>
+  )
+
+  const renderTopLocationsWidget = () => (
+    <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[15px] font-bold text-[#111827]">Top Locations</h3>
+        <span className="text-[11px] text-slate-400">By area</span>
+      </div>
+      <div className="space-y-2.5">
+        {Object.entries(areaCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 6)
+          .map(([area, count]) => {
+            const maxCount = Math.max(...Object.values(areaCounts)) || 1
+            const pct = Math.round((count / maxCount) * 100)
+            return (
+              <div key={area}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[12px] font-medium text-slate-700 truncate">{area}</span>
+                  <span className="text-[12px] font-bold text-[#111827] shrink-0 ml-2">{count}</span>
+                </div>
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            )
+          })}
+      </div>
+    </div>
+  )
+
+  const renderRecentBookingsWidget = () => (
+    <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[15px] font-bold text-[#111827]">Recent Bookings</h3>
+        <span className="text-[11px] text-slate-400">Latest activity</span>
+      </div>
+      {bookings.length === 0 ? (
+        <p className="text-[12px] text-slate-400 text-center py-4">No bookings yet</p>
+      ) : (
+        <div className="space-y-3">
+          {[...bookings]
+            .sort((a, b) => b.created_at.localeCompare(a.created_at))
+            .slice(0, 5)
+            .map((b, idx) => {
+              const statusColor =
+                b.status === 'completed'   ? 'bg-slate-100 text-slate-600' :
+                b.status === 'in_progress' ? 'bg-emerald-50 text-emerald-700' :
+                b.status === 'confirmed'   ? 'bg-blue-50 text-blue-700' :
+                b.status === 'cancelled'   ? 'bg-red-50 text-red-600' :
+                'bg-amber-50 text-amber-700'
+              const statusLabel =
+                b.status === 'completed'   ? 'Done' :
+                b.status === 'in_progress' ? 'Live' :
+                b.status === 'confirmed'   ? 'Scheduled' :
+                b.status === 'cancelled'   ? 'Cancelled' : 'Pending'
+              return (
+                <Link key={b.id} to="/bookings" className="flex items-center gap-3 hover:bg-slate-50 rounded-xl -mx-2 px-2 py-1 transition-colors">
+                  <Avatar name={b.client_name} size="sm" idx={idx} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold text-[#111827] truncate">{b.client_name}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">{b.service_type} · {b.scheduled_date}</p>
+                  </div>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusColor}`}>
+                    {statusLabel}
+                  </span>
+                </Link>
+              )
+            })}
+        </div>
+      )}
+    </div>
+  )
+
+  const renderClientsTable = () => (
+    <div className="w-full bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[980px] text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200/80 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+              <th className="py-3.5 px-4">Client</th>
+              <th className="py-3.5 px-3">Contact</th>
+              <th className="py-3.5 px-3">Location</th>
+              <th className="py-3.5 px-3">Assigned Cleaner</th>
+              <th className="py-3.5 px-3 text-center">Visits</th>
+              <th className="py-3.5 px-3 text-right">Lifetime Spent</th>
+              <th className="py-3.5 px-3">Type / Tags</th>
+              <th className="py-3.5 px-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 text-[12.5px]">
+            {filtered.map((c, idx) => {
+              const nameLower = c.full_name.toLowerCase().trim()
+              const liveBookings = bookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase().trim() === nameLower)
+              const clientInvs = invoices.filter(i => i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower)
+              const outstanding = clientInvs.reduce((s, i) => s + i.total, 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
+              const isMonthly = isMonthlyClient(c, dailyJobs, allMonthlySummaries)
+              const totalVisits = Math.max(c.total_bookings, liveBookings.length)
+
+              return (
+                <tr
+                  key={c.id}
+                  onClick={() => setSelected(c)}
+                  className={`transition-colors cursor-pointer group ${
+                    isMonthly
+                      ? 'bg-emerald-50/70 hover:bg-emerald-100/70 border-l-[4px] border-l-emerald-600'
+                      : 'hover:bg-emerald-50/40'
+                  }`}
+                >
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-3">
+                      <Avatar name={c.full_name} size="sm" idx={idx} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-bold text-[#111827] group-hover:text-emerald-700 transition-colors truncate">
+                            {c.full_name}
+                          </p>
+                          {isMonthly && (
+                            <span className="text-[10px] bg-emerald-600 text-white font-black px-2 py-0.5 rounded-full shadow-2xs tracking-wider uppercase">
+                              Monthly
+                            </span>
+                          )}
+                          <SourceOriginTag source={resolveClientSource(c, bookings)} />
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {c.nationality ? `${c.nationality} · ` : ''}Since {formatDate(c.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+
+                  <td className="py-3 px-3">
+                    <p className="font-semibold text-slate-800">{c.phone}</p>
+                    {c.whatsapp && c.whatsapp !== c.phone && (
+                      <p className="text-[11px] text-slate-400">WA: {c.whatsapp}</p>
+                    )}
+                  </td>
+
+                  <td className="py-3 px-3">
+                    <p className="font-medium text-slate-800 truncate max-w-[180px]">
+                      {c.building_name ? `${c.building_name}, ` : ''}{c.area}
+                    </p>
+                    <p className="text-[11px] text-slate-400">{c.city || 'Dubai'}</p>
+                  </td>
+
+                  <td className="py-3 px-3">
+                    {c.preferred_cleaner ? (
+                      <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-full">
+                        <Users size={11} className="text-emerald-600" />
+                        <span>{c.preferred_cleaner}</span>
+                      </span>
+                    ) : (
+                      <span className="text-[11.5px] text-slate-400 font-medium">Unassigned</span>
+                    )}
+                  </td>
+
+                  <td className="py-3 px-3 text-center">
+                    <span className="font-bold text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded-full text-[11.5px]">
+                      {totalVisits}
+                    </span>
+                  </td>
+
+                  <td className="py-3 px-3 text-right">
+                    <p className="font-extrabold text-[#111827]">AED {c.total_spent.toLocaleString()}</p>
+                    {outstanding > 0 && (
+                      <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.2 rounded">
+                        Owed: AED {outstanding.toLocaleString()}
+                      </span>
+                    )}
+                  </td>
+
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {isMonthly && (
+                        <span className="text-[10px] bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full font-bold">
+                          Monthly
+                        </span>
+                      )}
+                      {c.total_spent > 2000 && (
+                        <span className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-bold">
+                          VIP
+                        </span>
+                      )}
+                      {c.pet_info && (
+                        <span className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                          Pet
+                        </span>
+                      )}
+                    </div>
+                  </td>
+
+                  <td className="py-3 px-4 text-right">
+                    <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelected(c)
+                          setIsEditingClient(true)
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-700 transition-colors"
+                        title="Edit Profile"
+                      >
+                        <Edit2 size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteClient(c.id)}
+                        className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
+                        title="Delete client"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                      <Link
+                        to={`/clients/${c.id}`}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
+                        title="View Full Profile"
+                      >
+                        <ExternalLink size={13} />
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+
   return (
     <div className="space-y-6">
 
@@ -311,7 +600,7 @@ export function Clients() {
       <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3.5">
         {[
           { label: 'Total Clients',    value: clients.length,             sub: 'All time records', icon: Users,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: clientDeltaLabel,  deltaUp: newThisMonth >= 0, filter: null },
-          { label: 'Monthly Clients',  value: monthlyCount,              sub: 'Job Sheet monthly', icon: Star,     iconBg: 'bg-teal-50',    iconColor: 'text-teal-600',    delta: `${monthlyCount} monthly`, deltaUp: monthlyCount > 0, filter: 'monthly' },
+          { label: 'Monthly Clients',  value: monthlyCount,              sub: 'Active monthly clients', icon: Star,     iconBg: 'bg-teal-50',    iconColor: 'text-teal-600',    delta: `${monthlyCount} active`, deltaUp: monthlyCount > 0, filter: 'monthly' },
           { label: 'Active (30d)',     value: activeClients,              sub: 'Recent activity', icon: TrendingUp, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: `${activeClients} active`, deltaUp: activeClients > 0, filter: 'active' },
           { label: 'VIP Clients',      value: vipClients,                 sub: 'AED 2k+ spent',  icon: Award,     iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: vipClients > 0 ? `${vipClients} VIP` : 'None', deltaUp: vipClients > 0, filter: 'vip' },
           { label: 'Avg Lifetime',     value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client', icon: DollarSign, iconBg: 'bg-teal-50',   iconColor: 'text-teal-600',    delta: avgLtv > 0 ? 'Real' : '—', deltaUp: avgLtv > 0, filter: null },
@@ -419,6 +708,30 @@ export function Clients() {
             </button>
           )}
 
+          {/* View Mode Switcher */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 shrink-0">
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                viewMode === 'grid' ? 'bg-white text-emerald-700 shadow-xs font-bold' : 'text-slate-400 hover:text-slate-600'
+              }`}
+              title="Grid Card View"
+            >
+              <LayoutGrid size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                viewMode === 'table' ? 'bg-white text-emerald-700 shadow-xs font-bold' : 'text-slate-400 hover:text-slate-600'
+              }`}
+              title="Table View (Full Width)"
+            >
+              <List size={15} />
+            </button>
+          </div>
+
           {/* Result counter */}
           <div className="ml-auto text-right shrink-0">
             <span className="text-[12px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/60">
@@ -492,25 +805,56 @@ export function Clients() {
 
       </div>
 
-      {/* ── Main content: Client list + Sidebar widgets (Equal top height) ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+      {/* ── Main Layout: Full Width Table View with Widgets Underneath OR Grid View ── */}
+      {viewMode === 'table' ? (
+        <div className="space-y-6">
+          {filtered.length === 0 ? (
+            <div className="bg-white rounded-[22px] border border-[#E4E8EC] py-16 text-center">
+              <Users className="mx-auto mb-3 text-slate-300" size={40} strokeWidth={1.25} />
+              <p className="text-[13px] text-slate-500">No clients match your search</p>
+            </div>
+          ) : (
+            renderClientsTable()
+          )}
 
-        {/* ── Left: Client Grid (at equal height with Top Clients widget) ── */}
-        <div className="xl:col-span-2 space-y-4">
+          {/* ── Widgets Underneath Datatable (Responsive 3-Column Grid) ── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+            {renderTopClientsWidget()}
+            {renderTopLocationsWidget()}
+            {renderRecentBookingsWidget()}
+          </div>
+        </div>
+      ) : (
+        /* ── GRID CARD VIEW (2 cols cards + 1 col widgets sidebar) ── */
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+
+          {/* ── Left: Client Grid (at equal height with Top Clients widget) ── */}
+          <div className="xl:col-span-2 space-y-4">
 
           {/* Client cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filtered.map((c, idx) => (
+            {filtered.map((c, idx) => {
+              const isMonthly = isMonthlyClient(c, dailyJobs, allMonthlySummaries)
+              return (
               <div
                 key={c.id}
                 onClick={() => setSelected(c)}
-                className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 cursor-pointer hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] hover:border-emerald-200 transition-all"
+                className={`rounded-[22px] p-5 cursor-pointer transition-all border ${
+                  isMonthly
+                    ? 'bg-emerald-50/80 border-emerald-300 shadow-[0_4px_24px_rgba(16,185,129,0.12)] ring-1 ring-emerald-400/40 hover:bg-emerald-100/70 hover:border-emerald-400 hover:shadow-[0_8px_32px_rgba(16,185,129,0.18)]'
+                    : 'bg-white border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] hover:border-emerald-200'
+                }`}
               >
                 <div className="flex items-start gap-3 mb-4">
                   <Avatar name={c.full_name} size="md" idx={idx} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-[14px] font-bold text-[#111827] truncate">{c.full_name}</p>
+                      {isMonthly && (
+                        <span className="text-[10px] bg-emerald-600 text-white font-black px-2 py-0.5 rounded-full shadow-2xs tracking-wider uppercase">
+                          Monthly
+                        </span>
+                      )}
                       <SourceOriginTag source={resolveClientSource(c, bookings)} />
                     </div>
                     <p className="text-[12px] text-slate-500 mt-0.5">{c.nationality}</p>
@@ -543,11 +887,10 @@ export function Clients() {
                   const liveBookings = bookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase().trim() === nameLower)
                   const clientInvs   = invoices.filter(i => i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower)
                   const outstanding  = clientInvs.reduce((s, i) => s + i.total, 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
-                  const isMonthly    = dailyJobs.some(j => jobMatchesClient(j, c) && isMonthlyJob(j))
                   const isFromJobSheet = c.id.startsWith('dj-')
                   const totalVisits  = Math.max(c.total_bookings, liveBookings.length)
                   return (
-                    <div className="flex items-center justify-between mt-4 pt-3.5 border-t border-[#E4E8EC]">
+                    <div className={`flex items-center justify-between mt-4 pt-3.5 border-t ${isMonthly ? 'border-emerald-200/90' : 'border-[#E4E8EC]'}`}>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <Link
                           to={`/clients/${c.id}`}
@@ -579,6 +922,19 @@ export function Clients() {
                       </div>
                       <div className="flex items-center gap-2">
                         <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation()
+                            setSelected(c)
+                            setIsEditingClient(true)
+                          }}
+                          className="flex items-center gap-1 text-[11.5px] font-semibold text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 px-2 py-1 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                          title="Edit Profile"
+                        >
+                          <Edit2 size={12} />
+                          <span>Edit</span>
+                        </button>
+                        <button
                           onClick={e => { e.stopPropagation(); deleteClient(c.id) }}
                           className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
                           title="Delete client"
@@ -597,8 +953,9 @@ export function Clients() {
                   )
                 })()}
               </div>
-            ))}
-          </div>
+            )
+          })}
+        </div>
 
           {filtered.length === 0 && (
             <div className="bg-white rounded-[22px] border border-[#E4E8EC] py-16 text-center">
@@ -610,167 +967,105 @@ export function Clients() {
 
         {/* ── Right sidebar widgets ── */}
         <div className="space-y-5">
-
-          {/* Client Loyalty — Top Clients */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[15px] font-bold text-[#111827]">Top Clients</h3>
-              <span className="text-[11px] text-slate-400">By lifetime value</span>
-            </div>
-            <div className="space-y-3">
-              {topClients.map((c, idx) => {
-                const pct = Math.round((c.total_spent / topClients[0].total_spent) * 100)
-                return (
-                  <Link key={c.id} to={`/clients/${c.id}`} className="flex items-center gap-3 hover:bg-slate-50 rounded-xl -mx-2 px-2 py-1 transition-colors">
-                    <span className={`text-[12px] font-bold w-4 shrink-0 ${idx === 0 ? 'text-amber-500' : 'text-slate-400'}`}>
-                      {idx + 1}
-                    </span>
-                    <Avatar name={c.full_name} size="sm" idx={idx} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-semibold text-[#111827] truncate">{c.full_name}</p>
-                      <div className="mt-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                    <span className="text-[12px] font-bold text-[#111827] shrink-0">AED {c.total_spent.toLocaleString()}</span>
-                  </Link>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Top Locations by Area */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[15px] font-bold text-[#111827]">Top Locations</h3>
-              <span className="text-[11px] text-slate-400">By area</span>
-            </div>
-            <div className="space-y-2.5">
-              {Object.entries(areaCounts)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 6)
-                .map(([area, count]) => {
-                  const maxCount = Math.max(...Object.values(areaCounts))
-                  const pct = Math.round((count / maxCount) * 100)
-                  return (
-                    <div key={area}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[12px] font-medium text-slate-700 truncate">{area}</span>
-                        <span className="text-[12px] font-bold text-[#111827] shrink-0 ml-2">{count}</span>
-                      </div>
-                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                  )
-                })}
-            </div>
-          </div>
-
-          {/* Recent Bookings (real) */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[15px] font-bold text-[#111827]">Recent Bookings</h3>
-              <span className="text-[11px] text-slate-400">Latest activity</span>
-            </div>
-            {bookings.length === 0 ? (
-              <p className="text-[12px] text-slate-400 text-center py-4">No bookings yet</p>
-            ) : (
-              <div className="space-y-3">
-                {[...bookings]
-                  .sort((a, b) => b.created_at.localeCompare(a.created_at))
-                  .slice(0, 5)
-                  .map((b, idx) => {
-                    const statusColor =
-                      b.status === 'completed'   ? 'bg-slate-100 text-slate-600' :
-                      b.status === 'in_progress' ? 'bg-emerald-50 text-emerald-700' :
-                      b.status === 'confirmed'   ? 'bg-blue-50 text-blue-700' :
-                      b.status === 'cancelled'   ? 'bg-red-50 text-red-600' :
-                      'bg-amber-50 text-amber-700'
-                    const statusLabel =
-                      b.status === 'completed'   ? 'Done' :
-                      b.status === 'in_progress' ? 'Live' :
-                      b.status === 'confirmed'   ? 'Scheduled' :
-                      b.status === 'cancelled'   ? 'Cancelled' : 'Pending'
-                    return (
-                      <Link key={b.id} to="/bookings" className="flex items-center gap-3 hover:bg-slate-50 rounded-xl -mx-2 px-2 py-1 transition-colors">
-                        <Avatar name={b.client_name} size="sm" idx={idx} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[12px] font-semibold text-[#111827] truncate">{b.client_name}</p>
-                          <p className="text-[11px] text-slate-500 mt-0.5">{b.service_type} · {b.scheduled_date}</p>
-                        </div>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusColor}`}>
-                          {statusLabel}
-                        </span>
-                      </Link>
-                    )
-                  })}
-              </div>
-            )}
-          </div>
-
+          {renderTopClientsWidget()}
+          {renderTopLocationsWidget()}
+          {renderRecentBookingsWidget()}
         </div>
+
       </div>
+    )}
 
-      {/* ── Add Client Modal ── */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="Add New Client" size="lg">
-        <form className="space-y-4" onSubmit={e => {
-          e.preventDefault()
-          const f = new FormData(e.currentTarget as HTMLFormElement)
+      {/* ── Add Client Modal (Unified No-Scroll High-Efficiency Form) ── */}
+      <ClientModalForm
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        employees={employees}
+        onSave={clientData => {
+          const clientName = clientData.full_name || 'New Client'
+          const remarks = clientData.remarks || ''
+          const advance = clientData.advance_amount || 0
+          const adjustment = clientData.adjustment_amount || 0
+          const pending = clientData.pending_amount || 0
+          const cleaner = clientData.preferred_cleaner || ''
+
           addClient({
-            full_name:     String(f.get('full_name') || 'New Client'),
-            phone:         String(f.get('phone') || ''),
-            whatsapp:      String(f.get('whatsapp') || ''),
-            email:         String(f.get('email') || ''),
-            nationality:   '',
-            city:          String(f.get('city') || 'Dubai'),
-            building_name: String(f.get('building') || ''),
-            apartment:     '',
-            area:          String(f.get('area') || 'Dubai'),
-            access_notes:  String(f.get('access_notes') || ''),
-            pet_info:      String(f.get('pet_info') || ''),
-            total_bookings: 0,
-            total_spent:   0,
+            full_name:         clientName,
+            phone:             clientData.phone || '',
+            whatsapp:          clientData.whatsapp || '',
+            email:             clientData.email || '',
+            nationality:       '',
+            city:              clientData.city || 'Dubai',
+            building_name:     clientData.building_name || '',
+            apartment:         clientData.apartment || '',
+            area:              clientData.area || 'Dubai',
+            preferred_cleaner: cleaner,
+            remarks:           remarks,
+            notes:             remarks,
+            access_notes:      remarks,
+            advance_amount:    advance,
+            adjustment_amount: adjustment,
+            pending_amount:    pending,
+            total_bookings:    0,
+            total_spent:       0,
           })
-          setShowModal(false)
-        }}>
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="full_name" label="Full Name" placeholder="Full name" />
-            <Input name="phone" label="Phone" placeholder="+971 50 000 0000" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="whatsapp" label="WhatsApp" placeholder="+971 50 000 0000" />
-            <Input name="email" label="Email" type="email" placeholder="email@example.com" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="building" label="Building / Villa Name" placeholder="Building or villa name" />
-            <Select name="city" label="Emirate">
-              <option>Dubai</option><option>Abu Dhabi</option><option>Sharjah</option><option>Ajman</option>
-            </Select>
-          </div>
-          <Input name="area" label="Area / Community" placeholder="e.g. Dubai Marina, JBR..." />
-          <Textarea name="access_notes" label="Access Notes" placeholder="Key with concierge, parking instructions, gate code..." rows={2} />
-          <Textarea name="pet_info" label="Pet Information" placeholder="Pet type, breed, any cleaning product restrictions..." rows={2} />
-          <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button type="submit" className="flex-1">Save Client</Button>
-          </div>
-        </form>
-      </Modal>
 
-      {/* ── Client Detail / Edit Modal ── */}
+          // Sync initial advance or adjustment to financial adjustments ledger
+          if (advance > 0 || adjustment > 0) {
+            const todayStr = new Date().toISOString().split('T')[0]
+            const existingAdjs = safeLocalStorageGet<any[]>('safaeewala_client_adjustments', []) || []
+            const newEntries = [...existingAdjs]
+
+            if (advance > 0) {
+              newEntries.push({
+                id: 'adj-init-adv-' + Date.now(),
+                client_id: '',
+                client_name: clientName,
+                date: todayStr,
+                type: 'advance',
+                amount: advance,
+                notes: 'Initial opening advance payment',
+                created_at: new Date().toISOString(),
+              })
+            }
+            if (adjustment > 0) {
+              newEntries.push({
+                id: 'adj-init-adj-' + Date.now(),
+                client_id: '',
+                client_name: clientName,
+                date: todayStr,
+                type: 'discount',
+                amount: adjustment,
+                notes: 'Initial opening account adjustment / discount (ADJ)',
+                created_at: new Date().toISOString(),
+              })
+            }
+            safeLocalStorageSet('safaeewala_client_adjustments', newEntries)
+          }
+
+          setShowModal(false)
+        }}
+      />
+
+      {/* ── Client Detail Modal ── */}
       <Modal
-        open={!!selected}
+        open={!!selected && !isEditingClient}
         onClose={() => { setSelected(null); setIsEditingClient(false); setConfirmDelete(false) }}
-        title={isEditingClient ? 'Edit Client' : 'Client Profile'}
+        title="Client Profile"
         size="lg"
       >
-        {selected && !isEditingClient && (
+        {selected && (
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <Avatar name={selected.full_name} size="lg" idx={0} />
               <div>
-                <p className="text-[18px] font-bold text-[#111827]">{selected.full_name}</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-[18px] font-bold text-[#111827]">{selected.full_name}</p>
+                  {isMonthlyClient(selected, dailyJobs, allMonthlySummaries) && (
+                    <span className="text-[10px] bg-emerald-600 text-white font-extrabold px-2 py-0.5 rounded-full shadow-2xs tracking-wider uppercase">
+                      Monthly
+                    </span>
+                  )}
+                </div>
                 <p className="text-[13px] text-slate-500 mt-0.5">
                   {selected.nationality ? `${selected.nationality} · ` : ''}Client since {formatDate(selected.created_at)}
                 </p>
@@ -783,6 +1078,7 @@ export function Clients() {
                 { label: 'WhatsApp',       value: selected.whatsapp ?? selected.phone },
                 { label: 'Email',          value: selected.email ?? '—' },
                 { label: 'Area',           value: `${selected.building_name ? selected.building_name + ', ' : ''}${selected.area}` },
+                { label: 'Assigned Cleaner', value: selected.preferred_cleaner || 'Unassigned' },
                 { label: 'Total Bookings', value: selected.total_bookings },
                 { label: 'Total Spent',    value: `AED ${selected.total_spent.toLocaleString()}` },
               ].map(({ label, value }) => (
@@ -793,16 +1089,34 @@ export function Clients() {
               ))}
             </div>
 
-            {selected.access_notes && (
+            {(selected.remarks || selected.access_notes) && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                <p className="text-[10.5px] text-blue-700 uppercase tracking-[0.08em] font-semibold mb-1">Access Notes</p>
-                <p className="text-[13px] text-blue-700">{selected.access_notes}</p>
+                <p className="text-[10.5px] text-blue-700 uppercase tracking-[0.08em] font-semibold mb-1">Remarks / Notes</p>
+                <p className="text-[13px] text-blue-700">{selected.remarks || selected.access_notes}</p>
               </div>
             )}
-            {selected.pet_info && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                <p className="text-[10.5px] text-amber-700 uppercase tracking-[0.08em] font-semibold mb-1">Pet Information</p>
-                <p className="text-[13px] text-amber-700">{selected.pet_info}</p>
+
+            {/* Initial Financial Amounts Summary */}
+            {((selected.advance_amount ?? 0) > 0 || (selected.adjustment_amount ?? 0) > 0 || (selected.pending_amount ?? 0) > 0) && (
+              <div className="bg-slate-50 border border-[#E4E8EC] rounded-xl p-3">
+                <p className="text-[10.5px] text-slate-500 uppercase tracking-[0.08em] font-semibold mb-2">Initial Financial Balances</p>
+                <div className="grid grid-cols-3 gap-2 text-[12px]">
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-center">
+                    <p className="text-[10px] text-emerald-700 font-bold uppercase">Advance</p>
+                    <p className="font-extrabold text-emerald-800">AED {(selected.advance_amount ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-2 text-center">
+                    <p className="text-[10px] text-indigo-700 font-bold uppercase flex items-center justify-center gap-1">
+                      <span>Adjustment</span>
+                      <span className="bg-indigo-700 text-white text-[7.5px] font-black px-1 rounded">ADJ</span>
+                    </p>
+                    <p className="font-extrabold text-indigo-800">AED {(selected.adjustment_amount ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div className="bg-rose-50 border border-rose-200 rounded-lg p-2 text-center">
+                    <p className="text-[10px] text-rose-700 font-bold uppercase">Pending</p>
+                    <p className="font-extrabold text-rose-800">AED {(selected.pending_amount ?? 0).toLocaleString()}</p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -834,59 +1148,36 @@ export function Clients() {
                 >
                   <Trash2 size={13} /> Delete
                 </button>
-                <Button variant="outline" className="flex-1" size="sm" onClick={() => setIsEditingClient(true)}>Edit Profile</Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  size="sm"
+                  onClick={() => setIsEditingClient(true)}
+                >
+                  Edit Profile
+                </Button>
                 <Button className="flex-1" size="sm" onClick={() => { setBookingClient({ name: selected!.full_name, phone: selected!.phone }); setSelected(null); setIsEditingClient(false); setShowBookingModal(true) }}>New Booking</Button>
               </div>
             )}
           </div>
         )}
-
-        {selected && isEditingClient && (
-          <form
-            className="space-y-4"
-            onSubmit={e => {
-              e.preventDefault()
-              const f = new FormData(e.currentTarget)
-              const patch = {
-                full_name:     f.get('full_name') as string,
-                phone:         f.get('phone') as string,
-                whatsapp:      f.get('whatsapp') as string,
-                email:         f.get('email') as string,
-                city:          f.get('city') as string,
-                building_name: f.get('building') as string,
-                area:          f.get('area') as string,
-                access_notes:  f.get('access_notes') as string,
-                pet_info:      f.get('pet_info') as string,
-              }
-              updateClient(selected.id, patch)
-              setSelected({ ...selected, ...patch })
-              setIsEditingClient(false)
-            }}
-          >
-            <div className="grid grid-cols-2 gap-4">
-              <Input name="full_name" label="Full Name" defaultValue={selected.full_name} required />
-              <Input name="phone" label="Phone" defaultValue={selected.phone} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Input name="whatsapp" label="WhatsApp" defaultValue={selected.whatsapp ?? ''} />
-              <Input name="email" label="Email" type="email" defaultValue={selected.email ?? ''} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Input name="building" label="Building / Villa" defaultValue={selected.building_name ?? ''} />
-              <Select name="city" label="Emirate" defaultValue={selected.city}>
-                <option>Dubai</option><option>Abu Dhabi</option><option>Sharjah</option><option>Ajman</option>
-              </Select>
-            </div>
-            <Input name="area" label="Area / Community" defaultValue={selected.area} />
-            <Textarea name="access_notes" label="Access Notes" defaultValue={selected.access_notes ?? ''} rows={2} />
-            <Textarea name="pet_info" label="Pet Information" defaultValue={selected.pet_info ?? ''} rows={2} />
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setIsEditingClient(false)}>Cancel</Button>
-              <Button type="submit" className="flex-1">Save Changes</Button>
-            </div>
-          </form>
-        )}
       </Modal>
+
+      {/* ── Client Edit Modal (Unified No-Scroll High-Efficiency Form) ── */}
+      <ClientModalForm
+        open={isEditingClient && !!selected}
+        onClose={() => setIsEditingClient(false)}
+        initialClient={selected}
+        employees={employees}
+        isMonthly={isSelectedMonthly}
+        onSave={patch => {
+          if (selected) {
+            updateClient(selected.id, patch)
+            setSelected({ ...selected, ...patch })
+          }
+          setIsEditingClient(false)
+        }}
+      />
 
       {/* ── New Booking for Client Modal ── */}
       <Modal open={showBookingModal} onClose={() => setShowBookingModal(false)} title="New Booking" size="lg">
@@ -906,6 +1197,39 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: {
   onClose: () => void; onAdd: (b: any) => void
 }) {
   const [selectedCrew, setSelectedCrew] = useState<string[]>([])
+  const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [startTime, setStartTime] = useState('09:00')
+  const [duration, setDuration] = useState<number>(3)
+  const [endTime, setEndTime] = useState(() => addHoursToTime('09:00', 3))
+
+  // 2-Way Synchronization:
+  // 1. Changing Start Time recalculates End Time keeping duration intact
+  const handleStartTimeChange = (newStart: string) => {
+    setStartTime(newStart)
+    if (newStart && duration > 0) {
+      setEndTime(addHoursToTime(newStart, duration))
+    }
+  }
+
+  // 2. Changing End Time automatically recalculates Duration
+  const handleEndTimeChange = (newEnd: string) => {
+    setEndTime(newEnd)
+    if (startTime && newEnd) {
+      const calcDur = calcDurationFromTimes(startTime, newEnd)
+      if (calcDur > 0) {
+        setDuration(calcDur)
+      }
+    }
+  }
+
+  // 3. Changing Duration automatically recalculates End Time
+  const handleDurationChange = (newDur: number) => {
+    setDuration(newDur)
+    if (startTime && newDur > 0) {
+      setEndTime(addHoursToTime(startTime, newDur))
+    }
+  }
+
   return (
     <form
       className="space-y-4"
@@ -919,9 +1243,10 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: {
           service_address: f.get('service_address') as string,
           service_type: f.get('service_type') as string,
           frequency: (f.get('frequency') as BookingFrequency) || 'once',
-          scheduled_date: f.get('scheduled_date') as string,
-          scheduled_time: f.get('scheduled_time') as string,
-          duration_hours: Number(f.get('duration_hours')) || 3,
+          scheduled_date: scheduledDate,
+          scheduled_time: startTime,
+          end_time: endTime,
+          duration_hours: duration,
           total_amount: Number(f.get('total_amount')) || 0,
           notes: f.get('notes') as string,
           status: 'pending',
@@ -952,17 +1277,76 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: {
           <option value="monthly">Monthly</option>
         </Select>
       </div>
-      <div className="grid grid-cols-3 gap-4">
-        <Input name="scheduled_date" label="Date" type="date" required />
-        <Input name="scheduled_time" label="Time" type="time" />
-        <Input name="duration_hours" label="Duration (hrs)" type="number" min="1" max="12" defaultValue="3" />
+
+      {/* ── Start Time, End Time & Duration Row (Auto-Synced) ── */}
+      <div className="bg-slate-50/80 rounded-2xl p-3.5 border border-[#E4E8EC] space-y-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div>
+            <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Date *</label>
+            <input
+              type="date"
+              name="scheduled_date"
+              required
+              value={scheduledDate}
+              onChange={e => setScheduledDate(e.target.value)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-medium"
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] font-bold text-[#111827] mb-1">Start Time *</label>
+            <input
+              type="time"
+              name="scheduled_time"
+              required
+              value={startTime}
+              onChange={e => handleStartTimeChange(e.target.value)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-[#111827]"
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] font-bold text-teal-800 mb-1">End Time *</label>
+            <input
+              type="time"
+              name="end_time"
+              required
+              value={endTime}
+              onChange={e => handleEndTimeChange(e.target.value)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-teal-700"
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] font-bold text-emerald-800 mb-1">Duration (hrs)</label>
+            <input
+              type="number"
+              step="0.5"
+              min="0.5"
+              max="24"
+              name="duration_hours"
+              value={duration}
+              onChange={e => handleDurationChange(parseFloat(e.target.value) || 0)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-emerald-700"
+            />
+          </div>
+        </div>
+
+        {/* ── Auto-calculated session summary pill ── */}
+        <div className="flex items-center justify-between text-[11.5px] px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-900 font-medium">
+          <span className="flex items-center gap-1.5">
+            <Clock size={13} className="text-emerald-600" />
+            <span>Shift Slot: <strong>{startTime || '—'}</strong> to <strong>{endTime || '—'}</strong></span>
+          </span>
+          <span className="font-extrabold text-emerald-700 bg-white px-2 py-0.5 rounded-md shadow-2xs">
+            {duration} Hour{duration !== 1 ? 's' : ''} auto-synced
+          </span>
+        </div>
       </div>
+
       <Input name="total_amount" label="Total Amount (AED)" type="number" placeholder="0.00" />
       <CrewSelector selected={selectedCrew} onChange={setSelectedCrew} />
       <Textarea name="notes" label="Notes" placeholder="Access instructions, special requirements…" rows={2} />
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-        <Button type="submit" className="flex-1">Create Booking</Button>
+        <Button type="submit" className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold">Create Booking</Button>
       </div>
     </form>
   )

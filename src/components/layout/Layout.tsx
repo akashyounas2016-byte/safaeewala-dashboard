@@ -2,19 +2,39 @@ import { createContext, useContext, useState, useMemo } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { NotificationCenter } from '@/components/NotificationCenter'
-import { Menu, Bot, Sparkles, AlertTriangle } from 'lucide-react'
+import { Menu, Bot, Sparkles, AlertTriangle, ChevronRight } from 'lucide-react'
 import { CRMAIBotModal } from '@/components/ai/CRMAIBotModal'
 import { useData } from '@/store/DataContext'
 import { analyzeCRMHealth } from '@/lib/crmAIBot'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
-/* ── Layout context — lets PageHero access openMenu ── */
-export const LayoutContext = createContext<{ openMenu: () => void }>({ openMenu: () => {} })
+/* ── Layout context — lets PageHero access openMenu and toggleSidebar ── */
+export const LayoutContext = createContext<{
+  openMenu: () => void
+  toggleSidebar?: () => void
+  isSidebarCollapsed?: boolean
+}>({ openMenu: () => {} })
 export const useLayout = () => useContext(LayoutContext)
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('safaeewala_sidebar_collapsed') === 'true'
+    } catch {
+      return false
+    }
+  })
   const [showAIBot, setShowAIBot]     = useState(false)
   const [hideBanner, setHideBanner]   = useState(false)
+
+  const handleToggleSidebar = () => {
+    setSidebarCollapsed(prev => {
+      const next = !prev
+      try { localStorage.setItem('safaeewala_sidebar_collapsed', String(next)) } catch {}
+      return next
+    })
+  }
 
   const { bookings, clients } = useData()
 
@@ -27,9 +47,38 @@ export function Layout() {
   const highIssues = aiHealth.issues.filter(i => i.severity === 'high')
 
   return (
-    <LayoutContext.Provider value={{ openMenu: () => setSidebarOpen(true) }}>
+    <LayoutContext.Provider
+      value={{
+        openMenu: () => setSidebarOpen(true),
+        toggleSidebar: handleToggleSidebar,
+        isSidebarCollapsed: sidebarCollapsed,
+      }}
+    >
       <div className="flex h-screen w-screen overflow-hidden bg-[#f4f7f6]">
-        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <Sidebar
+          open={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={handleToggleSidebar}
+        />
+
+        {/* Floating Expand Sidebar Button (Shown when sidebar is collapsed on desktop) */}
+        {sidebarCollapsed && (
+          <button
+            type="button"
+            onClick={handleToggleSidebar}
+            className="hidden lg:flex fixed left-0 top-5 z-40 items-center gap-2 pl-3 pr-3.5 py-2.5 bg-[#0B1215] hover:bg-[#064e3b] text-white rounded-r-2xl border-y border-r border-emerald-500/40 shadow-[0_8px_25px_rgba(0,0,0,0.35)] hover:pl-4 transition-all cursor-pointer group animate-in fade-in slide-in-from-left-4 duration-200"
+            title="Expand / Show Sidebar"
+            aria-label="Expand Sidebar"
+          >
+            <div className="w-5 h-5 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <ChevronRight size={15} />
+            </div>
+            <span className="text-[12px] font-bold text-slate-200 group-hover:text-white">
+              Safaeewala
+            </span>
+          </button>
+        )}
 
         <div className="flex flex-col flex-1 min-w-0 bg-[#f0f4f3]">
           {/* Mobile-only top bar (hamburger + logo) */}
@@ -106,7 +155,9 @@ export function Layout() {
                 </div>
               )}
 
-              <Outlet />
+              <ErrorBoundary>
+                <Outlet />
+              </ErrorBoundary>
             </div>
           </main>
 

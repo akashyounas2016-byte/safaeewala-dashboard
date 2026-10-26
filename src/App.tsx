@@ -8,6 +8,7 @@ import { NotificationProvider } from '@/store/NotificationContext'
 import { Layout } from '@/components/layout/Layout'
 import { SimpleAuthProvider, useSimpleAuth, isLocalEnvironment } from '@/lib/simpleAuth'
 import { Login } from '@/pages/Login'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
 // ── Lazy Loaded Page Components for Maximum Performance ──
 const Overview               = lazy(() => import('@/pages/Overview').then(m => ({ default: m.Overview })))
@@ -18,6 +19,8 @@ const Clients                = lazy(() => import('@/pages/Clients').then(m => ({
 const ClientProfile          = lazy(() => import('@/pages/ClientProfile').then(m => ({ default: m.ClientProfile })))
 const Employees              = lazy(() => import('@/pages/Employees').then(m => ({ default: m.Employees })))
 const EmployeeProfile        = lazy(() => import('@/pages/EmployeeProfile').then(m => ({ default: m.EmployeeProfile })))
+const Agencies               = lazy(() => import('@/pages/Agencies').then(m => ({ default: m.Agencies })))
+const AgencyProfile          = lazy(() => import('@/pages/AgencyProfile').then(m => ({ default: m.AgencyProfile })))
 const PaymentProcessing      = lazy(() => import('@/pages/PaymentProcessing').then(m => ({ default: m.PaymentProcessing })))
 const CustomerFeedback       = lazy(() => import('@/pages/CustomerFeedback').then(m => ({ default: m.CustomerFeedback })))
 const MarketingDashboard     = lazy(() => import('@/pages/MarketingDashboard').then(m => ({ default: m.MarketingDashboard })))
@@ -30,7 +33,9 @@ const Expenses               = lazy(() => import('@/pages/Expenses').then(m => (
 const Reports                = lazy(() => import('@/pages/Reports').then(m => ({ default: m.Reports })))
 const Settings               = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })))
 const DailyJobSheet          = lazy(() => import('@/pages/DailyJobSheet').then(m => ({ default: m.DailyJobSheet })))
+const JobSheetSpreadsheet     = lazy(() => import('@/pages/JobSheetSpreadsheet').then(m => ({ default: m.JobSheetSpreadsheet })))
 const PendingPayments        = lazy(() => import('@/pages/PendingPayments').then(m => ({ default: m.PendingPayments })))
+const Attendance             = lazy(() => import('@/pages/Attendance').then(m => ({ default: m.Attendance })))
 
 type ProfileStatus = 'approved' | 'pending' | 'rejected'
 
@@ -118,37 +123,52 @@ function AppRoutes() {
   return (
     <NotificationProvider bookings={bookings} invoices={invoices} inventory={inventory}>
       <BrowserRouter>
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
-            <Route element={<Layout />}>
-              <Route index element={<Overview />} />
-              <Route path="bookings"   element={<Bookings />} />
-              <Route path="fluent-forms" element={<FluentFormsLeads />} />
-              <Route path="whatsapp-crm" element={<WhatsAppCRM />} />
-              <Route path="clients"    element={<Clients />} />
-              <Route path="clients/:id" element={<ClientProfile />} />
-              <Route path="employees"  element={<Employees />} />
-              <Route path="employees/:id" element={<EmployeeProfile />} />
-              <Route path="subscriptions" element={<Navigate to="/monthly-clients" replace />} />
-              <Route path="payments" element={<PaymentProcessing />} />
-              <Route path="feedback" element={<CustomerFeedback />} />
-              <Route path="marketing" element={<MarketingDashboard />} />
-              <Route path="analytics" element={<BusinessAnalytics />} />
-              <Route path="monthly-invoices" element={<MonthlyInvoices />} />
-              <Route path="monthly-clients" element={<MonthlyClients />} />
-              <Route path="invoices"   element={<Invoices />} />
-              <Route path="inventory"  element={<Inventory />} />
-              <Route path="expenses"   element={<Expenses />} />
-              <Route path="pending"    element={<PendingPayments />} />
-              <Route path="reports"    element={<Reports />} />
-              <Route path="settings"   element={<Settings />} />
-              <Route path="daily-job-sheet" element={
-                <AdminRoute><DailyJobSheet /></AdminRoute>
-              } />
-              <Route path="login" element={<Navigate to="/" replace />} />
-            </Route>
-          </Routes>
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              {/* Standalone Full-Width Excel Spreadsheet (No Sidebar) */}
+              <Route
+                path="daily-job-sheet/spreadsheet"
+                element={
+                  <AdminRoute>
+                    <JobSheetSpreadsheet />
+                  </AdminRoute>
+                }
+              />
+
+              <Route element={<Layout />}>
+                <Route index element={<Overview />} />
+                <Route path="bookings"   element={<Bookings />} />
+                <Route path="fluent-forms" element={<FluentFormsLeads />} />
+                <Route path="whatsapp-crm" element={<WhatsAppCRM />} />
+                <Route path="clients"    element={<Clients />} />
+                <Route path="clients/:id" element={<ClientProfile />} />
+                <Route path="employees"  element={<Employees />} />
+                <Route path="employees/:id" element={<EmployeeProfile />} />
+                <Route path="agencies"   element={<Agencies />} />
+                <Route path="agencies/:id" element={<AgencyProfile />} />
+                <Route path="subscriptions" element={<Navigate to="/monthly-clients" replace />} />
+                <Route path="payments" element={<PaymentProcessing />} />
+                <Route path="feedback" element={<CustomerFeedback />} />
+                <Route path="marketing" element={<MarketingDashboard />} />
+                <Route path="analytics" element={<BusinessAnalytics />} />
+                <Route path="monthly-invoices" element={<MonthlyInvoices />} />
+                <Route path="monthly-clients" element={<MonthlyClients />} />
+                <Route path="invoices"   element={<Invoices />} />
+                <Route path="inventory"  element={<Inventory />} />
+                <Route path="expenses"   element={<Expenses />} />
+                <Route path="pending"    element={<PendingPayments />} />
+                <Route path="reports"    element={<Reports />} />
+                <Route path="settings"   element={<Settings />} />
+                <Route path="attendance" element={<Attendance />} />
+                <Route path="daily-job-sheet" element={
+                  <AdminRoute><DailyJobSheet /></AdminRoute>
+                } />
+                <Route path="login" element={<Navigate to="/" replace />} />
+              </Route>
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </BrowserRouter>
     </NotificationProvider>
   )

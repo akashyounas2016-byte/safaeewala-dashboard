@@ -11,10 +11,11 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
-import { formatCurrency, formatDate, formatTime } from '@/lib/utils'
+import { formatCurrency, formatDate, formatTime, addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
-import type { Booking, BookingStatus, BookingFrequency } from '@/types'
+import type { Booking, BookingFrequency, BookingStatus } from '@/types'
 import { SourceOriginTag, resolveBookingSource } from '@/lib/sourceTracking'
+import { cleanClientNameFromAddress, isBogusJob, isMonthlyClient } from '@/lib/clientDataSync'
 
 export type BookingDatePreset = 'today' | '7days' | '30days' | '3months' | '6months' | '1year' | 'all' | 'custom'
 
@@ -161,7 +162,18 @@ async function parseBookingsFile(file: File): Promise<Parameters<(b: any) => voi
 
 /* ─── Main Bookings page ─── */
 export function Bookings() {
-  const { bookings, addBooking, updateBooking, deleteBooking, invoices, updateInvoice } = useData()
+  const {
+    bookings,
+    addBooking,
+    updateBooking,
+    deleteBooking,
+    invoices,
+    updateInvoice,
+    dailyJobs,
+    updateDailyJob,
+    deleteDailyJob,
+    clients,
+  } = useData()
   const [view, setView] = useState<'list' | 'calendar' | 'kanban'>('list')
   const xlsxInputRef = useRef<HTMLInputElement>(null)
   const [importing,   setImporting]   = useState(false)
@@ -172,7 +184,89 @@ export function Bookings() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [serviceFilter, setServiceFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
-  const [selectedBooking, setSelectedBooking] = useState<typeof bookings[0] | null>(null)
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+
+  // ── Full Synchronization between Bookings & Daily Job Sheet ──
+  const synchronizedBookings = useMemo(() => {
+    // 1. Existing bookings, enriched with latest live data from linked dailyJobs
+    const enrichedBookings: Booking[] = bookings.map(b => {
+      const linkedJob = dailyJobs.find(j =>
+        (j.booking_id && j.booking_id === b.id) ||
+        (j.date === b.scheduled_date && (
+          (j.address && j.address.toLowerCase().includes(b.client_name.toLowerCase())) ||
+          (b.client_name && cleanClientNameFromAddress(j.address || '').toLowerCase().includes(b.client_name.toLowerCase()))
+        ))
+      )
+
+      if (!linkedJob) return b
+
+      const updatedCrew = linkedJob.staff_name && linkedJob.staff_name !== 'Unassigned'
+        ? linkedJob.staff_name.split(',').map(s => s.trim()).filter(Boolean)
+        : b.assigned_crew
+
+      return {
+        ...b,
+        assigned_crew: updatedCrew.length > 0 ? updatedCrew : b.assigned_crew,
+        scheduled_time: linkedJob.start_time || b.scheduled_time,
+        end_time: linkedJob.end_time || b.end_time,
+        duration_hours: linkedJob.duty_hours || b.duration_hours,
+        total_amount: linkedJob.charges || b.total_amount,
+        status: linkedJob.received > 0 ? 'completed' : b.status,
+      }
+    })
+
+    // 2. Discover jobs entered on Daily Job Sheet not yet in formal bookings
+    const syntheticBookings: Booking[] = []
+    const existingBookingIds = new Set(bookings.map(b => b.id))
+    const existingDateClientSet = new Set(
+      bookings.map(b => `${b.scheduled_date}__${b.client_name.toLowerCase().trim()}`)
+    )
+
+    dailyJobs.forEach(j => {
+      if (isBogusJob(j)) return
+      const rawAddr = (j.address || j.area || '').trim()
+      if (!rawAddr || rawAddr === '—' || rawAddr === '-') return
+      if (j.booking_id && existingBookingIds.has(j.booking_id)) return
+
+      const clientName = cleanClientNameFromAddress(rawAddr) || rawAddr
+      const comboKey = `${j.date}__${clientName.toLowerCase().trim()}`
+      if (existingDateClientSet.has(comboKey)) return
+
+      const nowStr = new Date().toISOString().split('T')[0]
+      let status: BookingStatus = 'confirmed'
+      if (j.received > 0) {
+        status = 'completed'
+      } else if (j.date === nowStr && j.staff_name && j.staff_name !== 'Unassigned') {
+        status = 'in_progress'
+      } else if (j.date < nowStr) {
+        status = 'completed'
+      }
+
+      syntheticBookings.push({
+        id: `dj-${j.id}`,
+        client_id: '',
+        client_name: clientName,
+        client_phone: '',
+        service_address: rawAddr,
+        service_type: j.service || (j.material && j.material !== 'No' ? `${j.material} Cleaning` : 'General Cleaning'),
+        status,
+        frequency: j.payment_mode === 'Monthly' ? 'monthly' : 'once',
+        scheduled_date: j.date,
+        scheduled_time: j.start_time || '09:00',
+        end_time: j.end_time || addHoursToTime(j.start_time || '09:00', j.duty_hours || 4),
+        duration_hours: j.duty_hours || 4,
+        assigned_crew: j.staff_name && j.staff_name !== 'Unassigned'
+          ? j.staff_name.split(',').map(s => s.trim()).filter(Boolean)
+          : [],
+        notes: j.remarks || '',
+        total_amount: j.charges || 0,
+        created_at: j.created_at || `${j.date}T08:00:00Z`,
+        source: 'daily_job_sheet',
+      })
+    })
+
+    return [...enrichedBookings, ...syntheticBookings]
+  }, [bookings, dailyJobs])
 
   const activeDateRange = useMemo(() => {
     const now = new Date()
@@ -214,13 +308,13 @@ export function Bookings() {
 
   // Filter bookings by active date range
   const dateFilteredBookings = useMemo(() => {
-    return bookings.filter(b => {
+    return synchronizedBookings.filter(b => {
       const bDate = b.scheduled_date || (b.created_at ? b.created_at.split('T')[0] : '')
       if (activeDateRange.start && bDate < activeDateRange.start) return false
       if (activeDateRange.end && bDate > activeDateRange.end) return false
       return true
     })
-  }, [bookings, activeDateRange])
+  }, [synchronizedBookings, activeDateRange])
 
   // Filter by search, status, and service type
   const filtered = useMemo(() => {
@@ -541,6 +635,15 @@ export function Bookings() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-[14px] font-semibold text-[#111827] truncate">{b.client_name}</p>
+                        {(() => {
+                          const matchedClient = clients.find(c => c.id === b.client_id || c.full_name.toLowerCase().trim() === b.client_name.toLowerCase().trim())
+                          const isMonthly = b.frequency === 'monthly' || b.frequency === 'weekly' || b.frequency === 'biweekly' || (b.frequency as string) === 'bi-weekly' || (matchedClient && isMonthlyClient(matchedClient, dailyJobs))
+                          return isMonthly ? (
+                            <span className="text-[10px] bg-emerald-600 text-white font-extrabold px-2 py-0.5 rounded-full shadow-2xs tracking-wider uppercase">
+                              Monthly
+                            </span>
+                          ) : null
+                        })()}
                         <SourceOriginTag source={resolveBookingSource(b)} />
                       </div>
                       <p className="text-[12px] text-slate-500 mt-0.5 capitalize">{b.service_type} · {b.frequency}</p>
@@ -613,8 +716,34 @@ export function Bookings() {
         {selectedBooking && (
           <BookingDetail
             booking={selectedBooking}
-            onUpdate={(patch) => { updateBooking(selectedBooking.id, patch); setSelectedBooking(b => b ? { ...b, ...patch } : b) }}
-            onDelete={() => { deleteBooking(selectedBooking.id); setSelectedBooking(null) }}
+            onUpdate={(patch) => {
+              if (selectedBooking.id.startsWith('dj-')) {
+                const jobId = selectedBooking.id.replace('dj-', '')
+                updateDailyJob(jobId, {
+                  date: patch.scheduled_date ?? selectedBooking.scheduled_date,
+                  start_time: patch.scheduled_time ?? selectedBooking.scheduled_time,
+                  end_time: patch.end_time ?? selectedBooking.end_time,
+                  duty_hours: patch.duration_hours ?? selectedBooking.duration_hours,
+                  charges: patch.total_amount ?? selectedBooking.total_amount,
+                  staff_name: patch.assigned_crew && patch.assigned_crew.length > 0 ? patch.assigned_crew.join(', ') : undefined,
+                  address: patch.service_address ?? selectedBooking.service_address,
+                  service: patch.service_type ?? selectedBooking.service_type,
+                  received: patch.status === 'completed' ? (patch.total_amount ?? selectedBooking.total_amount) : undefined,
+                })
+              } else {
+                updateBooking(selectedBooking.id, patch)
+              }
+              setSelectedBooking(b => b ? { ...b, ...patch } : b)
+            }}
+            onDelete={() => {
+              if (selectedBooking.id.startsWith('dj-')) {
+                const jobId = selectedBooking.id.replace('dj-', '')
+                deleteDailyJob(jobId)
+              } else {
+                deleteBooking(selectedBooking.id)
+              }
+              setSelectedBooking(null)
+            }}
             invoices={invoices}
             onUpdateInvoice={updateInvoice}
           />
@@ -793,7 +922,7 @@ function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b
                     className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
                     style={{ background: ['#dcefe7','#fce4d6','#e4dff5','#d6e7f5','#fcecc8'][idx % 5], color: ['#0d8a72','#c66a3a','#6b5bb5','#3a7ab8','#a8842a'][idx % 5] }}
                   >
-                    {b.client_name.split(' ').map(p => p[0]).join('').slice(0,2).toUpperCase()}
+                    {b.client_name.split(' ').map((p: string) => p[0]).join('').slice(0,2).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-semibold text-[#111827] truncate">{b.client_name}</p>
@@ -912,7 +1041,39 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
 /* ─── New Booking Form ─── */
 function NewBookingForm({ onClose, onAdd }: { onClose: () => void; onAdd: (b: any) => void }) {
   const [selectedCrew, setSelectedCrew] = useState<string[]>([])
+  const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [startTime, setStartTime] = useState('09:00')
+  const [duration, setDuration] = useState<number>(3)
+  const [endTime, setEndTime] = useState(() => addHoursToTime('09:00', 3))
   const ref = useRef<HTMLFormElement>(null)
+
+  // 2-Way Synchronization:
+  // 1. Changing Start Time recalculates End Time keeping duration intact
+  const handleStartTimeChange = (newStart: string) => {
+    setStartTime(newStart)
+    if (newStart && duration > 0) {
+      setEndTime(addHoursToTime(newStart, duration))
+    }
+  }
+
+  // 2. Changing End Time automatically recalculates Duration
+  const handleEndTimeChange = (newEnd: string) => {
+    setEndTime(newEnd)
+    if (startTime && newEnd) {
+      const calcDur = calcDurationFromTimes(startTime, newEnd)
+      if (calcDur > 0) {
+        setDuration(calcDur)
+      }
+    }
+  }
+
+  // 3. Changing Duration automatically recalculates End Time
+  const handleDurationChange = (newDur: number) => {
+    setDuration(newDur)
+    if (startTime && newDur > 0) {
+      setEndTime(addHoursToTime(startTime, newDur))
+    }
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -924,9 +1085,10 @@ function NewBookingForm({ onClose, onAdd }: { onClose: () => void; onAdd: (b: an
       service_address:String(f.get('address') || ''),
       service_type:   String(f.get('service_type') || 'Standard Clean'),
       frequency:      (f.get('frequency') || 'once') as BookingFrequency,
-      scheduled_date: String(f.get('date') || new Date().toISOString().split('T')[0]),
-      scheduled_time: String(f.get('time') || '09:00'),
-      duration_hours: Number(f.get('duration') || 3),
+      scheduled_date: scheduledDate,
+      scheduled_time: startTime,
+      end_time:       endTime,
+      duration_hours: duration,
       total_amount:   Number(f.get('amount') || 0),
       status:         'pending',
       assigned_crew:  selectedCrew,
@@ -938,7 +1100,7 @@ function NewBookingForm({ onClose, onAdd }: { onClose: () => void; onAdd: (b: an
   return (
     <form ref={ref} className="space-y-4" onSubmit={handleSubmit}>
       <div className="grid grid-cols-2 gap-4">
-        <Input name="client_name" label="Client name" placeholder="Full name" />
+        <Input name="client_name" label="Client name" placeholder="Full name" required />
         <Input name="phone" label="Phone" placeholder="+971 50 000 0000" />
       </div>
       <Input name="address" label="Service address" placeholder="Street, unit, neighborhood" />
@@ -954,17 +1116,76 @@ function NewBookingForm({ onClose, onAdd }: { onClose: () => void; onAdd: (b: an
           <option value="monthly">Monthly</option>
         </Select>
       </div>
-      <div className="grid grid-cols-3 gap-4">
-        <Input name="date" label="Date" type="date" />
-        <Input name="time" label="Time" type="time" />
-        <Input name="duration" label="Duration (hrs)" type="number" min="1" max="12" defaultValue="3" />
+
+      {/* ── Start Time, End Time & Duration Row (Auto-Synced) ── */}
+      <div className="bg-slate-50/80 rounded-2xl p-3.5 border border-[#E4E8EC] space-y-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div>
+            <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Date *</label>
+            <input
+              type="date"
+              name="date"
+              required
+              value={scheduledDate}
+              onChange={e => setScheduledDate(e.target.value)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-medium"
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] font-bold text-[#111827] mb-1">Start Time *</label>
+            <input
+              type="time"
+              name="time"
+              required
+              value={startTime}
+              onChange={e => handleStartTimeChange(e.target.value)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-[#111827]"
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] font-bold text-teal-800 mb-1">End Time *</label>
+            <input
+              type="time"
+              name="end_time"
+              required
+              value={endTime}
+              onChange={e => handleEndTimeChange(e.target.value)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-teal-700"
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] font-bold text-emerald-800 mb-1">Duration (hrs)</label>
+            <input
+              type="number"
+              step="0.5"
+              min="0.5"
+              max="24"
+              name="duration"
+              value={duration}
+              onChange={e => handleDurationChange(parseFloat(e.target.value) || 0)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-emerald-700"
+            />
+          </div>
+        </div>
+
+        {/* ── Auto-calculated session summary pill ── */}
+        <div className="flex items-center justify-between text-[11.5px] px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-900 font-medium">
+          <span className="flex items-center gap-1.5">
+            <Clock size={13} className="text-emerald-600" />
+            <span>Shift Slot: <strong>{startTime || '—'}</strong> to <strong>{endTime || '—'}</strong></span>
+          </span>
+          <span className="font-extrabold text-emerald-700 bg-white px-2 py-0.5 rounded-md shadow-2xs">
+            {duration} Hour{duration !== 1 ? 's' : ''} auto-synced
+          </span>
+        </div>
       </div>
+
       <Input name="amount" label="Total amount (AED)" type="number" placeholder="0.00" />
       <CrewSelector selected={selectedCrew} onChange={setSelectedCrew} />
       <Textarea name="notes" label="Notes" placeholder="Access instructions, special requirements…" rows={2} />
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-        <Button type="submit" className="flex-1">Create booking</Button>
+        <Button type="submit" className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold">Create booking</Button>
       </div>
     </form>
   )
@@ -994,6 +1215,35 @@ function BookingDetail({ booking, onUpdate, onDelete, invoices, onUpdateInvoice 
   const [isEditing, setIsEditing] = useState(false)
   const [crew,      setCrew]      = useState<string[]>(booking.assigned_crew ?? [])
 
+  const [scheduledDate, setScheduledDate] = useState(booking.scheduled_date)
+  const [startTime, setStartTime] = useState(booking.scheduled_time || '09:00')
+  const [duration, setDuration] = useState<number>(booking.duration_hours || 3)
+  const [endTime, setEndTime] = useState(() => booking.end_time || addHoursToTime(booking.scheduled_time || '09:00', booking.duration_hours || 3))
+
+  const handleStartTimeChange = (newStart: string) => {
+    setStartTime(newStart)
+    if (newStart && duration > 0) {
+      setEndTime(addHoursToTime(newStart, duration))
+    }
+  }
+
+  const handleEndTimeChange = (newEnd: string) => {
+    setEndTime(newEnd)
+    if (startTime && newEnd) {
+      const calcDur = calcDurationFromTimes(startTime, newEnd)
+      if (calcDur > 0) {
+        setDuration(calcDur)
+      }
+    }
+  }
+
+  const handleDurationChange = (newDur: number) => {
+    setDuration(newDur)
+    if (startTime && newDur > 0) {
+      setEndTime(addHoursToTime(startTime, newDur))
+    }
+  }
+
   function applyStatus(s: BookingStatus) {
     setStatus(s)
     onUpdate({ status: s })
@@ -1012,9 +1262,10 @@ function BookingDetail({ booking, onUpdate, onDelete, invoices, onUpdateInvoice 
             service_address:fd.get('service_address') as string,
             service_type:   fd.get('service_type') as string,
             frequency:      fd.get('frequency') as BookingFrequency,
-            scheduled_date: fd.get('scheduled_date') as string,
-            scheduled_time: fd.get('scheduled_time') as string,
-            duration_hours: Number(fd.get('duration_hours')),
+            scheduled_date: scheduledDate,
+            scheduled_time: startTime,
+            end_time:       endTime,
+            duration_hours: duration,
             total_amount:   Number(fd.get('total_amount')),
             notes:          fd.get('notes') as string,
             assigned_crew:  crew,
@@ -1039,17 +1290,75 @@ function BookingDetail({ booking, onUpdate, onDelete, invoices, onUpdateInvoice 
             <option value="monthly">Monthly</option>
           </Select>
         </div>
-        <div className="grid grid-cols-3 gap-4">
-          <Input name="scheduled_date" label="Date" type="date" defaultValue={booking.scheduled_date} />
-          <Input name="scheduled_time" label="Time" type="time" defaultValue={booking.scheduled_time} />
-          <Input name="duration_hours" label="Duration (hrs)" type="number" min="1" max="12" defaultValue={String(booking.duration_hours)} />
+
+        {/* ── Start Time, End Time & Duration Row (Auto-Synced) ── */}
+        <div className="bg-slate-50/80 rounded-2xl p-3.5 border border-[#E4E8EC] space-y-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Date *</label>
+              <input
+                type="date"
+                name="scheduled_date"
+                required
+                value={scheduledDate}
+                onChange={e => setScheduledDate(e.target.value)}
+                className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-medium"
+              />
+            </div>
+            <div>
+              <label className="block text-[11.5px] font-bold text-[#111827] mb-1">Start Time *</label>
+              <input
+                type="time"
+                name="scheduled_time"
+                required
+                value={startTime}
+                onChange={e => handleStartTimeChange(e.target.value)}
+                className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-[#111827]"
+              />
+            </div>
+            <div>
+              <label className="block text-[11.5px] font-bold text-teal-800 mb-1">End Time *</label>
+              <input
+                type="time"
+                name="end_time"
+                required
+                value={endTime}
+                onChange={e => handleEndTimeChange(e.target.value)}
+                className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-teal-700"
+              />
+            </div>
+            <div>
+              <label className="block text-[11.5px] font-bold text-emerald-800 mb-1">Duration (hrs)</label>
+              <input
+                type="number"
+                step="0.5"
+                min="0.5"
+                max="24"
+                name="duration_hours"
+                value={duration}
+                onChange={e => handleDurationChange(parseFloat(e.target.value) || 0)}
+                className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-emerald-700"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-[11.5px] px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-900 font-medium">
+            <span className="flex items-center gap-1.5">
+              <Clock size={13} className="text-emerald-600" />
+              <span>Shift Slot: <strong>{startTime || '—'}</strong> to <strong>{endTime || '—'}</strong></span>
+            </span>
+            <span className="font-extrabold text-emerald-700 bg-white px-2 py-0.5 rounded-md shadow-2xs">
+              {duration} Hour{duration !== 1 ? 's' : ''} auto-synced
+            </span>
+          </div>
         </div>
+
         <Input name="total_amount" label="Amount (AED)" type="number" defaultValue={String(booking.total_amount)} />
         <Textarea name="notes" label="Notes" defaultValue={booking.notes} rows={3} />
         <CrewSelector selected={crew} onChange={setCrew} />
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="outline" className="flex-1" onClick={() => setIsEditing(false)}>Cancel</Button>
-          <Button type="submit" className="flex-1">Save Changes</Button>
+          <Button type="submit" className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold">Save Changes</Button>
         </div>
       </form>
     )

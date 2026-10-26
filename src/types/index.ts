@@ -24,6 +24,7 @@ export interface Booking {
   frequency: BookingFrequency
   scheduled_date: string
   scheduled_time: string
+  end_time?: string
   duration_hours: number
   assigned_crew: string[]
   notes?: string
@@ -44,13 +45,106 @@ export interface Client {
   area: string
   city: string
   access_notes?: string
+  remarks?: string
+  notes?: string
   source?: 'fluent_forms' | 'whatsapp' | 'manual' | 'daily_job_sheet' | string
   pet_info?: string
   preferred_cleaner?: string
+  advance_amount?: number
+  adjustment_amount?: number
+  pending_amount?: number
+  service_days?: string[]
+  scheduled_time?: string
+  end_time?: string
+  duration_hours?: number
+  day_cleaner_assignments?: Record<string, string>
+  day_schedules?: Record<string, { startTime: string; endTime: string; cleaner: string; duration?: number }>
   total_bookings: number
   total_spent: number
   last_service?: string
   created_at: string
+}
+
+export type EmployeeRole = 'cleaner' | 'supervisor' | 'crew_lead' | 'ducting' | 'store_cleaner' | 'driver'
+
+export interface AgencyCommissionPayout {
+  id: string
+  agency_id: string
+  amount: number
+  payment_date: string
+  period_start?: string
+  period_end?: string
+  payment_method: 'bank_transfer' | 'cheque' | 'cash' | 'credit'
+  reference_no?: string
+  status: 'paid' | 'pending' | 'processing'
+  notes?: string
+  created_at: string
+}
+
+export type AgencySalaryPayout = AgencyCommissionPayout
+
+export interface AgencyContactPerson {
+  id: string
+  name: string
+  phone?: string
+  email?: string
+  role?: string
+}
+
+export interface AgencyDocument {
+  id: string
+  name: string
+  category: 'trade_license' | 'tax_registration' | 'agreement' | 'noc' | 'other'
+  file_data?: string // data URL or base64 string
+  file_type?: string
+  file_size?: number
+  uploaded_at: string
+  is_active?: boolean
+  archived_at?: string
+  version?: number
+  notes?: string
+}
+
+export interface Agency {
+  id: string
+  name: string
+  company_type?: 'Parent Company' | 'Third Party'
+  contact_person?: string
+  contact_persons?: AgencyContactPerson[]
+  phone: string
+  email?: string
+  address?: string
+  commission_rate?: number
+  commission_type?: 'percentage' | 'fixed_hourly' | 'fixed_monthly'
+  fixed_commission_amount?: number
+  payment_terms?: string
+  termination_notice?: string
+  notes?: string
+  status: 'active' | 'inactive'
+  created_at: string
+
+  // Contract & Agreement Details
+  contract_ref?: string
+  contract_start_date?: string
+  contract_end_date?: string
+  trade_license_no?: string
+  license_issue_date?: string
+  license_expiry_date?: string
+  price?: number
+  contracted_amount?: number
+  trn_no?: string
+  noc_no?: string
+  sla_terms?: string
+  replacement_guarantee?: string
+  replacement_guarantee_enabled?: boolean
+  quota_cleaners?: number
+  documents?: AgencyDocument[]
+  bank_details?: {
+    bank_name?: string
+    iban?: string
+    account_title?: string
+  }
+  payouts?: AgencyCommissionPayout[]
 }
 
 export interface Employee {
@@ -58,17 +152,22 @@ export interface Employee {
   full_name: string
   phone: string
   email?: string
-  role: 'crew_lead' | 'cleaner'
+  role: EmployeeRole
   nationality: string
   emirates_id: string
   visa_expiry: string
   work_permit_expiry: string
-  medical_insurance_expiry: string
+  medical_insurance_expiry?: string
   passport_expiry: string
   skills: string[]
   status: 'active' | 'on_leave' | 'inactive' | 'engaged_in_project'
   pay_rate_hourly: number
+  monthly_salary?: number
   joined_date: string
+  end_date?: string
+  agency_id?: string
+  agency_name?: string
+  assigned_client_ids?: string[]
   created_at: string
 }
 
@@ -91,6 +190,10 @@ export interface Invoice {
   paid_date?: string
   notes?: string
   created_at: string
+  apply_vat?: boolean
+  discount_type?: 'flat' | 'percentage'
+  discount_value?: number
+  discount_amount?: number
 }
 
 export interface InvoiceLineItem {
@@ -136,6 +239,7 @@ export interface DailyJob {
   is_overtime: boolean
   remarks: string
   service?: string
+  booking_id?: string
 }
 
 export interface DailyExpense {
@@ -176,6 +280,11 @@ export interface DailyPendingReceivedItem {
   client: string
   cash: number
   online: number
+  client_id?: string
+  previous_pending?: number
+  remaining_pending?: number
+  notes?: string
+  remarks?: string
 }
 
 export interface DailyAdvanceItem {

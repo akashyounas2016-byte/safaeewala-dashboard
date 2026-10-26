@@ -86,6 +86,23 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
     }
   }, [chatMessages, activeView, isMinimized])
 
+  // Reset minimized when pop-up is opened
+  useEffect(() => {
+    if (open) {
+      setIsMinimized(false)
+    }
+  }, [open])
+
+  // Allow closing AI Bot pop-up with Escape key
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [open, onClose])
+
   // Context data bundle for chat reasoning
   const chatContextData = useMemo<ChatContextData>(() => {
     const monthlyPayments = safeLocalStorageGet('safaeewala_monthly_client_payments', [])
@@ -262,7 +279,7 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
           </p>
         </div>
 
-        <div className="flex items-center gap-1 ml-auto">
+        <div className="flex items-center gap-1.5 ml-auto">
           <button
             type="button"
             onClick={() => setIsMinimized(false)}
@@ -274,10 +291,11 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-rose-500/30 text-slate-300 hover:text-white transition-colors cursor-pointer"
-            title="Close / Cancel Bot"
+            className="w-7 h-7 rounded-lg bg-rose-500/30 hover:bg-rose-500 text-rose-100 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+            title="Close AI Bot"
+            aria-label="Close AI Bot"
           >
-            <X size={13} />
+            <X size={14} />
           </button>
         </div>
       </div>
@@ -334,12 +352,12 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
             </div>
           </div>
 
-          {/* Right Controls: Reset Position, Minimize / Hide, Cancel / Close */}
-          <div className="flex items-center gap-1.5 z-10 shrink-0">
+          {/* Right Controls: Reset Position, Minimize / Hide, Dedicated Top-Right Close Button */}
+          <div className="flex items-center gap-2 z-10 shrink-0">
             <button
               type="button"
               onClick={handleResetPosition}
-              className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white transition-colors cursor-pointer"
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer"
               title="Reset window to center position"
             >
               <RotateCcw size={14} />
@@ -347,18 +365,20 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
             <button
               type="button"
               onClick={() => setIsMinimized(true)}
-              className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white transition-colors cursor-pointer"
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors cursor-pointer"
               title="Hide / Minimize bot to floating dock"
             >
-              <Minus size={15} />
+              <Minus size={14} />
             </button>
+            {/* Dedicated Top-Right Close Button */}
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-xl bg-white/10 hover:bg-rose-500/80 text-slate-200 hover:text-white transition-colors cursor-pointer"
-              title="Cancel / Close Bot"
+              className="w-8 h-8 rounded-xl bg-rose-500/25 hover:bg-rose-500 text-rose-200 hover:text-white border border-rose-400/40 flex items-center justify-center transition-all cursor-pointer shadow-sm hover:rotate-90"
+              title="Close AI Bot (Esc)"
+              aria-label="Close AI Bot"
             >
-              <X size={15} />
+              <X size={16} />
             </button>
           </div>
         </div>

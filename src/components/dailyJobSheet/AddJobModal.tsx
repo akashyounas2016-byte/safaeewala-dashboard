@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import type { DailyJob, MaterialType, PaymentMode } from '@/types'
 import {
   cleanNum,
@@ -23,6 +24,10 @@ export function AddJobForm({
   onClose,
   initial,
 }: AddJobFormProps) {
+  const [selectedStaff, setSelectedStaff] = useState<string[]>(() => {
+    if (!initial?.staff_name) return []
+    return initial.staff_name.split(/[,+/&]/).map(s => s.trim()).filter(Boolean)
+  })
   const [startTime, setStartTime] = useState(initial?.start_time ?? '')
   const [endTime, setEndTime]     = useState(initial?.end_time ?? '')
   const dutyHours = calcHours(startTime, endTime)
@@ -30,9 +35,15 @@ export function AddJobForm({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget as HTMLFormElement)
+    const finalStaff = selectedStaff.join(', ') || (fd.get('staff_name') as string) || ''
+    if (!finalStaff) {
+      alert('Please select at least one staff member / cleaner.')
+      return
+    }
+
     onSave({
       date:         fd.get('date') as string,
-      staff_name:   fd.get('staff_name') as string,
+      staff_name:   finalStaff,
       start_time:   startTime,
       end_time:     endTime,
       duty_hours:   dutyHours,
@@ -53,16 +64,15 @@ export function AddJobForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Staff Name</label>
-          <select
+          <CleanerMultiSelect
+            label="Staff Name"
             name="staff_name"
-            defaultValue={initial?.staff_name ?? ''}
+            cleaners={employees}
+            selected={selectedStaff}
+            onChange={setSelectedStaff}
+            placeholder="Select cleaner(s)…"
             required
-            className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400 text-slate-700"
-          >
-            <option value="">Select staff…</option>
-            {employees.map(e => <option key={e.full_name} value={e.full_name}>{e.full_name}</option>)}
-          </select>
+          />
         </div>
         <Input name="date" label="Date" type="date" defaultValue={initial?.date ?? new Date().toISOString().split('T')[0]} required />
       </div>

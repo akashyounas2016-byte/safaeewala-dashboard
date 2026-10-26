@@ -6,15 +6,16 @@ import {
   Trash2, ShieldCheck, CheckCircle, AlertCircle, FileText, Layers,
   ChevronDown, RotateCw, Plus, Edit2, Save, X, Power,
   Briefcase, CreditCard, CheckCircle2, PauseCircle, PlayCircle,
-  Sparkles, Printer, Send, MessageCircle, FileSpreadsheet, Check,
+  Sparkles, Printer, Send, MessageCircle, FileSpreadsheet, Check, UserCheck,
+  LayoutGrid, List,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
-import { formatDate } from '@/lib/utils'
+import { formatDate, addHoursToTime, subtractHoursFromTime, calcDurationFromTimes } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
-import type { BookingFrequency, DailyJob, RecurringContract, InvoiceLineItem } from '@/types'
+import type { BookingFrequency, DailyJob, RecurringContract, InvoiceLineItem, Employee, Client } from '@/types'
 import {
   extractMonthlyClientsFromDailyJobs,
   calcJobOTHours,
@@ -24,6 +25,7 @@ import {
   type MonthlyClientSummary,
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
+import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
 
 export type MonthlyDatePreset =
   | 'today'
@@ -149,7 +151,7 @@ export interface MonthlyClientPayment {
 }
 
 export function MonthlyClients() {
-  const { clients, dailyJobs, addClient, addBooking, addInvoice } = useData()
+  const { clients, dailyJobs, employees, addClient, addBooking, addInvoice } = useData()
 
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState<'clients' | 'payments' | 'contracts' | 'recruitment'>('clients')
@@ -197,6 +199,15 @@ export function MonthlyClients() {
   const [showModal, setShowModal]         = useState(false)
   const [showBookingModal, setShowBookingModal] = useState(false)
   const [bookingClient, setBookingClient] = useState<{ name: string; phone: string } | null>(null)
+
+  // ── View Mode: 'grid' | 'table' ──
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>(() => {
+    return safeLocalStorageGet('monthly_clients_view_mode', 'grid')
+  })
+
+  useEffect(() => {
+    safeLocalStorageSet('monthly_clients_view_mode', viewMode)
+  }, [viewMode])
 
   // ── Recurring Contracts State (from Subscriptions) ──
   const [contracts, setContracts] = useState<RecurringContract[]>(() => {
@@ -1044,6 +1055,299 @@ export function MonthlyClients() {
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lines)}`, '_blank')
   }
 
+  // ── Modular Widgets for Sidebar or Underneath Datatable ──
+  const renderTopChargesWidget = () => (
+    <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[15px] font-bold text-[#111827]">Top Monthly Charges</h3>
+        <span className="text-[11px] text-slate-400">{activeRange.label}</span>
+      </div>
+
+      {topClientsByCharges.length === 0 ? (
+        <p className="text-[12px] text-slate-400 text-center py-4">No records</p>
+      ) : (
+        <div className="space-y-3">
+          {topClientsByCharges.map((c, idx) => {
+            const maxAmt = topClientsByCharges[0]?.totalCharges || 1
+            const pct = Math.round((c.totalCharges / maxAmt) * 100)
+            return (
+              <div
+                key={c.id}
+                onClick={() => setSelectedSummary(c)}
+                className="cursor-pointer hover:bg-slate-50 rounded-xl p-2 -mx-2 transition-colors"
+              >
+                <div className="flex items-center justify-between text-[12px] mb-1">
+                  <span className="font-bold text-[#111827] truncate mr-2">
+                    <span className={`w-4 inline-block ${idx === 0 ? 'text-amber-500' : 'text-slate-400'}`}>
+                      {idx + 1}.
+                    </span>
+                    {c.name}
+                  </span>
+                  <span className="font-bold text-teal-700 shrink-0">
+                    AED {c.totalCharges.toLocaleString()}
+                  </span>
+                </div>
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-teal-500 rounded-full" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+
+  const renderOTLeadersWidget = () => (
+    <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[15px] font-bold text-[#111827] flex items-center gap-1.5">
+          <Clock size={16} className="text-amber-500" /> Overtime (OT) Leaders
+        </h3>
+        <span className="text-[11px] text-slate-400">Total: {totalOTHours}h</span>
+      </div>
+
+      {topClientsByOT.length === 0 ? (
+        <p className="text-[12px] text-slate-400 text-center py-4">No overtime hours logged</p>
+      ) : (
+        <div className="space-y-2.5">
+          {topClientsByOT.map((c) => (
+            <div
+              key={c.id}
+              onClick={() => setSelectedSummary(c)}
+              className="flex items-center justify-between text-[12px] p-2 hover:bg-amber-50/60 rounded-xl cursor-pointer transition-colors border border-transparent hover:border-amber-200"
+            >
+              <div className="min-w-0 pr-2">
+                <p className="font-bold text-slate-800 truncate">{c.name}</p>
+                <p className="text-[11px] text-slate-400 truncate">{c.area} · {c.visitsCount} visits</p>
+              </div>
+              <span className="text-[11.5px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-full shrink-0">
+                {c.totalOTHours}h OT
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
+  const renderAreaDensityWidget = () => (
+    Object.keys(areaCounts).length > 0 ? (
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-[15px] font-bold text-[#111827]">Monthly Locations</h3>
+          <span className="text-[11px] text-slate-400">By area</span>
+        </div>
+        <div className="space-y-2.5">
+          {Object.entries(areaCounts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([area, count]) => {
+            const maxCount = Math.max(...Object.values(areaCounts))
+            const pct = Math.round((count / maxCount) * 100)
+            return (
+              <div key={area}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[12px] font-medium text-slate-700 truncate">{area}</span>
+                  <span className="text-[12px] font-bold text-[#111827] shrink-0 ml-2">{count}</span>
+                </div>
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-teal-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    ) : null
+  )
+
+  const renderMonthlyClientsTable = () => (
+    <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse text-[12.5px]">
+          <thead>
+            <tr className="border-b border-slate-100 bg-[#f8fafc]/80 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              <th className="py-3.5 px-4">Client & Contract</th>
+              <th className="py-3.5 px-3">Location & Schedule</th>
+              <th className="py-3.5 px-3">Assigned Staff</th>
+              <th className="py-3.5 px-3 text-center">Visits & Hours</th>
+              <th className="py-3.5 px-3 text-right">Billed / Received</th>
+              <th className="py-3.5 px-3 text-center">Balance Due</th>
+              <th className="py-3.5 px-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {filteredSummaries.map((c, idx) => {
+              const matchedContract = contractsByClientName.get(c.name.toLowerCase().trim())
+              const clientPaymentsList = paymentsByClient.get(c.name.trim().toLowerCase()) || []
+              const clientRecordedAmt = clientPaymentsList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+              const totalClientReceived = c.totalReceived + clientRecordedAmt
+              const clientBalanceDue = Math.max(0, c.totalCharges - totalClientReceived)
+
+              return (
+                <tr
+                  key={c.id}
+                  onClick={() => setSelectedSummary(c)}
+                  className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                >
+                  {/* 1. Client & Contract */}
+                  <td className="py-3.5 px-4">
+                    <div className="flex items-center gap-3">
+                      <Avatar name={c.name} size="sm" idx={idx} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-[#111827] group-hover:text-teal-700 transition-colors truncate">
+                            {c.name}
+                          </span>
+                          <span className="text-[9.5px] font-bold bg-teal-50 text-teal-700 border border-teal-200 px-1.5 py-0.2 rounded-full uppercase tracking-wider">
+                            Monthly
+                          </span>
+                        </div>
+                        {matchedContract && (
+                          <p className="text-[11px] text-blue-700 font-semibold mt-0.5 flex items-center gap-1 truncate">
+                            <RotateCw size={10} className="shrink-0" />
+                            <span>AED {matchedContract.amount}/{matchedContract.frequency === 'weekly' ? 'wk' : matchedContract.frequency === 'biweekly' ? '2wk' : 'mo'}</span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+
+                  {/* 2. Location & Schedule */}
+                  <td className="py-3.5 px-3">
+                    <p className="font-medium text-slate-800 flex items-center gap-1 truncate max-w-[200px]">
+                      <MapPin size={11.5} className="shrink-0 text-slate-400" />
+                      <span>{c.area || 'Dubai'}</span>
+                    </p>
+                    {c.service_days && c.service_days.filter(d => d.toLowerCase() !== 'sunday').length > 0 ? (
+                      <div className="flex items-center gap-1 flex-wrap mt-1">
+                        {c.service_days.filter(d => d.toLowerCase() !== 'sunday').slice(0, 3).map(d => (
+                          <span key={d} className="bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold px-1.5 py-0.2 rounded text-[9px]">
+                            {d.slice(0, 3)}
+                          </span>
+                        ))}
+                        {c.service_days.filter(d => d.toLowerCase() !== 'sunday').length > 3 && (
+                          <span className="text-[9.5px] text-slate-400 font-bold">+{c.service_days.filter(d => d.toLowerCase() !== 'sunday').length - 3}</span>
+                        )}
+                        {c.scheduled_time && (
+                          <span className="text-slate-500 font-medium text-[10px] ml-0.5">
+                            {c.scheduled_time}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        {c.lastService ? `Last: ${formatDisplayDate(c.lastService)}` : 'No recurring schedule'}
+                      </p>
+                    )}
+                  </td>
+
+                  {/* 3. Assigned Staff */}
+                  <td className="py-3.5 px-3">
+                    {c.day_cleaner_assignments && Object.keys(c.day_cleaner_assignments).length > 0 ? (
+                      <div className="flex items-center gap-1 flex-wrap max-w-[220px]">
+                        {Object.entries(c.day_cleaner_assignments).slice(0, 2).map(([day, cleaner]) => (
+                          <span key={day} className="bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded text-[10px] font-medium border border-slate-200/60 truncate max-w-[120px]">
+                            {day.slice(0, 3)}: {cleaner}
+                          </span>
+                        ))}
+                        {Object.keys(c.day_cleaner_assignments).length > 2 && (
+                          <span className="text-slate-400 font-medium text-[10px]">
+                            +{Object.keys(c.day_cleaner_assignments).length - 2}
+                          </span>
+                        )}
+                      </div>
+                    ) : c.cleaners.length > 0 ? (
+                      <p className="text-[11.5px] text-slate-700 font-medium truncate max-w-[180px]">
+                        {c.cleaners.join(', ')}
+                      </p>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 italic">Unassigned</span>
+                    )}
+                  </td>
+
+                  {/* 4. Visits & Hours */}
+                  <td className="py-3.5 px-3 text-center">
+                    <div className="inline-flex flex-col items-center">
+                      <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full text-[11px]">
+                        {c.visitsCount} visits · {c.totalDutyHours}h
+                      </span>
+                      {c.totalOTHours > 0 && (
+                        <span className="mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded-full">
+                          +{c.totalOTHours}h OT
+                        </span>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* 5. Charges / Received */}
+                  <td className="py-3.5 px-3 text-right">
+                    <p className="font-extrabold text-[#111827]">AED {c.totalCharges.toLocaleString()}</p>
+                    <p className="text-[11px] text-emerald-600 font-semibold">
+                      Rec: AED {totalClientReceived.toLocaleString()}
+                    </p>
+                  </td>
+
+                  {/* 6. Balance Due */}
+                  <td className="py-3.5 px-3 text-center">
+                    {clientBalanceDue > 0 ? (
+                      <span className="inline-block text-[10.5px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full">
+                        Due: AED {clientBalanceDue.toLocaleString()}
+                      </span>
+                    ) : c.totalCharges > 0 ? (
+                      <span className="inline-block text-[10.5px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded-full">
+                        Paid in Full ✓
+                      </span>
+                    ) : (
+                      <span className="inline-block text-[10.5px] font-semibold bg-slate-100 text-slate-500 px-2.5 py-0.5 rounded-full">
+                        No charges
+                      </span>
+                    )}
+                  </td>
+
+                  {/* 7. Actions */}
+                  <td className="py-3.5 px-4 text-right">
+                    <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCreateInvoice(c)}
+                        className="p-1.5 rounded-lg hover:bg-teal-50 text-slate-400 hover:text-teal-700 transition-colors"
+                        title="Invoice"
+                      >
+                        <FileText size={13.5} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenRecordPayment(c.name, clientBalanceDue > 0 ? clientBalanceDue : undefined)}
+                        className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-700 transition-colors"
+                        title="Record Payment"
+                      >
+                        <CreditCard size={13.5} />
+                      </button>
+                      <Link
+                        to={`/clients/${c.id}`}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
+                        title="Profile / Contact"
+                      >
+                        <Phone size={13.5} />
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSummary(c)}
+                        className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-700 transition-colors"
+                        title="View Shifts"
+                      >
+                        <Clock size={13.5} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+
   return (
     <div className="space-y-6">
       {/* Notification banner for payment actions */}
@@ -1461,218 +1765,77 @@ export function MonthlyClients() {
             </div>
           </div>
 
-          {/* Main Content Layout */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            {/* Left 2 Cols: Monthly Clients List */}
-            <div className="xl:col-span-2 space-y-4">
-              {/* Toolbar */}
-              <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className="relative flex-1 min-w-[200px]">
-                    <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Search by client name, address, cleaner…"
-                      value={search}
-                      onChange={e => setSearch(e.target.value)}
-                      className="w-full text-[13px] pl-10 pr-4 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-400 placeholder-slate-400 transition-colors"
-                    />
-                  </div>
-
-                  <select
-                    value={areaFilter}
-                    onChange={e => setAreaFilter(e.target.value)}
-                    className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-400 text-slate-700 cursor-pointer"
-                  >
-                    <option value="all">All Areas ({areas.length})</option>
-                    {areas.map(a => <option key={a} value={a}>{a}</option>)}
-                  </select>
-
-                  <select
-                    value={sortOrder}
-                    onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
-                    className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-400 text-slate-700 cursor-pointer font-medium"
-                  >
-                    <option value="top_charges">Sort: Highest Charges</option>
-                    <option value="top_ot">Sort: Highest Overtime (OT)</option>
-                    <option value="visits">Sort: Most Visits</option>
-                    <option value="name">Sort: Name (A-Z)</option>
-                  </select>
-                </div>
+          {/* Toolbar (Full Width across table/grid views) */}
+          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search by client name, address, cleaner…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full text-[13px] pl-10 pr-4 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-400 placeholder-slate-400 transition-colors"
+                />
               </div>
 
-              {/* Monthly Client Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredSummaries.map((c, idx) => {
-                  const matchedContract = contractsByClientName.get(c.name.toLowerCase().trim())
-                  const clientPaymentsList = paymentsByClient.get(c.name.trim().toLowerCase()) || []
-                  const clientRecordedAmt = clientPaymentsList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
-                  const totalClientReceived = c.totalReceived + clientRecordedAmt
-                  const clientBalanceDue = Math.max(0, c.totalCharges - totalClientReceived)
+              <select
+                value={areaFilter}
+                onChange={e => setAreaFilter(e.target.value)}
+                className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-400 text-slate-700 cursor-pointer"
+              >
+                <option value="all">All Areas ({areas.length})</option>
+                {areas.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
 
-                  return (
-                    <div
-                      key={c.id}
-                      onClick={() => setSelectedSummary(c)}
-                      className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 cursor-pointer hover:shadow-[0_8px_30px_rgba(13,148,136,0.12)] hover:border-teal-300 transition-all group flex flex-col justify-between"
-                    >
-                      <div>
-                        {/* Top: Avatar, Name, Charges & Payment Status */}
-                        <div className="flex items-start gap-3 mb-3">
-                          <Avatar name={c.name} size="md" idx={idx} />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="text-[14px] font-bold text-[#111827] group-hover:text-teal-700 transition-colors truncate">
-                                {c.name}
-                              </p>
-                              <span className="text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.2 rounded-full uppercase tracking-wider">
-                                Monthly
-                              </span>
-                              {matchedContract && (
-                                <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.2 rounded-full flex items-center gap-1">
-                                  <RotateCw size={9} />
-                                  Contract: AED {matchedContract.amount}/{matchedContract.frequency === 'weekly' ? 'wk' : matchedContract.frequency === 'biweekly' ? '2wk' : 'mo'}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[12px] text-slate-500 mt-0.5 truncate flex items-center gap-1">
-                              <MapPin size={11} className="shrink-0 text-slate-400" />
-                              <span>{c.area || 'Dubai'}</span>
-                            </p>
-                          </div>
+              <select
+                value={sortOrder}
+                onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
+                className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-400 text-slate-700 cursor-pointer font-medium"
+              >
+                <option value="top_charges">Sort: Highest Charges</option>
+                <option value="top_ot">Sort: Highest Overtime (OT)</option>
+                <option value="visits">Sort: Most Visits</option>
+                <option value="name">Sort: Name (A-Z)</option>
+              </select>
 
-                          <div className="text-right shrink-0">
-                            <p className="text-[15.5px] font-extrabold text-[#111827]">
-                              AED {c.totalCharges.toLocaleString()}
-                            </p>
-                            <p className="text-[10.5px] text-slate-400 font-medium">Billed</p>
-                            <div className="mt-1">
-                              {clientBalanceDue > 0 ? (
-                                <span className="inline-block text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full">
-                                  Due: AED {clientBalanceDue.toLocaleString()}
-                                </span>
-                              ) : c.totalCharges > 0 ? (
-                                <span className="inline-block text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full">
-                                  Paid in Full ✓
-                                </span>
-                              ) : (
-                                <span className="inline-block text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
-                                  No charges
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Service & Cleaner Details */}
-                        <div className="bg-[#f8fafc] rounded-xl p-2.5 border border-[#edf2f7] mb-3 text-[12px] text-slate-600">
-                          <div className="flex items-center gap-1.5 text-slate-700 font-semibold text-[12px]">
-                            <Calendar size={13} className="text-[#0d8a72] shrink-0" />
-                            <span className="text-slate-400 font-medium text-[11px]">Last Service:</span>
-                            <span className="text-slate-800 font-bold">
-                              {c.lastService ? (formatDisplayDate(c.lastService) || formatDate(c.lastService)) : 'No service logged'}
-                            </span>
-                          </div>
-                          {c.cleaners.length > 0 && (
-                            <p className="text-[11px] text-slate-500 mt-1.5 truncate flex items-center gap-1">
-                              <span className="text-slate-400 font-normal">Cleaners:</span>
-                              <span className="text-slate-700 font-medium">{c.cleaners.join(', ')}</span>
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Highlights: OT, Duty Hours, Visits */}
-                        <div className="grid grid-cols-3 gap-2 text-center py-2 border-y border-[#edf2f7] mb-3">
-                          <div>
-                            <p className="text-[10px] text-slate-400 uppercase font-semibold">Overtime</p>
-                            <p className={`text-[12.5px] font-bold ${c.totalOTHours > 0 ? 'text-amber-600' : 'text-slate-500'}`}>
-                              {c.totalOTHours > 0 ? `${c.totalOTHours}h OT` : '0h'}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-slate-400 uppercase font-semibold">Duty Hours</p>
-                            <p className="text-[12.5px] font-bold text-slate-700">
-                              {c.totalDutyHours}h
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-slate-400 uppercase font-semibold">Shifts</p>
-                            <p className="text-[12.5px] font-bold text-slate-700">
-                              {c.visitsCount} visits
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Card Footer: View Details & Actions */}
-                      <div className="flex items-center justify-between pt-2">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleOpenCreateInvoice(c)
-                          }}
-                          className="text-[11px] font-bold text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200/90 px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs group-hover:border-teal-300"
-                          title="Generate Simple or Detailed Invoice with custom date range"
-                        >
-                          <FileText size={12.5} className="text-teal-600" />
-                          <span>Create Invoice</span>
-                        </button>
-
-                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleOpenRecordPayment(c.name, clientBalanceDue > 0 ? clientBalanceDue : undefined)
-                            }}
-                            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                            title="Record payment for this client"
-                          >
-                            <CreditCard size={12} />
-                            Record Payment
-                          </button>
-                          {!matchedContract && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                const cl = clients.find(x => x.id === c.matchedClientId || x.full_name.toLowerCase() === c.name.toLowerCase())
-                                handleAddContract(c.name, cl?.phone || '', cl?.email || '')
-                                setActiveTab('contracts')
-                              }}
-                              className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg transition-colors cursor-pointer"
-                              title="Create recurring contract for this client"
-                            >
-                              + Contract
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setSelectedSummary(c)
-                            }}
-                            className="text-[11px] font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 px-2 py-1 rounded-lg transition-colors cursor-pointer"
-                          >
-                            View Shifts
-                          </button>
-                          <Link
-                            to={`/clients/${c.id}`}
-                            onClick={e => e.stopPropagation()}
-                            className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
-                            title="View Full Client Profile"
-                          >
-                            <ExternalLink size={12} />
-                          </Link>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+              {/* View Mode Switcher */}
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                    viewMode === 'grid' ? 'bg-white text-teal-700 shadow-xs font-bold' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                  title="Grid Card View"
+                >
+                  <LayoutGrid size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('table')}
+                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                    viewMode === 'table' ? 'bg-white text-teal-700 shadow-xs font-bold' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                  title="Table View (Full Width)"
+                >
+                  <List size={15} />
+                </button>
               </div>
 
-              {filteredSummaries.length === 0 && (
+              {/* Result counter */}
+              <div className="ml-auto text-right shrink-0">
+                <span className="text-[12px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/60">
+                  Showing <span className="text-teal-700 font-extrabold">{filteredSummaries.length}</span> of {monthlySummaries.length} clients
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Conditional Layout: Full Width Table View with Widgets Underneath OR Grid Card View with Widgets on Right */}
+          {viewMode === 'table' ? (
+            <div className="space-y-6">
+              {filteredSummaries.length === 0 ? (
                 <div className="bg-white rounded-[22px] border border-[#E4E8EC] py-16 text-center">
                   <Users className="mx-auto mb-3 text-slate-300" size={44} strokeWidth={1.25} />
                   <p className="text-[14px] font-bold text-slate-700">No Monthly Clients Found</p>
@@ -1682,112 +1845,242 @@ export function MonthlyClients() {
                       : `No monthly records found for ${activeRange.label}. Try selecting another date range above.`}
                   </p>
                 </div>
+              ) : (
+                renderMonthlyClientsTable()
               )}
-            </div>
 
-            {/* Right Sidebar */}
-            <div className="space-y-5">
-              {/* Top Monthly Spenders by Charges */}
-              <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-[15px] font-bold text-[#111827]">Top Monthly Charges</h3>
-                  <span className="text-[11px] text-slate-400">{activeRange.label}</span>
-                </div>
-
-                {topClientsByCharges.length === 0 ? (
-                  <p className="text-[12px] text-slate-400 text-center py-4">No records</p>
-                ) : (
-                  <div className="space-y-3">
-                    {topClientsByCharges.map((c, idx) => {
-                      const maxAmt = topClientsByCharges[0]?.totalCharges || 1
-                      const pct = Math.round((c.totalCharges / maxAmt) * 100)
-                      return (
-                        <div
-                          key={c.id}
-                          onClick={() => setSelectedSummary(c)}
-                          className="cursor-pointer hover:bg-slate-50 rounded-xl p-2 -mx-2 transition-colors"
-                        >
-                          <div className="flex items-center justify-between text-[12px] mb-1">
-                            <span className="font-bold text-[#111827] truncate mr-2">
-                              <span className={`w-4 inline-block ${idx === 0 ? 'text-amber-500' : 'text-slate-400'}`}>
-                                {idx + 1}.
-                              </span>
-                              {c.name}
-                            </span>
-                            <span className="font-bold text-teal-700 shrink-0">
-                              AED {c.totalCharges.toLocaleString()}
-                            </span>
-                          </div>
-                          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-teal-500 rounded-full" style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
+              {/* ── Widgets Underneath Datatable (Responsive 3-Column Grid) ── */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+                {renderTopChargesWidget()}
+                {renderOTLeadersWidget()}
+                {renderAreaDensityWidget()}
               </div>
+            </div>
+          ) : (
+            /* ── GRID CARD VIEW (2 cols cards + 1 col widgets sidebar) ── */
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+              {/* Left 2 Cols: Monthly Clients List */}
+              <div className="xl:col-span-2 space-y-4">
+                {/* Monthly Client Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredSummaries.map((c, idx) => {
+                    const matchedContract = contractsByClientName.get(c.name.toLowerCase().trim())
+                    const clientPaymentsList = paymentsByClient.get(c.name.trim().toLowerCase()) || []
+                    const clientRecordedAmt = clientPaymentsList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+                    const totalClientReceived = c.totalReceived + clientRecordedAmt
+                    const clientBalanceDue = Math.max(0, c.totalCharges - totalClientReceived)
 
-              {/* Overtime (OT) Leaders */}
-              <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-[15px] font-bold text-[#111827] flex items-center gap-1.5">
-                    <Clock size={16} className="text-amber-500" /> Overtime (OT) Leaders
-                  </h3>
-                  <span className="text-[11px] text-slate-400">Total: {totalOTHours}h</span>
-                </div>
-
-                {topClientsByOT.length === 0 ? (
-                  <p className="text-[12px] text-slate-400 text-center py-4">No overtime hours logged</p>
-                ) : (
-                  <div className="space-y-2.5">
-                    {topClientsByOT.map((c) => (
+                    return (
                       <div
                         key={c.id}
                         onClick={() => setSelectedSummary(c)}
-                        className="flex items-center justify-between text-[12px] p-2 hover:bg-amber-50/60 rounded-xl cursor-pointer transition-colors border border-transparent hover:border-amber-200"
+                        className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 cursor-pointer hover:shadow-[0_8px_30px_rgba(13,148,136,0.12)] hover:border-teal-300 transition-all group flex flex-col justify-between"
                       >
-                        <div className="min-w-0 pr-2">
-                          <p className="font-bold text-slate-800 truncate">{c.name}</p>
-                          <p className="text-[11px] text-slate-400 truncate">{c.area} · {c.visitsCount} visits</p>
+                        <div>
+                          {/* Top: Avatar, Name, Charges & Payment Status */}
+                          <div className="flex items-start gap-3 mb-3">
+                            <Avatar name={c.name} size="md" idx={idx} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="text-[14px] font-bold text-[#111827] group-hover:text-teal-700 transition-colors truncate">
+                                  {c.name}
+                                </p>
+                                <span className="text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.2 rounded-full uppercase tracking-wider">
+                                  Monthly
+                                </span>
+                                {matchedContract && (
+                                  <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.2 rounded-full flex items-center gap-1">
+                                    <RotateCw size={9} />
+                                    Contract: AED {matchedContract.amount}/{matchedContract.frequency === 'weekly' ? 'wk' : matchedContract.frequency === 'biweekly' ? '2wk' : 'mo'}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[12px] text-slate-500 mt-0.5 truncate flex items-center gap-1">
+                                <MapPin size={11} className="shrink-0 text-slate-400" />
+                                <span>{c.area || 'Dubai'}</span>
+                              </p>
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              <p className="text-[15.5px] font-extrabold text-[#111827]">
+                                AED {c.totalCharges.toLocaleString()}
+                              </p>
+                              <p className="text-[10.5px] text-slate-400 font-medium">Billed</p>
+                              <div className="mt-1">
+                                {clientBalanceDue > 0 ? (
+                                  <span className="inline-block text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full">
+                                    Due: AED {clientBalanceDue.toLocaleString()}
+                                  </span>
+                                ) : c.totalCharges > 0 ? (
+                                  <span className="inline-block text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full">
+                                    Paid in Full ✓
+                                  </span>
+                                ) : (
+                                  <span className="inline-block text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                                    No charges
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Service & Cleaner Details */}
+                          <div className="bg-[#f8fafc] rounded-xl p-2.5 border border-[#edf2f7] mb-3 text-[12px] text-slate-600">
+                            <div className="flex items-center gap-1.5 text-slate-700 font-semibold text-[12px]">
+                              <Calendar size={13} className="text-[#0d8a72] shrink-0" />
+                              <span className="text-slate-400 font-medium text-[11px]">Last Service:</span>
+                              <span className="text-slate-800 font-bold">
+                                {c.lastService ? (formatDisplayDate(c.lastService) || formatDate(c.lastService)) : 'No service logged'}
+                              </span>
+                            </div>
+
+                            {/* Recurring Schedule Days & Timing Slot */}
+                            {c.service_days && c.service_days.filter(d => d.toLowerCase() !== 'sunday').length > 0 && (
+                              <div className="mt-1.5 flex items-center gap-1.5 flex-wrap text-[11px]">
+                                <span className="text-slate-400 font-medium text-[10.5px]">Days:</span>
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {c.service_days.filter(d => d.toLowerCase() !== 'sunday').map(d => (
+                                    <span key={d} className="bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold px-1.5 py-0.2 rounded text-[9.5px]">
+                                      {d.slice(0, 3)}
+                                    </span>
+                                  ))}
+                                </div>
+                                {c.scheduled_time && (
+                                  <span className="text-slate-600 font-semibold text-[10.5px] flex items-center gap-0.5">
+                                    <Clock size={10} className="text-slate-400" />
+                                    {c.scheduled_time}{c.end_time ? `–${c.end_time}` : ''}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Cleaners & Day-by-Day Staff Assignment */}
+                            {c.day_cleaner_assignments && Object.keys(c.day_cleaner_assignments).length > 0 ? (
+                              <div className="mt-1.5 flex items-center gap-1 flex-wrap text-[10.5px]">
+                                <span className="text-slate-400 font-normal">Staff:</span>
+                                {Object.entries(c.day_cleaner_assignments).slice(0, 3).map(([day, cleaner]) => (
+                                  <span key={day} className="bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-medium border border-slate-200/60">
+                                    {day.slice(0, 3)}: {cleaner}
+                                  </span>
+                                ))}
+                                {Object.keys(c.day_cleaner_assignments).length > 3 && (
+                                  <span className="text-slate-400 font-medium">
+                                    +{Object.keys(c.day_cleaner_assignments).length - 3} more
+                                  </span>
+                                )}
+                              </div>
+                            ) : c.cleaners.length > 0 ? (
+                              <p className="text-[11px] text-slate-500 mt-1.5 truncate flex items-center gap-1">
+                                <span className="text-slate-400 font-normal">Cleaners:</span>
+                                <span className="text-slate-700 font-medium">{c.cleaners.join(', ')}</span>
+                              </p>
+                            ) : null}
+                          </div>
+
+                          {/* Highlights: OT, Duty Hours, Visits */}
+                          <div className="grid grid-cols-3 gap-2 text-center py-2 border-y border-[#edf2f7] mb-3">
+                            <div>
+                              <p className="text-[10px] text-slate-400 uppercase font-semibold">Overtime</p>
+                              <p className={`text-[12.5px] font-bold ${c.totalOTHours > 0 ? 'text-amber-600' : 'text-slate-500'}`}>
+                                {c.totalOTHours > 0 ? `${c.totalOTHours}h OT` : '0h'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-slate-400 uppercase font-semibold">Duty Hours</p>
+                              <p className="text-[12.5px] font-bold text-slate-700">
+                                {c.totalDutyHours}h
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-slate-400 uppercase font-semibold">Shifts</p>
+                              <p className="text-[12.5px] font-bold text-slate-700">
+                                {c.visitsCount} visits
+                              </p>
+                            </div>
+                          </div>
                         </div>
-                        <span className="text-[11.5px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-full shrink-0">
-                          {c.totalOTHours}h OT
-                        </span>
+
+                        {/* Card Footer: Action Buttons in a Single Compact Row (Invoice, Payment, Contact, View Shift) */}
+                        <div className="grid grid-cols-4 gap-1.5 pt-2.5 border-t border-slate-100 mt-2 w-full">
+                          {/* 1. Invoice Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleOpenCreateInvoice(c)
+                            }}
+                            className="h-8 px-1.5 py-1 rounded-lg text-[10px] sm:text-[10.5px] font-bold text-teal-800 hover:text-white bg-teal-50 hover:bg-teal-600 border border-teal-200/90 transition-all flex items-center justify-center gap-1 cursor-pointer truncate shadow-2xs group/btn"
+                            title="Generate Simple or Detailed Invoice with custom date range"
+                          >
+                            <FileText size={11.5} className="shrink-0 text-teal-600 group-hover/btn:text-white" />
+                            <span className="truncate">Invoice</span>
+                          </button>
+
+                          {/* 2. Payment Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleOpenRecordPayment(c.name, clientBalanceDue > 0 ? clientBalanceDue : undefined)
+                            }}
+                            className="h-8 px-1.5 py-1 rounded-lg text-[10px] sm:text-[10.5px] font-bold text-emerald-800 hover:text-white bg-emerald-50 hover:bg-emerald-600 border border-emerald-200 transition-all flex items-center justify-center gap-1 cursor-pointer truncate shadow-2xs group/btn"
+                            title="Record payment for this client"
+                          >
+                            <CreditCard size={11.5} className="shrink-0 text-emerald-600 group-hover/btn:text-white" />
+                            <span className="truncate">Payment</span>
+                          </button>
+
+                          {/* 3. Contact Button */}
+                          <Link
+                            to={`/clients/${c.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="h-8 px-1.5 py-1 rounded-lg text-[10px] sm:text-[10.5px] font-bold text-slate-700 hover:text-white bg-slate-100 hover:bg-slate-700 border border-slate-200 transition-all flex items-center justify-center gap-1 cursor-pointer truncate shadow-2xs group/btn"
+                            title="Contact & Full Client Profile"
+                          >
+                            <Phone size={11.5} className="shrink-0 text-slate-500 group-hover/btn:text-white" />
+                            <span className="truncate">Contact</span>
+                          </Link>
+
+                          {/* 4. View Shift Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedSummary(c)
+                            }}
+                            className="h-8 px-1.5 py-1 rounded-lg text-[10px] sm:text-[10.5px] font-bold text-indigo-800 hover:text-white bg-indigo-50 hover:bg-indigo-600 border border-indigo-200 transition-all flex items-center justify-center gap-1 cursor-pointer truncate shadow-2xs group/btn"
+                            title="View Shifts & Service Schedule"
+                          >
+                            <Clock size={11.5} className="shrink-0 text-indigo-600 group-hover/btn:text-white" />
+                            <span className="truncate">View Shift</span>
+                          </button>
+                        </div>
                       </div>
-                    ))}
+                    )
+                  })}
+                </div>
+
+                {filteredSummaries.length === 0 && (
+                  <div className="bg-white rounded-[22px] border border-[#E4E8EC] py-16 text-center">
+                    <Users className="mx-auto mb-3 text-slate-300" size={44} strokeWidth={1.25} />
+                    <p className="text-[14px] font-bold text-slate-700">No Monthly Clients Found</p>
+                    <p className="text-[12px] text-slate-400 mt-1">
+                      {activeRange.isAllTime
+                        ? 'No clients with monthly payment mode found in Daily Job Sheet.'
+                        : `No monthly records found for ${activeRange.label}. Try selecting another date range above.`}
+                    </p>
                   </div>
                 )}
               </div>
 
-              {/* Area Density */}
-              {Object.keys(areaCounts).length > 0 && (
-                <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-[15px] font-bold text-[#111827]">Monthly Locations</h3>
-                    <span className="text-[11px] text-slate-400">By area</span>
-                  </div>
-                  <div className="space-y-2.5">
-                    {Object.entries(areaCounts).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([area, count]) => {
-                      const maxCount = Math.max(...Object.values(areaCounts))
-                      const pct = Math.round((count / maxCount) * 100)
-                      return (
-                        <div key={area}>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[12px] font-medium text-slate-700 truncate">{area}</span>
-                            <span className="text-[12px] font-bold text-[#111827] shrink-0 ml-2">{count}</span>
-                          </div>
-                          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-teal-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
+              {/* Right Sidebar Widgets */}
+              <div className="space-y-5">
+                {renderTopChargesWidget()}
+                {renderOTLeadersWidget()}
+                {renderAreaDensityWidget()}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -2453,6 +2746,70 @@ export function MonthlyClients() {
                 </div>
               </div>
 
+              {/* Recurring Service Schedule & Staff Assignment (if configured) */}
+              {(selectedSummary.service_days?.length || selectedSummary.preferred_cleaner || (selectedSummary.day_cleaner_assignments && Object.keys(selectedSummary.day_cleaner_assignments).length > 0)) && (
+                <div className="bg-gradient-to-r from-emerald-50/90 via-teal-50/70 to-slate-50 rounded-2xl p-4 border border-emerald-100 shadow-2xs space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
+                        <Calendar size={14} />
+                      </div>
+                      <div>
+                        <h4 className="text-[13.5px] font-extrabold text-[#111827]">Recurring Service Schedule & Assigned Staff</h4>
+                        <p className="text-[11px] text-slate-500">Service days, scheduled shift slot, and staff assigned per day</p>
+                      </div>
+                    </div>
+                    {selectedSummary.scheduled_time && (
+                      <span className="text-[11.5px] font-bold bg-white text-emerald-800 border border-emerald-200 px-3 py-1 rounded-full flex items-center gap-1.5 shadow-2xs">
+                        <Clock size={12} className="text-emerald-600" />
+                        Shift Timing: <strong>{selectedSummary.scheduled_time} {selectedSummary.end_time ? `– ${selectedSummary.end_time}` : ''}</strong>
+                        {selectedSummary.duration_hours ? ` (${selectedSummary.duration_hours} hrs)` : ''}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Days & Assigned Staff Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                    {(selectedSummary.service_days || Object.keys(selectedSummary.day_cleaner_assignments || {}))
+                      .filter(day => day.toLowerCase() !== 'sunday')
+                      .map(day => {
+                      const assigned = selectedSummary.day_cleaner_assignments?.[day] || selectedSummary.preferred_cleaner || 'Unassigned'
+                      const isCustom = selectedSummary.day_cleaner_assignments?.[day] && selectedSummary.preferred_cleaner && selectedSummary.day_cleaner_assignments[day] !== selectedSummary.preferred_cleaner
+                      const daySched = selectedSummary.day_schedules?.[day]
+                      return (
+                        <div key={day} className="bg-white rounded-xl p-3 border border-emerald-100/80 shadow-2xs flex items-center justify-between">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                {day}
+                              </span>
+                              {daySched && (
+                                <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-1.5 py-0.2 rounded border border-teal-200">
+                                  {daySched.startTime} – {daySched.endTime}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[13px] font-bold text-[#111827] mt-1.5 flex items-center gap-1">
+                              <Users size={12} className="text-slate-400 shrink-0" />
+                              <span>{assigned}</span>
+                            </p>
+                          </div>
+                          {isCustom ? (
+                            <span className="text-[9.5px] font-extrabold bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-md">
+                              ★ Custom Staff
+                            </span>
+                          ) : (
+                            <span className="text-[9.5px] font-semibold bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-md">
+                              Primary Staff
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Detailed Shifts & Overtime Table from Daily Job Sheet */}
               <div>
                 <div className="flex items-center justify-between mb-2.5">
@@ -2614,47 +2971,42 @@ export function MonthlyClients() {
       })()}
 
       {/* Add Client Modal */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="Add New Client" size="lg">
-        <form className="space-y-4" onSubmit={e => {
-          e.preventDefault()
-          const f = new FormData(e.currentTarget as HTMLFormElement)
-          addClient({
-            full_name: String(f.get('full_name') || 'New Client'),
-            phone: String(f.get('phone') || ''),
-            whatsapp: String(f.get('whatsapp') || ''),
-            email: String(f.get('email') || ''),
-            nationality: '',
-            city: String(f.get('city') || 'Dubai'),
-            building_name: String(f.get('building') || ''),
-            apartment: '',
-            area: String(f.get('area') || 'Dubai'),
-            access_notes: String(f.get('access_notes') || ''),
-            pet_info: String(f.get('pet_info') || ''),
-            total_bookings: 0,
-            total_spent: 0,
-          })
-          setShowModal(false)
-        }}>
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="full_name" label="Full Name" placeholder="Full name" required />
-            <Input name="phone" label="Phone" placeholder="+971 50 000 0000" />
+      <Modal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        title="Add New Monthly Client"
+        size="xl"
+        headerActions={
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowModal(false)}
+              className="h-8 px-3 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="add-monthly-client-form"
+              size="sm"
+              className="h-8 px-4 text-[11.5px] bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer flex items-center gap-1.5 shadow-xs"
+            >
+              <Check size={13} className="stroke-[2.5]" />
+              <span>Save Client</span>
+            </Button>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="whatsapp" label="WhatsApp" placeholder="+971 50 000 0000" />
-            <Input name="email" label="Email" type="email" placeholder="email@example.com" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="building" label="Building / Villa" placeholder="Building or villa name" />
-            <Select name="city" label="Emirate"><option>Dubai</option><option>Abu Dhabi</option><option>Sharjah</option><option>Ajman</option></Select>
-          </div>
-          <Input name="area" label="Area / Community" placeholder="e.g. Dubai Marina, JBR..." />
-          <Textarea name="access_notes" label="Access Notes" rows={2} />
-          <Textarea name="pet_info" label="Pet Information" rows={2} />
-          <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button type="submit" className="flex-1">Save Client</Button>
-          </div>
-        </form>
+        }
+      >
+        <AddMonthlyClientModalForm
+          onClose={() => setShowModal(false)}
+          onAdd={clientData => {
+            addClient(clientData)
+            setShowModal(false)
+          }}
+          employees={employees}
+        />
       </Modal>
 
       {/* New Booking Modal */}
@@ -3240,32 +3592,159 @@ export function MonthlyClients() {
 }
 
 function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: { clientName: string; clientPhone: string; onClose: () => void; onAdd: (b: any) => void }) {
+  const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [startTime, setStartTime] = useState('09:00')
+  const [duration, setDuration] = useState(3)
+  const [endTime, setEndTime] = useState(() => addHoursToTime('09:00', 3))
+
+  // 1. Changing Start Time recalculates End Time keeping duration intact
+  const handleStartTimeChange = (newStart: string) => {
+    setStartTime(newStart)
+    if (newStart && duration > 0) {
+      setEndTime(addHoursToTime(newStart, duration))
+    }
+  }
+
+  // 2. Changing End Time automatically recalculates Duration
+  const handleEndTimeChange = (newEnd: string) => {
+    setEndTime(newEnd)
+    if (startTime && newEnd) {
+      const calcDur = calcDurationFromTimes(startTime, newEnd)
+      if (calcDur > 0) {
+        setDuration(calcDur)
+      }
+    }
+  }
+
+  // 3. Changing Duration automatically recalculates End Time
+  const handleDurationChange = (newDur: number) => {
+    setDuration(newDur)
+    if (startTime && newDur > 0) {
+      setEndTime(addHoursToTime(startTime, newDur))
+    }
+  }
+
   return (
-    <form className="space-y-4" onSubmit={e => {
-      e.preventDefault()
-      const f = new FormData(e.currentTarget)
-      onAdd({ client_id: '', client_name: clientName, client_phone: clientPhone, service_address: f.get('service_address') as string, service_type: f.get('service_type') as string, frequency: (f.get('frequency') as BookingFrequency) || 'monthly', scheduled_date: f.get('scheduled_date') as string, scheduled_time: f.get('scheduled_time') as string, duration_hours: Number(f.get('duration_hours')) || 3, total_amount: Number(f.get('total_amount')) || 0, notes: f.get('notes') as string, status: 'pending', assigned_crew: [] })
-    }}>
+    <form
+      className="space-y-4"
+      onSubmit={e => {
+        e.preventDefault()
+        const f = new FormData(e.currentTarget)
+        onAdd({
+          client_id: '',
+          client_name: clientName,
+          client_phone: clientPhone,
+          service_address: f.get('service_address') as string,
+          service_type: f.get('service_type') as string,
+          frequency: (f.get('frequency') as BookingFrequency) || 'monthly',
+          scheduled_date: scheduledDate,
+          scheduled_time: startTime,
+          end_time: endTime,
+          duration_hours: duration,
+          total_amount: Number(f.get('total_amount')) || 0,
+          notes: f.get('notes') as string,
+          status: 'pending',
+          assigned_crew: [],
+        })
+      }}
+    >
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC]"><p className="text-[10.5px] text-slate-500 uppercase font-semibold mb-1">Client</p><p className="text-[13px] font-semibold text-[#111827]">{clientName}</p></div>
-        <div className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC]"><p className="text-[10.5px] text-slate-500 uppercase font-semibold mb-1">Phone</p><p className="text-[13px] font-semibold text-[#111827]">{clientPhone}</p></div>
+        <div className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC]">
+          <p className="text-[10.5px] text-slate-500 uppercase font-semibold mb-1">Client</p>
+          <p className="text-[13px] font-semibold text-[#111827]">{clientName}</p>
+        </div>
+        <div className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC]">
+          <p className="text-[10.5px] text-slate-500 uppercase font-semibold mb-1">Phone</p>
+          <p className="text-[13px] font-semibold text-[#111827]">{clientPhone}</p>
+        </div>
       </div>
       <Input name="service_address" label="Service Address" placeholder="Street, unit, neighborhood" />
       <div className="grid grid-cols-2 gap-4">
-        <Select name="service_type" label="Service Type"><option value="">Select service…</option>{serviceTypes.map(s => <option key={s}>{s}</option>)}</Select>
-        <Select name="frequency" label="Frequency" defaultValue="monthly"><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="biweekly">Bi-weekly</option><option value="once">One-time</option></Select>
+        <Select name="service_type" label="Service Type">
+          <option value="">Select service…</option>
+          {serviceTypes.map(s => <option key={s}>{s}</option>)}
+        </Select>
+        <Select name="frequency" label="Frequency" defaultValue="monthly">
+          <option value="monthly">Monthly</option>
+          <option value="weekly">Weekly</option>
+          <option value="biweekly">Bi-weekly</option>
+          <option value="once">One-time</option>
+        </Select>
       </div>
-      <div className="grid grid-cols-3 gap-4">
-        <Input name="scheduled_date" label="Date" type="date" required />
-        <Input name="scheduled_time" label="Start Time" type="time" />
-        <Input name="duration_hours" label="Hours" type="number" min="1" max="24" defaultValue="3" />
+
+      {/* ── Start Time, End Time & Duration Row (Auto-Synced) ── */}
+      <div className="bg-slate-50/80 rounded-2xl p-3.5 border border-[#E4E8EC] space-y-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div>
+            <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Date *</label>
+            <input
+              type="date"
+              name="scheduled_date"
+              required
+              value={scheduledDate}
+              onChange={e => setScheduledDate(e.target.value)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-medium"
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] font-bold text-[#111827] mb-1">Start Time *</label>
+            <input
+              type="time"
+              name="scheduled_time"
+              required
+              value={startTime}
+              onChange={e => handleStartTimeChange(e.target.value)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-[#111827]"
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] font-bold text-teal-800 mb-1">End Time *</label>
+            <input
+              type="time"
+              name="end_time"
+              required
+              value={endTime}
+              onChange={e => handleEndTimeChange(e.target.value)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-teal-700"
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] font-bold text-emerald-800 mb-1">Duration (hrs)</label>
+            <input
+              type="number"
+              step="0.5"
+              min="0.5"
+              max="24"
+              name="duration_hours"
+              value={duration}
+              onChange={e => handleDurationChange(parseFloat(e.target.value) || 0)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-emerald-700"
+            />
+          </div>
+        </div>
+
+        {/* ── Auto-calculated session summary pill ── */}
+        <div className="flex items-center justify-between text-[11.5px] px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-900 font-medium">
+          <span className="flex items-center gap-1.5">
+            <Clock size={13} className="text-emerald-600" />
+            <span>Shift Slot: <strong>{startTime || '—'}</strong> to <strong>{endTime || '—'}</strong></span>
+          </span>
+          <span className="font-extrabold text-emerald-700 bg-white px-2 py-0.5 rounded-md shadow-2xs">
+            {duration} Hour{duration !== 1 ? 's' : ''} auto-synced
+          </span>
+        </div>
       </div>
+
       <Input name="total_amount" label="Total Amount (AED)" type="number" placeholder="0.00" />
       <Textarea name="notes" label="Remarks" rows={2} />
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-        <Button type="submit" className="flex-1">Create Booking</Button>
+        <Button type="submit" className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold">Create Booking</Button>
       </div>
     </form>
   )
 }
+
+
+export { AddMonthlyClientModalForm, DAYS_OF_WEEK, DAY_SHORT } from '@/components/monthlyClients/AddMonthlyClientModalForm'
+export type { AddMonthlyClientModalFormProps } from '@/components/monthlyClients/AddMonthlyClientModalForm'

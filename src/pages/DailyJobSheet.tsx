@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import {
   ChevronLeft, ChevronRight, Calendar, Printer, Download, Plus,
   Trash2, AlertCircle, AlertTriangle, TrendingUp, Users, Briefcase, CloudUpload,
   Upload, CheckCircle, FileSpreadsheet, SlidersHorizontal,
   Clock, DollarSign, Wallet, Search, Filter, X, Pencil, MoreVertical, ChevronDown,
-  Receipt, CreditCard, Eye, Settings,
+  Receipt, CreditCard, Eye, Settings, Check, Info, GripVertical, ChevronUp, RotateCcw,
+  ExternalLink, Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -61,12 +62,19 @@ import {
   PendingDetailsModal,
 } from '@/components/dailyJobSheet/DailyJobModals'
 import { GoogleDriveWebhookModal } from '@/components/dailyJobSheet/GoogleDriveWebhookModal'
+import { MonthlyScheduleSyncModal } from '@/components/dailyJobSheet/MonthlyScheduleSyncModal'
+import {
+  getScheduledMonthlyShiftsForDate,
+  syncMonthlySchedulesToDailyJobs,
+  type ScheduledShiftPlan,
+} from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 
 /* ─── Main Page ─── */
 export function DailyJobSheet() {
+  const navigate = useNavigate()
   const { openMenu } = useLayout()
-  const { dailyJobs, dailyExpenses, employees, loading, addDailyJob, updateDailyJob, deleteDailyJob, addDailyExpense, updateDailyExpense, deleteDailyExpense, clearDailyData, clearAllDailyData } = useData()
+  const { dailyJobs, dailyExpenses, employees, clients, loading, addDailyJob, updateDailyJob, deleteDailyJob, addDailyExpense, updateDailyExpense, deleteDailyExpense, clearDailyData, clearAllDailyData } = useData()
 
   const [searchParams, setSearchParams] = useSearchParams()
   const qDate = searchParams.get('date')
@@ -74,6 +82,82 @@ export function DailyJobSheet() {
     ? qDate
     : new Date().toISOString().split('T')[0]
   const [selectedDate, setSelectedDateState] = useState(initialDate)
+
+  // ── Weekly Schedule ↔ Daily Job Sheet Synchronization State ──
+  const [showMonthlySyncModal, setShowMonthlySyncModal] = useState(false)
+  const [autoSyncMonthly, setAutoSyncMonthly] = useState<boolean>(() => {
+    return safeLocalStorageGet('safaeewala_auto_sync_monthly_schedules', true)
+  })
+  const autoSyncedDatesRef = useRef<Set<string>>(new Set())
+
+  // Inline Cell Editing State & Functions
+  const [inlineEdit, setInlineEdit] = useState<{
+    jobId: string
+    field: 'staff_name' | 'start_time' | 'end_time' | 'address' | 'area' | 'charges' | 'received' | 'date'
+    tempValue: string
+  } | null>(null)
+
+  const inlineInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (inlineEdit) {
+      setTimeout(() => inlineInputRef.current?.focus(), 25)
+    }
+  }, [inlineEdit])
+
+  const startInlineEdit = (
+    jobId: string,
+    field: 'staff_name' | 'start_time' | 'end_time' | 'address' | 'area' | 'charges' | 'received' | 'date',
+    initialVal: string
+  ) => {
+    setInlineEdit({ jobId, field, tempValue: initialVal })
+  }
+
+  const saveInlineEdit = (job: DailyJob) => {
+    if (!inlineEdit || inlineEdit.jobId !== job.id) return
+    const { field, tempValue } = inlineEdit
+    const trimmed = tempValue.trim()
+    const patch: Partial<DailyJob> = {}
+
+    if (field === 'staff_name') {
+      patch.staff_name = trimmed || job.staff_name
+    } else if (field === 'start_time') {
+      const formatted = formatTimeOnly(trimmed)
+      patch.start_time = formatted !== '—' ? formatted : trimmed
+      const s = patch.start_time
+      const e = job.end_time
+      if (s && e && s !== '—' && e !== '—') {
+        patch.duty_hours = Math.round(calcHours(s, e) * 10) / 10
+        patch.ot_hours = Math.round(calcOTHours(s, e) * 10) / 10
+      }
+    } else if (field === 'end_time') {
+      const formatted = formatTimeOnly(trimmed)
+      patch.end_time = formatted !== '—' ? formatted : trimmed
+      const s = job.start_time
+      const e = patch.end_time
+      if (s && e && s !== '—' && e !== '—') {
+        patch.duty_hours = Math.round(calcHours(s, e) * 10) / 10
+        patch.ot_hours = Math.round(calcOTHours(s, e) * 10) / 10
+      }
+    } else if (field === 'address') {
+      patch.address = trimmed
+    } else if (field === 'area') {
+      patch.area = trimmed
+    } else if (field === 'charges') {
+      patch.charges = cleanNum(trimmed)
+    } else if (field === 'received') {
+      patch.received = cleanNum(trimmed)
+    } else if (field === 'date') {
+      patch.date = trimmed || job.date
+    }
+
+    updateDailyJob(job.id, patch)
+    setInlineEdit(null)
+  }
+
+  const cancelInlineEdit = () => {
+    setInlineEdit(null)
+  }
 
   const setSelectedDate = (d: string) => {
     setSelectedDateState(d)
@@ -235,7 +319,7 @@ export function DailyJobSheet() {
     return dateStr >= effectiveStartDate && dateStr <= effectiveEndDate
   }
 
-  // Column visibility customization state (persisted in localStorage)
+  // Column visibility & sequence customization state (persisted in localStorage)
   const [showColMenu, setShowColMenu] = useState(false)
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
     try {
@@ -244,6 +328,88 @@ export function DailyJobSheet() {
     } catch {}
     return DEFAULT_VISIBLE_COLUMNS
   })
+
+  // Column order sequence state (persisted in localStorage)
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('safaeewala_daily_job_col_order')
+      if (saved) {
+        const parsed = JSON.parse(saved) as string[]
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const validSaved = parsed.filter(id => ALL_COLUMNS.some(c => c.id === id))
+          const missing = ALL_COLUMNS.filter(c => !validSaved.includes(c.id)).map(c => c.id)
+          return [...validSaved, ...missing]
+        }
+      }
+    } catch {}
+    return ALL_COLUMNS.map(c => c.id)
+  })
+
+  // Drag and drop tracking
+  const [draggedColId, setDraggedColId] = useState<string | null>(null)
+  const [dragOverColId, setDragOverColId] = useState<string | null>(null)
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggedColId(id)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)
+  }
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (draggedColId && draggedColId !== id && dragOverColId !== id) {
+      setDragOverColId(id)
+    }
+  }
+
+  const handleDragLeave = () => {
+    setDragOverColId(null)
+  }
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault()
+    if (!draggedColId || draggedColId === targetId) {
+      setDraggedColId(null)
+      setDragOverColId(null)
+      return
+    }
+    setColumnOrder(prev => {
+      const fromIndex = prev.indexOf(draggedColId)
+      const toIndex = prev.indexOf(targetId)
+      if (fromIndex === -1 || toIndex === -1) return prev
+      const updated = [...prev]
+      const [moved] = updated.splice(fromIndex, 1)
+      updated.splice(toIndex, 0, moved)
+      try {
+        localStorage.setItem('safaeewala_daily_job_col_order', JSON.stringify(updated))
+      } catch {}
+      return updated
+    })
+    setDraggedColId(null)
+    setDragOverColId(null)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedColId(null)
+    setDragOverColId(null)
+  }
+
+  const moveColumn = (id: string, direction: 'up' | 'down') => {
+    setColumnOrder(prev => {
+      const idx = prev.indexOf(id)
+      if (idx === -1) return prev
+      const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+      if (targetIdx < 0 || targetIdx >= prev.length) return prev
+      const updated = [...prev]
+      const [moved] = updated.splice(idx, 1)
+      updated.splice(targetIdx, 0, moved)
+      try {
+        localStorage.setItem('safaeewala_daily_job_col_order', JSON.stringify(updated))
+      } catch {}
+      return updated
+    })
+  }
 
   const toggleColumn = (colId: string) => {
     setVisibleColumns(prev => {
@@ -255,12 +421,41 @@ export function DailyJobSheet() {
     })
   }
 
-  const resetColumns = () => {
-    setVisibleColumns(DEFAULT_VISIBLE_COLUMNS)
+  const setAllColumnsVisibility = (visible: boolean) => {
+    const next: Record<string, boolean> = {}
+    ALL_COLUMNS.forEach(c => {
+      next[c.id] = visible
+    })
+    setVisibleColumns(next)
     try {
-      localStorage.removeItem('safaeewala_daily_job_cols')
+      localStorage.setItem('safaeewala_daily_job_cols', JSON.stringify(next))
     } catch {}
   }
+
+  const resetColumns = () => {
+    setVisibleColumns(DEFAULT_VISIBLE_COLUMNS)
+    const defaultOrder = ALL_COLUMNS.map(c => c.id)
+    setColumnOrder(defaultOrder)
+    try {
+      localStorage.removeItem('safaeewala_daily_job_cols')
+      localStorage.removeItem('safaeewala_daily_job_col_order')
+    } catch {}
+  }
+
+  const colMap = useMemo(() => new Map(ALL_COLUMNS.map(c => [c.id, c])), [])
+
+  const orderedAllColumns = useMemo(() => {
+    return columnOrder.map(id => colMap.get(id)).filter(Boolean) as ColumnConfig[]
+  }, [columnOrder, colMap])
+
+  const activeColumns = useMemo(() => {
+    return orderedAllColumns.filter(c => visibleColumns[c.id])
+  }, [orderedAllColumns, visibleColumns])
+
+  const isOrderCustomized = useMemo(() => {
+    const defaultOrder = ALL_COLUMNS.map(c => c.id)
+    return columnOrder.some((id, idx) => id !== defaultOrder[idx])
+  }, [columnOrder])
 
   // Widgets view all / collapse state (default shows 4 items)
   const [viewAllExpenses, setViewAllExpenses] = useState(false)
@@ -272,13 +467,11 @@ export function DailyJobSheet() {
   )
 
   const [pendingRcvdList, setPendingRcvdList] = useState<DailyPendingReceivedItem[]>(() => {
-    const list = safeLocalStorageGet<DailyPendingReceivedItem[]>('safaeewala_daily_pending_rcvd_items', [])
-    return Array.isArray(list) ? list.filter(item => !item.id?.startsWith('pr-')) : []
+    return safeLocalStorageGet<DailyPendingReceivedItem[]>('safaeewala_daily_pending_rcvd_items', [])
   })
 
   const [advanceList, setAdvanceList] = useState<DailyAdvanceItem[]>(() => {
-    const list = safeLocalStorageGet<DailyAdvanceItem[]>('safaeewala_daily_advance_items', [])
-    return Array.isArray(list) ? list.filter(item => !item.id?.startsWith('adv-')) : []
+    return safeLocalStorageGet<DailyAdvanceItem[]>('safaeewala_daily_advance_items', [])
   })
 
   const [showAddPending, setShowAddPending]         = useState(false)
@@ -329,6 +522,66 @@ export function DailyJobSheet() {
     }
   }, [dailyJobs, deleteDailyJob])
 
+  // ── Monthly Repeating Schedules Calculation & Auto-Fetch ──
+  const monthlySyncStatus = useMemo(() => {
+    if (isDateRange) {
+      return { totalScheduled: 0, alreadySyncedCount: 0, pendingSyncCount: 0, dayName: 'Monday' as const, shifts: [] }
+    }
+    return getScheduledMonthlyShiftsForDate(selectedDate, clients, dailyJobs)
+  }, [selectedDate, clients, dailyJobs, isDateRange])
+
+  // Automatically fetch repeating monthly schedules when viewing a single date
+  useEffect(() => {
+    if (!autoSyncMonthly || isDateRange || loading) return
+    if (autoSyncedDatesRef.current.has(selectedDate)) return
+
+    if (monthlySyncStatus.pendingSyncCount > 0) {
+      autoSyncedDatesRef.current.add(selectedDate)
+      const res = syncMonthlySchedulesToDailyJobs(selectedDate, clients, dailyJobs, addDailyJob)
+      if (res.insertedCount > 0) {
+        setImportNotice({
+          jobs: res.insertedCount,
+          expenses: 0,
+          date: selectedDate,
+          fileName: `⚡ Auto-Fetched ${res.insertedCount} Monthly Client Shifts (${res.dayName})`,
+        })
+      }
+    }
+  }, [selectedDate, autoSyncMonthly, isDateRange, loading, monthlySyncStatus.pendingSyncCount, clients, dailyJobs, addDailyJob])
+
+  const handleSyncAllMonthlyShifts = () => {
+    const res = syncMonthlySchedulesToDailyJobs(selectedDate, clients, dailyJobs, addDailyJob)
+    if (res.insertedCount > 0) {
+      setImportNotice({
+        jobs: res.insertedCount,
+        expenses: 0,
+        date: selectedDate,
+        fileName: `⚡ Synced ${res.insertedCount} Monthly Client Shifts (${res.dayName})`,
+      })
+    }
+    setShowMonthlySyncModal(false)
+  }
+
+  const handleSyncSingleShift = (shift: ScheduledShiftPlan) => {
+    addDailyJob({
+      date: selectedDate,
+      staff_name: shift.cleanerName,
+      start_time: shift.startTime,
+      end_time: shift.endTime,
+      duty_hours: shift.durationHours,
+      ot_hours: 0,
+      address: shift.address,
+      area: shift.area,
+      material: 'No',
+      charges: shift.charges,
+      received: 0,
+      payment_mode: 'Monthly',
+      is_overtime: false,
+      remarks: shift.remarks,
+      service: shift.service,
+    })
+  }
+
   // Group active jobs by staff member so multiple shifts for an employee display sequentially adjacent
   const groupedJobs = todayJobs.reduce((acc, job) => {
     const s = job.staff_name.trim()
@@ -351,7 +604,9 @@ export function DailyJobSheet() {
     })
 
   // Absentees / active employees with nil records (0 jobs today) placed at the bottom
-  const activeStaffSet = new Set(todayJobs.map(j => j.staff_name.trim().toLowerCase()))
+  const activeStaffSet = new Set(
+    todayJobs.flatMap(j => (j.staff_name || '').split(/[,+/&]/).map(s => s.trim().toLowerCase())).filter(Boolean)
+  )
 
   const allKnownCleaners = useMemo(() => {
     const map = new Map<string, string>() // lower -> display
@@ -1492,6 +1747,574 @@ export function DailyJobSheet() {
     }
   }
 
+  // ── Dynamic Column Cell Renderers ──
+  const renderHeaderCell = (id: string) => {
+    const col = colMap.get(id)
+    const label = id === 'start_time' ? 'Start' : id === 'end_time' ? 'End' : id === 'area' ? 'Location' : id === 'payment_mode' ? 'Mode' : id === 'actions' ? '' : (col?.label || id)
+
+    return (
+      <th
+        key={id}
+        className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]"
+      >
+        {label}
+      </th>
+    )
+  }
+
+  const renderNilCell = (id: string, row: any) => {
+    if (id === 'staff') {
+      return (
+        <td key={id} className="px-3 py-3 font-semibold whitespace-nowrap">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black bg-sky-500 text-white shadow-xs">
+              {row.staff_name.trim()[0]?.toUpperCase()}
+            </span>
+            <span className="text-slate-800 font-bold">{row.staff_name}</span>
+          </div>
+        </td>
+      )
+    }
+    if (id === 'address') {
+      return (
+        <td key={id} className="px-3 py-3 text-sky-700 italic font-medium max-w-[180px] truncate">
+          Available (No jobs assigned)
+        </td>
+      )
+    }
+    if (id === 'payment_mode') {
+      return (
+        <td key={id} className="px-3 py-3 whitespace-nowrap">
+          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-300 shadow-xs uppercase tracking-wider">
+            Available
+          </span>
+        </td>
+      )
+    }
+    if (id === 'remarks') {
+      return <td key={id} className="px-3 py-3 text-slate-400 max-w-[140px] truncate">Standby</td>
+    }
+    if (id === 'actions' || id === 'ot_hours') {
+      return <td key={id} className="px-3 py-3 text-slate-300 font-medium whitespace-nowrap">—</td>
+    }
+    return <td key={id} className="px-3 py-3 text-slate-400 font-medium whitespace-nowrap">—</td>
+  }
+
+  const renderJobCell = (
+    id: string,
+    job: DailyJob,
+    isMonthly: boolean,
+    palette: StaffPalette,
+    isFirstShiftOfStaff: boolean,
+    otDisplay: number
+  ) => {
+    switch (id) {
+      case 'staff':
+        return (
+          <td
+            key={id}
+            className={`px-3 py-3 font-semibold whitespace-nowrap group/cell relative ${
+              inlineEdit?.jobId === job.id && inlineEdit.field === 'staff_name'
+                ? 'bg-white ring-2 ring-emerald-500 rounded'
+                : 'hover:bg-black/5 cursor-pointer'
+            }`}
+            onDoubleClick={() => startInlineEdit(job.id, 'staff_name', job.staff_name)}
+            title="Double-click to edit Staff Name"
+          >
+            {inlineEdit?.jobId === job.id && inlineEdit.field === 'staff_name' ? (
+              <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                <input
+                  ref={inlineInputRef}
+                  type="text"
+                  value={inlineEdit.tempValue}
+                  onChange={e => setInlineEdit({ ...inlineEdit, tempValue: e.target.value })}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') saveInlineEdit(job)
+                    if (e.key === 'Escape') cancelInlineEdit()
+                  }}
+                  className="px-2 py-1 text-xs font-semibold bg-white border border-emerald-500 rounded shadow-inner text-slate-800 w-36 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => saveInlineEdit(job)}
+                  className="p-1 text-white bg-emerald-600 rounded hover:bg-emerald-700 shadow-xs cursor-pointer"
+                  title="Save (Enter)"
+                >
+                  <Check size={12} />
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelInlineEdit}
+                  className="p-1 text-slate-600 bg-slate-200 rounded hover:bg-slate-300 cursor-pointer"
+                  title="Cancel (Esc)"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ) : (
+              isFirstShiftOfStaff ? (
+                <div className="flex items-center gap-2">
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black shadow-sm ${
+                    isMonthly ? 'bg-emerald-600 text-white' : palette.avatarBg
+                  }`}>
+                    {job.staff_name.trim()[0]?.toUpperCase()}
+                  </span>
+                  <div>
+                    <div className={`font-bold flex items-center gap-1.5 ${isMonthly ? 'text-emerald-950 font-extrabold' : palette.nameColor}`}>
+                      {job.staff_name}
+                      <Pencil size={11} className="opacity-0 group-hover/cell:opacity-60 text-emerald-700 transition-opacity" />
+                    </div>
+                    {isDateRange && (
+                      <div className="text-[10px] text-slate-500 font-normal">{fmtDate(job.date)}</div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 pl-3">
+                  <span className={`font-bold text-[11px] ${isMonthly ? 'text-emerald-600' : 'text-slate-400'}`}>↳</span>
+                  <div>
+                    <span className={`text-[12px] font-semibold flex items-center gap-1.5 ${isMonthly ? 'text-emerald-950 font-bold' : palette.nameColor}`}>
+                      {job.staff_name}
+                      <Pencil size={11} className="opacity-0 group-hover/cell:opacity-60 text-emerald-700 transition-opacity" />
+                    </span>
+                    {isDateRange && (
+                      <span className="text-[10px] text-slate-500 font-normal ml-1.5">({fmtDate(job.date)})</span>
+                    )}
+                  </div>
+                </div>
+              )
+            )}
+          </td>
+        )
+
+      case 'start_time':
+        return (
+          <td
+            key={id}
+            className={`px-3 py-3 font-medium whitespace-nowrap group/cell relative ${
+              inlineEdit?.jobId === job.id && inlineEdit.field === 'start_time'
+                ? 'bg-white ring-2 ring-emerald-500 rounded'
+                : 'hover:bg-black/5 cursor-pointer'
+            } ${isMonthly ? 'text-emerald-950 font-semibold' : 'text-slate-600'}`}
+            onDoubleClick={() => startInlineEdit(job.id, 'start_time', job.start_time)}
+            title="Double-click to edit Start Time"
+          >
+            {inlineEdit?.jobId === job.id && inlineEdit.field === 'start_time' ? (
+              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                <input
+                  ref={inlineInputRef}
+                  type="text"
+                  placeholder="08:00 AM"
+                  value={inlineEdit.tempValue}
+                  onChange={e => setInlineEdit({ ...inlineEdit, tempValue: e.target.value })}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') saveInlineEdit(job)
+                    if (e.key === 'Escape') cancelInlineEdit()
+                  }}
+                  className="px-2 py-1 text-xs font-mono bg-white border border-emerald-500 rounded shadow-inner text-slate-800 w-24 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => saveInlineEdit(job)}
+                  className="p-1 text-white bg-emerald-600 rounded hover:bg-emerald-700 shadow-xs cursor-pointer"
+                  title="Save (Enter)"
+                >
+                  <Check size={11} />
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelInlineEdit}
+                  className="p-1 text-slate-600 bg-slate-200 rounded hover:bg-slate-300 cursor-pointer"
+                  title="Cancel (Esc)"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ) : (
+              <span className="flex items-center gap-1.5">
+                {formatTimeOnly(job.start_time)}
+                <Pencil size={10} className="opacity-0 group-hover/cell:opacity-50 text-emerald-700 transition-opacity" />
+              </span>
+            )}
+          </td>
+        )
+
+      case 'end_time':
+        return (
+          <td
+            key={id}
+            className={`px-3 py-3 font-medium whitespace-nowrap group/cell relative ${
+              inlineEdit?.jobId === job.id && inlineEdit.field === 'end_time'
+                ? 'bg-white ring-2 ring-emerald-500 rounded'
+                : 'hover:bg-black/5 cursor-pointer'
+            } ${isMonthly ? 'text-emerald-950 font-semibold' : 'text-slate-600'}`}
+            onDoubleClick={() => startInlineEdit(job.id, 'end_time', job.end_time)}
+            title="Double-click to edit End Time"
+          >
+            {inlineEdit?.jobId === job.id && inlineEdit.field === 'end_time' ? (
+              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                <input
+                  ref={inlineInputRef}
+                  type="text"
+                  placeholder="05:00 PM"
+                  value={inlineEdit.tempValue}
+                  onChange={e => setInlineEdit({ ...inlineEdit, tempValue: e.target.value })}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') saveInlineEdit(job)
+                    if (e.key === 'Escape') cancelInlineEdit()
+                  }}
+                  className="px-2 py-1 text-xs font-mono bg-white border border-emerald-500 rounded shadow-inner text-slate-800 w-24 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => saveInlineEdit(job)}
+                  className="p-1 text-white bg-emerald-600 rounded hover:bg-emerald-700 shadow-xs cursor-pointer"
+                  title="Save (Enter)"
+                >
+                  <Check size={11} />
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelInlineEdit}
+                  className="p-1 text-slate-600 bg-slate-200 rounded hover:bg-slate-300 cursor-pointer"
+                  title="Cancel (Esc)"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ) : (
+              <span className="flex items-center gap-1.5">
+                {formatTimeOnly(job.end_time)}
+                <Pencil size={10} className="opacity-0 group-hover/cell:opacity-50 text-emerald-700 transition-opacity" />
+              </span>
+            )}
+          </td>
+        )
+
+      case 'address':
+        return (
+          <td
+            key={id}
+            className={`px-3 py-3 group/cell relative ${
+              inlineEdit?.jobId === job.id && inlineEdit.field === 'address'
+                ? 'bg-white ring-2 ring-emerald-500 rounded'
+                : 'hover:bg-black/5 cursor-pointer'
+            }`}
+            onDoubleClick={() => startInlineEdit(job.id, 'address', job.address || '')}
+            title="Double-click to edit Address"
+          >
+            {inlineEdit?.jobId === job.id && inlineEdit.field === 'address' ? (
+              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                <input
+                  ref={inlineInputRef}
+                  type="text"
+                  placeholder="Client Name or Full Address"
+                  value={inlineEdit.tempValue}
+                  onChange={e => setInlineEdit({ ...inlineEdit, tempValue: e.target.value })}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') saveInlineEdit(job)
+                    if (e.key === 'Escape') cancelInlineEdit()
+                  }}
+                  className="px-2 py-1 text-xs bg-white border border-emerald-500 rounded shadow-inner text-slate-800 w-64 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => saveInlineEdit(job)}
+                  className="p-1 text-white bg-emerald-600 rounded hover:bg-emerald-700 shadow-xs cursor-pointer"
+                  title="Save (Enter)"
+                >
+                  <Check size={11} />
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelInlineEdit}
+                  className="p-1 text-slate-600 bg-slate-200 rounded hover:bg-slate-300 cursor-pointer"
+                  title="Cancel (Esc)"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-start justify-between gap-1">
+                <AddressCell address={job.address} area={job.area} isDark={false} />
+                <Pencil size={10} className="opacity-0 group-hover/cell:opacity-50 text-emerald-700 transition-opacity mt-1 shrink-0" />
+              </div>
+            )}
+          </td>
+        )
+
+      case 'area':
+        return (
+          <td
+            key={id}
+            className={`px-3 py-3 whitespace-nowrap font-medium group/cell relative ${
+              inlineEdit?.jobId === job.id && inlineEdit.field === 'area'
+                ? 'bg-white ring-2 ring-emerald-500 rounded'
+                : 'hover:bg-black/5 cursor-pointer'
+            } ${isMonthly ? 'text-emerald-900 font-semibold' : 'text-slate-600'}`}
+            onDoubleClick={() => startInlineEdit(job.id, 'area', job.area || '')}
+            title="Double-click to edit Location / Area"
+          >
+            {inlineEdit?.jobId === job.id && inlineEdit.field === 'area' ? (
+              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                <input
+                  ref={inlineInputRef}
+                  type="text"
+                  placeholder="Area"
+                  value={inlineEdit.tempValue}
+                  onChange={e => setInlineEdit({ ...inlineEdit, tempValue: e.target.value })}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') saveInlineEdit(job)
+                    if (e.key === 'Escape') cancelInlineEdit()
+                  }}
+                  className="px-2 py-1 text-xs bg-white border border-emerald-500 rounded shadow-inner text-slate-800 w-28 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => saveInlineEdit(job)}
+                  className="p-1 text-white bg-emerald-600 rounded hover:bg-emerald-700 shadow-xs cursor-pointer"
+                  title="Save (Enter)"
+                >
+                  <Check size={11} />
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelInlineEdit}
+                  className="p-1 text-slate-600 bg-slate-200 rounded hover:bg-slate-300 cursor-pointer"
+                  title="Cancel (Esc)"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ) : (
+              <span className="flex items-center gap-1.5">
+                {job.area || '—'}
+                <Pencil size={10} className="opacity-0 group-hover/cell:opacity-50 text-emerald-700 transition-opacity" />
+              </span>
+            )}
+          </td>
+        )
+
+      case 'charges':
+        return (
+          <td
+            key={id}
+            className={`px-3 py-3 font-semibold whitespace-nowrap group/cell relative ${
+              inlineEdit?.jobId === job.id && inlineEdit.field === 'charges'
+                ? 'bg-white ring-2 ring-emerald-500 rounded'
+                : 'hover:bg-black/5 cursor-pointer'
+            }`}
+            onDoubleClick={() => startInlineEdit(job.id, 'charges', String(job.charges || '0'))}
+            title="Double-click to edit Charges"
+          >
+            {inlineEdit?.jobId === job.id && inlineEdit.field === 'charges' ? (
+              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                <span className="text-[10px] font-bold text-slate-500">AED</span>
+                <input
+                  ref={inlineInputRef}
+                  type="number"
+                  placeholder="0"
+                  value={inlineEdit.tempValue}
+                  onChange={e => setInlineEdit({ ...inlineEdit, tempValue: e.target.value })}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') saveInlineEdit(job)
+                    if (e.key === 'Escape') cancelInlineEdit()
+                  }}
+                  className="px-2 py-1 text-xs font-bold bg-white border border-emerald-500 rounded shadow-inner text-slate-800 w-20 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => saveInlineEdit(job)}
+                  className="p-1 text-white bg-emerald-600 rounded hover:bg-emerald-700 shadow-xs cursor-pointer"
+                  title="Save (Enter)"
+                >
+                  <Check size={11} />
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelInlineEdit}
+                  className="p-1 text-slate-600 bg-slate-200 rounded hover:bg-slate-300 cursor-pointer"
+                  title="Cancel (Esc)"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                {isMonthly ? (
+                  cleanNum(job.charges) > 0 ? (
+                    <span className="text-emerald-950 font-bold">AED {cleanNum(job.charges).toLocaleString()}</span>
+                  ) : (
+                    <span className="text-emerald-700 font-bold">—</span>
+                  )
+                ) : (
+                  <span className="text-[#111827]">AED {cleanNum(job.charges).toLocaleString()}</span>
+                )}
+                <Pencil size={10} className="opacity-0 group-hover/cell:opacity-50 text-emerald-700 transition-opacity" />
+              </div>
+            )}
+          </td>
+        )
+
+      case 'received':
+        return (
+          <td
+            key={id}
+            className={`px-3 py-3 font-semibold whitespace-nowrap group/cell relative ${
+              inlineEdit?.jobId === job.id && inlineEdit.field === 'received'
+                ? 'bg-white ring-2 ring-emerald-500 rounded'
+                : 'hover:bg-black/5 cursor-pointer'
+            } ${isMonthly ? 'text-emerald-800 font-medium' : 'text-emerald-700'}`}
+            onDoubleClick={() => !isMonthly && startInlineEdit(job.id, 'received', String(job.received || '0'))}
+            title={isMonthly ? undefined : 'Double-click to edit Received amount'}
+          >
+            {inlineEdit?.jobId === job.id && inlineEdit.field === 'received' ? (
+              <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                <span className="text-[10px] font-bold text-slate-500">AED</span>
+                <input
+                  ref={inlineInputRef}
+                  type="number"
+                  placeholder="0"
+                  value={inlineEdit.tempValue}
+                  onChange={e => setInlineEdit({ ...inlineEdit, tempValue: e.target.value })}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') saveInlineEdit(job)
+                    if (e.key === 'Escape') cancelInlineEdit()
+                  }}
+                  className="px-2 py-1 text-xs font-bold bg-white border border-emerald-500 rounded shadow-inner text-slate-800 w-20 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => saveInlineEdit(job)}
+                  className="p-1 text-white bg-emerald-600 rounded hover:bg-emerald-700 shadow-xs cursor-pointer"
+                  title="Save (Enter)"
+                >
+                  <Check size={11} />
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelInlineEdit}
+                  className="p-1 text-slate-600 bg-slate-200 rounded hover:bg-slate-300 cursor-pointer"
+                  title="Cancel (Esc)"
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <span>{job.payment_mode === 'Pending' || isMonthly ? '—' : `AED ${cleanNum(job.received).toLocaleString()}`}</span>
+                {!isMonthly && <Pencil size={10} className="opacity-0 group-hover/cell:opacity-50 text-emerald-700 transition-opacity" />}
+              </div>
+            )}
+          </td>
+        )
+
+      case 'pending':
+        return (
+          <td key={id} className="px-3 py-3 font-semibold whitespace-nowrap">
+            {cleanNum(job.charges) > cleanNum(job.received) ? (
+              <span className="text-red-500 font-bold">AED {(cleanNum(job.charges) - cleanNum(job.received)).toLocaleString()}</span>
+            ) : (
+              <span className={isMonthly ? 'text-emerald-700 font-medium' : 'text-slate-400 font-medium'}>Nil</span>
+            )}
+          </td>
+        )
+
+      case 'duty_hours':
+        return (
+          <td key={id} className={`px-3 py-3 font-semibold whitespace-nowrap ${isMonthly ? 'text-emerald-950 font-bold' : 'text-slate-800'}`}>
+            {cleanNum(job.duty_hours) > 0 ? `${cleanNum(job.duty_hours)}h` : '—'}
+          </td>
+        )
+
+      case 'ot_hours':
+        return (
+          <td key={id} className="px-3 py-3 whitespace-nowrap">
+            {otDisplay > 0
+              ? <span className="text-[11px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full border border-orange-200">{otDisplay}h OT</span>
+              : <span className={isMonthly ? 'text-emerald-700' : 'text-slate-300'}>0</span>}
+          </td>
+        )
+
+      case 'material':
+        return (
+          <td key={id} className={`px-3 py-3 whitespace-nowrap font-medium ${isMonthly ? 'text-emerald-950' : 'text-slate-600'}`}>{job.material || 'No'}</td>
+        )
+
+      case 'payment_mode':
+        return (
+          <td key={id} className="px-3 py-3">
+            {isMonthly ? (
+              <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-emerald-700 text-white shadow-xs whitespace-nowrap uppercase tracking-wider">
+                Monthly
+              </span>
+            ) : (
+              <PaymentBadge mode={job.payment_mode} />
+            )}
+          </td>
+        )
+
+      case 'remarks':
+        return (
+          <td key={id} className={`px-3 py-3 max-w-[140px] truncate ${isMonthly ? 'text-emerald-900 font-medium' : 'text-slate-600'}`} title={job.remarks}>
+            {job.remarks || '—'}
+          </td>
+        )
+
+      case 'service':
+        return (
+          <td key={id} className="px-3 py-3 whitespace-nowrap">
+            {job.service ? (
+              <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-sm ${
+                isMonthly
+                  ? 'bg-emerald-200/90 text-emerald-950 border border-emerald-300'
+                  : 'bg-white/90 text-slate-700 border border-slate-300'
+              }`}>
+                {job.service}
+              </span>
+            ) : (
+              <span className={isMonthly ? 'text-emerald-700' : 'text-slate-300'}>—</span>
+            )}
+          </td>
+        )
+
+      case 'actions':
+        return (
+          <td key={id} className="px-3 py-3">
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setEditJob(job)}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  isMonthly
+                    ? 'hover:bg-emerald-200 text-emerald-800 hover:text-emerald-950'
+                    : 'hover:bg-white/80 text-slate-400 hover:text-slate-700'
+                }`}
+                title="Edit"
+              >
+                <Pencil size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteDailyJob(job.id)}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  isMonthly
+                    ? 'hover:bg-red-100 text-emerald-800 hover:text-red-600'
+                    : 'hover:bg-red-50 text-slate-400 hover:text-red-600'
+                }`}
+                title="Delete"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          </td>
+        )
+
+      default:
+        return <td key={id} className="px-3 py-3">—</td>
+    }
+  }
+
   const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project')
 
   return (
@@ -1832,6 +2655,35 @@ export function DailyJobSheet() {
                 e.target.value = ''
               }}
             />
+
+            {/* Weekly Schedule ↔ Daily Job Sheet Synchronization Button */}
+            {!isDateRange && (
+              <button
+                type="button"
+                onClick={() => setShowMonthlySyncModal(true)}
+                title="Weekly Schedule ↔ Daily Job Sheet Synchronization"
+                className={`h-11 px-3.5 rounded-2xl border text-[12.5px] font-bold shadow-sm backdrop-blur-md transition-all flex items-center gap-2 cursor-pointer ${
+                  monthlySyncStatus.pendingSyncCount > 0
+                    ? 'bg-amber-400/25 hover:bg-amber-400/35 border-amber-300/50 text-amber-100 shadow-md ring-2 ring-amber-400/30'
+                    : 'bg-white/10 hover:bg-white/20 border-white/20 text-white'
+                }`}
+              >
+                <Sparkles
+                  size={15}
+                  className={monthlySyncStatus.pendingSyncCount > 0 ? 'text-amber-300 animate-pulse' : 'text-emerald-300'}
+                />
+                <span className="hidden sm:inline">
+                  {monthlySyncStatus.pendingSyncCount > 0
+                    ? `Fetch Monthly (${monthlySyncStatus.pendingSyncCount})`
+                    : `Monthly Synced (${monthlySyncStatus.totalScheduled})`}
+                </span>
+                <span className="sm:hidden">
+                  {monthlySyncStatus.pendingSyncCount > 0
+                    ? `Sync (${monthlySyncStatus.pendingSyncCount})`
+                    : `Synced (${monthlySyncStatus.totalScheduled})`}
+                </span>
+              </button>
+            )}
 
             {/* Import Button */}
             <button
@@ -2429,57 +3281,203 @@ export function DailyJobSheet() {
               })}
             </div>
             {/* Customize Columns Dropdown */}
+            {/* Customize Columns Button with 'i' Icon */}
             <div className="relative">
               <button
+                type="button"
                 onClick={() => setShowColMenu(p => !p)}
-                className="flex items-center justify-center w-9 h-8.5 rounded-xl border border-[#E4E8EC] bg-slate-50 text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors cursor-pointer relative"
-                title="Customize Columns (Show / Hide)"
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer relative shadow-xs group ${
+                  showColMenu
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-200'
+                    : 'border-[#E4E8EC] bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+                }`}
+                title="Customize Columns (Drag & Drop Sequence, Hide/Show Checkboxes)"
                 aria-label="Customize Columns"
               >
-                <Eye size={15} className="text-slate-600" />
-                {Object.values(visibleColumns).filter(Boolean).length < ALL_COLUMNS.length && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white" title="Some columns are hidden" />
+                <div className="w-5 h-5 rounded-full bg-emerald-100/80 group-hover:bg-emerald-200/90 text-emerald-800 flex items-center justify-center font-serif italic font-black text-[12px] shadow-2xs">
+                  i
+                </div>
+                <span className="hidden sm:inline text-[12px] font-bold text-slate-700 group-hover:text-emerald-800">Columns</span>
+                {(activeColumns.length < ALL_COLUMNS.length || isOrderCustomized) && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white animate-pulse" title="Custom columns active" />
                 )}
               </button>
 
               {showColMenu && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowColMenu(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-60 bg-white border border-[#E4E8EC] rounded-2xl shadow-2xl z-50 p-3.5 animate-in fade-in zoom-in-95">
-                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#E4E8EC]">
-                      <span className="text-[12px] font-bold text-slate-800">Customize Columns</span>
+                  <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white border border-[#E4E8EC] rounded-2xl shadow-2xl z-50 p-4 animate-in fade-in zoom-in-95">
+                    {/* Header */}
+                    <div className="flex items-center justify-between pb-3 mb-2.5 border-b border-[#E4E8EC]">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-800 font-serif italic font-black text-xs">
+                          i
+                        </div>
+                        <div>
+                          <h4 className="text-[13px] font-bold text-slate-900 leading-tight">Customize Columns</h4>
+                          <p className="text-[10.5px] text-slate-500 leading-tight">Drag to reorder sequence · Check to show/hide</p>
+                        </div>
+                      </div>
                       <button
-                        onClick={resetColumns}
-                        className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 hover:underline cursor-pointer"
+                        type="button"
+                        onClick={() => setShowColMenu(false)}
+                        className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+                        title="Close"
                       >
-                        Reset All
+                        <X size={15} />
                       </button>
                     </div>
-                    <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
-                      {ALL_COLUMNS.map(col => (
-                        <label
-                          key={col.id}
-                          className="flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-[12px] transition-colors select-none"
+
+                    {/* Quick Filter & Reset Controls */}
+                    <div className="flex items-center justify-between gap-1.5 py-1.5 px-2 bg-slate-50 rounded-xl mb-3 text-[11px] border border-slate-200/70">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-600">
+                        <span className="px-1.5 py-0.5 rounded bg-white text-emerald-700 border border-slate-200 text-[10.5px]">
+                          {activeColumns.length} / {ALL_COLUMNS.length}
+                        </span>
+                        <span>Visible</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAllColumnsVisibility(true)}
+                          className="font-semibold text-emerald-700 hover:underline hover:text-emerald-800 cursor-pointer"
                         >
-                          <span className={`font-medium ${visibleColumns[col.id] ? 'text-slate-800' : 'text-slate-400'}`}>
-                            {col.label}
-                          </span>
-                          <input
-                            type="checkbox"
-                            checked={!!visibleColumns[col.id]}
-                            onChange={() => toggleColumn(col.id)}
-                            className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
-                          />
-                        </label>
-                      ))}
+                          Show All
+                        </button>
+                        <span className="text-slate-300">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setAllColumnsVisibility(false)}
+                          className="font-semibold text-slate-500 hover:underline hover:text-slate-700 cursor-pointer"
+                        >
+                          Hide All
+                        </button>
+                        <span className="text-slate-300">|</span>
+                        <button
+                          type="button"
+                          onClick={resetColumns}
+                          className="font-semibold text-emerald-700 hover:underline flex items-center gap-0.5 cursor-pointer"
+                          title="Reset sequence and visibility to defaults"
+                        >
+                          <RotateCcw size={11} /> Reset
+                        </button>
+                      </div>
                     </div>
-                    <div className="mt-2 pt-2 border-t border-[#E4E8EC] text-[10.5px] text-slate-400 text-center">
-                      Auto-saved to your browser
+
+                    {/* Draggable Column List */}
+                    <div className="max-h-[340px] overflow-y-auto space-y-1.5 pr-1 select-none">
+                      {orderedAllColumns.map((col, idx) => {
+                        const isVisible = !!visibleColumns[col.id]
+                        const isDragging = draggedColId === col.id
+                        const isDragOver = dragOverColId === col.id
+
+                        return (
+                          <div
+                            key={col.id}
+                            draggable
+                            onDragStart={e => handleDragStart(e, col.id)}
+                            onDragOver={e => handleDragOver(e, col.id)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={e => handleDrop(e, col.id)}
+                            onDragEnd={handleDragEnd}
+                            className={`flex items-center justify-between px-3 py-2 rounded-xl border text-[12px] transition-all cursor-move group ${
+                              isDragging
+                                ? 'opacity-40 border-dashed border-emerald-500 bg-emerald-50 scale-[0.98]'
+                                : isDragOver
+                                  ? 'border-t-2 border-t-emerald-600 bg-emerald-50/70 border-emerald-300 shadow-sm'
+                                  : isVisible
+                                    ? 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 shadow-2xs'
+                                    : 'bg-slate-50/70 hover:bg-slate-100/70 border-slate-200/60 opacity-60'
+                            }`}
+                          >
+                            {/* Left: Drag Handle, Sequence Number & Label */}
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className="text-slate-400 group-hover:text-slate-700 cursor-grab active:cursor-grabbing p-0.5 rounded hover:bg-slate-200 transition-colors"
+                                title="Drag up/down to reorder sequence"
+                              >
+                                <GripVertical size={15} />
+                              </span>
+                              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 group-hover:text-emerald-700 group-hover:bg-emerald-50">
+                                #{idx + 1}
+                              </span>
+                              <span className={`truncate font-semibold ${isVisible ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
+                                {col.label}
+                              </span>
+                            </div>
+
+                            {/* Right: Quick Up/Down arrows & Checkbox */}
+                            <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+                              <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-0.5">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => moveColumn(col.id, 'up')}
+                                  className={`w-5 h-5 rounded flex items-center justify-center transition-colors cursor-pointer ${
+                                    idx === 0 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:bg-slate-200 hover:text-slate-800'
+                                  }`}
+                                  title="Move Up"
+                                >
+                                  <ChevronUp size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={idx === orderedAllColumns.length - 1}
+                                  onClick={() => moveColumn(col.id, 'down')}
+                                  className={`w-5 h-5 rounded flex items-center justify-center transition-colors cursor-pointer ${
+                                    idx === orderedAllColumns.length - 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:bg-slate-200 hover:text-slate-800'
+                                  }`}
+                                  title="Move Down"
+                                >
+                                  <ChevronDown size={13} />
+                                </button>
+                              </div>
+
+                              <label className="flex items-center cursor-pointer p-1">
+                                <input
+                                  type="checkbox"
+                                  checked={isVisible}
+                                  onChange={() => toggleColumn(col.id)}
+                                  className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
+                                  title={isVisible ? 'Click to hide column' : 'Click to show column'}
+                                />
+                              </label>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="mt-3 pt-2.5 border-t border-[#E4E8EC] flex items-center justify-between text-[10.5px] text-slate-500">
+                      <span className="flex items-center gap-1 text-slate-400">
+                        <Check size={12} className="text-emerald-600" />
+                        Saved automatically
+                      </span>
+                      <button
+                        type="button"
+                        onClick={resetColumns}
+                        className="text-slate-600 hover:text-emerald-700 font-semibold hover:underline cursor-pointer"
+                      >
+                        Reset Sequence & Visibility
+                      </button>
                     </div>
                   </div>
                 </>
               )}
             </div>
+
+            {/* Excel Sheet Mode Button (Opens in New Window Full Width, No Sidebar) */}
+            <button
+              type="button"
+              onClick={() => window.open(`/daily-job-sheet/spreadsheet?date=${selectedDate}`, '_blank', 'noopener,noreferrer')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[12px] shadow-xs hover:shadow transition-all cursor-pointer group shrink-0"
+              title="Open Full Interactive Excel Sheet in a New Window (Full Width, No Sidebar)"
+            >
+              <FileSpreadsheet size={15} className="text-emerald-700 group-hover:scale-110 transition-transform" />
+              <span className="hidden sm:inline">Excel Sheet Mode</span>
+              <ExternalLink size={12} className="text-emerald-600 opacity-70 group-hover:opacity-100" />
+            </button>
 
             {/* View All / Page size selector */}
             <div className="flex items-center">
@@ -2540,66 +3538,19 @@ export function DailyJobSheet() {
           <div className="flex-1 overflow-auto max-h-[calc(100vh-210px)] min-w-0 relative overscroll-contain table-scroll-container">
             <table
               className="w-full text-[12px] border-collapse relative"
-              style={{ minWidth: Math.max(500, Object.values(visibleColumns).filter(Boolean).length * 80) }}
+              style={{ minWidth: Math.max(500, activeColumns.length * 80) }}
             >
               <thead className="sticky top-0 z-30 shadow-[0_2px_4px_rgba(0,0,0,0.06)] bg-slate-100">
                 <tr className="bg-slate-100 border-b border-[#E4E8EC]">
-                  {visibleColumns.staff && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Staff</th>}
-                  {visibleColumns.start_time && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Start</th>}
-                  {visibleColumns.end_time && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">End</th>}
-                  {visibleColumns.address && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Address</th>}
-                  {visibleColumns.area && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Location</th>}
-                  {visibleColumns.charges && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Charges</th>}
-                  {visibleColumns.received && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Received</th>}
-                  {visibleColumns.pending && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Pending</th>}
-                  {visibleColumns.duty_hours && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Duty Hrs</th>}
-                  {visibleColumns.ot_hours && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">OT Hrs</th>}
-                  {visibleColumns.material && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Material</th>}
-                  {visibleColumns.payment_mode && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Mode</th>}
-                  {visibleColumns.remarks && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Remarks</th>}
-                  {visibleColumns.service && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]">Service</th>}
-                  {visibleColumns.actions && <th className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]"></th>}
+                  {activeColumns.map(col => renderHeaderCell(col.id))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E4E8EC]/70">
                 {displayedRows.map((row, idx) => {
                   if (row.isNil) {
                     return (
-                      <tr key={row.id} className="bg-red-100/90 hover:bg-red-200/90 transition-colors border-l-[5px] border-l-red-600 border-t border-t-red-200">
-                        {visibleColumns.staff && (
-                          <td className="px-3 py-3 font-semibold whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black bg-red-600 text-white shadow-xs">
-                                {row.staff_name.trim()[0]?.toUpperCase()}
-                              </span>
-                              <span className="text-red-950 font-bold">{row.staff_name}</span>
-                            </div>
-                          </td>
-                        )}
-                        {visibleColumns.start_time && <td className="px-3 py-3 text-red-400 font-medium whitespace-nowrap">—</td>}
-                        {visibleColumns.end_time && <td className="px-3 py-3 text-red-400 font-medium whitespace-nowrap">—</td>}
-                        {visibleColumns.address && (
-                          <td className="px-3 py-3 text-red-700 italic font-semibold max-w-[160px] truncate">
-                            Absent (No jobs assigned)
-                          </td>
-                        )}
-                        {visibleColumns.area && <td className="px-3 py-3 text-red-400 font-medium whitespace-nowrap">—</td>}
-                        {visibleColumns.charges && <td className="px-3 py-3 text-red-400 font-medium whitespace-nowrap">—</td>}
-                        {visibleColumns.received && <td className="px-3 py-3 text-red-400 font-medium whitespace-nowrap">—</td>}
-                        {visibleColumns.pending && <td className="px-3 py-3 text-red-400 font-medium whitespace-nowrap">—</td>}
-                        {visibleColumns.duty_hours && <td className="px-3 py-3 text-red-400 font-medium whitespace-nowrap">—</td>}
-                        {visibleColumns.ot_hours && <td className="px-3 py-3 text-red-300 font-medium whitespace-nowrap">—</td>}
-                        {visibleColumns.material && <td className="px-3 py-3 text-red-400 font-medium whitespace-nowrap">—</td>}
-                        {visibleColumns.payment_mode && (
-                          <td className="px-3 py-3 whitespace-nowrap">
-                            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-red-600 text-white border border-red-700 shadow-xs uppercase tracking-wider">
-                              Absent
-                            </span>
-                          </td>
-                        )}
-                        {visibleColumns.remarks && <td className="px-3 py-3 text-red-400 max-w-[140px] truncate">—</td>}
-                        {visibleColumns.service && <td className="px-3 py-3 text-red-400 font-medium whitespace-nowrap">—</td>}
-                        {visibleColumns.actions && <td className="px-3 py-3 text-red-300">—</td>}
+                      <tr key={row.id} className="bg-sky-50/70 hover:bg-sky-100/70 transition-colors border-l-[5px] border-l-sky-500 border-t border-t-sky-200">
+                        {activeColumns.map(col => renderNilCell(col.id, row))}
                       </tr>
                     )
                   }
@@ -2631,181 +3582,67 @@ export function DailyJobSheet() {
 
                   return (
                     <tr key={job.id} className={rowClass}>
-                      {visibleColumns.staff && (
-                        <td className="px-3 py-3 font-semibold whitespace-nowrap">
-                          {isFirstShiftOfStaff ? (
-                            <div className="flex items-center gap-2">
-                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black shadow-sm ${
-                                isMonthly ? 'bg-emerald-600 text-white' : palette.avatarBg
-                              }`}>
-                                {job.staff_name.trim()[0]?.toUpperCase()}
-                              </span>
-                              <div>
-                                <div className={`font-bold ${isMonthly ? 'text-emerald-950 font-extrabold' : palette.nameColor}`}>{job.staff_name}</div>
-                                {isDateRange && (
-                                  <div className="text-[10px] text-slate-500 font-normal">{fmtDate(job.date)}</div>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2 pl-3">
-                              <span className={`font-bold text-[11px] ${isMonthly ? 'text-emerald-600' : 'text-slate-400'}`}>↳</span>
-                              <div>
-                                <span className={`text-[12px] font-semibold ${isMonthly ? 'text-emerald-950 font-bold' : palette.nameColor}`}>{job.staff_name}</span>
-                                {isDateRange && (
-                                  <span className="text-[10px] text-slate-500 font-normal ml-1.5">({fmtDate(job.date)})</span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </td>
-                      )}
-                      {visibleColumns.start_time && (
-                        <td className={`px-3 py-3 font-medium whitespace-nowrap ${isMonthly ? 'text-emerald-950 font-semibold' : 'text-slate-600'}`}>{formatTimeOnly(job.start_time)}</td>
-                      )}
-                      {visibleColumns.end_time && (
-                        <td className={`px-3 py-3 font-medium whitespace-nowrap ${isMonthly ? 'text-emerald-950 font-semibold' : 'text-slate-600'}`}>{formatTimeOnly(job.end_time)}</td>
-                      )}
-                      {visibleColumns.address && (
-                        <td className="px-3 py-3">
-                          <AddressCell address={job.address} area={job.area} isDark={false} />
-                        </td>
-                      )}
-                      {visibleColumns.area && (
-                        <td className={`px-3 py-3 whitespace-nowrap font-medium ${isMonthly ? 'text-emerald-900 font-semibold' : 'text-slate-600'}`}>{job.area || '—'}</td>
-                      )}
-                      {visibleColumns.charges && (
-                        <td className="px-3 py-3 font-semibold whitespace-nowrap">
-                          {isMonthly ? (
-                            cleanNum(job.charges) > 0 ? (
-                              <span className="text-emerald-950 font-bold">AED {cleanNum(job.charges).toLocaleString()}</span>
-                            ) : (
-                              <span className="text-emerald-700 font-bold">—</span>
-                            )
-                          ) : (
-                            <span className="text-[#111827]">AED {cleanNum(job.charges).toLocaleString()}</span>
-                          )}
-                        </td>
-                      )}
-                      {visibleColumns.received && (
-                        <td className={`px-3 py-3 font-semibold whitespace-nowrap ${isMonthly ? 'text-emerald-800 font-medium' : 'text-emerald-700'}`}>
-                          {job.payment_mode === 'Pending' || isMonthly ? '—' : `AED ${cleanNum(job.received).toLocaleString()}`}
-                        </td>
-                      )}
-                      {visibleColumns.pending && (
-                        <td className="px-3 py-3 font-semibold whitespace-nowrap">
-                          {cleanNum(job.charges) > cleanNum(job.received) ? (
-                            <span className="text-red-500 font-bold">AED {(cleanNum(job.charges) - cleanNum(job.received)).toLocaleString()}</span>
-                          ) : (
-                            <span className={isMonthly ? 'text-emerald-700 font-medium' : 'text-slate-400 font-medium'}>Nil</span>
-                          )}
-                        </td>
-                      )}
-                      {visibleColumns.duty_hours && (
-                        <td className={`px-3 py-3 font-semibold whitespace-nowrap ${isMonthly ? 'text-emerald-950 font-bold' : 'text-slate-800'}`}>
-                          {cleanNum(job.duty_hours) > 0 ? `${cleanNum(job.duty_hours)}h` : '—'}
-                        </td>
-                      )}
-                      {visibleColumns.ot_hours && (
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {otDisplay > 0
-                            ? <span className="text-[11px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full border border-orange-200">{otDisplay}h OT</span>
-                            : <span className={isMonthly ? 'text-emerald-700' : 'text-slate-300'}>0</span>}
-                        </td>
-                      )}
-                      {visibleColumns.material && (
-                        <td className={`px-3 py-3 whitespace-nowrap font-medium ${isMonthly ? 'text-emerald-950' : 'text-slate-600'}`}>{job.material || 'No'}</td>
-                      )}
-                      {visibleColumns.payment_mode && (
-                        <td className="px-3 py-3">
-                          {isMonthly ? (
-                            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-emerald-700 text-white shadow-xs whitespace-nowrap uppercase tracking-wider">
-                              Monthly
-                            </span>
-                          ) : (
-                            <PaymentBadge mode={job.payment_mode} />
-                          )}
-                        </td>
-                      )}
-                      {visibleColumns.remarks && (
-                        <td className={`px-3 py-3 max-w-[140px] truncate ${isMonthly ? 'text-emerald-900 font-medium' : 'text-slate-600'}`} title={job.remarks}>
-                          {job.remarks || '—'}
-                        </td>
-                      )}
-                      {visibleColumns.service && (
-                        <td className="px-3 py-3 whitespace-nowrap">
-                          {job.service ? (
-                            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-sm ${
-                              isMonthly
-                                ? 'bg-emerald-200/90 text-emerald-950 border border-emerald-300'
-                                : 'bg-white/90 text-slate-700 border border-slate-300'
-                            }`}>
-                              {job.service}
-                            </span>
-                          ) : (
-                            <span className={isMonthly ? 'text-emerald-700' : 'text-slate-300'}>—</span>
-                          )}
-                        </td>
-                      )}
-                      {visibleColumns.actions && (
-                        <td className="px-3 py-3">
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => setEditJob(job)}
-                              className={`p-1.5 rounded-lg transition-colors ${
-                                isMonthly
-                                  ? 'hover:bg-emerald-200 text-emerald-800 hover:text-emerald-950'
-                                  : 'hover:bg-white/80 text-slate-400 hover:text-slate-700'
-                              }`}
-                              title="Edit"
-                            >
-                              <Pencil size={13} />
-                            </button>
-                            <button
-                              onClick={() => deleteDailyJob(job.id)}
-                              className={`p-1.5 rounded-lg transition-colors ${
-                                isMonthly
-                                  ? 'hover:bg-red-100 text-emerald-800 hover:text-red-600'
-                                  : 'hover:bg-red-50 text-slate-400 hover:text-red-600'
-                              }`}
-                              title="Delete"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </td>
-                      )}
+                      {activeColumns.map(col => renderJobCell(col.id, job, isMonthly, palette, isFirstShiftOfStaff, otDisplay))}
                     </tr>
                   )
                 })}
               </tbody>
               {filteredActiveJobRows.length > 0 && (() => {
-                const colsBeforeCharges = ['staff', 'start_time', 'end_time', 'address', 'area'].filter(id => visibleColumns[id]).length
-                const colsAfterOT = ['material', 'payment_mode', 'remarks', 'service', 'actions'].filter(id => visibleColumns[id]).length
+                const totalCharges = filteredActiveJobRows.reduce((s, j) => s + cleanNum(j.charges), 0)
+                const totalReceived = filteredActiveJobRows.reduce((s, j) => s + cleanNum(j.received), 0)
+                const totalPending = filteredActiveJobRows.reduce((s, j) => s + Math.max(0, cleanNum(j.charges) - cleanNum(j.received)), 0)
+                const totalDuty = Math.round(filteredActiveJobRows.reduce((s, j) => s + cleanNum(j.duty_hours), 0) * 10) / 10
+                const totalOT = Math.round(filteredActiveJobRows.reduce((s, j) => s + (cleanNum(j.ot_hours) || calcOTHours(j.start_time, j.end_time)), 0) * 10) / 10
+                const firstLabelColId = activeColumns.find(c => !['charges', 'received', 'pending', 'duty_hours', 'ot_hours'].includes(c.id))?.id
+
                 return (
                   <tfoot className="sticky bottom-0 z-20 shadow-[0_-2px_4px_rgba(0,0,0,0.06)] bg-slate-100 border-t-2 border-[#E4E8EC]">
                     <tr className="bg-slate-100 border-t-2 border-[#E4E8EC] font-bold text-[12px]">
-                      {colsBeforeCharges > 0 && (
-                        <td colSpan={colsBeforeCharges} className="sticky bottom-0 bg-slate-100 px-3 py-3 text-slate-700">
-                          Totals {selectedLetter !== 'ALL' ? `(Filtered: "${selectedLetter}")` : ''}
-                        </td>
-                      )}
-                      {visibleColumns.charges && (
-                        <td className="sticky bottom-0 bg-slate-100 px-3 py-3 text-[#111827]">AED {filteredActiveJobRows.reduce((s, j) => s + cleanNum(j.charges), 0).toLocaleString()}</td>
-                      )}
-                      {visibleColumns.received && (
-                        <td className="sticky bottom-0 bg-slate-100 px-3 py-3 text-emerald-700">AED {filteredActiveJobRows.reduce((s, j) => s + cleanNum(j.received), 0).toLocaleString()}</td>
-                      )}
-                      {visibleColumns.pending && (
-                        <td className="sticky bottom-0 bg-slate-100 px-3 py-3 text-red-600">AED {filteredActiveJobRows.reduce((s, j) => s + Math.max(0, cleanNum(j.charges) - cleanNum(j.received)), 0).toLocaleString()}</td>
-                      )}
-                      {visibleColumns.duty_hours && (
-                        <td className="sticky bottom-0 bg-slate-100 px-3 py-3 text-slate-700 font-semibold">{Math.round(filteredActiveJobRows.reduce((s, j) => s + cleanNum(j.duty_hours), 0) * 10) / 10}h</td>
-                      )}
-                      {visibleColumns.ot_hours && (
-                        <td className="sticky bottom-0 bg-slate-100 px-3 py-3 text-orange-700 font-semibold">{Math.round(filteredActiveJobRows.reduce((s, j) => s + (cleanNum(j.ot_hours) || calcOTHours(j.start_time, j.end_time)), 0) * 10) / 10}h</td>
-                      )}
-                      {colsAfterOT > 0 && <td colSpan={colsAfterOT} className="sticky bottom-0 bg-slate-100" />}
+                      {activeColumns.map(col => {
+                        if (col.id === 'charges') {
+                          return (
+                            <td key={col.id} className="sticky bottom-0 bg-slate-100 px-3 py-3 text-[#111827]">
+                              AED {totalCharges.toLocaleString()}
+                            </td>
+                          )
+                        }
+                        if (col.id === 'received') {
+                          return (
+                            <td key={col.id} className="sticky bottom-0 bg-slate-100 px-3 py-3 text-emerald-700">
+                              AED {totalReceived.toLocaleString()}
+                            </td>
+                          )
+                        }
+                        if (col.id === 'pending') {
+                          return (
+                            <td key={col.id} className="sticky bottom-0 bg-slate-100 px-3 py-3 text-red-600">
+                              AED {totalPending.toLocaleString()}
+                            </td>
+                          )
+                        }
+                        if (col.id === 'duty_hours') {
+                          return (
+                            <td key={col.id} className="sticky bottom-0 bg-slate-100 px-3 py-3 text-slate-700 font-semibold">
+                              {totalDuty}h
+                            </td>
+                          )
+                        }
+                        if (col.id === 'ot_hours') {
+                          return (
+                            <td key={col.id} className="sticky bottom-0 bg-slate-100 px-3 py-3 text-orange-700 font-semibold">
+                              {totalOT}h
+                            </td>
+                          )
+                        }
+                        if (col.id === firstLabelColId) {
+                          return (
+                            <td key={col.id} className="sticky bottom-0 bg-slate-100 px-3 py-3 text-slate-700">
+                              Totals {selectedLetter !== 'ALL' ? `(Filtered: "${selectedLetter}")` : ''}
+                            </td>
+                          )
+                        }
+                        return <td key={col.id} className="sticky bottom-0 bg-slate-100 px-3 py-3" />
+                      })}
                     </tr>
                   </tfoot>
                 )
@@ -2836,7 +3673,18 @@ export function DailyJobSheet() {
 
         {/* ── Pagination / View All Bar ── */}
         <div className="px-5 py-3.5 bg-slate-50 border-t border-[#E4E8EC] flex items-center justify-between flex-wrap gap-3 text-[12px]">
-          <div className="flex items-center gap-2 text-slate-500 font-medium">
+          <div className="flex items-center gap-3 text-slate-500 font-medium flex-wrap">
+            <button
+              type="button"
+              onClick={() => window.open(`/daily-job-sheet/spreadsheet?date=${selectedDate}`, '_blank', 'noopener,noreferrer')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[12px] shadow-sm shadow-emerald-700/20 transition-all cursor-pointer mr-1"
+              title="Open Full Excel-like Spreadsheet in New Window (Full Width, No Sidebar)"
+            >
+              <FileSpreadsheet size={14} />
+              <span>Open in Excel Sheet View</span>
+              <ExternalLink size={12} className="opacity-80" />
+            </button>
+
             <span>
               Showing <span className="font-semibold text-slate-700">{pageSize === 'all' ? (totalRows > 0 ? 1 : 0) : Math.min(((activePage - 1) * (pageSize as number)) + 1, totalRows)}</span> to{' '}
               <span className="font-semibold text-slate-700">{pageSize === 'all' ? totalRows : Math.min(activePage * (pageSize as number), totalRows)}</span> of{' '}
@@ -3161,7 +4009,19 @@ export function DailyJobSheet() {
                   ) : (
                     todayPendingRcvdItems.map(item => (
                       <tr key={item.id} className="hover:bg-emerald-100/40 transition-colors group">
-                        <td className="px-4 py-2.5 font-semibold text-slate-800 break-words">{item.client}</td>
+                        <td className="px-4 py-2.5 font-semibold text-slate-800 break-words">
+                          <p className="text-[12.5px] font-bold text-slate-800 leading-snug">{item.client}</p>
+                          {(item.remarks || item.notes) && (
+                            <p className="text-[11px] text-slate-500 font-normal italic mt-0.5 line-clamp-1" title={item.remarks || item.notes}>
+                              {item.remarks || item.notes}
+                            </p>
+                          )}
+                          {item.previous_pending !== undefined && (
+                            <span className="inline-block mt-0.5 text-[9.5px] font-bold text-emerald-800 bg-emerald-200/70 border border-emerald-300 px-1.5 py-0.2 rounded">
+                              Pending: AED {cleanNum(item.previous_pending).toLocaleString()} → AED {cleanNum(item.remaining_pending).toLocaleString()}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2.5 text-right font-bold text-emerald-800 whitespace-nowrap">
                           {cleanNum(item.cash) > 0 ? `AED ${cleanNum(item.cash).toLocaleString()}` : '—'}
                         </td>
@@ -3452,8 +4312,8 @@ CREATE TABLE daily_expenses (
       <EditPendingReceivedModal
         item={editingPendingRcvd}
         onClose={() => setEditingPendingRcvd(null)}
-        onSave={(id, client, cash, online) => {
-          setPendingRcvdList(prev => prev.map(x => x.id === id ? { ...x, client, cash, online } : x))
+        onSave={(id, client, cash, online, remarks) => {
+          setPendingRcvdList(prev => prev.map(x => x.id === id ? { ...x, client, cash, online, remarks, notes: remarks } : x))
         }}
       />
 
@@ -3507,6 +4367,25 @@ CREATE TABLE daily_expenses (
         driveError={driveError}
       />
 
+      {/* ── Monthly Schedule Synchronization Modal ── */}
+      {showMonthlySyncModal && (
+        <MonthlyScheduleSyncModal
+          open={showMonthlySyncModal}
+          onClose={() => setShowMonthlySyncModal(false)}
+          dateStr={selectedDate}
+          clients={clients}
+          dailyJobs={dailyJobs}
+          onSyncAll={handleSyncAllMonthlyShifts}
+          onSyncShift={handleSyncSingleShift}
+          autoSyncEnabled={autoSyncMonthly}
+          onToggleAutoSync={val => {
+            setAutoSyncMonthly(val)
+            safeLocalStorageSet('safaeewala_auto_sync_monthly_schedules', val)
+          }}
+        />
+      )}
+
     </div>
   )
 }
+

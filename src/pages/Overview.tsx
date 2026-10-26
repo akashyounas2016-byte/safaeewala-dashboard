@@ -12,7 +12,7 @@ import {
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
-import { formatTime } from '@/lib/utils'
+import { formatTime, addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import { useCurrentUser } from '@/store/UserContext'
@@ -132,7 +132,39 @@ function NewBookingForm({ onClose, onAdd }: {
   onAdd: (b: Omit<Booking, 'id' | 'created_at'>) => void
 }) {
   const [selectedCrew, setSelectedCrew] = useState<string[]>([])
+  const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [startTime, setStartTime] = useState('09:00')
+  const [duration, setDuration] = useState<number>(3)
+  const [endTime, setEndTime] = useState(() => addHoursToTime('09:00', 3))
   const formRef = useRef<HTMLFormElement>(null)
+
+  // 2-Way Synchronization:
+  // 1. Changing Start Time recalculates End Time keeping duration intact
+  const handleStartTimeChange = (newStart: string) => {
+    setStartTime(newStart)
+    if (newStart && duration > 0) {
+      setEndTime(addHoursToTime(newStart, duration))
+    }
+  }
+
+  // 2. Changing End Time automatically recalculates Duration
+  const handleEndTimeChange = (newEnd: string) => {
+    setEndTime(newEnd)
+    if (startTime && newEnd) {
+      const calcDur = calcDurationFromTimes(startTime, newEnd)
+      if (calcDur > 0) {
+        setDuration(calcDur)
+      }
+    }
+  }
+
+  // 3. Changing Duration automatically recalculates End Time
+  const handleDurationChange = (newDur: number) => {
+    setDuration(newDur)
+    if (startTime && newDur > 0) {
+      setEndTime(addHoursToTime(startTime, newDur))
+    }
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -144,9 +176,10 @@ function NewBookingForm({ onClose, onAdd }: {
       service_address: fd.get('service_address') as string,
       service_type: fd.get('service_type') as string,
       frequency: (fd.get('frequency') as BookingFrequency) || 'once',
-      scheduled_date: fd.get('scheduled_date') as string,
-      scheduled_time: fd.get('scheduled_time') as string,
-      duration_hours: Number(fd.get('duration_hours')) || 3,
+      scheduled_date: scheduledDate,
+      scheduled_time: startTime,
+      end_time: endTime,
+      duration_hours: duration,
       total_amount: Number(fd.get('total_amount')) || 0,
       notes: fd.get('notes') as string,
       status: 'pending',
@@ -174,17 +207,76 @@ function NewBookingForm({ onClose, onAdd }: {
           <option value="monthly">Monthly</option>
         </Select>
       </div>
-      <div className="grid grid-cols-3 gap-4">
-        <Input name="scheduled_date" label="Date" type="date" required />
-        <Input name="scheduled_time" label="Time" type="time" />
-        <Input name="duration_hours" label="Duration (hrs)" type="number" min="1" max="12" defaultValue="3" />
+
+      {/* ── Start Time, End Time & Duration Row (Auto-Synced) ── */}
+      <div className="bg-slate-50/80 rounded-2xl p-3.5 border border-[#E4E8EC] space-y-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div>
+            <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Date *</label>
+            <input
+              type="date"
+              name="scheduled_date"
+              required
+              value={scheduledDate}
+              onChange={e => setScheduledDate(e.target.value)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-medium"
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] font-bold text-[#111827] mb-1">Start Time *</label>
+            <input
+              type="time"
+              name="scheduled_time"
+              required
+              value={startTime}
+              onChange={e => handleStartTimeChange(e.target.value)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-[#111827]"
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] font-bold text-teal-800 mb-1">End Time *</label>
+            <input
+              type="time"
+              name="end_time"
+              required
+              value={endTime}
+              onChange={e => handleEndTimeChange(e.target.value)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-teal-700"
+            />
+          </div>
+          <div>
+            <label className="block text-[11.5px] font-bold text-emerald-800 mb-1">Duration (hrs)</label>
+            <input
+              type="number"
+              step="0.5"
+              min="0.5"
+              max="24"
+              name="duration_hours"
+              value={duration}
+              onChange={e => handleDurationChange(parseFloat(e.target.value) || 0)}
+              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-emerald-700"
+            />
+          </div>
+        </div>
+
+        {/* ── Auto-calculated session summary pill ── */}
+        <div className="flex items-center justify-between text-[11.5px] px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-900 font-medium">
+          <span className="flex items-center gap-1.5">
+            <Clock size={13} className="text-emerald-600" />
+            <span>Shift Slot: <strong>{startTime || '—'}</strong> to <strong>{endTime || '—'}</strong></span>
+          </span>
+          <span className="font-extrabold text-emerald-700 bg-white px-2 py-0.5 rounded-md shadow-2xs">
+            {duration} Hour{duration !== 1 ? 's' : ''} auto-synced
+          </span>
+        </div>
       </div>
+
       <Input name="total_amount" label="Total Amount (AED)" type="number" placeholder="0.00" />
       <CrewSelector selected={selectedCrew} onChange={setSelectedCrew} />
       <Textarea name="notes" label="Notes" placeholder="Access instructions, special requirements…" rows={3} />
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-        <Button type="submit" className="flex-1">Create Booking</Button>
+        <Button type="submit" className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold">Create Booking</Button>
       </div>
     </form>
   )
@@ -1262,9 +1354,14 @@ export function Overview() {
                     <td className="px-7 py-5">
                       <div className="flex items-center gap-4">
                         <Avatar name={b.clientName} idx={idx} />
-                        <div>
-                          <div className="flex items-center gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-semibold text-[#111827]">{b.clientName}</p>
+                            {(b as any).isMonthly && (
+                              <span className="text-[10px] bg-emerald-600 text-white font-extrabold px-1.5 py-0.2 rounded-full uppercase tracking-wider">
+                                Monthly
+                              </span>
+                            )}
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
                               {b.source}
                             </span>

@@ -3,18 +3,73 @@ import {
   Clock, CheckCircle2, AlertCircle, DollarSign, Wallet, Calendar,
   Search, X, Plus, Filter, RotateCcw, Download, Building2, Phone,
   CreditCard, ArrowUpDown, Trash2, ExternalLink, ArrowRight,
-  Receipt, Check, FileSpreadsheet, Eye, ChevronDown, CheckCircle
+  Receipt, Check, FileSpreadsheet, Eye, ChevronDown, CheckCircle,
+  Edit2, User, Save, MapPin
 } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
-import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem } from '@/types'
+import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem, Client } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { formatDate } from '@/lib/utils'
+import { normalizeKey } from '@/lib/clientDataSync'
 import * as XLSX from 'xlsx'
 import { useNavigate } from 'react-router-dom'
+
+export interface EditPaymentJobItem {
+  id: string
+  jobId?: string
+  source: 'Daily Job Sheet' | 'Manual / Side Table' | 'Monthly Contract'
+  clientName: string
+  address: string
+  area: string
+  service: string
+  staffName: string
+  date: string
+  startTime?: string
+  endTime?: string
+  dutyHours?: number
+  charges: number
+  received: number
+  paymentMode: string
+  remarks: string
+  rawJob?: DailyJob
+  monthlyPaymentId?: string
+}
+
+export function getClientProfileId(clientNameOrAddress: string, clients: Client[]): string {
+  if (!clientNameOrAddress) return 'all'
+  const targetNorm = normalizeKey(clientNameOrAddress)
+  if (!targetNorm) return 'all'
+
+  // 1. Direct ID match
+  const directId = clients.find(c => c.id === clientNameOrAddress)
+  if (directId) return directId.id
+
+  // 2. Exact normalized name match
+  const nameMatch = clients.find(c => normalizeKey(c.full_name) === targetNorm)
+  if (nameMatch) return nameMatch.id
+
+  // 3. Exact building name match
+  const bldgMatch = clients.find(c => normalizeKey(c.building_name || '') === targetNorm)
+  if (bldgMatch) return bldgMatch.id
+
+  // 4. Substring / partial match
+  const partial = clients.find(c => {
+    const cNorm = normalizeKey(c.full_name)
+    const bNorm = normalizeKey(c.building_name || '')
+    return (
+      (targetNorm.length >= 4 && (cNorm.includes(targetNorm) || targetNorm.includes(cNorm))) ||
+      (targetNorm.length >= 4 && (bNorm.includes(targetNorm) || targetNorm.includes(bNorm)))
+    )
+  })
+  if (partial) return partial.id
+
+  // 5. Fallback deterministic ID from DailyJobSheet sync
+  return `dj-${targetNorm}`
+}
 
 export interface MonthlyClientPayment {
   id: string
@@ -83,6 +138,7 @@ export function PaymentProcessing() {
   const [showRecordMonthlyModal, setShowRecordMonthlyModal] = useState(false)
   const [showCollectModal, setShowCollectModal] = useState(false)
   const [selectedPendingItem, setSelectedPendingItem] = useState<PendingRecordItem | null>(null)
+  const [editingItem, setEditingItem] = useState<EditPaymentJobItem | null>(null)
   const [collectAmount, setCollectAmount] = useState('')
   const [collectMethod, setCollectMethod] = useState<'Cash' | 'Bank Transfer' | 'Credit Card' | 'Cheque'>('Cash')
   const [collectDate, setCollectDate] = useState(new Date().toISOString().split('T')[0])
@@ -356,6 +412,185 @@ export function PaymentProcessing() {
 
     setShowCollectModal(false)
     setSelectedPendingItem(null)
+  }
+
+  // ── Handlers to Open Edit Payment & Job Details Modal ──
+  const handleOpenEditPending = (item: PendingRecordItem) => {
+    const raw = item.rawJob
+    setEditingItem({
+      id: item.id,
+      jobId: item.jobId,
+      source: item.source,
+      clientName: item.clientName,
+      address: item.address !== '—' ? item.address : item.clientName,
+      area: item.area !== '—' ? item.area : (raw?.area || ''),
+      service: item.service,
+      staffName: item.staffName !== '—' ? item.staffName : (raw?.staff_name || ''),
+      date: item.date || new Date().toISOString().split('T')[0],
+      startTime: raw?.start_time || '',
+      endTime: raw?.end_time || '',
+      dutyHours: raw?.duty_hours ?? 4,
+      charges: item.charges,
+      received: item.received,
+      paymentMode: item.paymentMode || raw?.payment_mode || 'Pending',
+      remarks: item.remarks || raw?.remarks || '',
+      rawJob: raw,
+    })
+  }
+
+  const handleOpenEditMonthly = (payment: MonthlyClientPayment) => {
+    setEditingItem({
+      id: payment.id,
+      monthlyPaymentId: payment.id,
+      source: 'Monthly Contract',
+      clientName: payment.clientName,
+      address: payment.clientName,
+      area: '—',
+      service: 'Monthly Cleaning Contract',
+      staffName: '—',
+      date: payment.date,
+      charges: payment.amount,
+      received: payment.amount,
+      paymentMode: payment.paymentMethod,
+      remarks: payment.notes || '',
+    })
+  }
+
+  const handleOpenEditHistory = (record: {
+    id: string
+    date: string
+    client: string
+    type: 'Daily Job' | 'Monthly Contract'
+    method: string
+    amount: number
+    reference?: string
+    notes?: string
+  }) => {
+    if (record.id.startsWith('dj-rec-')) {
+      const rawJobId = record.id.replace('dj-rec-', '')
+      const matchedJob = dailyJobs.find(j => j.id === rawJobId)
+      if (matchedJob) {
+        setEditingItem({
+          id: `job-${matchedJob.id}`,
+          jobId: matchedJob.id,
+          source: 'Daily Job Sheet',
+          clientName: matchedJob.address || matchedJob.area || record.client,
+          address: matchedJob.address || '—',
+          area: matchedJob.area || '—',
+          service: matchedJob.service || 'Cleaning Shift',
+          staffName: matchedJob.staff_name || '—',
+          date: matchedJob.date || record.date,
+          startTime: matchedJob.start_time || '',
+          endTime: matchedJob.end_time || '',
+          dutyHours: matchedJob.duty_hours ?? 4,
+          charges: cleanNum(matchedJob.charges),
+          received: cleanNum(matchedJob.received),
+          paymentMode: matchedJob.payment_mode || record.method || 'Cash',
+          remarks: matchedJob.remarks || record.notes || '',
+          rawJob: matchedJob,
+        })
+        return
+      }
+    }
+
+    if (record.id.startsWith('mp-')) {
+      const rawMpId = record.id.replace('mp-', '')
+      const matchedMp = monthlyPayments.find(p => p.id === rawMpId || p.id === record.id)
+      if (matchedMp) {
+        setEditingItem({
+          id: matchedMp.id,
+          monthlyPaymentId: matchedMp.id,
+          source: 'Monthly Contract',
+          clientName: matchedMp.clientName,
+          address: matchedMp.clientName,
+          area: '—',
+          service: 'Monthly Contract Payment',
+          staffName: '—',
+          date: matchedMp.date,
+          charges: matchedMp.amount,
+          received: matchedMp.amount,
+          paymentMode: matchedMp.paymentMethod,
+          remarks: matchedMp.notes || '',
+        })
+        return
+      }
+    }
+
+    setEditingItem({
+      id: record.id,
+      source: record.type === 'Monthly Contract' ? 'Monthly Contract' : 'Daily Job Sheet',
+      clientName: record.client,
+      address: record.client,
+      area: '—',
+      service: record.type,
+      staffName: '—',
+      date: record.date,
+      charges: record.amount,
+      received: record.amount,
+      paymentMode: record.method,
+      remarks: record.notes || '',
+    })
+  }
+
+  // ── Save Edited Payment & Job Details ──
+  const handleSaveEditItem = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingItem) return
+
+    const updatedCharges = cleanNum(editingItem.charges)
+    const updatedReceived = cleanNum(editingItem.received)
+
+    if (editingItem.jobId && editingItem.rawJob) {
+      // Update Daily Job Sheet Shift
+      updateDailyJob(editingItem.jobId, {
+        staff_name: editingItem.staffName,
+        address: editingItem.address,
+        area: editingItem.area,
+        service: editingItem.service,
+        date: editingItem.date,
+        start_time: editingItem.startTime || editingItem.rawJob.start_time,
+        end_time: editingItem.endTime || editingItem.rawJob.end_time,
+        duty_hours: editingItem.dutyHours ?? editingItem.rawJob.duty_hours,
+        charges: updatedCharges,
+        received: updatedReceived,
+        payment_mode: editingItem.paymentMode as any,
+        remarks: editingItem.remarks,
+      })
+    } else if (editingItem.source === 'Monthly Contract' && editingItem.monthlyPaymentId) {
+      // Update Monthly Payment Record
+      setMonthlyPayments(prev =>
+        prev.map(p => {
+          if (p.id === editingItem.monthlyPaymentId) {
+            return {
+              ...p,
+              clientName: editingItem.clientName,
+              amount: updatedCharges || updatedReceived || p.amount,
+              date: editingItem.date,
+              paymentMethod: (editingItem.paymentMode as any) || p.paymentMethod,
+              notes: editingItem.remarks,
+            }
+          }
+          return p
+        })
+      )
+    } else {
+      // Update Side Table Pending Item
+      const sideList = safeLocalStorageGet<DailyPendingItem[]>('safaeewala_daily_pending_items', [])
+      const updatedSideList = sideList.map(item => {
+        if (item.id === editingItem.id) {
+          return {
+            ...item,
+            client: editingItem.clientName,
+            amount: Math.max(0, updatedCharges - updatedReceived),
+            date: editingItem.date,
+          }
+        }
+        return item
+      })
+      safeLocalStorageSet('safaeewala_daily_pending_items', updatedSideList)
+    }
+
+    setEditingItem(null)
   }
 
   // ── Export to Excel ──
@@ -694,8 +929,15 @@ export function PaymentProcessing() {
                   ) : (
                     filteredPendingRecords.map(item => (
                       <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-5 py-4">
-                          <p className="text-[13px] font-bold text-slate-900">{item.clientName}</p>
+                        <td
+                          className="px-5 py-4 cursor-pointer group"
+                          onClick={() => handleOpenEditPending(item)}
+                          title="Click to view & edit details"
+                        >
+                          <p className="text-[13px] font-bold text-slate-900 group-hover:text-emerald-700 transition-colors flex items-center gap-1.5">
+                            <span>{item.clientName}</span>
+                            <Edit2 size={11} className="text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </p>
                           <p className="text-[11px] text-slate-500 truncate max-w-[220px]">{item.address}</p>
                         </td>
                         <td className="px-5 py-4 text-[12px] font-medium text-slate-700 whitespace-nowrap">
@@ -724,18 +966,44 @@ export function PaymentProcessing() {
                           </span>
                         </td>
                         <td className="px-5 py-4 text-center whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedPendingItem(item)
-                              setCollectAmount(String(item.pendingAmount))
-                              setShowCollectModal(true)
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11.5px] shadow-xs transition-colors cursor-pointer"
-                          >
-                            <Check size={12} strokeWidth={2.5} />
-                            <span>Collect</span>
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditPending(item)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11.5px] transition-colors cursor-pointer"
+                              title="Edit payment & job details"
+                            >
+                              <Edit2 size={12} className="text-slate-500" />
+                              <span>Edit</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const pid = getClientProfileId(item.clientName || item.address, clients)
+                                navigate(`/clients/${pid}`)
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-[11.5px] border border-teal-200/80 transition-colors cursor-pointer"
+                              title="View Client Profile"
+                            >
+                              <User size={12} className="text-teal-600" />
+                              <span>Profile</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedPendingItem(item)
+                                setCollectAmount(String(item.pendingAmount))
+                                setShowCollectModal(true)
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11.5px] shadow-xs transition-colors cursor-pointer"
+                              title="Collect pending amount"
+                            >
+                              <Check size={12} strokeWidth={2.5} />
+                              <span>Collect</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -834,8 +1102,15 @@ export function PaymentProcessing() {
                   ) : (
                     filteredMonthlyPayments.map(payment => (
                       <tr key={payment.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-5 py-4">
-                          <p className="text-[13.5px] font-bold text-slate-900">{payment.clientName}</p>
+                        <td
+                          className="px-5 py-4 cursor-pointer group"
+                          onClick={() => handleOpenEditMonthly(payment)}
+                          title="Click to view & edit details"
+                        >
+                          <p className="text-[13.5px] font-bold text-slate-900 group-hover:text-teal-700 transition-colors flex items-center gap-1.5">
+                            <span>{payment.clientName}</span>
+                            <Edit2 size={11} className="text-teal-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </p>
                         </td>
                         <td className="px-5 py-4 text-[12px] font-semibold text-slate-700 whitespace-nowrap">
                           {payment.invoiceMonth || '—'}
@@ -873,8 +1148,31 @@ export function PaymentProcessing() {
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               type="button"
+                              onClick={() => handleOpenEditMonthly(payment)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11.5px] transition-colors cursor-pointer"
+                              title="Edit Payment Details"
+                            >
+                              <Edit2 size={12} className="text-slate-500" />
+                              <span>Edit</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const pid = getClientProfileId(payment.clientName, clients)
+                                navigate(`/clients/${pid}`)
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-[11.5px] border border-teal-200/80 transition-colors cursor-pointer"
+                              title="View Client Profile"
+                            >
+                              <User size={12} className="text-teal-600" />
+                              <span>Profile</span>
+                            </button>
+
+                            <button
+                              type="button"
                               onClick={() => setSelectedMonthlyPayment(payment)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                               title="View Details"
                             >
                               <Eye size={14} />
@@ -886,7 +1184,7 @@ export function PaymentProcessing() {
                                   setMonthlyPayments(prev => prev.filter(p => p.id !== payment.id))
                                 }
                               }}
-                              className="p-1.5 rounded-lg text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
                               title="Delete Payment"
                             >
                               <Trash2 size={14} />
@@ -946,12 +1244,13 @@ export function PaymentProcessing() {
                     <th className="px-5 py-4">Reference / Info</th>
                     <th className="px-5 py-4 text-right">Amount (AED)</th>
                     <th className="px-5 py-4 text-center">Status</th>
+                    <th className="px-5 py-4 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E4E8EC]">
                   {paymentHistoryRecords.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-5 py-12 text-center text-slate-400">
+                      <td colSpan={8} className="px-5 py-12 text-center text-slate-400">
                         <Receipt size={32} className="mx-auto mb-2 text-slate-300" />
                         <p className="font-semibold text-slate-700">No transactions match your search</p>
                       </td>
@@ -962,8 +1261,15 @@ export function PaymentProcessing() {
                         <td className="px-5 py-4 text-[12px] font-medium text-slate-700 whitespace-nowrap">
                           {formatDate(item.date)}
                         </td>
-                        <td className="px-5 py-4 text-[13px] font-bold text-slate-900">
-                          {item.client}
+                        <td
+                          className="px-5 py-4 cursor-pointer group"
+                          onClick={() => handleOpenEditHistory(item)}
+                          title="Click to view & edit details"
+                        >
+                          <p className="text-[13px] font-bold text-slate-900 group-hover:text-emerald-700 transition-colors flex items-center gap-1.5">
+                            <span>{item.client}</span>
+                            <Edit2 size={11} className="text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </p>
                         </td>
                         <td className="px-5 py-4 whitespace-nowrap">
                           <span
@@ -991,6 +1297,32 @@ export function PaymentProcessing() {
                           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
                             ✓ Collected
                           </span>
+                        </td>
+                        <td className="px-5 py-4 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditHistory(item)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11.5px] transition-colors cursor-pointer"
+                              title="Edit payment & job details"
+                            >
+                              <Edit2 size={12} className="text-slate-500" />
+                              <span>Edit</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const pid = getClientProfileId(item.client, clients)
+                                navigate(`/clients/${pid}`)
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-[11.5px] border border-teal-200/80 transition-colors cursor-pointer"
+                              title="View Client Profile"
+                            >
+                              <User size={12} className="text-teal-600" />
+                              <span>Profile</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1263,6 +1595,249 @@ export function PaymentProcessing() {
               </Button>
             </div>
           </div>
+        )}
+      </Modal>
+
+      {/* ── Modal: Edit Payment & Job Details ── */}
+      <Modal
+        open={!!editingItem}
+        onClose={() => setEditingItem(null)}
+        title="Edit Payment & Job Details"
+        size="lg"
+      >
+        {editingItem && (
+          <form onSubmit={handleSaveEditItem} className="space-y-4 font-sans">
+            {/* Header / Client Info Card */}
+            <div className="bg-gradient-to-r from-emerald-50/90 via-teal-50/50 to-slate-50 rounded-2xl p-4 border border-emerald-200/70 flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white font-extrabold flex items-center justify-center text-sm shadow-md shadow-emerald-600/20">
+                  {editingItem.clientName.charAt(0).toUpperCase() || 'C'}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-bold text-slate-900">{editingItem.clientName}</h3>
+                    <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-white text-emerald-800 border border-emerald-200 shadow-2xs">
+                      {editingItem.source}
+                    </span>
+                  </div>
+                  <p className="text-[12px] text-slate-500 flex items-center gap-1 mt-0.5">
+                    <MapPin size={12} className="text-emerald-600 shrink-0" />
+                    <span>{editingItem.address || 'Dubai, UAE'}</span>
+                    {editingItem.area && editingItem.area !== '—' && (
+                      <span className="text-slate-400">· {editingItem.area}</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {/* View Profile Action inside Modal Header */}
+              <button
+                type="button"
+                onClick={() => {
+                  const pid = getClientProfileId(editingItem.clientName || editingItem.address, clients)
+                  setEditingItem(null)
+                  navigate(`/clients/${pid}`)
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 font-bold text-[12px] border border-emerald-200 shadow-xs transition-all cursor-pointer"
+              >
+                <User size={13} className="text-emerald-600" />
+                <span>View Profile</span>
+                <ExternalLink size={12} className="text-emerald-500" />
+              </button>
+            </div>
+
+            {/* Editable Form Fields Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                name="clientName"
+                label="Client / Contact Name *"
+                value={editingItem.clientName}
+                onChange={e => setEditingItem({ ...editingItem, clientName: e.target.value })}
+                required
+              />
+
+              <Input
+                name="service"
+                label="Job / Service Description"
+                placeholder="e.g. Standard Clean, Deep Clean..."
+                value={editingItem.service}
+                onChange={e => setEditingItem({ ...editingItem, service: e.target.value })}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                name="address"
+                label="Service Address (Building / Flat / Villa) *"
+                placeholder="Full address"
+                value={editingItem.address}
+                onChange={e => setEditingItem({ ...editingItem, address: e.target.value })}
+                required
+              />
+
+              <Input
+                name="area"
+                label="Area / City"
+                placeholder="e.g. Dubai Marina, Al Barsha, JLT..."
+                value={editingItem.area}
+                onChange={e => setEditingItem({ ...editingItem, area: e.target.value })}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                name="staffName"
+                label="Assigned Cleaner / Staff"
+                placeholder="Cleaner name"
+                value={editingItem.staffName}
+                onChange={e => setEditingItem({ ...editingItem, staffName: e.target.value })}
+              />
+
+              <Input
+                name="date"
+                label="Job / Payment Date *"
+                type="date"
+                value={editingItem.date}
+                onChange={e => setEditingItem({ ...editingItem, date: e.target.value })}
+                required
+              />
+            </div>
+
+            {/* Duty Hours & Timing */}
+            {editingItem.source === 'Daily Job Sheet' && (
+              <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <Input
+                  name="dutyHours"
+                  label="Duty Hours"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={editingItem.dutyHours ?? ''}
+                  onChange={e => setEditingItem({ ...editingItem, dutyHours: Number(e.target.value) || 0 })}
+                />
+                <Input
+                  name="startTime"
+                  label="Start Time"
+                  type="time"
+                  value={editingItem.startTime || ''}
+                  onChange={e => setEditingItem({ ...editingItem, startTime: e.target.value })}
+                />
+                <Input
+                  name="endTime"
+                  label="End Time"
+                  type="time"
+                  value={editingItem.endTime || ''}
+                  onChange={e => setEditingItem({ ...editingItem, endTime: e.target.value })}
+                />
+              </div>
+            )}
+
+            {/* Financial Amounts & Payment Mode */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Input
+                name="charges"
+                label="Total Charges (AED) *"
+                type="number"
+                min="0"
+                step="0.5"
+                value={editingItem.charges}
+                onChange={e => setEditingItem({ ...editingItem, charges: Number(e.target.value) || 0 })}
+                required
+              />
+
+              <Input
+                name="received"
+                label="Amount Received (AED)"
+                type="number"
+                min="0"
+                step="0.5"
+                value={editingItem.received}
+                onChange={e => setEditingItem({ ...editingItem, received: Number(e.target.value) || 0 })}
+              />
+
+              <Select
+                name="paymentMode"
+                label="Payment Mode / Status"
+                value={editingItem.paymentMode}
+                onChange={e => setEditingItem({ ...editingItem, paymentMode: e.target.value })}
+              >
+                <option value="Pending">Pending</option>
+                <option value="Cash">Cash</option>
+                <option value="Online">Online</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+                <option value="Credit Card">Credit Card</option>
+                <option value="Monthly">Monthly Contract</option>
+                <option value="Cheque">Cheque</option>
+              </Select>
+            </div>
+
+            {/* Live Financial Calculation Box */}
+            <div className="bg-slate-50/90 rounded-2xl p-4 border border-[#E4E8EC] grid grid-cols-3 gap-3 text-center">
+              <div>
+                <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block">Billed Charges</span>
+                <p className="text-lg font-black text-slate-800 mt-0.5">AED {cleanNum(editingItem.charges).toLocaleString()}</p>
+              </div>
+              <div>
+                <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block">Received</span>
+                <p className="text-lg font-black text-emerald-600 mt-0.5">AED {cleanNum(editingItem.received).toLocaleString()}</p>
+              </div>
+              <div>
+                <span className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider block">Outstanding Due</span>
+                <p className={`text-lg font-black mt-0.5 ${
+                  Math.max(0, cleanNum(editingItem.charges) - cleanNum(editingItem.received)) > 0
+                    ? 'text-red-600'
+                    : 'text-emerald-600'
+                }`}>
+                  AED {Math.max(0, cleanNum(editingItem.charges) - cleanNum(editingItem.received)).toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            {/* Remarks / Notes */}
+            <Textarea
+              name="remarks"
+              label="Remarks / Payment Notes"
+              placeholder="Add any shift notes or transaction references..."
+              rows={2}
+              value={editingItem.remarks}
+              onChange={e => setEditingItem({ ...editingItem, remarks: e.target.value })}
+            />
+
+            {/* Modal Actions */}
+            <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-3 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const pid = getClientProfileId(editingItem.clientName || editingItem.address, clients)
+                  setEditingItem(null)
+                  navigate(`/clients/${pid}`)
+                }}
+                className="text-slate-700 font-bold text-[12.5px]"
+              >
+                <User size={14} className="mr-1.5 text-teal-600" />
+                <span>Open Client Profile</span>
+              </Button>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditingItem(null)}
+                  className="font-bold text-[12.5px]"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[12.5px] shadow-sm"
+                >
+                  <Save size={14} className="mr-1.5" />
+                  <span>Save Changes</span>
+                </Button>
+              </div>
+            </div>
+          </form>
         )}
       </Modal>
 

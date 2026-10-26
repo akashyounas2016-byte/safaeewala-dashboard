@@ -101,25 +101,91 @@ export function calcJobOTHours(job: DailyJob): number {
  */
 export function jobMatchesClient(job: DailyJob, client: Client): boolean {
   if (!job || !client) return false
-  const jobNorm = normalizeKey(job.address)
-  const cleanJobNorm = normalizeKey(cleanClientNameFromAddress(job.address))
+  const rawAddr = (job.address || job.area || '').trim()
+  const jobNorm = normalizeKey(rawAddr)
+  const cleanJobNorm = normalizeKey(cleanClientNameFromAddress(rawAddr))
   const clientNameNorm = normalizeKey(client.full_name)
   const clientBldgNorm = normalizeKey(client.building_name || '')
   const clientId = client.id
 
   // Match by synthetic ID
-  if (clientId && clientId === generateClientIdFromAddress(job.address)) return true
+  if (clientId && (clientId === generateClientIdFromAddress(rawAddr) || clientId === `dj-${cleanJobNorm}` || clientId === `dj-${jobNorm}`)) return true
 
   // Match by full name or building
   if (jobNorm && clientNameNorm && (jobNorm === clientNameNorm || cleanJobNorm === clientNameNorm)) return true
   if (clientBldgNorm && (jobNorm === clientBldgNorm || cleanJobNorm === clientBldgNorm)) return true
 
-  // Substring match for substantial names (>= 5 chars)
-  if (clientNameNorm.length >= 5) {
+  // Substring match for substantial names (>= 4 chars)
+  if (clientNameNorm.length >= 4) {
     if (cleanJobNorm.includes(clientNameNorm) || clientNameNorm.includes(cleanJobNorm)) return true
   }
-  if (clientBldgNorm.length >= 5) {
+  if (clientBldgNorm.length >= 4) {
     if (jobNorm.includes(clientBldgNorm) || clientBldgNorm.includes(jobNorm)) return true
+  }
+
+  return false
+}
+
+/**
+ * Single source of truth to check if a client is a Monthly Client.
+ * Synchronized across Clients screen, Monthly Clients screen, and Client Profiles.
+ */
+export function isMonthlyClient(
+  client: Client | null | undefined,
+  dailyJobs: DailyJob[] = [],
+  monthlySummaries?: MonthlyClientSummary[]
+): boolean {
+  if (!client) return false
+
+  // 1. Explicit recurring service days scheduled (e.g. ['Monday', 'Wednesday'])
+  if (Array.isArray(client.service_days) && client.service_days.length > 0) return true
+
+  // 2. Explicit day schedules map
+  if (client.day_schedules && Object.keys(client.day_schedules).length > 0) return true
+
+  // 3. Explicit day cleaner assignments map
+  if (client.day_cleaner_assignments && Object.keys(client.day_cleaner_assignments).length > 0) return true
+
+  // 4. Notes, remarks, or access notes explicitly mentioning 'monthly' or 'recurring'
+  const combinedNotes = `${client.remarks || ''} ${client.notes || ''} ${client.access_notes || ''}`.toLowerCase()
+  if (combinedNotes.includes('monthly') || combinedNotes.includes('recurring')) return true
+
+  // 5. Source explicitly set to monthly
+  if (client.source === 'monthly' || client.source === 'monthly_contract') return true
+
+  // 6. Direct match with monthlySummaries list if available
+  if (monthlySummaries && monthlySummaries.length > 0) {
+    const cId = client.id
+    const cNorm = normalizeKey(client.full_name)
+    const bNorm = normalizeKey(client.building_name || '')
+    const inSummaries = monthlySummaries.some(s => 
+      s.id === cId ||
+      s.matchedClientId === cId ||
+      (cNorm && (normalizeKey(s.name) === cNorm || (cNorm.length >= 4 && (normalizeKey(s.name).includes(cNorm) || cNorm.includes(normalizeKey(s.name)))))) ||
+      (bNorm && (normalizeKey(s.rawAddress) === bNorm || (bNorm.length >= 4 && (normalizeKey(s.rawAddress).includes(bNorm) || bNorm.includes(normalizeKey(s.rawAddress))))))
+    )
+    if (inSummaries) return true
+  }
+
+  // 7. Check if any Daily Job for this client is a monthly job
+  if (dailyJobs && dailyJobs.length > 0) {
+    const clientNameNorm = normalizeKey(client.full_name)
+    const clientBldgNorm = normalizeKey(client.building_name || '')
+    const clientId = client.id
+
+    const hasMonthlyJob = dailyJobs.some(j => {
+      if (!isMonthlyJob(j)) return false
+      if (jobMatchesClient(j, client)) return true
+      const raw = (j.address || j.area || '').trim()
+      const jobNorm = normalizeKey(raw)
+      const cleanNorm = normalizeKey(cleanClientNameFromAddress(raw))
+      if (clientId && (clientId === `dj-${cleanNorm}` || clientId === `dj-${jobNorm}`)) return true
+      if (clientNameNorm && (clientNameNorm === cleanNorm || clientNameNorm === jobNorm)) return true
+      if (clientBldgNorm && (clientBldgNorm === cleanNorm || clientBldgNorm === jobNorm)) return true
+      if (clientNameNorm.length >= 4 && (cleanNorm.includes(clientNameNorm) || clientNameNorm.includes(cleanNorm))) return true
+      return false
+    })
+    if (hasMonthlyJob) return true
   }
 
   return false
@@ -142,6 +208,13 @@ export interface MonthlyClientSummary {
   jobs: DailyJob[]
   isRegisteredClient: boolean
   matchedClientId?: string
+  service_days?: string[]
+  scheduled_time?: string
+  end_time?: string
+  duration_hours?: number
+  preferred_cleaner?: string
+  day_cleaner_assignments?: Record<string, string>
+  day_schedules?: Record<string, { startTime: string; endTime: string; cleaner: string; duration?: number }>
 }
 
 export type DateRangeFilter =
@@ -240,7 +313,55 @@ export function extractMonthlyClientsFromDailyJobs(
       jobs,
       isRegisteredClient: Boolean(matched),
       matchedClientId: matched?.id,
+      service_days: matched?.service_days,
+      scheduled_time: matched?.scheduled_time,
+      end_time: matched?.end_time,
+      duration_hours: matched?.duration_hours,
+      preferred_cleaner: matched?.preferred_cleaner,
+      day_cleaner_assignments: matched?.day_cleaner_assignments,
+      day_schedules: matched?.day_schedules,
     })
+  })
+
+  // Also include registered monthly clients who may not have logged daily jobs yet
+  registeredClients.forEach(c => {
+    const already = summaries.some(s => s.id === c.id || (c.full_name && normalizeKey(s.name) === normalizeKey(c.full_name)))
+    if (!already) {
+      const isMonthly = (Array.isArray(c.service_days) && c.service_days.length > 0) ||
+        Boolean(c.day_schedules && Object.keys(c.day_schedules).length > 0) ||
+        Boolean(c.day_cleaner_assignments && Object.keys(c.day_cleaner_assignments).length > 0) ||
+        Boolean(c.notes && (c.notes.toLowerCase().includes('monthly') || c.notes.toLowerCase().includes('recurring'))) ||
+        Boolean(c.remarks && (c.remarks.toLowerCase().includes('monthly') || c.remarks.toLowerCase().includes('recurring'))) ||
+        (c.source === 'monthly' || c.source === 'monthly_contract')
+
+      if (isMonthly) {
+        summaries.push({
+          id: c.id,
+          name: c.full_name,
+          rawAddress: c.building_name || c.area || 'Dubai',
+          area: c.area || 'Dubai',
+          totalCharges: 0,
+          totalReceived: 0,
+          balanceDue: c.pending_amount || 0,
+          totalOTHours: 0,
+          totalDutyHours: 0,
+          visitsCount: 0,
+          cleaners: c.preferred_cleaner ? [c.preferred_cleaner] : [],
+          lastService: '—',
+          services: ['Monthly Cleaning'],
+          jobs: [],
+          isRegisteredClient: true,
+          matchedClientId: c.id,
+          service_days: c.service_days,
+          scheduled_time: c.scheduled_time,
+          end_time: c.end_time,
+          duration_hours: c.duration_hours,
+          preferred_cleaner: c.preferred_cleaner,
+          day_cleaner_assignments: c.day_cleaner_assignments,
+          day_schedules: c.day_schedules,
+        })
+      }
+    }
   })
 
   // Sort by charges descending by default
@@ -290,12 +411,21 @@ export function extractAllClientsFromDailyJobs(
     // Also check partial matches
     jobsByClientKey.forEach((jobs, key) => {
       if (!matchedJobKeys.has(key)) {
-        if ((cNorm.length >= 5 && key.includes(cNorm)) || (bNorm.length >= 5 && key.includes(bNorm))) {
+        if ((cNorm.length >= 4 && key.includes(cNorm)) || (bNorm.length >= 4 && key.includes(bNorm))) {
           associatedJobs = [...associatedJobs, ...jobs]
           matchedJobKeys.add(key)
         }
       }
     })
+
+    const hasMonthlyJob = associatedJobs.some(j => isMonthlyJob(j))
+    const isMonthly = (Array.isArray(c.service_days) && c.service_days.length > 0) ||
+      Boolean(c.day_schedules && Object.keys(c.day_schedules).length > 0) ||
+      Boolean(c.day_cleaner_assignments && Object.keys(c.day_cleaner_assignments).length > 0) ||
+      Boolean(c.notes && (c.notes.toLowerCase().includes('monthly') || c.notes.toLowerCase().includes('recurring'))) ||
+      Boolean(c.remarks && (c.remarks.toLowerCase().includes('monthly') || c.remarks.toLowerCase().includes('recurring'))) ||
+      c.source === 'monthly' ||
+      hasMonthlyJob
 
     if (associatedJobs.length > 0) {
       // Calculate updated stats
@@ -305,6 +435,8 @@ export function extractAllClientsFromDailyJobs(
 
       result.push({
         ...c,
+        remarks: isMonthly ? (c.remarks || 'Monthly Contract') : c.remarks,
+        source: isMonthly ? (c.source || 'monthly') : c.source,
         total_bookings: Math.max(c.total_bookings, associatedJobs.length),
         total_spent: Math.max(c.total_spent, djCharges),
         last_service: latestDate || c.last_service,
@@ -324,6 +456,17 @@ export function extractAllClientsFromDailyJobs(
     const totalCharges = jobs.reduce((s, j) => s + (Number(j.charges) || 0), 0)
     const latestDate = primaryJob.date || ''
     const earliestDate = jobs[jobs.length - 1]?.date || latestDate || new Date().toISOString()
+    const hasMonthly = jobs.some(j => isMonthlyJob(j))
+
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    const inferredDays = hasMonthly ? Array.from(new Set(
+      jobs.map(j => {
+        try {
+          const d = new Date(j.date)
+          return isNaN(d.getTime()) ? null : daysOfWeek[d.getDay()]
+        } catch { return null }
+      }).filter(Boolean) as string[]
+    )) : undefined
 
     const newClient: Client = {
       id: `dj-${key}`,
@@ -338,7 +481,14 @@ export function extractAllClientsFromDailyJobs(
       city: 'Dubai',
       access_notes: '',
       pet_info: '',
+      remarks: hasMonthly ? 'Monthly Contract' : '',
+      notes: hasMonthly ? 'Monthly Client (from Daily Job Sheet)' : '',
+      source: hasMonthly ? 'monthly' : 'daily_job_sheet',
       preferred_cleaner: primaryJob.staff_name || '',
+      service_days: inferredDays && inferredDays.length > 0 ? inferredDays : (hasMonthly ? ['Monday', 'Wednesday'] : undefined),
+      scheduled_time: primaryJob.start_time || '09:00',
+      end_time: primaryJob.end_time || '13:00',
+      duration_hours: Number(primaryJob.duty_hours) || 4,
       total_bookings: jobs.length,
       total_spent: totalCharges,
       last_service: latestDate,
@@ -346,6 +496,63 @@ export function extractAllClientsFromDailyJobs(
     }
 
     result.push(newClient)
+  })
+
+  // 3. Complete Bidirectional Sync: Guarantee ALL monthly clients from extractMonthlyClientsFromDailyJobs are present in result
+  const monthlySummaries = extractMonthlyClientsFromDailyJobs(dailyJobs, 'all', registeredClients)
+  monthlySummaries.forEach(s => {
+    const existing = result.find(c =>
+      c.id === s.id ||
+      c.id === s.matchedClientId ||
+      normalizeKey(c.full_name) === normalizeKey(s.name) ||
+      (s.rawAddress && s.rawAddress !== '—' && normalizeKey(c.building_name || '') === normalizeKey(s.rawAddress))
+    )
+    if (existing) {
+      if (!existing.service_days || existing.service_days.length === 0) {
+        existing.service_days = s.service_days || ['Monday', 'Wednesday']
+      }
+      if (!existing.preferred_cleaner && s.cleaners[0]) {
+        existing.preferred_cleaner = s.cleaners[0]
+      }
+      if (!existing.remarks || !existing.remarks.toLowerCase().includes('monthly')) {
+        existing.remarks = existing.remarks ? `${existing.remarks} · Monthly Contract` : 'Monthly Contract'
+      }
+      if (!existing.source) existing.source = 'monthly'
+      if (s.scheduled_time && !existing.scheduled_time) existing.scheduled_time = s.scheduled_time
+      if (s.end_time && !existing.end_time) existing.end_time = s.end_time
+      if (s.duration_hours && !existing.duration_hours) existing.duration_hours = s.duration_hours
+      if (s.day_cleaner_assignments && !existing.day_cleaner_assignments) existing.day_cleaner_assignments = s.day_cleaner_assignments
+      if (s.day_schedules && !existing.day_schedules) existing.day_schedules = s.day_schedules
+    } else {
+      result.push({
+        id: s.id,
+        full_name: s.name,
+        phone: '',
+        whatsapp: '',
+        email: '',
+        nationality: '',
+        building_name: s.rawAddress !== '—' ? s.rawAddress : '',
+        apartment: '',
+        area: s.area || 'Dubai',
+        city: 'Dubai',
+        access_notes: '',
+        pet_info: '',
+        remarks: 'Monthly Contract',
+        notes: 'Monthly Client (from Job Sheet)',
+        source: 'monthly',
+        preferred_cleaner: s.cleaners[0] || s.preferred_cleaner || '',
+        service_days: s.service_days || ['Monday', 'Wednesday'],
+        scheduled_time: s.scheduled_time || '09:00',
+        end_time: s.end_time || '13:00',
+        duration_hours: s.duration_hours || 4,
+        day_cleaner_assignments: s.day_cleaner_assignments,
+        day_schedules: s.day_schedules,
+        total_bookings: s.visitsCount,
+        total_spent: s.totalCharges,
+        last_service: s.lastService !== '—' ? s.lastService : '',
+        created_at: new Date().toISOString(),
+      })
+    }
   })
 
   return result
@@ -504,3 +711,284 @@ export function extractAllEmployeesFromDailyJobs(
 
   return result
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   WEEKLY SCHEDULE ↔ DAILY JOB SHEET SYNCHRONIZATION ENGINE
+   Fetches repeating monthly schedules with assigned cleaners to DailyJobSheet.
+   Guarantees Rule 1 Compliance: Date-specific DailyJob entries are created;
+   permanent master client contracts are NEVER mutated.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+export const DAYS_OF_WEEK_NAMES = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday'
+] as const
+
+export type DayOfWeekName = (typeof DAYS_OF_WEEK_NAMES)[number]
+
+/**
+ * Derives Day of Week from a YYYY-MM-DD date string
+ */
+export function getDayNameFromDate(dateStr: string): DayOfWeekName {
+  if (!dateStr || !dateStr.includes('-')) return 'Monday'
+  const parts = dateStr.split('-').map(Number)
+  const dt = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1)
+  return DAYS_OF_WEEK_NAMES[dt.getDay()]
+}
+
+export interface ScheduledShiftPlan {
+  client: Client
+  dayName: DayOfWeekName
+  cleanerName: string
+  startTime: string
+  endTime: string
+  durationHours: number
+  address: string
+  area: string
+  remarks: string
+  service: string
+  paymentMode: 'Monthly'
+  charges: number
+  alreadySynced: boolean
+  existingJobId?: string
+}
+
+/**
+ * Returns all monthly clients scheduled for dateStr with their assigned cleaners.
+ * Compares against dailyJobs for that date to see which shifts are already synced.
+ */
+export function getScheduledMonthlyShiftsForDate(
+  dateStr: string,
+  clients: Client[],
+  dailyJobs: DailyJob[] = []
+): {
+  dayName: DayOfWeekName
+  totalScheduled: number
+  alreadySyncedCount: number
+  pendingSyncCount: number
+  shifts: ScheduledShiftPlan[]
+} {
+  const dayName = getDayNameFromDate(dateStr)
+  // Sunday is an off day — no regular monthly shifts are scheduled
+  if (dayName === 'Sunday') {
+    return {
+      dayName: 'Sunday',
+      totalScheduled: 0,
+      alreadySyncedCount: 0,
+      pendingSyncCount: 0,
+      shifts: []
+    }
+  }
+  const jobsOnDate = dailyJobs.filter(j => j.date === dateStr && !isBogusJob(j))
+
+  // Combine registered clients with monthly summaries from daily job history
+  const allMonthlySummaries = extractMonthlyClientsFromDailyJobs(dailyJobs, 'all', clients)
+  
+  // Merge into a comprehensive list of monthly client profiles
+  const clientMap = new Map<string, Client>()
+  
+  // 1. Registered clients
+  clients.forEach(c => {
+    if (isMonthlyClient(c, dailyJobs, allMonthlySummaries)) {
+      clientMap.set(c.id, c)
+    }
+  })
+
+  // 2. Add monthly summaries that might not have a formal client ID yet
+  allMonthlySummaries.forEach(s => {
+    const existing = Array.from(clientMap.values()).find(c => 
+      c.id === s.id || 
+      c.id === s.matchedClientId || 
+      normalizeKey(c.full_name) === normalizeKey(s.name)
+    )
+    if (!existing) {
+      clientMap.set(s.id, {
+        id: s.id,
+        full_name: s.name,
+        phone: '',
+        whatsapp: '',
+        email: '',
+        nationality: '',
+        building_name: s.rawAddress !== '—' ? s.rawAddress : '',
+        apartment: '',
+        area: s.area || 'Dubai',
+        city: 'Dubai',
+        access_notes: '',
+        pet_info: '',
+        remarks: 'Monthly Contract',
+        notes: 'Monthly Client',
+        source: 'monthly',
+        preferred_cleaner: s.cleaners[0] || s.preferred_cleaner || '',
+        service_days: s.service_days || ['Monday', 'Wednesday'],
+        scheduled_time: s.scheduled_time || '08:00',
+        end_time: s.end_time || '12:00',
+        duration_hours: s.duration_hours || 4,
+        day_cleaner_assignments: s.day_cleaner_assignments,
+        day_schedules: s.day_schedules,
+        total_bookings: s.visitsCount,
+        total_spent: s.totalCharges,
+        last_service: s.lastService,
+        created_at: new Date().toISOString(),
+      })
+    }
+  })
+
+  const shifts: ScheduledShiftPlan[] = []
+
+  clientMap.forEach(client => {
+    // Check if client is scheduled on this dayName
+    const daySchedule = client.day_schedules?.[dayName]
+    const serviceDays = Array.isArray(client.service_days) ? client.service_days : []
+    const hasDayInServiceDays = serviceDays.some(d => d.toLowerCase() === dayName.toLowerCase())
+    const hasDayAssignment = Boolean(client.day_cleaner_assignments?.[dayName])
+    const isDayExplicitlyEnabled = daySchedule ? (daySchedule as any).enabled !== false : false
+
+    // If day is not scheduled for this client, skip
+    if (!hasDayInServiceDays && !hasDayAssignment && !isDayExplicitlyEnabled) {
+      return
+    }
+
+    // 1. Cleaner assignment for this day
+    const assignedCleaner =
+      daySchedule?.cleaner?.trim() ||
+      client.day_cleaner_assignments?.[dayName]?.trim() ||
+      client.preferred_cleaner?.trim() ||
+      'Unassigned'
+
+    // 2. Start time, end time, and duration
+    const startTimeRaw = daySchedule?.startTime || client.scheduled_time || '08:00'
+    const endTimeRaw = daySchedule?.endTime || client.end_time || '12:00'
+    const durationHours = daySchedule?.duration || client.duration_hours || 4
+
+    // 3. Format address with building and client name
+    const bldg = (client.building_name || '').trim()
+    const apt = (client.apartment || '').trim()
+    const bldgApt = [bldg, apt ? `Apt ${apt}` : ''].filter(Boolean).join(' ')
+    const clientName = (client.full_name || 'Monthly Client').trim()
+
+    let formattedAddr = ''
+    if (bldgApt && clientName && !bldgApt.toLowerCase().includes(clientName.toLowerCase())) {
+      formattedAddr = `${bldgApt} - ${clientName} (Monthly)`
+    } else if (bldgApt) {
+      formattedAddr = `${bldgApt} (Monthly)`
+    } else if ((client as any).address) {
+      formattedAddr = `${(client as any).address} - ${clientName} (Monthly)`
+    } else {
+      formattedAddr = `${clientName} (Monthly)`
+    }
+
+    // 4. Area
+    const area = client.area || 'Dubai'
+
+    // 5. Remarks
+    const remarks = client.remarks
+      ? (client.remarks.includes('Monthly') ? client.remarks : `${client.remarks} (Monthly Schedule)`)
+      : '(Monthly Schedule)'
+
+    // 6. Check if this client already has a job on dateStr in dailyJobs
+    const matchedJob = jobsOnDate.find(j => {
+      if (jobMatchesClient(j, client)) return true
+
+      const rawAddr = (j.address || '').trim()
+      const cleanJobNorm = normalizeKey(cleanClientNameFromAddress(rawAddr))
+      const cNorm = normalizeKey(client.full_name)
+      const bNorm = normalizeKey(client.building_name || '')
+
+      if (cleanJobNorm && cNorm && (cleanJobNorm === cNorm || cleanJobNorm.includes(cNorm) || cNorm.includes(cleanJobNorm))) return true
+      if (cleanJobNorm && bNorm && (cleanJobNorm === bNorm || cleanJobNorm.includes(bNorm) || bNorm.includes(cleanJobNorm))) return true
+
+      return false
+    })
+
+    shifts.push({
+      client,
+      dayName,
+      cleanerName: assignedCleaner,
+      startTime: startTimeRaw,
+      endTime: endTimeRaw,
+      durationHours,
+      address: formattedAddr,
+      area,
+      remarks,
+      service: 'Regular Cleaning',
+      paymentMode: 'Monthly',
+      charges: 0,
+      alreadySynced: Boolean(matchedJob),
+      existingJobId: matchedJob?.id,
+    })
+  })
+
+  // Sort shifts: pending first, then by earliest start time, then cleaner
+  shifts.sort((a, b) => {
+    if (a.alreadySynced !== b.alreadySynced) {
+      return a.alreadySynced ? 1 : -1
+    }
+    return (a.startTime || '').localeCompare(b.startTime || '') || a.cleanerName.localeCompare(b.cleanerName)
+  })
+
+  const alreadySyncedCount = shifts.filter(s => s.alreadySynced).length
+  const pendingSyncCount = shifts.filter(s => !s.alreadySynced).length
+
+  return {
+    dayName,
+    totalScheduled: shifts.length,
+    alreadySyncedCount,
+    pendingSyncCount,
+    shifts,
+  }
+}
+
+/**
+ * Automatically fetches and inserts all pending monthly shifts for dateStr into dailyJobs.
+ * Returns the count of newly inserted jobs.
+ * Strictly complies with Rule 1: Master client contracts are NEVER mutated.
+ */
+export function syncMonthlySchedulesToDailyJobs(
+  dateStr: string,
+  clients: Client[],
+  dailyJobs: DailyJob[],
+  addDailyJob: (job: Omit<DailyJob, 'id' | 'created_at'>) => void
+): {
+  insertedCount: number
+  alreadySyncedCount: number
+  dayName: DayOfWeekName
+  insertedClients: string[]
+} {
+  const result = getScheduledMonthlyShiftsForDate(dateStr, clients, dailyJobs)
+  const pendingShifts = result.shifts.filter(s => !s.alreadySynced)
+  const insertedClients: string[] = []
+
+  pendingShifts.forEach(shift => {
+    addDailyJob({
+      date: dateStr,
+      staff_name: shift.cleanerName,
+      start_time: shift.startTime,
+      end_time: shift.endTime,
+      duty_hours: shift.durationHours,
+      ot_hours: 0,
+      address: shift.address,
+      area: shift.area,
+      material: 'No',
+      charges: shift.charges,
+      received: 0,
+      payment_mode: 'Monthly',
+      is_overtime: false,
+      remarks: shift.remarks,
+      service: shift.service,
+    })
+    insertedClients.push(shift.client.full_name || shift.address)
+  })
+
+  return {
+    insertedCount: pendingShifts.length,
+    alreadySyncedCount: result.alreadySyncedCount,
+    dayName: result.dayName,
+    insertedClients,
+  }
+}
+
