@@ -13,7 +13,7 @@ import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData, defaultAgencies } from '@/store/DataContext'
 import type { Agency, AgencyContactPerson, AgencyDocument } from '@/types'
-import { formatDate, isThirdPartyEmployee } from '@/lib/utils'
+import { formatDate, isThirdPartyEmployee, isParentCompanyEmployee } from '@/lib/utils'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { AgencyDashboard } from '@/components/agencies/AgencyDashboard'
 
@@ -360,10 +360,10 @@ export function Agencies() {
   const navigate = useNavigate()
   const { agencies, addAgency, updateAgency, deleteAgency, employees, clients } = useData()
 
-  // ── Safaeewala Active Clients Count ──
-  const safaeewalaActiveClientsCount = useMemo(() => {
-    return (clients || []).filter(c => Boolean(c.last_service && new Date(c.last_service) > new Date('2026-01-01'))).length
-  }, [clients])
+  // ── Safaeewala Active Cleaners Count ──
+  const safaeewalaActiveCleanersCount = useMemo(() => {
+    return (employees || []).filter(e => isParentCompanyEmployee(e) && e.status !== 'inactive').length
+  }, [employees])
 
   // ── View Mode Switcher (Grid vs Table) ──
   const [viewMode, setViewMode] = useState<'grid' | 'table'>(() => {
@@ -864,7 +864,7 @@ export function Agencies() {
                           onClick={(e) => {
                             if (isParent) {
                               e.stopPropagation()
-                              navigate('/clients?filter=active&agency=safaeewala')
+                              navigate('/employees?agency=safaeewala')
                             }
                           }}
                           className={`inline-flex items-center gap-1 text-[12px] font-black px-2.5 py-0.5 rounded-full ${
@@ -872,12 +872,12 @@ export function Agencies() {
                               ? 'text-teal-200 bg-teal-950/90 border border-teal-500/50 hover:bg-teal-900 hover:border-teal-400 cursor-pointer shadow-xs'
                               : 'text-slate-800 bg-slate-100'
                           }`}
-                          title={isParent ? "Click to view Safaeewala's Active Clients" : undefined}
+                          title={isParent ? "Click to view Safaeewala's Active Cleaners in Employees directory" : undefined}
                         >
                           {isParent ? (
                             <>
-                              <UserCheck size={12} className="text-teal-400" />
-                              <span>{safaeewalaActiveClientsCount} Active Clients</span>
+                              <Users size={12} className="text-teal-400" />
+                              <span>{safaeewalaActiveCleanersCount} Active Cleaners</span>
                             </>
                           ) : (
                             <>
@@ -1211,12 +1211,12 @@ export function Agencies() {
                     </div>
                   </div>
 
-                  {/* Sourced Staff / Active Clients Counter */}
+                  {/* Sourced Staff / Active Cleaners Counter */}
                   <div
                     onClick={(e) => {
                       e.stopPropagation()
                       if (isParent) {
-                        navigate('/clients?filter=active&agency=safaeewala')
+                        navigate('/employees?agency=safaeewala')
                       } else {
                         handleOpenAgency(agency)
                       }
@@ -1228,24 +1228,15 @@ export function Agencies() {
                     }`}
                     title={
                       isParent
-                        ? "Click to view Safaeewala's Active Clients"
+                        ? "Click to view Safaeewala's Active Cleaners in Employees directory"
                         : "Click to view assigned cleaners list in Agency Profile"
                     }
                   >
                     <span className={`text-[12px] font-bold flex items-center gap-1.5 ${
                       isParent ? 'text-teal-200' : 'text-slate-800'
                     }`}>
-                      {isParent ? (
-                        <>
-                          <UserCheck size={14} className="text-teal-400" />
-                          <span>Active Clients (Safaeewala)</span>
-                        </>
-                      ) : (
-                        <>
-                          <Users size={14} className="text-teal-700" />
-                          <span>Supplied Cleaners (Active)</span>
-                        </>
-                      )}
+                      <Users size={14} className={isParent ? 'text-teal-400' : 'text-teal-700'} />
+                      <span>{isParent ? 'Active Cleaners (Safaeewala)' : 'Supplied Cleaners (Active)'}</span>
                     </span>
                     <div className="flex items-center gap-1.5">
                       <span className={`text-[13px] font-black px-2.5 py-0.5 rounded-lg border shadow-2xs ${
@@ -1253,7 +1244,7 @@ export function Agencies() {
                           ? 'bg-teal-950/90 text-teal-300 border-teal-500/50 shadow-xs'
                           : 'bg-white text-slate-900 border-slate-200'
                       }`}>
-                        {isParent ? `${safaeewalaActiveClientsCount} Active Clients` : `${count} Active`}
+                        {isParent ? `${safaeewalaActiveCleanersCount} Active Cleaners` : `${count} Active`}
                       </span>
                       {!isParent && agency.quota_cleaners ? (
                         <span className={`text-[11px] font-semibold ${isParent ? 'text-slate-400' : 'text-slate-500'}`}>

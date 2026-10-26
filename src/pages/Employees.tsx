@@ -1476,7 +1476,7 @@ export function Employees() {
             >
               <option value="all">🏢 All Fleets & Agencies</option>
               <option value="third_party">🏢 Third-Party Agencies (Supplied Cleaners Only)</option>
-              <option value="parent_company">👑 Parent Company (Safaeewala In-House Only)</option>
+              <option value="safaeewala">👑 Safaeewala In-House Cleaners (Parent Company Only)</option>
               <optgroup label="Partner Agencies">
                 {agencies
                   .filter(a => a.company_type !== 'Parent Company' && a.id !== 'agency-safaeewala' && !a.name.toLowerCase().includes('safaeewala'))
@@ -1526,7 +1526,7 @@ export function Employees() {
                 <optgroup label="🏢 Filter by Agency / Vendor">
                   <option value="agency:all">🌐 All Fleets (Agencies + Parent Company)</option>
                   <option value="agency:third_party">🏢 Third-Party Agencies (Supplied Cleaners Only)</option>
-                  <option value="agency:parent_company">👑 Parent Company (Safaeewala In-House Only)</option>
+                  <option value="agency:safaeewala">👑 Safaeewala In-House Cleaners (Parent Company Only)</option>
                   {agencies
                     .filter(a => a.company_type !== 'Parent Company' && a.id !== 'agency-safaeewala' && !a.name.toLowerCase().includes('safaeewala'))
                     .map(ag => (
@@ -1667,7 +1667,7 @@ export function Employees() {
                 {agencyFilter === 'third_party' || agencyFilter === 'third-party' ? (
                   <>🏢 Showing Third-Party Supplied Cleaners Only <span className="text-rose-700 font-black">(Parent Company Staff Hidden)</span></>
                 ) : agencyFilter === 'parent_company' || agencyFilter === 'parent' || agencyFilter === 'safaeewala' ? (
-                  <>👑 Showing Safaeewala In-House Fleet <span className="text-slate-600 font-medium">(Parent Company Only)</span></>
+                  <>👑 Showing Safaeewala In-House Cleaners Only <span className="text-emerald-800 font-black">(Third-Party Staff Hidden)</span></>
                 ) : (
                   <>🏢 Filtered by Agency: <span className="font-black text-indigo-950">{agencies.find(a => a.id === agencyFilter)?.name || agencyFilter}</span></>
                 )}

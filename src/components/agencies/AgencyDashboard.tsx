@@ -13,7 +13,7 @@ import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
 import type { Agency, Employee, DailyJob, AgencySalaryPayout, AgencyDocument, AgencyContactPerson } from '@/types'
-import { formatDate, formatCurrency, daysUntil } from '@/lib/utils'
+import { formatDate, formatCurrency, daysUntil, isParentCompanyEmployee } from '@/lib/utils'
 import { getEmployeeDailyJobsHistory, employeeMatchesStaff } from '@/lib/clientDataSync'
 import { generateCertificateDataUrl } from '@/lib/agencyCertificates'
 
@@ -151,10 +151,10 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
 
   const isParentAgency = agency.company_type === 'Parent Company' || agency.id === 'agency-safaeewala' || agency.name.toLowerCase().includes('safaeewala')
 
-  // Safaeewala active clients count
-  const safaeewalaActiveClientsCount = useMemo(() => {
-    return (clients || []).filter(c => Boolean(c.last_service && new Date(c.last_service) > new Date('2026-01-01'))).length
-  }, [clients])
+  // Safaeewala active cleaners count
+  const safaeewalaActiveCleanersCount = useMemo(() => {
+    return (employees || []).filter(e => isParentCompanyEmployee(e) && e.status !== 'inactive').length
+  }, [employees])
 
   // ── Active Tab: 'staff' | 'documents' | 'payouts' | 'contract' ──
   const [activeTab, setActiveTab] = useState<'staff' | 'documents' | 'payouts' | 'contract'>(() => {
@@ -748,30 +748,30 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
           </p>
         </div>
 
-        {/* Card 2: Sourced Cleaners (or Active Clients for Master Agency) */}
+        {/* Card 2: Sourced Cleaners (or Active Cleaners for Master Agency) */}
         <div
           onClick={() => {
             if (isParentAgency) {
-              navigate('/clients?filter=active&agency=safaeewala')
+              navigate('/employees?agency=safaeewala')
             }
           }}
           className={`bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 ${
             isParentAgency ? 'cursor-pointer hover:border-teal-400 hover:shadow-md transition-all group' : ''
           }`}
-          title={isParentAgency ? "Click to view Safaeewala's Active Clients" : undefined}
+          title={isParentAgency ? "Click to view Safaeewala's Active Cleaners in Employees directory" : undefined}
         >
           <div className="flex items-start justify-between mb-2">
             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
               isParentAgency ? 'bg-teal-50 text-teal-700 group-hover:bg-teal-600 group-hover:text-white transition-colors' : 'bg-indigo-50 text-indigo-700'
             }`}>
-              {isParentAgency ? <UserCheck size={18} /> : <Users size={18} />}
+              <Users size={18} />
             </div>
             <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full ${
               isParentAgency ? 'bg-teal-100 text-teal-800 flex items-center gap-1' : 'bg-indigo-100 text-indigo-800'
             }`}>
               {isParentAgency ? (
                 <>
-                  <span>Active Clients</span>
+                  <span>Active Cleaners</span>
                   <ArrowUpRight size={10} />
                 </>
               ) : (
@@ -780,9 +780,9 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
             </span>
           </div>
           <p className="text-2xl font-black text-slate-900 tracking-tight">
-            {isParentAgency ? safaeewalaActiveClientsCount : agencyStaff.length}
+            {isParentAgency ? safaeewalaActiveCleanersCount : agencyStaff.length}
             {isParentAgency ? (
-              <span className="text-[12px] font-bold text-slate-400 ml-1">Direct Clients</span>
+              <span className="text-[12px] font-bold text-slate-400 ml-1">Active Cleaners</span>
             ) : agency.quota_cleaners ? (
               <span className="text-[13px] font-bold text-slate-400 ml-1">/ {agency.quota_cleaners} Quota</span>
             ) : (
@@ -790,7 +790,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
             )}
           </p>
           <p className="text-[11.5px] font-bold text-slate-600 mt-0.5">
-            {isParentAgency ? 'Safaeewala Corporate Client Base' : `${staffDutyStats.standbyCount} Available / Standby`}
+            {isParentAgency ? 'Safaeewala In-House Fleet Cleaners' : `${staffDutyStats.standbyCount} Available / Standby`}
           </p>
         </div>
 
