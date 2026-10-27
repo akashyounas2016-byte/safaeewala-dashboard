@@ -70,11 +70,11 @@ function parseEmpStatus(v: string): Employee['status'] {
 
 export function getEmployeeAgencySource(emp: { agency_id?: string; agency_name?: string; email?: string | null }): string {
   if (isParentCompanyEmployee(emp) || !emp.agency_name) {
-    return 'Safaeewala Cleaning & Technical Services LLC'
+    return 'Safaeewala'
   }
   const cleanName = emp.agency_name.trim()
   if (cleanName.toLowerCase().includes('in-house') || cleanName.toLowerCase().includes('direct')) {
-    return 'Safaeewala Cleaning & Technical Services LLC'
+    return 'Safaeewala'
   }
   return cleanName
 }
@@ -1524,7 +1524,7 @@ export function Employees() {
               <optgroup label="🏢 Filter by Agency / Vendor">
                 <option value="agency:all">🌐 All Fleets & Agencies</option>
                 <option value="agency:third_party">🏢 Third-Party Agencies (Supplied Cleaners Only)</option>
-                <option value="agency:safaeewala">👑 Safaeewala Cleaning & Technical Services LLC</option>
+                <option value="agency:safaeewala">👑 Safaeewala</option>
                 {agencies
                   .filter(a => a.company_type !== 'Parent Company' && a.id !== 'agency-safaeewala' && !a.name.toLowerCase().includes('safaeewala'))
                   .map(ag => (
@@ -1758,7 +1758,7 @@ export function Employees() {
             </Select>
 
             <Select name="agency_id" label="Agency / Sourcing Source">
-              <option value="">Safaeewala Cleaning & Technical Services LLC (Parent Company)</option>
+              <option value="">Safaeewala (Parent Company)</option>
               {agencies.filter(a => a.id !== 'agency-safaeewala' && a.company_type !== 'Parent Company' && !a.name.toLowerCase().includes('safaeewala')).map(a => (
                 <option key={a.id} value={a.id}>
                   {a.name} ({a.status})
@@ -2131,7 +2131,7 @@ export function Employees() {
               </Select>
 
               <Select name="agency_id" label="Agency / Sourcing Source" defaultValue={selected.agency_id || ''}>
-                <option value="">Safaeewala Cleaning & Technical Services LLC (Parent Company)</option>
+                <option value="">Safaeewala (Parent Company)</option>
                 {agencies.filter(a => a.id !== 'agency-safaeewala' && a.company_type !== 'Parent Company' && !a.name.toLowerCase().includes('safaeewala')).map(a => (
                   <option key={a.id} value={a.id}>{a.name} ({a.status})</option>
                 ))}

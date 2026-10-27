@@ -782,7 +782,7 @@ export function Agencies() {
                             <p className={`text-[11.5px] truncate mt-0.5 ${
                               isParent ? 'text-teal-300/80 font-bold' : 'text-slate-500'
                             }`}>
-                              {isParent ? 'Safaeewala Cleaning & Technical Services LLC' : (agency.contact_person || 'Vendor Partner')}
+                              {isParent ? (agency.contact_person || 'Corporate Operations Desk') : (agency.contact_person || 'Vendor Partner')}
                             </p>
                           </div>
                         </div>

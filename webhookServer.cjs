@@ -11,6 +11,7 @@ const path = require('path');
 const PORT = 3001;
 const DATA_DIR = process.env.DATA_DIR || '/data';
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json');
+const AGENCIES_FILE = path.join(DATA_DIR, 'agencies.json');
 
 // Ensure data directory exists
 try {
@@ -55,6 +56,30 @@ function writeLeads(leads) {
     return true;
   } catch (err) {
     console.error('Error writing leads:', err.message);
+    return false;
+  }
+}
+
+function readAgencies() {
+  try {
+    if (!fs.existsSync(AGENCIES_FILE)) {
+      return null;
+    }
+    const raw = fs.readFileSync(AGENCIES_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (err) {
+    console.error('Error reading agencies:', err.message);
+    return null;
+  }
+}
+
+function writeAgencies(agencies) {
+  try {
+    fs.writeFileSync(AGENCIES_FILE, JSON.stringify(agencies, null, 2), 'utf8');
+    return true;
+  } catch (err) {
+    console.error('Error writing agencies:', err.message);
     return false;
   }
 }
@@ -395,6 +420,46 @@ const server = http.createServer((req, res) => {
         }));
       } catch (err) {
         console.error('[Backup Error]:', err.message);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // 6. GET /api/agencies -> return persisted agencies
+  if (req.method === 'GET' && pathname === '/api/agencies') {
+    const list = readAgencies();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(list || []));
+    return;
+  }
+
+  // 7. POST /api/agencies -> save/sync agencies
+  if (req.method === 'POST' && pathname === '/api/agencies') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        let current = readAgencies() || [];
+        if (Array.isArray(payload)) {
+          current = payload;
+        } else if (payload && Array.isArray(payload.all)) {
+          current = payload.all;
+        } else if (payload && payload.id && payload.patch) {
+          const idx = current.findIndex(a => a.id === payload.id);
+          if (idx >= 0) {
+            current[idx] = { ...current[idx], ...payload.patch };
+          } else {
+            current.push({ id: payload.id, ...payload.patch });
+          }
+        }
+        writeAgencies(current);
+        console.log(`[Agencies] Saved and synchronized ${current.length} agencies to persistent store`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, count: current.length }));
+      } catch (err) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: err.message }));
       }

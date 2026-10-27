@@ -9,7 +9,7 @@ import { addHoursToTime } from '@/lib/utils'
 export const defaultAgencies: Agency[] = [
   {
     id: 'agency-safaeewala',
-    name: 'Safaeewala Cleaning & Technical Services LLC',
+    name: 'Safaeewala',
     company_type: 'Parent Company',
     contact_person: 'Corporate Operations Desk',
     contact_persons: [
@@ -38,7 +38,7 @@ export const defaultAgencies: Agency[] = [
     bank_details: {
       bank_name: 'Emirates NBD',
       iban: 'AE990260001009876543210',
-      account_title: 'Safaeewala Cleaning & Technical Services LLC'
+      account_title: 'Safaeewala'
     },
     created_at: new Date('2023-01-01').toISOString(),
   },
@@ -259,12 +259,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (saved.length > 0) {
       const merged = saved.map(a => {
         const d = defaultAgencies.find(x => x.id === a.id)
+        // Normalize any old hardcoded long name from previous sessions back to user clean name or 'Safaeewala'
+        const rawName = (a.name === 'Safaeewala Cleaning & Technical Services LLC' || a.name === 'Safaeewala Cleaning & Maintenance LLC')
+          ? 'Safaeewala'
+          : a.name
         return d ? {
           ...d,
           ...a,
-          name: (a.id === 'agency-safaeewala' || a.name.toLowerCase().includes('safaeewala'))
-            ? 'Safaeewala Cleaning & Technical Services LLC'
-            : a.name,
+          name: rawName || d.name,
           noc_no: a.noc_no || d.noc_no,
           trade_license_no: a.trade_license_no || d.trade_license_no,
           license_issue_date: a.license_issue_date || d.license_issue_date,
@@ -351,6 +353,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // Load company settings for TRN used in auto-invoices
     supabase.from('company_settings').select('data').eq('id', 1).single()
       .then(({ data }) => { if (data?.data?.company?.trn) setCompanyTRN(data.data.company.trn) })
+
+    // Load persisted agencies from backend microservice to guarantee synchronization across local and VPS
+    fetch('/api/agencies')
+      .then(r => r.ok ? r.json() : null)
+      .then(serverAgencies => {
+        if (serverAgencies && Array.isArray(serverAgencies) && serverAgencies.length > 0) {
+          setAgencies(prev => {
+            const next = serverAgencies.map((sa: Agency) => {
+              const current = prev.find(p => p.id === sa.id)
+              return current ? { ...current, ...sa } : sa
+            })
+            safeLocalStorageSet('safaeewala_agencies', next)
+            return next
+          })
+        }
+      })
+      .catch(() => {})
+
+    q('agencies').then(dbAgencies => {
+      if (dbAgencies && dbAgencies.length > 0) {
+        setAgencies(dbAgencies as Agency[])
+        safeLocalStorageSet('safaeewala_agencies', dbAgencies as Agency[])
+      }
+    }).catch(() => {})
 
     Promise.all([
       q('bookings'),
@@ -665,16 +691,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setAgencies(p => {
         const next = [row, ...p]
         safeLocalStorageSet('safaeewala_agencies', next)
+        fetch('/api/agencies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ all: next })
+        }).catch(() => {})
         return next
       })
+      supabase.from('agencies').insert(row).then(({ error }) => { if (error) console.error(error) })
       logAudit('created', 'agency', row.id, a.name)
     },
     updateAgency: (id, patch) => {
       setAgencies(p => {
         const next = p.map(a => a.id === id ? { ...a, ...patch } : a)
         safeLocalStorageSet('safaeewala_agencies', next)
+        fetch('/api/agencies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, patch, all: next })
+        }).catch(() => {})
         return next
       })
+      supabase.from('agencies').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      if (id === 'agency-safaeewala' && patch.name) {
+        supabase.from('company_settings').upsert({
+          id: 1,
+          data: { company: { company_name: patch.name, trading_name: patch.name } }
+        }).then(({ error }) => { if (error) console.error(error) })
+      }
       logAudit('updated', 'agency', id, patch.name || id)
     },
     deleteAgency: (id) => {
@@ -682,8 +726,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setAgencies(p => {
         const next = p.filter(a => a.id !== id)
         safeLocalStorageSet('safaeewala_agencies', next)
+        fetch('/api/agencies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ all: next })
+        }).catch(() => {})
         return next
       })
+      supabase.from('agencies').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
       if (a) logAudit('deleted', 'agency', id, a.name)
     },
 
