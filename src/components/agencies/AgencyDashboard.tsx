@@ -47,7 +47,7 @@ function InputFieldWithUpload({
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between">
-        <label className="text-[11.5px] font-bold text-slate-700">{label}</label>
+        <label className="text-xs font-medium text-slate-600">{label}</label>
         {catDocs.length > 0 && (
           <span className="text-[10px] font-black text-teal-700 bg-teal-50 border border-teal-200/80 px-1.5 py-0.2 rounded-full flex items-center gap-1">
             <Paperclip size={9} />
@@ -773,30 +773,44 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
 
       {/* ── 4 Top KPI Stat Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Contract Validity */}
-        <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5">
-          <div className="flex items-start justify-between mb-2">
-            <div className="w-10 h-10 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center">
-              <Calendar size={18} />
+        {/* Card 1: Due Amount & Settled Tag */}
+        <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-start justify-between mb-3">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                financials.netBalance > 0 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+              }`}>
+                <DollarSign size={18} />
+              </div>
+              <span
+                className={`inline-flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border shadow-2xs ${
+                  financials.netBalance > 0
+                    ? 'bg-amber-50 text-amber-900 border-amber-300'
+                    : 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    financials.netBalance > 0 ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'
+                  }`}
+                />
+                <span>{financials.netBalance > 0 ? 'Due' : 'Settled'}</span>
+              </span>
             </div>
-            <span
-              className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                contractExpiryInfo.status === 'valid'
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : contractExpiryInfo.status === 'expiring'
-                  ? 'bg-amber-100 text-amber-800'
-                  : 'bg-rose-100 text-rose-800'
-              }`}
-            >
-              {contractExpiryInfo.status === 'valid' ? 'Active' : contractExpiryInfo.status === 'expiring' ? 'Expiring' : 'Renewal Due'}
+            <p className="text-2xl font-black text-slate-900 tracking-tight">
+              {formatCurrency(financials.netBalance)}
+            </p>
+            <p className="text-[12px] font-bold text-slate-500 mt-0.5">
+              Due Amount
+            </p>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-900 border border-emerald-200/80 shadow-2xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+              <span>Settled Amount: <strong>{formatCurrency(financials.totalPaid)}</strong></span>
             </span>
           </div>
-          <p className="text-lg font-black text-slate-900 tracking-tight">
-            {agency.contract_end_date ? formatDate(agency.contract_end_date) : 'Ongoing'}
-          </p>
-          <p className="text-[11.5px] font-bold text-slate-600 mt-0.5">
-            {contractExpiryInfo.text}
-          </p>
         </div>
 
         {/* Card 2: Sourced Cleaners (or Active Cleaners for Master Agency) */}
@@ -806,79 +820,129 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
               navigate('/employees?agency=safaeewala')
             }
           }}
-          className={`bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 ${
+          className={`bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 flex flex-col justify-between ${
             isParentAgency ? 'cursor-pointer hover:border-teal-400 hover:shadow-md transition-all group' : ''
           }`}
           title={isParentAgency ? "Click to view Safaeewala's Active Cleaners in Employees directory" : undefined}
         >
-          <div className="flex items-start justify-between mb-2">
-            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
-              isParentAgency ? 'bg-teal-50 text-teal-700 group-hover:bg-teal-600 group-hover:text-white transition-colors' : 'bg-indigo-50 text-indigo-700'
-            }`}>
-              <Users size={18} />
+          <div>
+            <div className="flex items-start justify-between mb-3">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                isParentAgency ? 'bg-teal-50 text-teal-700 group-hover:bg-teal-600 group-hover:text-white transition-colors' : 'bg-indigo-50 text-indigo-700'
+              }`}>
+                <Users size={18} />
+              </div>
+              <span className={`inline-flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border shadow-2xs ${
+                isParentAgency
+                  ? 'bg-teal-50 text-teal-900 border-teal-200'
+                  : 'bg-indigo-50 text-indigo-900 border-indigo-200'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isParentAgency ? 'bg-teal-500' : 'bg-indigo-500'}`} />
+                <span>
+                  {isParentAgency ? (
+                    <span className="flex items-center gap-1">
+                      <span>Active Cleaners</span>
+                      <ArrowUpRight size={10} />
+                    </span>
+                  ) : (
+                    `${staffDutyStats.workingTodayCount} Working Today`
+                  )}
+                </span>
+              </span>
             </div>
-            <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full ${
-              isParentAgency ? 'bg-teal-100 text-teal-800 flex items-center gap-1' : 'bg-indigo-100 text-indigo-800'
-            }`}>
+            <p className="text-2xl font-black text-slate-900 tracking-tight">
+              {isParentAgency ? safaeewalaActiveCleanersCount : agencyStaff.length}
               {isParentAgency ? (
-                <>
-                  <span>Active Cleaners</span>
-                  <ArrowUpRight size={10} />
-                </>
+                <span className="text-[12px] font-bold text-slate-400 ml-1">Active Cleaners</span>
+              ) : agency.quota_cleaners ? (
+                <span className="text-[13px] font-bold text-slate-400 ml-1">/ {agency.quota_cleaners} Quota</span>
               ) : (
-                `${staffDutyStats.workingTodayCount} Working Today`
+                <span className="text-[12px] font-bold text-slate-400 ml-1">Staff</span>
               )}
+            </p>
+            <p className="text-[12px] font-bold text-slate-500 mt-0.5">
+              {isParentAgency ? 'Corporate Fleet Cleaners' : 'Sourced Cleaners'}
+            </p>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-50 text-slate-700 border border-slate-200/80 shadow-2xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+              <span>Available / Standby: <strong>{staffDutyStats.standbyCount}</strong></span>
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-900 tracking-tight">
-            {isParentAgency ? safaeewalaActiveCleanersCount : agencyStaff.length}
-            {isParentAgency ? (
-              <span className="text-[12px] font-bold text-slate-400 ml-1">Active Cleaners</span>
-            ) : agency.quota_cleaners ? (
-              <span className="text-[13px] font-bold text-slate-400 ml-1">/ {agency.quota_cleaners} Quota</span>
-            ) : (
-              <span className="text-[12px] font-bold text-slate-400 ml-1">Staff</span>
-            )}
-          </p>
-          <p className="text-[11.5px] font-bold text-slate-600 mt-0.5">
-            {isParentAgency ? 'Safaeewala Corporate Fleet Cleaners' : `${staffDutyStats.standbyCount} Available / Standby`}
-          </p>
         </div>
 
         {/* Card 3: Total Sourced Revenue */}
-        <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5">
-          <div className="flex items-start justify-between mb-2">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-              <TrendingUp size={18} />
+        <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-start justify-between mb-3">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
+                <TrendingUp size={18} />
+              </div>
+              <span className="inline-flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider bg-emerald-50 text-emerald-900 border border-emerald-200 shadow-2xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>{financials.jobsCount} Shifts</span>
+              </span>
             </div>
-            <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-              {financials.jobsCount} Shifts
+            <p className="text-2xl font-black text-slate-900 tracking-tight">
+              {formatCurrency(financials.totalRevenue)}
+            </p>
+            <p className="text-[12px] font-bold text-slate-500 mt-0.5">
+              Gross Revenue Generated
+            </p>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200/80 shadow-2xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
+              <span>Completed Shifts: <strong>{financials.jobsCount} {financials.jobsCount === 1 ? 'Job' : 'Jobs'}</strong></span>
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-900 tracking-tight">
-            {formatCurrency(financials.totalRevenue)}
-          </p>
-          <p className="text-[11.5px] font-bold text-slate-600 mt-0.5">
-            Gross Revenue Generated
-          </p>
         </div>
 
-        {/* Card 4: Agency Salary & Payout Balance */}
-        <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5">
-          <div className="flex items-start justify-between mb-2">
-            <div className="w-10 h-10 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center">
-              <Wallet size={18} />
+        {/* Card 4: Total Contract Amount with Status Indicator */}
+        <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-start justify-between mb-3">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                financials.netBalance > 0 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+              }`}>
+                <Wallet size={18} />
+              </div>
+
+              {/* Wazeh Status Indicator (Due / Settled) */}
+              <span
+                className={`inline-flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border shadow-2xs ${
+                  financials.netBalance > 0
+                    ? 'bg-amber-50 text-amber-900 border-amber-300'
+                    : 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    financials.netBalance > 0 ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'
+                  }`}
+                />
+                <span>{financials.netBalance > 0 ? 'Due' : 'Settled'}</span>
+              </span>
             </div>
-            <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-800">
-              {agency.payment_terms || 'Monthly Terms'}
+
+            {/* Total Contract Amount */}
+            <p className="text-2xl font-black text-slate-900 tracking-tight">
+              {formatCurrency(financials.totalSalaryAllocated)}
+            </p>
+            <p className="text-[12px] font-bold text-slate-500 mt-0.5">
+              Total Contract Amount
+            </p>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-50 text-slate-700 border border-slate-200/80 shadow-2xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
+              <span>Payment Terms: <strong>{agency.payment_terms || 'Monthly'}</strong></span>
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-900 tracking-tight">
-            {formatCurrency(financials.totalSalaryAllocated)}
-          </p>
-          <p className="text-[11.5px] font-bold text-slate-600 mt-0.5">
-            Settled: <strong className="text-emerald-700">{formatCurrency(financials.totalPaid)}</strong> | Due: <strong className="text-amber-700">{formatCurrency(financials.netBalance)}</strong>
-          </p>
         </div>
       </div>
 
@@ -1816,76 +1880,136 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
       {activeTab === 'payouts' && (
         <div className="space-y-6">
           {/* Salary Calculation Overview Card */}
-          <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-[28px] p-6 md:p-8 shadow-lg relative overflow-hidden">
-            <div className="relative z-10">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-700/60 pb-6 mb-6">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-teal-400">
-                      Salary & Advance Disbursements
-                    </span>
-                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-teal-500/20 text-teal-300 border border-teal-500/30">
-                      Daily Job Sheet Synced
-                    </span>
-                  </div>
-                  <h2 className="text-xl md:text-2xl font-black mt-1">
-                    Staff & Salaries Payout Ledger
-                  </h2>
-                  <p className="text-[13px] text-slate-300 mt-0.5">
-                    Live synchronization with Daily Job Sheet shifts, duty hours, salary settlements, and staff advance history for <strong>{agency.name}</strong>. Payment Terms: <strong className="text-white">{agency.payment_terms || 'Monthly (Net 15)'}</strong>.
-                  </p>
+          <div className="bg-white rounded-[28px] border border-slate-200/90 shadow-[0_4px_25px_rgba(15,23,42,0.03)] p-6 md:p-8 relative">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-6 mb-6">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-extrabold uppercase tracking-wider text-teal-700">
+                    Salary & Advance Disbursements
+                  </span>
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+                    Daily Job Sheet Synced
+                  </span>
                 </div>
-
-                <Button
-                  type="button"
-                  className="bg-teal-500 hover:bg-teal-600 text-white font-bold text-[13px] shadow-sm w-fit shrink-0 cursor-pointer flex items-center gap-1.5"
-                  onClick={() => {
-                    setPayoutFormType('salary')
-                    setShowLogPayoutModal(true)
-                  }}
-                >
-                  <Wallet size={15} />
-                  <span>Salary Payout</span>
-                </Button>
+                <h2 className="text-xl md:text-2xl font-black text-slate-900 mt-1">
+                  Staff & Salaries Payout Ledger
+                </h2>
+                <p className="text-[13px] text-slate-500 mt-0.5 leading-relaxed">
+                  Live synchronization with Daily Job Sheet shifts, duty hours, salary settlements, and staff advance history for <strong className="font-bold text-slate-800">{agency.name}</strong>. Payment Terms: <strong className="font-bold text-teal-700">{agency.payment_terms || 'Monthly (Net 15)'}</strong>.
+                </p>
               </div>
 
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Gross Shifts Revenue</p>
-                  <p className="text-2xl font-black text-white mt-1">
+              <Button
+                type="button"
+                className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-[13px] shadow-sm w-fit shrink-0 cursor-pointer flex items-center gap-1.5 px-4 py-2.5 rounded-xl transition-all"
+                onClick={() => {
+                  setPayoutFormType('salary')
+                  setShowLogPayoutModal(true)
+                }}
+              >
+                <Wallet size={15} />
+                <span>Salary Payout</span>
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Card 1: Gross Shifts Revenue */}
+              <div className="p-4.5 rounded-2xl bg-slate-50/70 hover:bg-slate-50/90 border border-slate-200/80 transition-all flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                      Gross Shifts Revenue
+                    </span>
+                    <div className="w-8 h-8 rounded-xl bg-slate-200/70 text-slate-700 flex items-center justify-center shrink-0">
+                      <TrendingUp size={15} />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-black text-slate-900 mt-1 tracking-tight">
                     {formatCurrency(financials.totalRevenue)}
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Across {financials.jobsCount} shifts ({financials.totalDutyHours}h logged)
-                  </p>
                 </div>
+                <p className="text-[11.5px] font-medium text-slate-500 mt-2">
+                  Across {financials.jobsCount} shifts ({financials.totalDutyHours}h logged)
+                </p>
+              </div>
 
-                <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Salary Allocated</p>
-                  <p className="text-2xl font-black text-teal-400 mt-1">
+              {/* Card 2: Total Salary Allocated */}
+              <div className="p-4.5 rounded-2xl bg-teal-50/50 hover:bg-teal-50/75 border border-teal-200/70 transition-all flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-teal-800">
+                      Total Salary Allocated
+                    </span>
+                    <div className="w-8 h-8 rounded-xl bg-teal-100/80 text-teal-700 flex items-center justify-center shrink-0">
+                      <Wallet size={15} />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-black text-teal-900 mt-1 tracking-tight">
                     {formatCurrency(financials.totalSalaryAllocated)}
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    {agency.contracted_amount ? `AED ${agency.contracted_amount} contracted` : 'Duty hour compensation'}
-                  </p>
                 </div>
+                <p className="text-[11.5px] font-medium text-teal-700/80 mt-2">
+                  {agency.contracted_amount ? `AED ${agency.contracted_amount} contracted` : 'Duty hour compensation'}
+                </p>
+              </div>
 
-                <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Settled & Advances</p>
-                  <p className="text-2xl font-black text-emerald-400 mt-1">
+              {/* Card 3: Total Settled & Advances */}
+              <div className="p-4.5 rounded-2xl bg-emerald-50/50 hover:bg-emerald-50/75 border border-emerald-200/70 transition-all flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
+                      Total Settled & Advances
+                    </span>
+                    <div className="w-8 h-8 rounded-xl bg-emerald-100/80 text-emerald-700 flex items-center justify-center shrink-0">
+                      <CheckCircle2 size={15} />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-black text-emerald-900 mt-1 tracking-tight">
                     {formatCurrency(financials.totalPaid)}
                   </p>
-                  <p className="text-[11px] text-emerald-300/80 mt-0.5">
-                    Salary: {formatCurrency(financials.totalSalaryPaid)} · Advance: {formatCurrency(financials.totalAdvances)}
-                  </p>
                 </div>
+                <p className="text-[11.5px] font-medium text-emerald-700/80 mt-2">
+                  Salary: {formatCurrency(financials.totalSalaryPaid)} · Advance: {formatCurrency(financials.totalAdvances)}
+                </p>
+              </div>
 
-                <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Outstanding Salary Due</p>
-                  <p className="text-2xl font-black text-amber-400 mt-1">
+              {/* Card 4: Outstanding Salary Due / Settlement Status */}
+              <div className={`p-4.5 rounded-2xl border transition-all flex flex-col justify-between ${
+                financials.netBalance > 0
+                  ? 'bg-amber-50/50 hover:bg-amber-50/75 border-amber-200/70'
+                  : 'bg-emerald-50/50 hover:bg-emerald-50/75 border-emerald-200/70'
+              }`}>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-[11px] font-extrabold uppercase tracking-wider ${
+                      financials.netBalance > 0 ? 'text-amber-800' : 'text-emerald-800'
+                    }`}>
+                      {financials.netBalance > 0 ? 'Outstanding Salary Due' : 'All Salaries Settled'}
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1.5 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border shadow-2xs ${
+                        financials.netBalance > 0
+                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                          : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          financials.netBalance > 0 ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'
+                        }`}
+                      />
+                      <span>{financials.netBalance > 0 ? 'Due' : 'Settled'}</span>
+                    </span>
+                  </div>
+                  <p className={`text-2xl font-black mt-1 tracking-tight ${
+                    financials.netBalance > 0 ? 'text-amber-900' : 'text-emerald-900'
+                  }`}>
                     {formatCurrency(financials.netBalance)}
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Across {agencyStaff.length} active cleaners</p>
+                </div>
+                <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-medium text-slate-600">
+                  <span>Contract: <strong className="text-slate-900 font-bold">{formatCurrency(financials.totalSalaryAllocated)}</strong></span>
+                  <span>Settled: <strong className="text-emerald-700 font-bold">{formatCurrency(financials.totalPaid)}</strong></span>
                 </div>
               </div>
             </div>
@@ -1997,12 +2121,12 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                             </td>
                             <td className="py-3 px-4">
                               {isAdvance ? (
-                                <span className="inline-flex items-center gap-1 text-[10.5px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                                <span className="inline-flex items-center gap-1 text-[10.5px] font-bold uppercase px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200/80">
                                   <Zap size={10} className="fill-amber-600 text-amber-600" />
                                   <span>Advance</span>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 text-[10.5px] font-black uppercase px-2 py-0.5 rounded-md bg-teal-100 text-teal-900 border border-teal-300">
+                                <span className="inline-flex items-center gap-1 text-[10.5px] font-bold uppercase px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200/80">
                                   <Wallet size={10} className="text-teal-700" />
                                   <span>Salary Payout</span>
                                 </span>
@@ -2031,10 +2155,10 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                             </td>
                             <td className="py-3 px-4">
                               <span
-                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border ${
                                   p.status === 'paid'
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : 'bg-amber-100 text-amber-800'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
+                                    : 'bg-amber-50 text-amber-800 border-amber-200/80'
                                 }`}
                               >
                                 {p.status}
@@ -2191,10 +2315,10 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                               {formatCurrency(salaryShare)}
                             </td>
                             <td className="py-2.5 px-4 text-center">
-                              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md border ${
                                 (job.payment_mode as string) === 'Paid' || (job.received >= job.charges && job.charges > 0)
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : 'bg-teal-100 text-teal-800'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
+                                  : 'bg-teal-50 text-teal-800 border-teal-200/80'
                               }`}>
                                 {job.payment_mode || job.status || 'Completed'}
                               </span>

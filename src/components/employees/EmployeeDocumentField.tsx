@@ -1,7 +1,7 @@
 import React, { useRef } from 'react'
 import {
   FileText, Upload, Eye, Trash2, CheckCircle2, Download,
-  ExternalLink, FileCheck, Shield, AlertCircle
+  ExternalLink, FileCheck, Shield, AlertCircle, Paperclip, X
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -219,5 +219,94 @@ export function EmployeeDocumentPreviewModal({
         )}
       </div>
     </Modal>
+  )
+}
+
+// ── Document number field with inline upload icon (standard across Add & Edit Employee popups) ──
+export function EmployeeDocInput({
+  name,
+  label,
+  placeholder,
+  defaultValue,
+  doc,
+  onUpload,
+  onRemove,
+  onPreview,
+}: {
+  name: string
+  label: string
+  placeholder?: string
+  defaultValue?: string
+  doc?: EmployeeDocument
+  onUpload: (file: File) => void
+  onRemove: () => void
+  onPreview: (doc: EmployeeDocument) => void
+}) {
+  const uploadInputId = `emp-upload-${name}-${Math.random().toString(36).slice(2, 7)}`
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <label className="text-[11.5px] font-bold text-slate-700">{label}</label>
+        {doc && (
+          <span className="text-[10px] font-black text-teal-700 bg-teal-50 border border-teal-200/80 px-1.5 rounded-full flex items-center gap-1">
+            <Paperclip size={9} />
+            <span>1 file</span>
+          </span>
+        )}
+      </div>
+
+      <div className="relative flex items-center">
+        <input
+          name={name}
+          defaultValue={defaultValue}
+          placeholder={placeholder}
+          className="w-full rounded-xl border border-slate-200 bg-white pl-3 pr-10 py-2 text-[12px] font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600/30 transition-all shadow-2xs"
+        />
+        <label
+          htmlFor={uploadInputId}
+          className="absolute right-1.5 p-1.5 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 cursor-pointer transition-colors"
+          title={doc ? `Replace ${label} document` : `Upload ${label} document`}
+        >
+          <Upload size={14} className="stroke-[2.2]" />
+          <input
+            id={uploadInputId}
+            type="file"
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={e => {
+              const f = e.target.files?.[0]
+              if (f) onUpload(f)
+              e.target.value = ''
+            }}
+          />
+        </label>
+      </div>
+
+      {doc && (
+        <div className="flex flex-wrap gap-1 mt-0.5">
+          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-teal-50/90 border border-teal-200/80 text-[10.5px] text-teal-900 shadow-2xs max-w-full">
+            <Paperclip size={10} className="text-teal-700 shrink-0" />
+            <span className="font-semibold truncate max-w-[125px]" title={doc.name}>{doc.name}</span>
+            <button
+              type="button"
+              onClick={() => onPreview(doc)}
+              className="text-teal-700 hover:text-teal-950 p-0.5 rounded hover:bg-teal-100/80 cursor-pointer"
+              title="Preview / Download Document"
+            >
+              <Eye size={11} />
+            </button>
+            <button
+              type="button"
+              onClick={onRemove}
+              className="text-slate-400 hover:text-rose-600 p-0.5 rounded hover:bg-rose-50 cursor-pointer"
+              title="Remove Document"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

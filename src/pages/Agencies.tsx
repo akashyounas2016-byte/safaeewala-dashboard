@@ -5,7 +5,7 @@ import {
   Percent, CreditCard, FileText, CheckCircle2, AlertCircle,
   Edit2, Trash2, ExternalLink, RotateCcw, X, Shield, ArrowUpRight,
   ArrowRight, LayoutGrid, List, Check, Paperclip, Upload, Eye, Download,
-  Pin, Crown, Sparkles, UserCheck
+  Pin, Crown, Sparkles, UserCheck, Clock
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -16,6 +16,7 @@ import type { Agency, AgencyContactPerson, AgencyDocument, AgencyDocumentCategor
 import { formatDate, isThirdPartyEmployee, isParentCompanyEmployee, slugifyAgencyName } from '@/lib/utils'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { AgencyDashboard } from '@/components/agencies/AgencyDashboard'
+import { cleanClientNameFromAddress, employeeMatchesStaff, splitStaffNames, isBogusJob } from '@/lib/clientDataSync'
 
 export { slugifyAgencyName }
 
@@ -273,7 +274,7 @@ function InputFieldWithUpload({
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between">
-        <label className="text-[11.5px] font-bold text-slate-700">{label}</label>
+        <label className="text-xs font-medium text-slate-600">{label}</label>
         {catDocs.length > 0 && (
           <span className="text-[10px] font-black text-teal-700 bg-teal-50 border border-teal-200/80 px-1.5 py-0.2 rounded-full flex items-center gap-1">
             <Paperclip size={9} />
@@ -350,12 +351,168 @@ function InputFieldWithUpload({
 
 export function Agencies() {
   const navigate = useNavigate()
-  const { agencies, addAgency, updateAgency, deleteAgency, employees, clients } = useData()
+  const { agencies, addAgency, updateAgency, deleteAgency, employees, clients, dailyJobs, bookings } = useData()
 
   // ── Safaeewala Active Cleaners Count ──
   const safaeewalaActiveCleanersCount = useMemo(() => {
     return (employees || []).filter(e => isParentCompanyEmployee(e) && e.status !== 'inactive').length
   }, [employees])
+
+  // ── Live Cleaners Modal State & Data ──
+  const [showLiveCleanersModal, setShowLiveCleanersModal] = useState(false)
+  const [liveCleanersSearch, setLiveCleanersSearch] = useState('')
+  const [liveCleanersAgencyFilter, setLiveCleanersAgencyFilter] = useState('all')
+
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], [])
+
+  // Target date for live shifts: today if jobs/bookings exist, or fallback to the latest active job sheet date
+  const targetLiveDate = useMemo(() => {
+    const hasToday = (dailyJobs || []).some(j => (j.date || '').split('T')[0] === todayStr && !isBogusJob(j))
+    if (hasToday) return todayStr
+    const dates = (dailyJobs || [])
+      .map(j => (j.date || '').split('T')[0])
+      .filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d))
+      .sort()
+    return dates[dates.length - 1] || todayStr
+  }, [dailyJobs, todayStr])
+
+  // Extract all live cleaners with their assigned duties for targetLiveDate
+  const liveCleanersData = useMemo(() => {
+    const dateJobs = (dailyJobs || []).filter(j => (j.date || '').split('T')[0] === targetLiveDate && !isBogusJob(j))
+    const dateBookings = (bookings || []).filter(b => (b.scheduled_date || '').split('T')[0] === targetLiveDate)
+
+    interface CleanerDutyItem {
+      id: string
+      jobType: 'daily_job' | 'booking'
+      timeStr: string
+      clientName: string
+      area: string
+      service: string
+      dutyHours: number
+      paymentMode?: string
+      charges?: number
+    }
+
+    interface LiveCleaner {
+      empId?: string
+      cleanerName: string
+      agencyId?: string
+      agencyName: string
+      isThirdParty: boolean
+      status: 'On Duty' | 'Scheduled'
+      totalDutyHours: number
+      duties: CleanerDutyItem[]
+    }
+
+    const cleanersMap = new Map<string, LiveCleaner>()
+
+    // 1. Match from registered employees
+    employees.forEach(emp => {
+      const empJobs = dateJobs.filter(j => employeeMatchesStaff(emp, j.staff_name))
+      const empBookings = dateBookings.filter(b =>
+        b.assigned_crew?.includes(emp.id) &&
+        (b.status === 'in_progress' || b.status === 'confirmed')
+      )
+
+      if (empJobs.length === 0 && empBookings.length === 0) return
+
+      const duties: CleanerDutyItem[] = []
+      let totalDuty = 0
+
+      empJobs.forEach((j, idx) => {
+        const timeStr = j.start_time && j.end_time ? `${j.start_time} - ${j.end_time}` : (j.start_time || 'On Shift')
+        const duty = Number(j.duty_hours) || 4
+        totalDuty += duty
+        duties.push({
+          id: `dj-${j.id || idx}`,
+          jobType: 'daily_job',
+          timeStr,
+          clientName: cleanClientNameFromAddress(j.address || j.area || 'Client'),
+          area: j.area || j.address || 'Dubai Site',
+          service: j.service || 'Cleaning',
+          dutyHours: duty,
+          paymentMode: j.payment_mode,
+          charges: Number(j.charges) || 0,
+        })
+      })
+
+      empBookings.forEach((b, idx) => {
+        duties.push({
+          id: `bk-${b.id || idx}`,
+          jobType: 'booking',
+          timeStr: b.scheduled_time || 'Scheduled',
+          clientName: b.client_name || 'Client',
+          area: b.service_address || 'Dubai Site',
+          service: b.service_type || 'Cleaning',
+          dutyHours: Number(b.duration_hours) || 2,
+          paymentMode: b.status,
+          charges: Number(b.total_amount) || 0,
+        })
+      })
+
+      const isThird = isThirdPartyEmployee(emp)
+      const agName = emp.agency_name || (isThird ? 'Agency Partner' : 'Safaeewala Fleet')
+      const normKey = emp.full_name.toLowerCase().trim()
+
+      cleanersMap.set(normKey, {
+        empId: emp.id,
+        cleanerName: emp.full_name,
+        agencyId: emp.agency_id,
+        agencyName: agName,
+        isThirdParty: isThird,
+        status: duties.some(d => d.jobType === 'daily_job') ? 'On Duty' : 'Scheduled',
+        totalDutyHours: totalDuty || duties.reduce((acc, d) => acc + d.dutyHours, 0),
+        duties,
+      })
+    })
+
+    // 2. Add unmapped or direct dailyJobs staff entries
+    dateJobs.forEach((j, idx) => {
+      splitStaffNames(j.staff_name).forEach(rawName => {
+        const normKey = rawName.toLowerCase().trim()
+        if (!normKey || normKey === '-' || normKey === '—') return
+
+        const dutyHours = Number(j.duty_hours) || 4
+        const timeStr = j.start_time && j.end_time ? `${j.start_time} - ${j.end_time}` : (j.start_time || 'On Shift')
+        const dutyItem: CleanerDutyItem = {
+          id: `dj-raw-${j.id || idx}-${normKey}`,
+          jobType: 'daily_job',
+          timeStr,
+          clientName: cleanClientNameFromAddress(j.address || j.area || 'Client'),
+          area: j.area || j.address || 'Dubai Site',
+          service: j.service || 'Cleaning',
+          dutyHours,
+          paymentMode: j.payment_mode,
+          charges: Number(j.charges) || 0,
+        }
+
+        if (cleanersMap.has(normKey)) {
+          const existing = cleanersMap.get(normKey)!
+          if (!existing.duties.some(d => d.clientName === dutyItem.clientName && d.timeStr === dutyItem.timeStr)) {
+            existing.duties.push(dutyItem)
+            existing.totalDutyHours += dutyHours
+          }
+        } else {
+          const matchedEmp = employees.find(e => employeeMatchesStaff(e, rawName))
+          const isThird = matchedEmp ? isThirdPartyEmployee(matchedEmp) : true
+          const agName = matchedEmp?.agency_name || (isThird ? 'Agency Supplied' : 'Safaeewala Fleet')
+
+          cleanersMap.set(normKey, {
+            empId: matchedEmp?.id,
+            cleanerName: rawName,
+            agencyId: matchedEmp?.agency_id,
+            agencyName: agName,
+            isThirdParty: isThird,
+            status: 'On Duty',
+            totalDutyHours: dutyHours,
+            duties: [dutyItem],
+          })
+        }
+      })
+    })
+
+    return Array.from(cleanersMap.values()).sort((a, b) => b.totalDutyHours - a.totalDutyHours)
+  }, [dailyJobs, bookings, employees, targetLiveDate])
 
   // ── View Mode Switcher (Grid vs Table) ──
   const [viewMode, setViewMode] = useState<'grid' | 'table'>(() => {
@@ -515,10 +672,10 @@ export function Agencies() {
     const total = agencies.length
     const active = agencies.filter(a => a.status === 'active').length
     const totalStaffFromAgencies = employees.filter(isThirdPartyEmployee).length
-    const licensedAgencies = agencies.filter(a => a.trade_license_no || a.license_expiry_date || a.license_issue_date).length
+    const liveCleanersCount = liveCleanersData.length
 
-    return { total, active, totalStaffFromAgencies, licensedAgencies }
-  }, [agencies, employees])
+    return { total, active, totalStaffFromAgencies, liveCleanersCount }
+  }, [agencies, employees, liveCleanersData])
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-200">
@@ -590,21 +747,33 @@ export function Agencies() {
           <p className="text-[12px] font-bold text-slate-700 mt-0.5">Supplied Cleaners (Active)</p>
         </div>
 
+        {/* Card 4: Live Cleaners (Clickable to view active cleaners and job duties) */}
         <div
-          onClick={() => { setSearch(''); setStatusFilter('all') }}
-          className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-amber-400"
-          title="Licensed and verified vendors"
+          onClick={() => setShowLiveCleanersModal(true)}
+          className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-emerald-400 group flex flex-col justify-between"
+          title="Click to view all live working cleaners and their assigned job duties"
         >
-          <div className="flex items-start justify-between mb-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center">
-              <Shield size={18} />
+          <div>
+            <div className="flex items-start justify-between mb-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                <Users size={18} />
+              </div>
+              <span className="inline-flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Live Now</span>
+              </span>
             </div>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-              Verified
+            <p className="text-2xl font-black text-slate-900 tracking-tight">
+              {summaryMetrics.liveCleanersCount}
+            </p>
+          </div>
+          <div className="mt-2 flex items-center justify-between text-[12px] font-bold text-slate-700">
+            <span>Live Cleaners</span>
+            <span className="text-[11px] font-semibold text-emerald-700 group-hover:underline flex items-center gap-0.5">
+              <span>View Duties</span>
+              <ArrowUpRight size={11} />
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-900 tracking-tight">{summaryMetrics.licensedAgencies}</p>
-          <p className="text-[12px] font-bold text-slate-700 mt-0.5">Licensed Agencies</p>
         </div>
       </div>
 
@@ -1363,7 +1532,7 @@ export function Agencies() {
       <Modal
         open={showAddModal}
         onClose={() => setShowAddModal(false)}
-        title="Add New Agency Vendor"
+        title="Add New Agency"
         size="xl"
         className="max-w-6xl"
         headerActions={
@@ -1498,30 +1667,16 @@ export function Agencies() {
                 <Input name="phone" label="Phone *" placeholder="+971 4 000 0000" required />
                 <Input name="email" label="Email Address" type="email" placeholder="agency@example.ae" />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Company Type</label>
-                  <select
-                    value={addCompanyType}
-                    onChange={e => setAddCompanyType(e.target.value as any)}
-                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                  >
-                    <option value="Third Party">Third Party (Vendor)</option>
-                    <option value="Parent Company">Parent Company (Safaeewala)</option>
-                  </select>
-                </div>
-                {/* Same state as the header toggle */}
-                <div>
-                  <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Vendor Status</label>
-                  <select
-                    value={addStatus}
-                    onChange={e => setAddStatus(e.target.value as 'active' | 'inactive')}
-                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 block mb-1">Company Type</label>
+                <select
+                  value={addCompanyType}
+                  onChange={e => setAddCompanyType(e.target.value as any)}
+                  className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
+                >
+                  <option value="Third Party">Third Party (Vendor)</option>
+                  <option value="Parent Company">Parent Company (Safaeewala)</option>
+                </select>
               </div>
             </div>
 
@@ -1615,8 +1770,14 @@ export function Agencies() {
             </h4>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
-              {/* Trade License */}
-              <div className="space-y-2">
+              {/* Trade License (Amber Tint) */}
+              <div className="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between pb-1 border-b border-amber-200/60">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                    <Shield size={12} className="text-amber-600" />
+                    Trade License
+                  </span>
+                </div>
                 <InputFieldWithUpload
                   name="trade_license_no"
                   label="Trade License Number"
@@ -1628,13 +1789,19 @@ export function Agencies() {
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
-                  <Input name="license_issue_date" label="License Issue Date" type="date" />
-                  <Input name="license_expiry_date" label="License Expiry Date" type="date" />
+                  <Input name="license_issue_date" label="Issue Date" type="date" />
+                  <Input name="license_expiry_date" label="Expiry Date" type="date" />
                 </div>
               </div>
 
-              {/* Emirates ID */}
-              <div className="space-y-2">
+              {/* Emirates ID (Sky Blue Tint) */}
+              <div className="bg-sky-50/70 border border-sky-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between pb-1 border-b border-sky-200/60">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-sky-900 flex items-center gap-1.5">
+                    <FileText size={12} className="text-sky-600" />
+                    Emirates ID (EID)
+                  </span>
+                </div>
                 <InputFieldWithUpload
                   name="emirates_id_no"
                   label="Emirates ID (EID)"
@@ -1646,13 +1813,19 @@ export function Agencies() {
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
-                  <Input name="emirates_id_issue_date" label="EID Issue Date" type="date" />
-                  <Input name="emirates_id_expiry_date" label="EID Expiry Date" type="date" />
+                  <Input name="emirates_id_issue_date" label="Issue Date" type="date" />
+                  <Input name="emirates_id_expiry_date" label="Expiry Date" type="date" />
                 </div>
               </div>
 
-              {/* Passport */}
-              <div className="space-y-2">
+              {/* Passport (Purple Tint) */}
+              <div className="bg-purple-50/70 border border-purple-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between pb-1 border-b border-purple-200/60">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-purple-900 flex items-center gap-1.5">
+                    <FileText size={12} className="text-purple-600" />
+                    Passport
+                  </span>
+                </div>
                 <InputFieldWithUpload
                   name="passport_no"
                   label="Passport"
@@ -1664,13 +1837,19 @@ export function Agencies() {
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
-                  <Input name="passport_issue_date" label="Passport Issue Date" type="date" />
-                  <Input name="passport_expiry_date" label="Passport Expiry Date" type="date" />
+                  <Input name="passport_issue_date" label="Issue Date" type="date" />
+                  <Input name="passport_expiry_date" label="Expiry Date" type="date" />
                 </div>
               </div>
 
-              {/* Tax & NOC */}
-              <div className="space-y-2">
+              {/* Tax & NOC (Emerald/Teal Tint) */}
+              <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between pb-1 border-b border-emerald-200/60">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
+                    <Check size={12} className="text-emerald-600" />
+                    Tax & NOC
+                  </span>
+                </div>
                 <InputFieldWithUpload
                   name="trn_no"
                   label="Tax Registration (TRN)"
@@ -1703,8 +1882,12 @@ export function Agencies() {
             </h4>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
-              {/* Agreement & Contract Period */}
-              <div className="space-y-2">
+              {/* Column 1: Commercial Agreement */}
+              <div className="bg-white border border-indigo-200/80 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
+                <span className="text-[10.5px] font-bold uppercase tracking-wider text-indigo-800 flex items-center gap-1">
+                  <FileText size={11} className="text-indigo-600" />
+                  Agreement Document
+                </span>
                 <InputFieldWithUpload
                   name="contract_ref"
                   label="Agreement"
@@ -1716,22 +1899,47 @@ export function Agencies() {
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
-                  <Input name="contract_start_date" label="Contract Start Date" type="date" />
-                  <Input name="contract_end_date" label="Contract End Date" type="date" />
+                  <Input name="contract_start_date" label="Issue Date" type="date" />
+                  <Input name="contract_end_date" label="Expiry Date" type="date" />
                 </div>
               </div>
 
-              {/* Amount, Staff & Guarantee */}
-              <div className="space-y-2">
+              {/* Column 2: Workman Compensation — Directly aligned beside Agreement */}
+              <div className="bg-white border border-indigo-200/80 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
+                <span className="text-[10.5px] font-bold uppercase tracking-wider text-indigo-800 flex items-center gap-1">
+                  <Shield size={11} className="text-indigo-600" />
+                  Workman Compensation
+                </span>
+                <InputFieldWithUpload
+                  name="workmen_comp_policy_no"
+                  label="Workman Compensation"
+                  placeholder="Policy number e.g. WC-DXB-9842"
+                  category="workmen_compensation"
+                  documents={addDocs}
+                  onAttach={files => handleFileUpload(files, 'workmen_compensation', setAddDocs)}
+                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onPreview={doc => setPreviewDoc(doc)}
+                />
+                <div className="p-2 rounded-xl bg-indigo-50/60 border border-indigo-100 text-[11px] text-indigo-900/90 font-medium leading-relaxed">
+                  Compulsory labor compensation policy covering crew injury & workplace safety liability.
+                </div>
+              </div>
+
+              {/* Column 3: Amount, Staff & Staff Replacement */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
+                <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                  <Users size={11} className="text-teal-600" />
+                  Staffing & Guarantee
+                </span>
                 <Input name="contracted_amount" label="Contract Amount (AED)" type="number" placeholder="e.g. 5000" />
                 <div className="grid grid-cols-2 gap-2">
                   <Input name="quota_cleaners" label="Recruited Staff" type="number" placeholder="e.g. 5" />
                   <div>
-                    <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Staff Replacement Guarantee</label>
+                    <label className="text-xs font-medium text-slate-600 block mb-1">Staff Replacement</label>
                     <select
                       value={addReplacementGuarantee}
                       onChange={e => setAddReplacementGuarantee(e.target.value as any)}
-                      className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
+                      className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
                     >
                       <option value="Yes">Yes (Guaranteed)</option>
                       <option value="No">No (Not Included)</option>
@@ -1740,61 +1948,55 @@ export function Agencies() {
                 </div>
               </div>
 
-              {/* Terms & Insurance */}
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Payment Terms</label>
-                    <select
-                      value={addPaymentTerms}
-                      onChange={e => setAddPaymentTerms(e.target.value)}
-                      className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                    >
-                      <option value="Monthly">Monthly</option>
-                      <option value="Weekly">Weekly</option>
-                      <option value="Bi-Weekly">Bi-Weekly</option>
-                      <option value="Monthly (Net 15)">Monthly (Net 15)</option>
-                      <option value="Monthly (Net 30)">Monthly (Net 30)</option>
-                      <option value="Advance">Advance Paid</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Termination Notice Period</label>
-                    <select
-                      value={addTerminationNotice}
-                      onChange={e => setAddTerminationNotice(e.target.value)}
-                      className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                    >
-                      <option value="1 Month">1 Month Notice</option>
-                      <option value="2 Months">2 Months Notice</option>
-                      <option value="15 Days">15 Days Notice</option>
-                      <option value="3 Months">3 Months Notice</option>
-                      <option value="Immediate">Immediate</option>
-                    </select>
-                  </div>
+              {/* Column 4: Payment Terms & Termination Notice */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
+                <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                  <FileText size={11} className="text-teal-600" />
+                  Payment & Termination
+                </span>
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Payment</label>
+                  <select
+                    value={addPaymentTerms}
+                    onChange={e => setAddPaymentTerms(e.target.value)}
+                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
+                  >
+                    <option value="Monthly">Monthly</option>
+                    <option value="Weekly">Weekly</option>
+                    <option value="Bi-Weekly">Bi-Weekly</option>
+                    <option value="Monthly (Net 15)">Monthly (Net 15)</option>
+                    <option value="Monthly (Net 30)">Monthly (Net 30)</option>
+                    <option value="Advance">Advance Paid</option>
+                  </select>
                 </div>
-                <InputFieldWithUpload
-                  name="workmen_comp_policy_no"
-                  label="Workmen's Compensation Insurance"
-                  placeholder="Policy number"
-                  category="workmen_compensation"
-                  documents={addDocs}
-                  onAttach={files => handleFileUpload(files, 'workmen_compensation', setAddDocs)}
-                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
-                  onPreview={doc => setPreviewDoc(doc)}
-                />
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Termination Notice</label>
+                  <select
+                    value={addTerminationNotice}
+                    onChange={e => setAddTerminationNotice(e.target.value)}
+                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
+                  >
+                    <option value="1 Month">1 Month Notice</option>
+                    <option value="2 Months">2 Months Notice</option>
+                    <option value="15 Days">15 Days Notice</option>
+                    <option value="3 Months">3 Months Notice</option>
+                    <option value="Immediate">Immediate</option>
+                  </select>
+                </div>
               </div>
+            </div>
+          </div>
 
-              {/* Disbursement Bank Account */}
-              <div className="space-y-2 p-2.5 rounded-xl bg-white border border-slate-200/80">
-                <p className="text-[10.5px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                  <CreditCard size={11} className="text-slate-500" />
-                  <span>Disbursement Bank Account</span>
-                </p>
-                <Input name="bank_name" label="Bank Name" placeholder="e.g. Emirates NBD" />
-                <Input name="account_title" label="Account Title" placeholder="As per bank records" />
-                <Input name="iban" label="IBAN" placeholder="AE07 0331 2345 6789 0123 456" />
-              </div>
+          {/* ── Row 4: Distribution Bank Account (At the very end of pop-up) ── */}
+          <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+            <h4 className="text-[12px] font-black uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+              <CreditCard size={13} className="text-teal-600" />
+              <span>Distribution Bank Account</span>
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+              <Input name="bank_name" label="Bank Name" placeholder="e.g. Emirates NBD" />
+              <Input name="account_title" label="Account Title" placeholder="As per bank records" />
+              <Input name="iban" label="IBAN" placeholder="AE07 0331 2345 6789 0123 456" />
             </div>
           </div>
         </form>
@@ -2069,11 +2271,11 @@ export function Agencies() {
 
                   {/* Staff Replacement Guarantee Yes/No */}
                   <div>
-                    <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Replacement Guarantee</label>
+                    <label className="text-xs font-medium text-slate-600 block mb-1">Staff Replacement</label>
                     <select
                       value={editReplacementGuarantee}
                       onChange={e => setEditReplacementGuarantee(e.target.value as any)}
-                      className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
+                      className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
                     >
                       <option value="Yes">Yes (Guaranteed)</option>
                       <option value="No">No (Not Included)</option>
@@ -2084,7 +2286,7 @@ export function Agencies() {
                 {/* Agreement Field & Integrated Upload */}
                 <InputFieldWithUpload
                   name="contract_ref"
-                  label="Agreement / Contract Ref"
+                  label="Agreement"
                   defaultValue={editingAgency.contract_ref}
                   placeholder="e.g. AGR-2024-ALSAFA-08"
                   category="agreement"
@@ -2095,18 +2297,18 @@ export function Agencies() {
                 />
 
                 <div className="grid grid-cols-2 gap-2">
-                  <Input name="contract_start_date" label="Start Date" type="date" defaultValue={editingAgency.contract_start_date} />
-                  <Input name="contract_end_date" label="End Date" type="date" defaultValue={editingAgency.contract_end_date} />
+                  <Input name="contract_start_date" label="Issue Date" type="date" defaultValue={editingAgency.contract_start_date} />
+                  <Input name="contract_end_date" label="Expiry Date" type="date" defaultValue={editingAgency.contract_end_date} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   {/* Payment Term */}
                   <div>
-                    <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Payment Term</label>
+                    <label className="text-xs font-medium text-slate-600 block mb-1">Payment</label>
                     <select
                       value={editPaymentTerms}
                       onChange={e => setEditPaymentTerms(e.target.value)}
-                      className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
+                      className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
                     >
                       <option value="Monthly">Monthly</option>
                       <option value="Weekly">Weekly</option>
@@ -2119,11 +2321,11 @@ export function Agencies() {
 
                   {/* Termination Notice Period */}
                   <div>
-                    <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Termination Notice</label>
+                    <label className="text-xs font-medium text-slate-600 block mb-1">Termination Notice</label>
                     <select
                       value={editTerminationNotice}
                       onChange={e => setEditTerminationNotice(e.target.value)}
-                      className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
+                      className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
                     >
                       <option value="1 Month">1 Month Notice</option>
                       <option value="2 Months">2 Months Notice</option>
@@ -2208,6 +2410,220 @@ export function Agencies() {
           </div>
         </Modal>
       )}
+
+      {/* ── Live Cleaners & Job Duties Modal ── */}
+      <Modal
+        open={showLiveCleanersModal}
+        onClose={() => {
+          setShowLiveCleanersModal(false)
+          setLiveCleanersSearch('')
+          setLiveCleanersAgencyFilter('all')
+        }}
+        title={`Live Working Cleaners & Job Duties (${liveCleanersData.length})`}
+        size="xl"
+        headerActions={
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/daily-job-sheet')}
+              className="h-8 px-3 text-[11.5px] font-bold text-teal-700 hover:text-teal-800 border-teal-200 hover:bg-teal-50 flex items-center gap-1 cursor-pointer"
+            >
+              <span>Daily Job Sheet</span>
+              <ArrowUpRight size={12} />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setShowLiveCleanersModal(false)
+                setLiveCleanersSearch('')
+                setLiveCleanersAgencyFilter('all')
+              }}
+              className="h-8 px-3 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+            >
+              Close
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {/* Subtitle / Context strip */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-2xl bg-gradient-to-r from-teal-50/70 to-emerald-50/50 border border-teal-100 text-[12.5px]">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <span className="text-slate-700 font-medium">
+                Live roster and assigned shifts synced for <strong>{formatDate(targetLiveDate)}</strong>.
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-[11.5px] font-bold text-slate-600">
+              <span>Cleaners: <strong className="text-slate-900">{liveCleanersData.length}</strong></span>
+              <span>Total Duties: <strong className="text-slate-900">{liveCleanersData.reduce((acc, c) => acc + c.duties.length, 0)}</strong></span>
+              <span>Duty Hours: <strong className="text-teal-700">{liveCleanersData.reduce((acc, c) => acc + c.totalDutyHours, 0)}h</strong></span>
+            </div>
+          </div>
+
+          {/* Search & Agency Filter */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            <div className="relative flex-1">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search cleaner name, agency, client, or area..."
+                value={liveCleanersSearch}
+                onChange={e => setLiveCleanersSearch(e.target.value)}
+                className="w-full text-[12px] pl-8.5 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800"
+              />
+              {liveCleanersSearch && (
+                <button
+                  type="button"
+                  onClick={() => setLiveCleanersSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            <select
+              value={liveCleanersAgencyFilter}
+              onChange={e => setLiveCleanersAgencyFilter(e.target.value)}
+              className="text-[12px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-700 cursor-pointer"
+            >
+              <option value="all">🏢 All Agencies ({liveCleanersData.length})</option>
+              {Array.from(new Set(liveCleanersData.map(c => c.agencyName))).map(agName => {
+                const count = liveCleanersData.filter(c => c.agencyName === agName).length
+                return (
+                  <option key={agName} value={agName}>
+                    {agName} ({count})
+                  </option>
+                )
+              })}
+            </select>
+          </div>
+
+          {/* Cleaners List */}
+          {(() => {
+            const q = liveCleanersSearch.toLowerCase().trim()
+            const filteredCleaners = liveCleanersData.filter(c => {
+              if (liveCleanersAgencyFilter !== 'all' && c.agencyName !== liveCleanersAgencyFilter) return false
+              if (!q) return true
+              return (
+                c.cleanerName.toLowerCase().includes(q) ||
+                c.agencyName.toLowerCase().includes(q) ||
+                c.duties.some(d =>
+                  d.clientName.toLowerCase().includes(q) ||
+                  d.area.toLowerCase().includes(q) ||
+                  d.service.toLowerCase().includes(q)
+                )
+              )
+            })
+
+            if (filteredCleaners.length === 0) {
+              return (
+                <div className="p-10 text-center bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                  <Users size={32} className="mx-auto text-slate-400" />
+                  <p className="text-[14px] font-bold text-slate-700">No Live Cleaners Matching Filters</p>
+                  <p className="text-[12px] text-slate-500 max-w-sm mx-auto">
+                    {liveCleanersData.length === 0
+                      ? `No cleaners have shifts scheduled in the Daily Job Sheet for ${formatDate(targetLiveDate)}.`
+                      : 'Try clearing your search query or selecting "All Agencies" to view all active cleaners.'}
+                  </p>
+                </div>
+              )
+            }
+
+            return (
+              <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                {filteredCleaners.map(cleaner => (
+                  <div
+                    key={cleaner.cleanerName}
+                    className="p-4 rounded-2xl border border-slate-200/90 bg-white hover:border-teal-300 hover:shadow-xs transition-all space-y-3"
+                  >
+                    {/* Cleaner Header Row */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-800 font-black text-[13px] flex items-center justify-center border border-teal-200/70 shrink-0">
+                          {cleaner.cleanerName.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-[14px] font-black text-slate-900">
+                              {cleaner.cleanerName}
+                            </h4>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              <span>{cleaner.status}</span>
+                            </span>
+                          </div>
+                          <p className="text-[12px] text-slate-500 font-medium flex items-center gap-1 mt-0.5">
+                            <Building2 size={12} className="text-teal-600 shrink-0" />
+                            <span className="font-semibold text-slate-700">{cleaner.agencyName}</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                        <span className="text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-xl flex items-center gap-1.5">
+                          <Clock size={12} className="text-teal-600" />
+                          <span><strong>{cleaner.totalDutyHours}h</strong> Duty</span>
+                        </span>
+                        <span className="text-[11px] font-bold text-teal-800 bg-teal-50 border border-teal-200/80 px-2.5 py-1 rounded-xl">
+                          {cleaner.duties.length} {cleaner.duties.length === 1 ? 'Shift' : 'Shifts'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Assigned Job Duties */}
+                    <div className="space-y-1.5">
+                      <p className="text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">
+                        Assigned Duties & Locations:
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {cleaner.duties.map((duty, idx) => (
+                          <div
+                            key={duty.id || idx}
+                            className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/70 text-[12px] space-y-1.5"
+                          >
+                            <div className="flex items-center justify-between gap-1 text-[11.5px]">
+                              <span className="font-black text-slate-900 flex items-center gap-1">
+                                <Clock size={12} className="text-teal-600" />
+                                <span>{duty.timeStr}</span>
+                              </span>
+                              <span className="font-bold text-[10px] uppercase px-1.5 py-0.5 rounded-md bg-teal-100 text-teal-800">
+                                {duty.dutyHours}h Duty
+                              </span>
+                            </div>
+
+                            <div className="flex items-start gap-1.5 text-slate-700">
+                              <MapPin size={12} className="text-teal-600 shrink-0 mt-0.5" />
+                              <div className="truncate">
+                                <span className="font-bold text-slate-900 block truncate">{duty.clientName}</span>
+                                <span className="text-[11px] text-slate-500 truncate block">{duty.area}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-200/50">
+                              <span className="text-slate-500 font-medium truncate">{duty.service}</span>
+                              {duty.charges ? (
+                                <span className="font-bold text-emerald-800 shrink-0">
+                                  AED {duty.charges} {duty.paymentMode ? `(${duty.paymentMode})` : ''}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+        </div>
+      </Modal>
 
       {/* ── Delete Confirmation Modal ── */}
       {deleteTarget && (
