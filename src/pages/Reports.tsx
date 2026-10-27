@@ -171,10 +171,19 @@ export function Reports() {
     .sort((a, b) => b.salary - a.salary)
   const totalPayroll = payrollRows.reduce((s, r) => s + r.salary, 0)
 
+function formatReportRole(role: string | undefined): string {
+  if (!role) return 'Cleaner'
+  if (role === 'technical' || role === 'ducting') return 'Technical'
+  if (role === 'driver') return 'Driver'
+  if (role === 'crew_lead' || role === 'supervisor') return 'Supervisor'
+  if (role === 'store_cleaner') return 'Store Cleaner'
+  return 'Cleaner'
+}
+
   function exportPayroll() {
     const ws = XLSX.utils.json_to_sheet(payrollRows.map(r => ({
       'Employee':        r.emp.full_name,
-      'Role':            r.emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner',
+      'Role':            formatReportRole(r.emp.role),
       'Jobs Logged':     r.jobCount,
       'Hours Worked':    r.hours,
       'Rate (AED/hr)':   r.emp.pay_rate_hourly,
@@ -531,8 +540,13 @@ export function Reports() {
                     <p className="text-[11px] text-slate-400">{emp.nationality}</p>
                   </td>
                   <td className="px-5 py-3.5">
-                    <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${emp.role === 'crew_lead' ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
-                      {emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}
+                    <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${
+                      emp.role === 'crew_lead' || emp.role === 'supervisor' ? 'bg-purple-50 text-purple-700' :
+                      emp.role === 'driver' ? 'bg-amber-50 text-amber-800' :
+                      emp.role === 'technical' || emp.role === 'ducting' ? 'bg-indigo-50 text-indigo-700' :
+                      'bg-slate-100 text-slate-600'
+                    }`}>
+                      {formatReportRole(emp.role)}
                     </span>
                   </td>
                   <td className="px-5 py-3.5 text-slate-600">{jobCount}</td>

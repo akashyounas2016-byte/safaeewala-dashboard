@@ -247,7 +247,13 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
   const filteredStaff = useMemo(() => {
     const q = staffSearch.toLowerCase().trim()
     return agencyStaff.filter(emp => {
-      if (roleFilter !== 'all' && emp.role !== roleFilter) return false
+      if (roleFilter !== 'all') {
+        if (roleFilter === 'technical' || roleFilter === 'ducting') {
+          if (emp.role !== 'technical' && emp.role !== 'ducting') return false
+        } else if (emp.role !== roleFilter) {
+          return false
+        }
+      }
       if (!q) return true
       return (
         (emp.full_name || '').toLowerCase().includes(q) ||
@@ -972,7 +978,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                 <option value="cleaner">Cleaners</option>
                 <option value="crew_lead">Crew Leads / Supervisors</option>
                 <option value="driver">Drivers</option>
-                <option value="ducting">Ducting</option>
+                <option value="technical">Technical</option>
                 <option value="store_cleaner">Store Cleaners</option>
               </select>
 
@@ -1095,7 +1101,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                           {/* Role */}
                           <td className="py-3.5 px-4">
                             <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 capitalize">
-                              {(emp.role || 'cleaner').replace('_', ' ')}
+                              {(emp.role === 'ducting' || emp.role === 'technical') ? 'Technical' : (emp.role || 'cleaner').replace('_', ' ')}
                             </span>
                           </td>
 
@@ -2665,7 +2671,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
               <option value="cleaner">Cleaner</option>
               <option value="crew_lead">Supervisor / Crew Lead</option>
               <option value="driver">Driver</option>
-              <option value="ducting">Ducting Tech</option>
+              <option value="technical">Technical</option>
               <option value="store_cleaner">Store Cleaner</option>
             </Select>
           </div>
@@ -3256,7 +3262,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-lg font-black text-slate-900">{profileStaff.full_name}</h3>
                     <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 capitalize border border-slate-200/80">
-                      {(profileStaff.role || 'cleaner').replace('_', ' ')}
+                      {(profileStaff.role === 'ducting' || profileStaff.role === 'technical') ? 'Technical' : (profileStaff.role || 'cleaner').replace('_', ' ')}
                     </span>
                     <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border ${
                       todayJob

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useMemo } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { NotificationCenter } from '@/components/NotificationCenter'
 import { Menu, Bot, Sparkles, AlertTriangle, ChevronRight } from 'lucide-react'
@@ -17,6 +17,7 @@ export const LayoutContext = createContext<{
 export const useLayout = () => useContext(LayoutContext)
 
 export function Layout() {
+  const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
@@ -155,7 +156,7 @@ export function Layout() {
                 </div>
               )}
 
-              <ErrorBoundary>
+              <ErrorBoundary key={location.pathname}>
                 <Outlet />
               </ErrorBoundary>
             </div>

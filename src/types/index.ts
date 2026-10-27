@@ -65,7 +65,21 @@ export interface Client {
   created_at: string
 }
 
-export type EmployeeRole = 'cleaner' | 'supervisor' | 'crew_lead' | 'ducting' | 'store_cleaner' | 'driver'
+export type EmployeeRole = 'cleaner' | 'supervisor' | 'crew_lead' | 'ducting' | 'technical' | 'store_cleaner' | 'driver'
+
+export interface EmployeeDocument {
+  id: string
+  name: string
+  category: 'eid' | 'passport' | 'visa' | 'work_permit' | 'driving_license' | 'medical_insurance' | 'noc' | 'other'
+  file_data?: string // data URL or base64 string
+  file_type?: string
+  file_size?: number
+  uploaded_at: string
+  start_date?: string
+  end_date?: string
+  document_number?: string
+  notes?: string
+}
 
 export interface AgencyCommissionPayout {
   id: string
@@ -156,21 +170,70 @@ export interface Employee {
   phone: string
   email?: string
   role: EmployeeRole
+  designation?: string
+  gender?: 'male' | 'female' | 'other' | string
   nationality: string
+
+  // Emirates ID (EID)
   emirates_id: string
-  visa_expiry: string
-  work_permit_expiry: string
-  medical_insurance_expiry?: string
+  eid_start_date?: string
+  eid_end_date?: string
+  eid_file?: string
+
+  // Passport
+  passport_number?: string
+  passport_start_date?: string
   passport_expiry: string
-  skills: string[]
-  status: 'active' | 'on_leave' | 'inactive' | 'engaged_in_project'
+  passport_end_date?: string
+  passport_file?: string
+
+  // Visa
+  visa_number?: string
+  visa_start_date?: string
+  visa_expiry: string
+  visa_end_date?: string
+  visa_file?: string
+
+  // Work Permit
+  work_permit_number?: string
+  work_permit_start_date?: string
+  work_permit_expiry: string
+  work_permit_end_date?: string
+  work_permit_file?: string
+
+  // Driving License (for Drivers)
+  driving_license_no?: string
+  driving_license_place_of_issue?: string
+  driving_license_issue_date?: string
+  driving_license_expiry_date?: string
+  driving_license_type?: string
+  driving_license_file?: string
+  assigned_vehicle?: string
+
+  // Financial & Insurance / NOC Terms
   pay_rate_hourly: number
   monthly_salary?: number
+  medical_insurance?: string
+  medical_insurance_expiry?: string
+  medical_insurance_file?: string
   joined_date: string
   end_date?: string
+  noc?: string
+  noc_file?: string
+
+  status: 'active' | 'on_leave' | 'inactive' | 'engaged_in_project'
+
+  // Cleaners & Technical
+  skills: string[]
+  assigned_client_ids?: string[]
+
+  // Sourcing Agency
   agency_id?: string
   agency_name?: string
-  assigned_client_ids?: string[]
+
+  // Attached Documents History
+  documents?: EmployeeDocument[]
+
   created_at: string
 }
 

@@ -13,19 +13,11 @@ import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData, defaultAgencies } from '@/store/DataContext'
 import type { Agency, AgencyContactPerson, AgencyDocument } from '@/types'
-import { formatDate, isThirdPartyEmployee, isParentCompanyEmployee } from '@/lib/utils'
+import { formatDate, isThirdPartyEmployee, isParentCompanyEmployee, slugifyAgencyName } from '@/lib/utils'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { AgencyDashboard } from '@/components/agencies/AgencyDashboard'
 
-export function slugifyAgencyName(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/&/g, '')
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
+export { slugifyAgencyName }
 
 // ── Curated Distinct Light Color Themes for Agency Widgets ──
 export const LIGHT_AGENCY_CARD_THEMES = [

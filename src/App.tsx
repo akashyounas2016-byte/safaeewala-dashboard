@@ -10,32 +10,61 @@ import { SimpleAuthProvider, useSimpleAuth, isLocalEnvironment } from '@/lib/sim
 import { Login } from '@/pages/Login'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
+// ── Resilient Lazy Loading for Dynamic Imports (Handles Vite HMR & Server restarts) ──
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+) {
+  return lazy(async () => {
+    try {
+      return await factory()
+    } catch (error: any) {
+      const errMsg = error?.message || ''
+      const isDynamicImportFailure =
+        errMsg.includes('Failed to fetch dynamically imported module') ||
+        errMsg.includes('Importing a module script failed') ||
+        error?.name === 'ChunkLoadError'
+
+      if (isDynamicImportFailure) {
+        const reloadKey = 'vite_lazy_retry_' + window.location.pathname
+        const alreadyRetried = sessionStorage.getItem(reloadKey)
+        if (!alreadyRetried) {
+          sessionStorage.setItem(reloadKey, '1')
+          window.location.reload()
+          return new Promise<{ default: T }>(() => {})
+        }
+        sessionStorage.removeItem(reloadKey)
+      }
+      throw error
+    }
+  })
+}
+
 // ── Lazy Loaded Page Components for Maximum Performance ──
-const Overview               = lazy(() => import('@/pages/Overview').then(m => ({ default: m.Overview })))
-const Bookings               = lazy(() => import('@/pages/Bookings').then(m => ({ default: m.Bookings })))
-const FluentFormsLeads       = lazy(() => import('@/pages/FluentFormsLeads').then(m => ({ default: m.FluentFormsLeads })))
-const WhatsAppCRM            = lazy(() => import('@/pages/WhatsAppCRM').then(m => ({ default: m.WhatsAppCRM })))
-const Clients                = lazy(() => import('@/pages/Clients').then(m => ({ default: m.Clients })))
-const ClientProfile          = lazy(() => import('@/pages/ClientProfile').then(m => ({ default: m.ClientProfile })))
-const Employees              = lazy(() => import('@/pages/Employees').then(m => ({ default: m.Employees })))
-const EmployeeProfile        = lazy(() => import('@/pages/EmployeeProfile').then(m => ({ default: m.EmployeeProfile })))
-const Agencies               = lazy(() => import('@/pages/Agencies').then(m => ({ default: m.Agencies })))
-const AgencyProfile          = lazy(() => import('@/pages/AgencyProfile').then(m => ({ default: m.AgencyProfile })))
-const PaymentProcessing      = lazy(() => import('@/pages/PaymentProcessing').then(m => ({ default: m.PaymentProcessing })))
-const CustomerFeedback       = lazy(() => import('@/pages/CustomerFeedback').then(m => ({ default: m.CustomerFeedback })))
-const MarketingDashboard     = lazy(() => import('@/pages/MarketingDashboard').then(m => ({ default: m.MarketingDashboard })))
-const BusinessAnalytics      = lazy(() => import('@/pages/BusinessAnalytics').then(m => ({ default: m.BusinessAnalytics })))
-const MonthlyInvoices        = lazy(() => import('@/pages/MonthlyInvoices').then(m => ({ default: m.MonthlyInvoices })))
-const MonthlyClients         = lazy(() => import('@/pages/MonthlyClients').then(m => ({ default: m.MonthlyClients })))
-const Invoices               = lazy(() => import('@/pages/Invoices').then(m => ({ default: m.Invoices })))
-const Inventory              = lazy(() => import('@/pages/Inventory').then(m => ({ default: m.Inventory })))
-const Expenses               = lazy(() => import('@/pages/Expenses').then(m => ({ default: m.Expenses })))
-const Reports                = lazy(() => import('@/pages/Reports').then(m => ({ default: m.Reports })))
-const Settings               = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })))
-const DailyJobSheet          = lazy(() => import('@/pages/DailyJobSheet').then(m => ({ default: m.DailyJobSheet })))
-const JobSheetSpreadsheet     = lazy(() => import('@/pages/JobSheetSpreadsheet').then(m => ({ default: m.JobSheetSpreadsheet })))
-const PendingPayments        = lazy(() => import('@/pages/PendingPayments').then(m => ({ default: m.PendingPayments })))
-const Attendance             = lazy(() => import('@/pages/Attendance').then(m => ({ default: m.Attendance })))
+const Overview               = lazyWithRetry(() => import('@/pages/Overview').then(m => ({ default: m.Overview })))
+const Bookings               = lazyWithRetry(() => import('@/pages/Bookings').then(m => ({ default: m.Bookings })))
+const FluentFormsLeads       = lazyWithRetry(() => import('@/pages/FluentFormsLeads').then(m => ({ default: m.FluentFormsLeads })))
+const WhatsAppCRM            = lazyWithRetry(() => import('@/pages/WhatsAppCRM').then(m => ({ default: m.WhatsAppCRM })))
+const Clients                = lazyWithRetry(() => import('@/pages/Clients').then(m => ({ default: m.Clients })))
+const ClientProfile          = lazyWithRetry(() => import('@/pages/ClientProfile').then(m => ({ default: m.ClientProfile })))
+const Employees              = lazyWithRetry(() => import('@/pages/Employees').then(m => ({ default: m.Employees })))
+const EmployeeProfile        = lazyWithRetry(() => import('@/pages/EmployeeProfile').then(m => ({ default: m.EmployeeProfile })))
+const Agencies               = lazyWithRetry(() => import('@/pages/Agencies').then(m => ({ default: m.Agencies })))
+const AgencyProfile          = lazyWithRetry(() => import('@/pages/AgencyProfile').then(m => ({ default: m.AgencyProfile })))
+const PaymentProcessing      = lazyWithRetry(() => import('@/pages/PaymentProcessing').then(m => ({ default: m.PaymentProcessing })))
+const CustomerFeedback       = lazyWithRetry(() => import('@/pages/CustomerFeedback').then(m => ({ default: m.CustomerFeedback })))
+const MarketingDashboard     = lazyWithRetry(() => import('@/pages/MarketingDashboard').then(m => ({ default: m.MarketingDashboard })))
+const BusinessAnalytics      = lazyWithRetry(() => import('@/pages/BusinessAnalytics').then(m => ({ default: m.BusinessAnalytics })))
+const MonthlyInvoices        = lazyWithRetry(() => import('@/pages/MonthlyInvoices').then(m => ({ default: m.MonthlyInvoices })))
+const MonthlyClients         = lazyWithRetry(() => import('@/pages/MonthlyClients').then(m => ({ default: m.MonthlyClients })))
+const Invoices               = lazyWithRetry(() => import('@/pages/Invoices').then(m => ({ default: m.Invoices })))
+const Inventory              = lazyWithRetry(() => import('@/pages/Inventory').then(m => ({ default: m.Inventory })))
+const Expenses               = lazyWithRetry(() => import('@/pages/Expenses').then(m => ({ default: m.Expenses })))
+const Reports                = lazyWithRetry(() => import('@/pages/Reports').then(m => ({ default: m.Reports })))
+const Settings               = lazyWithRetry(() => import('@/pages/Settings').then(m => ({ default: m.Settings })))
+const DailyJobSheet          = lazyWithRetry(() => import('@/pages/DailyJobSheet').then(m => ({ default: m.DailyJobSheet })))
+const JobSheetSpreadsheet     = lazyWithRetry(() => import('@/pages/JobSheetSpreadsheet').then(m => ({ default: m.JobSheetSpreadsheet })))
+const PendingPayments        = lazyWithRetry(() => import('@/pages/PendingPayments').then(m => ({ default: m.PendingPayments })))
+const Attendance             = lazyWithRetry(() => import('@/pages/Attendance').then(m => ({ default: m.Attendance })))
 
 type ProfileStatus = 'approved' | 'pending' | 'rejected'
 

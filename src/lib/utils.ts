@@ -132,3 +132,17 @@ export function isParentCompanyEmployee(e: { agency_id?: string; agency_name?: s
 export function isThirdPartyEmployee(e: { agency_id?: string; agency_name?: string; email?: string | null }): boolean {
   return !isParentCompanyEmployee(e)
 }
+
+/**
+ * Normalizes agency company name into a URL-friendly slug.
+ */
+export function slugifyAgencyName(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/&/g, '')
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+

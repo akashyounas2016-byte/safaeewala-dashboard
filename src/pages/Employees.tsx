@@ -3,10 +3,10 @@ import * as XLSX from 'xlsx'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import {
   Search, AlertTriangle, Phone, Shield, Users, UserCheck, Star,
-  TrendingUp, Trash2, CheckCircle, Upload, Download, FileSpreadsheet,
+  TrendingUp, Trash2, CheckCircle, CheckCircle2, Upload, Download, FileSpreadsheet,
   Clock, ExternalLink, FileText, Calendar, RotateCcw, X, Filter,
   Flame, Zap, Briefcase, ArrowUpDown, LayoutGrid, List, ChevronRight, ChevronDown,
-  DollarSign, Award, Sparkles, Building2, MapPin
+  DollarSign, Award, Sparkles, Building2, MapPin, Eye, Pencil
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -14,8 +14,9 @@ import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
-import type { Employee, DailyJob, EmployeeRole, Agency } from '@/types'
+import type { Employee, DailyJob, EmployeeRole, Agency, EmployeeDocument } from '@/types'
 import { getEmployeeDailyJobsHistory, calcJobOTHours, getEmployeeMonthlySalary, formatMonthlySalary, splitStaffNames, MONTHLY_WORK_HOURS } from '@/lib/clientDataSync'
+import { EmployeeDocumentSection, EmployeeDocumentPreviewModal } from '@/components/employees/EmployeeDocumentField'
 
 /* ─── Excel import/export helpers ─── */
 function toISODate(val: any): string {
@@ -30,7 +31,7 @@ function toISODate(val: any): string {
 function parseEmpRole(v: string): EmployeeRole {
   const s = v?.toLowerCase().trim() ?? ''
   if (s === 'supervisor' || s === 'crew_lead' || s === 'crew lead' || s === 'lead') return 'supervisor'
-  if (s === 'ducting' || s === 'duct') return 'ducting'
+  if (s === 'ducting' || s === 'duct' || s === 'technical' || s === 'technician') return 'technical'
   if (s === 'store_cleaner' || s === 'store cleaner' || s === 'store') return 'store_cleaner'
   if (s === 'driver') return 'driver'
   return 'cleaner'
@@ -38,7 +39,7 @@ function parseEmpRole(v: string): EmployeeRole {
 
 function formatEmpRole(role?: string): string {
   if (role === 'supervisor' || role === 'crew_lead') return 'Supervisor'
-  if (role === 'ducting') return 'Ducting'
+  if (role === 'ducting' || role === 'technical') return 'Technical'
   if (role === 'store_cleaner') return 'Store Cleaner'
   if (role === 'driver') return 'Driver'
   return 'Cleaner'
@@ -48,7 +49,7 @@ function getRoleBadgeStyle(role?: string) {
   if (role === 'supervisor' || role === 'crew_lead') {
     return 'bg-indigo-50 text-indigo-700 border-indigo-200'
   }
-  if (role === 'ducting') {
+  if (role === 'ducting' || role === 'technical') {
     return 'bg-cyan-50 text-cyan-700 border-cyan-200'
   }
   if (role === 'store_cleaner') {
@@ -251,7 +252,7 @@ export function Employees() {
   }
 
   const [search, setSearch] = useState('')
-  const [roleFilter, setRoleFilter] = useState<'all' | 'cleaner' | 'supervisor' | 'crew_lead' | 'ducting' | 'store_cleaner' | 'driver'>('all')
+  const [roleFilter, setRoleFilter] = useState<'all' | 'cleaner' | 'supervisor' | 'crew_lead' | 'ducting' | 'technical' | 'store_cleaner' | 'driver'>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'on_leave'>('all')
   const [workFilter, setWorkFilter] = useState<'all' | 'has_ot' | 'high_ot' | 'working_today'>('all')
   const [expiryFilter, setExpiryFilter] = useState(false)
@@ -273,6 +274,34 @@ export function Employees() {
   const [clientSearchAdd, setClientSearchAdd] = useState('')
   const [clientSearchEdit, setClientSearchEdit] = useState('')
 
+  // Role and Document Attachment States for Add & Edit Pop-ups
+  const [addRole, setAddRole] = useState<EmployeeRole>('cleaner')
+  const [editRole, setEditRole] = useState<EmployeeRole>('cleaner')
+  const [addDocs, setAddDocs] = useState<Record<string, EmployeeDocument>>({})
+  const [editDocs, setEditDocs] = useState<Record<string, EmployeeDocument>>({})
+  const [previewDoc, setPreviewDoc] = useState<EmployeeDocument | null>(null)
+
+  const handleDocUpload = (
+    file: File,
+    category: EmployeeDocument['category'],
+    setTargetDocs: React.Dispatch<React.SetStateAction<Record<string, EmployeeDocument>>>
+  ) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const doc: EmployeeDocument = {
+        id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        name: file.name,
+        category,
+        file_data: reader.result as string,
+        file_type: file.type,
+        file_size: file.size,
+        uploaded_at: new Date().toISOString(),
+      }
+      setTargetDocs(prev => ({ ...prev, [category]: doc }))
+    }
+    reader.readAsDataURL(file)
+  }
+
   const handleSelectEmployee = (emp: typeof employees[0]) => {
     setSelected(emp)
     setEditClientIds(emp.assigned_client_ids || [])
@@ -282,12 +311,47 @@ export function Employees() {
 
   const handleStartEdit = (emp: typeof employees[0]) => {
     setSelected(emp)
+    const normRole = (emp.role === 'crew_lead' ? 'supervisor' : emp.role === 'ducting' ? 'technical' : emp.role) as EmployeeRole
+    setEditRole(normRole || 'cleaner')
     setEditClientIds(emp.assigned_client_ids || [])
     setClientSearchEdit('')
+
+    // Populate existing docs into editDocs
+    const docsMap: Record<string, EmployeeDocument> = {}
+    if (emp.documents && Array.isArray(emp.documents)) {
+      emp.documents.forEach(d => {
+        docsMap[d.category] = d
+      })
+    }
+    // Synthesize from existing individual document file fields if not already in documents
+    if (emp.eid_file && !docsMap.eid) {
+      docsMap.eid = { id: `eid-${emp.id}`, name: 'Emirates_ID_Document', category: 'eid', file_data: emp.eid_file, uploaded_at: emp.created_at }
+    }
+    if (emp.passport_file && !docsMap.passport) {
+      docsMap.passport = { id: `pass-${emp.id}`, name: 'Passport_Document', category: 'passport', file_data: emp.passport_file, uploaded_at: emp.created_at }
+    }
+    if (emp.visa_file && !docsMap.visa) {
+      docsMap.visa = { id: `visa-${emp.id}`, name: 'Visa_Document', category: 'visa', file_data: emp.visa_file, uploaded_at: emp.created_at }
+    }
+    if (emp.work_permit_file && !docsMap.work_permit) {
+      docsMap.work_permit = { id: `wp-${emp.id}`, name: 'Work_Permit_Document', category: 'work_permit', file_data: emp.work_permit_file, uploaded_at: emp.created_at }
+    }
+    if (emp.driving_license_file && !docsMap.driving_license) {
+      docsMap.driving_license = { id: `dl-${emp.id}`, name: 'Driving_License_Document', category: 'driving_license', file_data: emp.driving_license_file, uploaded_at: emp.created_at }
+    }
+    if (emp.medical_insurance_file && !docsMap.medical_insurance) {
+      docsMap.medical_insurance = { id: `med-${emp.id}`, name: 'Medical_Insurance_Document', category: 'medical_insurance', file_data: emp.medical_insurance_file, uploaded_at: emp.created_at }
+    }
+    if (emp.noc_file && !docsMap.noc) {
+      docsMap.noc = { id: `noc-${emp.id}`, name: 'NOC_Document', category: 'noc', file_data: emp.noc_file, uploaded_at: emp.created_at }
+    }
+    setEditDocs(docsMap)
     setIsEditing(true)
   }
 
   const handleOpenAddModal = () => {
+    setAddRole('cleaner')
+    setAddDocs({})
     setAddClientIds([])
     setClientSearchAdd('')
     setShowModal(true)
@@ -423,7 +487,7 @@ export function Employees() {
     if (activeBooking) {
       return {
         code: 'scheduled',
-        label: activeBooking.status === 'in_progress' ? 'On Live Job' : 'Scheduled Today',
+        label: activeBooking.status === 'in_progress' ? 'On Live Job' : 'Scheduled',
         detail: activeBooking.service_address || 'Booking',
         bg: 'bg-teal-600 text-white border-teal-700',
         badgeBg: 'bg-teal-50 text-teal-800 border-teal-200',
@@ -432,7 +496,7 @@ export function Employees() {
 
     return {
       code: 'available',
-      label: 'Available / Standby',
+      label: 'Available',
       detail: 'No active job today',
       bg: 'bg-slate-100 text-slate-700 border-slate-200',
       badgeBg: 'bg-slate-50 text-slate-600 border-slate-200',
@@ -450,12 +514,38 @@ export function Employees() {
     if (agencyFilter !== 'all') {
       return employees.filter(e =>
         e.agency_id === agencyFilter ||
+        (e.agency_name && e.agency_name.toLowerCase().trim() === agencyFilter.toLowerCase().trim()) ||
         (e.agency_name && e.agency_name.toLowerCase().includes(agencyFilter.toLowerCase())) ||
         agencies.some(a => a.id === agencyFilter && (e.agency_id === a.id || e.agency_name === a.name))
       )
     }
     return employees
   }, [employees, agencyFilter, agencies])
+
+  // Dynamic list of Third-Party Agencies from database & employee records
+  const dynamicAgencies = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>()
+
+    // 1. From database agencies
+    agencies
+      .filter(a => a.company_type !== 'Parent Company' && a.id !== 'agency-safaeewala' && !a.name.toLowerCase().includes('safaeewala'))
+      .forEach(a => {
+        map.set(a.id, { id: a.id, name: a.name })
+      })
+
+    // 2. From employee records (if any additional third-party agency names exist)
+    employees.forEach(e => {
+      if (isThirdPartyEmployee(e) && e.agency_name) {
+        const agName = e.agency_name.trim()
+        const agId = e.agency_id || `agency-name-${agName.toLowerCase().replace(/\s+/g, '-')}`
+        if (!map.has(agId) && !Array.from(map.values()).some(item => item.name.toLowerCase() === agName.toLowerCase())) {
+          map.set(agId, { id: e.agency_id || agName, name: agName })
+        }
+      }
+    })
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }, [agencies, employees])
 
   // Summary aggregation metrics for actual employee work
   const summaryMetrics = useMemo(() => {
@@ -543,7 +633,9 @@ export function Employees() {
       const matchRole = roleFilter === 'all' || (
         roleFilter === 'supervisor'
           ? (e.role === 'supervisor' || e.role === 'crew_lead')
-          : e.role === roleFilter
+          : (roleFilter === 'technical' || roleFilter === 'ducting')
+            ? (e.role === 'technical' || e.role === 'ducting')
+            : e.role === roleFilter
       )
       const matchStatus = statusFilter === 'all' || e.status === statusFilter
 
@@ -604,11 +696,13 @@ export function Employees() {
       .slice(0, 5)
   }, [agencyScopedEmployees, staffJobStats])
 
-  /* Aggregate skills */
-  const skillCounts = employees.reduce((acc, e) => {
-    e.skills.forEach(s => { acc[s] = (acc[s] || 0) + 1 })
-    return acc
-  }, {} as Record<string, number>)
+  /* Aggregate skills scoped to selected agency */
+  const skillCounts = useMemo(() => {
+    return agencyScopedEmployees.reduce((acc, e) => {
+      e.skills.forEach(s => { acc[s] = (acc[s] || 0) + 1 })
+      return acc
+    }, {} as Record<string, number>)
+  }, [agencyScopedEmployees])
 
   /* ── 4 Reusable Intelligent Work & Duty Widgets ── */
   const renderOvertimeWidget = () => (
@@ -632,7 +726,7 @@ export function Employees() {
         <div className="text-center py-6 bg-slate-50 rounded-2xl border border-slate-100">
           <Clock size={20} className="mx-auto text-slate-300 mb-1.5" />
           <p className="text-[12px] font-bold text-slate-600">No Overtime in this period</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Change date filter to view past OT hours</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Change date filter or agency to view past OT hours</p>
         </div>
       ) : (
         <div className="space-y-2.5">
@@ -688,7 +782,7 @@ export function Employees() {
       </div>
 
       <div className="space-y-2.5">
-        {employees.slice(0, 6).map((emp, idx) => {
+        {agencyScopedEmployees.slice(0, 6).map((emp, idx) => {
           const todaySt = getTodayStatus(emp)
           const isWorking = todaySt.code === 'working' || todaySt.code === 'scheduled'
 
@@ -712,6 +806,14 @@ export function Employees() {
             </div>
           )
         })}
+
+        {agencyScopedEmployees.length === 0 && (
+          <div className="text-center py-6 bg-slate-50 rounded-2xl border border-slate-100">
+            <UserCheck size={20} className="mx-auto text-slate-300 mb-1" />
+            <p className="text-[12px] font-bold text-slate-600">No staff found</p>
+            <p className="text-[11px] text-slate-400">No employees found for this agency</p>
+          </div>
+        )}
       </div>
 
       <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-semibold">
@@ -751,7 +853,7 @@ export function Employees() {
       </div>
 
       <div className="space-y-2.5">
-        {employees
+        {agencyScopedEmployees
           .filter(e => {
             const days = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry))
             return days < 90
@@ -798,14 +900,14 @@ export function Employees() {
     <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-[14px] font-black text-slate-900">Skills Coverage</h3>
-        <span className="text-[11px] text-slate-400 font-semibold">{employees.length} Staff</span>
+        <span className="text-[11px] text-slate-400 font-semibold">{agencyScopedEmployees.length} Staff</span>
       </div>
       <div className="space-y-2.5">
         {Object.entries(skillCounts)
           .sort((a, b) => b[1] - a[1])
           .slice(0, 6)
           .map(([skill, count]) => {
-            const pct = Math.round((count / (employees.length || 1)) * 100)
+            const pct = Math.round((count / (agencyScopedEmployees.length || 1)) * 100)
             return (
               <div key={skill}>
                 <div className="flex items-center justify-between mb-1">
@@ -818,6 +920,12 @@ export function Employees() {
               </div>
             )
           })}
+        {Object.keys(skillCounts).length === 0 && (
+          <div className="text-center py-6 bg-slate-50 rounded-2xl border border-slate-100">
+            <p className="text-[12px] font-bold text-slate-600">No skills data available</p>
+            <p className="text-[11px] text-slate-400">No skills recorded for this agency's staff</p>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1277,30 +1385,6 @@ export function Employees() {
         onAction={handleOpenAddModal}
       />
 
-      {/* ── Compliance Alert Banner (if any) ── */}
-      {expiringCount > 0 && (
-        <div className="flex items-center justify-between gap-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-[22px] px-5 py-4 shadow-xs">
-          <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm shadow-amber-500/20">
-              <AlertTriangle size={18} />
-            </div>
-            <div>
-              <p className="text-[13.5px] font-bold text-amber-950">Document Expiry Alert</p>
-              <p className="text-[12px] text-amber-800 mt-0.5">
-                <strong>{expiringCount} employee{expiringCount > 1 ? 's have' : ' has'}</strong> Visas or Work Permits expiring within 90 days.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => { setExpiryFilter(true); setRoleFilter('all'); setWorkFilter('all') }}
-            className="px-3.5 py-1.5 rounded-xl bg-amber-200/70 hover:bg-amber-200 text-amber-900 text-[12px] font-bold transition-colors cursor-pointer shrink-0"
-          >
-            Review Alerts
-          </button>
-        </div>
-      )}
-
       {/* ── KPI Cards: Focused on Employees' Real Work, Duty Hours & OT ── */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
 
@@ -1404,26 +1488,46 @@ export function Employees() {
           <p className="text-[11px] text-slate-500 mt-0.5">Duty + Overtime combined</p>
         </div>
 
-        {/* Card 6: Compliance Health */}
+        {/* Card 6: Document Expiry (Clickable Filter) */}
         <div
-          onClick={() => { setExpiryFilter(prev => !prev); setRoleFilter('all'); setWorkFilter('all') }}
+          onClick={() => {
+            const next = !expiryFilter
+            setExpiryFilter(next)
+            if (next) {
+              setRoleFilter('all')
+              setWorkFilter('all')
+              setStatusFilter('all')
+            }
+            setTimeout(() => {
+              document.getElementById('employees-list-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            }, 80)
+          }}
           className={`rounded-[24px] border transition-all cursor-pointer p-4.5 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] ${
             expiryFilter
-              ? 'bg-rose-50 border-rose-300 ring-2 ring-rose-400/20'
-              : expiringCount > 0 ? 'bg-white border-amber-200/90' : 'bg-white border-slate-200/80'
+              ? 'bg-rose-50/90 border-rose-400 ring-2 ring-rose-400/30'
+              : expiringCount > 0 ? 'bg-white border-amber-300 hover:border-amber-400' : 'bg-white border-slate-200/80 hover:border-emerald-300'
           }`}
+          title="Click to view cleaners with expiring documents (<90 days)"
         >
           <div className="flex items-start justify-between mb-3">
-            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${expiringCount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+              expiryFilter ? 'bg-rose-500 text-white shadow-xs shadow-rose-500/30' :
+              expiringCount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'
+            }`}>
               <Shield size={18} />
             </div>
-            <span className={`text-[10.5px] font-extrabold px-2 py-0.5 rounded-full ${expiringCount > 0 ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
-              {expiringCount > 0 ? `${expiringCount} Pending` : '100% OK'}
+            <span className={`text-[10.5px] font-extrabold px-2 py-0.5 rounded-full ${
+              expiryFilter ? 'bg-rose-600 text-white' :
+              expiringCount > 0 ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+            }`}>
+              {expiryFilter ? 'Active Filter' : expiringCount > 0 ? `${expiringCount} Pending` : '100% OK'}
             </span>
           </div>
           <p className="text-2xl font-black text-[#0f172a] tracking-tight">{expiringCount}</p>
-          <p className="text-[12px] font-bold text-slate-800 mt-0.5">Doc Expirations</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">Within 90 days window</p>
+          <p className="text-[12px] font-bold text-slate-800 mt-0.5">Document Expiry</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            {expiryFilter ? 'Showing filtered list below' : 'Click to filter expiring (<90d)'}
+          </p>
         </div>
 
       </div>
@@ -1462,7 +1566,7 @@ export function Employees() {
               <option value="all">👥 All Roles</option>
               <option value="cleaner">🧹 Cleaners</option>
               <option value="supervisor">👔 Supervisors & Leads</option>
-              <option value="ducting">🔧 Ducting</option>
+              <option value="technical">🔧 Technical</option>
               <option value="store_cleaner">🏬 Store Cleaners</option>
               <option value="driver">🚗 Drivers</option>
             </select>
@@ -1480,20 +1584,20 @@ export function Employees() {
                   : 'bg-slate-50 hover:bg-slate-100/80 focus:bg-white border-slate-200 text-slate-800 focus:border-teal-600'
               }`}
             >
-              <option value="all">📅 All Time</option>
-              <option value="today">📅 Today</option>
-              <option value="yesterday">📅 Yesterday</option>
-              <option value="7days">📅 Last 7 Days</option>
-              <option value="30days">📅 Last 30 Days</option>
-              <option value="3months">📅 Last 3 Months</option>
-              <option value="6months">📅 Last 6 Months</option>
-              <option value="custom">📅 Custom Range</option>
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="7days">Last 7 Days</option>
+              <option value="30days">Last 30 Days</option>
+              <option value="3months">Last 3 Months</option>
+              <option value="6months">Last 6 Months</option>
+              <option value="custom">Custom Range</option>
             </select>
             <Calendar size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-teal-600 pointer-events-none" />
             <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
 
-          {/* 4. Sort & Agency Filter (Unified Single Dropdown) */}
+          {/* 4. Sort & Agency Filter (Dynamic Agency List from Database & Employees) */}
           <div className="relative min-w-[210px] shrink-0">
             <select
               value={agencyFilter !== 'all' ? `agency:${agencyFilter}` : sortBy}
@@ -1527,14 +1631,12 @@ export function Employees() {
               <optgroup label="🏢 Filter by Agency / Vendor">
                 <option value="agency:all">🌐 All Fleets & Agencies</option>
                 <option value="agency:third_party">🏢 Third-Party Agencies (Supplied Cleaners Only)</option>
-                <option value="agency:safaeewala">👑 Safaeewala</option>
-                {agencies
-                  .filter(a => a.company_type !== 'Parent Company' && a.id !== 'agency-safaeewala' && !a.name.toLowerCase().includes('safaeewala'))
-                  .map(ag => (
-                    <option key={ag.id} value={`agency:${ag.id}`}>
-                      🤝 {ag.name}
-                    </option>
-                  ))}
+                <option value="agency:safaeewala">👑 Safaeewala (Parent Company)</option>
+                {dynamicAgencies.map(ag => (
+                  <option key={ag.id} value={`agency:${ag.id}`}>
+                    🤝 {ag.name}
+                  </option>
+                ))}
               </optgroup>
             </select>
             <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -1646,7 +1748,35 @@ export function Employees() {
         </div>
       )}
 
+      {/* ── Active Document Expiry Filter Banner ── */}
+      {expiryFilter && (
+        <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-rose-50/90 via-amber-50/70 to-rose-50/90 border border-rose-300 rounded-2xl text-[12.5px] text-rose-950 shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-xs shadow-rose-600/30">
+              <Shield size={16} />
+            </div>
+            <div>
+              <p className="font-extrabold text-rose-950 leading-tight">
+                🛡️ Showing Cleaners & Staff with Document Expiry alerts (&lt;90 days or Expired)
+              </p>
+              <p className="text-[11.5px] text-rose-800 font-medium mt-0.5">
+                Displaying {filtered.length} staff member{filtered.length === 1 ? '' : 's'} requiring Visa, Passport, or Work Permit renewal.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExpiryFilter(false)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-rose-100 border border-rose-300 text-rose-900 font-bold text-[11.5px] transition-colors cursor-pointer shadow-2xs shrink-0"
+          >
+            <X size={13} />
+            <span>Clear Expiry Filter</span>
+          </button>
+        </div>
+      )}
+
       {/* ── Main Layout: Full Width Table View with Widgets Underneath OR Grid View ── */}
+      <div id="employees-list-section" className="scroll-mt-6">
       {viewMode === 'table' ? (
         <div className="space-y-6">
           {filtered.length === 0 ? (
@@ -1712,53 +1842,132 @@ export function Employees() {
           </div>
         </div>
       )}
+      </div>
 
       {/* ── Add Employee Modal ── */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="Add New Employee" size="lg">
-        <form className="space-y-4 max-h-[80vh] overflow-y-auto pr-1" onSubmit={e => {
+      <Modal open={showModal} onClose={() => setShowModal(false)} title="Add New Employee" size="xl">
+        <form className="space-y-4 max-h-[82vh] overflow-y-auto pr-1" onSubmit={e => {
           e.preventDefault()
           const fd = new FormData(e.currentTarget)
-          const role = (fd.get('role') as EmployeeRole) || 'cleaner'
+          const role = addRole
           const monthly_salary = Number(fd.get('monthly_salary')) || 0
           const agencyId = (fd.get('agency_id') as string) || ''
           const selAgency = agencies.find(a => a.id === agencyId)
+          const docsList: EmployeeDocument[] = Object.values(addDocs)
 
           addEmployee({
             full_name: fd.get('full_name') as string,
             phone: fd.get('phone') as string,
             role,
+            designation: formatEmpRole(role),
+            gender: (fd.get('gender') as string) || 'Female',
             nationality: fd.get('nationality') as string,
-            emirates_id: fd.get('emirates_id') as string,
-            monthly_salary,
-            pay_rate_hourly: Math.round((monthly_salary / MONTHLY_WORK_HOURS) * 10) / 10,
             agency_id: agencyId || undefined,
             agency_name: selAgency?.name || undefined,
-            assigned_client_ids: addClientIds,
-            visa_expiry: (fd.get('visa_expiry') as string) || '',
-            work_permit_expiry: (fd.get('work_permit_expiry') as string) || '',
+
+            // EID
+            emirates_id: (fd.get('emirates_id') as string) || '',
+            eid_start_date: (fd.get('eid_start_date') as string) || undefined,
+            eid_end_date: (fd.get('eid_end_date') as string) || undefined,
+            eid_file: addDocs.eid?.file_data || undefined,
+
+            // Passport
+            passport_number: (fd.get('passport_number') as string) || undefined,
+            passport_start_date: (fd.get('passport_start_date') as string) || undefined,
             passport_expiry: (fd.get('passport_expiry') as string) || '',
+            passport_end_date: (fd.get('passport_expiry') as string) || undefined,
+            passport_file: addDocs.passport?.file_data || undefined,
+
+            // Visa
+            visa_number: (fd.get('visa_number') as string) || undefined,
+            visa_start_date: (fd.get('visa_start_date') as string) || undefined,
+            visa_expiry: (fd.get('visa_expiry') as string) || '',
+            visa_end_date: (fd.get('visa_expiry') as string) || undefined,
+            visa_file: addDocs.visa?.file_data || undefined,
+
+            // Work Permit
+            work_permit_number: (fd.get('work_permit_number') as string) || undefined,
+            work_permit_start_date: (fd.get('work_permit_start_date') as string) || undefined,
+            work_permit_expiry: (fd.get('work_permit_expiry') as string) || '',
+            work_permit_end_date: (fd.get('work_permit_expiry') as string) || undefined,
+            work_permit_file: addDocs.work_permit?.file_data || undefined,
+
+            // Driving License (for Drivers)
+            driving_license_no: (fd.get('driving_license_no') as string) || undefined,
+            driving_license_place_of_issue: (fd.get('driving_license_place_of_issue') as string) || undefined,
+            driving_license_issue_date: (fd.get('driving_license_issue_date') as string) || undefined,
+            driving_license_expiry_date: (fd.get('driving_license_expiry_date') as string) || undefined,
+            driving_license_type: (fd.get('driving_license_type') as string) || undefined,
+            driving_license_file: addDocs.driving_license?.file_data || undefined,
+            assigned_vehicle: (fd.get('assigned_vehicle') as string) || undefined,
+
+            // Financial, Insurance & Employment
+            monthly_salary,
+            pay_rate_hourly: Math.round((monthly_salary / MONTHLY_WORK_HOURS) * 10) / 10,
+            medical_insurance: (fd.get('medical_insurance') as string) || undefined,
+            medical_insurance_expiry: (fd.get('medical_insurance_expiry') as string) || undefined,
+            medical_insurance_file: addDocs.medical_insurance?.file_data || undefined,
             joined_date: (fd.get('joined_date') as string) || new Date().toISOString().split('T')[0],
             end_date: (fd.get('end_date') as string) || undefined,
-            status: 'active',
-            skills: (fd.get('skills') as string).split(',').map(s => s.trim()).filter(Boolean),
+            noc: (fd.get('noc') as string) || undefined,
+            noc_file: addDocs.noc?.file_data || undefined,
+
+            status: (fd.get('status') as any) || 'active',
+
+            // Cleaners & Technical
+            skills: (fd.get('skills') as string)?.split(',').map(s => s.trim()).filter(Boolean) || [],
+            assigned_client_ids: addRole === 'driver' ? [] : addClientIds,
+
+            // Document History
+            documents: docsList,
           })
           setShowModal(false)
         }}>
+          {/* Top Section Header with Form Mode Banner */}
+          <div className="bg-gradient-to-r from-blue-50 to-slate-50 border border-blue-200/70 p-3 rounded-2xl flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-[12.5px] font-bold text-blue-950">Employee Form Mode:</span>
+              <span className="text-[11.5px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-600 text-white shadow-2xs">
+                {addRole === 'driver' ? '🚗 For Drivers' : '🧹 For Cleaners & Technical'}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-500 font-medium">Fields auto-switch based on Designation</span>
+          </div>
+
           {/* Row 1: Full Name & Phone */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input name="full_name" label="Full Name" placeholder="e.g. Maria Santos" required />
             <Input name="phone" label="Phone" placeholder="+971 50 000 0000" />
           </div>
 
-          {/* Row 2: 5 Roles & Agency Dropdown */}
-          <div className="grid grid-cols-2 gap-4">
-            <Select name="role" label="Role / Designation" required>
-              <option value="cleaner">Cleaner</option>
-              <option value="supervisor">Supervisor</option>
-              <option value="ducting">Ducting</option>
-              <option value="store_cleaner">Store Cleaner</option>
-              <option value="driver">Driver</option>
+          {/* Row 2: Nationality & Gender */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input name="nationality" label="Nationality" placeholder="e.g. Filipino, Pakistani, Indian, Nepali..." />
+            <Select name="gender" label="Gender" defaultValue="Female">
+              <option value="Female">Female</option>
+              <option value="Male">Male</option>
+              <option value="Other">Other</option>
             </Select>
+          </div>
+
+          {/* Row 3: Role / Designation & Agency */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[12px] font-semibold text-slate-700 block mb-1">Designation / Role</label>
+              <select
+                name="role"
+                value={addRole}
+                onChange={e => setAddRole(e.target.value as EmployeeRole)}
+                className="w-full text-[13px] px-3 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-bold text-slate-800"
+                required
+              >
+                <option value="cleaner">Cleaner</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="technical">Technical</option>
+                <option value="store_cleaner">Store Cleaner</option>
+                <option value="driver">Driver</option>
+              </select>
+            </div>
 
             <Select name="agency_id" label="Agency / Sourcing Source">
               <option value="">Safaeewala (Parent Company)</option>
@@ -1770,8 +1979,116 @@ export function Employees() {
             </Select>
           </div>
 
-          {/* Row 3: Monthly Salary & Nationality */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* ── Document Section 1: EID (Emirates ID) ── */}
+          <EmployeeDocumentSection
+            category="eid"
+            title="EID"
+            doc={addDocs.eid}
+            onUpload={file => handleDocUpload(file, 'eid', setAddDocs)}
+            onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.eid; return n })}
+            onPreview={doc => setPreviewDoc(doc)}
+            description="Emirates ID Document & Start / End Dates"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Input name="eid_start_date" label="EID Start Date" type="date" />
+              <Input name="eid_end_date" label="EID End Date" type="date" />
+              <Input name="emirates_id" label="EID Number" placeholder="784-XXXX-XXXXXXX-X" />
+            </div>
+          </EmployeeDocumentSection>
+
+          {/* ── Document Section 2: Passport ── */}
+          <EmployeeDocumentSection
+            category="passport"
+            title="Passport"
+            doc={addDocs.passport}
+            onUpload={file => handleDocUpload(file, 'passport', setAddDocs)}
+            onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.passport; return n })}
+            onPreview={doc => setPreviewDoc(doc)}
+            description="Passport Document & Start / End Dates"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Input name="passport_start_date" label="Passport Start Date" type="date" />
+              <Input name="passport_expiry" label="Passport End Date" type="date" />
+              <Input name="passport_number" label="Passport Number" placeholder="e.g. A12345678" />
+            </div>
+          </EmployeeDocumentSection>
+
+          {/* ── Document Section 3: Visa ── */}
+          <EmployeeDocumentSection
+            category="visa"
+            title="Visa"
+            doc={addDocs.visa}
+            onUpload={file => handleDocUpload(file, 'visa', setAddDocs)}
+            onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.visa; return n })}
+            onPreview={doc => setPreviewDoc(doc)}
+            description="UAE Residence / Employment Visa"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Input name="visa_start_date" label="Visa Start Date" type="date" />
+              <Input name="visa_expiry" label="Visa End Date" type="date" />
+              <Input name="visa_number" label="Visa Number" placeholder="e.g. 201/2024/XXXXXXX" />
+            </div>
+          </EmployeeDocumentSection>
+
+          {/* ── Document Section 4: Work Permit ── */}
+          <EmployeeDocumentSection
+            category="work_permit"
+            title="Work Permit"
+            doc={addDocs.work_permit}
+            onUpload={file => handleDocUpload(file, 'work_permit', setAddDocs)}
+            onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.work_permit; return n })}
+            onPreview={doc => setPreviewDoc(doc)}
+            description="MOHRE Work Permit / Labor Card"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Input name="work_permit_start_date" label="Work Permit Start Date" type="date" />
+              <Input name="work_permit_expiry" label="Work Permit End Date" type="date" />
+              <Input name="work_permit_number" label="Work Permit Number" placeholder="e.g. WP-XXXX-XXXX" />
+            </div>
+          </EmployeeDocumentSection>
+
+          {/* ── Document Section 5: Driving License (ONLY for Drivers) ── */}
+          {addRole === 'driver' && (
+            <EmployeeDocumentSection
+              category="driving_license"
+              title="Driving License"
+              doc={addDocs.driving_license}
+              onUpload={file => handleDocUpload(file, 'driving_license', setAddDocs)}
+              onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.driving_license; return n })}
+              onPreview={doc => setPreviewDoc(doc)}
+              description="UAE Driving License Details & Document"
+            >
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Input name="driving_license_no" label="License #" placeholder="e.g. 1234567" />
+                  <div>
+                    <label className="text-[12px] font-semibold text-slate-700 block mb-1">Place of Issue</label>
+                    <select
+                      name="driving_license_place_of_issue"
+                      className="w-full text-[13px] px-3 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-blue-500 font-medium text-slate-800"
+                      defaultValue="Dubai"
+                    >
+                      <option value="Dubai">Dubai</option>
+                      <option value="Abu Dhabi">Abu Dhabi</option>
+                      <option value="Sharjah">Sharjah</option>
+                      <option value="Ajman">Ajman</option>
+                      <option value="Ras Al Khaimah">Ras Al Khaimah</option>
+                      <option value="Fujairah">Fujairah</option>
+                      <option value="Umm Al Quwain">Umm Al Quwain</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Input name="driving_license_issue_date" label="Issue Date" type="date" />
+                  <Input name="driving_license_expiry_date" label="Expiry Date" type="date" />
+                </div>
+              </div>
+            </EmployeeDocumentSection>
+          )}
+
+          {/* Financial & Insurance Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
             <Input
               name="monthly_salary"
               label="Monthly Salary (AED/mo)"
@@ -1779,11 +2096,65 @@ export function Employees() {
               placeholder="e.g. 2500"
               required
             />
-            <Input name="nationality" label="Nationality" placeholder="e.g. Filipino, Nepali, Indian..." />
+
+            {/* Medical Insurance (Blue Accent block with Upload) */}
+            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[12px] font-bold text-blue-900 block">Medical Insurance</label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    id="med-upload-add"
+                    type="file"
+                    className="hidden"
+                    accept="image/*,application/pdf"
+                    onChange={e => {
+                      const f = e.target.files?.[0]
+                      if (f) handleDocUpload(f, 'medical_insurance', setAddDocs)
+                      e.target.value = ''
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('med-upload-add')?.click()}
+                    className="text-[10.5px] font-bold px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center gap-1 cursor-pointer transition-all"
+                  >
+                    <Upload size={10} /> {addDocs.medical_insurance ? 'Replace' : 'Upload Card'}
+                  </button>
+                  {addDocs.medical_insurance && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewDoc(addDocs.medical_insurance)}
+                      className="p-1 rounded text-blue-700 hover:bg-blue-100 cursor-pointer"
+                      title="Preview Document"
+                    >
+                      <Eye size={12} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  name="medical_insurance"
+                  placeholder="Policy / Card #"
+                  className="w-full text-[12px] px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg focus:outline-none focus:border-blue-500"
+                />
+                <input
+                  name="medical_insurance_expiry"
+                  type="date"
+                  className="w-full text-[12px] px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg focus:outline-none focus:border-blue-500"
+                  title="Insurance Expiry Date"
+                />
+              </div>
+              {addDocs.medical_insurance && (
+                <p className="text-[10.5px] text-emerald-700 font-bold flex items-center gap-1 truncate">
+                  <CheckCircle2 size={11} className="shrink-0" /> {addDocs.medical_insurance.name}
+                </p>
+              )}
+            </div>
           </div>
 
-          {/* Row 4: Joining Date alongside End Date */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Joining Date & End Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               name="joined_date"
               label="Joining Date"
@@ -1793,93 +2164,172 @@ export function Employees() {
             <Input name="end_date" label="End Date" type="date" />
           </div>
 
-          {/* Row 5: Document Expiries (Medical Insurance Removed) */}
-          <div className="grid grid-cols-3 gap-3">
-            <Input name="visa_expiry" label="Visa Expiry" type="date" />
-            <Input name="work_permit_expiry" label="Work Permit Expiry" type="date" />
-            <Input name="passport_expiry" label="Passport Expiry" type="date" />
-          </div>
-
-          {/* Row 6: Emirates ID & Skills */}
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="emirates_id" label="Emirates ID" placeholder="784-XXXX-XXXXXXX-X" />
-            <Input name="skills" label="Skills (comma separated)" placeholder="Deep Clean, Sofa, Window..." />
-          </div>
-
-          {/* Row 7: Client Assignee Interactive Selection */}
-          <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Briefcase size={14} className="text-teal-600" />
-                <span className="text-[12px] font-black text-slate-800 uppercase tracking-wider">Client Assignee</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {addClientIds.length > 0 && (
+          {/* NOC & Status */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+            {/* NOC (Blue Accent block with Upload) */}
+            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[12px] font-bold text-blue-900 block">NOC (No Objection Certificate)</label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    id="noc-upload-add"
+                    type="file"
+                    className="hidden"
+                    accept="image/*,application/pdf"
+                    onChange={e => {
+                      const f = e.target.files?.[0]
+                      if (f) handleDocUpload(f, 'noc', setAddDocs)
+                      e.target.value = ''
+                    }}
+                  />
                   <button
                     type="button"
-                    onClick={() => setAddClientIds([])}
-                    className="text-[11px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
+                    onClick={() => document.getElementById('noc-upload-add')?.click()}
+                    className="text-[10.5px] font-bold px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center gap-1 cursor-pointer transition-all"
                   >
-                    Clear All
+                    <Upload size={10} /> {addDocs.noc ? 'Replace' : 'Upload NOC'}
                   </button>
-                )}
-                <span className="text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200 px-2 py-0.5 rounded-full">
-                  {addClientIds.length} Clients Assigned
-                </span>
+                  {addDocs.noc && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewDoc(addDocs.noc)}
+                      className="p-1 rounded text-blue-700 hover:bg-blue-100 cursor-pointer"
+                      title="Preview Document"
+                    >
+                      <Eye size={12} />
+                    </button>
+                  )}
+                </div>
               </div>
+              <input
+                name="noc"
+                placeholder="NOC Ref # or Notes"
+                className="w-full text-[12px] px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg focus:outline-none focus:border-blue-500"
+              />
+              {addDocs.noc && (
+                <p className="text-[10.5px] text-emerald-700 font-bold flex items-center gap-1 truncate">
+                  <CheckCircle2 size={11} className="shrink-0" /> {addDocs.noc.name}
+                </p>
+              )}
             </div>
 
-            <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search clients by name or company..."
-                value={clientSearchAdd}
-                onChange={e => setClientSearchAdd(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500"
+            <Select name="status" label="Status" defaultValue="active">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="on_leave">On Leave</option>
+              <option value="engaged_in_project">Engaged in Project</option>
+            </Select>
+          </div>
+
+          {/* Conditional Bottom Section: Driver specific vs Cleaner specific */}
+          {addRole === 'driver' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="text-[12px] font-semibold text-slate-700 block mb-1">Licence Type</label>
+                <select
+                  name="driving_license_type"
+                  className="w-full text-[13px] px-3 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-blue-500 font-medium text-slate-800"
+                  defaultValue="Light Vehicle (Automatic)"
+                >
+                  <option value="Light Vehicle (Automatic)">Light Vehicle (Automatic)</option>
+                  <option value="Light Vehicle (Manual)">Light Vehicle (Manual)</option>
+                  <option value="Heavy Bus">Heavy Bus</option>
+                  <option value="Heavy Truck">Heavy Truck</option>
+                  <option value="Motorcycle">Motorcycle</option>
+                  <option value="Forklift">Forklift</option>
+                </select>
+              </div>
+              <Input
+                name="assigned_vehicle"
+                label="Assign Vehicle"
+                placeholder="e.g. Van 1, Toyota HiAce, Plate #12345"
               />
             </div>
+          ) : (
+            <div className="space-y-4 pt-1">
+              {/* Skills */}
+              <Input
+                name="skills"
+                label="Skills (comma separated)"
+                placeholder="Deep Clean, Sofa, Window, Technical, Carpet..."
+              />
 
-            <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
-              {clients
-                .filter(c => {
-                  if (!clientSearchAdd) return true
-                  const q = clientSearchAdd.toLowerCase()
-                  const loc = (c.building_name || c.area || '').toLowerCase()
-                  return c.full_name.toLowerCase().includes(q) || loc.includes(q)
-                })
-                .map(c => {
-                  const checked = addClientIds.includes(c.id)
-                  const location = c.building_name ? `${c.building_name}, ${c.area}` : c.area
-                  return (
-                    <label
-                      key={c.id}
-                      className={`flex items-center justify-between p-2 rounded-xl text-[12px] border cursor-pointer transition-colors ${
-                        checked
-                          ? 'bg-teal-50 border-teal-300 text-teal-950 font-bold'
-                          : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => {
-                            setAddClientIds(prev =>
-                              checked ? prev.filter(id => id !== c.id) : [...prev, c.id]
-                            )
-                          }}
-                          className="rounded text-teal-600 focus:ring-teal-500 h-3.5 w-3.5 cursor-pointer"
-                        />
-                        <span className="truncate">{c.full_name}</span>
-                        {location && <span className="text-[10.5px] text-slate-400 font-normal truncate">({location})</span>}
-                      </div>
-                      {checked && <span className="text-[10px] font-black text-teal-700 shrink-0">ASSIGNED</span>}
-                    </label>
-                  )
-                })}
+              {/* Client Assignee Selection */}
+              <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Briefcase size={14} className="text-teal-600" />
+                    <span className="text-[12px] font-black text-slate-800 uppercase tracking-wider">Client Assign</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {addClientIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setAddClientIds([])}
+                        className="text-[11px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                    <span className="text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200 px-2 py-0.5 rounded-full">
+                      {addClientIds.length} Clients Assigned
+                    </span>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search clients by name or company..."
+                    value={clientSearchAdd}
+                    onChange={e => setClientSearchAdd(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+
+                <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                  {clients
+                    .filter(c => {
+                      if (!clientSearchAdd) return true
+                      const q = clientSearchAdd.toLowerCase()
+                      const loc = (c.building_name || c.area || '').toLowerCase()
+                      return c.full_name.toLowerCase().includes(q) || loc.includes(q)
+                    })
+                    .map(c => {
+                      const checked = addClientIds.includes(c.id)
+                      const location = c.building_name ? `${c.building_name}, ${c.area}` : c.area
+                      return (
+                        <label
+                          key={c.id}
+                          className={`flex items-center justify-between p-2 rounded-xl text-[12px] border cursor-pointer transition-colors ${
+                            checked
+                              ? 'bg-teal-50 border-teal-300 text-teal-950 font-bold'
+                              : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setAddClientIds(prev =>
+                                  checked ? prev.filter(id => id !== c.id) : [...prev, c.id]
+                                )
+                              }}
+                              className="rounded text-teal-600 focus:ring-teal-500 h-3.5 w-3.5 cursor-pointer"
+                            />
+                            <span className="truncate">{c.full_name}</span>
+                            {location && <span className="text-[10.5px] text-slate-400 font-normal truncate">({location})</span>}
+                          </div>
+                          {checked && <span className="text-[10px] font-black text-teal-700 shrink-0">ASSIGNED</span>}
+                        </label>
+                      )
+                    })}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="flex gap-3 pt-3">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setShowModal(false)}>Cancel</Button>
@@ -1892,8 +2342,8 @@ export function Employees() {
       <Modal
         open={!!selected}
         onClose={() => { setSelected(null); setIsEditing(false); setConfirmDelete(false) }}
-        title={isEditing ? 'Edit Employee Details' : 'Employee Work & Profile'}
-        size="lg"
+        title={isEditing ? `Edit Employee Profile — ${selected?.full_name}` : 'Employee Work & Profile'}
+        size={isEditing ? 'xl' : 'lg'}
       >
         {selected && !isEditing && (() => {
           const st = staffJobStats.get(selected.id)
@@ -2075,13 +2525,18 @@ export function Employees() {
                     >
                       <Trash2 size={13} /> Delete
                     </button>
-                    <Button variant="outline" className="flex-1" size="sm" onClick={() => handleStartEdit(selected)}>Edit Details</Button>
+                    <Button variant="outline" className="flex-1 font-bold text-teal-800 border-teal-300 hover:bg-teal-50" size="sm" onClick={() => handleStartEdit(selected)}>
+                      <Pencil size={13} className="mr-1.5" /> Edit Profile
+                    </Button>
                     <Button
                       className="flex-1 bg-slate-900 hover:bg-slate-800 text-white"
                       size="sm"
-                      onClick={() => { setSelected(null); setIsEditing(false); navigate('/dispatch') }}
+                      onClick={() => {
+                        navigate(`/daily-job-sheet?filterCleaner=${encodeURIComponent(selected.full_name)}`)
+                        setSelected(null)
+                      }}
                     >
-                      Dispatch Schedule
+                      View in Job Sheet
                     </Button>
                   </div>
                 </div>
@@ -2092,54 +2547,132 @@ export function Employees() {
 
         {selected && isEditing && (
           <form
-            className="space-y-4 max-h-[80vh] overflow-y-auto pr-1"
+            className="space-y-4 max-h-[82vh] overflow-y-auto pr-1"
             onSubmit={e => {
               e.preventDefault()
               const fd = new FormData(e.currentTarget)
-              const role = (fd.get('role') as EmployeeRole) || selected.role
+              const role = editRole
               const monthly_salary = Number(fd.get('monthly_salary')) || getEmployeeMonthlySalary(selected)
               const agencyId = (fd.get('agency_id') as string) || ''
               const selAgency = agencies.find(a => a.id === agencyId)
+              const docsList: EmployeeDocument[] = Object.values(editDocs)
 
               const patch: Partial<Employee> = {
                 full_name:                 fd.get('full_name') as string,
                 phone:                     fd.get('phone') as string,
                 role,
+                designation:               formatEmpRole(role),
+                gender:                    (fd.get('gender') as string) || selected.gender || 'Female',
                 nationality:               fd.get('nationality') as string,
-                emirates_id:               fd.get('emirates_id') as string,
-                monthly_salary,
-                pay_rate_hourly:           Math.round((monthly_salary / MONTHLY_WORK_HOURS) * 10) / 10,
                 agency_id:                 agencyId || undefined,
                 agency_name:               selAgency?.name || (agencyId ? selected.agency_name : undefined),
-                assigned_client_ids:       editClientIds,
+
+                // EID
+                emirates_id:               (fd.get('emirates_id') as string) || '',
+                eid_start_date:            (fd.get('eid_start_date') as string) || undefined,
+                eid_end_date:              (fd.get('eid_end_date') as string) || undefined,
+                eid_file:                  editDocs.eid?.file_data || selected.eid_file,
+
+                // Passport
+                passport_number:           (fd.get('passport_number') as string) || undefined,
+                passport_start_date:       (fd.get('passport_start_date') as string) || undefined,
+                passport_expiry:           (fd.get('passport_expiry') as string) || '',
+                passport_end_date:         (fd.get('passport_expiry') as string) || undefined,
+                passport_file:             editDocs.passport?.file_data || selected.passport_file,
+
+                // Visa
+                visa_number:               (fd.get('visa_number') as string) || undefined,
+                visa_start_date:           (fd.get('visa_start_date') as string) || undefined,
+                visa_expiry:               (fd.get('visa_expiry') as string) || '',
+                visa_end_date:             (fd.get('visa_expiry') as string) || undefined,
+                visa_file:                 editDocs.visa?.file_data || selected.visa_file,
+
+                // Work Permit
+                work_permit_number:        (fd.get('work_permit_number') as string) || undefined,
+                work_permit_start_date:    (fd.get('work_permit_start_date') as string) || undefined,
+                work_permit_expiry:        (fd.get('work_permit_expiry') as string) || '',
+                work_permit_end_date:      (fd.get('work_permit_expiry') as string) || undefined,
+                work_permit_file:          editDocs.work_permit?.file_data || selected.work_permit_file,
+
+                // Driving License (for Drivers)
+                driving_license_no:        (fd.get('driving_license_no') as string) || undefined,
+                driving_license_place_of_issue: (fd.get('driving_license_place_of_issue') as string) || undefined,
+                driving_license_issue_date: (fd.get('driving_license_issue_date') as string) || undefined,
+                driving_license_expiry_date: (fd.get('driving_license_expiry_date') as string) || undefined,
+                driving_license_type:      (fd.get('driving_license_type') as string) || undefined,
+                driving_license_file:      editDocs.driving_license?.file_data || selected.driving_license_file,
+                assigned_vehicle:          (fd.get('assigned_vehicle') as string) || undefined,
+
+                // Financial, Insurance & Employment
+                monthly_salary,
+                pay_rate_hourly:           Math.round((monthly_salary / MONTHLY_WORK_HOURS) * 10) / 10,
+                medical_insurance:         (fd.get('medical_insurance') as string) || undefined,
+                medical_insurance_expiry:  (fd.get('medical_insurance_expiry') as string) || undefined,
+                medical_insurance_file:    editDocs.medical_insurance?.file_data || selected.medical_insurance_file,
                 joined_date:               fd.get('joined_date') as string,
                 end_date:                  (fd.get('end_date') as string) || undefined,
-                visa_expiry:               (fd.get('visa_expiry') as string) || undefined,
-                work_permit_expiry:        (fd.get('work_permit_expiry') as string) || undefined,
-                passport_expiry:           (fd.get('passport_expiry') as string) || undefined,
+                noc:                       (fd.get('noc') as string) || undefined,
+                noc_file:                  editDocs.noc?.file_data || selected.noc_file,
+
                 status:                    fd.get('status') as Employee['status'],
-                skills: (fd.get('skills') as string).split(',').map(s => s.trim()).filter(Boolean),
+
+                // Cleaners & Technical
+                skills:                    (fd.get('skills') as string)?.split(',').map(s => s.trim()).filter(Boolean) || [],
+                assigned_client_ids:       editRole === 'driver' ? [] : editClientIds,
+
+                // Document History
+                documents:                 docsList.length > 0 ? docsList : selected.documents,
               }
               updateEmployee(selected.id, patch)
               setSelected({ ...selected, ...patch })
               setIsEditing(false)
             }}
           >
+            {/* Form Mode Banner */}
+            <div className="bg-gradient-to-r from-blue-50 to-slate-50 border border-blue-200/70 p-3 rounded-2xl flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-[12.5px] font-bold text-blue-950">Editing Employee Mode:</span>
+                <span className="text-[11.5px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-600 text-white shadow-2xs">
+                  {editRole === 'driver' ? '🚗 For Drivers' : '🧹 For Cleaners & Technical'}
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-500 font-medium">Fields auto-switch based on Designation</span>
+            </div>
+
             {/* Row 1: Full Name & Phone */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input name="full_name" label="Full Name" defaultValue={selected.full_name} required />
               <Input name="phone" label="Phone" defaultValue={selected.phone} />
             </div>
 
-            {/* Row 2: 5 Roles & Agency */}
-            <div className="grid grid-cols-2 gap-4">
-              <Select name="role" label="Role / Designation" defaultValue={selected.role === 'crew_lead' ? 'supervisor' : selected.role}>
-                <option value="cleaner">Cleaner</option>
-                <option value="supervisor">Supervisor</option>
-                <option value="ducting">Ducting</option>
-                <option value="store_cleaner">Store Cleaner</option>
-                <option value="driver">Driver</option>
+            {/* Row 2: Nationality & Gender */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input name="nationality" label="Nationality" defaultValue={selected.nationality} />
+              <Select name="gender" label="Gender" defaultValue={selected.gender || 'Female'}>
+                <option value="Female">Female</option>
+                <option value="Male">Male</option>
+                <option value="Other">Other</option>
               </Select>
+            </div>
+
+            {/* Row 3: Role (Designation) & Agency */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[12px] font-semibold text-slate-700 block mb-1">Designation / Role</label>
+                <select
+                  name="role"
+                  value={editRole}
+                  onChange={e => setEditRole(e.target.value as EmployeeRole)}
+                  className="w-full text-[13px] px-3 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-bold text-slate-800"
+                  required
+                >
+                  <option value="cleaner">Cleaner</option>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="technical">Technical</option>
+                  <option value="store_cleaner">Store Cleaner</option>
+                  <option value="driver">Driver</option>
+                </select>
+              </div>
 
               <Select name="agency_id" label="Agency / Sourcing Source" defaultValue={selected.agency_id || ''}>
                 <option value="">Safaeewala (Parent Company)</option>
@@ -2149,14 +2682,116 @@ export function Employees() {
               </Select>
             </div>
 
-            {/* Row 3: Status & Monthly Salary */}
-            <div className="grid grid-cols-2 gap-4">
-              <Select name="status" label="Status" defaultValue={selected.status}>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="on_leave">On Leave</option>
-                <option value="engaged_in_project">Engaged in Project</option>
-              </Select>
+            {/* ── Document Section 1: EID ── */}
+            <EmployeeDocumentSection
+              category="eid"
+              title="EID"
+              doc={editDocs.eid}
+              onUpload={file => handleDocUpload(file, 'eid', setEditDocs)}
+              onRemove={() => setEditDocs(prev => { const n = { ...prev }; delete n.eid; return n })}
+              onPreview={doc => setPreviewDoc(doc)}
+              description="Emirates ID Document & Start / End Dates"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Input name="eid_start_date" label="EID Start Date" type="date" defaultValue={selected.eid_start_date || ''} />
+                <Input name="eid_end_date" label="EID End Date" type="date" defaultValue={selected.eid_end_date || ''} />
+                <Input name="emirates_id" label="EID Number" defaultValue={selected.emirates_id} />
+              </div>
+            </EmployeeDocumentSection>
+
+            {/* ── Document Section 2: Passport ── */}
+            <EmployeeDocumentSection
+              category="passport"
+              title="Passport"
+              doc={editDocs.passport}
+              onUpload={file => handleDocUpload(file, 'passport', setEditDocs)}
+              onRemove={() => setEditDocs(prev => { const n = { ...prev }; delete n.passport; return n })}
+              onPreview={doc => setPreviewDoc(doc)}
+              description="Passport Document & Start / End Dates"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Input name="passport_start_date" label="Passport Start Date" type="date" defaultValue={selected.passport_start_date || ''} />
+                <Input name="passport_expiry" label="Passport End Date" type="date" defaultValue={selected.passport_expiry || selected.passport_end_date || ''} />
+                <Input name="passport_number" label="Passport Number" defaultValue={selected.passport_number || ''} />
+              </div>
+            </EmployeeDocumentSection>
+
+            {/* ── Document Section 3: Visa ── */}
+            <EmployeeDocumentSection
+              category="visa"
+              title="Visa"
+              doc={editDocs.visa}
+              onUpload={file => handleDocUpload(file, 'visa', setEditDocs)}
+              onRemove={() => setEditDocs(prev => { const n = { ...prev }; delete n.visa; return n })}
+              onPreview={doc => setPreviewDoc(doc)}
+              description="UAE Residence / Employment Visa"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Input name="visa_start_date" label="Visa Start Date" type="date" defaultValue={selected.visa_start_date || ''} />
+                <Input name="visa_expiry" label="Visa End Date" type="date" defaultValue={selected.visa_expiry || selected.visa_end_date || ''} />
+                <Input name="visa_number" label="Visa Number" defaultValue={selected.visa_number || ''} />
+              </div>
+            </EmployeeDocumentSection>
+
+            {/* ── Document Section 4: Work Permit ── */}
+            <EmployeeDocumentSection
+              category="work_permit"
+              title="Work Permit"
+              doc={editDocs.work_permit}
+              onUpload={file => handleDocUpload(file, 'work_permit', setEditDocs)}
+              onRemove={() => setEditDocs(prev => { const n = { ...prev }; delete n.work_permit; return n })}
+              onPreview={doc => setPreviewDoc(doc)}
+              description="MOHRE Work Permit / Labor Card"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Input name="work_permit_start_date" label="Work Permit Start Date" type="date" defaultValue={selected.work_permit_start_date || ''} />
+                <Input name="work_permit_expiry" label="Work Permit End Date" type="date" defaultValue={selected.work_permit_expiry || selected.work_permit_end_date || ''} />
+                <Input name="work_permit_number" label="Work Permit Number" defaultValue={selected.work_permit_number || ''} />
+              </div>
+            </EmployeeDocumentSection>
+
+            {/* ── Document Section 5: Driving License (ONLY for Drivers) ── */}
+            {editRole === 'driver' && (
+              <EmployeeDocumentSection
+                category="driving_license"
+                title="Driving License"
+                doc={editDocs.driving_license}
+                onUpload={file => handleDocUpload(file, 'driving_license', setEditDocs)}
+                onRemove={() => setEditDocs(prev => { const n = { ...prev }; delete n.driving_license; return n })}
+                onPreview={doc => setPreviewDoc(doc)}
+                description="UAE Driving License Details & Document"
+              >
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Input name="driving_license_no" label="License #" defaultValue={selected.driving_license_no || ''} placeholder="e.g. 1234567" />
+                    <div>
+                      <label className="text-[12px] font-semibold text-slate-700 block mb-1">Place of Issue</label>
+                      <select
+                        name="driving_license_place_of_issue"
+                        className="w-full text-[13px] px-3 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-blue-500 font-medium text-slate-800"
+                        defaultValue={selected.driving_license_place_of_issue || 'Dubai'}
+                      >
+                        <option value="Dubai">Dubai</option>
+                        <option value="Abu Dhabi">Abu Dhabi</option>
+                        <option value="Sharjah">Sharjah</option>
+                        <option value="Ajman">Ajman</option>
+                        <option value="Ras Al Khaimah">Ras Al Khaimah</option>
+                        <option value="Fujairah">Fujairah</option>
+                        <option value="Umm Al Quwain">Umm Al Quwain</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Input name="driving_license_issue_date" label="Issue Date" type="date" defaultValue={selected.driving_license_issue_date || ''} />
+                    <Input name="driving_license_expiry_date" label="Expiry Date" type="date" defaultValue={selected.driving_license_expiry_date || ''} />
+                  </div>
+                </div>
+              </EmployeeDocumentSection>
+            )}
+
+            {/* Financial & Insurance Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
               <Input
                 name="monthly_salary"
                 label="Monthly Salary (AED/mo)"
@@ -2164,112 +2799,254 @@ export function Employees() {
                 defaultValue={getEmployeeMonthlySalary(selected) ? String(getEmployeeMonthlySalary(selected)) : ''}
                 required
               />
+
+              {/* Medical Insurance (Blue Accent block with Upload) */}
+              <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[12px] font-bold text-blue-900 block">Medical Insurance</label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      id="med-upload-edit"
+                      type="file"
+                      className="hidden"
+                      accept="image/*,application/pdf"
+                      onChange={e => {
+                        const f = e.target.files?.[0]
+                        if (f) handleDocUpload(f, 'medical_insurance', setEditDocs)
+                        e.target.value = ''
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('med-upload-edit')?.click()}
+                      className="text-[10.5px] font-bold px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center gap-1 cursor-pointer transition-all"
+                    >
+                      <Upload size={10} /> {editDocs.medical_insurance ? 'Replace' : 'Upload Card'}
+                    </button>
+                    {editDocs.medical_insurance && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewDoc(editDocs.medical_insurance)}
+                        className="p-1 rounded text-blue-700 hover:bg-blue-100 cursor-pointer"
+                        title="Preview Document"
+                      >
+                        <Eye size={12} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    name="medical_insurance"
+                    defaultValue={selected.medical_insurance || ''}
+                    placeholder="Policy / Card #"
+                    className="w-full text-[12px] px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg focus:outline-none focus:border-blue-500"
+                  />
+                  <input
+                    name="medical_insurance_expiry"
+                    type="date"
+                    defaultValue={selected.medical_insurance_expiry || ''}
+                    className="w-full text-[12px] px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg focus:outline-none focus:border-blue-500"
+                    title="Insurance Expiry Date"
+                  />
+                </div>
+                {editDocs.medical_insurance && (
+                  <p className="text-[10.5px] text-emerald-700 font-bold flex items-center gap-1 truncate">
+                    <CheckCircle2 size={11} className="shrink-0" /> {editDocs.medical_insurance.name}
+                  </p>
+                )}
+              </div>
             </div>
 
-            {/* Row 4: Nationality & Emirates ID */}
-            <div className="grid grid-cols-2 gap-4">
-              <Input name="nationality" label="Nationality" defaultValue={selected.nationality} />
-              <Input name="emirates_id" label="Emirates ID" defaultValue={selected.emirates_id} />
-            </div>
-
-            {/* Row 5: Joining Date & End Date */}
-            <div className="grid grid-cols-2 gap-4">
+            {/* Joining Date & End Date */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input name="joined_date" label="Joining Date" type="date" defaultValue={selected.joined_date} />
               <Input name="end_date" label="End Date" type="date" defaultValue={selected.end_date || ''} />
             </div>
 
-            {/* Row 6: Document Expiries (Medical Insurance Removed) */}
-            <div className="grid grid-cols-3 gap-3">
-              <Input name="visa_expiry" label="Visa Expiry" type="date" defaultValue={selected.visa_expiry} />
-              <Input name="work_permit_expiry" label="Work Permit Expiry" type="date" defaultValue={selected.work_permit_expiry} />
-              <Input name="passport_expiry" label="Passport Expiry" type="date" defaultValue={selected.passport_expiry} />
-            </div>
-
-            {/* Row 7: Skills */}
-            <Input name="skills" label="Skills (comma separated)" defaultValue={selected.skills?.join(', ')} placeholder="Deep Clean, Sofa, Window..." />
-
-            {/* Row 8: Client Assignee Interactive Selection */}
-            <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Briefcase size={14} className="text-teal-600" />
-                  <span className="text-[12px] font-black text-slate-800 uppercase tracking-wider">Client Assignee</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {editClientIds.length > 0 && (
+            {/* NOC & Status */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+              {/* NOC (Blue Accent block with Upload) */}
+              <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[12px] font-bold text-blue-900 block">NOC (No Objection Certificate)</label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      id="noc-upload-edit"
+                      type="file"
+                      className="hidden"
+                      accept="image/*,application/pdf"
+                      onChange={e => {
+                        const f = e.target.files?.[0]
+                        if (f) handleDocUpload(f, 'noc', setEditDocs)
+                        e.target.value = ''
+                      }}
+                    />
                     <button
                       type="button"
-                      onClick={() => setEditClientIds([])}
-                      className="text-[11px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
+                      onClick={() => document.getElementById('noc-upload-edit')?.click()}
+                      className="text-[10.5px] font-bold px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center gap-1 cursor-pointer transition-all"
                     >
-                      Clear All
+                      <Upload size={10} /> {editDocs.noc ? 'Replace' : 'Upload NOC'}
                     </button>
-                  )}
-                  <span className="text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200 px-2 py-0.5 rounded-full">
-                    {editClientIds.length} Clients Assigned
-                  </span>
-                </div>
-              </div>
-
-              <div className="relative">
-                <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search clients by name or company..."
-                  value={clientSearchEdit}
-                  onChange={e => setClientSearchEdit(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500"
-                />
-              </div>
-
-              <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
-                {clients
-                  .filter(c => {
-                    if (!clientSearchEdit) return true
-                    const q = clientSearchEdit.toLowerCase()
-                    const loc = (c.building_name || c.area || '').toLowerCase()
-                    return c.full_name.toLowerCase().includes(q) || loc.includes(q)
-                  })
-                  .map(c => {
-                    const checked = editClientIds.includes(c.id)
-                    const location = c.building_name ? `${c.building_name}, ${c.area}` : c.area
-                    return (
-                      <label
-                        key={c.id}
-                        className={`flex items-center justify-between p-2 rounded-xl text-[12px] border cursor-pointer transition-colors ${
-                          checked
-                            ? 'bg-teal-50 border-teal-300 text-teal-950 font-bold'
-                            : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
-                        }`}
+                    {editDocs.noc && (
+                      <button
+                        type="button"
+                        onClick={() => setPreviewDoc(editDocs.noc)}
+                        className="p-1 rounded text-blue-700 hover:bg-blue-100 cursor-pointer"
+                        title="Preview Document"
                       >
-                        <div className="flex items-center gap-2 truncate">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => {
-                              setEditClientIds(prev =>
-                                checked ? prev.filter(id => id !== c.id) : [...prev, c.id]
-                              )
-                            }}
-                            className="rounded text-teal-600 focus:ring-teal-500 h-3.5 w-3.5 cursor-pointer"
-                          />
-                          <span className="truncate">{c.full_name}</span>
-                          {location && <span className="text-[10.5px] text-slate-400 font-normal truncate">({location})</span>}
-                        </div>
-                        {checked && <span className="text-[10px] font-black text-teal-700 shrink-0">ASSIGNED</span>}
-                      </label>
-                    )
-                  })}
+                        <Eye size={12} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <input
+                  name="noc"
+                  defaultValue={selected.noc || ''}
+                  placeholder="NOC Ref # or Notes"
+                  className="w-full text-[12px] px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg focus:outline-none focus:border-blue-500"
+                />
+                {editDocs.noc && (
+                  <p className="text-[10.5px] text-emerald-700 font-bold flex items-center gap-1 truncate">
+                    <CheckCircle2 size={11} className="shrink-0" /> {editDocs.noc.name}
+                  </p>
+                )}
               </div>
+
+              <Select name="status" label="Status" defaultValue={selected.status}>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="on_leave">On Leave</option>
+                <option value="engaged_in_project">Engaged in Project</option>
+              </Select>
             </div>
 
-            <div className="flex gap-3 pt-2">
+            {/* Conditional Bottom Section: Driver specific vs Cleaner specific */}
+            {editRole === 'driver' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="text-[12px] font-semibold text-slate-700 block mb-1">Licence Type</label>
+                  <select
+                    name="driving_license_type"
+                    className="w-full text-[13px] px-3 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-blue-500 font-medium text-slate-800"
+                    defaultValue={selected.driving_license_type || 'Light Vehicle (Automatic)'}
+                  >
+                    <option value="Light Vehicle (Automatic)">Light Vehicle (Automatic)</option>
+                    <option value="Light Vehicle (Manual)">Light Vehicle (Manual)</option>
+                    <option value="Heavy Bus">Heavy Bus</option>
+                    <option value="Heavy Truck">Heavy Truck</option>
+                    <option value="Motorcycle">Motorcycle</option>
+                    <option value="Forklift">Forklift</option>
+                  </select>
+                </div>
+                <Input
+                  name="assigned_vehicle"
+                  label="Assign Vehicle"
+                  defaultValue={selected.assigned_vehicle || ''}
+                  placeholder="e.g. Van 1, Toyota HiAce, Plate #12345"
+                />
+              </div>
+            ) : (
+              <div className="space-y-4 pt-1">
+                {/* Skills */}
+                <Input
+                  name="skills"
+                  label="Skills (comma separated)"
+                  defaultValue={selected.skills?.join(', ')}
+                  placeholder="Deep Clean, Sofa, Window, Technical, Carpet..."
+                />
+
+                {/* Client Assignee Selection */}
+                <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Briefcase size={14} className="text-teal-600" />
+                      <span className="text-[12px] font-black text-slate-800 uppercase tracking-wider">Client Assign</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {editClientIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setEditClientIds([])}
+                          className="text-[11px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
+                        >
+                          Clear All
+                        </button>
+                      )}
+                      <span className="text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200 px-2 py-0.5 rounded-full">
+                        {editClientIds.length} Clients Assigned
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search clients by name or company..."
+                      value={clientSearchEdit}
+                      onChange={e => setClientSearchEdit(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500"
+                    />
+                  </div>
+
+                  <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                    {clients
+                      .filter(c => {
+                        if (!clientSearchEdit) return true
+                        const q = clientSearchEdit.toLowerCase()
+                        const loc = (c.building_name || c.area || '').toLowerCase()
+                        return c.full_name.toLowerCase().includes(q) || loc.includes(q)
+                      })
+                      .map(c => {
+                        const checked = editClientIds.includes(c.id)
+                        const location = c.building_name ? `${c.building_name}, ${c.area}` : c.area
+                        return (
+                          <label
+                            key={c.id}
+                            className={`flex items-center justify-between p-2 rounded-xl text-[12px] border cursor-pointer transition-colors ${
+                              checked
+                                ? 'bg-teal-50 border-teal-300 text-teal-950 font-bold'
+                                : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  setEditClientIds(prev =>
+                                    checked ? prev.filter(id => id !== c.id) : [...prev, c.id]
+                                  )
+                                }}
+                                className="rounded text-teal-600 focus:ring-teal-500 h-3.5 w-3.5 cursor-pointer"
+                              />
+                              <span className="truncate">{c.full_name}</span>
+                              {location && <span className="text-[10.5px] text-slate-400 font-normal truncate">({location})</span>}
+                            </div>
+                            {checked && <span className="text-[10px] font-black text-teal-700 shrink-0">ASSIGNED</span>}
+                          </label>
+                        )
+                      })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-3">
               <Button type="button" variant="outline" className="flex-1" onClick={() => setIsEditing(false)}>Cancel</Button>
               <Button type="submit" className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold">Save Changes</Button>
             </div>
           </form>
         )}
       </Modal>
+
+      {/* ── Document Preview Modal (for Image & PDF attachments) ── */}
+      <EmployeeDocumentPreviewModal
+        doc={previewDoc}
+        onClose={() => setPreviewDoc(null)}
+      />
 
     </div>
   )

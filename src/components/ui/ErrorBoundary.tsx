@@ -26,6 +26,12 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('ErrorBoundary caught an unhandled React error:', error, errorInfo)
   }
 
+  componentDidUpdate(prevProps: Props) {
+    if (this.state.hasError && prevProps.children !== this.props.children) {
+      this.setState({ hasError: false, error: null })
+    }
+  }
+
   handleReset = () => {
     this.setState({ hasError: false, error: null })
   }
@@ -66,12 +72,12 @@ export class ErrorBoundary extends Component<Props, State> {
                 size="sm"
                 onClick={() => {
                   this.handleReset()
-                  window.location.href = '/agencies'
+                  window.location.href = '/'
                 }}
                 className="text-[12px] font-bold border-slate-200"
               >
                 <Home size={14} className="mr-1.5" />
-                Agencies Home
+                Dashboard Home
               </Button>
 
               <Button

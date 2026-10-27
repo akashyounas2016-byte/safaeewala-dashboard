@@ -87,7 +87,7 @@ export const defaultAgencies: Agency[] = [
     commission_rate: 12,
     commission_type: 'percentage',
     payment_terms: 'Bi-Weekly',
-    notes: 'Specialized in Ducting technicians and commercial store cleaners',
+    notes: 'Specialized in Technical technicians and commercial store cleaners',
     status: 'active',
     contract_ref: 'AGR-2024-GULF-03',
     contract_start_date: '2024-02-01',
@@ -97,7 +97,7 @@ export const defaultAgencies: Agency[] = [
     noc_no: 'NOC-DXB-2024-019',
     license_issue_date: '2024-02-01',
     license_expiry_date: '2027-06-30',
-    sla_terms: 'Emergency technician dispatch within 4 hours. Specialized ducting tools and PPE provided.',
+    sla_terms: 'Emergency technician dispatch within 4 hours. Specialized technical tools and PPE provided.',
     replacement_guarantee: '48 Hours Guarantee',
     quota_cleaners: 4,
     bank_details: {

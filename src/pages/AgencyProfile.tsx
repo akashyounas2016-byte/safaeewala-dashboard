@@ -4,7 +4,7 @@ import { Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useData, defaultAgencies } from '@/store/DataContext'
 import { AgencyDashboard } from '@/components/agencies/AgencyDashboard'
-import { slugifyAgencyName } from '@/pages/Agencies'
+import { slugifyAgencyName } from '@/lib/utils'
 
 export function AgencyProfile() {
   const { id: routeAgencyId } = useParams<{ id?: string }>()
