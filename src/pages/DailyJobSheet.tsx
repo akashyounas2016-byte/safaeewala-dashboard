@@ -66,6 +66,10 @@ import { MonthlyScheduleSyncModal } from '@/components/dailyJobSheet/MonthlySche
 import {
   getScheduledMonthlyShiftsForDate,
   syncMonthlySchedulesToDailyJobs,
+  buildPendingCalcContext,
+  loadClientAdjustments,
+  calcJobPending,
+  allocateClientCollection,
   type ScheduledShiftPlan,
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
@@ -489,6 +493,10 @@ export function DailyJobSheet() {
     safeLocalStorageSet('safaeewala_daily_pending_rcvd_items', pendingRcvdList)
   }, [pendingRcvdList])
 
+  // Shared pending formula (adjustments, advance deductions and later collections included)
+  const pendingCtx = useMemo(() => buildPendingCalcContext(loadClientAdjustments(), pendingRcvdList), [pendingRcvdList])
+  const jobPending = (job: DailyJob) => calcJobPending(job, pendingCtx)
+
   useEffect(() => {
     safeLocalStorageSet('safaeewala_daily_advance_items', advanceList)
   }, [advanceList])
@@ -798,8 +806,8 @@ export function DailyJobSheet() {
 
     // 1. Pending jobs from todayJobs (charges > received or payment_mode is 'Pending')
     todayJobs.forEach(job => {
-      const due = Math.max(0, cleanNum(job.charges) - cleanNum(job.received))
-      if (!isBogusSummaryJob(job) && (due > 0 || job.payment_mode === 'Pending')) {
+      const due = calcJobPending(job, pendingCtx)
+      if (!isBogusSummaryJob(job) && due > 0) {
         list.push({
           id: `job-${job.id}`,
           date: job.date,
@@ -831,7 +839,7 @@ export function DailyJobSheet() {
     })
 
     return list
-  }, [todayJobs, todayPendingItems])
+  }, [todayJobs, todayPendingItems, pendingCtx])
 
   const todayPendingTotalAmt   = todayPendingEntries.reduce((s, i) => s + cleanNum(i.amount), 0)
   const pendingTotalAmt        = todayPendingTotalAmt
@@ -906,7 +914,7 @@ export function DailyJobSheet() {
       Location: j.area,
       Charges: cleanNum(j.charges),
       Receive: cleanNum(j.received),
-      Pending: cleanNum(j.charges) > cleanNum(j.received) ? cleanNum(j.charges) - cleanNum(j.received) : 'Nil',
+      Pending: jobPending(j) > 0 ? jobPending(j) : 'Nil',
       'Duty H': cleanNum(j.duty_hours),
       OT: cleanNum(j.ot_hours) || calcOTHours(j.start_time, j.end_time),
       Material: j.material,
@@ -1075,7 +1083,7 @@ export function DailyJobSheet() {
         <td>${j.area || '—'}</td>
         <td style="text-align:right">${j.payment_mode === 'Monthly' ? (cleanNum(j.charges) > 0 ? cleanNum(j.charges) : '—') : cleanNum(j.charges)}</td>
         <td style="text-align:right">${j.payment_mode === 'Pending' || j.payment_mode === 'Monthly' ? '—' : cleanNum(j.received)}</td>
-        <td style="text-align:right">${cleanNum(j.charges) > cleanNum(j.received) ? cleanNum(j.charges) - cleanNum(j.received) : 'Nil'}</td>
+        <td style="text-align:right">${jobPending(j) > 0 ? jobPending(j) : 'Nil'}</td>
         <td style="text-align:center">${cleanNum(j.duty_hours)}h</td>
         <td style="text-align:center">${otDisplay > 0 ? otDisplay + 'h OT' : '0'}</td>
         <td>${j.material}</td>
@@ -2212,8 +2220,8 @@ export function DailyJobSheet() {
       case 'pending':
         return (
           <td key={id} className="px-3 py-3 font-semibold whitespace-nowrap">
-            {cleanNum(job.charges) > cleanNum(job.received) ? (
-              <span className="text-red-500 font-bold">AED {(cleanNum(job.charges) - cleanNum(job.received)).toLocaleString()}</span>
+            {jobPending(job) > 0 ? (
+              <span className="text-red-500 font-bold">AED {jobPending(job).toLocaleString()}</span>
             ) : (
               <span className={isMonthly ? 'text-emerald-700 font-medium' : 'text-slate-400 font-medium'}>Nil</span>
             )}
@@ -2315,7 +2323,7 @@ export function DailyJobSheet() {
     }
   }
 
-  const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project')
+  const availableEmps = employees.filter(e => e.status !== 'inactive')
 
   return (
     <div className="space-y-6 pb-10">
@@ -3590,7 +3598,7 @@ export function DailyJobSheet() {
               {filteredActiveJobRows.length > 0 && (() => {
                 const totalCharges = filteredActiveJobRows.reduce((s, j) => s + cleanNum(j.charges), 0)
                 const totalReceived = filteredActiveJobRows.reduce((s, j) => s + cleanNum(j.received), 0)
-                const totalPending = filteredActiveJobRows.reduce((s, j) => s + Math.max(0, cleanNum(j.charges) - cleanNum(j.received)), 0)
+                const totalPending = filteredActiveJobRows.reduce((s, j) => s + jobPending(j), 0)
                 const totalDuty = Math.round(filteredActiveJobRows.reduce((s, j) => s + cleanNum(j.duty_hours), 0) * 10) / 10
                 const totalOT = Math.round(filteredActiveJobRows.reduce((s, j) => s + (cleanNum(j.ot_hours) || calcOTHours(j.start_time, j.end_time)), 0) * 10) / 10
                 const firstLabelColId = activeColumns.find(c => !['charges', 'received', 'pending', 'duty_hours', 'ot_hours'].includes(c.id))?.id
@@ -4204,7 +4212,7 @@ CREATE TABLE daily_expenses (
       {/* ── Add Job Modal ── */}
       <Modal open={showAddJob} onClose={() => setShowAddJob(false)} title="Add Job Entry" size="lg">
         <AddJobForm
-          employees={activeEmps}
+          employees={availableEmps}
           onClose={() => setShowAddJob(false)}
           onSave={j => { addDailyJob({ ...j, date: selectedDate }); setShowAddJob(false) }}
           initial={{ date: selectedDate }}
@@ -4215,7 +4223,7 @@ CREATE TABLE daily_expenses (
       <Modal open={!!editJob} onClose={() => setEditJob(null)} title="Edit Job Entry" size="lg">
         {editJob && (
           <AddJobForm
-            employees={activeEmps}
+            employees={availableEmps}
             onClose={() => setEditJob(null)}
             onSave={j => { updateDailyJob(editJob.id, j); setEditJob(null) }}
             initial={editJob}
@@ -4313,7 +4321,18 @@ CREATE TABLE daily_expenses (
         item={editingPendingRcvd}
         onClose={() => setEditingPendingRcvd(null)}
         onSave={(id, client, cash, online, remarks) => {
-          setPendingRcvdList(prev => prev.map(x => x.id === id ? { ...x, client, cash, online, remarks, notes: remarks } : x))
+          setPendingRcvdList(prev => prev.map(x => {
+            if (x.id !== id) return x
+            const updated = { ...x, client, cash, online, remarks, notes: remarks }
+            // Amount changed → re-split it over the client's dues (excluding this record itself)
+            const linkedClient = x.client_id ? clients.find(c => c.id === x.client_id) : undefined
+            if (linkedClient && (x.allocations || x.opening_applied !== undefined)) {
+              const alloc = allocateClientCollection(linkedClient, cash + online, dailyJobs, prev.filter(p => p.id !== id))
+              updated.opening_applied = alloc.opening_applied
+              updated.allocations = alloc.allocations
+            }
+            return updated
+          }))
         }}
       />
 

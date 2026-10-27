@@ -17,7 +17,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import { useCurrentUser } from '@/store/UserContext'
 import type { Booking, BookingFrequency, DailyJob, DailyPendingItem, DailyPendingReceivedItem, Invoice } from '@/types'
-import { cleanClientNameFromAddress } from '@/lib/clientDataSync'
+import { cleanClientNameFromAddress, buildPendingCalcContext, loadClientAdjustments, calcJobPending } from '@/lib/clientDataSync'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 
 function cleanNum(val: any): number {
@@ -56,11 +56,11 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project')
+  const availableEmps = employees.filter(e => e.status !== 'inactive')
   const filtered = search
-    ? activeEmps.filter(e => e.full_name.toLowerCase().includes(search.toLowerCase()))
-    : activeEmps
-  const selectedEmps = activeEmps.filter(e => selected.includes(e.id))
+    ? availableEmps.filter(e => e.full_name.toLowerCase().includes(search.toLowerCase()))
+    : availableEmps
+  const selectedEmps = employees.filter(e => selected.includes(e.id))
   useEffect(() => {
     function outside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
@@ -87,11 +87,11 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
       <div className="relative" ref={ref}>
         <input
           type="text"
-          placeholder={activeEmps.length === 0 ? 'No active employees — add employees first' : 'Search and select cleaners…'}
+          placeholder={availableEmps.length === 0 ? 'No employees available — add employees first' : 'Search and select cleaners…'}
           value={search}
           onFocus={() => setOpen(true)}
           onChange={e => { setSearch(e.target.value); setOpen(true) }}
-          disabled={activeEmps.length === 0}
+          disabled={availableEmps.length === 0}
           className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50 focus:outline-none focus:border-emerald-400 placeholder-slate-400 disabled:opacity-50 transition-colors"
         />
         {open && (
@@ -105,15 +105,22 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
                   key={emp.id}
                   type="button"
                   onClick={() => { toggle(emp.id); setSearch('') }}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-[#E4E8EC] last:border-0 transition-colors ${checked ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
+                  className={`w-full flex items-center justify-between px-4 py-2.5 text-left border-b border-[#E4E8EC] last:border-0 transition-colors ${checked ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
                 >
-                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
-                    {checked && <span className="text-white text-[9px] font-bold">✓</span>}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
+                      {checked && <span className="text-white text-[9px] font-bold">✓</span>}
+                    </div>
+                    <div className="truncate">
+                      <p className="text-[12.5px] font-semibold text-[#111827] truncate">{emp.full_name}</p>
+                      <p className="text-[10.5px] text-slate-400">{emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[12.5px] font-semibold text-[#111827]">{emp.full_name}</p>
-                    <p className="text-[10.5px] text-slate-400">{emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}</p>
-                  </div>
+                  {emp.status && emp.status !== 'active' && (
+                    <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 capitalize shrink-0 ml-2">
+                      {emp.status.replace(/_/g, ' ')}
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -794,17 +801,10 @@ export function Overview() {
   // ── Unified System-Wide Pending Payments & Outstanding Dues ──
   const { totalPendingAmount, totalPendingCount, dailyPendingCount, sidePendingCount, invoicePendingCount } = useMemo(() => {
     // 1. Daily Jobs with pending dues
-    const djPendingList = validDailyJobs.filter(j => {
-      const chg = cleanNum(j.charges)
-      const rec = cleanNum(j.received)
-      return (chg > rec) || j.payment_mode === 'Pending'
-    })
-    const djPendingAmt = djPendingList.reduce((s, j) => {
-      const chg = cleanNum(j.charges)
-      const rec = cleanNum(j.received)
-      const diff = chg - rec
-      return s + (diff > 0 ? diff : chg)
-    }, 0)
+    // Same per-job formula as Pending Payments, Daily Job Sheet and Client Profile
+    const pendingCtx = buildPendingCalcContext(loadClientAdjustments(), pendingRcvdList)
+    const djPendingList = validDailyJobs.filter(j => calcJobPending(j, pendingCtx) > 0)
+    const djPendingAmt = djPendingList.reduce((s, j) => s + calcJobPending(j, pendingCtx), 0)
 
     // 2. Side table pending items
     const sideAmt = pendingList.reduce((s, i) => s + cleanNum(i.amount), 0)
@@ -820,7 +820,7 @@ export function Overview() {
       sidePendingCount: pendingList.length,
       invoicePendingCount: pInvoices.length,
     }
-  }, [validDailyJobs, pendingList, invoices])
+  }, [validDailyJobs, pendingList, pendingRcvdList, invoices])
 
   // ── Staff & Utilization ──
   const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project' || !e.status)

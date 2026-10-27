@@ -1,4 +1,6 @@
-import type { DailyJob, Client, Employee } from '@/types'
+import type { DailyJob, Client, Employee, DailyPendingReceivedItem } from '@/types'
+import { cleanNum, calcOTHours } from '@/components/dailyJobSheet/jobSheetUtils'
+import { safeLocalStorageGet } from '@/lib/storageUtils'
 
 /**
  * Normalizes text for fuzzy/clean comparison (lowercased, alphanumeric only)
@@ -80,20 +82,227 @@ export function calcJobOTHours(job: DailyJob): number {
     const duty = Number(job.duty_hours) || 0
     if (duty > 0) return duty
   }
-  const s = (job.start_time || '').trim()
-  const e = (job.end_time || '').trim()
-  if (!s || !e || s === '—' || e === '—' || !s.includes(':') || !e.includes(':')) return 0
+  return calcOTHours(job.start_time, job.end_time)
+}
 
-  const [sh, sm] = s.split(':').map(Number)
-  const [eh, em] = e.split(':').map(Number)
-  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return 0
+/* ══════════════════════════════════════════════════════════════════════════
+   FINANCIAL CALCULATIONS — SINGLE SOURCE OF TRUTH
+   Every screen (Overview, Pending Payments, Payments, Daily Job Sheet,
+   Spreadsheet, Monthly Clients, Client Profile) must use these helpers so
+   the same job / client always shows the same pending figure.
+   ══════════════════════════════════════════════════════════════════════════ */
 
-  const endMins = eh * 60 + em
-  const OT_CUTOFF = 20 * 60 // 8:00 PM
-  if (endMins <= OT_CUTOFF) return 0
-  const otStartMins = Math.max(sh * 60 + sm, OT_CUTOFF)
-  const otMins = endMins - otStartMins
-  return otMins > 0 ? Math.round((otMins / 60) * 10) / 10 : 0
+const CLIENT_ADJUSTMENTS_KEY = 'safaeewala_client_adjustments'
+const PENDING_RECEIPTS_KEY = 'safaeewala_daily_pending_rcvd_items'
+
+/** Minimal shape of a client adjustment record (see ClientFinancialAdjustment in ClientProfile) */
+export interface JobAdjustmentRecord {
+  id?: string
+  client_id?: string
+  client_name?: string
+  type: string
+  amount: number
+  reference_job_id?: string
+}
+
+export interface LinkedJobAdjustment {
+  amount: number
+  hasAdvanceDeduction: boolean
+}
+
+/** Adjustment written inline in remarks, e.g. "ADJ 50", "discount: AED 30" */
+export function extractAdjustmentFromRemarks(remarks?: string): number {
+  if (!remarks) return 0
+  const m = remarks.match(/(?:adj(?:ustment)?|discount|waiver|credit)[\s:]*(?:aed)?\s*([0-9]+(?:\.[0-9]+)?)/i)
+  if (m && m[1]) {
+    const val = parseFloat(m[1])
+    return isNaN(val) ? 0 : val
+  }
+  return 0
+}
+
+/** True when the job's charges were settled from the client's advance balance */
+export function isJobPaidFromAdvance(job: DailyJob): boolean {
+  if (job.payment_mode === 'Above') return true
+  return /(?:deduct|from\s*adv|above|paid\s*by\s*adv)/i.test(job.remarks || '')
+}
+
+/** Loads client adjustments, ignoring the old demo seed records */
+export function loadClientAdjustments(): JobAdjustmentRecord[] {
+  const list = safeLocalStorageGet<JobAdjustmentRecord[]>(CLIENT_ADJUSTMENTS_KEY, [])
+  return Array.isArray(list) ? list.filter(a => !a.id?.startsWith('adj-seed-')) : []
+}
+
+export function loadPendingReceipts(): DailyPendingReceivedItem[] {
+  const list = safeLocalStorageGet<DailyPendingReceivedItem[]>(PENDING_RECEIPTS_KEY, [])
+  return Array.isArray(list) ? list : []
+}
+
+/** Groups job-linked adjustments (discounts, waivers, advance deductions) by job id */
+export function buildJobAdjustmentMap(adjustments: JobAdjustmentRecord[]): Map<string, LinkedJobAdjustment> {
+  const map = new Map<string, LinkedJobAdjustment>()
+  adjustments.forEach(a => {
+    if (!a.reference_job_id || a.type === 'advance') return
+    const entry = map.get(a.reference_job_id) || { amount: 0, hasAdvanceDeduction: false }
+    entry.amount += cleanNum(a.amount)
+    if (a.type === 'advance_deduction') entry.hasAdvanceDeduction = true
+    map.set(a.reference_job_id, entry)
+  })
+  return map
+}
+
+/**
+ * Sums pending-received collections that are linked to specific jobs.
+ * A collection is linked via `job_id` (Pending Payments / Payments collect)
+ * or via `allocations` (Daily Job Sheet "Pending Received" modal).
+ * Collections without links (legacy / side-table items) are not applied to jobs.
+ */
+export function buildJobReceiptMap(receipts: DailyPendingReceivedItem[]): Map<string, number> {
+  const map = new Map<string, number>()
+  receipts.forEach(r => {
+    if (r.job_id) {
+      map.set(r.job_id, (map.get(r.job_id) || 0) + cleanNum(r.cash) + cleanNum(r.online))
+    }
+    r.allocations?.forEach(al => {
+      map.set(al.job_id, (map.get(al.job_id) || 0) + cleanNum(al.amount))
+    })
+  })
+  return map
+}
+
+export interface PendingCalcContext {
+  adjustments: Map<string, LinkedJobAdjustment>
+  receipts: Map<string, number>
+}
+
+export function buildPendingCalcContext(
+  adjustments: JobAdjustmentRecord[] = loadClientAdjustments(),
+  receipts: DailyPendingReceivedItem[] = loadPendingReceipts()
+): PendingCalcContext {
+  return {
+    adjustments: buildJobAdjustmentMap(adjustments),
+    receipts: buildJobReceiptMap(receipts),
+  }
+}
+
+/** Total adjustment for a job: linked/inline adjustment + charges settled from advance */
+export function calcJobAdjustment(job: DailyJob, linked?: LinkedJobAdjustment): number {
+  const charges = cleanNum(job.charges)
+  const base = (linked?.amount || 0) || extractAdjustmentFromRemarks(job.remarks)
+  const fromAdvance = !linked?.hasAdvanceDeduction && isJobPaidFromAdvance(job) ? charges : 0
+  return base + fromAdvance
+}
+
+/** Amount collected later against this job (Pending Received), on top of `received` */
+export function calcJobLaterReceipts(job: DailyJob, ctx?: PendingCalcContext): number {
+  return ctx?.receipts.get(job.id) || 0
+}
+
+/**
+ * Outstanding amount of a single job:
+ * charges − adjustments − received on the day − collected later.
+ * `payment_mode` alone never creates a due — a fully paid "Pending" row is 0.
+ */
+export function calcJobPending(job: DailyJob, ctx?: PendingCalcContext): number {
+  const charges = cleanNum(job.charges)
+  const adjustment = calcJobAdjustment(job, ctx?.adjustments.get(job.id))
+  const effectiveDue = Math.max(0, charges - adjustment)
+  const paid = cleanNum(job.received) + calcJobLaterReceipts(job, ctx)
+  return Math.max(0, effectiveDue - paid)
+}
+
+/** Opening balance (client.pending_amount) still unpaid after Pending Received collections */
+export function calcClientOpeningPending(client: Client, receipts: DailyPendingReceivedItem[] = loadPendingReceipts()): number {
+  const opening = cleanNum(client.pending_amount)
+  if (opening <= 0) return 0
+  const applied = receipts
+    .filter(r => r.client_id === client.id)
+    .reduce((s, r) => s + cleanNum(r.opening_applied), 0)
+  return Math.max(0, opening - applied)
+}
+
+/** Lifetime balance of a client: unpaid jobs + unpaid opening balance */
+export function calcClientPendingBalance(
+  client: Client,
+  dailyJobs: DailyJob[],
+  receipts: DailyPendingReceivedItem[] = loadPendingReceipts(),
+  adjustments: JobAdjustmentRecord[] = loadClientAdjustments()
+): number {
+  const ctx = buildPendingCalcContext(adjustments, receipts)
+  const jobsPending = getClientDailyJobsHistory(client, dailyJobs).reduce((s, j) => s + calcJobPending(j, ctx), 0)
+  return jobsPending + calcClientOpeningPending(client, receipts)
+}
+
+/**
+ * Splits a collection over the client's opening balance first, then oldest unpaid jobs.
+ * Jobs themselves are never modified, so each day's cash book stays unchanged.
+ */
+export function allocateClientCollection(
+  client: Client,
+  amount: number,
+  dailyJobs: DailyJob[],
+  receipts: DailyPendingReceivedItem[] = loadPendingReceipts(),
+  adjustments: JobAdjustmentRecord[] = loadClientAdjustments()
+): { opening_applied: number; allocations: { job_id: string; amount: number }[]; unallocated: number } {
+  let remaining = Math.max(0, amount)
+  const opening_applied = Math.min(remaining, calcClientOpeningPending(client, receipts))
+  remaining -= opening_applied
+
+  const ctx = buildPendingCalcContext(adjustments, receipts)
+  const oldestFirst = [...getClientDailyJobsHistory(client, dailyJobs)].reverse()
+  const allocations: { job_id: string; amount: number }[] = []
+  for (const job of oldestFirst) {
+    if (remaining <= 0) break
+    const due = calcJobPending(job, ctx)
+    if (due <= 0) continue
+    const pay = Math.min(due, remaining)
+    allocations.push({ job_id: job.id, amount: pay })
+    remaining -= pay
+  }
+  return { opening_applied, allocations, unallocated: remaining }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EMPLOYEE PAY — SINGLE SOURCE OF TRUTH
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Standard working hours per month used to convert hourly ↔ monthly pay */
+export const MONTHLY_WORK_HOURS = 200
+
+/** Monthly salary from the record, or derived from the hourly rate. 0 = not set. */
+export function getEmployeeMonthlySalary(emp: Pick<Employee, 'monthly_salary' | 'pay_rate_hourly'>): number {
+  if (emp.monthly_salary && emp.monthly_salary > 0) return emp.monthly_salary
+  if (emp.pay_rate_hourly && emp.pay_rate_hourly > 0) return Math.round(emp.pay_rate_hourly * MONTHLY_WORK_HOURS)
+  return 0
+}
+
+export function formatMonthlySalary(emp: Pick<Employee, 'monthly_salary' | 'pay_rate_hourly'>): string {
+  const salary = getEmployeeMonthlySalary(emp)
+  return salary > 0 ? `AED ${salary.toLocaleString()}/mo` : 'Not set'
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   NAME MATCHING
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Lowercase words separated by single spaces ("Flat 309, Bldg-31A" → "flat 309 bldg 31a") */
+export function toWords(text: string): string {
+  return (text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+/**
+ * True when one text contains the other as whole consecutive words.
+ * "Villa 3" does NOT match "Villa 31"; "Mrs Khan" matches "Flat 309 - Mrs Khan".
+ * The shorter side must be at least `minLength` characters to avoid accidental hits.
+ */
+export function containsWords(a: string, b: string, minLength = 4): boolean {
+  const wa = toWords(a)
+  const wb = toWords(b)
+  if (!wa || !wb) return false
+  if (wa === wb) return true
+  const [shorter, longer] = wa.length <= wb.length ? [wa, wb] : [wb, wa]
+  if (shorter.replace(/ /g, '').length < minLength) return false
+  return ` ${longer} `.includes(` ${shorter} `)
 }
 
 /**
@@ -115,13 +324,9 @@ export function jobMatchesClient(job: DailyJob, client: Client): boolean {
   if (jobNorm && clientNameNorm && (jobNorm === clientNameNorm || cleanJobNorm === clientNameNorm)) return true
   if (clientBldgNorm && (jobNorm === clientBldgNorm || cleanJobNorm === clientBldgNorm)) return true
 
-  // Substring match for substantial names (>= 4 chars)
-  if (clientNameNorm.length >= 4) {
-    if (cleanJobNorm.includes(clientNameNorm) || clientNameNorm.includes(cleanJobNorm)) return true
-  }
-  if (clientBldgNorm.length >= 4) {
-    if (jobNorm.includes(clientBldgNorm) || clientBldgNorm.includes(jobNorm)) return true
-  }
+  // Whole-word match for substantial names ("Villa 3" must not match "Villa 31")
+  if (containsWords(cleanClientNameFromAddress(rawAddr), client.full_name)) return true
+  if (client.building_name && containsWords(rawAddr, client.building_name)) return true
 
   return false
 }
@@ -158,11 +363,11 @@ export function isMonthlyClient(
     const cId = client.id
     const cNorm = normalizeKey(client.full_name)
     const bNorm = normalizeKey(client.building_name || '')
-    const inSummaries = monthlySummaries.some(s => 
+    const inSummaries = monthlySummaries.some(s =>
       s.id === cId ||
       s.matchedClientId === cId ||
-      (cNorm && (normalizeKey(s.name) === cNorm || (cNorm.length >= 4 && (normalizeKey(s.name).includes(cNorm) || cNorm.includes(normalizeKey(s.name)))))) ||
-      (bNorm && (normalizeKey(s.rawAddress) === bNorm || (bNorm.length >= 4 && (normalizeKey(s.rawAddress).includes(bNorm) || bNorm.includes(normalizeKey(s.rawAddress))))))
+      (cNorm && (normalizeKey(s.name) === cNorm || containsWords(s.name, client.full_name))) ||
+      (bNorm && (normalizeKey(s.rawAddress) === bNorm || containsWords(s.rawAddress, client.building_name || '')))
     )
     if (inSummaries) return true
   }
@@ -182,7 +387,6 @@ export function isMonthlyClient(
       if (clientId && (clientId === `dj-${cleanNorm}` || clientId === `dj-${jobNorm}`)) return true
       if (clientNameNorm && (clientNameNorm === cleanNorm || clientNameNorm === jobNorm)) return true
       if (clientBldgNorm && (clientBldgNorm === cleanNorm || clientBldgNorm === jobNorm)) return true
-      if (clientNameNorm.length >= 4 && (cleanNorm.includes(clientNameNorm) || clientNameNorm.includes(cleanNorm))) return true
       return false
     })
     if (hasMonthlyJob) return true
@@ -267,6 +471,7 @@ export function extractMonthlyClientsFromDailyJobs(
 
   // 3. Transform groups into MonthlyClientSummary objects
   const summaries: MonthlyClientSummary[] = []
+  const pendingCtx = buildPendingCalcContext()
 
   groups.forEach((jobs, key) => {
     // Sort chronologically (newest first)
@@ -279,7 +484,8 @@ export function extractMonthlyClientsFromDailyJobs(
 
     const totalCharges = jobs.reduce((s, j) => s + (Number(j.charges) || 0), 0)
     const totalReceived = jobs.reduce((s, j) => s + (Number(j.received) || 0), 0)
-    const balanceDue = Math.max(0, totalCharges - totalReceived)
+    // Per-job dues (an overpaid job must not hide another job's due)
+    const balanceDue = jobs.reduce((s, j) => s + calcJobPending(j, pendingCtx), 0)
     const totalOTHours = Math.round(jobs.reduce((s, j) => s + calcJobOTHours(j), 0) * 10) / 10
     const totalDutyHours = Math.round(jobs.reduce((s, j) => s + (Number(j.duty_hours) || 0), 0) * 10) / 10
 
@@ -342,7 +548,7 @@ export function extractMonthlyClientsFromDailyJobs(
           area: c.area || 'Dubai',
           totalCharges: 0,
           totalReceived: 0,
-          balanceDue: c.pending_amount || 0,
+          balanceDue: calcClientOpeningPending(c),
           totalOTHours: 0,
           totalDutyHours: 0,
           visitsCount: 0,
@@ -381,6 +587,8 @@ export function extractAllClientsFromDailyJobs(
 
   // Map of normalized key to all daily jobs for that client
   const jobsByClientKey = new Map<string, DailyJob[]>()
+  // Readable address per key, used for whole-word partial matching
+  const addressByKey = new Map<string, string>()
 
   validJobs.forEach(job => {
     const rawAddr = (job.address || job.area || '').trim()
@@ -388,6 +596,7 @@ export function extractAllClientsFromDailyJobs(
     const key = normalizeKey(cleanClientNameFromAddress(rawAddr)) || normalizeKey(rawAddr)
     if (!jobsByClientKey.has(key)) jobsByClientKey.set(key, [])
     jobsByClientKey.get(key)!.push(job)
+    if (!addressByKey.has(key)) addressByKey.set(key, rawAddr)
   })
 
   // 1. Process registered clients first (updating their stats with job sheet data if any)
@@ -408,10 +617,11 @@ export function extractAllClientsFromDailyJobs(
       matchedJobKeys.add(bNorm)
     }
 
-    // Also check partial matches
+    // Also check partial (whole-word) matches
     jobsByClientKey.forEach((jobs, key) => {
       if (!matchedJobKeys.has(key)) {
-        if ((cNorm.length >= 4 && key.includes(cNorm)) || (bNorm.length >= 4 && key.includes(bNorm))) {
+        const addr = addressByKey.get(key) || ''
+        if (containsWords(cleanClientNameFromAddress(addr), c.full_name) || (bNorm && containsWords(addr, c.building_name || ''))) {
           associatedJobs = [...associatedJobs, ...jobs]
           matchedJobKeys.add(key)
         }
@@ -485,10 +695,11 @@ export function extractAllClientsFromDailyJobs(
       notes: hasMonthly ? 'Monthly Client (from Daily Job Sheet)' : '',
       source: hasMonthly ? 'monthly' : 'daily_job_sheet',
       preferred_cleaner: primaryJob.staff_name || '',
-      service_days: inferredDays && inferredDays.length > 0 ? inferredDays : (hasMonthly ? ['Monday', 'Wednesday'] : undefined),
-      scheduled_time: primaryJob.start_time || '09:00',
-      end_time: primaryJob.end_time || '13:00',
-      duration_hours: Number(primaryJob.duty_hours) || 4,
+      // Only real data from the job sheet — no invented schedule
+      service_days: inferredDays && inferredDays.length > 0 ? inferredDays : undefined,
+      scheduled_time: primaryJob.start_time || undefined,
+      end_time: primaryJob.end_time || undefined,
+      duration_hours: Number(primaryJob.duty_hours) || undefined,
       total_bookings: jobs.length,
       total_spent: totalCharges,
       last_service: latestDate,
@@ -501,15 +712,17 @@ export function extractAllClientsFromDailyJobs(
   // 3. Complete Bidirectional Sync: Guarantee ALL monthly clients from extractMonthlyClientsFromDailyJobs are present in result
   const monthlySummaries = extractMonthlyClientsFromDailyJobs(dailyJobs, 'all', registeredClients)
   monthlySummaries.forEach(s => {
-    const existing = result.find(c =>
+    const existingIdx = result.findIndex(c =>
       c.id === s.id ||
       c.id === s.matchedClientId ||
       normalizeKey(c.full_name) === normalizeKey(s.name) ||
       (s.rawAddress && s.rawAddress !== '—' && normalizeKey(c.building_name || '') === normalizeKey(s.rawAddress))
     )
-    if (existing) {
-      if (!existing.service_days || existing.service_days.length === 0) {
-        existing.service_days = s.service_days || ['Monday', 'Wednesday']
+    if (existingIdx >= 0) {
+      // Work on a copy — `result` may hold the original registered client from React state
+      const existing = { ...result[existingIdx] }
+      if ((!existing.service_days || existing.service_days.length === 0) && s.service_days && s.service_days.length > 0) {
+        existing.service_days = s.service_days
       }
       if (!existing.preferred_cleaner && s.cleaners[0]) {
         existing.preferred_cleaner = s.cleaners[0]
@@ -523,6 +736,7 @@ export function extractAllClientsFromDailyJobs(
       if (s.duration_hours && !existing.duration_hours) existing.duration_hours = s.duration_hours
       if (s.day_cleaner_assignments && !existing.day_cleaner_assignments) existing.day_cleaner_assignments = s.day_cleaner_assignments
       if (s.day_schedules && !existing.day_schedules) existing.day_schedules = s.day_schedules
+      result[existingIdx] = existing
     } else {
       result.push({
         id: s.id,
@@ -541,10 +755,10 @@ export function extractAllClientsFromDailyJobs(
         notes: 'Monthly Client (from Job Sheet)',
         source: 'monthly',
         preferred_cleaner: s.cleaners[0] || s.preferred_cleaner || '',
-        service_days: s.service_days || ['Monday', 'Wednesday'],
-        scheduled_time: s.scheduled_time || '09:00',
-        end_time: s.end_time || '13:00',
-        duration_hours: s.duration_hours || 4,
+        service_days: s.service_days,
+        scheduled_time: s.scheduled_time,
+        end_time: s.end_time,
+        duration_hours: s.duration_hours,
         day_cleaner_assignments: s.day_cleaner_assignments,
         day_schedules: s.day_schedules,
         total_bookings: s.visitsCount,
@@ -594,17 +808,26 @@ export function isBogusStaffName(name: string): boolean {
 /**
  * Checks if an Employee matches a staff name from DailyJobSheet
  */
+/** Splits a shared shift entry ("Sharada, Ambika" / "Sita & Rupa") into individual names */
+export function splitStaffNames(staffName: string): string[] {
+  return (staffName || '')
+    .split(/[,/&+]|\band\b/i)
+    .map(s => s.trim())
+    .filter(s => s && !isBogusStaffName(s))
+}
+
 export function employeeMatchesStaff(emp: Employee, staffName: string): boolean {
   if (!emp || !staffName) return false
   const eNorm = normalizeStaffName(emp.full_name)
-  const sNorm = normalizeStaffName(staffName)
-  if (!eNorm || !sNorm) return false
-  if (eNorm === sNorm) return true
-  if (emp.id === `emp-dj-${sNorm}`) return true
-  if (eNorm.length >= 4 && sNorm.length >= 4) {
-    if (eNorm.includes(sNorm) || sNorm.includes(eNorm)) return true
-  }
-  return false
+  if (!eNorm) return false
+  if (eNorm === normalizeStaffName(staffName)) return true
+  return splitStaffNames(staffName).some(name => {
+    const sNorm = normalizeStaffName(name)
+    if (!sNorm) return false
+    if (eNorm === sNorm || emp.id === `emp-dj-${sNorm}`) return true
+    // Whole-word match only ("Rupa" must not match "Rupak")
+    return containsWords(emp.full_name, name)
+  })
 }
 
 /**
@@ -632,12 +855,16 @@ export function extractAllEmployeesFromDailyJobs(
 
   // Map of normalized staff name to their daily jobs
   const jobsByStaff = new Map<string, DailyJob[]>()
+  const displayNameByKey = new Map<string, string>()
   validJobs.forEach(j => {
-    const rawStaff = (j.staff_name || '').trim()
-    if (!rawStaff || isBogusStaffName(rawStaff)) return
-    const key = normalizeStaffName(rawStaff)
-    if (!jobsByStaff.has(key)) jobsByStaff.set(key, [])
-    jobsByStaff.get(key)!.push(j)
+    // A shared shift belongs to each cleaner individually
+    splitStaffNames(j.staff_name).forEach(name => {
+      const key = normalizeStaffName(name)
+      if (!key) return
+      if (!jobsByStaff.has(key)) jobsByStaff.set(key, [])
+      jobsByStaff.get(key)!.push(j)
+      if (!displayNameByKey.has(key)) displayNameByKey.set(key, name)
+    })
   })
 
   // Known roster names from Daily Job Sheet
@@ -653,6 +880,7 @@ export function extractAllEmployeesFromDailyJobs(
     if (!jobsByStaff.has(key)) {
       jobsByStaff.set(key, [])
     }
+    if (!displayNameByKey.has(key)) displayNameByKey.set(key, name)
   })
 
   // 1. Process registered employees
@@ -660,20 +888,11 @@ export function extractAllEmployeesFromDailyJobs(
 
   registeredEmployees.forEach(e => {
     const eNorm = normalizeStaffName(e.full_name)
-    let foundKey = ''
-    if (jobsByStaff.has(eNorm)) {
-      foundKey = eNorm
-    } else {
-      for (const key of jobsByStaff.keys()) {
-        if ((eNorm.length >= 4 && key.includes(eNorm)) || (key.length >= 4 && eNorm.includes(key))) {
-          foundKey = key
-          break
-        }
-      }
-    }
-    if (foundKey) {
-      matchedStaffKeys.add(foundKey)
-    }
+    if (jobsByStaff.has(eNorm)) matchedStaffKeys.add(eNorm)
+    // Every whole-word match belongs to this employee ("Laxmi" entries → "Laxmi Rani")
+    displayNameByKey.forEach((name, key) => {
+      if (!matchedStaffKeys.has(key) && containsWords(e.full_name, name)) matchedStaffKeys.add(key)
+    })
     result.push(e)
   })
 
@@ -681,27 +900,27 @@ export function extractAllEmployeesFromDailyJobs(
   jobsByStaff.forEach((jobs, key) => {
     if (matchedStaffKeys.has(key)) return
 
-    // Find display name from jobs or roster
-    const sampleJob = jobs[0]
-    const rosterMatch = standardRoster.find(r => normalizeStaffName(r) === key)
-    const displayName = (sampleJob?.staff_name || rosterMatch || key).trim()
-    const earliestDate = jobs[jobs.length - 1]?.date || sampleJob?.date || new Date().toISOString().split('T')[0]
+    // Display name as written in the job sheet (or roster)
+    const displayName = (displayNameByKey.get(key) || key).trim()
+    const earliestDate = [...jobs].sort((a, b) => (a.date || '').localeCompare(b.date || ''))[0]?.date
+      || new Date().toISOString().split('T')[0]
 
+    // Only facts known from the job sheet — unknown HR fields stay empty ("Not recorded")
     const newEmp: Employee = {
       id: `emp-dj-${key}`,
       full_name: displayName,
       phone: '',
       email: '',
       role: ['qasim', 'dinesh', 'adnan', 'supervisor'].some(s => key.includes(s)) ? 'crew_lead' : 'cleaner',
-      nationality: 'Nepal',
+      nationality: '',
       emirates_id: '',
       visa_expiry: '',
       work_permit_expiry: '',
       medical_insurance_expiry: '',
       passport_expiry: '',
-      skills: ['Residential Cleaning', 'Deep Clean'],
+      skills: [],
       status: 'active',
-      pay_rate_hourly: 14,
+      pay_rate_hourly: 0,
       joined_date: earliestDate,
       created_at: earliestDate.includes('T') ? earliestDate : `${earliestDate}T08:00:00.000Z`,
     }
@@ -824,10 +1043,11 @@ export function getScheduledMonthlyShiftsForDate(
         notes: 'Monthly Client',
         source: 'monthly',
         preferred_cleaner: s.cleaners[0] || s.preferred_cleaner || '',
-        service_days: s.service_days || ['Monday', 'Wednesday'],
-        scheduled_time: s.scheduled_time || '08:00',
-        end_time: s.end_time || '12:00',
-        duration_hours: s.duration_hours || 4,
+        // No invented schedule: a client without real service days is not auto-synced
+        service_days: s.service_days,
+        scheduled_time: s.scheduled_time,
+        end_time: s.end_time,
+        duration_hours: s.duration_hours,
         day_cleaner_assignments: s.day_cleaner_assignments,
         day_schedules: s.day_schedules,
         total_bookings: s.visitsCount,
@@ -861,9 +1081,10 @@ export function getScheduledMonthlyShiftsForDate(
       'Unassigned'
 
     // 2. Start time, end time, and duration
-    const startTimeRaw = daySchedule?.startTime || client.scheduled_time || '08:00'
-    const endTimeRaw = daySchedule?.endTime || client.end_time || '12:00'
-    const durationHours = daySchedule?.duration || client.duration_hours || 4
+    // Left blank when the contract has no time — the sheet must not invent duty hours
+    const startTimeRaw = daySchedule?.startTime || client.scheduled_time || ''
+    const endTimeRaw = daySchedule?.endTime || client.end_time || ''
+    const durationHours = daySchedule?.duration || client.duration_hours || 0
 
     // 3. Format address with building and client name
     const bldg = (client.building_name || '').trim()
@@ -894,15 +1115,10 @@ export function getScheduledMonthlyShiftsForDate(
     const matchedJob = jobsOnDate.find(j => {
       if (jobMatchesClient(j, client)) return true
 
-      const rawAddr = (j.address || '').trim()
-      const cleanJobNorm = normalizeKey(cleanClientNameFromAddress(rawAddr))
-      const cNorm = normalizeKey(client.full_name)
-      const bNorm = normalizeKey(client.building_name || '')
-
-      if (cleanJobNorm && cNorm && (cleanJobNorm === cNorm || cleanJobNorm.includes(cNorm) || cNorm.includes(cleanJobNorm))) return true
-      if (cleanJobNorm && bNorm && (cleanJobNorm === bNorm || cleanJobNorm.includes(bNorm) || bNorm.includes(cleanJobNorm))) return true
-
-      return false
+      // Synced rows are written as "<building> - <client name> (Monthly)"
+      const cleanAddr = cleanClientNameFromAddress((j.address || '').trim())
+      return containsWords(cleanAddr, client.full_name) ||
+        Boolean(client.building_name && containsWords(cleanAddr, client.building_name))
     })
 
     shifts.push({

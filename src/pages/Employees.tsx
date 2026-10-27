@@ -15,7 +15,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { Employee, DailyJob, EmployeeRole, Agency } from '@/types'
-import { getEmployeeDailyJobsHistory, calcJobOTHours } from '@/lib/clientDataSync'
+import { getEmployeeDailyJobsHistory, calcJobOTHours, getEmployeeMonthlySalary, formatMonthlySalary, splitStaffNames, MONTHLY_WORK_HOURS } from '@/lib/clientDataSync'
 
 /* ─── Excel import/export helpers ─── */
 function toISODate(val: any): string {
@@ -87,8 +87,9 @@ function exportEmployeesXLSX(
     const st = statsMap.get(e.id)
     const dutyHours = st?.dutyHours ?? 0
     const otHours = st?.otHours ?? 0
-    const totalHours = Math.round((dutyHours + otHours) * 10) / 10
-    const monthlySalary = e.monthly_salary || (e.pay_rate_hourly ? e.pay_rate_hourly * 200 : 2000)
+    // OT hours fall inside the duty window, so they are not added on top
+    const totalHours = dutyHours
+    const monthlySalary = getEmployeeMonthlySalary(e)
     return {
       'Emp ID':                    `EMP-${String(i + 1).padStart(3, '0')}`,
       'Full Name':                 e.full_name,
@@ -132,7 +133,7 @@ async function parseEmployeesFile(file: File): Promise<Omit<Employee, 'id' | 'cr
         nationality:                String(r['Nationality'] ?? r['nationality'] ?? '').trim(),
         emirates_id:                String(r['Emirates ID'] ?? r['emirates_id'] ?? '').trim(),
         pay_rate_hourly:            Number(r['Pay Rate (AED/hr)'] ?? r['pay_rate_hourly']) || 14,
-        monthly_salary:             Number(r['Monthly Salary (AED)'] ?? r['monthly_salary']) || (Number(r['Pay Rate (AED/hr)']) ? Number(r['Pay Rate (AED/hr)']) * 200 : 2000),
+        monthly_salary:             Number(r['Monthly Salary (AED)'] ?? r['monthly_salary']) || Math.round((Number(r['Pay Rate (AED/hr)']) || 0) * MONTHLY_WORK_HOURS),
         visa_expiry:                toISODate(r['Visa Expiry'] ?? r['visa_expiry']),
         work_permit_expiry:         toISODate(r['Work Permit Expiry'] ?? r['work_permit_expiry']),
         passport_expiry:            toISODate(r['Passport Expiry'] ?? r['passport_expiry']),
@@ -370,9 +371,11 @@ export function Employees() {
       const shifts = rangeJobs.length
       const dutyHours = Math.round(rangeJobs.reduce((s, j) => s + (Number(j.duty_hours) || 0), 0) * 10) / 10
       const otHours = Math.round(rangeJobs.reduce((s, j) => s + calcJobOTHours(j), 0) * 10) / 10
-      const totalHours = Math.round((dutyHours + otHours) * 10) / 10
-      const revenueGenerated = rangeJobs.reduce((s, j) => s + (Number(j.charges) || 0), 0)
-      const cashCollected = rangeJobs.filter(j => j.payment_mode === 'Cash').reduce((s, j) => s + (Number(j.received) || 0), 0)
+      // OT hours fall inside the duty window, so they are not added on top
+      const totalHours = dutyHours
+      // A shared shift's charge is split between its cleaners
+      const revenueGenerated = Math.round(rangeJobs.reduce((s, j) => s + (Number(j.charges) || 0) / Math.max(1, splitStaffNames(j.staff_name).length), 0))
+      const cashCollected = Math.round(rangeJobs.filter(j => j.payment_mode === 'Cash').reduce((s, j) => s + (Number(j.received) || 0) / Math.max(1, splitStaffNames(j.staff_name).length), 0))
 
       stats.set(emp.id, {
         shifts,
@@ -482,7 +485,7 @@ export function Employees() {
 
     totalDutyHours = Math.round(totalDutyHours * 10) / 10
     totalOTHours = Math.round(totalOTHours * 10) / 10
-    const totalWorkHours = Math.round((totalDutyHours + totalOTHours) * 10) / 10
+    const totalWorkHours = totalDutyHours
     const otRatio = totalWorkHours > 0 ? Math.round((totalOTHours / totalWorkHours) * 100) : 0
     const avgDutyPerStaff = agencyScopedEmployees.length > 0 ? Math.round((totalDutyHours / agencyScopedEmployees.length) * 10) / 10 : 0
 
@@ -581,8 +584,8 @@ export function Employees() {
         return (stB?.shifts ?? 0) - (stA?.shifts ?? 0)
       }
       if (sortBy === 'rate_desc') {
-        const salA = a.monthly_salary || (a.pay_rate_hourly ? a.pay_rate_hourly * 200 : 2000)
-        const salB = b.monthly_salary || (b.pay_rate_hourly ? b.pay_rate_hourly * 200 : 2000)
+        const salA = getEmployeeMonthlySalary(a)
+        const salB = getEmployeeMonthlySalary(b)
         return salB - salA
       }
       return a.full_name.localeCompare(b.full_name)
@@ -987,7 +990,7 @@ export function Employees() {
                     <span className="font-medium text-slate-700">{emp.phone || 'No phone'}</span>
                   </div>
                   <span className="text-[11.5px] font-black text-teal-800 bg-teal-50 border border-teal-200/90 px-2 py-0.5 rounded-lg shadow-2xs">
-                    AED {(emp.monthly_salary || (emp.pay_rate_hourly ? Math.round(emp.pay_rate_hourly * 200) : 2500)).toLocaleString()}/mo
+                    {formatMonthlySalary(emp)}
                   </span>
                 </div>
 
@@ -1173,7 +1176,7 @@ export function Employees() {
 
                   {/* Monthly Salary */}
                   <td className="py-3 px-3 font-black text-slate-900">
-                    AED {(emp.monthly_salary || (emp.pay_rate_hourly ? Math.round(emp.pay_rate_hourly * 200) : 2500)).toLocaleString()}/mo
+                    {formatMonthlySalary(emp)}
                   </td>
 
                   {/* Visa Expiry */}
@@ -1716,7 +1719,7 @@ export function Employees() {
           e.preventDefault()
           const fd = new FormData(e.currentTarget)
           const role = (fd.get('role') as EmployeeRole) || 'cleaner'
-          const monthly_salary = Number(fd.get('monthly_salary')) || 2500
+          const monthly_salary = Number(fd.get('monthly_salary')) || 0
           const agencyId = (fd.get('agency_id') as string) || ''
           const selAgency = agencies.find(a => a.id === agencyId)
 
@@ -1727,7 +1730,7 @@ export function Employees() {
             nationality: fd.get('nationality') as string,
             emirates_id: fd.get('emirates_id') as string,
             monthly_salary,
-            pay_rate_hourly: Math.round((monthly_salary / 200) * 10) / 10,
+            pay_rate_hourly: Math.round((monthly_salary / MONTHLY_WORK_HOURS) * 10) / 10,
             agency_id: agencyId || undefined,
             agency_name: selAgency?.name || undefined,
             assigned_client_ids: addClientIds,
@@ -1773,7 +1776,6 @@ export function Employees() {
               name="monthly_salary"
               label="Monthly Salary (AED/mo)"
               type="number"
-              defaultValue="2500"
               placeholder="e.g. 2500"
               required
             />
@@ -1960,12 +1962,21 @@ export function Employees() {
               {/* Contact and Details (with Monthly Salary, Agency, Joining and End Date) */}
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { label: 'Monthly Salary', value: `AED ${(selected.monthly_salary || (selected.pay_rate_hourly ? Math.round(selected.pay_rate_hourly * 200) : 2500)).toLocaleString()}/mo` },
+                  { label: 'Monthly Salary', value: formatMonthlySalary(selected) },
+                  { label: 'Hourly Rate',    value: selected.pay_rate_hourly > 0 ? `AED ${selected.pay_rate_hourly}/hr` : 'Not set' },
+                  { label: 'Role',           value: formatEmpRole(selected.role) },
                   { label: 'Agency Source',  value: getEmployeeAgencySource(selected) },
                   { label: 'Joining Date',   value: formatDate(selected.joined_date) },
                   { label: 'End Date',       value: selected.end_date ? formatDate(selected.end_date) : 'Active / Indefinite' },
                   { label: 'Phone',          value: selected.phone || 'Not recorded' },
+                  { label: 'Email',          value: selected.email || 'Not recorded' },
+                  { label: 'Nationality',    value: selected.nationality || 'Not recorded' },
                   { label: 'Emirates ID',    value: selected.emirates_id || 'Not recorded' },
+                  { label: 'Visa Expiry',    value: selected.visa_expiry ? formatDate(selected.visa_expiry) : 'Not recorded' },
+                  { label: 'Work Permit Expiry', value: selected.work_permit_expiry ? formatDate(selected.work_permit_expiry) : 'Not recorded' },
+                  { label: 'Passport Expiry', value: selected.passport_expiry ? formatDate(selected.passport_expiry) : 'Not recorded' },
+                  { label: 'Medical Insurance Expiry', value: selected.medical_insurance_expiry ? formatDate(selected.medical_insurance_expiry) : 'Not recorded' },
+                  { label: 'Skills',         value: selected.skills?.length ? selected.skills.join(', ') : 'Not recorded' },
                 ].map(({ label, value }) => (
                   <div key={label} className="bg-white rounded-xl p-3 border border-slate-200/80 shadow-2xs">
                     <p className="text-[10.5px] text-slate-400 uppercase tracking-wider font-bold mb-0.5">{label}</p>
@@ -2086,7 +2097,7 @@ export function Employees() {
               e.preventDefault()
               const fd = new FormData(e.currentTarget)
               const role = (fd.get('role') as EmployeeRole) || selected.role
-              const monthly_salary = Number(fd.get('monthly_salary')) || (selected.pay_rate_hourly ? Math.round(selected.pay_rate_hourly * 200) : 2500)
+              const monthly_salary = Number(fd.get('monthly_salary')) || getEmployeeMonthlySalary(selected)
               const agencyId = (fd.get('agency_id') as string) || ''
               const selAgency = agencies.find(a => a.id === agencyId)
 
@@ -2097,7 +2108,7 @@ export function Employees() {
                 nationality:               fd.get('nationality') as string,
                 emirates_id:               fd.get('emirates_id') as string,
                 monthly_salary,
-                pay_rate_hourly:           Math.round((monthly_salary / 200) * 10) / 10,
+                pay_rate_hourly:           Math.round((monthly_salary / MONTHLY_WORK_HOURS) * 10) / 10,
                 agency_id:                 agencyId || undefined,
                 agency_name:               selAgency?.name || (agencyId ? selected.agency_name : undefined),
                 assigned_client_ids:       editClientIds,
@@ -2150,7 +2161,7 @@ export function Employees() {
                 name="monthly_salary"
                 label="Monthly Salary (AED/mo)"
                 type="number"
-                defaultValue={String(selected.monthly_salary || (selected.pay_rate_hourly ? Math.round(selected.pay_rate_hourly * 200) : 2500))}
+                defaultValue={getEmployeeMonthlySalary(selected) ? String(getEmployeeMonthlySalary(selected)) : ''}
                 required
               />
             </div>

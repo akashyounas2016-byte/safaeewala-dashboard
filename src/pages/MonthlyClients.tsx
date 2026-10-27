@@ -3592,6 +3592,18 @@ export function MonthlyClients() {
 }
 
 function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: { clientName: string; clientPhone: string; onClose: () => void; onAdd: (b: any) => void }) {
+  const { clients, employees } = useData()
+  const matchedClient = useMemo(() => {
+    const q = clientName.toLowerCase().trim()
+    return clients.find(c => (c.full_name || '').toLowerCase().trim() === q)
+  }, [clients, clientName])
+
+  const initialAddress = useMemo(() => {
+    if (!matchedClient) return ''
+    if ((matchedClient as any).address) return (matchedClient as any).address
+    return [matchedClient.apartment, matchedClient.building_name, matchedClient.area].filter(Boolean).join(', ')
+  }, [matchedClient])
+
   const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [startTime, setStartTime] = useState('09:00')
   const [duration, setDuration] = useState(3)
@@ -3630,10 +3642,15 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: { client
       onSubmit={e => {
         e.preventDefault()
         const f = new FormData(e.currentTarget)
+        const defaultCrew: string[] = []
+        if (matchedClient?.preferred_cleaner) {
+          const emp = employees.find(ep => ep.full_name?.toLowerCase().trim() === matchedClient.preferred_cleaner?.toLowerCase().trim())
+          if (emp) defaultCrew.push(emp.id)
+        }
         onAdd({
-          client_id: '',
+          client_id: matchedClient?.id || '',
           client_name: clientName,
-          client_phone: clientPhone,
+          client_phone: clientPhone || matchedClient?.phone || '',
           service_address: f.get('service_address') as string,
           service_type: f.get('service_type') as string,
           frequency: (f.get('frequency') as BookingFrequency) || 'monthly',
@@ -3644,7 +3661,7 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: { client
           total_amount: Number(f.get('total_amount')) || 0,
           notes: f.get('notes') as string,
           status: 'pending',
-          assigned_crew: [],
+          assigned_crew: defaultCrew,
         })
       }}
     >
@@ -3655,10 +3672,10 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: { client
         </div>
         <div className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC]">
           <p className="text-[10.5px] text-slate-500 uppercase font-semibold mb-1">Phone</p>
-          <p className="text-[13px] font-semibold text-[#111827]">{clientPhone}</p>
+          <p className="text-[13px] font-semibold text-[#111827]">{clientPhone || matchedClient?.phone || '—'}</p>
         </div>
       </div>
-      <Input name="service_address" label="Service Address" placeholder="Street, unit, neighborhood" />
+      <Input name="service_address" label="Service Address" defaultValue={initialAddress} placeholder="Street, unit, neighborhood" />
       <div className="grid grid-cols-2 gap-4">
         <Select name="service_type" label="Service Type">
           <option value="">Select service…</option>

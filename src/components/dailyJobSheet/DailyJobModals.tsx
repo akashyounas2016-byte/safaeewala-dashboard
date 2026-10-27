@@ -15,7 +15,7 @@ import type {
   DailyAdvanceItem,
   Client,
 } from '@/types'
-import { getClientDailyJobsHistory } from '@/lib/clientDataSync'
+import { allocateClientCollection, calcClientPendingBalance } from '@/lib/clientDataSync'
 import {
   cleanNum,
   formatTimeOnly,
@@ -424,15 +424,7 @@ export function EditPendingModal({
 /* ── Helper: Compute client's total pending balance from profile and daily shifts ── */
 export function computeClientPendingAmount(client: Client, dailyJobs: DailyJob[]): number {
   if (!client) return 0
-  const jobs = getClientDailyJobsHistory(client, dailyJobs)
-  const shiftPending = jobs.reduce((sum, j) => {
-    const ch = cleanNum(j.charges)
-    const rc = cleanNum(j.received)
-    if (j.payment_mode === 'Pending' && rc === 0) return sum + ch
-    return sum + Math.max(0, ch - rc)
-  }, 0)
-  const initPending = cleanNum(client.pending_amount)
-  return shiftPending + initPending
+  return calcClientPendingBalance(client, dailyJobs)
 }
 
 /* ── Add Pending Received Modal ── */
@@ -447,7 +439,7 @@ export function AddPendingReceivedModal({
   onClose: () => void
   onAdd: (item: DailyPendingReceivedItem) => void
 }) {
-  const { clients, dailyJobs, updateClient } = useData()
+  const { clients, dailyJobs } = useData()
 
   const [clientSearch, setClientSearch] = useState('')
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
@@ -545,6 +537,13 @@ export function AddPendingReceivedModal({
     const onlineNum = cleanNum(online)
     if (cashNum === 0 && onlineNum === 0) return
 
+    // Split the collection over the opening balance and oldest unpaid jobs.
+    // client.pending_amount stays the original opening balance, so the
+    // job pending is never counted twice.
+    const allocation = selectedClient
+      ? allocateClientCollection(selectedClient, cashNum + onlineNum, dailyJobs)
+      : null
+
     onAdd({
       id: `pr-${Date.now()}`,
       date: selectedDate,
@@ -556,14 +555,9 @@ export function AddPendingReceivedModal({
       remaining_pending: remainingPending,
       notes: remarks.trim(),
       remarks: remarks.trim(),
+      opening_applied: allocation?.opening_applied,
+      allocations: allocation?.allocations,
     })
-
-    // If registered client was selected, update their pending balance
-    if (selectedClient && updateClient) {
-      updateClient(selectedClient.id, {
-        pending_amount: remainingPending,
-      })
-    }
 
     onClose()
   }

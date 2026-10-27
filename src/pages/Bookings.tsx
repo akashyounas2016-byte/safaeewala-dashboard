@@ -964,11 +964,11 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project')
+  const availableEmps = employees.filter(e => e.status !== 'inactive')
   const filtered = search
-    ? activeEmps.filter(e => e.full_name.toLowerCase().includes(search.toLowerCase()))
-    : activeEmps
-  const selectedEmps = activeEmps.filter(e => selected.includes(e.id))
+    ? availableEmps.filter(e => e.full_name.toLowerCase().includes(search.toLowerCase()))
+    : availableEmps
+  const selectedEmps = employees.filter(e => selected.includes(e.id))
 
   useEffect(() => {
     function outside(e: MouseEvent) {
@@ -998,11 +998,11 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
       <div className="relative" ref={ref}>
         <input
           type="text"
-          placeholder={activeEmps.length === 0 ? 'No active employees — add employees first' : 'Search and select cleaners…'}
+          placeholder={availableEmps.length === 0 ? 'No employees available — add employees first' : 'Search and select cleaners…'}
           value={search}
           onFocus={() => setOpen(true)}
           onChange={e => { setSearch(e.target.value); setOpen(true) }}
-          disabled={activeEmps.length === 0}
+          disabled={availableEmps.length === 0}
           className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50 focus:outline-none focus:border-emerald-400 placeholder-slate-400 disabled:opacity-50 transition-colors"
         />
         {open && (
@@ -1016,15 +1016,22 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
                   key={emp.id}
                   type="button"
                   onClick={() => { toggle(emp.id); setSearch('') }}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-[#E4E8EC] last:border-0 transition-colors ${checked ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
+                  className={`w-full flex items-center justify-between px-4 py-2.5 text-left border-b border-[#E4E8EC] last:border-0 transition-colors ${checked ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
                 >
-                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
-                    {checked && <span className="text-white text-[9px] font-bold">✓</span>}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
+                      {checked && <span className="text-white text-[9px] font-bold">✓</span>}
+                    </div>
+                    <div className="truncate">
+                      <p className="text-[12.5px] font-semibold text-[#111827] truncate">{emp.full_name}</p>
+                      <p className="text-[10.5px] text-slate-400">{emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[12.5px] font-semibold text-[#111827]">{emp.full_name}</p>
-                    <p className="text-[10.5px] text-slate-400">{emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}</p>
-                  </div>
+                  {emp.status && emp.status !== 'active' && (
+                    <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 capitalize shrink-0 ml-2">
+                      {emp.status.replace(/_/g, ' ')}
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -1040,12 +1047,49 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
 
 /* ─── New Booking Form ─── */
 function NewBookingForm({ onClose, onAdd }: { onClose: () => void; onAdd: (b: any) => void }) {
+  const { clients } = useData()
   const [selectedCrew, setSelectedCrew] = useState<string[]>([])
   const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().split('T')[0])
   const [startTime, setStartTime] = useState('09:00')
   const [duration, setDuration] = useState<number>(3)
   const [endTime, setEndTime] = useState(() => addHoursToTime('09:00', 3))
+  const [selectedClientId, setSelectedClientId] = useState('')
+  const [clientSearch, setClientSearch] = useState('')
+  const [clientPhone, setClientPhone] = useState('')
+  const [serviceAddress, setServiceAddress] = useState('')
+  const [showClientDropdown, setShowClientDropdown] = useState(false)
+  const clientDropdownRef = useRef<HTMLDivElement>(null)
   const ref = useRef<HTMLFormElement>(null)
+
+  const filteredClients = useMemo(() => {
+    const q = clientSearch.trim().toLowerCase()
+    if (!q) return clients.slice(0, 8)
+    return clients.filter(c =>
+      c.full_name.toLowerCase().includes(q) ||
+      (c.phone && c.phone.includes(q)) ||
+      (c.building_name && c.building_name.toLowerCase().includes(q)) ||
+      (c.area && c.area.toLowerCase().includes(q))
+    ).slice(0, 12)
+  }, [clients, clientSearch])
+
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (clientDropdownRef.current && !clientDropdownRef.current.contains(e.target as Node)) {
+        setShowClientDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [])
+
+  const handleSelectClient = (c: any) => {
+    setSelectedClientId(c.id)
+    setClientSearch(c.full_name)
+    setClientPhone(c.phone || c.whatsapp || '')
+    const addr = [c.building_name, c.apartment, c.area].filter(Boolean).join(', ')
+    setServiceAddress(addr)
+    setShowClientDropdown(false)
+  }
 
   // 2-Way Synchronization:
   // 1. Changing Start Time recalculates End Time keeping duration intact
@@ -1078,11 +1122,14 @@ function NewBookingForm({ onClose, onAdd }: { onClose: () => void; onAdd: (b: an
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const f = new FormData(ref.current!)
+    const finalClientName = clientSearch.trim() || String(f.get('client_name') || 'New Client')
+    const matched = clients.find(c => c.id === selectedClientId || c.full_name.toLowerCase().trim() === finalClientName.toLowerCase())
+
     onAdd({
-      client_name:    String(f.get('client_name') || 'New Client'),
-      client_phone:   String(f.get('phone') || ''),
-      client_id:      '',
-      service_address:String(f.get('address') || ''),
+      client_name:    finalClientName,
+      client_phone:   clientPhone || String(f.get('phone') || ''),
+      client_id:      matched?.id || selectedClientId || '',
+      service_address:serviceAddress || String(f.get('address') || ''),
       service_type:   String(f.get('service_type') || 'Standard Clean'),
       frequency:      (f.get('frequency') || 'once') as BookingFrequency,
       scheduled_date: scheduledDate,
@@ -1100,10 +1147,80 @@ function NewBookingForm({ onClose, onAdd }: { onClose: () => void; onAdd: (b: an
   return (
     <form ref={ref} className="space-y-4" onSubmit={handleSubmit}>
       <div className="grid grid-cols-2 gap-4">
-        <Input name="client_name" label="Client name" placeholder="Full name" required />
-        <Input name="phone" label="Phone" placeholder="+971 50 000 0000" />
+        {/* Client Name with searchable autocomplete */}
+        <div className="relative" ref={clientDropdownRef}>
+          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
+            Client name <span className="text-red-500">*</span>
+          </label>
+          <input
+            name="client_name"
+            placeholder="Full name or search existing…"
+            required
+            value={clientSearch}
+            onChange={e => {
+              setClientSearch(e.target.value)
+              setSelectedClientId('')
+              setShowClientDropdown(true)
+            }}
+            onFocus={() => setShowClientDropdown(true)}
+            className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400 font-medium"
+          />
+          {showClientDropdown && filteredClients.length > 0 && (
+            <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-[#E4E8EC] rounded-xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100">
+              <div className="px-3 py-1.5 bg-slate-50 text-[10.5px] font-bold text-slate-500 uppercase tracking-wider">
+                Select Client ({filteredClients.length})
+              </div>
+              {filteredClients.map(c => (
+                <button
+                  type="button"
+                  key={c.id}
+                  onClick={() => handleSelectClient(c)}
+                  className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 transition-colors flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[12.5px] font-semibold text-[#111827] truncate">{c.full_name}</p>
+                    <p className="text-[10.5px] text-slate-400 truncate">
+                      {[c.phone, c.building_name, c.area].filter(Boolean).join(' · ') || 'Registered client'}
+                    </p>
+                  </div>
+                  {c.source === 'monthly' && (
+                    <span className="text-[9px] bg-teal-50 text-teal-700 font-bold px-1.5 py-0.5 rounded border border-teal-200 shrink-0">
+                      Monthly
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
+            Phone
+          </label>
+          <input
+            name="phone"
+            placeholder="+971 50 000 0000"
+            value={clientPhone}
+            onChange={e => setClientPhone(e.target.value)}
+            className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400 font-medium"
+          />
+        </div>
       </div>
-      <Input name="address" label="Service address" placeholder="Street, unit, neighborhood" />
+
+      <div>
+        <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
+          Service address
+        </label>
+        <input
+          name="address"
+          placeholder="Street, unit, neighborhood"
+          value={serviceAddress}
+          onChange={e => setServiceAddress(e.target.value)}
+          className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400 font-medium"
+        />
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <Select name="service_type" label="Service type">
           <option value="">Select service…</option>

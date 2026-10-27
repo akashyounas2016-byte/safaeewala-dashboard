@@ -7,6 +7,7 @@ import {
 import { TrendingUp, Target, Award, Users, Download, DollarSign, CheckCircle, Percent, Calendar, FileSpreadsheet } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
+import { getEmployeeDailyJobsHistory } from '@/lib/clientDataSync'
 
 function exportCSV(filename: string, rows: string[][]) {
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -161,10 +162,8 @@ export function Reports() {
   const payrollRows = employees
     .filter(e => e.status !== 'inactive')
     .map(emp => {
-      const empJobs = dailyJobs.filter(j =>
-        j.date.startsWith(payPeriod) &&
-        j.staff_name.toLowerCase().trim() === emp.full_name.toLowerCase().trim()
-      )
+      // Same matching as Employees / Employee Profile (shared shifts "Sita, Rupa" included)
+      const empJobs = getEmployeeDailyJobsHistory(emp, dailyJobs).filter(j => (j.date || '').startsWith(payPeriod))
       const hours  = empJobs.reduce((s, j) => s + (j.duty_hours || 0), 0)
       const salary = Math.round(hours * emp.pay_rate_hourly)
       return { emp, hours: Math.round(hours * 10) / 10, salary, jobCount: empJobs.length }

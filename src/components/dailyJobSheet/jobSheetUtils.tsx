@@ -82,10 +82,13 @@ export function calcOTHours(start: string, end: string): number {
   const [sh, sm] = s.split(':').map(Number)
   const [eh, em] = e.split(':').map(Number)
   if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return 0
-  const endMins   = eh * 60 + em
+  const startMins = sh * 60 + sm
+  let endMins     = eh * 60 + em
+  // Shift crossing midnight (e.g. 19:00 → 01:00) ends on the next day
+  if (endMins < startMins) endMins += 24 * 60
   const OT_CUTOFF = 20 * 60 // 8 PM
   if (endMins <= OT_CUTOFF) return 0
-  const otStartMins = Math.max(sh * 60 + sm, OT_CUTOFF)
+  const otStartMins = Math.max(startMins, OT_CUTOFF)
   const otMins = endMins - otStartMins
   return otMins > 0 ? Math.round(otMins / 60 * 10) / 10 : 0
 }

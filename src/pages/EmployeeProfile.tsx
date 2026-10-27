@@ -15,6 +15,7 @@ import {
   getEmployeeDailyJobsHistory,
   calcJobOTHours,
   cleanClientNameFromAddress,
+  splitStaffNames,
 } from '@/lib/clientDataSync'
 
 /* ─── Avatar palette ─── */
@@ -93,27 +94,14 @@ export function EmployeeProfile() {
     return emp ? getEmployeeDailyJobsHistory(emp, dailyJobs) : []
   }, [emp, dailyJobs])
 
-  if (!emp) {
-    return (
-      <div className="space-y-6">
-        <Link to="/employees" className="inline-flex items-center gap-2 text-[13px] font-semibold text-slate-500 hover:text-slate-700">
-          <ArrowLeft size={14} /> Back to Employees
-        </Link>
-        <div className="bg-white rounded-[22px] border border-[#E4E8EC] p-16 text-center">
-          <p className="text-slate-500 font-medium">Employee not found.</p>
-        </div>
-      </div>
-    )
-  }
-
   // Aggregate stats from Daily Job Sheet
   const totalShifts = empJobs.length
   const totalDutyHours = Math.round(empJobs.reduce((s, j) => s + (Number(j.duty_hours) || 0), 0) * 10) / 10
   const totalOTHours = Math.round(empJobs.reduce((s, j) => s + calcJobOTHours(j), 0) * 10) / 10
-  const totalRevenue = empJobs.reduce((s, j) => s + (Number(j.charges) || 0), 0)
+  // A shared shift's charge is split between its cleaners, not counted fully for each
+  const totalRevenue = Math.round(empJobs.reduce((s, j) => s + (Number(j.charges) || 0) / Math.max(1, splitStaffNames(j.staff_name).length), 0))
   const totalCashCollected = empJobs.filter(j => j.payment_mode === 'Cash').reduce((s, j) => s + (Number(j.received) || 0), 0)
   const uniqueClients = Array.from(new Set(empJobs.map(j => cleanClientNameFromAddress(j.address)).filter(Boolean)))
-  const lastActiveDate = empJobs[0]?.date || emp.joined_date || '—'
 
   // Filtered jobs table
   const filteredJobs = useMemo(() => {
@@ -149,6 +137,20 @@ export function EmployeeProfile() {
     return Array.from(map.values()).sort((a, b) => b.visits - a.visits)
   }, [empJobs])
 
+  if (!emp) {
+    return (
+      <div className="space-y-6">
+        <Link to="/employees" className="inline-flex items-center gap-2 text-[13px] font-semibold text-slate-500 hover:text-slate-700">
+          <ArrowLeft size={14} /> Back to Employees
+        </Link>
+        <div className="bg-white rounded-[22px] border border-[#E4E8EC] p-16 text-center">
+          <p className="text-slate-500 font-medium">Employee not found.</p>
+        </div>
+      </div>
+    )
+  }
+
+  const lastActiveDate = empJobs[0]?.date || emp.joined_date || '—'
   const isDiscoveredFromJobSheet = emp.id.startsWith('emp-dj-')
 
   return (
@@ -196,7 +198,7 @@ export function EmployeeProfile() {
               )}
 
               <span className="text-[11px] bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full font-semibold">
-                AED {emp.pay_rate_hourly || 14}/hr
+                {emp.pay_rate_hourly > 0 ? `AED ${emp.pay_rate_hourly}/hr` : 'Rate not set'}
               </span>
             </div>
 
@@ -482,7 +484,7 @@ export function EmployeeProfile() {
                 <div className="grid grid-cols-2 gap-3 text-[12.5px]">
                   <div className="p-3 bg-slate-50 rounded-xl border border-[#edf2f7]">
                     <span className="text-slate-400 block text-[10.5px] uppercase font-bold">Hourly Rate</span>
-                    <span className="font-extrabold text-[#111827]">AED {emp.pay_rate_hourly || 14}/hr</span>
+                    <span className="font-extrabold text-[#111827]">{emp.pay_rate_hourly > 0 ? `AED ${emp.pay_rate_hourly}/hr` : 'Not set'}</span>
                   </div>
                   <div className="p-3 bg-slate-50 rounded-xl border border-[#edf2f7]">
                     <span className="text-slate-400 block text-[10.5px] uppercase font-bold">Joined Date</span>
@@ -549,7 +551,7 @@ export function EmployeeProfile() {
             </p>
             <div className="flex items-center justify-between text-[11px] font-bold text-amber-900 bg-white/70 rounded-xl p-2.5 border border-amber-200">
               <span>OT Rate</span>
-              <span>1.5x Standard / AED {(emp.pay_rate_hourly * 1.5).toFixed(1)}/hr</span>
+              <span>{emp.pay_rate_hourly > 0 ? `1.5x Standard / AED ${(emp.pay_rate_hourly * 1.5).toFixed(1)}/hr` : '1.5x Standard (rate not set)'}</span>
             </div>
           </div>
         </div>
@@ -570,7 +572,7 @@ export function EmployeeProfile() {
               role:                      fd.get('role') as 'cleaner' | 'crew_lead',
               nationality:               fd.get('nationality') as string,
               emirates_id:               fd.get('emirates_id') as string,
-              pay_rate_hourly:           Number(fd.get('pay_rate_hourly')) || 14,
+              pay_rate_hourly:           Number(fd.get('pay_rate_hourly')) || 0,
               visa_expiry:               fd.get('visa_expiry') as string,
               work_permit_expiry:        fd.get('work_permit_expiry') as string,
               passport_expiry:           fd.get('passport_expiry') as string,
@@ -595,7 +597,7 @@ export function EmployeeProfile() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input name="emirates_id" label="Emirates ID" defaultValue={emp.emirates_id ?? ''} />
-            <Input name="pay_rate_hourly" label="Pay Rate (AED/hr)" type="number" defaultValue={emp.pay_rate_hourly || 14} />
+            <Input name="pay_rate_hourly" label="Pay Rate (AED/hr)" type="number" defaultValue={emp.pay_rate_hourly || ''} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input name="visa_expiry" label="Visa Expiry" type="date" defaultValue={emp.visa_expiry ?? ''} />

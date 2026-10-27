@@ -29,6 +29,8 @@ import { MonthlyScheduleSyncModal } from '@/components/dailyJobSheet/MonthlySche
 import {
   getScheduledMonthlyShiftsForDate,
   syncMonthlySchedulesToDailyJobs,
+  buildPendingCalcContext,
+  calcJobPending,
   type ScheduledShiftPlan,
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
@@ -1115,6 +1117,8 @@ export function JobSheetSpreadsheet() {
 
   // ── Grid Data & History for Undo/Redo ──
   const [gridRows, setGridRows] = useState<DailyJob[]>([])
+  // Shared pending formula (adjustments, advance deductions, later collections)
+  const pendingCtx = useMemo(() => buildPendingCalcContext(), [])
   const [history, setHistory]   = useState<DailyJob[][]>([])
   const [future, setFuture]     = useState<DailyJob[][]>([])
 
@@ -1539,7 +1543,7 @@ export function JobSheetSpreadsheet() {
         const rowObj: Record<string, any> = { 'Row': i + 1 }
         columns.forEach(col => {
           let val: any = r[col.id as keyof DailyJob]
-          if (col.id === 'pending') val = Math.max(0, cleanNum(r.charges) - cleanNum(r.received))
+          if (col.id === 'pending') val = calcJobPending(r, pendingCtx)
           rowObj[col.label] = val !== undefined && val !== null ? val : ''
         })
         return rowObj
@@ -1673,7 +1677,7 @@ export function JobSheetSpreadsheet() {
       const rowObj: Record<string, any> = { 'Row': i + 1 }
       columns.forEach(col => {
         let val: any = r[col.id as keyof DailyJob]
-        if (col.id === 'pending') val = Math.max(0, cleanNum(r.charges) - cleanNum(r.received))
+        if (col.id === 'pending') val = calcJobPending(r, pendingCtx)
         rowObj[col.label] = val !== undefined && val !== null ? val : ''
       })
       return rowObj
@@ -1692,7 +1696,7 @@ export function JobSheetSpreadsheet() {
       const rowObj: Record<string, any> = { 'Row': i + 1 }
       columns.forEach(col => {
         let val: any = r[col.id as keyof DailyJob]
-        if (col.id === 'pending') val = Math.max(0, cleanNum(r.charges) - cleanNum(r.received))
+        if (col.id === 'pending') val = calcJobPending(r, pendingCtx)
         rowObj[col.label] = val !== undefined && val !== null ? val : ''
       })
       return rowObj
@@ -1725,11 +1729,12 @@ export function JobSheetSpreadsheet() {
   const totals = useMemo(() => {
     const totalCharges = gridRows.reduce((s, r) => s + cleanNum(r.charges), 0)
     const totalReceived = gridRows.reduce((s, r) => s + cleanNum(r.received), 0)
-    const totalPending = Math.max(0, totalCharges - totalReceived)
+    // Per-row dues: an overpaid row must not hide another row's due
+    const totalPending = gridRows.reduce((s, r) => s + calcJobPending(r, pendingCtx), 0)
     const totalDuty = Math.round(gridRows.reduce((s, r) => s + cleanNum(r.duty_hours), 0) * 10) / 10
     const totalOT = Math.round(gridRows.reduce((s, r) => s + cleanNum(r.ot_hours), 0) * 10) / 10
     return { totalCharges, totalReceived, totalPending, totalDuty, totalOT }
-  }, [gridRows])
+  }, [gridRows, pendingCtx])
 
   // ── Group Rows by Cleaner for Block Mode ──
   const cleanerGroups = useMemo(() => {
@@ -1775,7 +1780,7 @@ export function JobSheetSpreadsheet() {
       g.totalOT += cleanNum(row.ot_hours)
       g.totalCharges += cleanNum(row.charges)
       g.totalReceived += cleanNum(row.received)
-      g.totalPending += Math.max(0, cleanNum(row.charges) - cleanNum(row.received))
+      g.totalPending += calcJobPending(row, pendingCtx)
     })
 
     groups.forEach(g => {
@@ -1784,7 +1789,7 @@ export function JobSheetSpreadsheet() {
     })
 
     return groups
-  }, [visibleGridRows, gridRows, cleanerColors])
+  }, [visibleGridRows, gridRows, cleanerColors, pendingCtx])
 
   // Cleaner index lookup for consistent color tints in Flat Grid Mode
   const cleanerIndexMap = useMemo(() => {
@@ -2670,7 +2675,7 @@ export function JobSheetSpreadsheet() {
                             let displayVal: any = rawVal
 
                             if (col.id === 'pending') {
-                              displayVal = Math.max(0, cleanNum(row.charges) - cleanNum(row.received))
+                              displayVal = calcJobPending(row, pendingCtx)
                             }
                             if (col.type === 'number') {
                               displayVal = cleanNum(displayVal)
@@ -2814,7 +2819,7 @@ export function JobSheetSpreadsheet() {
                       let displayVal: any = rawVal
 
                       if (col.id === 'pending') {
-                        displayVal = Math.max(0, cleanNum(row.charges) - cleanNum(row.received))
+                        displayVal = calcJobPending(row, pendingCtx)
                       }
                       if (col.type === 'number') {
                         displayVal = cleanNum(displayVal)

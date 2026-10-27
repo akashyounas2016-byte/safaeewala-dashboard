@@ -12,7 +12,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
 import type { DailyJob, Employee } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
-import { calcJobOTHours, isBogusJob } from '@/lib/clientDataSync'
+import { calcJobOTHours, isBogusJob, employeeMatchesStaff } from '@/lib/clientDataSync'
 
 /* ── Standard Schedule Roster Cleaners ── */
 const DEFAULT_SCHEDULE_ROSTER = [
@@ -167,10 +167,10 @@ export function Attendance() {
   // ── All Known Cleaners List (Comprehensive & deduplicated) ──
   const allKnownCleaners = useMemo(() => {
     const map = new Map<string, string>() // lower -> display
-    // 1. Employees from store
+    // 1. Employees from store (all non-inactive cleaners)
     employees.forEach(e => {
       const name = (e.full_name || '').trim()
-      if (name && (e.status === 'active' || e.status === 'engaged_in_project' || !e.status)) {
+      if (name && e.status !== 'inactive') {
         map.set(name.toLowerCase(), name)
       }
     })
@@ -208,11 +208,11 @@ export function Attendance() {
   const attendanceRecords = useMemo<CleanerAttendanceRecord[]>(() => {
     return allKnownCleaners.map(cleanerName => {
       const key = cleanerName.trim().toLowerCase()
-      // Automatically fetch all jobs for this cleaner on selected date from Daily Job Sheet
-      const cleanerJobs = dateJobs.filter(j => matchesCleaner(j.staff_name, cleanerName))
+      const emp = employeeByName.get(key)
+      // Automatically fetch all jobs for this cleaner on selected date from Daily Job Sheet (uses employeeMatchesStaff for exact parity)
+      const cleanerJobs = dateJobs.filter(j => emp ? employeeMatchesStaff(emp, j.staff_name) : matchesCleaner(j.staff_name, cleanerName))
       const overrideKey = `${selectedDate}_${key}`
       const explicitOverride = overrides[overrideKey]
-      const emp = employeeByName.get(key)
 
       // Calculate duty and overtime from legitimate shifts
       let dutyHours = 0
@@ -224,16 +224,19 @@ export function Attendance() {
         const rem = (j.remarks || '').trim().toLowerCase()
         const addr = (j.address || '').trim().toLowerCase()
         const combined = `${rem} ${addr}`
+        // A row with logged hours or charges is a worked shift, whatever its remarks say
+        // ("Leave keys at reception", "Client not available" must not mark the cleaner absent)
+        const isWorkedShift = (Number(j.duty_hours) || 0) > 0 || (Number(j.charges) || 0) > 0
 
         // Check if specifically marked as absent or on leave in remarks
-        if (/\b(absent|not available|medical emergency|uninformed)\b/i.test(combined)) {
+        if (!isWorkedShift && /\b(absent|not available|medical emergency|uninformed)\b/i.test(combined)) {
           explicitAbsentMarkFromJob = {
             reason: j.remarks || j.address || 'Specifically marked absent in Daily Sheet',
             isLeave: false,
           }
           return
         }
-        if (/\b(leave|sick leave|day off|annual leave|weekly off)\b/i.test(combined)) {
+        if (!isWorkedShift && (/\b(on leave|sick leave|annual leave|emergency leave|day off|weekly off)\b/i.test(combined) || rem === 'leave' || addr === 'leave')) {
           explicitAbsentMarkFromJob = {
             reason: j.remarks || j.address || 'Approved Leave / Day Off',
             isLeave: true,

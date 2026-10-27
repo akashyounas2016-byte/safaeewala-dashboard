@@ -12,7 +12,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { formatDate, addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { BookingFrequency } from '@/types'
-import { isMonthlyJob, jobMatchesClient, isMonthlyClient, extractMonthlyClientsFromDailyJobs } from '@/lib/clientDataSync'
+import { isMonthlyJob, jobMatchesClient, isMonthlyClient, extractMonthlyClientsFromDailyJobs, calcClientPendingBalance } from '@/lib/clientDataSync'
 import { SourceOriginTag, resolveClientSource } from '@/lib/sourceTracking'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
@@ -50,11 +50,11 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project')
+  const availableEmps = employees.filter(e => e.status !== 'inactive')
   const filtered = search
-    ? activeEmps.filter(e => e.full_name.toLowerCase().includes(search.toLowerCase()))
-    : activeEmps
-  const selectedEmps = activeEmps.filter(e => selected.includes(e.id))
+    ? availableEmps.filter(e => e.full_name.toLowerCase().includes(search.toLowerCase()))
+    : availableEmps
+  const selectedEmps = employees.filter(e => selected.includes(e.id))
   useEffect(() => {
     function outside(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
@@ -81,11 +81,11 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
       <div className="relative" ref={ref}>
         <input
           type="text"
-          placeholder={activeEmps.length === 0 ? 'No active employees — add employees first' : 'Search and select cleaners…'}
+          placeholder={availableEmps.length === 0 ? 'No employees available — add employees first' : 'Search and select cleaners…'}
           value={search}
           onFocus={() => setOpen(true)}
           onChange={e => { setSearch(e.target.value); setOpen(true) }}
-          disabled={activeEmps.length === 0}
+          disabled={availableEmps.length === 0}
           className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50 focus:outline-none focus:border-emerald-400 placeholder-slate-400 disabled:opacity-50 transition-colors"
         />
         {open && (
@@ -99,15 +99,22 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
                   key={emp.id}
                   type="button"
                   onClick={() => { toggle(emp.id); setSearch('') }}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-[#E4E8EC] last:border-0 transition-colors ${checked ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
+                  className={`w-full flex items-center justify-between px-4 py-2.5 text-left border-b border-[#E4E8EC] last:border-0 transition-colors ${checked ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
                 >
-                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
-                    {checked && <span className="text-white text-[9px] font-bold">✓</span>}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
+                      {checked && <span className="text-white text-[9px] font-bold">✓</span>}
+                    </div>
+                    <div className="truncate">
+                      <p className="text-[12.5px] font-semibold text-[#111827] truncate">{emp.full_name}</p>
+                      <p className="text-[10.5px] text-slate-400">{emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[12.5px] font-semibold text-[#111827]">{emp.full_name}</p>
-                    <p className="text-[10.5px] text-slate-400">{emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}</p>
-                  </div>
+                  {emp.status && emp.status !== 'active' && (
+                    <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 capitalize shrink-0 ml-2">
+                      {emp.status.replace(/_/g, ' ')}
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -469,7 +476,9 @@ export function Clients() {
               const nameLower = c.full_name.toLowerCase().trim()
               const liveBookings = bookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase().trim() === nameLower)
               const clientInvs = invoices.filter(i => i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower)
-              const outstanding = clientInvs.reduce((s, i) => s + i.total, 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
+              const invOutstanding = clientInvs.reduce((s, i) => s + i.total, 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
+              const clientPendingBalance = calcClientPendingBalance(c, dailyJobs)
+              const outstanding = clientPendingBalance + invOutstanding
               const isMonthly = isMonthlyClient(c, dailyJobs, allMonthlySummaries)
               const totalVisits = Math.max(c.total_bookings, liveBookings.length)
 
@@ -940,7 +949,9 @@ export function Clients() {
                   const nameLower    = c.full_name.toLowerCase().trim()
                   const liveBookings = bookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase().trim() === nameLower)
                   const clientInvs   = invoices.filter(i => i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower)
-                  const outstanding  = clientInvs.reduce((s, i) => s + i.total, 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
+                  const invOutstanding = clientInvs.reduce((s, i) => s + i.total, 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
+                  const clientPendingBalance = calcClientPendingBalance(c, dailyJobs)
+                  const outstanding  = clientPendingBalance + invOutstanding
                   const isFromJobSheet = c.id.startsWith('dj-')
                   const totalVisits  = Math.max(c.total_bookings, liveBookings.length)
                   return (
@@ -1128,13 +1139,16 @@ export function Clients() {
 
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: 'Phone',          value: selected.phone },
-                { label: 'WhatsApp',       value: selected.whatsapp ?? selected.phone },
-                { label: 'Email',          value: selected.email ?? '—' },
-                { label: 'Area',           value: `${selected.building_name ? selected.building_name + ', ' : ''}${selected.area}` },
+                { label: 'Phone',          value: selected.phone || 'Not recorded' },
+                { label: 'WhatsApp',       value: selected.whatsapp || selected.phone || 'Not recorded' },
+                { label: 'Email',          value: selected.email || '—' },
+                { label: 'Address',        value: [selected.apartment ? `Apt ${selected.apartment}` : '', selected.building_name, selected.area, selected.city].filter(Boolean).join(', ') || '—' },
                 { label: 'Assigned Cleaner', value: selected.preferred_cleaner || 'Unassigned' },
-                { label: 'Total Bookings', value: selected.total_bookings },
-                { label: 'Total Spent',    value: `AED ${selected.total_spent.toLocaleString()}` },
+                { label: 'Source',         value: selected.source ? selected.source.replace(/_/g, ' ') : '—' },
+                { label: 'Total Services', value: selected.total_bookings },
+                { label: 'Last Service',   value: selected.last_service ? formatDate(selected.last_service) : '—' },
+                { label: 'Total Billed',   value: `AED ${selected.total_spent.toLocaleString()}` },
+                { label: 'Current Pending Balance', value: `AED ${calcClientPendingBalance(selected, dailyJobs).toLocaleString()}` },
               ].map(({ label, value }) => (
                 <div key={label} className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC]">
                   <p className="text-[10.5px] text-slate-500 uppercase tracking-[0.08em] font-semibold mb-1">{label}</p>
@@ -1143,10 +1157,31 @@ export function Clients() {
               ))}
             </div>
 
-            {(selected.remarks || selected.access_notes) && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                <p className="text-[10.5px] text-blue-700 uppercase tracking-[0.08em] font-semibold mb-1">Remarks / Notes</p>
-                <p className="text-[13px] text-blue-700">{selected.remarks || selected.access_notes}</p>
+            {/* Recurring schedule (Monthly Clients master contract — read only here) */}
+            {((selected.service_days?.length ?? 0) > 0 || selected.scheduled_time || selected.day_cleaner_assignments) && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                <p className="text-[10.5px] text-emerald-700 uppercase tracking-[0.08em] font-semibold mb-1">Service Schedule</p>
+                <p className="text-[13px] font-semibold text-emerald-900">
+                  {(selected.service_days?.length ?? 0) > 0 ? selected.service_days!.join(', ') : 'Days not set'}
+                  {selected.scheduled_time ? ` · ${selected.scheduled_time}${selected.end_time ? `–${selected.end_time}` : ''}` : ''}
+                  {selected.duration_hours ? ` · ${selected.duration_hours}h` : ''}
+                </p>
+                {selected.day_cleaner_assignments && Object.keys(selected.day_cleaner_assignments).length > 0 && (
+                  <p className="text-[12px] text-emerald-800 mt-1">
+                    {Object.entries(selected.day_cleaner_assignments).map(([day, cleaner]) => `${day}: ${cleaner}`).join(' · ')}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {(selected.remarks || selected.notes || selected.access_notes || selected.pet_info) && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-1">
+                <p className="text-[10.5px] text-blue-700 uppercase tracking-[0.08em] font-semibold">Remarks / Notes</p>
+                {/* Show each field once — the add form may copy the same text into several */}
+                {Array.from(new Set([selected.remarks, selected.notes, selected.access_notes].map(t => (t || '').trim()).filter(Boolean))).map(t => (
+                  <p key={t} className="text-[13px] text-blue-700">{t}</p>
+                ))}
+                {selected.pet_info && <p className="text-[13px] text-blue-700">Pets: {selected.pet_info}</p>}
               </div>
             )}
 

@@ -13,6 +13,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
+import { buildPendingCalcContext, loadClientAdjustments, calcJobPending, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
 import * as XLSX from 'xlsx'
 
 export type PendingDatePreset =
@@ -74,7 +75,7 @@ export interface UnifiedPendingRecord {
 }
 
 export function PendingPayments() {
-  const { dailyJobs, updateDailyJob } = useData()
+  const { dailyJobs } = useData()
 
   // ── Tab State ──
   const [activeTab, setActiveTab] = useState<'outstanding' | 'recovered' | 'staff_summary'>('outstanding')
@@ -84,10 +85,14 @@ export function PendingPayments() {
     safeLocalStorageGet<DailyPendingItem[]>('safaeewala_daily_pending_items', [])
   )
 
+  // Keep every record — this list is written back to storage, so filtering here
+  // would delete the Daily Job Sheet's own "Pending Received" entries (pr-*)
   const [pendingRcvdList, setPendingRcvdList] = useState<DailyPendingReceivedItem[]>(() => {
     const list = safeLocalStorageGet<DailyPendingReceivedItem[]>('safaeewala_daily_pending_rcvd_items', [])
-    return Array.isArray(list) ? list.filter(item => !item.id?.startsWith('pr-')) : []
+    return Array.isArray(list) ? list : []
   })
+
+  const pendingCtx = useMemo(() => buildPendingCalcContext(loadClientAdjustments(), pendingRcvdList), [pendingRcvdList])
 
   useEffect(() => {
     safeLocalStorageSet('safaeewala_daily_pending_items', pendingList)
@@ -288,12 +293,13 @@ export function PendingPayments() {
 
     // 1. From Daily Jobs: where charges > received or payment_mode is 'Pending'
     dailyJobs.forEach(job => {
+      if (isBogusJob(job)) return
       const chg = cleanNum(job.charges)
-      const rec = cleanNum(job.received)
-      const due = Math.max(0, chg - rec)
+      const rec = cleanNum(job.received) + calcJobLaterReceipts(job, pendingCtx)
+      const due = calcJobPending(job, pendingCtx)
 
-      // Only count if there's actual due or payment mode is explicitly pending
-      if (due > 0 || (job.payment_mode === 'Pending' && chg > 0)) {
+      // Only real dues — a fully paid row stays out even if its mode says "Pending"
+      if (due > 0) {
         const client = job.address || job.area || 'Client'
         list.push({
           id: `job-${job.id}`,
@@ -305,7 +311,7 @@ export function PendingPayments() {
           service: job.service || 'Cleaning Shift',
           charges: chg,
           received: rec,
-          pendingAmount: due > 0 ? due : chg,
+          pendingAmount: due,
           source: 'Daily Job Sheet',
           status: rec > 0 ? 'partially_paid' : 'pending',
           jobId: job.id,
@@ -339,7 +345,7 @@ export function PendingPayments() {
     })
 
     return list
-  }, [dailyJobs, pendingList])
+  }, [dailyJobs, pendingList, pendingCtx])
 
   // Filtered Outstanding Records
   const filteredOutstanding = useMemo(() => {
@@ -488,14 +494,9 @@ export function PendingPayments() {
 
     const todayStr = new Date().toISOString().split('T')[0]
 
-    // 1. If it was a DailyJob, update job in store so received matches charges
-    if (collectingRecord.jobId && collectingRecord.rawJob) {
-      const newReceived = cleanNum(collectingRecord.rawJob.received) + amt
-      updateDailyJob(collectingRecord.jobId, {
-        received: newReceived,
-        payment_mode: collectMode,
-      })
-    } else {
+    // 1. A job's own `received` is left untouched: the collection below is linked
+    //    via job_id, so the cash counts on the collection day only (not twice)
+    if (!collectingRecord.jobId) {
       // It was in manual pendingList: remove or reduce
       setPendingList(prev => {
         return prev
@@ -517,6 +518,7 @@ export function PendingPayments() {
       client: collectingRecord.clientName,
       cash: collectMode === 'Cash' ? amt : 0,
       online: collectMode === 'Online' ? amt : 0,
+      job_id: collectingRecord.jobId,
     }
 
     setPendingRcvdList(prev => [newRcvdEntry, ...prev])

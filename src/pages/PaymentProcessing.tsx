@@ -14,7 +14,7 @@ import { useData } from '@/store/DataContext'
 import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem, Client } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { formatDate } from '@/lib/utils'
-import { normalizeKey } from '@/lib/clientDataSync'
+import { normalizeKey, buildPendingCalcContext, loadClientAdjustments, calcJobPending, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
 import * as XLSX from 'xlsx'
 import { useNavigate } from 'react-router-dom'
 
@@ -130,9 +130,15 @@ export function PaymentProcessing() {
   }, [monthlyPayments])
 
   // ── Pending Items from LocalStorage side table ──
-  const [pendingSideList] = useState<DailyPendingItem[]>(() =>
+  const [pendingSideList, setPendingSideList] = useState<DailyPendingItem[]>(() =>
     safeLocalStorageGet<DailyPendingItem[]>('safaeewala_daily_pending_items', [])
   )
+
+  // ── Pending Received collections (shared with Daily Job Sheet & Pending Payments) ──
+  const [pendingRcvdList, setPendingRcvdList] = useState<DailyPendingReceivedItem[]>(() =>
+    safeLocalStorageGet<DailyPendingReceivedItem[]>('safaeewala_daily_pending_rcvd_items', [])
+  )
+  const pendingCtx = useMemo(() => buildPendingCalcContext(loadClientAdjustments(), pendingRcvdList), [pendingRcvdList])
 
   // ── Modals & Actions State ──
   const [showRecordMonthlyModal, setShowRecordMonthlyModal] = useState(false)
@@ -172,11 +178,12 @@ export function PaymentProcessing() {
 
     // 1. From Daily Job Sheet
     dailyJobs.forEach(job => {
+      if (isBogusJob(job)) return
       const chg = cleanNum(job.charges)
-      const rec = cleanNum(job.received)
-      const due = Math.max(0, chg - rec)
+      const rec = cleanNum(job.received) + calcJobLaterReceipts(job, pendingCtx)
+      const due = calcJobPending(job, pendingCtx)
 
-      if (due > 0 || (job.payment_mode === 'Pending' && chg > 0)) {
+      if (due > 0) {
         list.push({
           id: `job-${job.id}`,
           date: job.date || '',
@@ -187,7 +194,7 @@ export function PaymentProcessing() {
           service: job.service || 'Cleaning Shift',
           charges: chg,
           received: rec,
-          pendingAmount: due > 0 ? due : chg,
+          pendingAmount: due,
           source: 'Daily Job Sheet',
           status: rec > 0 ? 'partially_paid' : 'pending',
           jobId: job.id,
@@ -221,7 +228,7 @@ export function PaymentProcessing() {
     })
 
     return list.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-  }, [dailyJobs, pendingSideList])
+  }, [dailyJobs, pendingSideList, pendingCtx])
 
   // Filtered Pending Records
   const filteredPendingRecords = useMemo(() => {
@@ -385,29 +392,34 @@ export function PaymentProcessing() {
     const amt = parseFloat(collectAmount)
     if (isNaN(amt) || amt <= 0) return
 
-    if (selectedPendingItem.jobId && selectedPendingItem.rawJob) {
-      const currentRec = cleanNum(selectedPendingItem.rawJob.received)
-      const newRec = currentRec + amt
-      const chg = cleanNum(selectedPendingItem.rawJob.charges)
+    // Every collection is a Pending Received record dated on the collection day.
+    // Job collections are linked by job_id instead of rewriting the old job's
+    // `received`, so the original day's cash book stays unchanged.
+    const rcvdList = safeLocalStorageGet<DailyPendingReceivedItem[]>('safaeewala_daily_pending_rcvd_items', [])
+    const newRcvdItem: DailyPendingReceivedItem = {
+      id: `prcvd-${Date.now()}`,
+      date: collectDate,
+      client: selectedPendingItem.clientName,
+      cash: collectMethod === 'Cash' ? amt : 0,
+      online: collectMethod !== 'Cash' ? amt : 0,
+      job_id: selectedPendingItem.jobId,
+      remarks: `Collected via ${collectMethod}`,
+    }
+    const nextRcvd = [newRcvdItem, ...rcvdList]
+    safeLocalStorageSet('safaeewala_daily_pending_rcvd_items', nextRcvd)
+    setPendingRcvdList(nextRcvd)
 
-      updateDailyJob(selectedPendingItem.jobId, {
-        received: newRec,
-        payment_mode: newRec >= chg ? (collectMethod as any) : selectedPendingItem.rawJob.payment_mode,
-        remarks: selectedPendingItem.rawJob.remarks
-          ? `${selectedPendingItem.rawJob.remarks} | Collected AED ${amt} on ${collectDate} via ${collectMethod}`
-          : `Collected AED ${amt} on ${collectDate} via ${collectMethod}`,
-      })
-    } else {
-      // Manual side list item collection
-      const rcvdList = safeLocalStorageGet<DailyPendingReceivedItem[]>('safaeewala_daily_pending_rcvd_items', [])
-      const newRcvdItem: DailyPendingReceivedItem = {
-        id: `prcvd-${Date.now()}`,
-        date: collectDate,
-        client: selectedPendingItem.clientName,
-        cash: collectMethod === 'Cash' ? amt : 0,
-        online: collectMethod !== 'Cash' ? amt : 0,
-      }
-      safeLocalStorageSet('safaeewala_daily_pending_rcvd_items', [newRcvdItem, ...rcvdList])
+    if (!selectedPendingItem.jobId) {
+      // Manual side list item: reduce or clear it, like Pending Payments does
+      const nextSide = pendingSideList
+        .map(item => {
+          if (item.id !== selectedPendingItem.id) return item
+          const remaining = cleanNum(item.amount) - amt
+          return remaining > 0 ? { ...item, amount: remaining } : null
+        })
+        .filter(Boolean) as DailyPendingItem[]
+      safeLocalStorageSet('safaeewala_daily_pending_items', nextSide)
+      setPendingSideList(nextSide)
     }
 
     setShowCollectModal(false)

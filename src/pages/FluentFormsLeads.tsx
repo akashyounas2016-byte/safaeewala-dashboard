@@ -141,7 +141,7 @@ function getDaysAgoLocalDate(days: number): string {
 }
 
 export function FluentFormsLeads() {
-  const { bookings, addBooking } = useData()
+  const { bookings, addBooking, clients } = useData()
   const { openMenu } = useLayout()
 
   const [leads, setLeads]               = useState<FluentFormLead[]>([])
@@ -437,8 +437,13 @@ export function FluentFormsLeads() {
         const serviceType   = targetLead.service || `${targetLead.category} Cleaning`
         const address       = targetLead.address || targetLead.area || 'Dubai'
 
+        const matchedClient = clients.find(c =>
+          (targetLead.phone && c.phone && c.phone.replace(/\D/g, '').endsWith(targetLead.phone.replace(/\D/g, '').slice(-8))) ||
+          (targetLead.client_name && (c.full_name || '').toLowerCase().trim() === targetLead.client_name.toLowerCase().trim())
+        )
+
         addBooking({
-          client_id: '',
+          client_id: matchedClient?.id || '',
           client_name: targetLead.client_name,
           client_phone: targetLead.phone,
           service_address: address,
@@ -515,9 +520,14 @@ export function FluentFormsLeads() {
     const serviceType   = (fd.get('service_type') as string) || convertingLead.service || `${convertingLead.category} Service`
     const address       = (fd.get('address') as string) || convertingLead.address || convertingLead.area || 'Dubai'
 
+    const matchedClient = clients.find(c =>
+      (convertingLead.phone && c.phone && c.phone.replace(/\D/g, '').endsWith(convertingLead.phone.replace(/\D/g, '').slice(-8))) ||
+      (convertingLead.client_name && (c.full_name || '').toLowerCase().trim() === convertingLead.client_name.toLowerCase().trim())
+    )
+
     // Add to bookings
     addBooking({
-      client_id: '',
+      client_id: matchedClient?.id || '',
       client_name: convertingLead.client_name,
       client_phone: convertingLead.phone,
       service_address: address,

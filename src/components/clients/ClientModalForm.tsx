@@ -55,12 +55,15 @@ export function ClientModalForm({
     }
   }, [open, initialClient])
 
-  // Filtered distinct active cleaners list
+  // Filtered distinct active cleaners list (includes all non-inactive employees and any cleaner already assigned)
   const activeCleanersList = useMemo(() => {
-    const active = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project')
+    const active = employees.filter(e => e.status !== 'inactive')
     const unique = Array.from(new Set(active.map(e => e.full_name.trim()))).filter(Boolean)
+    selectedCleaners.forEach(sc => {
+      if (sc && !unique.includes(sc)) unique.push(sc)
+    })
     return unique.sort((a, b) => a.localeCompare(b))
-  }, [employees])
+  }, [employees, selectedCleaners])
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()

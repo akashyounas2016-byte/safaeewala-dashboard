@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
-import type { DailyJob, MaterialType, PaymentMode } from '@/types'
+import { useData } from '@/store/DataContext'
+import type { DailyJob, MaterialType, PaymentMode, Client } from '@/types'
 import {
   cleanNum,
   calcHours,
@@ -16,6 +17,7 @@ export interface AddJobFormProps {
   onSave: (j: Omit<DailyJob, 'id' | 'created_at'>) => void
   onClose: () => void
   initial?: Partial<DailyJob>
+  clients?: Client[]
 }
 
 export function AddJobForm({
@@ -24,13 +26,32 @@ export function AddJobForm({
   onClose,
   initial,
 }: AddJobFormProps) {
+  const { clients } = useData()
   const [selectedStaff, setSelectedStaff] = useState<string[]>(() => {
     if (!initial?.staff_name) return []
     return initial.staff_name.split(/[,+/&]/).map(s => s.trim()).filter(Boolean)
   })
+  const [address, setAddress] = useState(initial?.address ?? '')
+  const [area, setArea] = useState(initial?.area ?? '')
   const [startTime, setStartTime] = useState(initial?.start_time ?? '')
   const [endTime, setEndTime]     = useState(initial?.end_time ?? '')
   const dutyHours = calcHours(startTime, endTime)
+
+  const handleSelectClientAddress = (val: string) => {
+    setAddress(val)
+    const match = clients.find(c =>
+      c.building_name?.toLowerCase().trim() === val.toLowerCase().trim() ||
+      c.full_name?.toLowerCase().trim() === val.toLowerCase().trim() ||
+      `${c.full_name} (${c.building_name || c.area})`.toLowerCase() === val.toLowerCase()
+    )
+    if (match) {
+      if (match.area) setArea(match.area)
+      if (match.building_name) setAddress(match.building_name)
+      if (match.preferred_cleaner && selectedStaff.length === 0) {
+        setSelectedStaff(match.preferred_cleaner.split(/[,+/&]/).map(s => s.trim()).filter(Boolean))
+      }
+    }
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -48,8 +69,8 @@ export function AddJobForm({
       end_time:     endTime,
       duty_hours:   dutyHours,
       ot_hours:     cleanNum(fd.get('ot_hours')),
-      address:      fd.get('address') as string,
-      area:         fd.get('area') as string,
+      address:      address || (fd.get('address') as string) || '',
+      area:         area || (fd.get('area') as string) || '',
       material:     (fd.get('material') as MaterialType) || 'No',
       charges:      cleanNum(fd.get('charges')),
       received:     cleanNum(fd.get('received')),
@@ -105,8 +126,33 @@ export function AddJobForm({
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <Input name="address" label="Address" defaultValue={initial?.address ?? ''} placeholder="e.g. 202 Escape Tower, 608 altelal…" />
-        <Input name="area" label="Location / Area" defaultValue={initial?.area ?? ''} placeholder="e.g. Buz Bay, NH, Mirdif…" />
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Address / Client</label>
+          <input
+            name="address"
+            list="clients-address-options"
+            value={address}
+            onChange={e => handleSelectClientAddress(e.target.value)}
+            placeholder="e.g. 202 Escape Tower, Sarah Johnson…"
+            className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400 text-slate-800 font-medium"
+          />
+          <datalist id="clients-address-options">
+            {clients.map(c => {
+              const label = c.building_name ? `${c.full_name} (${c.building_name}${c.area ? `, ${c.area}` : ''})` : c.full_name
+              return <option key={c.id} value={c.building_name || c.full_name}>{label}</option>
+            })}
+          </datalist>
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Location / Area</label>
+          <input
+            name="area"
+            value={area}
+            onChange={e => setArea(e.target.value)}
+            placeholder="e.g. Buz Bay, NH, Mirdif…"
+            className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-400 text-slate-800 font-medium"
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-3">

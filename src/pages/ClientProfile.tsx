@@ -13,7 +13,11 @@ import { formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import type { Booking, PaymentMode, DailyJob, Invoice, DailyAdvanceItem, Client } from '@/types'
-import { getClientDailyJobsHistory, calcJobOTHours, isMonthlyJob, normalizeKey, isMonthlyClient } from '@/lib/clientDataSync'
+import {
+  getClientDailyJobsHistory, calcJobOTHours, isMonthlyJob, normalizeKey, isMonthlyClient,
+  buildPendingCalcContext, calcJobAdjustment, calcJobPending, calcClientOpeningPending,
+  isJobPaidFromAdvance, loadClientAdjustments, loadPendingReceipts,
+} from '@/lib/clientDataSync'
 import { formatTimeOnly, cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { SourceOriginTag, resolveClientSource } from '@/lib/sourceTracking'
@@ -52,49 +56,6 @@ export function advanceMatchesClient(adv: DailyAdvanceItem, client: Client): boo
   if (advNorm === normalizeKey(client.id)) return true
 
   return false
-}
-
-export const defaultClientAdjustments: ClientFinancialAdjustment[] = [
-  {
-    id: 'adj-seed-1',
-    client_id: 'c1000001-0000-0000-0000-000000000001', // Sarah Johnson
-    client_name: 'Sarah Johnson',
-    date: '2026-10-20',
-    type: 'discount',
-    amount: 50,
-    notes: 'Loyalty discount applied on Deep Clean service',
-    created_at: new Date('2026-10-20T10:00:00Z').toISOString(),
-  },
-  {
-    id: 'adj-seed-2',
-    client_id: 'c1000001-0000-0000-0000-000000000001', // Sarah Johnson
-    client_name: 'Sarah Johnson',
-    date: '2026-10-15',
-    type: 'advance',
-    amount: 150,
-    notes: 'Advance cash deposit for upcoming cleaning sessions',
-    created_at: new Date('2026-10-15T14:30:00Z').toISOString(),
-  },
-  {
-    id: 'adj-seed-3',
-    client_id: 'c1000001-0000-0000-0000-000000000002', // Mohammed Al Hamdan
-    client_name: 'Mohammed Al Hamdan',
-    date: '2026-10-18',
-    type: 'waiver',
-    amount: 75,
-    notes: 'Seasonal promotional credit waiver',
-    created_at: new Date('2026-10-18T11:00:00Z').toISOString(),
-  },
-]
-
-function extractAdjustmentFromRemarks(remarks?: string): number {
-  if (!remarks) return 0
-  const m = remarks.match(/(?:adj(?:ustment)?|discount|waiver|credit)[\s:]*(?:aed)?\s*([0-9]+(?:\.[0-9]+)?)/i)
-  if (m && m[1]) {
-    const val = parseFloat(m[1])
-    return isNaN(val) ? 0 : val
-  }
-  return 0
 }
 
 /* ─── Avatar ─── */
@@ -180,14 +141,13 @@ export function ClientProfile() {
 
 
   // ── Financial Adjustments & Advances ──
-  const [adjustments, setAdjustments] = useState<ClientFinancialAdjustment[]>(() => {
-    const stored = safeLocalStorageGet<ClientFinancialAdjustment[]>('safaeewala_client_adjustments', [])
-    if (!stored || stored.length === 0) {
-      safeLocalStorageSet('safaeewala_client_adjustments', defaultClientAdjustments)
-      return defaultClientAdjustments
-    }
-    return stored
-  })
+  // Real records only (old demo "adj-seed-*" entries are ignored)
+  const [adjustments, setAdjustments] = useState<ClientFinancialAdjustment[]>(
+    () => loadClientAdjustments() as ClientFinancialAdjustment[]
+  )
+
+  // Pending Received collections, needed for the shared pending formula
+  const [pendingReceipts] = useState(() => loadPendingReceipts())
 
   // Load Daily Advance Items from Advance widget
   const [dailyAdvanceItems, setDailyAdvanceItems] = useState<DailyAdvanceItem[]>(() => {
@@ -265,22 +225,21 @@ export function ClientProfile() {
   // Enrich each job with parsed adjustment, pending, and advance amounts
   // Per business rule: If service amount is deducted from advance, consider it an adjustment with 'ADJ' tag
   const enrichedDailyJobs = useMemo(() => {
+    // Same formula as Pending Payments, Overview and Daily Job Sheet
+    const pendingCtx = buildPendingCalcContext(clientAdjustments, pendingReceipts)
     return clientDailyJobs.map(job => {
       const charges = cleanNum(job.charges)
       const received = cleanNum(job.received)
       const ot = calcJobOTHours(job)
 
       // Linked manual adjustments
-      const linkedAdj = clientAdjustments.filter(a => a.reference_job_id === job.id && a.type !== 'advance')
-      const linkedAdjSum = linkedAdj.reduce((s, a) => s + cleanNum(a.amount), 0)
-      const linkedAdvDeduct = linkedAdj.filter(a => a.type === 'advance_deduction').reduce((s, a) => s + cleanNum(a.amount), 0)
-
-      // Remarks & payment mode detection for advance deduction
-      const inlineAdj = extractAdjustmentFromRemarks(job.remarks)
-      const remarksLower = (job.remarks || '').toLowerCase()
-      const isRemarkDeduction = /(?:deduct|from\s*adv|above|paid\s*by\s*adv)/i.test(remarksLower) || job.payment_mode === 'Above'
+      const linked = pendingCtx.adjustments.get(job.id)
+      const linkedAdvDeduct = clientAdjustments
+        .filter(a => a.reference_job_id === job.id && a.type === 'advance_deduction')
+        .reduce((s, a) => s + cleanNum(a.amount), 0)
 
       // Is service amount deducted from advance?
+      const isRemarkDeduction = isJobPaidFromAdvance(job)
       const isAdvanceDeducted = linkedAdvDeduct > 0 || isRemarkDeduction
       const advanceDeductionAmount = linkedAdvDeduct > 0
         ? linkedAdvDeduct
@@ -288,13 +247,9 @@ export function ClientProfile() {
 
       // Total adjustment for this job (includes advance deduction per user rule:
       // "Agar service amount advance mein say deduct ho, toh usay adjustment amount consider kartay huay us par 'ADJ' ka tag lagaya jaye.")
-      const baseAdjustment = linkedAdjSum || inlineAdj
-      const totalJobAdjustment = baseAdjustment + (isAdvanceDeducted && !linkedAdvDeduct ? advanceDeductionAmount : 0)
-
+      const totalJobAdjustment = calcJobAdjustment(job, linked)
       const effectiveDue = Math.max(0, charges - totalJobAdjustment)
-      const pending = (job.payment_mode === 'Pending' && received === 0 && !isAdvanceDeducted)
-        ? effectiveDue
-        : Math.max(0, effectiveDue - received)
+      const pending = calcJobPending(job, pendingCtx)
 
       const advance = received > effectiveDue && !isAdvanceDeducted
         ? received - effectiveDue
@@ -312,7 +267,12 @@ export function ClientProfile() {
         advanceDeductionAmount,
       }
     })
-  }, [clientDailyJobs, clientAdjustments])
+  }, [clientDailyJobs, clientAdjustments, pendingReceipts])
+
+  const isClientMonthly = useMemo(() => {
+    if (!client) return false
+    return isMonthlyClient(client, clientDailyJobs)
+  }, [client, clientDailyJobs])
 
   const handleDeductJobFromAdvance = (job: any) => {
     if (!client) return
@@ -356,10 +316,6 @@ export function ClientProfile() {
   const totalDJReceived = enrichedDailyJobs.reduce((s, j) => s + j.cleanReceived, 0)
   const totalDJOTHours = Math.round(enrichedDailyJobs.reduce((s, j) => s + j.otHours, 0) * 10) / 10
   const totalDJDutyHours = Math.round(clientDailyJobs.reduce((s, j) => s + (Number(j.duty_hours) || 0), 0) * 10) / 10
-  const isClientMonthly = useMemo(() => {
-    if (!client) return false
-    return isMonthlyClient(client, clientDailyJobs)
-  }, [client, clientDailyJobs])
 
   // Standalone adjustments (not tied to specific job) + initial client adjustment
   const standaloneAdjustments = clientAdjustments.filter(a => !a.reference_job_id && a.type !== 'advance' && a.type !== 'advance_deduction')
@@ -381,12 +337,16 @@ export function ClientProfile() {
   // Net remaining advance available
   const netRemainingAdvance = Math.max(0, totalGrossAdvance - totalServiceDeductedFromAdvance)
 
-  // Total Pending factoring in initial pending
-  const totalDJPending = Math.max(0, enrichedDailyJobs.reduce((s, j) => s + j.pending, 0) + (client.pending_amount || 0))
+  // Total Pending: unpaid jobs + opening balance still unpaid after Pending Received collections
+  const totalDJPending = enrichedDailyJobs.reduce((s, j) => s + j.pending, 0) + calcClientOpeningPending(client, pendingReceipts)
 
-  // Overall totals
-  const totalLifetimeSpent = Math.max(client.total_spent, bookingSpent + totalDJCharges)
-  const totalServices = clientBookings.length + clientDailyJobs.length
+  // Overall totals — every booking already has a mirrored Daily Job (booking_id),
+  // so those jobs are counted once, through the booking
+  const clientBookingIds = new Set(clientBookings.map(b => b.id))
+  const unlinkedDailyJobs = clientDailyJobs.filter(j => !j.booking_id || !clientBookingIds.has(j.booking_id))
+  const unlinkedDJCharges = unlinkedDailyJobs.reduce((s, j) => s + cleanNum(j.charges), 0)
+  const totalLifetimeSpent = Math.max(client.total_spent, bookingSpent + unlinkedDJCharges)
+  const totalServices = clientBookings.length + unlinkedDailyJobs.length
 
   // Invoices summary
   const clientInvoices = invoices.filter(i =>

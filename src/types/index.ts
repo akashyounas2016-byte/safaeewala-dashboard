@@ -289,6 +289,12 @@ export interface DailyPendingReceivedItem {
   remaining_pending?: number
   notes?: string
   remarks?: string
+  /** Collection made against one specific job (Pending Payments / Payments collect) */
+  job_id?: string
+  /** Part of this collection that cleared the client's opening balance (pending_amount) */
+  opening_applied?: number
+  /** How this collection was split over the client's unpaid jobs */
+  allocations?: { job_id: string; amount: number }[]
 }
 
 export interface DailyAdvanceItem {
