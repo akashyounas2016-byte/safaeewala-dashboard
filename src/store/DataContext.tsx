@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabase'
 import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry } from '@/lib/syncQueue'
+import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
+import { nextInvoiceNumber, ensureInvoiceNumber } from '@/lib/invoiceNumber'
 import { seedBookings, seedClients, seedInvoices, seedInventory, seedEmployees } from '@/lib/seedData'
 import { addHoursToTime } from '@/lib/utils'
 
@@ -76,6 +78,7 @@ interface DataStore {
 
   addInventory:    (i: Omit<InventoryItem, 'id' | 'created_at'>) => void
   updateInventory: (id: string, patch: Partial<InventoryItem>) => void
+  deleteInventory: (id: string) => void
   reorderItem:     (id: string) => void
 
   dailyJobs:          DailyJob[]
@@ -184,7 +187,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return defaultAgencies
   })
   const [loading,       setLoading]       = useState(true)
-  const [companyTRN,    setCompanyTRN]    = useState('100234567890003')
+  const [companyTRN,    setCompanyTRN]    = useState(() => getCompanyInfo().trn)
 
   // Auto-persist agencies to localStorage
   useEffect(() => {
@@ -268,6 +271,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // Load company settings for TRN used in auto-invoices
     supabase.from('company_settings').select('data').eq('id', 1).single()
       .then(({ data }) => { if (data?.data?.company?.trn) setCompanyTRN(data.data.company.trn) })
+    void loadCompanyInfo()
 
     // Agencies live in two stores: the VPS JSON file (/api/agencies, keeps every field) and
     // Supabase. Read both, merge by id (JSON fields win), never drop the parent company (AUD-04).
@@ -510,7 +514,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const due = new Date(); due.setDate(due.getDate() + 10)
         const invoice = {
           id: uid(), created_at: now(),
-          invoice_number: `INV-${Date.now().toString().slice(-6)}`,
+          invoice_number: nextInvoiceNumber(invoices),
           client_id: booking.client_id,
           client_name: booking.client_name,
           client_address: booking.service_address,
@@ -656,10 +660,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       }
       if (id === 'agency-safaeewala' && patch.name) {
-        supabase.from('company_settings').upsert({
-          id: 1,
-          data: { company: { company_name: patch.name, trading_name: patch.name } }
-        }).then(({ error }) => { if (error) console.error(error) })
+        // Merge into company settings — never replace the whole record (AUD-43)
+        void updateCompanySettings({ trading_name: patch.name })
       }
       logAudit('updated', 'agency', id, patch.name || id)
     },
@@ -681,10 +683,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     /* ── Invoices ── */
     addInvoice: (i) => {
-      const row = { ...i, id: uid(), created_at: now() }
+      // Sequential, unique number whatever the caller proposed (AUD-36)
+      const row = { ...i, invoice_number: ensureInvoiceNumber(i.invoice_number, invoices), id: uid(), created_at: now() }
       setInvoices(p => [row, ...p])
       dbInsert('invoices', row)
-      logAudit('created', 'invoice', row.id, i.client_name, `AED ${i.total} · ${i.invoice_number}`)
+      logAudit('created', 'invoice', row.id, i.client_name, `AED ${i.total} · ${row.invoice_number}`)
     },
     updateInvoice: (id, patch) => {
       const inv = invoices.find(i => i.id === id)
@@ -708,6 +711,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateInventory: (id, patch) => {
       setInventory(p => p.map(i => i.id === id ? { ...i, ...patch } : i))
       dbUpdate('inventory', id, patch)
+    },
+    deleteInventory: (id) => {
+      const item = inventory.find(i => i.id === id)
+      setInventory(p => p.filter(i => i.id !== id))
+      dbDelete('inventory', id)
+      if (item) logAudit('deleted', 'inventory', id, item.name)
     },
     /* ── Daily Job Sheet ── */
     addDailyJob: (j) => {

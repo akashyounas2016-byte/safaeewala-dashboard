@@ -15,6 +15,7 @@ import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatDate, addHoursToTime, subtractHoursFromTime, calcDurationFromTimes } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
+import { nextInvoiceNumber } from '@/lib/invoiceNumber'
 import type { BookingFrequency, DailyJob, RecurringContract, InvoiceLineItem, Employee, Client } from '@/types'
 import {
   extractMonthlyClientsFromDailyJobs,
@@ -151,7 +152,7 @@ export interface MonthlyClientPayment {
 }
 
 export function MonthlyClients() {
-  const { clients, dailyJobs, employees, addClient, addBooking, addInvoice } = useData()
+  const { clients, dailyJobs, employees, addClient, addBooking, addInvoice, invoices } = useData()
 
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState<'clients' | 'payments' | 'contracts' | 'recruitment'>('clients')
@@ -568,19 +569,25 @@ export function MonthlyClients() {
   }, [clients, contractForm.clientName])
 
   // ── Client Payments Calculations & Helpers ──
+  // Balances compare charges and payments of the SAME period (AUD-39)
+  const periodPayments = useMemo(() => {
+    if (activeRange.isAllTime || !activeRange.start || !activeRange.end) return payments
+    return payments.filter(p => p.date >= activeRange.start && p.date <= activeRange.end)
+  }, [payments, activeRange])
+
   const paymentsByClient = useMemo(() => {
     const map = new Map<string, MonthlyClientPayment[]>()
-    for (const p of payments) {
+    for (const p of periodPayments) {
       const key = p.clientName.trim().toLowerCase()
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(p)
     }
     return map
-  }, [payments])
+  }, [periodPayments])
 
   const totalPaymentsRecorded = useMemo(() => {
-    return payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
-  }, [payments])
+    return periodPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+  }, [periodPayments])
 
   const totalMonthlyBalanceDue = useMemo(() => {
     return Math.max(0, totalMonthlyCharges - (totalMonthlyReceived + totalPaymentsRecorded))
@@ -698,9 +705,7 @@ export function MonthlyClients() {
       setInvoicePreset('this_month')
     }
 
-    const randSuffix = Math.floor(1000 + Math.random() * 9000)
-    const monthCode = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
-    setInvoiceNumber(`INV-${monthCode}-${randSuffix}`)
+    setInvoiceNumber(nextInvoiceNumber(invoices)) // sequential, unique (AUD-36)
 
     setInvoiceIssueDate(todayStr)
     const due = new Date(now)

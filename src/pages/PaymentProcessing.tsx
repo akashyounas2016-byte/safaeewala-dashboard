@@ -14,7 +14,7 @@ import { useData } from '@/store/DataContext'
 import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem, Client } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { formatDate } from '@/lib/utils'
-import { normalizeKey, buildPendingCalcContext, loadClientAdjustments, calcJobPending, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
+import { normalizeKey, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
 import * as XLSX from 'xlsx'
 import { useNavigate } from 'react-router-dom'
 
@@ -181,7 +181,7 @@ export function PaymentProcessing() {
       if (isBogusJob(job)) return
       const chg = cleanNum(job.charges)
       const rec = cleanNum(job.received) + calcJobLaterReceipts(job, pendingCtx)
-      const due = calcJobPending(job, pendingCtx)
+      const due = calcJobCollectable(job, pendingCtx)
 
       if (due > 0) {
         list.push({
@@ -295,7 +295,7 @@ export function PaymentProcessing() {
       id: string
       date: string
       client: string
-      type: 'Daily Job' | 'Monthly Contract'
+      type: 'Daily Job' | 'Monthly Contract' | 'Recovery'
       method: string
       amount: number
       reference?: string
@@ -333,6 +333,22 @@ export function PaymentProcessing() {
       })
     })
 
+    // Later collections of pending dues (Pending / Payments "collect") — AUD-27
+    pendingRcvdList.forEach(p => {
+      const amount = cleanNum(p.cash) + cleanNum(p.online)
+      if (amount <= 0) return
+      records.push({
+        id: `rc-${p.id}`,
+        date: p.date,
+        client: p.client || 'Client',
+        type: 'Recovery',
+        method: cleanNum(p.cash) > 0 ? 'Cash' : 'Online',
+        amount,
+        reference: p.job_id ? `Job ${p.job_id.slice(0, 8)}` : undefined,
+        notes: p.remarks || undefined,
+      })
+    })
+
     return records
       .filter(r => {
         const q = historySearch.toLowerCase().trim()
@@ -347,14 +363,18 @@ export function PaymentProcessing() {
         )
       })
       .sort((a, b) => b.date.localeCompare(a.date))
-  }, [dailyJobs, monthlyPayments, historySearch])
+  }, [dailyJobs, monthlyPayments, pendingRcvdList, historySearch])
 
   // ── Global Stats Calculations ──
   const totalPendingAmt = allPendingRecords.reduce((s, r) => s + r.pendingAmount, 0)
   const totalMonthlyPaid = monthlyPayments.reduce((s, m) => s + m.amount, 0)
-  const totalDailyCollected = dailyJobs.reduce((s, j) => s + cleanNum(j.received), 0)
+  // Collected = received on the day + later recoveries + monthly payments;
+  // billed = job charges only (monthly visits are already in it) — AUD-27, AUD-28
+  const validJobs = dailyJobs.filter(j => !isBogusJob(j))
+  const totalRecovered = pendingRcvdList.reduce((s, p) => s + cleanNum(p.cash) + cleanNum(p.online), 0)
+  const totalDailyCollected = validJobs.reduce((s, j) => s + cleanNum(j.received), 0) + totalRecovered
   const grandTotalCollected = totalDailyCollected + totalMonthlyPaid
-  const totalBilled = dailyJobs.reduce((s, j) => s + cleanNum(j.charges), 0) + totalMonthlyPaid
+  const totalBilled = validJobs.reduce((s, j) => s + cleanNum(j.charges), 0)
   const collectionRate = totalBilled > 0 ? Math.round((grandTotalCollected / totalBilled) * 100) : 100
 
   // ── Handle Save New Monthly Payment ──
@@ -472,12 +492,17 @@ export function PaymentProcessing() {
     id: string
     date: string
     client: string
-    type: 'Daily Job' | 'Monthly Contract'
+    type: 'Daily Job' | 'Monthly Contract' | 'Recovery'
     method: string
     amount: number
     reference?: string
     notes?: string
   }) => {
+    // Recoveries are receipts against older jobs — they are managed on the Pending screen
+    if (record.type === 'Recovery') {
+      alert('This is a recovery of an earlier pending amount. Edit or remove it from the Pending screen (Recovered tab).')
+      return
+    }
     if (record.id.startsWith('dj-rec-')) {
       const rawJobId = record.id.replace('dj-rec-', '')
       const matchedJob = dailyJobs.find(j => j.id === rawJobId)
@@ -1288,7 +1313,9 @@ export function PaymentProcessing() {
                             className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
                               item.type === 'Monthly Contract'
                                 ? 'bg-teal-50 text-teal-700 border border-teal-200'
-                                : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : item.type === 'Recovery'
+                                  ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                  : 'bg-blue-50 text-blue-700 border border-blue-200'
                             }`}
                           >
                             {item.type}

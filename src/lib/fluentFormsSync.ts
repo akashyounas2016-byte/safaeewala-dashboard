@@ -17,12 +17,8 @@ export function isDummyLead(lead: Partial<FluentFormLead> | null | undefined): b
   ]
   if (lead.id && dummyIds.includes(lead.id)) return true
   if (lead.id && /^lead-ff-10\d$/.test(lead.id)) return true
-  const dummyNames = [
-    'Dr. Tariq Al-Mansoor', 'Elena Rostova', 'Rashid Al-Nuaimi', 'Sarah Jenkins',
-    'Mohammad Al-Qasimi', 'Vikram Patel', 'Fatima Al-Zahra', 'Marcus Dupont',
-    'Sheikha Maryam', 'Rahul Khanna'
-  ]
-  if (lead.client_name && dummyNames.includes(lead.client_name.trim())) return true
+  // Demo leads are recognised by their ids only — matching by name would hide real customers
+  // who happen to share a demo name (AUD-41)
   return false
 }
 
@@ -296,56 +292,92 @@ export function normalizeLeadWithRaw(lead: FluentFormLead): FluentFormLead {
 }
 
 /* ─── Leads Data Manager (Self-Hosted VPS Microservice + Supabase + LocalStorage Fallback) ─── */
+
+// VPS writes that failed (offline / server restart) are kept and replayed on the next load,
+// instead of being silently lost (AUD-42)
+const LEAD_OUTBOX_KEY = 'safaeewala_fluent_form_outbox'
+type LeadWrite = { url: string; method: 'POST' | 'PATCH' | 'DELETE'; body?: unknown; at: string }
+
+const readLeadOutbox = (): LeadWrite[] => {
+  try { return JSON.parse(localStorage.getItem(LEAD_OUTBOX_KEY) || '[]') as LeadWrite[] } catch { return [] }
+}
+const writeLeadOutbox = (list: LeadWrite[]) => {
+  try { localStorage.setItem(LEAD_OUTBOX_KEY, JSON.stringify(list)) } catch { /* quota */ }
+}
+
+async function sendLeadWrite(w: Omit<LeadWrite, 'at'>): Promise<boolean> {
+  try {
+    const res = await fetch(w.url, {
+      method: w.method,
+      headers: w.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      body: w.body !== undefined ? JSON.stringify(w.body) : undefined,
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+async function vpsWrite(w: Omit<LeadWrite, 'at'>): Promise<void> {
+  if (await sendLeadWrite(w)) return
+  console.error(`[fluentForms] ${w.method} ${w.url} failed — queued for retry`)
+  writeLeadOutbox([...readLeadOutbox(), { ...w, at: new Date().toISOString() }])
+}
+
+async function flushLeadOutbox(): Promise<void> {
+  const pending = readLeadOutbox()
+  if (pending.length === 0) return
+  const left: LeadWrite[] = []
+  for (const w of pending) if (!(await sendLeadWrite(w))) left.push(w)
+  writeLeadOutbox(left)
+}
+
+/** Supabase is a secondary copy; failures are logged, not fatal */
+async function supabaseLeadWrite(op: PromiseLike<{ error: { message: string } | null }>): Promise<void> {
+  try {
+    const { error } = await op
+    if (error) console.warn('[fluentForms] Supabase copy not updated:', error.message)
+  } catch (err) {
+    console.warn('[fluentForms] Supabase copy not updated:', err)
+  }
+}
+
 export async function fetchFluentFormLeads(): Promise<FluentFormLead[]> {
-  // 1. Try our direct self-hosted VPS Webhook API
-  try {
-    const res = await fetch('/api/webhook/fluent-forms')
-    if (res.ok) {
-      const data = await res.json()
-      if (Array.isArray(data)) {
-        const realData = (data as FluentFormLead[])
-          .filter(l => !isDummyLead(l))
-          .map(l => normalizeLeadWithRaw(l))
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(realData))
-        return realData
-      }
-    }
-  } catch {}
+  await flushLeadOutbox()
 
-  // 2. Try Supabase if configured (optional fallback)
-  try {
-    const { data, error } = await supabase
-      .from('fluent_form_leads')
-      .select('*')
-      .order('created_at', { ascending: false })
+  // Read both stores and merge by id (VPS wins) so a lead that exists in only one of them still shows
+  const [vps, db] = await Promise.all([
+    fetch('/api/webhook/fluent-forms')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => (Array.isArray(data) ? (data as FluentFormLead[]) : null))
+      .catch(() => null),
+    Promise.resolve(supabase.from('fluent_form_leads').select('*').order('created_at', { ascending: false }))
+      .then(({ data, error }) => (!error && Array.isArray(data) ? (data as FluentFormLead[]) : null))
+      .catch(() => null),
+  ])
 
-    if (!error && data && Array.isArray(data) && data.length > 0) {
-      const realData = (data as FluentFormLead[])
-        .filter(l => !isDummyLead(l))
-        .map(l => normalizeLeadWithRaw(l))
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(realData))
-      return realData
-    }
-  } catch {}
+  if (vps || db) {
+    const byId = new Map<string, FluentFormLead>()
+    ;(db || []).forEach(l => byId.set(l.id, l))
+    ;(vps || []).forEach(l => byId.set(l.id, { ...byId.get(l.id), ...l }))
+    const realData = Array.from(byId.values())
+      .filter(l => !isDummyLead(l))
+      .map(l => normalizeLeadWithRaw(l))
+      .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(realData))
+    return realData
+  }
 
-  // 3. Fallback to localStorage
+  // Both unreachable — use this browser's last copy
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved) {
       const parsed = JSON.parse(saved)
       if (Array.isArray(parsed)) {
-        const realSaved = (parsed as FluentFormLead[])
-          .filter(l => !isDummyLead(l))
-          .map(l => normalizeLeadWithRaw(l))
-        return realSaved
+        return (parsed as FluentFormLead[]).filter(l => !isDummyLead(l)).map(l => normalizeLeadWithRaw(l))
       }
     }
-  } catch {}
-
-  // Empty state by default — only real live webhook data
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([]))
-  } catch {}
+  } catch { /* corrupt cache */ }
   return []
 }
 
@@ -353,70 +385,28 @@ export function saveLeadsLocally(leads: FluentFormLead[]) {
   try {
     const realOnly = leads.filter(l => !isDummyLead(l))
     localStorage.setItem(STORAGE_KEY, JSON.stringify(realOnly))
-  } catch {}
+  } catch { /* quota */ }
 }
 
 export async function insertFluentFormLead(lead: FluentFormLead): Promise<void> {
-  // 1. Post to self-hosted webhook server
-  try {
-    await fetch('/api/webhook/fluent-forms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(lead),
-    })
-  } catch {}
-
-  // 2. Post to Supabase if available
-  try {
-    await supabase.from('fluent_form_leads').insert(lead)
-  } catch {}
+  await vpsWrite({ url: '/api/webhook/fluent-forms', method: 'POST', body: lead })
+  await supabaseLeadWrite(supabase.from('fluent_form_leads').insert(lead))
 }
 
 export async function updateFluentFormLead(id: string, updates: Partial<FluentFormLead>): Promise<void> {
-  // 1. Update on self-hosted VPS endpoint
-  try {
-    await fetch(`/api/webhook/fluent-forms/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    })
-  } catch {}
-
-  // 2. Update on Supabase if available
-  try {
-    await supabase.from('fluent_form_leads').update(updates).eq('id', id)
-  } catch {}
+  await vpsWrite({ url: `/api/webhook/fluent-forms/${id}`, method: 'PATCH', body: updates })
+  await supabaseLeadWrite(supabase.from('fluent_form_leads').update(updates).eq('id', id))
 }
 
 export async function updateFluentFormLeadStatus(id: string, status: LeadStatus, booking_id?: string): Promise<void> {
-  const patch: any = { status }
+  const patch: Partial<FluentFormLead> = { status }
   if (booking_id) patch.booking_id = booking_id
-
-  // 1. Update on self-hosted VPS endpoint
-  try {
-    await fetch(`/api/webhook/fluent-forms/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
-    })
-  } catch {}
-
-  // 2. Update on Supabase if available
-  try {
-    await supabase.from('fluent_form_leads').update(patch).eq('id', id)
-  } catch {}
+  await updateFluentFormLead(id, patch)
 }
 
 export async function deleteFluentFormLeadRemote(id: string): Promise<void> {
-  // 1. Delete on self-hosted VPS endpoint
-  try {
-    await fetch(`/api/webhook/fluent-forms/${id}`, { method: 'DELETE' })
-  } catch {}
-
-  // 2. Delete on Supabase if available
-  try {
-    await supabase.from('fluent_form_leads').delete().eq('id', id)
-  } catch {}
+  await vpsWrite({ url: `/api/webhook/fluent-forms/${id}`, method: 'DELETE' })
+  await supabaseLeadWrite(supabase.from('fluent_form_leads').delete().eq('id', id))
 }
 
 /* ─── Export Leads to XLSX ─── */

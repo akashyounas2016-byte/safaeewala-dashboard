@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Search, AlertTriangle, Package, TrendingUp, DollarSign, Truck, Boxes, BarChart3, RefreshCw } from 'lucide-react'
+import { Plus, Search, AlertTriangle, Package, TrendingUp, DollarSign, Truck, Boxes, BarChart3, RefreshCw, Trash2, PackagePlus } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -8,18 +8,22 @@ import { useData } from '@/store/DataContext'
 import type { InventoryItem } from '@/types'
 
 function stockLevel(item: InventoryItem) {
-  const ratio = item.current_stock / item.min_stock
-  const w = `${Math.min(100, (item.current_stock / item.reorder_quantity) * 100)}%`
+  const ratio = item.min_stock > 0 ? item.current_stock / item.min_stock : Infinity
+  const w = `${item.reorder_quantity > 0 ? Math.min(100, (item.current_stock / item.reorder_quantity) * 100) : 100}%`
   if (ratio <= 1)   return { label: 'Critical', textColor: 'text-red-600',    barColor: 'bg-red-500',    width: w }
   if (ratio <= 1.5) return { label: 'Low',      textColor: 'text-amber-600',  barColor: 'bg-amber-500',  width: w }
   return               { label: 'OK',        textColor: 'text-emerald-600', barColor: 'bg-emerald-500', width: w }
 }
 
 export function Inventory() {
-  const { inventory, addInventory, reorderItem } = useData()
+  const { inventory, addInventory, updateInventory, deleteInventory, addDailyExpense } = useData()
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
+  // Stock only goes up when goods are actually received (AUD-33)
+  const [receiving, setReceiving] = useState<InventoryItem | null>(null)
+  const [deleting, setDeleting] = useState<InventoryItem | null>(null)
+  const [lowOnly, setLowOnly] = useState(false)
 
   const lowStock    = inventory.filter(i => i.current_stock <= i.min_stock)
   const criticalStock = inventory.filter(i => i.current_stock < i.min_stock)
@@ -31,14 +35,15 @@ export function Inventory() {
     const matchSearch = i.name.toLowerCase().includes(search.toLowerCase()) ||
       i.category.toLowerCase().includes(search.toLowerCase())
     const matchCat = categoryFilter === 'all' || i.category === categoryFilter
-    return matchSearch && matchCat
+    const matchLow = !lowOnly || i.current_stock <= i.min_stock
+    return matchSearch && matchCat && matchLow
   })
 
   /* Stock health by category */
   const catHealth = categories.map(cat => {
     const items = inventory.filter(i => i.category === cat)
     const okCount = items.filter(i => i.current_stock > i.min_stock * 1.5).length
-    return { cat, total: items.length, ok: okCount, pct: Math.round((okCount / items.length) * 100) }
+    return { cat, total: items.length, ok: okCount, pct: items.length ? Math.round((okCount / items.length) * 100) : 0 }
   })
 
   return (
@@ -67,10 +72,10 @@ export function Inventory() {
             </p>
           </div>
           <button
-            onClick={() => criticalStock.forEach(i => reorderItem(i.id))}
+            onClick={() => setLowOnly(v => !v)}
             className="shrink-0 bg-red-600 text-white text-[12px] font-semibold px-4 py-2 rounded-xl hover:bg-red-700 transition-colors"
           >
-            Reorder All
+            {lowOnly ? 'Show All Items' : 'Show Low Items'}
           </button>
         </div>
       )}
@@ -90,21 +95,24 @@ export function Inventory() {
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {[
-          { label: 'Total Items',   value: inventory.length,              sub: 'All categories', icon: Boxes,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '+2',   deltaUp: true  },
+          { label: 'Total Items',   value: inventory.length,              sub: 'All categories', icon: Boxes,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '',   deltaUp: true  },
           { label: 'Low Stock',     value: lowStock.length,                   sub: 'Need reorder',   icon: AlertTriangle, iconBg: 'bg-amber-50', iconColor: 'text-amber-600', delta: lowStock.length > 0 ? '!' : 'OK', deltaUp: lowStock.length === 0 },
           { label: 'Critical',      value: criticalStock.length,              sub: 'Below minimum',  icon: RefreshCw, iconBg: 'bg-red-50',     iconColor: 'text-red-600',     delta: criticalStock.length > 0 ? '!!' : 'OK', deltaUp: criticalStock.length === 0 },
-          { label: 'Stock Value',   value: `AED ${(totalValue/1000).toFixed(1)}k`, sub: 'Total inventory', icon: DollarSign, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: '+3%', deltaUp: true },
-          { label: 'Suppliers',     value: suppliers.length,                  sub: 'Active vendors', icon: Truck,     iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: 'Active', deltaUp: true },
-          { label: 'Categories',    value: categories.length,                 sub: 'Item types',     icon: BarChart3, iconBg: 'bg-slate-100',  iconColor: 'text-slate-600',   delta: 'All',  deltaUp: true  },
+          { label: 'Stock Value',   value: `AED ${(totalValue/1000).toFixed(1)}k`, sub: 'Total inventory', icon: DollarSign, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: '', deltaUp: true },
+          { label: 'Suppliers',     value: suppliers.length,                  sub: 'Active vendors', icon: Truck,     iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: '', deltaUp: true },
+          { label: 'Categories',    value: categories.length,                 sub: 'Item types',     icon: BarChart3, iconBg: 'bg-slate-100',  iconColor: 'text-slate-600',   delta: '',  deltaUp: true  },
         ].map(card => (
           <div key={card.label} className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all">
             <div className="flex items-start justify-between mb-4">
               <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center`}>
                 <card.icon size={18} className={card.iconColor} />
               </div>
-              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${card.deltaUp ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                {card.delta}
-              </span>
+              {/* Only real, data-backed chips — no invented trends (AUD-32, AUD-35) */}
+              {card.delta && (
+                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${card.deltaUp ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                  {card.delta}
+                </span>
+              )}
             </div>
             <p className="text-2xl font-bold text-[#111827] tracking-tight">{card.value}</p>
             <p className="text-[12px] font-semibold text-[#111827] mt-1">{card.label}</p>
@@ -195,14 +203,22 @@ export function Inventory() {
                           <span className="text-[13px] font-bold text-[#111827]">AED {(item.current_stock * item.unit_cost).toLocaleString()}</span>
                         </td>
                         <td className="px-4 py-3.5">
-                          {item.current_stock <= item.min_stock && (
+                          <div className="flex items-center gap-1.5">
                             <button
-                              onClick={() => reorderItem(item.id)}
-                              className="text-[11px] bg-amber-50 text-amber-700 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-semibold transition-colors"
+                              onClick={() => setReceiving(item)}
+                              className={`text-[11px] px-2.5 py-1 rounded-lg font-semibold transition-colors flex items-center gap-1 ${item.current_stock <= item.min_stock ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                              title="Record goods received"
                             >
-                              Reorder
+                              <PackagePlus size={12} /> Receive
                             </button>
-                          )}
+                            <button
+                              onClick={() => setDeleting(item)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              title="Delete item"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -305,6 +321,78 @@ export function Inventory() {
       </div>
 
       {/* ── Add Item Modal ── */}
+      {/* ── Receive stock: adds stock and can log the purchase as an expense ── */}
+      <Modal open={!!receiving} onClose={() => setReceiving(null)} title={receiving ? `Receive Stock — ${receiving.name}` : ''} size="md">
+        {receiving && (
+          <form
+            className="space-y-4"
+            onSubmit={e => {
+              e.preventDefault()
+              const fd = new FormData(e.currentTarget)
+              const qty = Number(fd.get('qty')) || 0
+              const cost = Number(fd.get('unit_cost')) || 0
+              if (qty <= 0) { alert('Enter the quantity received.'); return }
+              const today = new Date().toISOString().split('T')[0]
+              updateInventory(receiving.id, {
+                current_stock: receiving.current_stock + qty,
+                unit_cost: cost || receiving.unit_cost,
+                last_restocked: today,
+              })
+              if (fd.get('log_expense') === 'on' && qty * cost > 0) {
+                addDailyExpense({
+                  date: today,
+                  name: `Stock: ${receiving.name} × ${qty} ${receiving.unit}`,
+                  category: 'Supplies & Materials',
+                  amount: Math.round(qty * cost * 100) / 100,
+                  source: 'Direct Expense',
+                  payment_method: (fd.get('payment_method') as string) || 'Cash',
+                  vendor: receiving.supplier,
+                })
+              }
+              setReceiving(null)
+            }}
+          >
+            <p className="text-[12px] text-slate-500">
+              In stock now: <strong className="text-slate-800">{receiving.current_stock} {receiving.unit}</strong> · minimum {receiving.min_stock} {receiving.unit}
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Input name="qty" label={`Quantity received (${receiving.unit})`} type="number" min="0" step="any" defaultValue={String(receiving.reorder_quantity || '')} required />
+              <Input name="unit_cost" label="Cost per unit (AED)" type="number" min="0" step="0.01" defaultValue={String(receiving.unit_cost || '')} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 items-end">
+              <label className="flex items-center gap-2 text-[12px] font-semibold text-slate-700">
+                <input type="checkbox" name="log_expense" defaultChecked className="rounded text-teal-600 h-4 w-4" />
+                Record as expense
+              </label>
+              <Select name="payment_method" label="Paid by" defaultValue="Cash">
+                <option value="Cash">Cash</option>
+                <option value="Bank Transfer">Bank Transfer</option>
+                <option value="Credit Card">Credit Card</option>
+                <option value="Petty Cash">Petty Cash</option>
+              </Select>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setReceiving(null)}>Cancel</Button>
+              <Button type="submit" className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold">Save</Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      <Modal open={!!deleting} onClose={() => setDeleting(null)} title="Delete inventory item" size="sm">
+        {deleting && (
+          <div className="space-y-4">
+            <p className="text-[13px] text-slate-600">
+              Delete <strong>{deleting.name}</strong> ({deleting.current_stock} {deleting.unit} in stock)? This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setDeleting(null)}>Cancel</Button>
+              <Button type="button" className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold" onClick={() => { deleteInventory(deleting.id); setDeleting(null) }}>Delete</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Add Inventory Item" size="md">
         <form className="space-y-4" onSubmit={e => {
           e.preventDefault()

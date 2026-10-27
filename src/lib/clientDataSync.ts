@@ -266,6 +266,29 @@ export function calcClientOpeningPending(client: Client, receipts: DailyPendingR
   return Math.max(0, opening - applied)
 }
 
+/**
+ * Money collected for a job-sheet row (AUD-01, R-FIN-03): the received amount, else the charges for
+ * paid-on-site rows. Monthly rows are collected through monthly client payments and Pending rows
+ * through recoveries, so counting their charges here would count them twice.
+ */
+export function jobCollected(j: DailyJob): number {
+  const rec = cleanNum(j.received)
+  if (rec > 0) return rec
+  const mode = String(j.payment_mode).toLowerCase()
+  if (mode === 'pending' || mode === 'monthly') return 0
+  return cleanNum(j.charges)
+}
+
+/**
+ * Amount to chase on the receivables screens (Pending, Payments, Overview). Monthly-contract
+ * visits are settled through monthly client payments on Monthly Clients, so they are not
+ * job-level receivables (AUD-24).
+ */
+export function calcJobCollectable(job: DailyJob, ctx?: PendingCalcContext): number {
+  if (String(job.payment_mode).toLowerCase() === 'monthly') return 0
+  return calcJobPending(job, ctx)
+}
+
 /** Lifetime balance of a client: unpaid jobs + unpaid opening balance */
 export function calcClientPendingBalance(
   client: Client,

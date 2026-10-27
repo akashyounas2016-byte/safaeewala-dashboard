@@ -13,7 +13,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
-import { buildPendingCalcContext, loadClientAdjustments, calcJobPending, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
+import { buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, splitStaffNames, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
 import * as XLSX from 'xlsx'
 
 export type PendingDatePreset =
@@ -296,7 +296,7 @@ export function PendingPayments() {
       if (isBogusJob(job)) return
       const chg = cleanNum(job.charges)
       const rec = cleanNum(job.received) + calcJobLaterReceipts(job, pendingCtx)
-      const due = calcJobPending(job, pendingCtx)
+      const due = calcJobCollectable(job, pendingCtx)
 
       // Only real dues — a fully paid row stays out even if its mode says "Pending"
       if (due > 0) {
@@ -369,7 +369,8 @@ export function PendingPayments() {
 
         // Staff filter
         if (staffFilter !== 'all') {
-          if (rec.staffName.toLowerCase().trim() !== staffFilter.toLowerCase().trim()) return false
+          const want = staffFilter.toLowerCase().trim()
+          if (!splitStaffNames(rec.staffName).some(n => n.toLowerCase().trim() === want)) return false
         }
 
         // Source filter
@@ -451,7 +452,7 @@ export function PendingPayments() {
   const distinctStaffList = useMemo(() => {
     const set = new Set<string>()
     allOutstandingRecords.forEach(r => {
-      if (r.staffName && r.staffName !== '—') set.add(r.staffName)
+      if (r.staffName && r.staffName !== '—') splitStaffNames(r.staffName).forEach(n => set.add(n))
     })
     return Array.from(set).sort()
   }, [allOutstandingRecords])
@@ -460,16 +461,20 @@ export function PendingPayments() {
   const staffPendingSummary = useMemo(() => {
     const map = new Map<string, { count: number; totalAmount: number; clients: string[] }>()
     filteredOutstanding.forEach(r => {
-      const staff = r.staffName || 'Unassigned / Direct'
-      if (!map.has(staff)) {
-        map.set(staff, { count: 0, totalAmount: 0, clients: [] })
-      }
-      const entry = map.get(staff)!
-      entry.count += 1
-      entry.totalAmount += r.pendingAmount
-      if (!entry.clients.includes(r.clientName)) {
-        entry.clients.push(r.clientName)
-      }
+      // A shared shift ("Sita, Rupa") is split between its cleaners (AUD-26)
+      const names = r.staffName && r.staffName !== '—' ? splitStaffNames(r.staffName) : []
+      const staffList = names.length > 0 ? names : ['Unassigned / Direct']
+      staffList.forEach(staff => {
+        if (!map.has(staff)) {
+          map.set(staff, { count: 0, totalAmount: 0, clients: [] })
+        }
+        const entry = map.get(staff)!
+        entry.count += 1
+        entry.totalAmount += r.pendingAmount / staffList.length
+        if (!entry.clients.includes(r.clientName)) {
+          entry.clients.push(r.clientName)
+        }
+      })
     })
     return Array.from(map.entries())
       .map(([staff, data]) => ({ staff, ...data }))
@@ -489,6 +494,10 @@ export function PendingPayments() {
     const amt = cleanNum(collectAmount)
     if (amt <= 0) {
       alert('Please enter a valid collected amount.')
+      return
+    }
+    if (amt > collectingRecord.pendingAmount + 0.01 &&
+        !confirm(`AED ${amt.toLocaleString()} is more than the AED ${collectingRecord.pendingAmount.toLocaleString()} due. Record it anyway?`)) {
       return
     }
 
@@ -519,6 +528,7 @@ export function PendingPayments() {
       cash: collectMode === 'Cash' ? amt : 0,
       online: collectMode === 'Online' ? amt : 0,
       job_id: collectingRecord.jobId,
+      remarks: collectNotes.trim() || undefined, // AUD-25: notes were dropped before
     }
 
     setPendingRcvdList(prev => [newRcvdEntry, ...prev])

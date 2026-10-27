@@ -17,7 +17,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import { useCurrentUser } from '@/store/UserContext'
 import type { Booking, BookingFrequency, DailyJob, DailyPendingItem, DailyPendingReceivedItem, Invoice } from '@/types'
-import { cleanClientNameFromAddress, buildPendingCalcContext, loadClientAdjustments, calcJobPending } from '@/lib/clientDataSync'
+import { cleanClientNameFromAddress, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, jobCollected } from '@/lib/clientDataSync'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 
 function cleanNum(val: any): number {
@@ -43,18 +43,6 @@ function isBogusSummaryJob(j: DailyJob): boolean {
   if (summaryWords.some(w => combined.includes(w))) return true
   const isEmptyStub = noAddress && charges === 0 && received === 0 && (!j.service || j.service === '—')
   return (noAddress && noTimes) || (noAddress && (charges > 1500 || received > 1500)) || duty > 24 || isEmptyStub
-}
-
-/**
- * Money collected for a job-sheet row (AUD-01): the received amount, else the charges for paid-on-site rows.
- * Monthly rows are collected through monthly client payments and Pending rows through recoveries,
- * so counting their charges here would count them twice.
- */
-function jobCollected(j: DailyJob): number {
-  const rec = cleanNum(j.received)
-  if (rec > 0) return rec
-  if (j.payment_mode === 'Pending' || j.payment_mode === 'Monthly') return 0
-  return cleanNum(j.charges)
 }
 
 /** Bookings without a Daily Job Sheet row — a booking with a row is already counted through that row (AUD-01) */
@@ -816,8 +804,8 @@ export function Overview() {
     // 1. Daily Jobs with pending dues
     // Same per-job formula as Pending Payments, Daily Job Sheet and Client Profile
     const pendingCtx = buildPendingCalcContext(loadClientAdjustments(), pendingRcvdList)
-    const djPendingList = validDailyJobs.filter(j => calcJobPending(j, pendingCtx) > 0)
-    const djPendingAmt = djPendingList.reduce((s, j) => s + calcJobPending(j, pendingCtx), 0)
+    const djPendingList = validDailyJobs.filter(j => calcJobCollectable(j, pendingCtx) > 0)
+    const djPendingAmt = djPendingList.reduce((s, j) => s + calcJobCollectable(j, pendingCtx), 0)
 
     // 2. Side table pending items
     const sideAmt = pendingList.reduce((s, i) => s + cleanNum(i.amount), 0)

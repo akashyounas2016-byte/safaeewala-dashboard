@@ -10,7 +10,9 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
-import type { DailyExpense } from '@/types'
+import type { DailyExpense, DailyPendingReceivedItem } from '@/types'
+import { isBogusJob, jobCollected } from '@/lib/clientDataSync'
+import { safeLocalStorageGet } from '@/lib/storageUtils'
 import * as XLSX from 'xlsx'
 
 export type ExpenseDatePreset =
@@ -350,19 +352,24 @@ export function Expenses() {
     return Math.round(totalExpenses / activeExpenseDays)
   }, [totalExpenses, activeExpenseDays])
 
-  // Revenue for same period (from DailyJobSheet and Bookings)
+  // Money collected in the same period — same definition as Overview (R-FIN-03, AUD-30):
+  // job-sheet collections (no Excel total rows), monthly client payments, pending recoveries,
+  // and bookings that have no job-sheet row yet
   const periodRevenue = useMemo(() => {
     const jobRev = dailyJobs
-      .filter(j => isDateInRange(j.date))
-      .reduce((s, j) => s + (Number(j.received) || Number(j.charges) || 0), 0)
-
-    if (jobRev > 0) return jobRev
-
+      .filter(j => !isBogusJob(j) && isDateInRange(j.date))
+      .reduce((s, j) => s + jobCollected(j), 0)
+    const monthlyRev = safeLocalStorageGet<{ amount: number; date: string }[]>('safaeewala_monthly_client_payments', [])
+      .filter(p => isDateInRange(p.date))
+      .reduce((s, p) => s + (Number(p.amount) || 0), 0)
+    const recoveries = safeLocalStorageGet<DailyPendingReceivedItem[]>('safaeewala_daily_pending_rcvd_items', [])
+      .filter(r => isDateInRange(r.date))
+      .reduce((s, r) => s + (Number(r.cash) || 0) + (Number(r.online) || 0), 0)
+    const linked = new Set(dailyJobs.map(j => j.booking_id).filter(Boolean))
     const bookingRev = bookings
-      .filter(b => (b.status === 'completed' || b.status === 'in_progress') && isDateInRange(b.scheduled_date))
+      .filter(b => !linked.has(b.id) && (b.status === 'completed' || b.status === 'in_progress') && isDateInRange(b.scheduled_date))
       .reduce((s, b) => s + (b.total_amount || 0), 0)
-
-    return bookingRev
+    return jobRev + monthlyRev + recoveries + bookingRev
   }, [dailyJobs, bookings, activeRange])
 
   const profit = periodRevenue - totalExpenses
@@ -531,8 +538,10 @@ export function Expenses() {
           <div>
             <p className="text-[22px] font-extrabold text-emerald-700">{expenseRatio}%</p>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Net Profit: <strong className={profit >= 0 ? 'text-emerald-700' : 'text-red-600'}>AED {profit.toLocaleString()}</strong>
+              Collected − Expenses: <strong className={profit >= 0 ? 'text-emerald-700' : 'text-red-600'}>AED {profit.toLocaleString()}</strong>
             </p>
+            {/* Not a true profit: staff salaries and agency payouts are not recorded as expenses here (AUD-31) */}
+            <p className="text-[10px] text-slate-400 mt-0.5">Excludes staff salaries &amp; agency payouts</p>
           </div>
         </div>
       </div>

@@ -206,15 +206,29 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ## FIN — Invoices & payments
 
-### R-FIN-01 — UAE VAT
-- **Rule:** VAT is 5% of the subtotal unless the invoice is VAT-exempt (`vat_rate = 0` / `apply_vat = false`); company TRN comes from `company_settings` (fallback `100234567890003`).
-- **Code:** `src/pages/Invoices.tsx`, `MonthlyInvoices.tsx`; TRN in `DataContext.tsx`.
+### R-FIN-01 — UAE VAT and company details
+- **Rule:** VAT is 5% of the subtotal unless the invoice is VAT-exempt (`vat_rate = 0` / `apply_vat = false`). Company name, TRN, address and phone on invoices and statements come only from Settings (`company_settings`) — no hard-coded values; saving settings merges, never replaces the record.
+- **Code:** `src/lib/companyInfo.ts` (`useCompanyInfo`, `getCompanyInfo`, `updateCompanySettings`); `Invoices.tsx`, `MonthlyInvoices.tsx`, `Settings.tsx`.
 - **Status:** Active
 
 ### R-FIN-03 — Revenue is counted once
 - **Rule:** A booking that has a job-sheet row (`booking_id`) is counted only through that row. **Collected** revenue (Overview) = `received`, else `charges` for paid-on-site rows; `Monthly` rows count only via monthly client payments and `Pending` rows only via recoveries. **Billed / work** revenue (Reports) = job-sheet `charges` + bookings without a row.
 - **Code:** `Overview.tsx → jobCollected, bookingsWithoutJobRow`; `Reports.tsx → workItems`.
 - **Status:** Active · Since: 2026-10-27 (AUD-01, AUD-05)
+
+### R-FIN-04 — Invoice numbers
+- **Rule:** One scheme: `SAF-<year>-<NNNN>`, next = highest of the year + 1; `addInvoice` replaces any missing, legacy or duplicate number.
+- **Code:** `src/lib/invoiceNumber.ts`; `DataContext.addInvoice`.
+- **Status:** Active · Since: 2026-10-27 (AUD-36)
+
+### R-FIN-05 — Receivables exclude monthly-contract visits
+- **Rule:** Pending, Payments and Overview chase job-level dues only for non-monthly rows (`calcJobCollectable`); monthly-contract balances live on Monthly Clients (charges − payments of the same period). Payment history and "collected" include later recoveries; "billed" is job charges only.
+- **Code:** `clientDataSync.ts → calcJobCollectable, jobCollected`; `PendingPayments.tsx`, `PaymentProcessing.tsx`, `MonthlyClients.tsx`, `Expenses.tsx`.
+- **Status:** Active · Since: 2026-10-27 (AUD-24, 27, 28, 30, 39)
+
+### R-DATA-04 — No invented numbers on screen
+- **Rule:** KPI trend chips, stock movements and defaults must come from data. No fixed "+3%" deltas; stock increases only when goods are received; monthly statements come from job-sheet visits.
+- **Status:** Active · Since: 2026-10-27 (AUD-32, 33, 35, 37)
 
 ### R-FIN-02 — Monthly client balance
 - **Rule:** Balance due = max(0, total charges − total received) for the client's monthly jobs (`payment_mode = Monthly` or "monthly" in remarks/address).
