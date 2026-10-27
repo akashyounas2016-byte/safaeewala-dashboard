@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import {
@@ -47,21 +47,23 @@ export function GoogleDriveWebhookModal({
   driveLink,
   driveError,
 }: GoogleDriveWebhookModalProps) {
-  const [webhookUrl, setWebhookUrl] = useState('')
+  const [webhookUrl, setWebhookUrl] = useState(() => getDriveWebhookUrl())
   const [activeTab, setActiveTab] = useState<'backup' | 'n8n_guide' | 'curl'>('backup')
   const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
   const [copiedWorkflow, setCopiedWorkflow] = useState(false)
   const [copiedCurl, setCopiedCurl] = useState(false)
   const [savedSuccess, setSavedSuccess] = useState(false)
+  const [prevOpen, setPrevOpen] = useState(open)
 
-  useEffect(() => {
+  if (open !== prevOpen) {
+    setPrevOpen(open)
     if (open) {
       setWebhookUrl(getDriveWebhookUrl())
       setTestResult(null)
       setSavedSuccess(false)
     }
-  }, [open])
+  }
 
   const handleSaveUrl = () => {
     setDriveWebhookUrl(webhookUrl)
@@ -79,8 +81,11 @@ export function GoogleDriveWebhookModal({
     try {
       const res = await testDriveWebhook(webhookUrl)
       setTestResult({ success: true, message: res.message })
-    } catch (err: any) {
-      setTestResult({ success: false, message: err.message || 'Connection failed' })
+    } catch (err: unknown) {
+      setTestResult({
+        success: false,
+        message: err instanceof Error ? err.message : 'Connection failed',
+      })
     } finally {
       setIsTesting(false)
     }

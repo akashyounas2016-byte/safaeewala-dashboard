@@ -222,7 +222,7 @@ export function EmployeeDocumentPreviewModal({
   )
 }
 
-// ── Document number field with inline upload icon (standard across Add & Edit Employee popups) ──
+// ── Pure Image / Document Upload Field (standard across Add & Edit Employee popups) ──
 export function EmployeeDocInput({
   name,
   label,
@@ -245,67 +245,88 @@ export function EmployeeDocInput({
   const uploadInputId = `emp-upload-${name}-${Math.random().toString(36).slice(2, 7)}`
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
         <label className="text-[11.5px] font-bold text-slate-700">{label}</label>
-        {doc && (
-          <span className="text-[10px] font-black text-teal-700 bg-teal-50 border border-teal-200/80 px-1.5 rounded-full flex items-center gap-1">
-            <Paperclip size={9} />
-            <span>1 file</span>
+        {doc ? (
+          <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+            <CheckCircle2 size={10} />
+            <span>Image Attached</span>
           </span>
+        ) : (
+          <span className="text-[10px] font-semibold text-slate-400">No image</span>
         )}
       </div>
 
-      <div className="relative flex items-center">
-        <input
-          name={name}
-          defaultValue={defaultValue}
-          placeholder={placeholder}
-          className="w-full rounded-xl border border-slate-200 bg-white pl-3 pr-10 py-2 text-[12px] font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600/30 transition-all shadow-2xs"
-        />
-        <label
-          htmlFor={uploadInputId}
-          className="absolute right-1.5 p-1.5 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 cursor-pointer transition-colors"
-          title={doc ? `Replace ${label} document` : `Upload ${label} document`}
-        >
-          <Upload size={14} className="stroke-[2.2]" />
-          <input
-            id={uploadInputId}
-            type="file"
-            accept="image/*,application/pdf"
-            className="hidden"
-            onChange={e => {
-              const f = e.target.files?.[0]
-              if (f) onUpload(f)
-              e.target.value = ''
-            }}
-          />
-        </label>
-      </div>
+      <input
+        id={uploadInputId}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={e => {
+          const f = e.target.files?.[0]
+          if (f) onUpload(f)
+          e.target.value = ''
+        }}
+      />
 
-      {doc && (
-        <div className="flex flex-wrap gap-1 mt-0.5">
-          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-teal-50/90 border border-teal-200/80 text-[10.5px] text-teal-900 shadow-2xs max-w-full">
-            <Paperclip size={10} className="text-teal-700 shrink-0" />
-            <span className="font-semibold truncate max-w-[125px]" title={doc.name}>{doc.name}</span>
+      {doc ? (
+        <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
+          <div className="flex items-center gap-2 min-w-0">
+            {doc.file_data?.startsWith('data:image/') ? (
+              <img
+                src={doc.file_data}
+                alt={doc.name}
+                className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700 shrink-0">
+                <Paperclip size={14} />
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="text-[11.5px] font-bold text-slate-800 truncate" title={doc.name}>
+                {doc.name}
+              </p>
+              <p className="text-[10px] text-slate-400">
+                {doc.file_size ? `${Math.round(doc.file_size / 1024)} KB` : 'Image file'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
               onClick={() => onPreview(doc)}
-              className="text-teal-700 hover:text-teal-950 p-0.5 rounded hover:bg-teal-100/80 cursor-pointer"
-              title="Preview / Download Document"
+              className="p-1 rounded-lg text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
+              title="Preview Image"
             >
-              <Eye size={11} />
+              <Eye size={13} />
             </button>
+            <label
+              htmlFor={uploadInputId}
+              className="p-1 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 cursor-pointer transition-colors"
+              title="Change Image"
+            >
+              <Upload size={13} />
+            </label>
             <button
               type="button"
               onClick={onRemove}
-              className="text-slate-400 hover:text-rose-600 p-0.5 rounded hover:bg-rose-50 cursor-pointer"
-              title="Remove Document"
+              className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
+              title="Remove Image"
             >
-              <X size={11} />
+              <Trash2 size={13} />
             </button>
           </div>
         </div>
+      ) : (
+        <label
+          htmlFor={uploadInputId}
+          className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-dashed border-slate-300 bg-white hover:bg-slate-50 hover:border-teal-500 text-slate-600 hover:text-teal-700 transition-all cursor-pointer group shadow-2xs"
+        >
+          <Upload size={13} className="text-slate-400 group-hover:text-teal-600 transition-colors" />
+          <span className="text-[11.5px] font-bold">Upload Image / Copy</span>
+        </label>
       )}
     </div>
   )

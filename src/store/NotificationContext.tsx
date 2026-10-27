@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useState, useEffect, type ReactNode } from 'react'
 import type { Booking, Invoice, InventoryItem } from '@/types'
 
 export interface AppNotification {
@@ -28,15 +28,23 @@ export function NotificationProvider({
   invoices: Invoice[]
   inventory: InventoryItem[]
 }) {
+  // Pure reactive timestamp updated every 60s
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(interval)
+  }, [])
+
   const notifications: AppNotification[] = useMemo(() => {
     const notifs: AppNotification[] = []
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Date(now).toISOString().split('T')[0]
 
     // Late jobs
     const lateJobs = bookings.filter(b =>
       b.status === 'in_progress' &&
       b.scheduled_date === today &&
-      new Date(`${b.scheduled_date}T${b.scheduled_time}`) < new Date(Date.now() - (b.duration_hours * 60 * 60 * 1000))
+      new Date(`${b.scheduled_date}T${b.scheduled_time}`) < new Date(now - (b.duration_hours * 60 * 60 * 1000))
     )
     if (lateJobs.length > 0) {
       notifs.push({
@@ -52,8 +60,8 @@ export function NotificationProvider({
     // Overdue invoices
     const overdueInvoices = invoices.filter(i =>
       i.status !== 'paid' &&
-      new Date(i.due_date) < new Date() &&
-      new Date(i.due_date) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Within last 30 days
+      new Date(i.due_date) < new Date(now) &&
+      new Date(i.due_date) > new Date(now - 30 * 24 * 60 * 60 * 1000) // Within last 30 days
     )
     if (overdueInvoices.length > 0) {
       const totalOverdue = overdueInvoices.reduce((s, i) => s + i.total, 0)
@@ -94,7 +102,7 @@ export function NotificationProvider({
     }
 
     return notifs
-  }, [bookings, invoices, inventory])
+  }, [bookings, invoices, inventory, now])
 
   return (
     <NotificationContext.Provider value={{ notifications }}>

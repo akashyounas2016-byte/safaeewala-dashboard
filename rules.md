@@ -129,9 +129,9 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Status:** Active
 
 ### R-EMP-02 — Monthly salary and hourly rate
-- **Rule:** Monthly salary is the stored `monthly_salary`, else `pay_rate_hourly × 200` (`MONTHLY_WORK_HOURS`). The Add Employee form stores `pay_rate_hourly = monthly_salary / 200`.
-- **Code:** `clientDataSync.ts → MONTHLY_WORK_HOURS, getEmployeeMonthlySalary`.
-- **Status:** Partial — see Known issue K-02.
+- **Rule:** Monthly salary is the stored `monthly_salary`, else `pay_rate_hourly × 200` (`MONTHLY_WORK_HOURS`). The Add Employee form stores `pay_rate_hourly = monthly_salary / 200`. Agency payouts also derive hourly rate via `MONTHLY_WORK_HOURS`.
+- **Code:** `clientDataSync.ts → MONTHLY_WORK_HOURS, getEmployeeMonthlySalary`; `AgencyDashboard.tsx`.
+- **Status:** Active · Standardized: 2026-10-27
 
 ### R-EMP-03 — Performance Health Score
 - **Rule:** 0–100 = Attendance 50 (worked days vs specifically-marked absences, last 90 days, per R-ATT-01) + Activity 30 (distinct worked days in last 30 days vs 22) + Compliance 20 (Visa, Passport, Work Permit, EID not expired). Grades: ≥85 Excellent, ≥70 Good, ≥50 Needs Attention, else At Risk.
@@ -238,10 +238,10 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ## Known issues (rules not yet fully honoured)
 
-| ID | Issue | Affects |
-|---|---|---|
-| K-01 | Localhost talks to the **live** backend (`/api` proxy → VPS, live Supabase): saves during testing change production data. | R-OPS-02 |
-| K-02 | Agency payouts derive hourly pay as `monthly_salary / (26 × 8)` (208 h) while the rest of the app uses 200 h. | R-EMP-02, R-PAY-01 |
-| K-03 | Agency saves POST the **whole agency list** (`{ all: next }`); a stale tab can overwrite newer agencies. | R-AGN-* |
-| K-04 | New employee fields (`photo_url`, document numbers/files) may not exist as Supabase columns; if not, they persist only in that browser. | R-EMP-* |
-| K-05 | Seed/demo data still loads when Supabase and localStorage are both empty. | R-DATA-03 |
+| ID | Issue | Affects | Status |
+|---|---|---|---|
+| K-01 | Localhost talks to the **live** backend (`/api` proxy → VPS, live Supabase): saves during testing change production data. | R-OPS-02 | Open |
+| K-02 | Agency payouts derive hourly pay as `monthly_salary / (26 × 8)` (208 h) while the rest of the app uses 200 h. | R-EMP-02, R-PAY-01 | **Resolved** (2026-10-27) — standardized to `MONTHLY_WORK_HOURS` (200h) |
+| K-03 | Agency saves POST the **whole agency list** (`{ all: next }`); a stale tab can overwrite newer agencies. | R-AGN-* | Open |
+| K-04 | New employee fields (`photo_url`, document numbers/files) may not exist as Supabase columns; if not, they persist only in that browser. | R-EMP-* | Open |
+| K-05 | Seed/demo data still loads when Supabase and localStorage are both empty. | R-DATA-03 | Open |

@@ -17,6 +17,10 @@ import { formatDate } from '@/lib/utils'
 import { normalizeKey, buildPendingCalcContext, loadClientAdjustments, calcJobPending, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
 import * as XLSX from 'xlsx'
 import { useNavigate } from 'react-router-dom'
+import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
+import type { MonthlyClientPayment } from '@/types'
+
+export type { MonthlyClientPayment }
 
 export interface EditPaymentJobItem {
   id: string
@@ -71,19 +75,6 @@ export function getClientProfileId(clientNameOrAddress: string, clients: Client[
   return `dj-${targetNorm}`
 }
 
-export interface MonthlyClientPayment {
-  id: string
-  clientName: string
-  clientId?: string
-  amount: number
-  date: string
-  paymentMethod: 'Bank Transfer' | 'Cash' | 'Credit Card' | 'Cheque' | 'Online'
-  referenceNumber?: string
-  invoiceMonth?: string
-  notes?: string
-  createdAt: string
-}
-
 export interface PendingRecordItem {
   id: string
   date: string
@@ -128,6 +119,19 @@ export function PaymentProcessing() {
   useEffect(() => {
     safeLocalStorageSet('safaeewala_monthly_client_payments', monthlyPayments)
   }, [monthlyPayments])
+
+  // React to payments added from Clients or ClientProfile
+  useEffect(() => {
+    const handleSync = () => {
+      setMonthlyPayments(safeLocalStorageGet<MonthlyClientPayment[]>('safaeewala_monthly_client_payments', []))
+    }
+    window.addEventListener('safaeewala_payments_updated', handleSync)
+    window.addEventListener('storage', handleSync)
+    return () => {
+      window.removeEventListener('safaeewala_payments_updated', handleSync)
+      window.removeEventListener('storage', handleSync)
+    }
+  }, [])
 
   // ── Pending Items from LocalStorage side table ──
   const [pendingSideList, setPendingSideList] = useState<DailyPendingItem[]>(() =>
@@ -1346,137 +1350,14 @@ export function PaymentProcessing() {
         </div>
       )}
 
-      {/* ── Modal: Record Monthly Client Payment ── */}
-      <Modal
+      {/* ── Modal: Record Client Payment (Unified with Client Suggestions) ── */}
+      <RecordPaymentModal
         open={showRecordMonthlyModal}
         onClose={() => setShowRecordMonthlyModal(false)}
-        title="Record Monthly Client Payment"
-        size="md"
-      >
-        <form onSubmit={handleSaveMonthlyPayment} className="space-y-4">
-          <div className="relative">
-            <label className="block text-[12px] font-semibold text-slate-700 mb-1">Client Name *</label>
-            <input
-              type="text"
-              required
-              placeholder="Search or enter client name..."
-              value={mClientName}
-              onChange={e => {
-                setMClientName(e.target.value)
-                setClientSearchDropdown(true)
-              }}
-              onFocus={() => setClientSearchDropdown(true)}
-              className="w-full text-[13px] px-3.5 py-2.5 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium"
-            />
-
-            {/* Quick autocomplete dropdown from clients */}
-            {clientSearchDropdown && mClientName && (
-              <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-[#E4E8EC] rounded-xl shadow-lg max-h-40 overflow-y-auto">
-                {clients
-                  .filter(c => c.full_name.toLowerCase().includes(mClientName.toLowerCase()))
-                  .slice(0, 5)
-                  .map(c => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => {
-                        setMClientName(c.full_name)
-                        setClientSearchDropdown(false)
-                      }}
-                      className="w-full text-left px-3.5 py-2 hover:bg-teal-50 text-[12.5px] font-medium text-slate-800 transition-colors flex items-center justify-between"
-                    >
-                      <span>{c.full_name}</span>
-                      <span className="text-[11px] text-slate-400">{c.area || 'Client'}</span>
-                    </button>
-                  ))}
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[12px] font-semibold text-slate-700 mb-1">Amount (AED) *</label>
-              <input
-                type="number"
-                step="0.01"
-                required
-                placeholder="e.g. 2500"
-                value={mAmount}
-                onChange={e => setMAmount(e.target.value)}
-                className="w-full text-[13px] px-3.5 py-2.5 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-bold text-emerald-600"
-              />
-            </div>
-            <div>
-              <label className="block text-[12px] font-semibold text-slate-700 mb-1">Payment Date *</label>
-              <input
-                type="date"
-                required
-                value={mDate}
-                onChange={e => setMDate(e.target.value)}
-                className="w-full text-[13px] px-3.5 py-2.5 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[12px] font-semibold text-slate-700 mb-1">Payment Method</label>
-              <select
-                value={mMethod}
-                onChange={e => setMMethod(e.target.value as any)}
-                className="w-full text-[13px] px-3.5 py-2.5 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium cursor-pointer"
-              >
-                <option value="Bank Transfer">Bank Transfer</option>
-                <option value="Cash">Cash</option>
-                <option value="Credit Card">Credit Card</option>
-                <option value="Cheque">Cheque</option>
-                <option value="Online">Online</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[12px] font-semibold text-slate-700 mb-1">Billing Period</label>
-              <input
-                type="text"
-                placeholder="e.g. October 2026"
-                value={mMonth}
-                onChange={e => setMMonth(e.target.value)}
-                className="w-full text-[13px] px-3.5 py-2.5 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-[12px] font-semibold text-slate-700 mb-1">Reference / Cheque Number</label>
-            <input
-              type="text"
-              placeholder="e.g. TRF-98234 or Cheque #10492"
-              value={mRef}
-              onChange={e => setMRef(e.target.value)}
-              className="w-full text-[13px] px-3.5 py-2.5 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-mono text-[12px]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[12px] font-semibold text-slate-700 mb-1">Notes / Remarks</label>
-            <textarea
-              rows={2}
-              placeholder="Optional payment notes..."
-              value={mNotes}
-              onChange={e => setMNotes(e.target.value)}
-              className="w-full text-[13px] px-3.5 py-2.5 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 resize-none"
-            />
-          </div>
-
-          <div className="flex gap-3 pt-3">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowRecordMonthlyModal(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold">
-              Save Payment
-            </Button>
-          </div>
-        </form>
-      </Modal>
+        onSuccess={(newPayment) => {
+          setMonthlyPayments(prev => [newPayment, ...prev.filter(p => p.id !== newPayment.id)])
+        }}
+      />
 
       {/* ── Modal: Collect Pending Amount ── */}
       <Modal

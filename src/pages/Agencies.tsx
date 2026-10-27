@@ -1,28 +1,25 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useId } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Building2, Plus, Search, Phone, Mail, MapPin, Users,
-  Percent, CreditCard, FileText, CheckCircle2, AlertCircle,
-  Edit2, Trash2, ExternalLink, RotateCcw, X, Shield, ArrowUpRight,
+  CreditCard, FileText, CheckCircle2, AlertCircle,
+  Edit2, Trash2, RotateCcw, X, Shield, ArrowUpRight,
   ArrowRight, LayoutGrid, List, Check, Paperclip, Upload, Eye, Download,
-  Pin, Crown, Sparkles, UserCheck, Clock
+  Pin, Crown, Sparkles, Clock
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Input, Select } from '@/components/ui/Input'
+import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
-import { useData, defaultAgencies } from '@/store/DataContext'
+import { useData } from '@/store/DataContext'
 import type { Agency, AgencyContactPerson, AgencyDocument, AgencyDocumentCategory } from '@/types'
 import { formatDate, isThirdPartyEmployee, isParentCompanyEmployee, slugifyAgencyName } from '@/lib/utils'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
-import { AgencyDashboard } from '@/components/agencies/AgencyDashboard'
 import { cleanClientNameFromAddress, employeeMatchesStaff, splitStaffNames, isBogusJob } from '@/lib/clientDataSync'
 import { buildAgencyNotifications } from '@/lib/agencyAlerts'
 
-export { slugifyAgencyName }
-
 // ── Curated Distinct Light Color Themes for Agency Widgets ──
-export const LIGHT_AGENCY_CARD_THEMES = [
+const LIGHT_AGENCY_CARD_THEMES = [
   {
     bg: 'bg-emerald-50/60',
     border: 'border-emerald-200/90',
@@ -245,106 +242,108 @@ function handleFileUpload(
   })
 }
 
-// ── Editable Field with Integrated File Upload Icon & Doc Viewer ──
-function InputFieldWithUpload({
-  name,
+// ── Pure Image / Document Upload Field for Agencies (matching EmployeeDocInput style) ──
+function AgencyDocUploadField({
   label,
-  placeholder,
-  defaultValue,
   category,
   documents,
   onAttach,
   onRemove,
   onPreview,
-  required,
 }: {
-  name: string
   label: string
-  placeholder?: string
-  defaultValue?: string
   category: AgencyDocumentCategory
   documents: AgencyDocument[]
   onAttach: (files: FileList | null) => void
   onRemove: (docId: string) => void
   onPreview: (doc: AgencyDocument) => void
-  required?: boolean
 }) {
   const catDocs = documents.filter(d => d.category === category)
-  const uploadInputId = `upload-${category}-${name}-${Math.random().toString(36).slice(2, 7)}`
+  const doc = catDocs[catDocs.length - 1]
+  const uploadInputId = useId()
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <label className="text-xs font-medium text-slate-600">{label}</label>
-        {catDocs.length > 0 && (
-          <span className="text-[10px] font-black text-teal-700 bg-teal-50 border border-teal-200/80 px-1.5 py-0.2 rounded-full flex items-center gap-1">
-            <Paperclip size={9} />
-            <span>{catDocs.length} {catDocs.length === 1 ? 'file' : 'files'}</span>
+        <label className="text-[11.5px] font-bold text-slate-700">{label}</label>
+        {doc ? (
+          <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+            <CheckCircle2 size={10} />
+            <span>Image Attached</span>
           </span>
+        ) : (
+          <span className="text-[10px] font-semibold text-slate-400">No image</span>
         )}
       </div>
 
-      <div className="relative flex items-center">
-        <input
-          name={name}
-          defaultValue={defaultValue}
-          placeholder={placeholder}
-          required={required}
-          className="w-full rounded-xl border border-slate-200 bg-white pl-3 pr-10 py-2 text-[12px] font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600/30 transition-all shadow-2xs"
-        />
+      <input
+        id={uploadInputId}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={e => {
+          onAttach(e.target.files)
+          e.target.value = ''
+        }}
+      />
 
-        {/* Upload Icon attached directly beside the editable field */}
+      {doc ? (
+        <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
+          <div className="flex items-center gap-2 min-w-0">
+            {doc.file_data?.startsWith('data:image/') ? (
+              <img
+                src={doc.file_data}
+                alt={doc.name}
+                className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700 shrink-0">
+                <Paperclip size={14} />
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="text-[11.5px] font-bold text-slate-800 truncate" title={doc.name}>
+                {doc.name}
+              </p>
+              <p className="text-[10px] text-slate-400">
+                {doc.file_size ? `${Math.round(doc.file_size / 1024)} KB` : 'Attached copy'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => onPreview(doc)}
+              className="p-1 rounded-lg text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
+              title="Preview Document"
+            >
+              <Eye size={13} />
+            </button>
+            <label
+              htmlFor={uploadInputId}
+              className="p-1 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 cursor-pointer transition-colors"
+              title="Change / Replace Image"
+            >
+              <Upload size={13} />
+            </label>
+            <button
+              type="button"
+              onClick={() => onRemove(doc.id)}
+              className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
+              title="Remove Document"
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        </div>
+      ) : (
         <label
           htmlFor={uploadInputId}
-          className="absolute right-1.5 p-1.5 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 cursor-pointer transition-colors"
-          title={`Upload document attachment for ${label}`}
+          className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-dashed border-slate-300 bg-white hover:bg-slate-50 hover:border-teal-500 text-slate-600 hover:text-teal-700 transition-all cursor-pointer group shadow-2xs"
         >
-          <Upload size={14} className="stroke-[2.2]" />
-          <input
-            id={uploadInputId}
-            type="file"
-            multiple
-            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
-            className="hidden"
-            onChange={e => {
-              onAttach(e.target.files)
-              e.target.value = ''
-            }}
-          />
+          <Upload size={13} className="text-slate-400 group-hover:text-teal-600 transition-colors" />
+          <span className="text-[11.5px] font-bold">Upload Image / Copy</span>
         </label>
-      </div>
-
-      {/* Uploaded documents micro-pills */}
-      {catDocs.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-0.5">
-          {catDocs.map(doc => (
-            <div
-              key={doc.id}
-              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-teal-50/90 border border-teal-200/80 text-[10.5px] text-teal-900 shadow-2xs transition-all max-w-full"
-            >
-              <Paperclip size={10} className="text-teal-700 shrink-0" />
-              <span className="font-semibold truncate max-w-[125px]" title={doc.name}>
-                {doc.name}
-              </span>
-              <button
-                type="button"
-                onClick={() => onPreview(doc)}
-                className="text-teal-700 hover:text-teal-950 p-0.5 rounded hover:bg-teal-100/80 cursor-pointer"
-                title="Preview / Download Document"
-              >
-                <Eye size={11} />
-              </button>
-              <button
-                type="button"
-                onClick={() => onRemove(doc.id)}
-                className="text-slate-400 hover:text-rose-600 p-0.5 rounded hover:bg-rose-50 cursor-pointer"
-                title="Remove Document"
-              >
-                <X size={11} />
-              </button>
-            </div>
-          ))}
-        </div>
       )}
     </div>
   )
@@ -352,7 +351,7 @@ function InputFieldWithUpload({
 
 export function Agencies() {
   const navigate = useNavigate()
-  const { agencies, addAgency, updateAgency, deleteAgency, employees, clients, dailyJobs, bookings } = useData()
+  const { agencies, addAgency, updateAgency, deleteAgency, employees, dailyJobs, bookings } = useData()
 
   // ── Safaeewala Active Cleaners Count ──
   const safaeewalaActiveCleanersCount = useMemo(() => {
@@ -572,25 +571,27 @@ export function Agencies() {
   const [editTerminationNotice, setEditTerminationNotice] = useState('1 Month')
 
   // Synchronize edit states whenever editingAgency changes
-  useEffect(() => {
-    if (editingAgency) {
-      setEditStatus(editingAgency.status || 'active')
-      setEditCompanyType(editingAgency.company_type || 'Third Party')
-      setEditReplacementGuarantee(
-        editingAgency.replacement_guarantee === 'No' || editingAgency.replacement_guarantee_enabled === false
-          ? 'No'
-          : 'Yes'
-      )
-      setEditContacts(
-        editingAgency.contact_persons && editingAgency.contact_persons.length > 0
-          ? editingAgency.contact_persons
-          : [{ id: 'cp-1', name: editingAgency.contact_person || '', phone: editingAgency.phone || '', email: editingAgency.email || '', role: 'Account Manager' }]
-      )
-      setEditDocs(editingAgency.documents || [])
-      setEditPaymentTerms(editingAgency.payment_terms || 'Monthly')
-      setEditTerminationNotice(editingAgency.termination_notice || '1 Month')
-    }
-  }, [editingAgency])
+  const [prevEditingAgencyId, setPrevEditingAgencyId] = useState<string | null>(null)
+  if (editingAgency && editingAgency.id !== prevEditingAgencyId) {
+    setPrevEditingAgencyId(editingAgency.id)
+    setEditStatus(editingAgency.status || 'active')
+    setEditCompanyType(editingAgency.company_type || 'Third Party')
+    setEditReplacementGuarantee(
+      editingAgency.replacement_guarantee === 'No' || editingAgency.replacement_guarantee_enabled === false
+        ? 'No'
+        : 'Yes'
+    )
+    setEditContacts(
+      editingAgency.contact_persons && editingAgency.contact_persons.length > 0
+        ? editingAgency.contact_persons
+        : [{ id: 'cp-1', name: editingAgency.contact_person || '', phone: editingAgency.phone || '', email: editingAgency.email || '', role: 'Account Manager' }]
+    )
+    setEditDocs(editingAgency.documents || [])
+    setEditPaymentTerms(editingAgency.payment_terms || 'Monthly')
+    setEditTerminationNotice(editingAgency.termination_notice || '1 Month')
+  } else if (!editingAgency && prevEditingAgencyId !== null) {
+    setPrevEditingAgencyId(null)
+  }
 
   const handleOpenAddModal = () => {
     setAddStatus('active')
@@ -822,7 +823,7 @@ export function Agencies() {
                 <button
                   key={pill.id}
                   type="button"
-                  onClick={() => setStatusFilter(pill.id as any)}
+                  onClick={() => setStatusFilter(pill.id as 'all' | 'active' | 'inactive')}
                   className={`px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all cursor-pointer ${
                     active
                       ? 'bg-white text-slate-900 shadow-xs'
@@ -903,7 +904,6 @@ export function Agencies() {
                 {filteredAgencies.map((agency, idx) => {
                   const count = staffCountByAgency.get(agency.id) || staffCountByAgency.get(agency.name) || 0
                   const isActive = agency.status === 'active'
-                  const slug = slugifyAgencyName(agency.name) || agency.id
 
                   const isParent = agency.company_type === 'Parent Company' || agency.name.toLowerCase().includes('safaeewala')
 
@@ -1144,7 +1144,6 @@ export function Agencies() {
           {filteredAgencies.map((agency, idx) => {
             const count = staffCountByAgency.get(agency.id) || staffCountByAgency.get(agency.name) || 0
             const isActive = agency.status === 'active'
-            const slug = slugifyAgencyName(agency.name) || agency.id
             const theme = LIGHT_AGENCY_CARD_THEMES[idx % LIGHT_AGENCY_CARD_THEMES.length]
             const isParent = agency.company_type === 'Parent Company' || agency.name.toLowerCase().includes('safaeewala')
 
@@ -1679,7 +1678,7 @@ export function Agencies() {
                 <label className="text-xs font-medium text-slate-600 block mb-1">Company Type</label>
                 <select
                   value={addCompanyType}
-                  onChange={e => setAddCompanyType(e.target.value as any)}
+                  onChange={e => setAddCompanyType(e.target.value as 'Third Party' | 'Parent Company')}
                   className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
                 >
                   <option value="Third Party">Third Party (Vendor)</option>
@@ -1786,10 +1785,8 @@ export function Agencies() {
                     Trade License
                   </span>
                 </div>
-                <InputFieldWithUpload
-                  name="trade_license_no"
-                  label="Trade License Number"
-                  placeholder="e.g. CN-1829472"
+                <AgencyDocUploadField
+                  label="Trade License Copy / Image"
                   category="trade_license"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'trade_license', setAddDocs)}
@@ -1810,10 +1807,8 @@ export function Agencies() {
                     Emirates ID (EID)
                   </span>
                 </div>
-                <InputFieldWithUpload
-                  name="emirates_id_no"
-                  label="Emirates ID (EID)"
-                  placeholder="784-XXXX-XXXXXXX-X"
+                <AgencyDocUploadField
+                  label="Emirates ID Copy / Image"
                   category="emirates_id"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'emirates_id', setAddDocs)}
@@ -1834,10 +1829,8 @@ export function Agencies() {
                     Passport
                   </span>
                 </div>
-                <InputFieldWithUpload
-                  name="passport_no"
-                  label="Passport"
-                  placeholder="Passport number"
+                <AgencyDocUploadField
+                  label="Passport Copy / Image"
                   category="passport"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'passport', setAddDocs)}
@@ -1858,20 +1851,16 @@ export function Agencies() {
                     Tax & NOC
                   </span>
                 </div>
-                <InputFieldWithUpload
-                  name="trn_no"
-                  label="Tax Registration (TRN)"
-                  placeholder="e.g. 100234567800001"
+                <AgencyDocUploadField
+                  label="Tax Registration (TRN) Copy"
                   category="tax_registration"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'tax_registration', setAddDocs)}
                   onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
-                <InputFieldWithUpload
-                  name="noc_no"
-                  label="NOC (No Objection Certificate)"
-                  placeholder="e.g. NOC-DXB-2024-912"
+                <AgencyDocUploadField
+                  label="NOC Clearance Document"
                   category="noc"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'noc', setAddDocs)}
@@ -1896,10 +1885,8 @@ export function Agencies() {
                   <FileText size={11} className="text-indigo-600" />
                   Agreement Document
                 </span>
-                <InputFieldWithUpload
-                  name="contract_ref"
-                  label="Agreement"
-                  placeholder="e.g. AGR-2024-ALSAFA-08"
+                <AgencyDocUploadField
+                  label="Commercial Agreement Document"
                   category="agreement"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'agreement', setAddDocs)}
@@ -1918,10 +1905,8 @@ export function Agencies() {
                   <Shield size={11} className="text-indigo-600" />
                   Workman Compensation
                 </span>
-                <InputFieldWithUpload
-                  name="workmen_comp_policy_no"
-                  label="Workman Compensation"
-                  placeholder="Policy number e.g. WC-DXB-9842"
+                <AgencyDocUploadField
+                  label="Workman Compensation Policy"
                   category="workmen_compensation"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'workmen_compensation', setAddDocs)}
@@ -1946,7 +1931,7 @@ export function Agencies() {
                     <label className="text-xs font-medium text-slate-600 block mb-1">Staff Replacement</label>
                     <select
                       value={addReplacementGuarantee}
-                      onChange={e => setAddReplacementGuarantee(e.target.value as any)}
+                      onChange={e => setAddReplacementGuarantee(e.target.value as 'Yes' | 'No')}
                       className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
                     >
                       <option value="Yes">Yes (Guaranteed)</option>
@@ -2074,6 +2059,9 @@ export function Agencies() {
               const contractedAmount = Number(fd.get('contracted_amount')) || undefined
               const primaryContact = editContacts.find(c => c.name.trim())?.name || ''
               const validContacts = editContacts.filter(c => c.name.trim() || c.phone?.trim())
+              const bankName = (fd.get('bank_name') as string)?.trim()
+              const accountTitle = (fd.get('account_title') as string)?.trim()
+              const iban = (fd.get('iban') as string)?.trim()
 
               updateAgency(editingAgency.id, {
                 name: fd.get('name') as string,
@@ -2088,14 +2076,25 @@ export function Agencies() {
                 quota_cleaners: Number(fd.get('quota_cleaners')) || undefined,
                 replacement_guarantee: editReplacementGuarantee === 'Yes' ? 'Yes (Replacement supplied within 24 hours)' : 'No',
                 replacement_guarantee_enabled: editReplacementGuarantee === 'Yes',
-                contract_ref: (fd.get('contract_ref') as string) || undefined,
+                contract_ref: editingAgency.contract_ref,
                 contract_start_date: (fd.get('contract_start_date') as string) || undefined,
                 contract_end_date: (fd.get('contract_end_date') as string) || undefined,
-                trade_license_no: (fd.get('trade_license_no') as string) || undefined,
+                trade_license_no: editingAgency.trade_license_no,
                 license_issue_date: (fd.get('license_issue_date') as string) || undefined,
                 license_expiry_date: (fd.get('license_expiry_date') as string) || undefined,
-                trn_no: (fd.get('trn_no') as string) || undefined,
-                noc_no: (fd.get('noc_no') as string) || undefined,
+                trn_no: editingAgency.trn_no,
+                noc_no: editingAgency.noc_no,
+                emirates_id_no: editingAgency.emirates_id_no,
+                emirates_id_issue_date: (fd.get('emirates_id_issue_date') as string) || undefined,
+                emirates_id_expiry_date: (fd.get('emirates_id_expiry_date') as string) || undefined,
+                passport_no: editingAgency.passport_no,
+                passport_issue_date: (fd.get('passport_issue_date') as string) || undefined,
+                passport_expiry_date: (fd.get('passport_expiry_date') as string) || undefined,
+                emergency_contact: (fd.get('emergency_contact') as string) || undefined,
+                workmen_comp_policy_no: editingAgency.workmen_comp_policy_no,
+                bank_details: bankName || accountTitle || iban
+                  ? { bank_name: bankName, account_title: accountTitle, iban }
+                  : editingAgency.bank_details,
                 payment_terms: editPaymentTerms,
                 termination_notice: editTerminationNotice,
                 documents: editDocs,
@@ -2105,212 +2104,305 @@ export function Agencies() {
               setEditingAgency(null)
             }}
           >
-            {/* 3-Column Layout without vertical scroll */}
+            {/* ── Row 1: Profile · Contact · Address — single horizontal row ── */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-              {/* Column 1: Core Agency Info & Contacts */}
-              <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 flex flex-col justify-between">
-                <div className="space-y-2.5">
-                  <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                    <Building2 size={13} className="text-teal-600" />
-                    <span>Agency Profile & Contacts</span>
+              {/* Agency Profile */}
+              <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
+                <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                  <Building2 size={13} className="text-teal-600" />
+                  <span>Agency Profile</span>
+                </h4>
+
+                <Input name="name" label="Agency Name *" defaultValue={editingAgency.name} placeholder="e.g. Al Safa Manpower LLC" required />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input name="phone" label="Phone *" defaultValue={editingAgency.phone} placeholder="+971 4 000 0000" required />
+                  <Input name="email" label="Email Address" type="email" defaultValue={editingAgency.email || ''} placeholder="agency@example.ae" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Company Type</label>
+                  <select
+                    value={editCompanyType}
+                    onChange={e => setEditCompanyType(e.target.value as 'Third Party' | 'Parent Company')}
+                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
+                  >
+                    <option value="Third Party">Third Party (Vendor)</option>
+                    <option value="Parent Company">Parent Company (Safaeewala)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Contact Persons & Emergency Contact */}
+              <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
+                  <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 flex items-center gap-1.5">
+                    <Users size={13} className="text-teal-600" />
+                    <span>Contact Persons ({editContacts.length})</span>
                   </h4>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditContacts(prev => [
+                        ...prev,
+                        { id: `cp-${Date.now()}`, name: '', phone: '', email: '', role: 'Account Manager' }
+                      ])
+                    }
+                    className="text-[10px] font-bold text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100/70 px-2 py-0.5 rounded-lg border border-teal-200/60 transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus size={10} />
+                    <span>Add Contact</span>
+                  </button>
+                </div>
 
-                  <Input name="name" label="Agency Name *" defaultValue={editingAgency.name} required />
-                  <Input name="phone" label="Primary Phone Number *" defaultValue={editingAgency.phone} required />
-                  <Input name="email" label="Email Address" type="email" defaultValue={editingAgency.email} />
-                  <Input name="address" label="UAE Office Address" defaultValue={editingAgency.address} />
+                <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
+                  {editContacts.map((cp, idx) => (
+                    <div key={cp.id} className="p-2 rounded-xl bg-white border border-slate-200/80 space-y-1 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9.5px] font-black uppercase text-slate-400">
+                          Contact #{idx + 1} {idx === 0 ? '(Primary)' : ''}
+                        </span>
+                        {editContacts.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setEditContacts(prev => prev.filter(c => c.id !== cp.id))}
+                            className="text-slate-400 hover:text-rose-600 p-0.5 rounded transition-colors cursor-pointer"
+                            title="Remove contact"
+                          >
+                            <X size={11} />
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <input
+                          type="text"
+                          placeholder="Full Name *"
+                          value={cp.name}
+                          onChange={e => {
+                            const val = e.target.value
+                            setEditContacts(prev => prev.map(c => c.id === cp.id ? { ...c, name: val } : c))
+                          }}
+                          className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-teal-500 font-medium"
+                          required={idx === 0}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Phone / Role"
+                          value={cp.phone}
+                          onChange={e => {
+                            const val = e.target.value
+                            setEditContacts(prev => prev.map(c => c.id === cp.id ? { ...c, phone: val } : c))
+                          }}
+                          className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-teal-500 font-medium"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
 
-                  {/* Multiple Contact Persons */}
-                  <div className="space-y-1.5 pt-1 border-t border-slate-200/70">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                        <Users size={11} className="text-teal-600" />
-                        <span>Contact Persons ({editContacts.length})</span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setEditContacts(prev => [
-                            ...prev,
-                            { id: `cp-${Date.now()}`, name: '', phone: '', email: '', role: 'Account Manager' }
-                          ])
-                        }
-                        className="text-[10.5px] font-bold text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100/70 px-2 py-0.5 rounded-lg border border-teal-200/60 transition-colors flex items-center gap-1 cursor-pointer"
+                <Input name="emergency_contact" label="Emergency Contact Details" defaultValue={editingAgency.emergency_contact || ''} placeholder="Name · Relation · +971 50 000 0000" />
+              </div>
+
+              {/* Office Address & Notes */}
+              <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
+                <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                  <MapPin size={13} className="text-teal-600" />
+                  <span>Area & Office Address</span>
+                </h4>
+
+                <Input name="address" label="Office Address" defaultValue={editingAgency.address || ''} placeholder="e.g. Deira Business Center, Office 304, Dubai" />
+                <Input name="notes" label="Specialty & General Notes" defaultValue={editingAgency.notes || ''} placeholder="Specialties, roster notes..." />
+              </div>
+            </div>
+
+            {/* ── Row 2: License, Tax & Documents ── */}
+            <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+              <h4 className="text-[12px] font-black uppercase tracking-wider text-amber-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                <Shield size={13} className="text-amber-600" />
+                <span>License, Tax & Documents</span>
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
+                {/* Trade License (Amber Tint) */}
+                <div className="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                  <div className="flex items-center justify-between pb-1 border-b border-amber-200/60">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                      <Shield size={12} className="text-amber-600" />
+                      Trade License
+                    </span>
+                  </div>
+                  <AgencyDocUploadField
+                    label="Trade License Copy / Image"
+                    category="trade_license"
+                    documents={editDocs}
+                    onAttach={files => handleFileUpload(files, 'trade_license', setEditDocs)}
+                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onPreview={doc => setPreviewDoc(doc)}
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input name="license_issue_date" label="Issue Date" type="date" defaultValue={editingAgency.license_issue_date || ''} />
+                    <Input name="license_expiry_date" label="Expiry Date" type="date" defaultValue={editingAgency.license_expiry_date || ''} />
+                  </div>
+                </div>
+
+                {/* Emirates ID (Sky Blue Tint) */}
+                <div className="bg-sky-50/70 border border-sky-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                  <div className="flex items-center justify-between pb-1 border-b border-sky-200/60">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-sky-900 flex items-center gap-1.5">
+                      <FileText size={12} className="text-sky-600" />
+                      Emirates ID (EID)
+                    </span>
+                  </div>
+                  <AgencyDocUploadField
+                    label="Emirates ID Copy / Image"
+                    category="emirates_id"
+                    documents={editDocs}
+                    onAttach={files => handleFileUpload(files, 'emirates_id', setEditDocs)}
+                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onPreview={doc => setPreviewDoc(doc)}
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input name="emirates_id_issue_date" label="Issue Date" type="date" defaultValue={editingAgency.emirates_id_issue_date || ''} />
+                    <Input name="emirates_id_expiry_date" label="Expiry Date" type="date" defaultValue={editingAgency.emirates_id_expiry_date || ''} />
+                  </div>
+                </div>
+
+                {/* Passport (Purple Tint) */}
+                <div className="bg-purple-50/70 border border-purple-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                  <div className="flex items-center justify-between pb-1 border-b border-purple-200/60">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-purple-900 flex items-center gap-1.5">
+                      <FileText size={12} className="text-purple-600" />
+                      Passport
+                    </span>
+                  </div>
+                  <AgencyDocUploadField
+                    label="Passport Copy / Image"
+                    category="passport"
+                    documents={editDocs}
+                    onAttach={files => handleFileUpload(files, 'passport', setEditDocs)}
+                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onPreview={doc => setPreviewDoc(doc)}
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input name="passport_issue_date" label="Issue Date" type="date" defaultValue={editingAgency.passport_issue_date || ''} />
+                    <Input name="passport_expiry_date" label="Expiry Date" type="date" defaultValue={editingAgency.passport_expiry_date || ''} />
+                  </div>
+                </div>
+
+                {/* Tax & NOC (Emerald/Teal Tint) */}
+                <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                  <div className="flex items-center justify-between pb-1 border-b border-emerald-200/60">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
+                      <Check size={12} className="text-emerald-600" />
+                      Tax & NOC
+                    </span>
+                  </div>
+                  <AgencyDocUploadField
+                    label="Tax Registration (TRN) Copy"
+                    category="tax_registration"
+                    documents={editDocs}
+                    onAttach={files => handleFileUpload(files, 'tax_registration', setEditDocs)}
+                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onPreview={doc => setPreviewDoc(doc)}
+                  />
+                  <AgencyDocUploadField
+                    label="NOC Clearance Document"
+                    category="noc"
+                    documents={editDocs}
+                    onAttach={files => handleFileUpload(files, 'noc', setEditDocs)}
+                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onPreview={doc => setPreviewDoc(doc)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ── Row 3: Commercial Agreement ── */}
+            <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+              <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                <FileText size={13} className="text-indigo-600" />
+                <span>Commercial Agreement</span>
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
+                {/* Column 1: Commercial Agreement */}
+                <div className="bg-white border border-indigo-200/80 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
+                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-indigo-800 flex items-center gap-1">
+                    <FileText size={11} className="text-indigo-600" />
+                    Agreement Document
+                  </span>
+                  <AgencyDocUploadField
+                    label="Commercial Agreement Document"
+                    category="agreement"
+                    documents={editDocs}
+                    onAttach={files => handleFileUpload(files, 'agreement', setEditDocs)}
+                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onPreview={doc => setPreviewDoc(doc)}
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input name="contract_start_date" label="Issue Date" type="date" defaultValue={editingAgency.contract_start_date || ''} />
+                    <Input name="contract_end_date" label="Expiry Date" type="date" defaultValue={editingAgency.contract_end_date || ''} />
+                  </div>
+                </div>
+
+                {/* Column 2: Workman Compensation — Directly aligned beside Agreement */}
+                <div className="bg-white border border-indigo-200/80 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
+                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-indigo-800 flex items-center gap-1">
+                    <Shield size={11} className="text-indigo-600" />
+                    Workman Compensation
+                  </span>
+                  <AgencyDocUploadField
+                    label="Workman Compensation Policy"
+                    category="workmen_compensation"
+                    documents={editDocs}
+                    onAttach={files => handleFileUpload(files, 'workmen_compensation', setEditDocs)}
+                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onPreview={doc => setPreviewDoc(doc)}
+                  />
+                  <div className="p-2 rounded-xl bg-indigo-50/60 border border-indigo-100 text-[11px] text-indigo-900/90 font-medium leading-relaxed">
+                    Compulsory labor compensation policy covering crew injury & workplace safety liability.
+                  </div>
+                </div>
+
+                {/* Column 3: Amount, Staff & Staff Replacement */}
+                <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
+                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                    <Users size={11} className="text-teal-600" />
+                    Staffing & Guarantee
+                  </span>
+                  <Input
+                    name="contracted_amount"
+                    label="Contract Amount (AED)"
+                    type="number"
+                    placeholder="e.g. 5000"
+                    defaultValue={editingAgency.contracted_amount ? String(editingAgency.contracted_amount) : (editingAgency.price ? String(editingAgency.price) : '')}
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      name="quota_cleaners"
+                      label="Recruited Staff"
+                      type="number"
+                      placeholder="e.g. 5"
+                      defaultValue={String(editingAgency.quota_cleaners || 5)}
+                    />
+                    <div>
+                      <label className="text-xs font-medium text-slate-600 block mb-1">Staff Replacement</label>
+                      <select
+                        value={editReplacementGuarantee}
+                        onChange={e => setEditReplacementGuarantee(e.target.value as 'Yes' | 'No')}
+                        className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
                       >
-                        <Plus size={10} />
-                        <span>Add Contact</span>
-                      </button>
-                    </div>
-
-                    <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
-                      {editContacts.map((cp, idx) => (
-                        <div key={cp.id} className="p-2 rounded-xl bg-white border border-slate-200/80 space-y-1 shadow-2xs">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9.5px] font-black uppercase text-slate-400">
-                              Contact #{idx + 1} {idx === 0 ? '(Primary)' : ''}
-                            </span>
-                            {editContacts.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => setEditContacts(prev => prev.filter(c => c.id !== cp.id))}
-                                className="text-slate-400 hover:text-rose-600 p-0.5 rounded transition-colors cursor-pointer"
-                                title="Remove contact"
-                              >
-                                <X size={11} />
-                              </button>
-                            )}
-                          </div>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <input
-                              type="text"
-                              placeholder="Full Name *"
-                              value={cp.name}
-                              onChange={e => {
-                                const val = e.target.value
-                                setEditContacts(prev => prev.map(c => c.id === cp.id ? { ...c, name: val } : c))
-                              }}
-                              className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-teal-500 font-medium"
-                              required={idx === 0}
-                            />
-                            <input
-                              type="text"
-                              placeholder="Phone / Role"
-                              value={cp.phone}
-                              onChange={e => {
-                                const val = e.target.value
-                                setEditContacts(prev => prev.map(c => c.id === cp.id ? { ...c, phone: val } : c))
-                              }}
-                              className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-teal-500 font-medium"
-                            />
-                          </div>
-                        </div>
-                      ))}
+                        <option value="Yes">Yes (Guaranteed)</option>
+                        <option value="No">No (Not Included)</option>
+                      </select>
                     </div>
                   </div>
-
-                  {/* Company Type Dropdown (Shifted below Contact Persons) */}
-                  <div className="pt-2 border-t border-slate-200/70">
-                    <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Company Type</label>
-                    <select
-                      value={editCompanyType}
-                      onChange={e => setEditCompanyType(e.target.value as any)}
-                      className="w-full text-[12px] px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                    >
-                      <option value="Third Party">Third Party (Vendor)</option>
-                      <option value="Parent Company">Parent Company (Safaeewala)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Column 2: Licensing, Tax & Documents */}
-              <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
-                <h4 className="text-[12px] font-black uppercase tracking-wider text-amber-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                  <Shield size={13} className="text-amber-600" />
-                  <span>Licensing, Tax & Documents</span>
-                </h4>
-
-                {/* Trade License Field & Integrated Upload */}
-                <InputFieldWithUpload
-                  name="trade_license_no"
-                  label="Trade license"
-                  defaultValue={editingAgency.trade_license_no}
-                  placeholder="e.g. CN-1829472"
-                  category="trade_license"
-                  documents={editDocs}
-                  onAttach={files => handleFileUpload(files, 'trade_license', setEditDocs)}
-                  onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
-                  onPreview={doc => setPreviewDoc(doc)}
-                />
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Input name="license_issue_date" label="License Issue Date" type="date" defaultValue={editingAgency.license_issue_date} />
-                  <Input name="license_expiry_date" label="License Expiry Date" type="date" defaultValue={editingAgency.license_expiry_date} />
                 </div>
 
-                {/* Tax Registration / TRN Field & Integrated Upload */}
-                <InputFieldWithUpload
-                  name="trn_no"
-                  label="Tax TRN Number"
-                  defaultValue={editingAgency.trn_no}
-                  placeholder="e.g. 100234567800001"
-                  category="tax_registration"
-                  documents={editDocs}
-                  onAttach={files => handleFileUpload(files, 'tax_registration', setEditDocs)}
-                  onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
-                  onPreview={doc => setPreviewDoc(doc)}
-                />
-
-                {/* NOC (No Objection Certificate) Field & Integrated Upload */}
-                <InputFieldWithUpload
-                  name="noc_no"
-                  label="NOC (No Objection Certificate)"
-                  defaultValue={editingAgency.noc_no}
-                  placeholder="e.g. NOC-DXB-2024-912"
-                  category="noc"
-                  documents={editDocs}
-                  onAttach={files => handleFileUpload(files, 'noc', setEditDocs)}
-                  onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
-                  onPreview={doc => setPreviewDoc(doc)}
-                />
-
-                <Input name="notes" label="Specialty & General Notes" defaultValue={editingAgency.notes} />
-              </div>
-
-              {/* Column 3: Commercials & Agreement */}
-              <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
-                <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                  <Users size={13} className="text-indigo-600" />
-                  <span>Commercials & Agreement</span>
-                </h4>
-
-                {/* Contracted Amount */}
-                <Input
-                  name="contracted_amount"
-                  label="Contracted Amount (AED)"
-                  type="number"
-                  defaultValue={editingAgency.contracted_amount ? String(editingAgency.contracted_amount) : (editingAgency.price ? String(editingAgency.price) : '')}
-                  placeholder="e.g. 5000"
-                />
-
-                <div className="grid grid-cols-2 gap-2">
-                  {/* Staff Quota */}
-                  <Input name="quota_cleaners" label="Staff Quota (Target Staff)" type="number" defaultValue={String(editingAgency.quota_cleaners || 5)} />
-
-                  {/* Staff Replacement Guarantee Yes/No */}
-                  <div>
-                    <label className="text-xs font-medium text-slate-600 block mb-1">Staff Replacement</label>
-                    <select
-                      value={editReplacementGuarantee}
-                      onChange={e => setEditReplacementGuarantee(e.target.value as any)}
-                      className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
-                    >
-                      <option value="Yes">Yes (Guaranteed)</option>
-                      <option value="No">No (Not Included)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Agreement Field & Integrated Upload */}
-                <InputFieldWithUpload
-                  name="contract_ref"
-                  label="Agreement"
-                  defaultValue={editingAgency.contract_ref}
-                  placeholder="e.g. AGR-2024-ALSAFA-08"
-                  category="agreement"
-                  documents={editDocs}
-                  onAttach={files => handleFileUpload(files, 'agreement', setEditDocs)}
-                  onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
-                  onPreview={doc => setPreviewDoc(doc)}
-                />
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Input name="contract_start_date" label="Issue Date" type="date" defaultValue={editingAgency.contract_start_date} />
-                  <Input name="contract_end_date" label="Expiry Date" type="date" defaultValue={editingAgency.contract_end_date} />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  {/* Payment Term */}
+                {/* Column 4: Payment Terms & Termination Notice */}
+                <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
+                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1">
+                    <FileText size={11} className="text-teal-600" />
+                    Payment & Termination
+                  </span>
                   <div>
                     <label className="text-xs font-medium text-slate-600 block mb-1">Payment</label>
                     <select
@@ -2326,8 +2418,6 @@ export function Agencies() {
                       <option value="Advance">Advance Paid</option>
                     </select>
                   </div>
-
-                  {/* Termination Notice Period */}
                   <div>
                     <label className="text-xs font-medium text-slate-600 block mb-1">Termination Notice</label>
                     <select
@@ -2343,6 +2433,19 @@ export function Agencies() {
                     </select>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* ── Row 4: Distribution Bank Account ── */}
+            <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+              <h4 className="text-[12px] font-black uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                <CreditCard size={13} className="text-teal-600" />
+                <span>Distribution Bank Account</span>
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                <Input name="bank_name" label="Bank Name" defaultValue={editingAgency.bank_details?.bank_name || ''} placeholder="e.g. Emirates NBD" />
+                <Input name="account_title" label="Account Title" defaultValue={editingAgency.bank_details?.account_title || ''} placeholder="As per bank records" />
+                <Input name="iban" label="IBAN" defaultValue={editingAgency.bank_details?.iban || ''} placeholder="AE07 0331 2345 6789 0123 456" />
               </div>
             </div>
           </form>

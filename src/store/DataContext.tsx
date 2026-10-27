@@ -5,44 +5,7 @@ import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewT
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { seedBookings, seedClients, seedInvoices, seedInventory, seedEmployees } from '@/lib/seedData'
 import { addHoursToTime } from '@/lib/utils'
-
-export const defaultAgencies: Agency[] = [
-  {
-    id: 'agency-safaeewala',
-    name: 'Safaeewala',
-    company_type: 'Parent Company',
-    contact_person: 'Corporate Operations Desk',
-    contact_persons: [
-      { id: 'cp-saf-1', name: 'Corporate Operations Desk', phone: '+971 4 800 7232', email: 'operations@safaeewala.com', role: 'Head of Operations' },
-      { id: 'cp-saf-2', name: 'Compliance & Fleet Director', phone: '+971 50 123 4567', email: 'compliance@safaeewala.com', role: 'Compliance Officer' }
-    ],
-    phone: '+971 4 800 7232',
-    email: 'info@safaeewala.com',
-    address: 'Al Barsha 1, Sheikh Zayed Road, Dubai, UAE',
-    commission_rate: 0,
-    commission_type: 'percentage',
-    payment_terms: 'Internal Corporate / Parent HQ',
-    termination_notice: 'Not Applicable (Parent Company)',
-    notes: 'Parent Company Headquarters & Corporate Master Fleet for Safaeewala Group',
-    status: 'active',
-    contract_ref: 'PARENT-HQ-SAFAEEWALA',
-    contract_start_date: '2023-01-01',
-    contract_end_date: '2030-12-31',
-    trade_license_no: 'TL-DXB-982103',
-    trn_no: '100452391000003',
-    noc_no: 'NOC-DXB-2023-001',
-    quota_cleaners: 12,
-    contracted_amount: 0,
-    replacement_guarantee: 'Safaeewala Corporate Fleet Pool',
-    replacement_guarantee_enabled: true,
-    bank_details: {
-      bank_name: 'Emirates NBD',
-      iban: 'AE990260001009876543210',
-      account_title: 'Safaeewala'
-    },
-    created_at: new Date('2023-01-01').toISOString(),
-  },
-]
+import { defaultAgencies } from '@/lib/defaultAgencies'
 
 interface DataStore {
   bookings:  Booking[]
@@ -116,7 +79,7 @@ function uid() {
 }
 function now() { return new Date().toISOString() }
 
-function safeNum(val: any): number {
+function safeNum(val: unknown): number {
   if (val === null || val === undefined || val === '') return 0
   if (typeof val === 'number') return isNaN(val) ? 0 : val
   const str = String(val).trim()
@@ -238,12 +201,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   /* ── Load all data on mount with fast timeout guard so offline database never hangs ── */
   useEffect(() => {
-    const q = async (table: string, order = 'created_at'): Promise<any[]> => {
+    const q = async <T = unknown>(table: string, order = 'created_at'): Promise<T[]> => {
       try {
-        const timeoutPromise = new Promise<any[]>((_, reject) =>
+        const timeoutPromise = new Promise<T[]>((_, reject) =>
           setTimeout(() => reject(new Error('timeout')), 2000)
         )
-        const fetchPromise = supabase.from(table).select('*').order(order, { ascending: false }).then(r => r.data ?? [])
+        const fetchPromise = supabase.from(table).select('*').order(order, { ascending: false }).then(r => (r.data ?? []) as unknown as T[])
         const data = await Promise.race([fetchPromise, timeoutPromise])
         return data ?? []
       } catch { return [] }
@@ -326,7 +289,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         else setInventory(seedInventory as InventoryItem[])
       }
 
-      let initialJobs = ((dj || []) as any[]).map(j => ({
+      const initialJobs = ((dj || []) as DailyJob[]).map(j => ({
         ...j,
         charges: safeNum(j.charges),
         received: safeNum(j.received),
@@ -341,7 +304,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (savedJobs.length > 0) setDailyJobs(savedJobs)
       }
 
-      let initialExp = ((de || []) as any[]).map(x => ({
+      const initialExp = ((de || []) as DailyExpense[]).map(x => ({
         ...x,
         amount: safeNum(x.amount),
       }))
@@ -787,6 +750,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   return <DataContext.Provider value={store}>{children}</DataContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useData() {
   const ctx = useContext(DataContext)
   if (!ctx) throw new Error('useData must be used inside DataProvider')

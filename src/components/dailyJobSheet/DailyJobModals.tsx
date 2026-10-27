@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import {
   AlertCircle, CheckCircle, Pencil, AlertTriangle, Trash2,
-  Search, User, Phone, MapPin, Calculator, X, ChevronDown, Check,
+  Search, Phone, MapPin, X,
 } from 'lucide-react'
 import { useData } from '@/store/DataContext'
 import type {
@@ -422,7 +422,7 @@ export function EditPendingModal({
 }
 
 /* ── Helper: Compute client's total pending balance from profile and daily shifts ── */
-export function computeClientPendingAmount(client: Client, dailyJobs: DailyJob[]): number {
+function computeClientPendingAmount(client: Client, dailyJobs: DailyJob[]): number {
   if (!client) return 0
   return calcClientPendingBalance(client, dailyJobs)
 }
@@ -449,9 +449,11 @@ export function AddPendingReceivedModal({
   const [remarks, setRemarks] = useState('')
   const [manualPending, setManualPending] = useState<string>('')
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const [prevOpen, setPrevOpen] = useState(open)
 
   // Reset state whenever modal opens or closes
-  useEffect(() => {
+  if (open !== prevOpen) {
+    setPrevOpen(open)
     if (!open) {
       setClientSearch('')
       setSelectedClient(null)
@@ -461,7 +463,7 @@ export function AddPendingReceivedModal({
       setRemarks('')
       setManualPending('')
     }
-  }, [open])
+  }
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -891,15 +893,17 @@ export function EditPendingReceivedModal({
   const [cash, setCash] = useState('')
   const [online, setOnline] = useState('')
   const [remarks, setRemarks] = useState('')
+  const [prevItemId, setPrevItemId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (item) {
-      setClient(item.client || '')
-      setCash(item.cash ? String(item.cash) : '0')
-      setOnline(item.online ? String(item.online) : '0')
-      setRemarks(item.remarks || item.notes || '')
-    }
-  }, [item])
+  if (item && item.id !== prevItemId) {
+    setPrevItemId(item.id)
+    setClient(item.client || '')
+    setCash(item.cash ? String(item.cash) : '0')
+    setOnline(item.online ? String(item.online) : '0')
+    setRemarks(item.remarks || item.notes || '')
+  } else if (!item && prevItemId !== null) {
+    setPrevItemId(null)
+  }
 
   return (
     <Modal open={!!item} onClose={onClose} title="Edit Pending Received Item" size="md">
@@ -1108,6 +1112,19 @@ export function EditAdvanceModal({
 }
 
 /* ── Today Pending Details Pop-up Modal ── */
+export interface PendingBalanceDetails {
+  id: string
+  date: string
+  client: string
+  amount: number
+  staff: string
+  address: string
+  area: string
+  remarks: string
+  job?: DailyJob
+  isJob: boolean
+}
+
 export function PendingDetailsModal({
   details,
   onClose,
@@ -1115,22 +1132,11 @@ export function PendingDetailsModal({
   onEditPending,
   onMarkCollected,
 }: {
-  details: {
-    id: string
-    date: string
-    client: string
-    amount: number
-    staff: string
-    address: string
-    area: string
-    remarks: string
-    job?: DailyJob
-    isJob: boolean
-  } | null
+  details: PendingBalanceDetails | null
   onClose: () => void
   onEditJob: (job: DailyJob) => void
-  onEditPending: (details: any) => void
-  onMarkCollected: (details: any) => void
+  onEditPending: (details: PendingBalanceDetails) => void
+  onMarkCollected: (details: PendingBalanceDetails) => void
 }) {
   if (!details) return null
 

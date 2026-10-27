@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
   X, AlertTriangle, AlertCircle, Clock, Package, DollarSign, Bell,
@@ -20,26 +20,15 @@ export function NotificationCenter() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
   const [slideKey, setSlideKey] = useState(0)
-  const [slideDirection, setSlideDirection] = useState<'next' | 'prev'>('next')
 
   const visibleNotifs = notifications.filter(n => !dismissed.has(n.id))
   const total = visibleNotifs.length
-
-  // Keep index within bounds whenever visibleNotifs change
-  useEffect(() => {
-    if (total === 0) return
-    if (currentIndex >= total) {
-      setCurrentIndex(0)
-      setSlideKey(k => k + 1)
-    }
-  }, [total, currentIndex])
 
   // Auto-scroll ticker effect (every 4.5 seconds)
   useEffect(() => {
     if (total <= 1 || isPaused) return
 
     const timer = setInterval(() => {
-      setSlideDirection('next')
       setCurrentIndex(prev => (prev + 1) % total)
       setSlideKey(k => k + 1)
     }, 4500)
@@ -54,13 +43,11 @@ export function NotificationCenter() {
   const Icon = iconMap[notif.icon] || AlertCircle
 
   const handleNext = () => {
-    setSlideDirection('next')
     setCurrentIndex(prev => (prev + 1) % total)
     setSlideKey(k => k + 1)
   }
 
   const handlePrev = () => {
-    setSlideDirection('prev')
     setCurrentIndex(prev => (prev - 1 + total) % total)
     setSlideKey(k => k + 1)
   }
@@ -254,7 +241,6 @@ export function NotificationCenter() {
 export function NotificationBell() {
   const { notifications } = useNotifications()
   const errorCount = notifications.filter(n => n.type === 'error').length
-  const warningCount = notifications.filter(n => n.type === 'warning').length
 
   if (notifications.length === 0) return null
 

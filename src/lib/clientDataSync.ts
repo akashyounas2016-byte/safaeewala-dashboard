@@ -47,6 +47,15 @@ export function staffNameToCrew(staffName: string | undefined, employees: Employ
     )
 }
 
+export function formatEmpRole(role?: string): string {
+  if (!role) return 'Cleaner'
+  if (role === 'driver') return 'Driver'
+  if (role === 'technical' || role === 'ducting') return 'Technical'
+  if (role === 'supervisor' || role === 'crew_lead') return 'Supervisor'
+  if (role === 'store_cleaner') return 'Store Cleaner'
+  return 'Cleaner'
+}
+
 /**
  * Normalizes text for fuzzy/clean comparison (lowercased, alphanumeric only)
  */

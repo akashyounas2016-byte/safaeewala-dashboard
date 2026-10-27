@@ -4,7 +4,7 @@ import {
   Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign,
   Heart, Award, CheckCircle, Trash2, ExternalLink, ArrowUpDown, RotateCcw, X, Filter, Clock,
   Save, Check, ChevronDown, UserCheck, Edit2, LayoutGrid, List, ChevronUp, AlertCircle, Sparkles,
-  Wallet, CalendarCheck
+  Wallet, CalendarCheck, Plus
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -18,6 +18,7 @@ import { SourceOriginTag, resolveClientSource } from '@/lib/sourceTracking'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
 import { ClientModalForm } from '@/components/clients/ClientModalForm'
+import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
 
 export type ClientDatePreset = 'all' | '7days' | '30days' | '3months' | '6months' | '1year' | 'custom'
 
@@ -155,6 +156,7 @@ export function Clients() {
 
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selected, setSelected] = useState<typeof clients[0] | null>(null)
   const [isEditingClient, setIsEditingClient] = useState(false)
   const [showBookingModal, setShowBookingModal] = useState(false)
@@ -880,9 +882,27 @@ export function Clients() {
         title="Clients"
         subtitle={`${clients.length} total clients · ${activeClients} active this year · AED ${totalSpent.toLocaleString()} lifetime`}
         statusChip={`${vipClients} VIP`}
-        actionLabel="Add Client"
-        onAction={() => setShowModal(true)}
         showSearch={false}
+        actions={
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setShowModal(true)}
+              className="h-11 px-5 rounded-2xl bg-white text-emerald-700 font-bold text-sm shadow-lg hover:bg-emerald-50 transition-colors shrink-0 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Plus size={15} strokeWidth={2.5} />
+              <span>Add Client</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPaymentModal(true)}
+              className="h-11 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg transition-colors shrink-0 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Wallet size={15} />
+              <span>Add Payment</span>
+            </button>
+          </div>
+        }
       />
 
       {/* ── KPI Summary Cards: Single Row of 6 Cards ── */}
@@ -1547,6 +1567,12 @@ export function Clients() {
           onAdd={b => { addBooking(b); setShowBookingModal(false) }}
         />
       </Modal>
+
+      {/* ── Add Payment Modal (Unified with Client Suggestions & Global Sync) ── */}
+      <RecordPaymentModal
+        open={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+      />
     </div>
   )
 }

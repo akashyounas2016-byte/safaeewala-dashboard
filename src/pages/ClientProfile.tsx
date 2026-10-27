@@ -23,6 +23,8 @@ import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { SourceOriginTag, resolveClientSource } from '@/lib/sourceTracking'
 import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
 import { ClientModalForm } from '@/components/clients/ClientModalForm'
+import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
+import type { MonthlyClientPayment } from '@/types'
 
 /* ─── Client Financial Adjustment & Advance Types ─── */
 export interface ClientFinancialAdjustment {
@@ -137,6 +139,21 @@ export function ClientProfile() {
   const [copied,        setCopied]        = useState(false)
   const [editOpen,      setEditOpen]      = useState(false)
   const [editSaving,    setEditSaving]    = useState(false)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [paymentsVersion, setPaymentsVersion]   = useState(0)
+
+  // React to payments added from any screen
+  useEffect(() => {
+    const handleSync = () => {
+      setPaymentsVersion(v => v + 1)
+    }
+    window.addEventListener('safaeewala_payments_updated', handleSync)
+    window.addEventListener('storage', handleSync)
+    return () => {
+      window.removeEventListener('safaeewala_payments_updated', handleSync)
+      window.removeEventListener('storage', handleSync)
+    }
+  }, [])
 
 
 
@@ -178,6 +195,24 @@ export function ClientProfile() {
 
   const client    = clients.find(c => c.id === id)
   const clientIdx = clients.findIndex(c => c.id === id)
+
+  // Live client payments from unified storage
+  const clientRecordedPayments = useMemo(() => {
+    if (!client) return []
+    const all = safeLocalStorageGet<MonthlyClientPayment[]>('safaeewala_monthly_client_payments', [])
+    const cName = (client.full_name || '').toLowerCase().trim()
+    const cId = client.id
+    return all.filter(p => {
+      if (p.clientId && p.clientId === cId) return true
+      if (p.clientName && p.clientName.toLowerCase().trim() === cName) return true
+      if (cName.length >= 4 && p.clientName && (p.clientName.toLowerCase().includes(cName) || cName.includes(p.clientName.toLowerCase()))) return true
+      return false
+    })
+  }, [client, paymentsVersion])
+
+  const recordedPaymentsTotal = useMemo(() => {
+    return clientRecordedPayments.reduce((s, p) => s + cleanNum(p.amount), 0)
+  }, [clientRecordedPayments])
 
   // Filter adjustments for this specific client
   const clientAdjustments = useMemo(() => {
@@ -311,9 +346,9 @@ export function ClientProfile() {
   const bookingSpent  = completed.reduce((s, b) => s + b.total_amount, 0)
   const reviewedCount = completed.filter(b => reviewMap[b.id]).length
 
-  // Financial summary from Job Sheet & Adjustments
+  // Financial summary from Job Sheet & Adjustments (including live recorded payments)
   const totalDJCharges = enrichedDailyJobs.reduce((s, j) => s + j.cleanCharges, 0)
-  const totalDJReceived = enrichedDailyJobs.reduce((s, j) => s + j.cleanReceived, 0)
+  const totalDJReceived = enrichedDailyJobs.reduce((s, j) => s + j.cleanReceived, 0) + recordedPaymentsTotal
   const totalDJOTHours = Math.round(enrichedDailyJobs.reduce((s, j) => s + j.otHours, 0) * 10) / 10
   const totalDJDutyHours = Math.round(clientDailyJobs.reduce((s, j) => s + (Number(j.duty_hours) || 0), 0) * 10) / 10
 
@@ -337,8 +372,8 @@ export function ClientProfile() {
   // Net remaining advance available
   const netRemainingAdvance = Math.max(0, totalGrossAdvance - totalServiceDeductedFromAdvance)
 
-  // Total Pending: unpaid jobs + opening balance still unpaid after Pending Received collections
-  const totalDJPending = enrichedDailyJobs.reduce((s, j) => s + j.pending, 0) + calcClientOpeningPending(client, pendingReceipts)
+  // Total Pending: unpaid jobs + opening balance still unpaid after Pending Received collections and client payments
+  const totalDJPending = Math.max(0, enrichedDailyJobs.reduce((s, j) => s + j.pending, 0) + calcClientOpeningPending(client, pendingReceipts) - recordedPaymentsTotal)
 
   // Overall totals — every booking already has a mirrored Daily Job (booking_id),
   // so those jobs are counted once, through the booking
@@ -481,6 +516,28 @@ export function ClientProfile() {
       otHours: 0,
       status: 'advance',
     })),
+
+    // 5. Recorded Client Payments (Unified Payments System)
+    ...clientRecordedPayments.map((p): LedgerEntry => ({
+      id: `pay-${p.id}`,
+      date: p.date || '—',
+      source: 'advance' as LedgerSource,
+      title: `Client Payment (${p.paymentMethod})`,
+      refNumber: p.referenceNumber || `PAY-${p.id.slice(-4)}`,
+      details: [
+        p.invoiceMonth ? `Period: ${p.invoiceMonth}` : '',
+        p.notes || '',
+        `Recorded via Payments System`,
+      ].filter(Boolean).join(' · '),
+      cleaner: '—',
+      charges: 0,
+      received: cleanNum(p.amount),
+      pending: 0,
+      advance: 0,
+      adjustment: 0,
+      otHours: 0,
+      status: 'paid',
+    })),
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
 
   // Filtered Ledger Entries
@@ -554,7 +611,7 @@ export function ClientProfile() {
   return (
     <div className="space-y-6">
 
-      {/* Back nav & Edit action */}
+      {/* Back nav & Actions */}
       <div className="flex items-center justify-between">
         <Link
           to="/clients"
@@ -562,62 +619,76 @@ export function ClientProfile() {
         >
           <ArrowLeft size={14} /> Back to Clients
         </Link>
-        <button
-          onClick={() => setEditOpen(true)}
-          className="flex items-center gap-2 text-[13px] font-semibold px-4 py-2 rounded-xl border border-[#E4E8EC] bg-white text-slate-700 hover:bg-slate-50 shadow-xs transition-colors cursor-pointer"
-        >
-          <Pencil size={13} /> Edit Profile
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowPaymentModal(true)}
+            className="flex items-center gap-2 text-[13px] font-bold px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors cursor-pointer"
+          >
+            <Wallet size={14} /> Record Payment
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditOpen(true)}
+            className="flex items-center gap-2 text-[13px] font-semibold px-4 py-2 rounded-xl border border-[#E4E8EC] bg-white text-slate-700 hover:bg-slate-50 shadow-xs transition-colors cursor-pointer"
+          >
+            <Pencil size={13} /> Edit Profile
+          </button>
+        </div>
       </div>
 
-      {/* ── Client Hero Card ── */}
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-6">
-        <div className="flex flex-col sm:flex-row items-start gap-5">
+      {/* ── Client Dark Hero Card (Midnight Navy / Royal Indigo Theme — Distinct from Employee Dark Teal) ── */}
+      <div className="relative rounded-[24px] bg-gradient-to-br from-[#070d1e] via-[#0c1633] to-[#080f24] text-white border border-indigo-900/60 shadow-[0_14px_45px_rgba(15,23,42,0.4)] p-6 sm:p-7 overflow-hidden">
+        {/* Ambient Glow Effects (Indigo & Sapphire) */}
+        <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-indigo-500/15 blur-3xl pointer-events-none" />
+        <div className="absolute -left-20 -bottom-20 w-80 h-80 rounded-full bg-blue-500/15 blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col sm:flex-row items-start gap-5">
           <Avatar name={client.full_name} size="xl" idx={clientIdx} />
           <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-1">
-              <h1 className="text-[22px] font-bold text-[#111827]">{client.full_name}</h1>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <h1 className="text-[22px] sm:text-[26px] font-black text-white tracking-tight">{client.full_name}</h1>
               <SourceOriginTag source={resolveClientSource(client, bookings)} />
               {isClientMonthly && (
-                <span className="text-[10px] bg-emerald-600 text-white font-extrabold px-2.5 py-0.5 rounded-full shadow-2xs tracking-wider uppercase">
+                <span className="text-[10px] bg-emerald-500 text-white font-extrabold px-2.5 py-0.5 rounded-full shadow-2xs tracking-wider uppercase">
                   Monthly
                 </span>
               )}
               {totalLifetimeSpent > 2000 && (
-                <span className="text-[11px] bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold">
+                <span className="text-[11px] bg-amber-950/80 text-amber-300 border border-amber-600/70 px-2.5 py-0.5 rounded-full font-bold">
                   VIP
                 </span>
               )}
               {totalServices >= 2 && (
-                <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full font-bold">
+                <span className="text-[11px] bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-bold">
                   Repeat Client
                 </span>
               )}
               {client.pet_info && (
-                <span className="text-[11px] bg-rose-50 text-rose-700 border border-rose-200 px-2.5 py-0.5 rounded-full font-bold">
+                <span className="text-[11px] bg-rose-950/80 text-rose-300 border border-rose-700/60 px-2.5 py-0.5 rounded-full font-bold">
                   Pet
                 </span>
               )}
             </div>
 
-            {client.nationality && <p className="text-[13px] text-slate-500 mb-3">{client.nationality}</p>}
+            {client.nationality && <p className="text-[12.5px] text-indigo-200/70 mb-2.5">{client.nationality}</p>}
 
-            <div className="flex flex-wrap gap-4 text-[13px] text-slate-600 mt-2">
+            <div className="flex flex-wrap gap-2 text-[12px] text-slate-200 mt-2">
               {client.phone ? (
-                <a href={`tel:${client.phone}`} className="flex items-center gap-1.5 hover:text-emerald-600 transition-colors">
-                  <Phone size={13} className="text-slate-400" /> {client.phone}
+                <a href={`tel:${client.phone}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 hover:border-indigo-400 hover:text-white transition-colors">
+                  <Phone size={12} className="text-indigo-400" /> {client.phone}
                 </a>
               ) : (
-                <span className="text-slate-400 text-[12px] italic">No phone added</span>
+                <span className="text-indigo-300/50 text-[11.5px] italic">No phone added</span>
               )}
               {client.email && (
-                <a href={`mailto:${client.email}`} className="flex items-center gap-1.5 hover:text-emerald-600 transition-colors">
-                  <Mail size={13} className="text-slate-400" /> {client.email}
+                <a href={`mailto:${client.email}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 hover:border-indigo-400 hover:text-white transition-colors">
+                  <Mail size={12} className="text-indigo-400" /> {client.email}
                 </a>
               )}
               {(client.building_name || client.area) && (
-                <span className="flex items-center gap-1.5">
-                  <MapPin size={13} className="text-slate-400 shrink-0" />
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 text-slate-200">
+                  <MapPin size={12} className="text-indigo-400 shrink-0" />
                   {[client.building_name, client.apartment, client.area, client.city].filter(Boolean).join(', ')}
                 </span>
               )}
@@ -625,51 +696,51 @@ export function ClientProfile() {
           </div>
         </div>
 
-        {/* Quick Stats Grid: Lifetime Figures */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-5 border-t border-[#E4E8EC]">
-          <div className="text-center p-3 rounded-xl bg-[#f8fafc] border border-[#edf2f7]">
-            <p className="text-[17px] font-extrabold text-[#111827]">AED {totalDJCharges.toLocaleString()}</p>
-            <p className="text-[11px] font-bold text-slate-700 mt-0.5">Total Charges</p>
+        {/* ── Quick Stats Grid: Redesigned for Dark Midnight Theme ── */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-5 border-t border-indigo-900/50">
+          <div className="text-center p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.07] transition-all">
+            <p className="text-[17px] font-black text-white tracking-tight">AED {totalDJCharges.toLocaleString()}</p>
+            <p className="text-[11px] font-bold text-slate-300 mt-1">Total Charges</p>
             <p className="text-[10px] text-slate-400 mt-0.5">Total billed amount</p>
           </div>
-          <div className="text-center p-3 rounded-xl bg-emerald-50/50 border border-emerald-100">
-            <p className="text-[17px] font-extrabold text-emerald-700">AED {totalDJReceived.toLocaleString()}</p>
-            <p className="text-[11px] font-bold text-slate-700 mt-0.5">Total Received</p>
-            <p className="text-[10px] text-emerald-600 mt-0.5">Cash & online paid</p>
+          <div className="text-center p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 hover:bg-emerald-950/60 transition-all">
+            <p className="text-[17px] font-black text-emerald-400 tracking-tight">AED {totalDJReceived.toLocaleString()}</p>
+            <p className="text-[11px] font-bold text-emerald-200 mt-1">Total Received</p>
+            <p className="text-[10px] text-emerald-400/80 mt-0.5">Cash & online paid</p>
           </div>
-          <div className="text-center p-3 rounded-xl bg-amber-50/50 border border-amber-100">
-            <p className="text-[17px] font-extrabold text-amber-700">{totalDJOTHours}h OT</p>
-            <p className="text-[11px] font-bold text-slate-700 mt-0.5">Total Overtime</p>
-            <p className="text-[10px] text-amber-600 mt-0.5">Logged shift overtime</p>
+          <div className="text-center p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 hover:bg-amber-950/60 transition-all">
+            <p className="text-[17px] font-black text-amber-400 tracking-tight">{totalDJOTHours}h OT</p>
+            <p className="text-[11px] font-bold text-amber-200 mt-1">Total Overtime</p>
+            <p className="text-[10px] text-amber-400/80 mt-0.5">Logged shift overtime</p>
           </div>
-          <div className="text-center p-3 rounded-xl bg-red-50/40 border border-red-200">
-            <p className="text-[17px] font-extrabold text-red-600">AED {totalDJPending.toLocaleString()}</p>
-            <p className="text-[11px] font-bold text-slate-700 mt-0.5">Pending Amount</p>
-            <p className="text-[10px] text-red-500 mt-0.5">Outstanding dues</p>
+          <div className="text-center p-3.5 rounded-2xl bg-rose-950/40 border border-rose-500/30 hover:bg-rose-950/60 transition-all">
+            <p className="text-[17px] font-black text-rose-400 tracking-tight">AED {totalDJPending.toLocaleString()}</p>
+            <p className="text-[11px] font-bold text-rose-200 mt-1">Pending Amount</p>
+            <p className="text-[10px] text-rose-400/80 mt-0.5">Outstanding dues</p>
           </div>
-          <div className="text-center p-3 rounded-xl bg-emerald-50/40 border border-emerald-200">
+          <div className="text-center p-3.5 rounded-2xl bg-teal-950/40 border border-teal-500/30 hover:bg-teal-950/60 transition-all">
             <div className="flex items-center justify-center gap-1.5">
-              <p className="text-[17px] font-extrabold text-emerald-700">AED {netRemainingAdvance.toLocaleString()}</p>
+              <p className="text-[17px] font-black text-teal-300 tracking-tight">AED {netRemainingAdvance.toLocaleString()}</p>
               {matchedAdvanceWidgetItems.length > 0 && (
-                <span className="text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.2 rounded-full" title="Advances logged via Daily Job Sheet Advance Widget">
+                <span className="text-[9px] font-bold bg-teal-500/20 text-teal-300 border border-teal-400/40 px-1.5 py-0.2 rounded-full" title="Advances logged via Daily Job Sheet Advance Widget">
                   {matchedAdvanceWidgetItems.length} Widget
                 </span>
               )}
             </div>
-            <p className="text-[11px] font-bold text-slate-700 mt-0.5">Advance Amount</p>
-            <p className="text-[10px] text-emerald-600 mt-0.5">
+            <p className="text-[11px] font-bold text-teal-200 mt-1">Advance Amount</p>
+            <p className="text-[10px] text-teal-400/80 mt-0.5">
               {totalServiceDeductedFromAdvance > 0 ? `AED ${totalServiceDeductedFromAdvance.toLocaleString()} deducted [ADJ]` : 'Available advance credit'}
             </p>
           </div>
-          <div className="text-center p-3 rounded-xl bg-indigo-50/50 border border-indigo-200">
+          <div className="text-center p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 hover:bg-indigo-950/60 transition-all">
             <div className="flex items-center justify-center gap-1.5">
-              <span className="bg-indigo-700 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase">
+              <span className="bg-indigo-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase">
                 ADJ
               </span>
-              <p className="text-[17px] font-extrabold text-indigo-700">AED {totalDJAdjustment.toLocaleString()}</p>
+              <p className="text-[17px] font-black text-indigo-300 tracking-tight">AED {totalDJAdjustment.toLocaleString()}</p>
             </div>
-            <p className="text-[11px] font-bold text-slate-700 mt-0.5">Adjustment Amount</p>
-            <p className="text-[10px] text-indigo-500 mt-0.5">
+            <p className="text-[11px] font-bold text-indigo-200 mt-1">Adjustment Amount</p>
+            <p className="text-[10px] text-indigo-400/80 mt-0.5">
               {totalServiceDeductedFromAdvance > 0 ? `Includes AED ${totalServiceDeductedFromAdvance.toLocaleString()} adv deductions` : 'Discounts & waivers'}
             </p>
           </div>
@@ -975,8 +1046,16 @@ export function ClientProfile() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    onClick={() => setShowPaymentModal(true)}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-bold shadow-xs transition-all cursor-pointer"
+                  >
+                    <Wallet size={13} />
+                    <span>Record Payment</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setNewAdjModalOpen(true)}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-[12px] font-bold shadow-xs transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-800 text-white text-[12px] font-bold shadow-xs transition-all cursor-pointer"
                   >
                     <Plus size={13} />
                     <span>Record Adjustment / Advance</span>
@@ -1788,6 +1867,16 @@ export function ClientProfile() {
           </div>
         </form>
       </Modal>
+
+      {/* ── Record Payment Modal (Fully Synced with Payments System) ── */}
+      <RecordPaymentModal
+        open={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        initialClientName={client.full_name}
+        initialClientId={client.id}
+        initialAmount={totalDJPending > 0 ? totalDJPending : undefined}
+        onSuccess={() => setPaymentsVersion(v => v + 1)}
+      />
     </div>
   )
 }

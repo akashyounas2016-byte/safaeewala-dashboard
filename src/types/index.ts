@@ -431,3 +431,16 @@ export interface RecurringContract {
   nextBillingDate: string
   notes?: string
 }
+
+export interface MonthlyClientPayment {
+  id: string
+  clientName: string
+  clientId?: string
+  amount: number
+  date: string
+  paymentMethod: 'Bank Transfer' | 'Cash' | 'Credit Card' | 'Cheque' | 'Online'
+  referenceNumber?: string
+  invoiceMonth?: string
+  notes?: string
+  createdAt: string
+}

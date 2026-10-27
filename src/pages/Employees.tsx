@@ -17,7 +17,8 @@ import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee } 
 import { useData } from '@/store/DataContext'
 import type { Employee, DailyJob, EmployeeRole, Agency, EmployeeDocument } from '@/types'
 import { getAssignableClients, getEmployeeDailyJobsHistory, calcJobOTHours, getEmployeeMonthlySalary, formatMonthlySalary, splitStaffNames, MONTHLY_WORK_HOURS } from '@/lib/clientDataSync'
-import { EmployeeDocumentSection, EmployeeDocumentPreviewModal, EmployeeDocInput } from '@/components/employees/EmployeeDocumentField'
+import { EmployeeFormModal } from '@/components/employees/EmployeeFormModal'
+import { OvertimeWidget, LiveCrewWidget, ComplianceWidget, SkillsWidget } from '@/components/employees/EmployeeWidgets'
 
 /* ─── Excel import/export helpers ─── */
 function toISODate(val: any): string {
@@ -226,27 +227,50 @@ export function Employees() {
   const { employees, bookings, dailyJobs, clients, agencies, addEmployee, updateEmployee, deleteEmployee } = useData()
   const navigate = useNavigate()
 
-  // Rows the user chose to hide from the list (persisted per browser)
-  const [hiddenRowIds, setHiddenRowIds] = useState<string[]>(() => safeLocalStorageGet<string[]>('safaeewala_employees_hidden_rows', []))
-  const [rowVisibilityOpen, setRowVisibilityOpen] = useState(false)
-  const [rowVisibilitySearch, setRowVisibilitySearch] = useState('')
-  const rowVisibilityRef = useRef<HTMLDivElement>(null)
+  // Table Column Visibility (persisted per browser)
+  const EMPLOYEE_TABLE_COLUMNS = [
+    { id: 'employee', label: 'Employee Info', alwaysVisible: true },
+    { id: 'role', label: 'Role' },
+    { id: 'status', label: 'Live Status' },
+    { id: 'dutyHours', label: 'Duty Hours' },
+    { id: 'otHours', label: 'Overtime (OT)' },
+    { id: 'totalHours', label: 'Total Hours' },
+    { id: 'shifts', label: 'Shifts' },
+    { id: 'salary', label: 'Monthly Salary' },
+    { id: 'visa', label: 'Visa Expiry' },
+    { id: 'actions', label: 'Actions' },
+  ]
+  const [hiddenColumns, setHiddenColumns] = useState<string[]>(() =>
+    safeLocalStorageGet<string[]>('safaeewala_employees_hidden_columns', [])
+  )
+  const [columnVisibilityOpen, setColumnVisibilityOpen] = useState(false)
+  const columnVisibilityRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
-    safeLocalStorageSet('safaeewala_employees_hidden_rows', hiddenRowIds)
-  }, [hiddenRowIds])
+    safeLocalStorageSet('safaeewala_employees_hidden_columns', hiddenColumns)
+  }, [hiddenColumns])
+
   useEffect(() => {
-    if (!rowVisibilityOpen) return
+    if (!columnVisibilityOpen) return
     const onDown = (e: MouseEvent) => {
-      if (rowVisibilityRef.current && !rowVisibilityRef.current.contains(e.target as Node)) setRowVisibilityOpen(false)
+      if (columnVisibilityRef.current && !columnVisibilityRef.current.contains(e.target as Node)) {
+        setColumnVisibilityOpen(false)
+      }
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
-  }, [rowVisibilityOpen])
+  }, [columnVisibilityOpen])
+
+  const isColVisible = (colId: string) => !hiddenColumns.includes(colId)
+  const toggleColumn = (colId: string) => {
+    setHiddenColumns(prev =>
+      prev.includes(colId) ? prev.filter(c => c !== colId) : [...prev, colId]
+    )
+  }
+  const showAllColumns = () => setHiddenColumns([])
+
   // Live clients only (no demo seed clients) for the assign lists
   const assignableClients = useMemo(() => getAssignableClients(clients), [clients])
-
-  const toggleRowHidden = (id: string) =>
-    setHiddenRowIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   const [searchParams, setSearchParams] = useSearchParams()
   const xlsxInputRef = useRef<HTMLInputElement>(null)
 
@@ -287,96 +311,20 @@ export function Employees() {
 
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<typeof employees[0] | null>(null)
-  const [isEditing, setIsEditing] = useState(false)
+  const [editingEmployee, setEditingEmployee] = useState<typeof employees[0] | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [importing, setImporting] = useState(false)
 
-  // Client Assignee Selection State for Add & Edit Modals
-  const [addClientIds, setAddClientIds] = useState<string[]>([])
-  const [editClientIds, setEditClientIds] = useState<string[]>([])
-  const [clientSearchAdd, setClientSearchAdd] = useState('')
-  const [clientSearchEdit, setClientSearchEdit] = useState('')
-
-  // Role and Document Attachment States for Add & Edit Pop-ups
-  const [addRole, setAddRole] = useState<EmployeeRole>('cleaner')
-  const [editRole, setEditRole] = useState<EmployeeRole>('cleaner')
-  const [addDocs, setAddDocs] = useState<Record<string, EmployeeDocument>>({})
-  const [editDocs, setEditDocs] = useState<Record<string, EmployeeDocument>>({})
-  const [previewDoc, setPreviewDoc] = useState<EmployeeDocument | null>(null)
-
-  const handleDocUpload = (
-    file: File,
-    category: EmployeeDocument['category'],
-    setTargetDocs: React.Dispatch<React.SetStateAction<Record<string, EmployeeDocument>>>
-  ) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const doc: EmployeeDocument = {
-        id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        name: file.name,
-        category,
-        file_data: reader.result as string,
-        file_type: file.type,
-        file_size: file.size,
-        uploaded_at: new Date().toISOString(),
-      }
-      setTargetDocs(prev => ({ ...prev, [category]: doc }))
-    }
-    reader.readAsDataURL(file)
-  }
-
   const handleSelectEmployee = (emp: typeof employees[0]) => {
     setSelected(emp)
-    setEditClientIds(emp.assigned_client_ids || [])
-    setClientSearchEdit('')
-    setIsEditing(false)
   }
 
   const handleStartEdit = (emp: typeof employees[0]) => {
-    setSelected(emp)
-    const normRole = (emp.role === 'crew_lead' ? 'supervisor' : emp.role === 'ducting' ? 'technical' : emp.role) as EmployeeRole
-    setEditRole(normRole || 'cleaner')
-    setEditClientIds(emp.assigned_client_ids || [])
-    setClientSearchEdit('')
-
-    // Populate existing docs into editDocs
-    const docsMap: Record<string, EmployeeDocument> = {}
-    if (emp.documents && Array.isArray(emp.documents)) {
-      emp.documents.forEach(d => {
-        docsMap[d.category] = d
-      })
-    }
-    // Synthesize from existing individual document file fields if not already in documents
-    if (emp.eid_file && !docsMap.eid) {
-      docsMap.eid = { id: `eid-${emp.id}`, name: 'Emirates_ID_Document', category: 'eid', file_data: emp.eid_file, uploaded_at: emp.created_at }
-    }
-    if (emp.passport_file && !docsMap.passport) {
-      docsMap.passport = { id: `pass-${emp.id}`, name: 'Passport_Document', category: 'passport', file_data: emp.passport_file, uploaded_at: emp.created_at }
-    }
-    if (emp.visa_file && !docsMap.visa) {
-      docsMap.visa = { id: `visa-${emp.id}`, name: 'Visa_Document', category: 'visa', file_data: emp.visa_file, uploaded_at: emp.created_at }
-    }
-    if (emp.work_permit_file && !docsMap.work_permit) {
-      docsMap.work_permit = { id: `wp-${emp.id}`, name: 'Work_Permit_Document', category: 'work_permit', file_data: emp.work_permit_file, uploaded_at: emp.created_at }
-    }
-    if (emp.driving_license_file && !docsMap.driving_license) {
-      docsMap.driving_license = { id: `dl-${emp.id}`, name: 'Driving_License_Document', category: 'driving_license', file_data: emp.driving_license_file, uploaded_at: emp.created_at }
-    }
-    if (emp.medical_insurance_file && !docsMap.medical_insurance) {
-      docsMap.medical_insurance = { id: `med-${emp.id}`, name: 'Medical_Insurance_Document', category: 'medical_insurance', file_data: emp.medical_insurance_file, uploaded_at: emp.created_at }
-    }
-    if (emp.noc_file && !docsMap.noc) {
-      docsMap.noc = { id: `noc-${emp.id}`, name: 'NOC_Document', category: 'noc', file_data: emp.noc_file, uploaded_at: emp.created_at }
-    }
-    setEditDocs(docsMap)
-    setIsEditing(true)
+    setEditingEmployee(emp)
+    setSelected(null)
   }
 
   const handleOpenAddModal = () => {
-    setAddRole('cleaner')
-    setAddDocs({})
-    setAddClientIds([])
-    setClientSearchAdd('')
     setShowModal(true)
   }
 
@@ -493,7 +441,7 @@ export function Employees() {
       const areaStr = j.area || j.address || 'Active Site'
       return {
         code: 'working',
-        label: 'On Duty Today',
+        label: 'On Duty',
         detail: `${areaStr} (${timeStr})`,
         bg: 'bg-emerald-500 text-white border-emerald-600',
         badgeBg: 'bg-emerald-50 text-emerald-800 border-emerald-200',
@@ -614,7 +562,6 @@ export function Employees() {
     const q = search.toLowerCase().trim()
 
     return employees.filter(e => {
-      if (hiddenRowIds.includes(e.id)) return false
       const st = staffJobStats.get(e.id)
       const todaySt = getTodayStatus(e)
 
@@ -690,7 +637,7 @@ export function Employees() {
       }
       return a.full_name.localeCompare(b.full_name)
     })
-  }, [employees, search, roleFilter, agencyFilter, statusFilter, workFilter, expiryFilter, sortBy, staffJobStats, agencies, hiddenRowIds])
+  }, [employees, search, roleFilter, agencyFilter, statusFilter, workFilter, expiryFilter, sortBy, staffJobStats, agencies])
 
   // Employee alerts for the header bell: expired / expiring (≤30 days) documents and contracts
   const employeeNotifications = useMemo<HeroNotification[]>(() => {
@@ -747,230 +694,31 @@ export function Employees() {
     }, {} as Record<string, number>)
   }, [agencyScopedEmployees])
 
-  /* ── 4 Reusable Intelligent Work & Duty Widgets ── */
-  const renderOvertimeWidget = () => (
-    <div className="bg-white rounded-[24px] border border-amber-200/90 shadow-[0_4px_20px_rgba(217,119,6,0.06)] p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs shadow-amber-500/30">
-            <Flame size={15} />
-          </div>
-          <div>
-            <h3 className="text-[14px] font-black text-slate-900">Overtime Leaders</h3>
-            <p className="text-[11px] text-slate-500 font-medium">Top extra hours logged</p>
-          </div>
-        </div>
-        <span className="bg-amber-100 text-amber-900 border border-amber-200 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
-          {activeDateRange.label}
-        </span>
-      </div>
-
-      {topOTStaff.length === 0 ? (
-        <div className="text-center py-6 bg-slate-50 rounded-2xl border border-slate-100">
-          <Clock size={20} className="mx-auto text-slate-300 mb-1.5" />
-          <p className="text-[12px] font-bold text-slate-600">No Overtime in this period</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Change date filter or agency to view past OT hours</p>
-        </div>
-      ) : (
-        <div className="space-y-2.5">
-          {topOTStaff.slice(0, 6).map(({ emp, stats }, idx) => {
-            const ot = stats?.otHours ?? 0
-            const duty = stats?.dutyHours ?? 0
-            return (
-              <div
-                key={emp.id}
-                onClick={() => setSelected(emp)}
-                className="flex items-center gap-3 p-2.5 rounded-2xl bg-gradient-to-r from-amber-50/50 to-orange-50/30 border border-amber-200/60 hover:border-amber-300 transition-all cursor-pointer group"
-              >
-                <span className="w-5 text-[12px] font-black text-amber-700 text-center">
-                  #{idx + 1}
-                </span>
-                <Avatar name={emp.full_name} size="sm" idx={idx} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[12.5px] font-bold text-slate-900 group-hover:text-amber-800 transition-colors truncate">
-                    {emp.full_name}
-                  </p>
-                  <p className="text-[11px] text-slate-500">{duty}h Regular Duty</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <span className="inline-flex items-center gap-0.5 text-[12px] font-black text-amber-950 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-lg shadow-2xs">
-                    <Zap size={10} className="fill-amber-600 text-amber-600" />
-                    +{ot}h OT
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-
-  const renderLiveCrewWidget = () => (
-    <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-            <UserCheck size={16} />
-          </div>
-          <div>
-            <h3 className="text-[14px] font-black text-slate-900">Live Crew Status</h3>
-            <p className="text-[11px] text-slate-500 font-medium">Daily sheet & booking roster</p>
-          </div>
-        </div>
-        <span className="flex items-center gap-1.5 text-[11px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          Live
-        </span>
-      </div>
-
-      <div className="space-y-2.5">
-        {agencyScopedEmployees.slice(0, 6).map((emp, idx) => {
-          const todaySt = getTodayStatus(emp)
-          const isWorking = todaySt.code === 'working' || todaySt.code === 'scheduled'
-
-          return (
-            <div
-              key={emp.id}
-              onClick={() => setSelected(emp)}
-              className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
-            >
-              <Avatar name={emp.full_name} size="sm" idx={idx} />
-              <div className="flex-1 min-w-0">
-                <p className="text-[12px] font-bold text-slate-900 truncate">{emp.full_name}</p>
-                <p className="text-[11px] text-slate-500 truncate">
-                  {emp.role === 'crew_lead' ? 'Supervisor' : 'Cleaner'}
-                  {isWorking && todaySt.detail ? ` · ${todaySt.detail}` : ''}
-                </p>
-              </div>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 border ${todaySt.badgeBg}`}>
-                {todaySt.label}
-              </span>
-            </div>
-          )
-        })}
-
-        {agencyScopedEmployees.length === 0 && (
-          <div className="text-center py-6 bg-slate-50 rounded-2xl border border-slate-100">
-            <UserCheck size={20} className="mx-auto text-slate-300 mb-1" />
-            <p className="text-[12px] font-bold text-slate-600">No staff found</p>
-            <p className="text-[11px] text-slate-400">No employees found for this agency</p>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-semibold">
-        <span>{summaryMetrics.activeWorkingTodayCount} active on duty</span>
-        <button
-          type="button"
-          onClick={() => setSortBy('working_today')}
-          className="text-teal-700 hover:text-teal-800 font-bold cursor-pointer"
-        >
-          View Working Staff →
-        </button>
-      </div>
-    </div>
-  )
-
-  const renderComplianceWidget = () => (
-    <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${expiringCount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
-            <Shield size={16} />
-          </div>
-          <div>
-            <h3 className="text-[14px] font-black text-slate-900">Document Health</h3>
-            <p className="text-[11px] text-slate-500 font-medium">Visa & permit validity</p>
-          </div>
-        </div>
-        {expiringCount > 0 ? (
-          <span className="bg-rose-100 text-rose-800 border border-rose-200 text-[10.5px] font-black px-2 py-0.5 rounded-full">
-            {expiringCount} Alerts
-          </span>
-        ) : (
-          <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10.5px] font-bold px-2 py-0.5 rounded-full">
-            All Valid
-          </span>
-        )}
-      </div>
-
-      <div className="space-y-2.5">
-        {agencyScopedEmployees
-          .filter(e => {
-            const days = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry))
-            return days < 90
-          })
-          .slice(0, 4)
-          .map((emp, idx) => {
-            const visaDays = daysUntil(emp.visa_expiry)
-            const permitDays = daysUntil(emp.work_permit_expiry)
-            const minDays = Math.min(visaDays, permitDays)
-            const doc = visaDays <= permitDays ? 'Visa' : 'Work Permit'
-            const urgent = minDays < 30
-            return (
-              <div
-                key={emp.id}
-                onClick={() => setSelected(emp)}
-                className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer ${
-                  urgent ? 'bg-rose-50/70 border-rose-200' : 'bg-amber-50/70 border-amber-200'
-                }`}
-              >
-                <Avatar name={emp.full_name} size="sm" idx={idx} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-bold text-slate-900 truncate">{emp.full_name}</p>
-                  <p className={`text-[11px] font-medium mt-0.5 ${urgent ? 'text-rose-800' : 'text-amber-800'}`}>
-                    {doc}: {minDays < 0 ? 'EXPIRED' : `${minDays}d left`}
-                  </p>
-                </div>
-                <AlertTriangle size={14} className={urgent ? 'text-rose-600' : 'text-amber-600'} />
-              </div>
-            )
-          })}
-
-        {expiringCount === 0 && (
-          <div className="text-center py-5 bg-emerald-50/60 rounded-2xl border border-emerald-100">
-            <CheckCircle size={20} className="mx-auto text-emerald-600 mb-1" />
-            <p className="text-[12px] font-bold text-emerald-900">All documents up to date</p>
-            <p className="text-[11px] text-emerald-700">No renewals due within 90 days</p>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-
-  const renderSkillsWidget = () => (
-    <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[14px] font-black text-slate-900">Skills Coverage</h3>
-        <span className="text-[11px] text-slate-400 font-semibold">{agencyScopedEmployees.length} Staff</span>
-      </div>
-      <div className="space-y-2.5">
-        {Object.entries(skillCounts)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 6)
-          .map(([skill, count]) => {
-            const pct = Math.round((count / (agencyScopedEmployees.length || 1)) * 100)
-            return (
-              <div key={skill}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[12px] font-semibold text-slate-700 truncate">{skill}</span>
-                  <span className="text-[11px] font-bold text-slate-500 ml-2">{count} staff ({pct}%)</span>
-                </div>
-                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-teal-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                </div>
-              </div>
-            )
-          })}
-        {Object.keys(skillCounts).length === 0 && (
-          <div className="text-center py-6 bg-slate-50 rounded-2xl border border-slate-100">
-            <p className="text-[12px] font-bold text-slate-600">No skills data available</p>
-            <p className="text-[11px] text-slate-400">No skills recorded for this agency's staff</p>
-          </div>
-        )}
-      </div>
-    </div>
+  /* ── Intelligent Work & Duty Widgets (Modularized) ── */
+  const renderWidgets = () => (
+    <>
+      <OvertimeWidget
+        topOTStaff={topOTStaff}
+        activeDateRangeLabel={activeDateRange.label}
+        onSelectEmployee={handleSelectEmployee}
+      />
+      <LiveCrewWidget
+        agencyScopedEmployees={agencyScopedEmployees}
+        getTodayStatus={getTodayStatus}
+        activeWorkingTodayCount={summaryMetrics.activeWorkingTodayCount}
+        onSelectEmployee={handleSelectEmployee}
+        onViewWorkingStaff={() => setSortBy('working_today')}
+      />
+      <ComplianceWidget
+        agencyScopedEmployees={agencyScopedEmployees}
+        expiringCount={expiringCount}
+        onSelectEmployee={handleSelectEmployee}
+      />
+      <SkillsWidget
+        skillCounts={skillCounts}
+        totalStaffCount={agencyScopedEmployees.length}
+      />
+    </>
   )
 
   const renderEmployeeCards = () => (
@@ -1233,16 +981,16 @@ export function Employees() {
         <table className="w-full min-w-[900px] text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200/80 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
-              <th className="py-3.5 px-4">Employee</th>
-              <th className="py-3.5 px-3">Role</th>
-              <th className="py-3.5 px-3">Live Status</th>
-              <th className="py-3.5 px-3 text-right">Duty Hours</th>
-              <th className="py-3.5 px-3 text-right">Overtime (OT)</th>
-              <th className="py-3.5 px-3 text-right">Total Hours</th>
-              <th className="py-3.5 px-3 text-center">Shifts</th>
-              <th className="py-3.5 px-3">Monthly Salary</th>
-              <th className="py-3.5 px-3">Visa Expiry</th>
-              <th className="py-3.5 px-4 text-right">Actions</th>
+              {isColVisible('employee') && <th className="py-3.5 px-4">Employee</th>}
+              {isColVisible('role') && <th className="py-3.5 px-3">Role</th>}
+              {isColVisible('status') && <th className="py-3.5 px-3">Live Status</th>}
+              {isColVisible('dutyHours') && <th className="py-3.5 px-3 text-right">Duty Hours</th>}
+              {isColVisible('otHours') && <th className="py-3.5 px-3 text-right">Overtime (OT)</th>}
+              {isColVisible('totalHours') && <th className="py-3.5 px-3 text-right">Total Hours</th>}
+              {isColVisible('shifts') && <th className="py-3.5 px-3 text-center">Shifts</th>}
+              {isColVisible('salary') && <th className="py-3.5 px-3">Monthly Salary</th>}
+              {isColVisible('visa') && <th className="py-3.5 px-3">Visa Expiry</th>}
+              {isColVisible('actions') && <th className="py-3.5 px-4 text-right">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-[12.5px]">
@@ -1260,107 +1008,127 @@ export function Employees() {
                   onClick={() => handleSelectEmployee(emp)}
                   className="hover:bg-teal-50/30 transition-colors cursor-pointer"
                 >
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar name={emp.full_name} size="sm" idx={idx} />
-                      <div>
-                        <p className="font-bold text-slate-900">{emp.full_name}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                          <span className="text-[11px] text-slate-500">{emp.phone || emp.nationality || 'Staff'}</span>
-                          <span className="text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded flex items-center gap-1">
-                            <Building2 size={9} className="text-teal-600" />
-                            {getEmployeeAgencySource(emp)}
-                          </span>
-                          {emp.assigned_client_ids && emp.assigned_client_ids.length > 0 && (
-                            <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded">
-                              {emp.assigned_client_ids.length} client{emp.assigned_client_ids.length > 1 ? 's' : ''}
+                  {isColVisible('employee') && (
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-3">
+                        <Avatar name={emp.full_name} size="sm" idx={idx} />
+                        <div>
+                          <p className="font-bold text-slate-900">{emp.full_name}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <span className="text-[11px] text-slate-500">{emp.phone || emp.nationality || 'Staff'}</span>
+                            <span className="text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                              <Building2 size={9} className="text-teal-600" />
+                              {getEmployeeAgencySource(emp)}
                             </span>
-                          )}
+                            {emp.assigned_client_ids && emp.assigned_client_ids.length > 0 && (
+                              <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded">
+                                {emp.assigned_client_ids.length} client{emp.assigned_client_ids.length > 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </td>
+                    </td>
+                  )}
 
-                  <td className="py-3 px-3">
-                    <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-md border ${getRoleBadgeStyle(emp.role)}`}>
-                      {formatEmpRole(emp.role)}
-                    </span>
-                  </td>
+                  {isColVisible('role') && (
+                    <td className="py-3 px-3">
+                      <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-md border ${getRoleBadgeStyle(emp.role)}`}>
+                        {formatEmpRole(emp.role)}
+                      </span>
+                    </td>
+                  )}
 
-                  <td className="py-3 px-3">
-                    <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full border ${todaySt.badgeBg}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${todaySt.code === 'working' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-                      {todaySt.label}
-                    </span>
-                  </td>
+                  {isColVisible('status') && (
+                    <td className="py-3 px-3">
+                      <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full border ${todaySt.badgeBg}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${todaySt.code === 'working' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                        {todaySt.label}
+                      </span>
+                    </td>
+                  )}
 
                   {/* Duty Hours Column */}
-                  <td className="py-3 px-3 text-right">
-                    <span className="font-black text-slate-800 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200/60">
-                      {dutyHours} <span className="text-[10px] text-slate-500 font-semibold">hrs</span>
-                    </span>
-                  </td>
-
-                  {/* Overtime (OT) Column — NUMAYA & VIBRANT */}
-                  <td className="py-3 px-3 text-right">
-                    {otHours > 0 ? (
-                      <span className="inline-flex items-center gap-1 font-black text-amber-950 bg-amber-100 border border-amber-300 px-2 py-1 rounded-lg shadow-2xs">
-                        <Flame size={11} className="text-amber-600" />
-                        +{otHours} <span className="text-[10px] text-amber-800">hrs</span>
+                  {isColVisible('dutyHours') && (
+                    <td className="py-3 px-3 text-right">
+                      <span className="font-black text-slate-800 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200/60">
+                        {dutyHours} <span className="text-[10px] text-slate-500 font-semibold">hrs</span>
                       </span>
-                    ) : (
-                      <span className="text-slate-400 font-medium">0.0</span>
-                    )}
-                  </td>
+                    </td>
+                  )}
+
+                  {/* Overtime (OT) Column */}
+                  {isColVisible('otHours') && (
+                    <td className="py-3 px-3 text-right">
+                      {otHours > 0 ? (
+                        <span className="inline-flex items-center gap-1 font-black text-amber-950 bg-amber-100 border border-amber-300 px-2 py-1 rounded-lg shadow-2xs">
+                          <Flame size={11} className="text-amber-600" />
+                          +{otHours} <span className="text-[10px] text-amber-800">hrs</span>
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 font-medium">0.0</span>
+                      )}
+                    </td>
+                  )}
 
                   {/* Total Hours */}
-                  <td className="py-3 px-3 text-right font-black text-slate-900">
-                    {totalHours} hrs
-                  </td>
+                  {isColVisible('totalHours') && (
+                    <td className="py-3 px-3 text-right font-black text-slate-900">
+                      {totalHours} hrs
+                    </td>
+                  )}
 
                   {/* Shifts count */}
-                  <td className="py-3 px-3 text-center">
-                    <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">
-                      {st?.shifts ?? 0}
-                    </span>
-                  </td>
+                  {isColVisible('shifts') && (
+                    <td className="py-3 px-3 text-center">
+                      <span className="text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full">
+                        {st?.shifts ?? 0}
+                      </span>
+                    </td>
+                  )}
 
                   {/* Monthly Salary */}
-                  <td className="py-3 px-3 font-black text-slate-900">
-                    {formatMonthlySalary(emp)}
-                  </td>
+                  {isColVisible('salary') && (
+                    <td className="py-3 px-3 font-black text-slate-900">
+                      {formatMonthlySalary(emp)}
+                    </td>
+                  )}
 
                   {/* Visa Expiry */}
-                  <td className="py-3 px-3">
-                    {emp.visa_expiry ? (
-                      <span className={`text-[11px] font-bold ${visaDays < 30 ? 'text-rose-600' : visaDays < 90 ? 'text-amber-600' : 'text-slate-600'}`}>
-                        {formatDate(emp.visa_expiry)}
-                        {visaDays < 90 && <span className="ml-1 text-[10px]">({visaDays}d)</span>}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400 text-[11px]">Not set</span>
-                    )}
-                  </td>
+                  {isColVisible('visa') && (
+                    <td className="py-3 px-3">
+                      {emp.visa_expiry ? (
+                        <span className={`text-[11px] font-bold ${visaDays < 30 ? 'text-rose-600' : visaDays < 90 ? 'text-amber-600' : 'text-slate-600'}`}>
+                          {formatDate(emp.visa_expiry)}
+                          {visaDays < 90 && <span className="ml-1 text-[10px]">({visaDays}d)</span>}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-[11px]">Not set</span>
+                      )}
+                    </td>
+                  )}
 
                   {/* Actions */}
-                  <td className="py-3 px-4 text-right">
-                    <div className="flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
-                      <Link
-                        to={`/employees/${emp.id}`}
-                        className="text-teal-700 hover:text-teal-800 text-[11px] font-bold bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-lg transition-colors"
-                      >
-                        Profile
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => deleteEmployee(emp.id)}
-                        className="text-slate-300 hover:text-rose-600 p-1 rounded-md transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </td>
+                  {isColVisible('actions') && (
+                    <td className="py-3 px-4 text-right">
+                      <div className="flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
+                        <Link
+                          to={`/employees/${emp.id}`}
+                          className="text-teal-700 hover:text-teal-800 text-[11px] font-bold bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-lg transition-colors"
+                        >
+                          Profile
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => deleteEmployee(emp.id)}
+                          className="text-slate-300 hover:text-rose-600 p-1 rounded-md transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               )
             })}
@@ -1731,86 +1499,78 @@ export function Employees() {
             </button>
           )}
 
-          {/* Showing Count + Row Visibility (one row) */}
+          {/* Showing Count + Column Visibility */}
           <div className="flex items-center gap-1.5 shrink-0 ml-auto">
             <span className="text-[11.5px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200/70 whitespace-nowrap">
               <span className="text-teal-700 font-black">{filtered.length}</span> / {employees.length}
             </span>
-            <div ref={rowVisibilityRef} className="relative">
+            <div ref={columnVisibilityRef} className="relative">
               <button
                 type="button"
-                onClick={() => setRowVisibilityOpen(o => !o)}
+                onClick={() => setColumnVisibilityOpen(o => !o)}
                 className={`relative h-[30px] w-[30px] flex items-center justify-center rounded-xl border transition-colors cursor-pointer ${
-                  hiddenRowIds.length > 0
+                  hiddenColumns.length > 0
                     ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100'
                     : 'bg-slate-100 border-slate-200/70 text-slate-600 hover:bg-slate-200/70'
                 }`}
-                title={hiddenRowIds.length > 0 ? `${hiddenRowIds.length} rows hidden — show / hide rows` : 'Show / hide rows'}
+                title={hiddenColumns.length > 0 ? `${hiddenColumns.length} columns hidden — manage table columns` : 'Manage table columns'}
               >
-                {hiddenRowIds.length > 0 ? <EyeOff size={14} /> : <Eye size={14} />}
-                {hiddenRowIds.length > 0 && (
+                {hiddenColumns.length > 0 ? <EyeOff size={14} /> : <Eye size={14} />}
+                {hiddenColumns.length > 0 && (
                   <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9.5px] font-black flex items-center justify-center">
-                    {hiddenRowIds.length}
+                    {hiddenColumns.length}
                   </span>
                 )}
               </button>
 
-              {rowVisibilityOpen && (
-                <div className="absolute right-0 top-full mt-2 w-[300px] bg-white rounded-2xl border border-slate-200 shadow-[0_16px_40px_rgba(15,23,42,0.16)] z-40 overflow-hidden">
-                  <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-100">
-                    <p className="text-[12px] font-black text-slate-900">Show / Hide Rows</p>
+              {columnVisibilityOpen && (
+                <div className="absolute right-0 top-full mt-2 w-[280px] bg-white rounded-2xl border border-slate-200 shadow-[0_16px_40px_rgba(15,23,42,0.16)] z-40 overflow-hidden">
+                  <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-100 bg-slate-50/60">
+                    <div>
+                      <p className="text-[12px] font-black text-slate-900">Manage Columns</p>
+                      <p className="text-[10px] text-slate-500">Show or hide table columns</p>
+                    </div>
                     <div className="flex items-center gap-2 text-[11px] font-bold">
                       <button
                         type="button"
-                        onClick={() => setHiddenRowIds([])}
+                        onClick={showAllColumns}
                         className="text-teal-700 hover:text-teal-800 cursor-pointer disabled:text-slate-300 disabled:cursor-default"
-                        disabled={hiddenRowIds.length === 0}
+                        disabled={hiddenColumns.length === 0}
                       >
                         Show all
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setHiddenRowIds(employees.map(e => e.id))}
-                        className="text-slate-500 hover:text-slate-700 cursor-pointer"
-                      >
-                        Hide all
-                      </button>
                     </div>
                   </div>
-                  <div className="p-2 border-b border-slate-100">
-                    <div className="relative">
-                      <Search size={12} className="absolute left-2.5 top-2 text-slate-400" />
-                      <input
-                        type="text"
-                        value={rowVisibilitySearch}
-                        onChange={e => setRowVisibilitySearch(e.target.value)}
-                        placeholder="Search staff..."
-                        className="w-full pl-7 pr-2 py-1.5 text-[12px] bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-500 focus:bg-white"
-                      />
-                    </div>
-                  </div>
-                  <div className="max-h-[280px] overflow-y-auto p-1.5 space-y-0.5">
-                    {[...employees]
-                      .filter(e => !rowVisibilitySearch || e.full_name.toLowerCase().includes(rowVisibilitySearch.toLowerCase().trim()))
-                      .sort((a, b) => a.full_name.localeCompare(b.full_name))
-                      .map(e => {
-                        const visible = !hiddenRowIds.includes(e.id)
-                        return (
-                          <label
-                            key={e.id}
-                            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-[12px] cursor-pointer hover:bg-slate-50 ${visible ? 'text-slate-800 font-semibold' : 'text-slate-400'}`}
-                          >
+                  <div className="max-h-[300px] overflow-y-auto p-2 space-y-0.5">
+                    {EMPLOYEE_TABLE_COLUMNS.map(col => {
+                      const visible = !hiddenColumns.includes(col.id)
+                      return (
+                        <label
+                          key={col.id}
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[12px] transition-colors ${
+                            col.alwaysVisible ? 'cursor-not-allowed opacity-75' : 'cursor-pointer hover:bg-slate-50'
+                          } ${visible ? 'text-slate-800 font-semibold' : 'text-slate-400'}`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
                             <input
                               type="checkbox"
                               checked={visible}
-                              onChange={() => toggleRowHidden(e.id)}
-                              className="rounded text-teal-600 focus:ring-teal-500 h-3.5 w-3.5 cursor-pointer"
+                              disabled={col.alwaysVisible}
+                              onChange={() => toggleColumn(col.id)}
+                              className="rounded text-teal-600 focus:ring-teal-500 h-3.5 w-3.5 cursor-pointer disabled:cursor-not-allowed"
                             />
-                            <span className="truncate flex-1">{e.full_name}</span>
-                            {!visible && <EyeOff size={11} className="shrink-0" />}
-                          </label>
-                        )
-                      })}
+                            <span className="truncate">{col.label}</span>
+                          </div>
+                          {col.alwaysVisible ? (
+                            <span className="text-[9.5px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded">
+                              Fixed
+                            </span>
+                          ) : !visible ? (
+                            <EyeOff size={12} className="text-amber-600 shrink-0" />
+                          ) : null}
+                        </label>
+                      )
+                    })}
                   </div>
                 </div>
               )}
@@ -1927,10 +1687,7 @@ export function Employees() {
 
           {/* ── Intelligent Work & Duty Widgets (Underneath Datatable in 2-Column Grid) ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
-            {renderOvertimeWidget()}
-            {renderLiveCrewWidget()}
-            {renderComplianceWidget()}
-            {renderSkillsWidget()}
+            {renderWidgets()}
           </div>
         </div>
       ) : (
@@ -1960,583 +1717,20 @@ export function Employees() {
           </div>
 
           <div className="space-y-5">
-            {renderOvertimeWidget()}
-            {renderLiveCrewWidget()}
-            {renderComplianceWidget()}
-            {renderSkillsWidget()}
+            {renderWidgets()}
           </div>
         </div>
       )}
       </div>
 
-      {/* ── Add Employee Modal ── */}
-      <Modal
-        open={showModal}
-        onClose={() => setShowModal(false)}
-        title="Add New Employee"
-        size="xl"
-        className="max-w-6xl"
-        headerActions={
-          <div className="flex items-center gap-3">
-            {/* Status lives in the header; `form` attribute keeps it part of the form data */}
-            <div className="flex items-center gap-2 pr-2 border-r border-slate-200">
-              <span className="text-[11px] font-bold text-slate-500">Status:</span>
-              <select
-                name="status"
-                form="add-employee-form"
-                defaultValue="active"
-                className="text-[11.5px] px-2 py-1 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-teal-600 font-bold text-slate-800 cursor-pointer shadow-2xs"
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="on_leave">On Leave</option>
-                <option value="engaged_in_project">Engaged in Project</option>
-              </select>
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowModal(false)}
-              className="h-8 px-3 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              form="add-employee-form"
-              size="sm"
-              className="h-8 px-4 text-[11.5px] bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer flex items-center gap-1.5 shadow-xs"
-            >
-              <Check size={13} className="stroke-[2.5]" />
-              <span>Save Employee</span>
-            </Button>
-          </div>
-        }
-      >
-        <form id="add-employee-form" className="space-y-3.5" onSubmit={e => {
-          e.preventDefault()
-          const fd = new FormData(e.currentTarget)
-          const role = addRole
-          const monthly_salary = Number(fd.get('monthly_salary')) || 0
-          const agencyId = (fd.get('agency_id') as string) || ''
-          const selAgency = agencies.find(a => a.id === agencyId)
-          const docsList: EmployeeDocument[] = Object.values(addDocs)
-
-          addEmployee({
-            full_name: fd.get('full_name') as string,
-            phone: fd.get('phone') as string,
-            role,
-            designation: formatEmpRole(role),
-            gender: (fd.get('gender') as string) || 'Female',
-            nationality: fd.get('nationality') as string,
-            agency_id: agencyId || undefined,
-            agency_name: selAgency?.name || undefined,
-
-            // EID
-            emirates_id: (fd.get('emirates_id') as string) || '',
-            eid_start_date: (fd.get('eid_start_date') as string) || undefined,
-            eid_end_date: (fd.get('eid_end_date') as string) || undefined,
-            eid_file: addDocs.eid?.file_data || undefined,
-
-            // Passport
-            passport_number: (fd.get('passport_number') as string) || undefined,
-            passport_start_date: (fd.get('passport_start_date') as string) || undefined,
-            passport_expiry: (fd.get('passport_expiry') as string) || '',
-            passport_end_date: (fd.get('passport_expiry') as string) || undefined,
-            passport_file: addDocs.passport?.file_data || undefined,
-
-            // Visa
-            visa_number: (fd.get('visa_number') as string) || undefined,
-            visa_start_date: (fd.get('visa_start_date') as string) || undefined,
-            visa_expiry: (fd.get('visa_expiry') as string) || '',
-            visa_end_date: (fd.get('visa_expiry') as string) || undefined,
-            visa_file: addDocs.visa?.file_data || undefined,
-
-            // Work Permit
-            work_permit_number: (fd.get('work_permit_number') as string) || undefined,
-            work_permit_start_date: (fd.get('work_permit_start_date') as string) || undefined,
-            work_permit_expiry: (fd.get('work_permit_expiry') as string) || '',
-            work_permit_end_date: (fd.get('work_permit_expiry') as string) || undefined,
-            work_permit_file: addDocs.work_permit?.file_data || undefined,
-
-            // Driving License (for Drivers)
-            driving_license_no: (fd.get('driving_license_no') as string) || undefined,
-            driving_license_place_of_issue: (fd.get('driving_license_place_of_issue') as string) || undefined,
-            driving_license_issue_date: (fd.get('driving_license_issue_date') as string) || undefined,
-            driving_license_expiry_date: (fd.get('driving_license_expiry_date') as string) || undefined,
-            driving_license_type: (fd.get('driving_license_type') as string) || undefined,
-            driving_license_file: addDocs.driving_license?.file_data || undefined,
-            assigned_vehicle: (fd.get('assigned_vehicle') as string) || undefined,
-
-            // Financial, Insurance & Employment
-            monthly_salary,
-            pay_rate_hourly: Math.round((monthly_salary / MONTHLY_WORK_HOURS) * 10) / 10,
-            medical_insurance: (fd.get('medical_insurance') as string) || undefined,
-            medical_insurance_expiry: (fd.get('medical_insurance_expiry') as string) || undefined,
-            medical_insurance_file: addDocs.medical_insurance?.file_data || undefined,
-            joined_date: (fd.get('joined_date') as string) || new Date().toISOString().split('T')[0],
-            end_date: (fd.get('end_date') as string) || undefined,
-            noc: (fd.get('noc') as string) || undefined,
-            noc_file: addDocs.noc?.file_data || undefined,
-
-            status: (fd.get('status') as any) || 'active',
-
-            // Cleaners & Technical
-            skills: (fd.get('skills') as string)?.split(',').map(s => s.trim()).filter(Boolean) || [],
-            assigned_client_ids: addRole === 'driver' ? [] : addClientIds,
-
-            // Document History
-            documents: docsList,
-          })
-          setShowModal(false)
-        }}>
-          {/* ── Row 1: Profile · Role & Sourcing · Employment — single horizontal row ── */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-            {/* Employee Profile */}
-            <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
-              <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                <UserCheck size={13} className="text-teal-600" />
-                <span>Employee Profile</span>
-              </h4>
-
-              <Input name="full_name" label="Full Name *" placeholder="e.g. Maria Santos" required />
-              <div className="grid grid-cols-2 gap-2">
-                <Input name="phone" label="Phone" placeholder="+971 50 000 0000" />
-                <div>
-                  <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Gender</label>
-                  <select
-                    name="gender"
-                    defaultValue="Female"
-                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                  >
-                    <option value="Female">Female</option>
-                    <option value="Male">Male</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-              </div>
-              <Input name="nationality" label="Nationality" placeholder="e.g. Filipino, Pakistani, Indian, Nepali..." />
-            </div>
-
-            {/* Role & Sourcing */}
-            <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
-                <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 flex items-center gap-1.5">
-                  <Briefcase size={13} className="text-teal-600" />
-                  <span>Role & Sourcing</span>
-                </h4>
-                <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-lg border border-teal-200/60">
-                  {addRole === 'driver' ? 'Driver Form' : 'Cleaner & Technical Form'}
-                </span>
-              </div>
-
-              <div>
-                <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Designation / Role *</label>
-                <select
-                  name="role"
-                  value={addRole}
-                  onChange={e => setAddRole(e.target.value as EmployeeRole)}
-                  className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                  required
-                >
-                  <option value="cleaner">Cleaner</option>
-                  <option value="supervisor">Supervisor</option>
-                  <option value="technical">Technical</option>
-                  <option value="store_cleaner">Store Cleaner</option>
-                  <option value="driver">Driver</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Agency / Sourcing Source</label>
-                <select
-                  name="agency_id"
-                  defaultValue=""
-                  className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                >
-                  <option value="">Safaeewala (Parent Company)</option>
-                  {agencies.filter(a => a.id !== 'agency-safaeewala' && a.company_type !== 'Parent Company' && !a.name.toLowerCase().includes('safaeewala')).map(a => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({a.status})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <p className="text-[10.5px] text-slate-500 font-medium">
-                Document & assignment fields below switch automatically with the designation.
-              </p>
-            </div>
-
-            {/* Employment & Salary */}
-            <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
-              <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                <DollarSign size={13} className="text-teal-600" />
-                <span>Employment & Salary</span>
-              </h4>
-
-              <Input name="monthly_salary" label="Monthly Salary (AED/mo) *" type="number" placeholder="e.g. 2500" required />
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  name="joined_date"
-                  label="Joining Date"
-                  type="date"
-                  defaultValue={new Date().toISOString().split('T')[0]}
-                />
-                <Input name="end_date" label="End Date" type="date" />
-              </div>
-            </div>
-          </div>
-
-          {/* ── Row 2: Identity & Work Documents (each document tinted differently) ── */}
-          <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
-            <h4 className="text-[12px] font-black uppercase tracking-wider text-amber-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-              <Shield size={13} className="text-amber-600" />
-              <span>Identity & Work Documents</span>
-            </h4>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
-              {/* Emirates ID (Sky Blue Tint) */}
-              <div className="bg-sky-50/70 border border-sky-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
-                <div className="flex items-center justify-between pb-1 border-b border-sky-200/60">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-sky-900 flex items-center gap-1.5">
-                    <FileText size={12} className="text-sky-600" />
-                    Emirates ID (EID)
-                  </span>
-                </div>
-                <EmployeeDocInput
-                  name="emirates_id"
-                  label="EID Number"
-                  placeholder="784-XXXX-XXXXXXX-X"
-                  doc={addDocs.eid}
-                  onUpload={file => handleDocUpload(file, 'eid', setAddDocs)}
-                  onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.eid; return n })}
-                  onPreview={doc => setPreviewDoc(doc)}
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <Input name="eid_start_date" label="Start Date" type="date" />
-                  <Input name="eid_end_date" label="End Date" type="date" />
-                </div>
-              </div>
-
-              {/* Passport (Purple Tint) */}
-              <div className="bg-purple-50/70 border border-purple-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
-                <div className="flex items-center justify-between pb-1 border-b border-purple-200/60">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-purple-900 flex items-center gap-1.5">
-                    <FileText size={12} className="text-purple-600" />
-                    Passport
-                  </span>
-                </div>
-                <EmployeeDocInput
-                  name="passport_number"
-                  label="Passport Number"
-                  placeholder="e.g. A12345678"
-                  doc={addDocs.passport}
-                  onUpload={file => handleDocUpload(file, 'passport', setAddDocs)}
-                  onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.passport; return n })}
-                  onPreview={doc => setPreviewDoc(doc)}
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <Input name="passport_start_date" label="Start Date" type="date" />
-                  <Input name="passport_expiry" label="End Date" type="date" />
-                </div>
-              </div>
-
-              {/* Residency Visa (Amber Tint) */}
-              <div className="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
-                <div className="flex items-center justify-between pb-1 border-b border-amber-200/60">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
-                    <Shield size={12} className="text-amber-600" />
-                    Residency Visa
-                  </span>
-                </div>
-                <EmployeeDocInput
-                  name="visa_number"
-                  label="Visa Number"
-                  placeholder="e.g. 201/2024/XXXXXXX"
-                  doc={addDocs.visa}
-                  onUpload={file => handleDocUpload(file, 'visa', setAddDocs)}
-                  onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.visa; return n })}
-                  onPreview={doc => setPreviewDoc(doc)}
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <Input name="visa_start_date" label="Start Date" type="date" />
-                  <Input name="visa_expiry" label="End Date" type="date" />
-                </div>
-              </div>
-
-              {/* Work Permit (Emerald Tint) */}
-              <div className="bg-emerald-50/70 border border-emerald-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
-                <div className="flex items-center justify-between pb-1 border-b border-emerald-200/60">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
-                    <Briefcase size={12} className="text-emerald-600" />
-                    Work Permit
-                  </span>
-                </div>
-                <EmployeeDocInput
-                  name="work_permit_number"
-                  label="Permit / Labor Card #"
-                  placeholder="e.g. WP-XXXX-XXXX"
-                  doc={addDocs.work_permit}
-                  onUpload={file => handleDocUpload(file, 'work_permit', setAddDocs)}
-                  onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.work_permit; return n })}
-                  onPreview={doc => setPreviewDoc(doc)}
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <Input name="work_permit_start_date" label="Start Date" type="date" />
-                  <Input name="work_permit_expiry" label="End Date" type="date" />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Row 3: Insurance & Clearance (one row), then role-specific section below ── */}
-          <div className="space-y-3.5">
-            <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
-              <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                <FileText size={13} className="text-indigo-600" />
-                <span>Insurance & Clearance</span>
-              </h4>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {/* Medical Insurance (Rose Tint) */}
-                <div className="bg-rose-50/60 border border-rose-200/80 rounded-2xl p-3.5 space-y-2 shadow-2xs">
-                  <div className="flex items-center justify-between pb-1 border-b border-rose-200/60">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-rose-900 flex items-center gap-1.5">
-                      <Shield size={12} className="text-rose-600" />
-                      Medical Insurance
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <EmployeeDocInput
-                      name="medical_insurance"
-                      label="Policy / Card #"
-                      placeholder="e.g. DHA-123456"
-                      doc={addDocs.medical_insurance}
-                      onUpload={file => handleDocUpload(file, 'medical_insurance', setAddDocs)}
-                      onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.medical_insurance; return n })}
-                      onPreview={doc => setPreviewDoc(doc)}
-                    />
-                    <Input name="medical_insurance_expiry" label="Expiry Date" type="date" />
-                  </div>
-                </div>
-
-                {/* NOC Clearance (Indigo Tint) */}
-                <div className="bg-indigo-50/60 border border-indigo-200/80 rounded-2xl p-3.5 space-y-2 shadow-2xs">
-                  <div className="flex items-center justify-between pb-1 border-b border-indigo-200/60">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-1.5">
-                      <Check size={12} className="text-indigo-600" />
-                      NOC Clearance
-                    </span>
-                  </div>
-                  <EmployeeDocInput
-                    name="noc"
-                    label="NOC (No Objection Certificate)"
-                    placeholder="NOC Ref # or Notes"
-                    doc={addDocs.noc}
-                    onUpload={file => handleDocUpload(file, 'noc', setAddDocs)}
-                    onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.noc; return n })}
-                    onPreview={doc => setPreviewDoc(doc)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {addRole === 'driver' ? (
-              /* Driving License & Vehicle (Drivers only) */
-              <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
-                <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                  <MapPin size={13} className="text-indigo-600" />
-                  <span>Driving License & Vehicle</span>
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <div className="space-y-2">
-                    <EmployeeDocInput
-                      name="driving_license_no"
-                      label="License #"
-                      placeholder="e.g. 1234567"
-                      doc={addDocs.driving_license}
-                      onUpload={file => handleDocUpload(file, 'driving_license', setAddDocs)}
-                      onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.driving_license; return n })}
-                      onPreview={doc => setPreviewDoc(doc)}
-                    />
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input name="driving_license_issue_date" label="Issue Date" type="date" />
-                      <Input name="driving_license_expiry_date" label="Expiry Date" type="date" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Place of Issue</label>
-                        <select
-                          name="driving_license_place_of_issue"
-                          defaultValue="Dubai"
-                          className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                        >
-                          <option value="Dubai">Dubai</option>
-                          <option value="Abu Dhabi">Abu Dhabi</option>
-                          <option value="Sharjah">Sharjah</option>
-                          <option value="Ajman">Ajman</option>
-                          <option value="Ras Al Khaimah">Ras Al Khaimah</option>
-                          <option value="Fujairah">Fujairah</option>
-                          <option value="Umm Al Quwain">Umm Al Quwain</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Licence Type</label>
-                        <select
-                          name="driving_license_type"
-                          defaultValue="Light Vehicle (Automatic)"
-                          className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                        >
-                          <option value="Light Vehicle (Automatic)">Light Vehicle (Automatic)</option>
-                          <option value="Light Vehicle (Manual)">Light Vehicle (Manual)</option>
-                          <option value="Heavy Bus">Heavy Bus</option>
-                          <option value="Heavy Truck">Heavy Truck</option>
-                          <option value="Motorcycle">Motorcycle</option>
-                          <option value="Forklift">Forklift</option>
-                        </select>
-                      </div>
-                    </div>
-                    <Input name="assigned_vehicle" label="Assign Vehicle" placeholder="e.g. Van 1, Toyota HiAce, Plate #12345" />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              /* Skills & Client Assignment (Cleaners & Technical) */
-              <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
-                  <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 flex items-center gap-1.5">
-                    <Sparkles size={13} className="text-indigo-600" />
-                    <span>Skills & Client Assignment</span>
-                  </h4>
-                  <div className="flex items-center gap-2">
-                    {addClientIds.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setAddClientIds([])}
-                        className="text-[10.5px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
-                      >
-                        Clear All
-                      </button>
-                    )}
-                    <span className="text-[10.5px] font-bold bg-teal-50 text-teal-800 border border-teal-200/60 px-2 py-0.5 rounded-lg">
-                      {addClientIds.length} Clients Assigned
-                    </span>
-                  </div>
-                </div>
-
-                <Input name="skills" label="Skills (comma separated)" placeholder="Deep Clean, Sofa, Window, Technical, Carpet..." />
-
-                <div className="relative">
-                  <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search clients by name or location..."
-                    value={clientSearchAdd}
-                    onChange={e => setClientSearchAdd(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 shadow-2xs"
-                  />
-                </div>
-
-                <div className="max-h-[180px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1 pr-1 content-start">
-                  {assignableClients.length === 0 && (
-                    <p className="col-span-full text-center text-[11.5px] text-slate-400 py-4">No clients found. Add clients first on the Clients screen.</p>
-                  )}
-                  {assignableClients
-                    .filter(c => {
-                      if (!clientSearchAdd) return true
-                      const q = clientSearchAdd.toLowerCase()
-                      const loc = (c.building_name || c.area || '').toLowerCase()
-                      return c.full_name.toLowerCase().includes(q) || loc.includes(q)
-                    })
-                    .map(c => {
-                      const checked = addClientIds.includes(c.id)
-                      const location = c.building_name ? `${c.building_name}, ${c.area}` : c.area
-                      return (
-                        <label
-                          key={c.id}
-                          className={`flex items-center justify-between p-2 rounded-xl text-[11.5px] border cursor-pointer transition-colors shadow-2xs ${
-                            checked
-                              ? 'bg-teal-50 border-teal-300 text-teal-950 font-bold'
-                              : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 truncate">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                setAddClientIds(prev =>
-                                  checked ? prev.filter(id => id !== c.id) : [...prev, c.id]
-                                )
-                              }}
-                              className="rounded text-teal-600 focus:ring-teal-500 h-3.5 w-3.5 cursor-pointer"
-                            />
-                            <span className="truncate">{c.full_name}</span>
-                            {location && <span className="text-[10.5px] text-slate-400 font-normal truncate">({location})</span>}
-                          </div>
-                          {checked && <span className="text-[10px] font-black text-teal-700 shrink-0">ASSIGNED</span>}
-                        </label>
-                      )
-                    })}
-                </div>
-              </div>
-            )}
-          </div>
-        </form>
-      </Modal>
-
-      {/* ── Employee Detail / Edit Modal ── */}
+            {/* ── Employee Detail Modal ── */}
       <Modal
         open={!!selected}
-        onClose={() => { setSelected(null); setIsEditing(false); setConfirmDelete(false) }}
-        title={isEditing ? `Edit Employee Profile — ${selected?.full_name}` : 'Employee Work & Profile'}
-        size={isEditing ? 'xl' : 'lg'}
-        className={isEditing ? 'max-w-6xl' : ''}
-        headerActions={
-          isEditing ? (
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 pr-2 border-r border-slate-200">
-                <span className="text-[11px] font-bold text-slate-500">Status:</span>
-                <select
-                  name="status"
-                  form="edit-employee-form"
-                  defaultValue={selected?.status || 'active'}
-                  className="text-[11.5px] px-2 py-1 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-teal-600 font-bold text-slate-800 cursor-pointer shadow-2xs"
-                >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="on_leave">On Leave</option>
-                  <option value="engaged_in_project">Engaged in Project</option>
-                </select>
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsEditing(false)}
-                className="h-8 px-3 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                form="edit-employee-form"
-                size="sm"
-                className="h-8 px-4 text-[11.5px] bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer flex items-center gap-1.5 shadow-xs"
-              >
-                <Check size={13} className="stroke-[2.5]" />
-                <span>Save Employee</span>
-              </Button>
-            </div>
-          ) : undefined
-        }
+        onClose={() => { setSelected(null); setConfirmDelete(false) }}
+        title="Employee Work & Profile"
+        size="lg"
       >
-        {selected && !isEditing && (() => {
+        {selected && (() => {
           const st = staffJobStats.get(selected.id)
           const dutyHours = st?.dutyHours ?? 0
           const otHours = st?.otHours ?? 0
@@ -2735,517 +1929,33 @@ export function Employees() {
             </div>
           )
         })()}
-
-        {selected && isEditing && (
-          <form
-            id="edit-employee-form"
-            className="space-y-3.5"
-            onSubmit={e => {
-              e.preventDefault()
-              const fd = new FormData(e.currentTarget)
-              const role = editRole
-              const monthly_salary = Number(fd.get('monthly_salary')) || getEmployeeMonthlySalary(selected)
-              const agencyId = (fd.get('agency_id') as string) || ''
-              const selAgency = agencies.find(a => a.id === agencyId)
-              const docsList: EmployeeDocument[] = Object.values(editDocs)
-
-              const patch: Partial<Employee> = {
-                full_name:                 fd.get('full_name') as string,
-                phone:                     fd.get('phone') as string,
-                role,
-                designation:               formatEmpRole(role),
-                gender:                    (fd.get('gender') as string) || selected.gender || 'Female',
-                nationality:               fd.get('nationality') as string,
-                agency_id:                 agencyId || undefined,
-                agency_name:               selAgency?.name || (agencyId ? selected.agency_name : undefined),
-
-                // EID
-                emirates_id:               (fd.get('emirates_id') as string) || '',
-                eid_start_date:            (fd.get('eid_start_date') as string) || undefined,
-                eid_end_date:              (fd.get('eid_end_date') as string) || undefined,
-                eid_file:                  editDocs.eid?.file_data || selected.eid_file,
-
-                // Passport
-                passport_number:           (fd.get('passport_number') as string) || undefined,
-                passport_start_date:       (fd.get('passport_start_date') as string) || undefined,
-                passport_expiry:           (fd.get('passport_expiry') as string) || '',
-                passport_end_date:         (fd.get('passport_expiry') as string) || undefined,
-                passport_file:             editDocs.passport?.file_data || selected.passport_file,
-
-                // Visa
-                visa_number:               (fd.get('visa_number') as string) || undefined,
-                visa_start_date:           (fd.get('visa_start_date') as string) || undefined,
-                visa_expiry:               (fd.get('visa_expiry') as string) || '',
-                visa_end_date:             (fd.get('visa_expiry') as string) || undefined,
-                visa_file:                 editDocs.visa?.file_data || selected.visa_file,
-
-                // Work Permit
-                work_permit_number:        (fd.get('work_permit_number') as string) || undefined,
-                work_permit_start_date:    (fd.get('work_permit_start_date') as string) || undefined,
-                work_permit_expiry:        (fd.get('work_permit_expiry') as string) || '',
-                work_permit_end_date:      (fd.get('work_permit_expiry') as string) || undefined,
-                work_permit_file:          editDocs.work_permit?.file_data || selected.work_permit_file,
-
-                // Driving License (for Drivers)
-                driving_license_no:        (fd.get('driving_license_no') as string) || undefined,
-                driving_license_place_of_issue: (fd.get('driving_license_place_of_issue') as string) || undefined,
-                driving_license_issue_date: (fd.get('driving_license_issue_date') as string) || undefined,
-                driving_license_expiry_date: (fd.get('driving_license_expiry_date') as string) || undefined,
-                driving_license_type:      (fd.get('driving_license_type') as string) || undefined,
-                driving_license_file:      editDocs.driving_license?.file_data || selected.driving_license_file,
-                assigned_vehicle:          (fd.get('assigned_vehicle') as string) || undefined,
-
-                // Financial, Insurance & Employment
-                monthly_salary,
-                pay_rate_hourly:           Math.round((monthly_salary / MONTHLY_WORK_HOURS) * 10) / 10,
-                medical_insurance:         (fd.get('medical_insurance') as string) || undefined,
-                medical_insurance_expiry:  (fd.get('medical_insurance_expiry') as string) || undefined,
-                medical_insurance_file:    editDocs.medical_insurance?.file_data || selected.medical_insurance_file,
-                joined_date:               fd.get('joined_date') as string,
-                end_date:                  (fd.get('end_date') as string) || undefined,
-                noc:                       (fd.get('noc') as string) || undefined,
-                noc_file:                  editDocs.noc?.file_data || selected.noc_file,
-
-                status:                    (fd.get('status') as Employee['status']) || selected.status,
-
-                // Cleaners & Technical
-                skills:                    (fd.get('skills') as string)?.split(',').map(s => s.trim()).filter(Boolean) || [],
-                assigned_client_ids:       editRole === 'driver' ? [] : editClientIds,
-
-                // Document History
-                documents:                 docsList.length > 0 ? docsList : selected.documents,
-              }
-              updateEmployee(selected.id, patch)
-              setSelected({ ...selected, ...patch })
-              setIsEditing(false)
-            }}
-          >
-            {/* ── Row 1: Profile · Role & Sourcing · Employment — single horizontal row ── */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-              {/* Employee Profile */}
-              <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
-                <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                  <UserCheck size={13} className="text-teal-600" />
-                  <span>Employee Profile</span>
-                </h4>
-
-                <Input name="full_name" label="Full Name *" defaultValue={selected.full_name} placeholder="e.g. Maria Santos" required />
-                <div className="grid grid-cols-2 gap-2">
-                  <Input name="phone" label="Phone" defaultValue={selected.phone} placeholder="+971 50 000 0000" />
-                  <div>
-                    <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Gender</label>
-                    <select
-                      name="gender"
-                      defaultValue={selected.gender || 'Female'}
-                      className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                    >
-                      <option value="Female">Female</option>
-                      <option value="Male">Male</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                </div>
-                <Input name="nationality" label="Nationality" defaultValue={selected.nationality} placeholder="e.g. Filipino, Pakistani, Indian..." />
-              </div>
-
-              {/* Role & Sourcing */}
-              <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
-                  <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 flex items-center gap-1.5">
-                    <Briefcase size={13} className="text-teal-600" />
-                    <span>Role & Sourcing</span>
-                  </h4>
-                  <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-lg border border-teal-200/60">
-                    {editRole === 'driver' ? 'Driver Form' : 'Cleaner & Technical Form'}
-                  </span>
-                </div>
-
-                <div>
-                  <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Designation / Role *</label>
-                  <select
-                    name="role"
-                    value={editRole}
-                    onChange={e => setEditRole(e.target.value as EmployeeRole)}
-                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                    required
-                  >
-                    <option value="cleaner">Cleaner</option>
-                    <option value="supervisor">Supervisor</option>
-                    <option value="technical">Technical</option>
-                    <option value="store_cleaner">Store Cleaner</option>
-                    <option value="driver">Driver</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Agency / Sourcing Source</label>
-                  <select
-                    name="agency_id"
-                    defaultValue={selected.agency_id || ''}
-                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                  >
-                    <option value="">Safaeewala (Parent Company)</option>
-                    {agencies.filter(a => a.id !== 'agency-safaeewala' && a.company_type !== 'Parent Company' && !a.name.toLowerCase().includes('safaeewala')).map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.name} ({a.status})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <p className="text-[10.5px] text-slate-500 font-medium">
-                  Document & assignment fields below switch automatically with the designation.
-                </p>
-              </div>
-
-              {/* Employment & Salary */}
-              <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
-                <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                  <DollarSign size={13} className="text-teal-600" />
-                  <span>Employment & Salary</span>
-                </h4>
-
-                <Input
-                  name="monthly_salary"
-                  label="Monthly Salary (AED/mo) *"
-                  type="number"
-                  defaultValue={getEmployeeMonthlySalary(selected) ? String(getEmployeeMonthlySalary(selected)) : ''}
-                  placeholder="e.g. 2500"
-                  required
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    name="joined_date"
-                    label="Joining Date"
-                    type="date"
-                    defaultValue={selected.joined_date}
-                  />
-                  <Input name="end_date" label="End Date" type="date" defaultValue={selected.end_date || ''} />
-                </div>
-              </div>
-            </div>
-
-            {/* ── Row 2: Identity & Work Documents (each document tinted differently) ── */}
-            <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
-              <h4 className="text-[12px] font-black uppercase tracking-wider text-amber-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                <Shield size={13} className="text-amber-600" />
-                <span>Identity & Work Documents</span>
-              </h4>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
-                {/* Emirates ID (Sky Blue Tint) */}
-                <div className="bg-sky-50/70 border border-sky-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
-                  <div className="flex items-center justify-between pb-1 border-b border-sky-200/60">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-sky-900 flex items-center gap-1.5">
-                      <FileText size={12} className="text-sky-600" />
-                      Emirates ID (EID)
-                    </span>
-                  </div>
-                  <EmployeeDocInput
-                    name="emirates_id"
-                    label="EID Number"
-                    defaultValue={selected.emirates_id}
-                    placeholder="784-XXXX-XXXXXXX-X"
-                    doc={editDocs.eid}
-                    onUpload={file => handleDocUpload(file, 'eid', setEditDocs)}
-                    onRemove={() => setEditDocs(prev => { const n = { ...prev }; delete n.eid; return n })}
-                    onPreview={doc => setPreviewDoc(doc)}
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input name="eid_start_date" label="Start Date" type="date" defaultValue={selected.eid_start_date || ''} />
-                    <Input name="eid_end_date" label="End Date" type="date" defaultValue={selected.eid_end_date || ''} />
-                  </div>
-                </div>
-
-                {/* Passport (Purple Tint) */}
-                <div className="bg-purple-50/70 border border-purple-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
-                  <div className="flex items-center justify-between pb-1 border-b border-purple-200/60">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-purple-900 flex items-center gap-1.5">
-                      <FileText size={12} className="text-purple-600" />
-                      Passport
-                    </span>
-                  </div>
-                  <EmployeeDocInput
-                    name="passport_number"
-                    label="Passport Number"
-                    defaultValue={selected.passport_number || ''}
-                    placeholder="e.g. A12345678"
-                    doc={editDocs.passport}
-                    onUpload={file => handleDocUpload(file, 'passport', setEditDocs)}
-                    onRemove={() => setEditDocs(prev => { const n = { ...prev }; delete n.passport; return n })}
-                    onPreview={doc => setPreviewDoc(doc)}
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input name="passport_start_date" label="Start Date" type="date" defaultValue={selected.passport_start_date || ''} />
-                    <Input name="passport_expiry" label="End Date" type="date" defaultValue={selected.passport_expiry || selected.passport_end_date || ''} />
-                  </div>
-                </div>
-
-                {/* Residency Visa (Amber Tint) */}
-                <div className="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
-                  <div className="flex items-center justify-between pb-1 border-b border-amber-200/60">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
-                      <Shield size={12} className="text-amber-600" />
-                      Residency Visa
-                    </span>
-                  </div>
-                  <EmployeeDocInput
-                    name="visa_number"
-                    label="Visa Number"
-                    defaultValue={selected.visa_number || ''}
-                    placeholder="e.g. 201/2024/XXXXXXX"
-                    doc={editDocs.visa}
-                    onUpload={file => handleDocUpload(file, 'visa', setEditDocs)}
-                    onRemove={() => setEditDocs(prev => { const n = { ...prev }; delete n.visa; return n })}
-                    onPreview={doc => setPreviewDoc(doc)}
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input name="visa_start_date" label="Start Date" type="date" defaultValue={selected.visa_start_date || ''} />
-                    <Input name="visa_expiry" label="End Date" type="date" defaultValue={selected.visa_expiry || selected.visa_end_date || ''} />
-                  </div>
-                </div>
-
-                {/* Work Permit (Emerald Tint) */}
-                <div className="bg-emerald-50/70 border border-emerald-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
-                  <div className="flex items-center justify-between pb-1 border-b border-emerald-200/60">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
-                      <Briefcase size={12} className="text-emerald-600" />
-                      Work Permit
-                    </span>
-                  </div>
-                  <EmployeeDocInput
-                    name="work_permit_number"
-                    label="Permit / Labor Card #"
-                    defaultValue={selected.work_permit_number || ''}
-                    placeholder="e.g. WP-XXXX-XXXX"
-                    doc={editDocs.work_permit}
-                    onUpload={file => handleDocUpload(file, 'work_permit', setEditDocs)}
-                    onRemove={() => setEditDocs(prev => { const n = { ...prev }; delete n.work_permit; return n })}
-                    onPreview={doc => setPreviewDoc(doc)}
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input name="work_permit_start_date" label="Start Date" type="date" defaultValue={selected.work_permit_start_date || ''} />
-                    <Input name="work_permit_expiry" label="End Date" type="date" defaultValue={selected.work_permit_expiry || selected.work_permit_end_date || ''} />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ── Row 3: Insurance & Clearance ── */}
-            <div className="space-y-3.5">
-              <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
-                <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                  <FileText size={13} className="text-indigo-600" />
-                  <span>Insurance & Clearance</span>
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                  {/* Medical Insurance (Rose Tint) */}
-                  <div className="bg-rose-50/60 border border-rose-200/80 rounded-2xl p-3.5 space-y-2 shadow-2xs">
-                    <div className="flex items-center justify-between pb-1 border-b border-rose-200/60">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-rose-900 flex items-center gap-1.5">
-                        <Shield size={12} className="text-rose-600" />
-                        Medical Insurance
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <EmployeeDocInput
-                        name="medical_insurance"
-                        label="Policy / Card #"
-                        defaultValue={selected.medical_insurance || ''}
-                        placeholder="e.g. DHA-123456"
-                        doc={editDocs.medical_insurance}
-                        onUpload={file => handleDocUpload(file, 'medical_insurance', setEditDocs)}
-                        onRemove={() => setEditDocs(prev => { const n = { ...prev }; delete n.medical_insurance; return n })}
-                        onPreview={doc => setPreviewDoc(doc)}
-                      />
-                      <Input name="medical_insurance_expiry" label="Expiry Date" type="date" defaultValue={selected.medical_insurance_expiry || ''} />
-                    </div>
-                  </div>
-
-                  {/* NOC Clearance (Indigo Tint) */}
-                  <div className="bg-indigo-50/60 border border-indigo-200/80 rounded-2xl p-3.5 space-y-2 shadow-2xs">
-                    <div className="flex items-center justify-between pb-1 border-b border-indigo-200/60">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-1.5">
-                        <Check size={12} className="text-indigo-600" />
-                        NOC Clearance
-                      </span>
-                    </div>
-                    <EmployeeDocInput
-                      name="noc"
-                      label="NOC (No Objection Certificate)"
-                      defaultValue={selected.noc || ''}
-                      placeholder="NOC Ref # or Notes"
-                      doc={editDocs.noc}
-                      onUpload={file => handleDocUpload(file, 'noc', setEditDocs)}
-                      onRemove={() => setEditDocs(prev => { const n = { ...prev }; delete n.noc; return n })}
-                      onPreview={doc => setPreviewDoc(doc)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {editRole === 'driver' ? (
-                /* Driving License & Vehicle (Drivers only) */
-                <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
-                  <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                    <MapPin size={13} className="text-indigo-600" />
-                    <span>Driving License & Vehicle</span>
-                  </h4>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    <div className="space-y-2">
-                      <EmployeeDocInput
-                        name="driving_license_no"
-                        label="License #"
-                        defaultValue={selected.driving_license_no || ''}
-                        placeholder="e.g. 1234567"
-                        doc={editDocs.driving_license}
-                        onUpload={file => handleDocUpload(file, 'driving_license', setEditDocs)}
-                        onRemove={() => setEditDocs(prev => { const n = { ...prev }; delete n.driving_license; return n })}
-                        onPreview={doc => setPreviewDoc(doc)}
-                      />
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input name="driving_license_issue_date" label="Issue Date" type="date" defaultValue={selected.driving_license_issue_date || ''} />
-                        <Input name="driving_license_expiry_date" label="Expiry Date" type="date" defaultValue={selected.driving_license_expiry_date || ''} />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Place of Issue</label>
-                          <select
-                            name="driving_license_place_of_issue"
-                            defaultValue={selected.driving_license_place_of_issue || 'Dubai'}
-                            className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                          >
-                            <option value="Dubai">Dubai</option>
-                            <option value="Abu Dhabi">Abu Dhabi</option>
-                            <option value="Sharjah">Sharjah</option>
-                            <option value="Ajman">Ajman</option>
-                            <option value="Ras Al Khaimah">Ras Al Khaimah</option>
-                            <option value="Fujairah">Fujairah</option>
-                            <option value="Umm Al Quwain">Umm Al Quwain</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Licence Type</label>
-                          <select
-                            name="driving_license_type"
-                            defaultValue={selected.driving_license_type || 'Light Vehicle (Automatic)'}
-                            className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                          >
-                            <option value="Light Vehicle (Automatic)">Light Vehicle (Automatic)</option>
-                            <option value="Light Vehicle (Manual)">Light Vehicle (Manual)</option>
-                            <option value="Heavy Bus">Heavy Bus</option>
-                            <option value="Heavy Truck">Heavy Truck</option>
-                            <option value="Motorcycle">Motorcycle</option>
-                            <option value="Forklift">Forklift</option>
-                          </select>
-                        </div>
-                      </div>
-                      <Input name="assigned_vehicle" label="Assign Vehicle" defaultValue={selected.assigned_vehicle || ''} placeholder="e.g. Van 1, Toyota HiAce, Plate #12345" />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* Skills & Client Assignment (Cleaners & Technical) */
-                <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
-                    <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 flex items-center gap-1.5">
-                      <Sparkles size={13} className="text-indigo-600" />
-                      <span>Skills & Client Assignment</span>
-                    </h4>
-                    <div className="flex items-center gap-2">
-                      {editClientIds.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setEditClientIds([])}
-                          className="text-[10.5px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
-                        >
-                          Clear All
-                        </button>
-                      )}
-                      <span className="text-[10.5px] font-bold bg-teal-50 text-teal-800 border border-teal-200/60 px-2 py-0.5 rounded-lg">
-                        {editClientIds.length} Clients Assigned
-                      </span>
-                    </div>
-                  </div>
-
-                  <Input
-                    name="skills"
-                    label="Skills (comma separated)"
-                    defaultValue={selected.skills?.join(', ')}
-                    placeholder="Deep Clean, Sofa, Window, Technical, Carpet..."
-                  />
-
-                  {/* Client Assignee Selection */}
-                  <div className="space-y-2 pt-1">
-                    <div className="relative">
-                      <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
-                      <input
-                        type="text"
-                        placeholder="Search clients by name or company..."
-                        value={clientSearchEdit}
-                        onChange={e => setClientSearchEdit(e.target.value)}
-                        className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600"
-                      />
-                    </div>
-
-                    <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
-                      {assignableClients
-                        .filter(c => {
-                          if (!clientSearchEdit) return true
-                          const q = clientSearchEdit.toLowerCase()
-                          const loc = (c.building_name || c.area || '').toLowerCase()
-                          return c.full_name.toLowerCase().includes(q) || loc.includes(q)
-                        })
-                        .map(c => {
-                          const checked = editClientIds.includes(c.id)
-                          const location = c.building_name ? `${c.building_name}, ${c.area}` : c.area
-                          return (
-                            <label
-                              key={c.id}
-                              className={`flex items-center justify-between p-2 rounded-xl text-[12px] border cursor-pointer transition-colors ${
-                                checked
-                                  ? 'bg-teal-50 border-teal-300 text-teal-950 font-bold'
-                                  : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 truncate">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => {
-                                    setEditClientIds(prev =>
-                                      checked ? prev.filter(id => id !== c.id) : [...prev, c.id]
-                                    )
-                                  }}
-                                  className="rounded text-teal-600 focus:ring-teal-500 h-3.5 w-3.5 cursor-pointer"
-                                />
-                                <span className="truncate">{c.full_name}</span>
-                                {location && <span className="text-[10.5px] text-slate-400 font-normal truncate">({location})</span>}
-                              </div>
-                              {checked && <span className="text-[10px] font-black text-teal-700 shrink-0">ASSIGNED</span>}
-                            </label>
-                          )
-                        })}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setIsEditing(false)}>Cancel</Button>
-              <Button type="submit" className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold">Save Changes</Button>
-            </div>
-          </form>
-        )}
       </Modal>
 
-      {/* ── Document Preview Modal (for Image & PDF attachments) ── */}
-      <EmployeeDocumentPreviewModal
-        doc={previewDoc}
-        onClose={() => setPreviewDoc(null)}
+      {/* ── Add Employee Modal (Unified Reusable Component) ── */}
+      <EmployeeFormModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        agencies={agencies}
+        clients={clients}
+        onSave={(data) => {
+          addEmployee(data as any)
+          setShowModal(false)
+        }}
+      />
+
+      {/* ── Edit Employee Modal (Unified Reusable Component) ── */}
+      <EmployeeFormModal
+        open={!!editingEmployee}
+        onClose={() => setEditingEmployee(null)}
+        initialEmployee={editingEmployee}
+        agencies={agencies}
+        clients={clients}
+        onSave={(patch) => {
+          if (editingEmployee) {
+            updateEmployee(editingEmployee.id, patch)
+          }
+          setEditingEmployee(null)
+        }}
       />
 
     </div>

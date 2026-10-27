@@ -2,8 +2,8 @@ import React, { useState, useMemo } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import {
-  CalendarDays, CheckCircle2, Clock, Users, ArrowDownToLine,
-  Search, Sparkles, AlertCircle, RefreshCw, Check, ShieldCheck
+  CheckCircle2, Clock, ArrowDownToLine,
+  Search, RefreshCw, Check, ShieldCheck
 } from 'lucide-react'
 import type { Client, DailyJob } from '@/types'
 import {

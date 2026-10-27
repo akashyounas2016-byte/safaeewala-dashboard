@@ -1,11 +1,11 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Sparkles, Bot, AlertTriangle, AlertCircle, CheckCircle2,
-  Clock, RefreshCw, X, ShieldCheck, ChevronRight, HelpCircle,
-  Calendar, Phone, MapPin, DollarSign, Layers, Minus, Maximize2,
+  Clock, RefreshCw, X, ShieldCheck,
+  Calendar, Minus, Maximize2,
   GripHorizontal, Send, Trash2, MessageSquare, ExternalLink,
-  TrendingUp, Users, ArrowRight, RotateCcw
+  ArrowRight, RotateCcw
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useData } from '@/store/DataContext'
@@ -40,6 +40,11 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
   // ── Layout & View State ──
   const [activeView, setActiveView] = useState<'chat' | 'alerts'>('chat')
   const [isMinimized, setIsMinimized] = useState(false)
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    if (open) setIsMinimized(false)
+  }
   const [activeTab, setActiveTab] = useState<'all' | IssueType>('all')
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const [isScanning, setIsScanning] = useState(false)
@@ -86,13 +91,6 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
     }
   }, [chatMessages, activeView, isMinimized])
 
-  // Reset minimized when pop-up is opened
-  useEffect(() => {
-    if (open) {
-      setIsMinimized(false)
-    }
-  }, [open])
-
   // Allow closing AI Bot pop-up with Escape key
   useEffect(() => {
     if (!open) return
@@ -121,7 +119,7 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
   }, [bookings, clients, dailyJobs, invoices])
 
   // Handle user query submission
-  const handleSendQuery = (textToSend?: string) => {
+  const handleSendQuery = useCallback((textToSend?: string) => {
     const q = (textToSend ?? chatInput).trim()
     if (!q) return
 
@@ -141,7 +139,7 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
       setChatMessages(prev => [...prev, response])
       setIsThinking(false)
     }, 350)
-  }
+  }, [chatInput, chatContextData])
 
   // ── Drag & Drop Event Handlers ──
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -180,7 +178,9 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
       setIsDragging(false)
       try {
         (e.target as HTMLElement).releasePointerCapture(e.pointerId)
-      } catch {}
+      } catch {
+        /* ignore pointer capture error */
+      }
     }
   }
 
@@ -628,7 +628,7 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id as 'all' | IssueType)}
                   className={`px-3 py-1 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                     activeTab === tab.id
                       ? 'bg-[#0d8a72] text-white shadow-2xs'
