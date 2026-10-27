@@ -16,7 +16,7 @@ import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { Employee, DailyJob, EmployeeRole, Agency, EmployeeDocument } from '@/types'
-import { getEmployeeDailyJobsHistory, calcJobOTHours, getEmployeeMonthlySalary, formatMonthlySalary, splitStaffNames, MONTHLY_WORK_HOURS } from '@/lib/clientDataSync'
+import { getAssignableClients, getEmployeeDailyJobsHistory, calcJobOTHours, getEmployeeMonthlySalary, formatMonthlySalary, splitStaffNames, MONTHLY_WORK_HOURS } from '@/lib/clientDataSync'
 import { EmployeeDocumentSection, EmployeeDocumentPreviewModal } from '@/components/employees/EmployeeDocumentField'
 
 /* ─── Excel import/export helpers ─── */
@@ -328,6 +328,9 @@ export function Employees() {
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [rowVisibilityOpen])
+  // Live clients only (no demo seed clients) for the assign lists
+  const assignableClients = useMemo(() => getAssignableClients(clients), [clients])
+
   const toggleRowHidden = (id: string) =>
     setHiddenRowIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   const [searchParams, setSearchParams] = useSearchParams()
@@ -2271,7 +2274,7 @@ export function Employees() {
             </div>
           </div>
 
-          {/* ── Row 2: Identity & Work Documents ── */}
+          {/* ── Row 2: Identity & Work Documents (each document tinted differently) ── */}
           <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
             <h4 className="text-[12px] font-black uppercase tracking-wider text-amber-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
               <Shield size={13} className="text-amber-600" />
@@ -2279,11 +2282,17 @@ export function Employees() {
             </h4>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
-              {/* Emirates ID */}
-              <div className="space-y-2">
+              {/* Emirates ID (Sky Blue Tint) */}
+              <div className="bg-sky-50/70 border border-sky-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between pb-1 border-b border-sky-200/60">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-sky-900 flex items-center gap-1.5">
+                    <FileText size={12} className="text-sky-600" />
+                    Emirates ID (EID)
+                  </span>
+                </div>
                 <EmployeeDocInput
                   name="emirates_id"
-                  label="Emirates ID (EID)"
+                  label="EID Number"
                   placeholder="784-XXXX-XXXXXXX-X"
                   doc={addDocs.eid}
                   onUpload={file => handleDocUpload(file, 'eid', setAddDocs)}
@@ -2291,16 +2300,22 @@ export function Employees() {
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
-                  <Input name="eid_start_date" label="EID Start Date" type="date" />
-                  <Input name="eid_end_date" label="EID End Date" type="date" />
+                  <Input name="eid_start_date" label="Start Date" type="date" />
+                  <Input name="eid_end_date" label="End Date" type="date" />
                 </div>
               </div>
 
-              {/* Passport */}
-              <div className="space-y-2">
+              {/* Passport (Purple Tint) */}
+              <div className="bg-purple-50/70 border border-purple-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between pb-1 border-b border-purple-200/60">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-purple-900 flex items-center gap-1.5">
+                    <FileText size={12} className="text-purple-600" />
+                    Passport
+                  </span>
+                </div>
                 <EmployeeDocInput
                   name="passport_number"
-                  label="Passport"
+                  label="Passport Number"
                   placeholder="e.g. A12345678"
                   doc={addDocs.passport}
                   onUpload={file => handleDocUpload(file, 'passport', setAddDocs)}
@@ -2308,16 +2323,22 @@ export function Employees() {
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
-                  <Input name="passport_start_date" label="Passport Start Date" type="date" />
-                  <Input name="passport_expiry" label="Passport End Date" type="date" />
+                  <Input name="passport_start_date" label="Start Date" type="date" />
+                  <Input name="passport_expiry" label="End Date" type="date" />
                 </div>
               </div>
 
-              {/* Visa */}
-              <div className="space-y-2">
+              {/* Residency Visa (Amber Tint) */}
+              <div className="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between pb-1 border-b border-amber-200/60">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                    <Shield size={12} className="text-amber-600" />
+                    Residency Visa
+                  </span>
+                </div>
                 <EmployeeDocInput
                   name="visa_number"
-                  label="Residence / Employment Visa"
+                  label="Visa Number"
                   placeholder="e.g. 201/2024/XXXXXXX"
                   doc={addDocs.visa}
                   onUpload={file => handleDocUpload(file, 'visa', setAddDocs)}
@@ -2325,16 +2346,22 @@ export function Employees() {
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
-                  <Input name="visa_start_date" label="Visa Start Date" type="date" />
-                  <Input name="visa_expiry" label="Visa End Date" type="date" />
+                  <Input name="visa_start_date" label="Start Date" type="date" />
+                  <Input name="visa_expiry" label="End Date" type="date" />
                 </div>
               </div>
 
-              {/* Work Permit */}
-              <div className="space-y-2">
+              {/* Work Permit (Emerald Tint) */}
+              <div className="bg-emerald-50/70 border border-emerald-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between pb-1 border-b border-emerald-200/60">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
+                    <Briefcase size={12} className="text-emerald-600" />
+                    Work Permit
+                  </span>
+                </div>
                 <EmployeeDocInput
                   name="work_permit_number"
-                  label="Work Permit / Labor Card"
+                  label="Permit / Labor Card #"
                   placeholder="e.g. WP-XXXX-XXXX"
                   doc={addDocs.work_permit}
                   onUpload={file => handleDocUpload(file, 'work_permit', setAddDocs)}
@@ -2342,36 +2369,52 @@ export function Employees() {
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
-                  <Input name="work_permit_start_date" label="Permit Start Date" type="date" />
-                  <Input name="work_permit_expiry" label="Permit End Date" type="date" />
+                  <Input name="work_permit_start_date" label="Start Date" type="date" />
+                  <Input name="work_permit_expiry" label="End Date" type="date" />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* ── Row 3: Insurance & Clearance · Role-specific assignment ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-            {/* Insurance & NOC */}
+          {/* ── Row 3: Insurance & Clearance (one row), then role-specific section below ── */}
+          <div className="space-y-3.5">
             <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
               <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
                 <FileText size={13} className="text-indigo-600" />
                 <span>Insurance & Clearance</span>
               </h4>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                <div className="space-y-2">
-                  <EmployeeDocInput
-                    name="medical_insurance"
-                    label="Medical Insurance"
-                    placeholder="Policy / Card #"
-                    doc={addDocs.medical_insurance}
-                    onUpload={file => handleDocUpload(file, 'medical_insurance', setAddDocs)}
-                    onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.medical_insurance; return n })}
-                    onPreview={doc => setPreviewDoc(doc)}
-                  />
-                  <Input name="medical_insurance_expiry" label="Insurance Expiry Date" type="date" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {/* Medical Insurance (Rose Tint) */}
+                <div className="bg-rose-50/60 border border-rose-200/80 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                  <div className="flex items-center justify-between pb-1 border-b border-rose-200/60">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-rose-900 flex items-center gap-1.5">
+                      <Shield size={12} className="text-rose-600" />
+                      Medical Insurance
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <EmployeeDocInput
+                      name="medical_insurance"
+                      label="Policy / Card #"
+                      placeholder="e.g. DHA-123456"
+                      doc={addDocs.medical_insurance}
+                      onUpload={file => handleDocUpload(file, 'medical_insurance', setAddDocs)}
+                      onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.medical_insurance; return n })}
+                      onPreview={doc => setPreviewDoc(doc)}
+                    />
+                    <Input name="medical_insurance_expiry" label="Expiry Date" type="date" />
+                  </div>
                 </div>
-                <div className="space-y-2">
+
+                {/* NOC Clearance (Indigo Tint) */}
+                <div className="bg-indigo-50/60 border border-indigo-200/80 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                  <div className="flex items-center justify-between pb-1 border-b border-indigo-200/60">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-1.5">
+                      <Check size={12} className="text-indigo-600" />
+                      NOC Clearance
+                    </span>
+                  </div>
                   <EmployeeDocInput
                     name="noc"
                     label="NOC (No Objection Certificate)"
@@ -2484,8 +2527,11 @@ export function Employees() {
                   />
                 </div>
 
-                <div className="max-h-[120px] overflow-y-auto space-y-1 pr-1">
-                  {clients
+                <div className="max-h-[180px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1 pr-1 content-start">
+                  {assignableClients.length === 0 && (
+                    <p className="col-span-full text-center text-[11.5px] text-slate-400 py-4">No clients found. Add clients first on the Clients screen.</p>
+                  )}
+                  {assignableClients
                     .filter(c => {
                       if (!clientSearchAdd) return true
                       const q = clientSearchAdd.toLowerCase()
@@ -3183,7 +3229,7 @@ export function Employees() {
                   </div>
 
                   <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
-                    {clients
+                    {assignableClients
                       .filter(c => {
                         if (!clientSearchEdit) return true
                         const q = clientSearchEdit.toLowerCase()

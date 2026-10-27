@@ -2,6 +2,24 @@ import type { DailyJob, Client, Employee, DailyPendingReceivedItem } from '@/typ
 import { cleanNum, calcOTHours } from '@/components/dailyJobSheet/jobSheetUtils'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 
+/** Ids used by the demo clients in seedData.ts (shown only when no real data exists) */
+const SEED_CLIENT_ID_PREFIX = 'c1000001-0000-0000-0000-'
+
+/**
+ * Clients that can be assigned to staff: the live client list (database + Daily Job Sheet),
+ * without demo seed clients or nameless rows, de-duplicated and sorted by name.
+ */
+export function getAssignableClients(clients: Client[]): Client[] {
+  const seen = new Set<string>()
+  return clients
+    .filter(c => {
+      if (!c.full_name?.trim() || c.id.startsWith(SEED_CLIENT_ID_PREFIX) || seen.has(c.id)) return false
+      seen.add(c.id)
+      return true
+    })
+    .sort((a, b) => a.full_name.localeCompare(b.full_name))
+}
+
 /**
  * Normalizes text for fuzzy/clean comparison (lowercased, alphanumeric only)
  */

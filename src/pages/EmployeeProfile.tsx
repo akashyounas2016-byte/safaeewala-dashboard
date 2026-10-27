@@ -14,6 +14,7 @@ import { Modal } from '@/components/ui/Modal'
 import type { PaymentMode, EmployeeRole, EmployeeDocument, Employee } from '@/types'
 import { EmployeeDocumentSection, EmployeeDocumentPreviewModal } from '@/components/employees/EmployeeDocumentField'
 import {
+  getAssignableClients,
   getEmployeeDailyJobsHistory,
   calcJobOTHours,
   cleanClientNameFromAddress,
@@ -1512,7 +1513,7 @@ export function EmployeeProfile() {
                 </div>
 
                 <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
-                  {clients
+                  {getAssignableClients(clients)
                     .filter(c => {
                       if (!clientSearchEdit) return true
                       const q = clientSearchEdit.toLowerCase()
