@@ -13,6 +13,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
 import { isBogusJob, isMonthlyJob, cleanClientNameFromAddress, normalizeKey } from '@/lib/clientDataSync'
 import { getCompanyInfo } from '@/lib/companyInfo'
+import { notify } from '@/lib/notify'
 
 const VAT_RATE = 0.05
 
@@ -36,6 +37,58 @@ function calcEndTime(startTime: string, durationHours: number): string {
 }
 
 type ViewMode = 'card' | 'table' | 'compact'
+
+function StatementInvoiceButton({ s, monthLabel, compact = false }: { s: ClientStatement; monthLabel: string; compact?: boolean }) {
+  const { invoices, addInvoice, clients } = useData()
+  const visitIds = s.visits.map(v => v.id)
+  const existing = invoices.find(inv => inv.job_ids && visitIds.length > 0 && visitIds.every(id => inv.job_ids!.includes(id)))
+  if (existing) {
+    return (
+      <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-teal-50 text-teal-700 border border-teal-200" title="Already invoiced">
+        {existing.invoice_number}
+      </span>
+    )
+  }
+  const create = () => {
+    if (s.visits.length === 0) return
+    const client = clients.find(c => c.full_name.toLowerCase() === s.clientName.toLowerCase())
+    const due = new Date(); due.setDate(due.getDate() + 7)
+    addInvoice({
+      invoice_number: '',                       // assigned by addInvoice (SAF-YYYY-NNNN)
+      client_id: client?.id || '',
+      client_name: s.clientName,
+      client_address: s.address,
+      company_trn: getCompanyInfo().trn,
+      line_items: s.visits.map(v => ({
+        description: `Cleaning visit ${v.date} (${v.day})${v.hours ? ` · ${v.hours}h` : ''}`,
+        quantity: 1,
+        unit_price: v.amount,
+        amount: v.amount,
+      })),
+      subtotal: s.subtotal,
+      vat_rate: 5,
+      vat_amount: s.vatAmount,
+      total: Math.round((s.subtotal + s.vatAmount) * 100) / 100,
+      apply_vat: true,
+      status: 'sent',
+      due_date: due.toISOString().split('T')[0],
+      notes: `Monthly statement — ${monthLabel}`,
+      job_ids: visitIds,                        // these visits are now collected through the invoice
+    })
+    notify.success(`Invoice created for ${s.clientName} — see Invoices`)
+  }
+  return (
+    <button
+      onClick={create}
+      className={compact
+        ? 'p-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 transition-colors'
+        : 'flex items-center gap-2 px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-[12px] font-semibold transition-colors shadow-sm'}
+      title="Create a numbered invoice from this statement"
+    >
+      <FileText size={14} />{!compact && <span className="hidden sm:inline">Invoice</span>}
+    </button>
+  )
+}
 
 interface Visit {
   id: string
@@ -298,6 +351,7 @@ export function MonthlyInvoices() {
                       <div className="flex items-center justify-center gap-2">
                         <button onClick={() => sendWhatsApp(s)} className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 transition-colors" title="WhatsApp"><MessageCircle size={14} /></button>
                         <button onClick={() => sendEmail(s)} className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors" title="Email"><Mail size={14} /></button>
+                        <StatementInvoiceButton s={s} monthLabel={monthLabel} compact />
                       </div>
                     </td>
                   </tr>
@@ -330,6 +384,7 @@ export function MonthlyInvoices() {
                 <div className="flex items-center gap-2 shrink-0">
                   <button onClick={() => sendWhatsApp(s)} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-semibold transition-colors shadow-sm"><MessageCircle size={14} /><span className="hidden sm:inline">WhatsApp</span></button>
                   <button onClick={() => sendEmail(s)} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-[12px] font-semibold transition-colors shadow-sm"><Mail size={14} /><span className="hidden sm:inline">Email</span></button>
+                  <StatementInvoiceButton s={s} monthLabel={monthLabel} />
                 </div>
               </div>
               {/* Visit Table */}
@@ -479,6 +534,7 @@ export function MonthlyInvoices() {
                 <div className="flex gap-2">
                   <button onClick={() => sendWhatsApp(s)} className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-600 transition-colors"><MessageCircle size={15} /></button>
                   <button onClick={() => sendEmail(s)} className="p-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors"><Mail size={15} /></button>
+                  <StatementInvoiceButton s={s} monthLabel={monthLabel} compact />
                 </div>
               </div>
             </div>

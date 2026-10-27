@@ -15,7 +15,9 @@ import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { calcJobOTHours, isBogusJob, employeeMatchesStaff, splitStaffNames, SYNTHETIC_STAFF_ACTIVE_DAYS } from '@/lib/clientDataSync'
 
 
-export type AttendanceStatus = 'present' | 'available' | 'absent' | 'on_leave'
+import { classifyAttendanceDay, type AttendanceStatus, type AttendanceOverride } from '@/lib/attendance'
+import { AttendanceCalendar } from '@/components/attendance/AttendanceCalendar'
+export type { AttendanceStatus }
 
 export interface CleanerAttendanceRecord {
   name: string
@@ -31,12 +33,6 @@ export interface CleanerAttendanceRecord {
   isManualPresent?: boolean
 }
 
-interface AttendanceOverride {
-  status: AttendanceStatus
-  dutyHours?: number
-  reason?: string
-  updatedAt: string
-}
 
 /** Matches job staff_name against cleaner name (handles exact, multi-cleaner tokens, and boundaries) */
 function matchesCleaner(jobStaff: string | undefined, cleanerName: string): boolean {
@@ -228,77 +224,12 @@ export function Attendance() {
       const cleanerJobs = dateJobs.filter(j => emp ? employeeMatchesStaff(emp, j.staff_name) : matchesCleaner(j.staff_name, cleanerName))
       const explicitOverride = (emp && overrides[`${selectedDate}_id:${emp.id}`]) || overrides[`${selectedDate}_${key}`]
 
-      // Calculate duty and overtime from legitimate shifts
-      let dutyHours = 0
-      let otHours = 0
-      const activeWorkJobs: DailyJob[] = []
-      let explicitAbsentMarkFromJob: { reason: string; isLeave?: boolean } | null = null
-
-      cleanerJobs.forEach(j => {
-        const rem = (j.remarks || '').trim().toLowerCase()
-        const addr = (j.address || '').trim().toLowerCase()
-        const combined = `${rem} ${addr}`
-        // A row with logged hours or charges is a worked shift, whatever its remarks say
-        // ("Leave keys at reception", "Client not available" must not mark the cleaner absent)
-        const isWorkedShift = (Number(j.duty_hours) || 0) > 0 || (Number(j.charges) || 0) > 0
-
-        // Check if specifically marked as absent or on leave in remarks
-        if (!isWorkedShift && /\b(absent|not available|medical emergency|uninformed)\b/i.test(combined)) {
-          explicitAbsentMarkFromJob = {
-            reason: j.remarks || j.address || 'Specifically marked absent in Daily Sheet',
-            isLeave: false,
-          }
-          return
-        }
-        if (!isWorkedShift && (/\b(on leave|sick leave|annual leave|emergency leave|day off|weekly off)\b/i.test(combined) || rem === 'leave' || addr === 'leave')) {
-          explicitAbsentMarkFromJob = {
-            reason: j.remarks || j.address || 'Approved Leave / Day Off',
-            isLeave: true,
-          }
-          return
-        }
-
-        // Legitimate job
-        const duty = Number(j.duty_hours) || 0
-        const ot = calcJobOTHours(j)
-        dutyHours += duty
-        otHours += ot
-        activeWorkJobs.push(j)
-      })
-
-      dutyHours = Math.round(dutyHours * 10) / 10
-      otHours = Math.round(otHours * 10) / 10
-
-      // Sort shifts by start_time
-      activeWorkJobs.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
-      const firstStartTime = activeWorkJobs[0]?.start_time
-      const lastEndTime = activeWorkJobs[activeWorkJobs.length - 1]?.end_time
-
-      // ── Determine Status ──
-      let status: AttendanceStatus = 'available'
-      let absenceReason: string | undefined = undefined
-      let isManualPresent = false
-
-      if (explicitOverride) {
-        status = explicitOverride.status
-        absenceReason = explicitOverride.reason
-        if (explicitOverride.status === 'present') {
-          isManualPresent = activeWorkJobs.length === 0
-          if (activeWorkJobs.length === 0) {
-            dutyHours = explicitOverride.dutyHours ?? 8
-          }
-        }
-      } else if (activeWorkJobs.length > 0) {
-        status = 'present'
-      } else if (explicitAbsentMarkFromJob) {
-        status = (explicitAbsentMarkFromJob as any).isLeave ? 'on_leave' : 'absent'
-        absenceReason = (explicitAbsentMarkFromJob as any).reason
-      } else {
-        // Core Business Rule:
-        // "System available cleaners mein say sirf unhein Absent count karay jo specifically mark hon,
-        // jabke blank entries ka matlab ho ga keh cleaner available tha magar koi job assigned nahi thi."
-        status = 'available'
-      }
+      // One shared rule for a cleaner's day (R-ATT-01..03) — also used by the monthly calendar (UX-20)
+      const day = classifyAttendanceDay(cleanerJobs, explicitOverride)
+      const { status, absenceReason, dutyHours, otHours, isManualPresent } = day
+      const firstStartTime = day.workedJobs[0]?.start_time
+      const lastEndTime = day.workedJobs[day.workedJobs.length - 1]?.end_time
+      const activeWorkJobs = day.workedJobs
 
       return {
         name: cleanerName,
@@ -862,6 +793,14 @@ export function Attendance() {
         })}
       </div>
 
+      {/* ── Monthly calendar per cleaner + month export (UX-20) ── */}
+      <AttendanceCalendar
+        cleaners={allKnownCleaners}
+        employeeByName={employeeByName}
+        dailyJobs={dailyJobs}
+        overrides={overrides}
+      />
+
       {/* ── Modal: Specifically Mark Absent ── */}
       {absentModalCleaner && (
         <Modal
@@ -975,8 +914,8 @@ export function Attendance() {
                 </Link>
               </div>
             ) : (
-              <div className="border border-[#E4E8EC] rounded-2xl overflow-hidden shadow-xs">
-                <table className="w-full text-left border-collapse text-[12px]">
+              <div className="border border-[#E4E8EC] rounded-2xl overflow-x-auto shadow-xs">
+                <table className="w-full min-w-[560px] text-left border-collapse text-[12px]">
                   <thead className="bg-[#f8fafc] border-b border-[#E4E8EC] text-[10.5px] font-bold text-slate-600 uppercase tracking-wider">
                     <tr>
                       <th className="py-2.5 px-3">Timing</th>

@@ -192,5 +192,10 @@ alter table public.daily_jobs add column if not exists service text;
 alter table public.daily_jobs add column if not exists booking_id text;
 alter table public.daily_jobs add column if not exists status text;
 
+-- Receivables / expenses additions (UX-13, UX-17, UX-18)
+alter table public.invoices add column if not exists job_ids jsonb;
+alter table public.invoices add column if not exists amount_paid numeric;
+alter table public.daily_expenses add column if not exists receipt_url text;
+
 -- 3. Make the API see the new table / columns immediately
 notify pgrst, 'reload schema';

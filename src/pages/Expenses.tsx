@@ -10,8 +10,30 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
+import { notify, confirmAsync } from '@/lib/notify'
 import type { DailyExpense, DailyPendingReceivedItem } from '@/types'
-import { isBogusJob, jobCollected } from '@/lib/clientDataSync'
+import { isBogusJob, jobCollected, getEmployeeMonthlySalary } from '@/lib/clientDataSync'
+import { isParentCompanyEmployee } from '@/lib/utils'
+import { ExpenseBudgets } from '@/components/expenses/ExpenseBudgets'
+import { Pager, usePagination } from '@/components/common/Pager'
+
+/** Shrink a picked receipt image to a small JPEG data URL (PDFs kept as-is up to 1.5 MB) — UX-13 */
+async function readReceipt(file: File): Promise<string> {
+  const asDataUrl = (blob: Blob) => new Promise<string>((res, rej) => {
+    const fr = new FileReader(); fr.onload = () => res(fr.result as string); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob)
+  })
+  if (!file.type.startsWith('image/')) {
+    if (file.size > 1.5 * 1024 * 1024) throw new Error('File is larger than 1.5 MB')
+    return asDataUrl(file)
+  }
+  const src = await asDataUrl(file)
+  const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src })
+  const scale = Math.min(1, 1200 / Math.max(img.width, img.height))
+  const c = document.createElement('canvas')
+  c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale)
+  c.getContext('2d')?.drawImage(img, 0, 0, c.width, c.height)
+  return c.toDataURL('image/jpeg', 0.8)
+}
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 import * as XLSX from 'xlsx'
 
@@ -82,7 +104,8 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string
 }
 
 export function Expenses() {
-  const { bookings, dailyJobs, dailyExpenses, addDailyExpense, updateDailyExpense, deleteDailyExpense } = useData()
+  const { bookings, dailyJobs, dailyExpenses, addDailyExpense, updateDailyExpense, deleteDailyExpense, employees, agencies } = useData()
+  const [receiptData, setReceiptData] = useState<string | undefined>(undefined)
 
   // ── Date Filters State ──
   const [datePreset, setDatePreset]           = useState<ExpenseDatePreset>('this_month')
@@ -341,6 +364,7 @@ export function Expenses() {
   }, [filteredExpenses])
 
   const topCategory = byCategory[0] || null
+  const expPager = usePagination(filteredExpenses, 30) // UX-03
 
   // Distinct active days in range
   const activeExpenseDays = useMemo(() => {
@@ -372,6 +396,24 @@ export function Expenses() {
     return jobRev + monthlyRev + recoveries + bookingRev
   }, [dailyJobs, bookings, activeRange])
 
+  // Payroll of in-house (parent company) staff for the period, from monthly salaries (UX-14).
+  // Third-party staff are paid through agency payouts, counted separately below.
+  const periodDays = useMemo(() => {
+    if (activeRange.isAllTime || !activeRange.start || !activeRange.end) return 0
+    return Math.round((new Date(activeRange.end).getTime() - new Date(activeRange.start).getTime()) / 86_400_000) + 1
+  }, [activeRange])
+  const periodPayroll = useMemo(() => {
+    if (!periodDays) return 0
+    const monthly = employees
+      .filter(e => (e.status === 'active' || e.status === 'engaged_in_project') && !e.id.startsWith('emp-dj-') && isParentCompanyEmployee(e))
+      .reduce((s, e) => s + getEmployeeMonthlySalary(e), 0)
+    return Math.round(monthly * (periodDays / 30))
+  }, [employees, periodDays])
+  const periodAgencyPayouts = useMemo(() => agencies.reduce((sum, a) =>
+    sum + (a.payouts || []).filter(p => p.status === 'paid' && isDateInRange(p.payment_date)).reduce((s, p) => s + (Number(p.amount) || 0), 0), 0),
+  [agencies, activeRange]) // eslint-disable-line react-hooks/exhaustive-deps
+  const netAfterPayroll = periodRevenue - totalExpenses - periodPayroll - periodAgencyPayouts
+
   const profit = periodRevenue - totalExpenses
   const profitMargin = periodRevenue > 0 ? Math.round((profit / periodRevenue) * 100) : 0
   const expenseRatio = periodRevenue > 0 ? Math.round((totalExpenses / periodRevenue) * 100) : 0
@@ -379,7 +421,7 @@ export function Expenses() {
   // ── Export to Excel ──
   const handleExportExcel = () => {
     if (filteredExpenses.length === 0) {
-      alert('No expense records to export for this date range.')
+      notify.info('No expense records to export for this date range.')
       return
     }
 
@@ -404,8 +446,8 @@ export function Expenses() {
   }
 
   // ── Delete Handler ──
-  const handleDeleteExpense = (id: string, name: string) => {
-    if (confirm(`Are you sure you want to delete expense "${name}"?`)) {
+  const handleDeleteExpense = async (id: string, name: string) => {
+    if (await confirmAsync({ title: 'Delete expense', message: `Delete expense "${name}"?`, confirmLabel: 'Delete', tone: 'danger' })) {
       deleteDailyExpense(id)
       setNotice(`Expense record "${name}" deleted.`)
     }
@@ -540,11 +582,24 @@ export function Expenses() {
             <p className="text-[11px] text-slate-400 mt-0.5">
               Collected − Expenses: <strong className={profit >= 0 ? 'text-emerald-700' : 'text-red-600'}>AED {profit.toLocaleString()}</strong>
             </p>
-            {/* Not a true profit: staff salaries and agency payouts are not recorded as expenses here (AUD-31) */}
-            <p className="text-[10px] text-slate-400 mt-0.5">Excludes staff salaries &amp; agency payouts</p>
+            {/* Full picture: collected − expenses − payroll − agency payouts (UX-14) */}
+            <div className="mt-2 space-y-0.5 text-[11px]">
+              <div className="flex justify-between text-slate-500"><span>Collected</span><span>AED {Math.round(periodRevenue).toLocaleString()}</span></div>
+              <div className="flex justify-between text-slate-500"><span>− Expenses</span><span>AED {Math.round(totalExpenses).toLocaleString()}</span></div>
+              <div className="flex justify-between text-slate-500" title="In-house staff monthly salaries, prorated to the period">
+                <span>− Payroll</span><span>{periodDays ? `AED ${periodPayroll.toLocaleString()}` : 'pick a period'}</span>
+              </div>
+              <div className="flex justify-between text-slate-500"><span>− Agency payouts</span><span>AED {Math.round(periodAgencyPayouts).toLocaleString()}</span></div>
+              <div className={`flex justify-between font-black pt-0.5 border-t border-slate-100 ${netAfterPayroll >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                <span>Net</span><span>{periodDays ? `AED ${Math.round(netAfterPayroll).toLocaleString()}` : '—'}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* ── Monthly category budgets (UX-13) ── */}
+      <ExpenseBudgets expenses={dailyExpenses} categories={Object.keys(CATEGORY_COLORS)} />
 
       {/* ── Date Preset Filter Bar (Quick Pills & Dropdown Engine) ── */}
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center justify-between flex-wrap gap-3">
@@ -828,7 +883,7 @@ export function Expenses() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E4E8EC]">
-                  {filteredExpenses.map(exp => {
+                  {expPager.pageItems.map(exp => {
                     const src = getExpenseSource(exp)
                     const isJobSheet = src === 'Daily Job Sheet'
                     const catStyle = CATEGORY_COLORS[exp.category] || CATEGORY_COLORS['Other Operational']
@@ -843,7 +898,12 @@ export function Expenses() {
                         {/* Description */}
                         <td className="py-3.5 px-4 font-bold text-[#111827]">
                           <div className="flex flex-col">
-                            <span>{exp.name}</span>
+                            <span className="flex items-center gap-1.5">
+                              {exp.name}
+                              {exp.receipt_url && (
+                                <a href={exp.receipt_url} target="_blank" rel="noreferrer" className="text-[10.5px] font-bold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 rounded" title="Open receipt">Receipt</a>
+                              )}
+                            </span>
                             {(exp.vendor || exp.reference_number || exp.notes) && (
                               <span className="text-[11px] text-slate-400 font-normal mt-0.5 max-w-[260px] truncate" title={exp.notes || exp.vendor || exp.reference_number}>
                                 {exp.vendor ? `Vendor: ${exp.vendor} ` : ''}
@@ -913,6 +973,7 @@ export function Expenses() {
                   })}
                 </tbody>
               </table>
+              <Pager {...expPager} />
 
               {filteredExpenses.length === 0 && (
                 <div className="py-16 text-center">
@@ -1066,12 +1127,12 @@ export function Expenses() {
             const f = new FormData(e.currentTarget)
             const amt = Number(f.get('amount')) || 0
             if (amt <= 0) {
-              alert('Please enter a valid expense amount.')
+              notify.error('Please enter a valid expense amount.')
               return
             }
             const name = String(f.get('name') || '').trim()
             if (!name) {
-              alert('Please enter a description or payee name.')
+              notify.error('Please enter a description or payee name.')
               return
             }
 
@@ -1085,7 +1146,9 @@ export function Expenses() {
               vendor: String(f.get('vendor') || '').trim() || undefined,
               reference_number: String(f.get('reference_number') || '').trim() || undefined,
               notes: String(f.get('notes') || '').trim() || undefined,
+              receipt_url: receiptData,
             })
+            setReceiptData(undefined)
             setShowAddModal(false)
             setNotice(`Expense "${name}" (AED ${amt.toLocaleString()}) recorded successfully!`)
           }}
@@ -1215,8 +1278,23 @@ export function Expenses() {
             />
           </div>
 
+          <div>
+            <label className="block text-[12px] font-bold text-slate-700 mb-1">Receipt (photo or PDF)</label>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={async e => {
+                const file = e.target.files?.[0]
+                if (!file) { setReceiptData(undefined); return }
+                try { setReceiptData(await readReceipt(file)) } catch (err) { notify.error(err instanceof Error ? err.message : 'Could not read the receipt'); e.target.value = '' }
+              }}
+              className="w-full text-[12px] file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700 file:font-semibold"
+            />
+            {receiptData && <p className="text-[11px] text-emerald-700 mt-1 font-semibold">Receipt attached ✓</p>}
+          </div>
+
           <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowAddModal(false)}>
+            <Button type="button" variant="outline" className="flex-1" onClick={() => { setReceiptData(undefined); setShowAddModal(false) }}>
               Cancel
             </Button>
             <Button type="submit" className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold">
@@ -1236,12 +1314,12 @@ export function Expenses() {
               const f = new FormData(e.currentTarget)
               const amt = Number(f.get('amount')) || 0
               if (amt <= 0) {
-                alert('Please enter a valid expense amount.')
+                notify.error('Please enter a valid expense amount.')
                 return
               }
               const name = String(f.get('name') || '').trim()
               if (!name) {
-                alert('Please enter a description or payee name.')
+                notify.error('Please enter a description or payee name.')
                 return
               }
 

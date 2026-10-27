@@ -8,6 +8,8 @@ import { useData } from '@/store/DataContext'
 import { analyzeCRMHealth } from '@/lib/crmAIBot'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { SyncStatusBanner } from './SyncStatusBanner'
+import { Toaster } from 'sonner'
+import { ConfirmHost } from '@/components/common/ConfirmHost'
 
 /* ── Layout context — lets PageHero access openMenu and toggleSidebar ── */
 export const LayoutContext = createContext<{
@@ -158,6 +160,8 @@ export function Layout() {
               )}
 
               <SyncStatusBanner />
+              <Toaster position="top-right" richColors closeButton />
+              <ConfirmHost />
 
               <ErrorBoundary key={location.pathname}>
                 <Outlet />

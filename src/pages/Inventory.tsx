@@ -5,7 +5,9 @@ import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
+import { notify } from '@/lib/notify'
 import type { InventoryItem } from '@/types'
+import { EditItemModal, UseStockModal, PurchaseOrdersPanel, SuppliersPanel, useInventoryLedger } from '@/components/inventory/InventoryExtras'
 
 function stockLevel(item: InventoryItem) {
   const ratio = item.min_stock > 0 ? item.current_stock / item.min_stock : Infinity
@@ -24,6 +26,13 @@ export function Inventory() {
   const [receiving, setReceiving] = useState<InventoryItem | null>(null)
   const [deleting, setDeleting] = useState<InventoryItem | null>(null)
   const [lowOnly, setLowOnly] = useState(false)
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)   // UX-15
+  const [usingItem, setUsingItem] = useState<InventoryItem | null>(null)       // UX-15
+  const ledger = useInventoryLedger()
+  const orderItems = (items: InventoryItem[]) => {
+    const n = ledger.createOrders(items)
+    notify[n > 0 ? 'success' : 'info'](n > 0 ? `${n} purchase order${n === 1 ? '' : 's'} created` : 'These items already have open orders')
+  }
 
   const lowStock    = inventory.filter(i => i.current_stock <= i.min_stock)
   const criticalStock = inventory.filter(i => i.current_stock < i.min_stock)
@@ -72,6 +81,12 @@ export function Inventory() {
             </p>
           </div>
           <button
+            onClick={() => orderItems(criticalStock)}
+            className="shrink-0 bg-white text-red-700 border border-red-200 text-[12px] font-semibold px-4 py-2 rounded-xl hover:bg-red-100 transition-colors"
+          >
+            Create orders
+          </button>
+          <button
             onClick={() => setLowOnly(v => !v)}
             className="shrink-0 bg-red-600 text-white text-[12px] font-semibold px-4 py-2 rounded-xl hover:bg-red-700 transition-colors"
           >
@@ -89,6 +104,12 @@ export function Inventory() {
           <p className="text-[13px] text-amber-800">
             <span className="font-bold">{lowStock.length} item{lowStock.length > 1 ? 's' : ''}</span> below minimum stock: {lowStock.map(i => i.name).join(', ')}
           </p>
+          <button
+            onClick={() => orderItems(lowStock)}
+            className="ml-auto shrink-0 bg-amber-600 text-white text-[12px] font-semibold px-4 py-2 rounded-xl hover:bg-amber-700 transition-colors"
+          >
+            Create orders
+          </button>
         </div>
       )}
 
@@ -212,6 +233,20 @@ export function Inventory() {
                               <PackagePlus size={12} /> Receive
                             </button>
                             <button
+                              onClick={() => setUsingItem(item)}
+                              className="text-[11px] px-2.5 py-1 rounded-lg font-semibold bg-slate-50 text-slate-600 hover:bg-slate-100 transition-colors"
+                              title="Record stock used"
+                            >
+                              Use
+                            </button>
+                            <button
+                              onClick={() => setEditingItem(item)}
+                              className="text-[11px] px-2.5 py-1 rounded-lg font-semibold bg-slate-50 text-slate-600 hover:bg-slate-100 transition-colors"
+                              title="Edit item details"
+                            >
+                              Edit
+                            </button>
+                            <button
                               onClick={() => setDeleting(item)}
                               className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                               title="Delete item"
@@ -321,6 +356,12 @@ export function Inventory() {
       </div>
 
       {/* ── Add Item Modal ── */}
+      {/* ── Purchase orders and suppliers (UX-15, UX-16) ── */}
+      <PurchaseOrdersPanel orders={ledger.orders} setOrders={ledger.setOrders} />
+      <SuppliersPanel inventory={inventory} orders={ledger.orders} onOrderLow={orderItems} />
+      <EditItemModal item={editingItem} onClose={() => setEditingItem(null)} />
+      <UseStockModal item={usingItem} onClose={() => setUsingItem(null)} onLogged={entry => ledger.setUsage(prev => [entry, ...prev])} />
+
       {/* ── Receive stock: adds stock and can log the purchase as an expense ── */}
       <Modal open={!!receiving} onClose={() => setReceiving(null)} title={receiving ? `Receive Stock — ${receiving.name}` : ''} size="md">
         {receiving && (
@@ -331,7 +372,7 @@ export function Inventory() {
               const fd = new FormData(e.currentTarget)
               const qty = Number(fd.get('qty')) || 0
               const cost = Number(fd.get('unit_cost')) || 0
-              if (qty <= 0) { alert('Enter the quantity received.'); return }
+              if (qty <= 0) { notify.error('Enter the quantity received.'); return }
               const today = new Date().toISOString().split('T')[0]
               updateInventory(receiving.id, {
                 current_stock: receiving.current_stock + qty,

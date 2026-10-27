@@ -17,6 +17,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import { useCurrentUser } from '@/store/UserContext'
 import type { Booking, BookingFrequency, DailyJob, DailyPendingItem, DailyPendingReceivedItem, Invoice } from '@/types'
+import { invoicedJobIds } from '@/lib/receivables'
 import { cleanClientNameFromAddress, isBogusJob, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, jobCollected } from '@/lib/clientDataSync'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 
@@ -790,8 +791,9 @@ export function Overview() {
     // 1. Daily Jobs with pending dues
     // Same per-job formula as Pending Payments, Daily Job Sheet and Client Profile
     const pendingCtx = buildPendingCalcContext(loadClientAdjustments(), pendingRcvdList)
-    const djPendingList = validDailyJobs.filter(j => calcJobCollectable(j, pendingCtx) > 0)
-    const djPendingAmt = djPendingList.reduce((s, j) => s + calcJobCollectable(j, pendingCtx), 0)
+    const invoiced = invoicedJobIds(invoices)
+    const djPendingList = validDailyJobs.filter(j => calcJobCollectable(j, pendingCtx, invoiced) > 0)
+    const djPendingAmt = djPendingList.reduce((s, j) => s + calcJobCollectable(j, pendingCtx, invoiced), 0)
 
     // 2. Side table pending items
     const sideAmt = pendingList.reduce((s, i) => s + cleanNum(i.amount), 0)

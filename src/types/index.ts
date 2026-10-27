@@ -280,6 +280,10 @@ export interface Invoice {
   discount_type?: 'flat' | 'percentage'
   discount_value?: number
   discount_amount?: number
+  /** Job-sheet rows this invoice bills — they are collected through the invoice (UX-18) */
+  job_ids?: string[]
+  /** Paid so far; status stays 'sent' / 'overdue' until fully paid (UX-17) */
+  amount_paid?: number
 }
 
 export interface InvoiceLineItem {
@@ -341,6 +345,8 @@ export interface DailyExpense {
   reference_number?: string
   vendor?: string
   notes?: string
+  /** Photo / PDF of the receipt as a data URL (UX-13) */
+  receipt_url?: string
 }
 
 export interface DashboardStats {
@@ -416,6 +422,8 @@ export interface FluentFormLead {
   status: LeadStatus
   booking_id?: string
   raw_data?: Record<string, any>
+  /** When the lead first left "new" — used for response time (UX-23) */
+  responded_at?: string
 }
 
 export interface RecurringContract {

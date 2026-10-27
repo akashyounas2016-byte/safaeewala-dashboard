@@ -16,6 +16,8 @@ import type { Invoice, Client } from '@/types'
 import { extractAllClientsFromDailyJobs } from '@/lib/clientDataSync'
 import { getCompanyInfo, useCompanyInfo } from '@/lib/companyInfo'
 import { nextInvoiceNumber } from '@/lib/invoiceNumber'
+import { invoiceBalance, isPartlyPaid } from '@/lib/receivables'
+import { notify } from '@/lib/notify'
 
 const escapeHtml = (v: string) => v.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
 
@@ -25,6 +27,7 @@ export type InvoiceDatePreset = 'all' | 'today' | 'this_week' | 'this_month' | '
 /* ─── Status pill ─── */
 function StatusPill({ status }: { status: string }) {
   const cfg: Record<string, { bg: string; text: string }> = {
+    'partly paid': { bg: 'bg-amber-50', text: 'text-amber-800' },
     paid:    { bg: 'bg-emerald-50',  text: 'text-emerald-700' },
     sent:    { bg: 'bg-blue-50',     text: 'text-blue-700' },
     overdue: { bg: 'bg-red-50',      text: 'text-red-700' },
@@ -108,7 +111,10 @@ function printInvoice(invoice: Invoice) {
         <div style="display:flex;justify-content:space-between;padding:5px 0;font-weight:600"><span style="color:#4b5563">Net Subtotal</span><span>AED ${(invoice.subtotal || 0).toLocaleString()}</span></div>
         ` : ''}
         <div style="display:flex;justify-content:space-between;padding:5px 0"><span style="color:#6b7280">VAT (${invoice.vat_rate || 0}%)</span><span>${invoice.vat_rate === 0 ? 'Tax-Exempt (0%)' : `AED ${(invoice.vat_amount || 0).toLocaleString()}`}</span></div>
-        <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #111827;font-size:15px;font-weight:700"><span>Total Due</span><span>AED ${(invoice.total || 0).toLocaleString()}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #111827;font-size:15px;font-weight:700"><span>Total</span><span>AED ${(invoice.total || 0).toLocaleString()}</span></div>
+        ${(Number(invoice.amount_paid) || 0) > 0 && invoice.status !== 'paid' ? `
+        <div style="display:flex;justify-content:space-between;padding:5px 0;color:#059669"><span>Paid so far</span><span>AED ${(Number(invoice.amount_paid) || 0).toLocaleString()}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;font-weight:700;color:#b91c1c"><span>Balance Due</span><span>AED ${invoiceBalance(invoice).toLocaleString()}</span></div>` : ''}
       </div>
     </div>
     ${invoice.notes ? `<div style="margin-top:24px;padding:12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;color:#92400e;font-size:12px">${invoice.notes}</div>` : ''}
@@ -198,8 +204,21 @@ export function Invoices() {
     return invoices.filter(i => isDateInRange(i.created_at))
   }, [invoices, isDateInRange])
 
-  const totalPaid    = dateFilteredInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
-  const totalPending = dateFilteredInvoices.filter(i => i.status === 'sent').reduce((s, i) => s + i.total, 0)
+  const paidOf = (list: Invoice[]) => list.reduce((s, i) => s + (i.status === 'paid' ? i.total : (Number(i.amount_paid) || 0)), 0)
+  const totalPaid    = paidOf(dateFilteredInvoices)
+  const totalPending = dateFilteredInvoices.filter(i => i.status === 'sent').reduce((s, i) => s + invoiceBalance(i), 0)
+  const paidTrend = useMemo(() => {
+    const { start, end } = activeDateRange as { start?: string; end?: string }
+    if (!start || !end) return { delta: '', up: true }
+    const s0 = new Date(start), e0 = new Date(end)
+    const len = Math.round((e0.getTime() - s0.getTime()) / 86_400_000) + 1
+    const prevEnd = new Date(s0.getTime() - 86_400_000).toISOString().split('T')[0]
+    const prevStart = new Date(s0.getTime() - len * 86_400_000).toISOString().split('T')[0]
+    const prev = paidOf(invoices.filter(i => { const d = (i.created_at || '').split('T')[0]; return d >= prevStart && d <= prevEnd }))
+    if (prev <= 0) return { delta: '', up: true }
+    const pct = Math.round(((totalPaid - prev) / prev) * 100)
+    return { delta: `${pct >= 0 ? '+' : ''}${pct}%`, up: pct >= 0 }
+  }, [activeDateRange, invoices, totalPaid]) // eslint-disable-line react-hooks/exhaustive-deps
   const totalOverdue = dateFilteredInvoices.filter(i => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
   const totalVat     = dateFilteredInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.vat_amount, 0)
   const paidCount    = dateFilteredInvoices.filter(i => i.status === 'paid').length
@@ -284,7 +303,7 @@ export function Invoices() {
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {[
           { label: 'Total Invoices', value: dateFilteredInvoices.length,                   sub: activeDateRange.label, icon: FileText,    iconBg: 'bg-slate-100',  iconColor: 'text-slate-600',   delta: `${dateFilteredInvoices.length}`, deltaUp: true  },
-          { label: 'Paid',           value: `AED ${(totalPaid/1000).toFixed(1)}k`,         sub: `${paidCount} invoices`, icon: CheckCircle, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: '', deltaUp: true  },
+          { label: 'Paid',           value: `AED ${(totalPaid/1000).toFixed(1)}k`,         sub: `${paidCount} invoices · vs previous period`, icon: CheckCircle, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: paidTrend.delta, deltaUp: paidTrend.up  },
           { label: 'Pending',        value: `AED ${(totalPending/1000).toFixed(1)}k`,      sub: 'Awaiting payment', icon: Clock,       iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '', deltaUp: true },
           { label: 'Overdue',        value: `AED ${(totalOverdue/1000).toFixed(1)}k`,      sub: `${overdueInvoices.length} overdue`, icon: AlertCircle, iconBg: 'bg-red-50', iconColor: 'text-red-600', delta: overdueInvoices.length > 0 ? '!' : '', deltaUp: false },
           { label: 'VAT Collected',  value: `AED ${(totalVat/1000).toFixed(1)}k`,          sub: 'From paid invoices', icon: Percent,   iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: '5%',   deltaUp: true  },
@@ -491,7 +510,7 @@ export function Invoices() {
                       <td className="px-4 py-3.5">
                         <span className="text-[13px] font-bold text-[#111827]">AED {inv.total.toLocaleString()}</span>
                       </td>
-                      <td className="px-4 py-3.5"><StatusPill status={inv.status} /></td>
+                      <td className="px-4 py-3.5"><StatusPill status={isPartlyPaid(inv) ? 'partly paid' : inv.status} /></td>
                       <td className="px-4 py-3.5">
                         <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                           <button onClick={() => printInvoice(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="Print / Download PDF">
@@ -618,6 +637,16 @@ export function Invoices() {
               setSelected(null)
             }}
             onPrint={() => printInvoice(selected)}
+            onRecordPayment={(amount) => {
+              const paid = (Number(selected.amount_paid) || 0) + amount
+              const today = new Date().toISOString().split('T')[0]
+              const patch: Partial<Invoice> = paid >= selected.total - 0.01
+                ? { amount_paid: selected.total, status: 'paid', paid_date: today }
+                : { amount_paid: Math.round(paid * 100) / 100 }
+              updateInvoice(selected.id, patch)
+              setSelected({ ...selected, ...patch })
+              notify.success(`AED ${amount.toLocaleString()} recorded on ${selected.invoice_number}`)
+            }}
             onDelete={() => setConfirmDeleteId(selected.id)}
           />
         )}
@@ -1346,10 +1375,14 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
   )
 }
 
-function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete }: {
+function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete, onRecordPayment }: {
   invoice: Invoice; onMarkPaid: () => void; onSend: () => void; onPrint: () => void; onDelete: () => void
+  onRecordPayment: (amount: number) => void
 }) {
   const company = useCompanyInfo()
+  const [payAmount, setPayAmount] = useState('')
+  const paidSoFar = Number(invoice.amount_paid) || 0
+  const balance = invoiceBalance(invoice)
   const statusCfg: Record<string, { bg: string; text: string }> = {
     paid:    { bg: 'bg-emerald-50', text: 'text-emerald-700' },
     sent:    { bg: 'bg-blue-50',    text: 'text-blue-700' },
@@ -1444,15 +1477,40 @@ function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete }: {
             </span>
           </div>
           <div className="flex justify-between font-bold text-[15px] text-[#111827] pt-2 border-t-2 border-[#111827]">
-            <span>Total Due</span><span className="text-emerald-700">AED {(invoice.total || 0).toLocaleString()}</span>
+            <span>Total</span><span className="text-emerald-700">AED {(invoice.total || 0).toLocaleString()}</span>
           </div>
+          {paidSoFar > 0 && invoice.status !== 'paid' && (
+            <>
+              <div className="flex justify-between text-emerald-700"><span>Paid so far</span><span>AED {paidSoFar.toLocaleString()}</span></div>
+              <div className="flex justify-between font-bold text-red-700"><span>Balance due</span><span>AED {balance.toLocaleString()}</span></div>
+            </>
+          )}
         </div>
       </div>
 
       <div className="flex gap-3 flex-wrap">
-        <Button variant="outline" size="sm" onClick={onPrint}>
-          <Download size={14} className="mr-1.5" /> Print / PDF
+        <Button variant="outline" size="sm" onClick={onPrint} title="Opens the print dialog — choose 'Save as PDF' to download">
+          <Download size={14} className="mr-1.5" /> Print / Save PDF
         </Button>
+        {invoice.status !== 'paid' && invoice.status !== 'draft' && (
+          <form
+            className="flex items-center gap-1.5"
+            onSubmit={e => {
+              e.preventDefault()
+              const amt = Number(payAmount)
+              if (!(amt > 0)) { notify.error('Enter the amount received.'); return }
+              onRecordPayment(amt)
+              setPayAmount('')
+            }}
+          >
+            <input
+              type="number" min="0" step="0.01" value={payAmount} onChange={e => setPayAmount(e.target.value)}
+              placeholder={`Part payment (max ${balance})`}
+              className="w-[170px] px-2.5 py-1.5 text-[12px] border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500"
+            />
+            <Button type="submit" variant="outline" size="sm">Record payment</Button>
+          </form>
+        )}
         <button
           type="button"
           onClick={onDelete}

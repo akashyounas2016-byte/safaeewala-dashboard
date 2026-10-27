@@ -286,8 +286,10 @@ export function jobCollected(j: DailyJob): number {
  * visits are settled through monthly client payments on Monthly Clients, so they are not
  * job-level receivables (AUD-24).
  */
-export function calcJobCollectable(job: DailyJob, ctx?: PendingCalcContext): number {
+export function calcJobCollectable(job: DailyJob, ctx?: PendingCalcContext, invoiced?: ReadonlySet<string>): number {
   if (String(job.payment_mode).toLowerCase() === 'monthly') return 0
+  // Billed through a sent invoice — collected on the invoice instead (UX-18)
+  if (invoiced?.has(job.id)) return 0
   return calcJobPending(job, ctx)
 }
 

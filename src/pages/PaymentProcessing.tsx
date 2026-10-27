@@ -11,9 +11,13 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
+import { ReceivablesNav } from '@/components/receivables/ReceivablesNav'
+import { Pager, usePagination } from '@/components/common/Pager'
+import { notify, confirmAsync } from '@/lib/notify'
 import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem, Client } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { formatDate } from '@/lib/utils'
+import { invoicedJobIds } from '@/lib/receivables'
 import { normalizeKey, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
 import * as XLSX from 'xlsx'
 import { useNavigate } from 'react-router-dom'
@@ -171,6 +175,7 @@ export function PaymentProcessing() {
 
   // ── Search & Filter State for History Tab ──
   const [historySearch, setHistorySearch] = useState('')
+  const [historyMethod, setHistoryMethod] = useState('all') // UX-12
 
   // ── Extract All Pending Records ──
   const allPendingRecords = useMemo<PendingRecordItem[]>(() => {
@@ -181,7 +186,7 @@ export function PaymentProcessing() {
       if (isBogusJob(job)) return
       const chg = cleanNum(job.charges)
       const rec = cleanNum(job.received) + calcJobLaterReceipts(job, pendingCtx)
-      const due = calcJobCollectable(job, pendingCtx)
+      const due = calcJobCollectable(job, pendingCtx, invoicedJobIds(invoices))
 
       if (due > 0) {
         list.push({
@@ -350,6 +355,7 @@ export function PaymentProcessing() {
     })
 
     return records
+      .filter(r => historyMethod === 'all' || r.method.toLowerCase() === historyMethod.toLowerCase())
       .filter(r => {
         const q = historySearch.toLowerCase().trim()
         if (!q) return true
@@ -363,7 +369,8 @@ export function PaymentProcessing() {
         )
       })
       .sort((a, b) => b.date.localeCompare(a.date))
-  }, [dailyJobs, monthlyPayments, pendingRcvdList, historySearch])
+  }, [dailyJobs, monthlyPayments, pendingRcvdList, historySearch, historyMethod])
+  const historyPager = usePagination(paymentHistoryRecords, 30) // UX-03
 
   // ── Global Stats Calculations ──
   const totalPendingAmt = allPendingRecords.reduce((s, r) => s + r.pendingAmount, 0)
@@ -501,7 +508,7 @@ export function PaymentProcessing() {
   }) => {
     // Recoveries are receipts against older jobs — they are managed on the Pending screen
     if (record.type === 'Recovery') {
-      alert('This is a recovery of an earlier pending amount. Edit or remove it from the Pending screen (Recovered tab).')
+      notify.error('This is a recovery of an earlier pending amount. Edit or remove it from the Pending screen (Recovered tab).')
       return
     }
     if (record.id.startsWith('dj-rec-')) {
@@ -718,6 +725,9 @@ export function PaymentProcessing() {
           </div>
         }
       />
+
+      {/* One Receivables module across Pending and Payments (UX-01) */}
+      <ReceivablesNav />
 
       {/* ── Top Financial KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1217,8 +1227,8 @@ export function PaymentProcessing() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                if (confirm(`Delete payment record of AED ${payment.amount} for ${payment.clientName}?`)) {
+                              onClick={async () => {
+                                if (await confirmAsync({ title: 'Delete payment', message: `Delete payment record of AED ${payment.amount} for ${payment.clientName}?`, confirmLabel: 'Delete', tone: 'danger' })) {
                                   setMonthlyPayments(prev => prev.filter(p => p.id !== payment.id))
                                 }
                               }}
@@ -1262,6 +1272,22 @@ export function PaymentProcessing() {
               )}
             </div>
 
+            <select
+              value={historyMethod}
+              onChange={e => setHistoryMethod(e.target.value)}
+              className="text-[12.5px] px-3 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500 font-semibold text-slate-700"
+              title="Filter by payment method"
+            >
+              <option value="all">All methods</option>
+              <option value="Cash">Cash</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Online">Online</option>
+              <option value="Credit Card">Credit Card</option>
+              <option value="Cheque">Cheque</option>
+              <option value="Pending">Pending</option>
+              <option value="Monthly">Monthly</option>
+            </select>
+
             <div className="text-right shrink-0">
               <span className="text-[12px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/60">
                 Total Realized Ledger: <span className="text-emerald-700 font-extrabold">AED {paymentHistoryRecords.reduce((s, r) => s + r.amount, 0).toLocaleString()}</span>
@@ -1294,7 +1320,7 @@ export function PaymentProcessing() {
                       </td>
                     </tr>
                   ) : (
-                    paymentHistoryRecords.map(item => (
+                    historyPager.pageItems.map(item => (
                       <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-5 py-4 text-[12px] font-medium text-slate-700 whitespace-nowrap">
                           {formatDate(item.date)}
@@ -1370,6 +1396,7 @@ export function PaymentProcessing() {
                 </tbody>
               </table>
             </div>
+            <Pager {...historyPager} />
           </div>
         </div>
       )}
