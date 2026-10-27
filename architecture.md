@@ -1,231 +1,90 @@
-# Safaeewala Operations Dashboard — Technical Architecture & Infrastructure
+# Technical Architecture
 
-> **Document Status:** Active & Standardized  
-> **Last Updated:** October 2026  
-> **Repository:** `Safaeewala Booking Dashboard`  
-> **Core Focus:** Full-Stack Architecture, State Stores, Hybrid Sync, Authentication Isolation, Containerization, and VPS Deployment.
+> How the code is organised and how data moves. For entity fields and storage keys see [docs/data-model.md](docs/data-model.md);
+> for servers and deploys see [prod.md](prod.md).
+> **Last reviewed:** 2026-10-27
 
----
+## 1. Stack
 
-## 1. System Overview & Technology Stack
+| Layer | Technology |
+|---|---|
+| UI | React 19, TypeScript ~5.9, Vite 8, Tailwind CSS v4 (`@tailwindcss/vite`), lucide-react icons, Radix primitives |
+| Charts / Excel | Recharts, SheetJS (`xlsx`) |
+| Data | Supabase (PostgreSQL) + browser `localStorage` cache |
+| Small backend | `webhookServer.cjs` (plain Node HTTP, port 3001) behind Nginx `/api/` |
+| Runtime | Docker (nginx:alpine + node) on an Ubuntu VPS, Traefik TLS |
 
-The Safaeewala Booking CRM is a high-performance, containerized single-page web application (SPA) built for commercial cleaning dispatch, recurring residential contracts, staff overtime tracking, and invoicing.
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        SAFAEEWALA CLIENT LAYER                         │
-│  React 19 + TypeScript + Vite 8 + Tailwind CSS v4 + Lucide Icons       │
-│  State Stores: DataContext · UserContext · NotificationContext         │
-└─────────────────────────────────┬──────────────────────────────────────┘
-                                  │
-         ┌────────────────────────┴────────────────────────┐
-         ▼                                                 ▼
-┌──────────────────────────────┐        ┌────────────────────────────────┐
-│  OFFLINE / LOCAL STORAGE     │        │  CLOUD BACKEND (SUPABASE)      │
-│  - safaeewala_daily_jobs     │        │  - daily_jobs, daily_expenses  │
-│  - safaeewala_bookings       │◄──────►│  - bookings, clients           │
-│  - safaeewala_invoices       │        │  - employees, inventory        │
-│  - Fast 2000ms Timeout Guard │        │  - profiles, audit_log         │
-└──────────────────────────────┘        └────────────────────────────────┘
-                                  │
-                                  ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                        BACKEND SERVICES LAYER                          │
-│  - webhookServer.cjs (Port 3001: Fluent Forms, GHL Sync, Google Drive) │
-│  - Nginx Reverse Proxy (Port 80/8080)                                 │
-│  - Docker Containerized Runtime on Ubuntu VPS                          │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-### 1.1 Core Technologies
-
-| Layer | Technology | Version | Purpose |
-|---|---|---|---|
-| **Build & Tooling** | Vite | `^8.0.13` | High-speed ESM dev server and Rolldown/Rollup bundler |
-| **UI Framework** | React | `^19.2.6` | Modern concurrent component rendering and Suspense |
-| **Type Safety** | TypeScript | `~5.9.3` | Strict static typing across models, props, and sync logic |
-| **Styling** | Tailwind CSS | `@tailwindcss/vite ^4.3.0` | Utility-first responsive CSS and CSS variable tokens |
-| **Icons** | Lucide React | `^1.16.0` | Comprehensive SVG operational iconography |
-| **Spreadsheets** | SheetJS (xlsx) | `^0.18.5` | In-browser Excel parsing and customized export generator |
-| **Charts** | Recharts | `^3.8.1` | Financial analytics and performance visualizations |
-| **Backend & DB** | Supabase | `@supabase/supabase-js ^2.106.1` | Managed PostgreSQL, Auth, and Audit Logging |
-| **Containerization**| Docker & Docker Compose | Latest | Isolated Alpine Nginx + Node runtime on VPS |
-
----
-
-## 2. Directory & Module Architecture
+## 2. Folder map
 
 ```
-e:\ANTIGRAVITY PROJECTS\Safaeewala Booking Dashboard\
-├── .github/
-│   └── workflows/
-│       └── deploy.yml              # GitHub Actions CI/CD to VPS
-├── redesign/                       # Dedicated Executive Redesign & Theme Studio
-│   ├── themes.ts                   # 5 Executive Color Themes & Design Tokens
-│   ├── ThemeSelector.tsx           # Interactive Live Theme Switcher Bar & Drawer
-│   └── RedesignedEmployees.tsx     # High-End Employees Screen with Duty & OT
+├── AGENTS.md · README.md · rules.md · design.md · architecture.md · prod.md · CHANGELOG.md
+├── docs/                    data-model.md · workflow.md · decisions.md · guides/ (SMS, Stripe, API, documents)
 ├── src/
+│   ├── App.tsx              routes, lazy pages (lazyWithRetry), providers, AuthGuard
+│   ├── main.tsx · index.css (design tokens)
+│   ├── pages/               one file per screen (Employees, Agencies, DailyJobSheet, Bookings, …)
 │   ├── components/
-│   │   ├── layout/
-│   │   │   ├── Layout.tsx          # Shell with Sidebar, Header, and responsive backdrop
-│   │   │   ├── PageHero.tsx        # Signature gradient hero banner with action buttons
-│   │   │   └── Sidebar.tsx         # Workspace navigation and user session indicator
-│   │   └── ui/                     # Primitives (Button, Modal, Input, Badge)
-│   ├── data/
-│   │   └── mock.ts                 # Seed fallbacks and dashboard stats
-│   ├── lib/
-│   │   ├── clientDataSync.ts       # Core OT algorithms, address cleaning, entity synthesis
-│   │   ├── simpleAuth.ts           # Local development bypass & VPS session security
-│   │   ├── fluentFormsSync.ts      # Webhook lead synchronization
-│   │   ├── ghlService.ts           # GoHighLevel CRM bi-directional sync
-│   │   ├── googleDrive.ts          # Cloud document backups
-│   │   ├── storageUtils.ts         # Safe LocalStorage accessors with quota error guards
-│   │   └── supabase.ts             # Supabase client instantiation
-│   ├── pages/                      # Application views (Overview, Bookings, Employees, etc.)
-│   ├── store/
-│   │   ├── DataContext.tsx         # Master operational state store and Supabase sync
-│   │   ├── UserContext.tsx         # RBAC permissions and user profile store
-│   │   └── NotificationContext.tsx # System alerts and reminder notifications
-│   ├── types/
-│   │   └── index.ts                # Master TypeScript interfaces and types
-│   ├── App.tsx                     # Top-level routing, Suspense lazy boundaries, AuthGuard
-│   ├── main.tsx                    # Application entry point
-│   └── index.css                   # Global styles and design tokens
-├── deploy.ps1                      # Direct PowerShell VPS SSH/SCP deployment script
-├── docker-compose.yml              # VPS Docker compose service definition
-├── Dockerfile                      # Multi-stage production container build
-├── nginx.conf                      # Nginx SPA router & webhook reverse proxy configuration
-├── rules.md                        # Master Overtime, Data Mapping, and Sync Rules
-├── design.md                       # Design System, Aesthetics, and Theme Studio Specs
-└── architecture.md                 # System Architecture & Infrastructure (this file)
+│   │   ├── layout/          Layout (shell + per-route ErrorBoundary), Sidebar, PageHero (hero + bell)
+│   │   ├── ui/              Button, Input/Select, Modal, Card, Badge, Table, Avatar, ErrorBoundary
+│   │   ├── agencies/        AgencyDashboard (agency profile: staff, payouts, documents)
+│   │   ├── employees/       EmployeeDocumentField (document section + preview modal)
+│   │   ├── dailyJobSheet/   AddJobModal, DailyJobModals, MonthlyScheduleSyncModal, jobSheetUtils (OT calc)
+│   │   ├── monthlyClients/  AddMonthlyClientModalForm
+│   │   └── common/          CleanerMultiSelect
+│   ├── store/               DataContext (all business data), UserContext (RBAC), NotificationContext
+│   ├── lib/                 business logic — see §4
+│   ├── types/index.ts       all shared interfaces
+│   └── data/mock.ts · lib/seedData.ts   demo data (fallback only)
+├── webhookServer.cjs        /api/agencies, /api/webhook/fluent-forms, /api/webhook/google-drive-backup
+├── Dockerfile · entrypoint.sh · nginx.conf · docker-compose.yml · deploy.ps1 · .github/workflows/deploy.yml
+└── vite.config.ts           dev port 5058, /api proxy → production server
 ```
 
----
+## 3. Runtime composition
 
-## 3. State Management & Data Flow
-
-State is organized into 3 domain-specific React Contexts wrapped in [`src/App.tsx`](file:///e:/ANTIGRAVITY%20PROJECTS/Safaeewala%20Booking%20Dashboard/src/App.tsx):
-
-```mermaid
-graph TD
-    App["App.tsx"] --> Auth["SimpleAuthProvider (Local Bypass vs VPS Auth)"]
-    Auth --> Guard["AuthGuard"]
-    Guard --> Data["DataProvider (DataContext.tsx)"]
-    Data --> User["UserProvider (UserContext.tsx)"]
-    User --> Notif["NotificationProvider (NotificationContext.tsx)"]
-    Notif --> Routes["BrowserRouter & Page Views"]
+```
+SimpleAuthProvider → AuthGuard → DataProvider → UserProvider → NotificationProvider → BrowserRouter → Layout → <Page/>
 ```
 
-### 3.1 DataContext (`src/store/DataContext.tsx`)
-- **Managed Collections:**
-  - `bookings`: Operational schedule and team assignments.
-  - `clients`: Unified registered clients + auto-discovered clients from Daily Job Sheet.
-  - `employees`: Unified registered staff + auto-discovered roster staff from Daily Job Sheet.
-  - `invoices`: General invoices and monthly client bills.
-  - `inventory`: Equipment, chemicals, and minimum stock alerts.
-  - `dailyJobs`: Master transactional ledger from Excel imports / manual logs.
-  - `dailyExpenses`: Shift-level petty cash and operational expenditures.
-- **Dynamic Synthesizers (`useMemo`):**
-  - `allClients = extractAllClientsFromDailyJobs(dailyJobs, clients)`
-  - `allEmployees = extractAllEmployeesFromDailyJobs(dailyJobs, employees)`
-  - Ensures changes in `dailyJobs` immediately update clients, employee rosters, and work hours everywhere in the app without manual refresh.
+- **AuthGuard** (`lib/simpleAuth.ts`): bypass on localhost, login on VPS (R-SEC-01).
+- **DataProvider** (`store/DataContext.tsx`): loads and owns every business collection and exposes CRUD actions (`addBooking`, `updateEmployee`, `addAgency`, …). Pages never call Supabase for core data directly.
+- **Layout** wraps each route in an `ErrorBoundary` keyed by path, so one broken screen does not trap the app.
+- Pages are lazy-loaded; a failed chunk after a deploy triggers one automatic reload (`lazyWithRetry`).
 
-### 3.2 UserContext (`src/store/UserContext.tsx`)
-- Enforces Role-Based Access Control (RBAC):
-  - `'owner'`: Full system administrative access.
-  - `'office_staff'`: Bookings, dispatch, client communication, invoices.
-  - `'crew_lead'`: Daily job sheet entries, attendance, crew status.
-  - `'cleaner'`: Personal duty hours and shift records.
+## 4. Business logic modules (`src/lib`)
 
----
+| Module | Responsibility | Rules |
+|---|---|---|
+| `clientDataSync.ts` | Job-sheet ledger logic: OT, bogus rows, address cleaning, staff matching, synthetic clients/employees, monthly summaries, salary helpers, crew ID↔name, assignable clients | R-OT-01, R-SYNC-*, R-DATA-*, R-EMP-02, R-FIN-02 |
+| `employeeHealth.ts` | Performance Health Score | R-EMP-03, R-ATT-01 |
+| `agencyAlerts.ts` | Agencies bell alerts | R-AGN-04 |
+| `utils.ts` | dates (`daysUntil`, `formatDate`), parent/third-party staff, slugs | R-AGN-01 |
+| `simpleAuth.ts` | login, session, rate limit | R-SEC-01 |
+| `storageUtils.ts` | safe localStorage read/write | — |
+| `supabase.ts` | Supabase client | — |
+| `fluentFormsSync.ts`, `ghlService.ts`, `googleDrive.ts`, `emailService.ts`, `smtpEmailService.ts`, `stripeService.ts`, `paymentReminderService.ts`, `crmAIBot.ts` | Integrations | see `docs/guides/` |
 
-## 4. Hybrid Persistence & Offline-First Sync Layer
+**Rule of thumb:** a calculation used by more than one screen belongs in `src/lib`, not inside a page.
 
-To ensure the CRM remains instantaneous even with large Excel sheets or intermittent internet in Dubai dispatch warehouses, the app implements a **dual-layer storage strategy**:
+## 5. Data flow
 
-### 4.1 Fast Timeout Guard (2000ms Race Condition Protector)
-When the application boots in [`src/store/DataContext.tsx`](file:///e:/ANTIGRAVITY%20PROJECTS/Safaeewala%20Booking%20Dashboard/src/store/DataContext.tsx#L141-L152):
-```ts
-const timeoutPromise = new Promise<any[]>((_, reject) =>
-  setTimeout(() => reject(new Error('timeout')), 2000)
-)
-const fetchPromise = supabase.from(table).select('*').order(order, { ascending: false }).then(r => r.data ?? [])
-const data = await Promise.race([fetchPromise, timeoutPromise])
+1. **Boot:** each collection is read from Supabase with a 2 s timeout race; on timeout/empty it falls back to `localStorage`, then (only if both are empty) to seed data.
+2. **Agencies:** additionally fetched from `/api/agencies` (VPS JSON file) and Supabase `agencies`; Safaeewala parent is always injected.
+3. **Derived views (memoised in DataContext):**
+   - `dailyJobs` exposed with legacy employee-ID staff names resolved to names (R-SYNC-02)
+   - `clients` = Supabase clients + clients discovered from the job sheet
+   - `employees` = Supabase employees + staff discovered from the job sheet
+4. **Writes:** an action updates React state → mirrors to `localStorage` → fires the Supabase write (errors are logged, not shown). Agencies also POST the full list to `/api/agencies`.
+5. **Screens read, never fork, the data:** e.g. Agency payouts, Employee history and Attendance all derive from `dailyJobs` with `employeeMatchesStaff`.
+
 ```
-- If Supabase responds within 2000ms, the cloud data hydrates the state.
-- If the network is slow or offline, the timeout fires immediately and the app loads cached data from `localStorage`.
-- **Result:** Zero frozen screens or infinite spinners.
-
-### 4.2 Auto-Persistence
-Every mutation to `dailyJobs`, `bookings`, `invoices`, `inventory`, or `dailyExpenses` triggers an automated `safeLocalStorageSet` to disk with JSON serialization and storage quota validation.
-
----
-
-## 5. Authentication & Environment Isolation Architecture
-
-Authentication is managed via [`src/lib/simpleAuth.ts`](file:///e:/ANTIGRAVITY%20PROJECTS/Safaeewala%20Booking%20Dashboard/src/lib/simpleAuth.ts):
-
-### 5.1 Local Development Mode (`isLocalEnvironment()`)
-```ts
-export function isLocalEnvironment(): boolean {
-  if (typeof window === 'undefined') return false
-  const host = window.location.hostname
-  return (
-    Boolean(import.meta.env.DEV) ||
-    host === 'localhost' ||
-    host === '127.0.0.1' ||
-    host === '::1' ||
-    host.endsWith('.local')
-  )
-}
+Booking ──addBooking──► DailyJob (booking_id, staff names) ──► Employees / Attendance / Agency payouts / Clients
+Monthly client master schedule ──generates──► DailyJob rows   (edits to rows never flow back — R-SCHED-01)
 ```
-- When running on `localhost:5058` or dev mode:
-  - `AuthGuard` skips login.
-  - Session is initialized with permanent authenticated admin access.
-  - Zero login friction during local development and testing.
 
-### 5.2 VPS Production Mode
-- When served from the VPS IP (`187.77.116.14`) or custom production domain:
-  - `isLocalEnvironment()` evaluates to `false`.
-  - `AuthGuard` intercepts unauthenticated visitors and renders [`Login.tsx`](file:///e:/ANTIGRAVITY%20PROJECTS/Safaeewala%20Booking%20Dashboard/src/pages/Login.tsx).
-  - Rate limiting active: 5 failed attempts locks login for 60 seconds.
-  - Authenticated session stored with 7-day TTL.
+## 6. Conventions
 
----
-
-## 6. Backend Services & Webhook Server
-
-Located in [`webhookServer.cjs`](file:///e:/ANTIGRAVITY%20PROJECTS/Safaeewala%20Booking%20Dashboard/webhookServer.cjs):
-- **Port:** `3001` (internal Docker network, proxied by Nginx under `/api/`).
-- **Endpoints:**
-  - `POST /api/fluent-forms/webhook`: Ingests inbound lead forms from the Safaeewala WordPress site.
-  - `POST /api/ghl/sync`: Two-way contact and pipeline stage synchronization with GoHighLevel.
-  - `POST /api/google-drive/upload`: Backs up contracts, Emirates ID scans, and exported Excel files.
-  - `GET /health`: Healthcheck endpoint for Docker container status.
-
----
-
-## 7. Containerization & VPS DevOps Architecture
-
-### 7.1 Container Specification (`Dockerfile`)
-- **Base:** `nginx:alpine`
-- **Runtime Addition:** `nodejs` added to Alpine image to run `webhookServer.cjs` alongside Nginx.
-- **Entrypoint:** [`entrypoint.sh`](file:///e:/ANTIGRAVITY%20PROJECTS/Safaeewala%20Booking%20Dashboard/entrypoint.sh) boots both the Node webhook daemon in the background and Nginx in the foreground.
-- **Port Mapping:**
-  - Internal: `80` (Nginx), `3001` (Webhooks).
-  - External Host: `0.0.0.0:8080 -> 80/tcp`.
-
-### 7.2 Deployment Pipelines
-
-#### Pipeline A: Direct PowerShell Deployment (`deploy.ps1`)
-Used for immediate local-to-VPS deployment:
-1. `npm run build`: Generates optimized client bundle in `dist/`.
-2. Sync via SCP over SSH (`id_rsa` key): Transmits `dist`, `Dockerfile`, `nginx.conf`, `docker-compose.yml`, `webhookServer.cjs`, and `entrypoint.sh` to `/var/www/safaeewala/`.
-3. Remote Docker rebuild via SSH:
-   `docker compose up -d --build && docker ps --filter name=safaeewala-booking-crm`
-4. Container restarts seamlessly with zero downtime for existing data volumes (`/var/www/safaeewala/data`).
-
-#### Pipeline B: GitHub Actions CI/CD (`.github/workflows/deploy.yml`)
-Triggered automatically on `git push origin main`:
-- GitHub hosted Ubuntu runner installs dependencies and builds production assets.
-- Deploys `dist/` directly to VPS via encrypted SSH secret keys.
+- TypeScript must pass `npx tsc -b` (part of `npm run build`).
+- Keep files' existing style; shared UI goes in `components/`, shared logic in `lib/`.
+- New persisted browser settings use the `safaeewala_` localStorage prefix and are listed in `docs/data-model.md`.
+- Reference rule IDs in comments where code enforces a rule.

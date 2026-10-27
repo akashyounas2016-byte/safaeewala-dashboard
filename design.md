@@ -1,146 +1,96 @@
-# Safaeewala Operations Dashboard — Design System & Theme Architecture
+# Design System
 
-> **Document Status:** Active & Standardized  
-> **Last Updated:** October 2026  
-> **Repository:** `Safaeewala Booking Dashboard`  
-> **Core Focus:** Visual Hierarchy, Theme Studio, Duty & Overtime Aesthetics, Component Design Tokens, and Micro-Interactions.
+> How every screen should look and feel. New UI must reuse these patterns instead of inventing new ones.
+> Design rules have IDs (`D-…`) so they can be referenced in reviews and commits.
+> **Last reviewed:** 2026-10-27
 
----
+## 1. Principles
 
-## 1. Design Philosophy: Executive Service-Tech
+- **D-01 Executive & calm:** slate/white surfaces, one teal brand colour, colour used for meaning — not decoration.
+- **D-02 Numbers first:** duty hours, OT, money and expiry dates must be readable at a glance (bold numerals, clear units: `hrs`, `AED`).
+- **D-03 Same thing looks the same everywhere:** a document card, a status chip or a popup header looks identical on every screen.
+- **D-04 Dense but grouped:** related fields sit together in a titled card; never a long single column of inputs.
 
-The Safaeewala Operations Dashboard is engineered for high-volume, real-time cleaning business operations in Dubai. Its aesthetic balances:
-1. **Executive Professionalism:** Deep slate, porcelain white, and rich jewel tones that project operational credibility and calm under heavy transaction loads.
-2. **High-Contrast Data Legibility:** Critical operational metrics—specifically **Duty Hours** and **Overtime (OT)**—must be readable in a single glance without ambiguity.
-3. **Structured Bento Workstation:** Information-dense cards with dual workload gauges, live crew dispatch status, and document compliance widgets.
+## 2. Tokens
 
----
+Defined in `src/index.css` (`@theme`) and used through Tailwind classes.
 
-## 2. Core Color System & Design Tokens
+| Token | Value | Use |
+|---|---|---|
+| Font | `Inter Tight` | All text; tabular numerals for hours/currency |
+| `--color-ink` / `ink-soft` / `ink-mute` | `#111827` / `#374151` / `#6B7280` | Headings / body / secondary text |
+| `--color-line` | `#E4E8EC` | Card and input borders |
+| Brand | `teal-600 #0d9488`, `teal-700`, `teal-800`; tints `teal-50/100` | Primary buttons, active states, links |
+| Canvas | `slate-50 #f8fafc` | Page background |
+| Hero | `.gradient-card` (dark slate → teal gradient + emerald glow) | `PageHero` banner |
 
-The dashboard utilizes a curated **Emerald Executive** palette engineered for clarity, high contrast, and reduced visual fatigue in active dispatch environments:
+**Radius:** `rounded-[24px]` page cards & KPI tiles · `rounded-2xl` form sections and sub-cards · `rounded-xl` inputs, selects, buttons · `rounded-full` chips and avatars.
+**Shadows:** cards `shadow-[0_4px_20px_rgba(15,23,42,0.05)]`; hover lifts to `0_10px_35px_rgba(15,23,42,0.08)`.
 
-### 2.1 Brand & Accent Tokens
-- **Brand Primary (Emerald):** `#0d9488` (`teal-600`), `#0f766e` (`teal-700`), `#115e59` (`teal-800`)
-- **Brand Soft / Tints:** `#f0fdfa` (`teal-50`), `#ccfbf1` (`teal-100`)
-- **Overtime Alert (Amber/Orange):** `#d97706` (`amber-600`), `#ea580c` (`orange-600`), `#f59e0b` (`amber-500`)
-- **Overtime Soft / Tints:** `#fffbeb` (`amber-50`), `#fef3c7` (`amber-100`)
-- **Duty Regular (Slate/Teal):** `#0284c7` (`sky-600`), `#0369a1` (`sky-700`), `#f0f9ff` (`sky-50`)
-- **Compliance Urgency (Crimson):** `#dc2626` (`red-600`), `#fef2f2` (`red-50`)
+## 3. Colour meaning
 
-### 2.2 Surface & Elevation System
-- **App Canvas:** `#f8fafc` (`slate-50`)
-- **Card Background:** `#ffffff` (`white`) with subtle slate borders `#e2e8f0` (`slate-200/90`)
-- **Hero Header:** Gradient banner `from-slate-900 via-teal-950 to-slate-900` with subtle emerald ambient glow
-- **Hover Elevation:** Smooth transition to `shadow-[0_10px_35px_rgba(15,23,42,0.08)]` and `border-teal-400/80`
-- **Border Radius:** `rounded-[24px]` for major bento cards and KPI containers, `rounded-xl` for badges and inputs
+| Meaning | Colour | Examples |
+|---|---|---|
+| Brand / positive action | Teal | Save buttons, active filter, "ASSIGNED" |
+| Overtime & warnings | Amber / orange | OT block, High OT badge, expiring ≤ 30 days |
+| Danger / expired / absent | Red / rose | Expired documents, delete, specifically-absent |
+| Regular duty / info | Sky / slate | Duty hours, "Available / Standby" (never red — R-ATT-01) |
+| Success / valid | Emerald | Valid documents, paid |
 
----
+**Document tints (D-05)** — each document type always uses the same tint, in both the Agency and Employee popups:
 
-## 3. Duty Hours & Overtime (OT) Visual Hierarchy
+| Document | Tint |
+|---|---|
+| Trade License | amber |
+| Emirates ID (EID) | sky |
+| Passport | purple |
+| Residency Visa | amber |
+| Work Permit | emerald |
+| Tax & NOC / NOC Clearance | emerald (agency) · indigo (employee) |
+| Medical Insurance | rose |
 
-Making Duty Hours and Overtime **numaya (prominent)** is a core operational requirement. They are presented as a cohesive dual-metric executive block.
+## 4. Page layout
+
+1. **`PageHero`** (`src/components/layout/PageHero.tsx`): title, subtitle, status chip, custom actions, primary CTA, notification bell.
+   - Header buttons use short labels (D-06): `Import`, `Export`, `Add Employee` — not long phrases.
+   - **Bell (D-07):** pass `notifications` to make it functional (count badge + dropdown, click → open the record). Without the prop it is decorative. Live on Employees (R-EMP-04) and Agencies (R-AGN-04).
+2. **KPI tiles:** 4–6 clickable `rounded-[24px]` cards that also act as quick filters.
+3. **Filter bar:** search, role/agency/date filters, sort, view switch (grid/table), reset; right end shows `filtered / total` with the row-visibility eye icon on the same line (D-08).
+4. **Content:** list (grid bento or dense table, min width ~740 px with horizontal scroll) + right-hand widgets on wide screens.
+
+## 5. Popup (modal) system — D-09
+
+The **Add New Agency** popup is the reference design; **Add New Employee** follows it exactly.
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  WORKLOAD METRICS BLOCK                                          │
-│  ┌─────────────────────────────┐  ┌────────────────────────────┐ │
-│  │ 💼 DUTY HOURS     6 Shifts  │  │ 🔥 OVERTIME (OT)    HIGH   │ │
-│  │ 20 hrs                      │  │ +2 hrs                     │ │
-│  │ Regular assigned duty       │  │ 9% of worked time          │ │
-│  └─────────────────────────────┘  └────────────────────────────┘ │
-│  Total Workload: 22 hrs                          ● 2h Overtime   │
-│  [████████████████████████████████████████░░░░░░░░]              │
-│   Regular Duty (91%)              Overtime (9%)                  │
-└──────────────────────────────────────────────────────────────────┘
+┌ Title ───────────────────────── Status: [toggle/select] │ Cancel │ ✓ Save … │ ✕ ┐
+│ ┌ PROFILE ─────────┐ ┌ CONTACT / ROLE ─────┐ ┌ ADDRESS / EMPLOYMENT ─┐            │  Row 1: 3 section cards
+│ └──────────────────┘ └─────────────────────┘ └───────────────────────┘            │
+│ ┌ DOCUMENTS ───────────────────────────────────────────────────────────┐          │  Row 2: 4 tinted sub-cards
+│ │ [tinted card] [tinted card] [tinted card] [tinted card]              │          │
+│ └──────────────────────────────────────────────────────────────────────┘          │
+│ ┌ INSURANCE & CLEARANCE (one row) ─────────────────────────────────────┐          │  Row 3
+│ └──────────────────────────────────────────────────────────────────────┘          │
+│ ┌ ROLE-SPECIFIC (Skills & Clients / Driving License) ──────────────────┐          │  Row 4
+└────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.1 Regular Duty Hours Styling
-- **Visual Tone:** Calm, structured, and reliable.
-- **Color Base:** Crisp Teal / Slate (`#0f766e`, `#0284c7`).
-- **Typography:** Bold numeral display (`text-[18px] font-black`).
-- **Context:** Displays shift count and confirmation of regular assigned duty.
+- `Modal size="xl" className="max-w-6xl"`; **Status, Cancel and Save live in `headerActions`**, Save uses `form="<form-id>"`.
+- Section card: `bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80`; heading `text-[12px] font-black uppercase tracking-wider` + 13 px icon + bottom border.
+- Tinted sub-card: `bg-<tint>-50/70 border-<tint>-200/90 rounded-2xl p-3.5` with an uppercase 11 px title.
+- Labels `text-[11.5px] font-bold text-slate-700`; inputs/selects `text-[12px] rounded-xl border-slate-200 shadow-2xs`, focus `border-teal-600`.
+- **Document field (D-10):** number input with the upload icon **inside** the input on the right; attached file shows as a teal pill with preview 👁 and remove ✕ (`InputFieldWithUpload` in Agencies, `EmployeeDocInput` in Employees). Dates as a 2-column *Start/Issue · End/Expiry* pair under it.
+- Fields that depend on a choice (e.g. driver-only) swap in place; show a small chip saying which form mode is active.
 
-### 3.2 Overtime (OT) Styling — High-Impact Alert
-- **Visual Tone:** Energetic, eye-catching, and urgent.
-- **Color Base:** Warm Amber & Tangerine (`#d97706`, `#ea580c`, `#f59e0b`).
-- **Iconography:** Dynamic `Flame` or `Zap` icon with pulsing indicator.
-- **Worked Time Ratio:** Shows the percentage of total hours represented by OT (e.g. `9% of worked time`).
-- **High OT Trigger ($\ge 10\text{h}$):** Adds a gradient top accent stripe (`from-amber-400 via-orange-500 to-amber-500`) and a badge labeled `HIGH`.
-- **Zero OT State:** Soft neutral styling (`0.0 hrs`, "No OT recorded") to prevent visual clutter when no overtime was performed.
+## 6. Domain widgets
 
-### 3.3 Visual Hours Ratio Bar
-- Below the dual cards, a dual-colored split progress bar displays the exact proportion:
-  - **Duty Segment:** Teal/Cyan theme color ($100 - \text{OT\%}$).
-  - **Overtime Segment:** Amber/Orange theme color ($\text{OT\%}$).
+- **Duty & OT block:** duty (teal/sky, calm) beside OT (amber, `Flame`/`Zap`, `HIGH` badge at ≥ 10 h) with a split ratio bar under them. Zero OT = neutral grey "No OT recorded".
+- **Document health:** < 30 days red, < 90 days amber, otherwise emerald.
+- **Health Score (employee profile):** ring 0–100 coloured by grade (emerald Excellent, teal Good, amber Needs Attention, rose At Risk) + three mini bars (Attendance, Activity, Compliance).
+- **Avatar:** photo if `photo_url`, else coloured initials; profile avatar has a teal camera button bottom-right for upload.
 
----
+## 7. Interaction
 
-## 4. Layout Grid & Component Tokens
-
-### 4.1 Executive Page Structure
-1. **Page Hero Section:** Deep gradient banner with ambient glow, date period indicator, roster totals, and action buttons (`Import Roster`, `Export Duty & OT`, `Add Employee`).
-3. **KPI Summary Cards (6-Card Grid):**
-   - Total Staff
-   - Working Today (Live)
-   - Regular Duty Hours
-   - Total Overtime (OT)
-   - Combined Total Logged Time
-   - Document Compliance Expirations
-4. **Unified Filter & Control Bar:**
-   - Real-time search by name, nationality, phone, or Emirates ID.
-   - Role filter pills (`All Roles`, `Cleaners`, `Crew Leads`).
-   - Work activity toggles (`Has OT`, `High OT >10h`, `Working Today`).
-   - Period selector (`All Time`, `Today`, `Yesterday`, `7 Days`, `30 Days`, `3 Months`, `6 Months`, `Custom Range`).
-   - Sort dropdown (`Highest OT Hours`, `Highest Duty Hours`, `Most Shifts`, `Name`, `Pay Rate`).
-   - View mode switcher (`Grid Bento View` vs `Dense Table View`).
-5. **Main Content (2 Columns):**
-   - **Left Column (xl:col-span-2):** Employee Cards (Grid) or dense Roster Table.
-   - **Right Column (xl:col-span-1):** 4 Operational Widgets.
-
----
-
-### 4.2 Intelligent Operational Widgets
-
-1. **🏆 Overtime Leaders Leaderboard Widget:**
-   - Ranks the top 5 cleaners with the highest overtime in the selected date period.
-   - Gold/Silver/Bronze rank indicators (`#1`, `#2`, `#3`).
-   - Displays exact OT hours and regular duty hours for each leader.
-2. **🟢 Live Crew Status Widget:**
-   - Real-time operational dispatch check:
-     - Pulls today's shifts directly from the Daily Job Sheet and Supabase Bookings.
-     - Displays cleaner name, role, live site location, shift hours (e.g. `Marina Gate (08:00 - 16:00)`), and status badge (`ON DUTY`, `SCHEDULED`, `AVAILABLE`).
-3. **🛡️ Document Health Tracker Widget:**
-   - Visa and Work Permit compliance monitor.
-   - Urgent alert (<30 days: Crimson background), Warning (<90 days: Amber background), or All Valid (Emerald checkmark).
-4. **📊 Skills Coverage Widget:**
-   - Distribution progress bars for Deep Clean, Sofa, Carpet, Window, Move-in Cleaning capabilities.
-
----
-
-## 5. Dual View Mode: Grid Bento vs Table Roster
-
-### 5.1 Grid Bento View
-- Designed for supervisory review and individual cleaner evaluation.
-- Large circular initials avatar with role and nationality.
-- Complete workload metrics block with Duty Hours, OT, and workload ratio bar.
-- Contact details, pay rate (AED/hr), document expiry status, and skills tags.
-- Direct link to [EmployeeProfile.tsx](file:///e:/ANTIGRAVITY%20PROJECTS/Safaeewala%20Booking%20Dashboard/src/pages/EmployeeProfile.tsx) for full job sheet history.
-
-### 5.2 Dense Table Roster View
-- Optimized for quick payroll reviews, HR audits, and rapid scanning.
-- **Dedicated Columns:** Employee | Role | Live Status | **Duty Hours** | **Overtime (OT)** | **Total Hours** | Shifts | Pay Rate | Visa Expiry | Actions.
-- Table has a strict minimum width (`min-w-[740px]`) with smooth horizontal scrolling to guarantee zero column truncation on tablets and laptops.
-
----
-
-## 6. Typography & Micro-Interactions
-
-- **Font Family:** `Inter Tight`, sans-serif (clean, geometric, high numerals legibility).
-- **Numerals:** Tabular lining numbers for hours and currency.
-- **Transitions:** `transition-all duration-200` on hover, border color changes, and theme switches.
-- **Pulse Indicators:** CSS `@keyframes pulse` on active duty dots and OT flame icons.
-- **Responsive Breakpoints:**
-  - Mobile (`<640px`): Single column cards, stacked action buttons.
-  - Tablet (`640px - 1024px`): 2-column cards, condensed KPI row.
-  - Desktop (`>1280px`): Full 3-column layout (2/3 roster, 1/3 widgets).
+- Transitions `transition-all duration-200`; dropdown panels close on outside click.
+- Destructive actions ask for confirmation; empty states explain what to do next.
+- Responsive: < 640 px one column; 640–1024 px two columns; ≥ 1280 px full layout with side widgets.

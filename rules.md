@@ -1,266 +1,247 @@
-# Safaeewala Operations Dashboard — System Rules & Data Sync Logic
+# Business Rules Registry
 
-> **Document Status:** Active & Standardized  
-> **Last Updated:** October 2026  
-> **Repository:** `Safaeewala Booking Dashboard`  
-> **Core Focus:** Overtime (OT) Calculations, Data Normalization, Synthetic Entity Synthesis, and Screen-by-Screen Data Synchronization.
+> The single source of truth for **how the system must behave**. Every rule has a permanent ID.
+> Code that enforces a rule should mention its ID in a comment (e.g. `// R-ATT-01`), and any change to a rule
+> must also be logged in [CHANGELOG.md](CHANGELOG.md) (and in [docs/decisions.md](docs/decisions.md) if it changes a decision).
+>
+> **Status values:** `Active` (enforced in code) · `Partial` (enforced in some places) · `Planned` (agreed, not built yet) · `Retired` (kept for history, no longer applies).
+> **Last reviewed:** 2026-10-27
 
----
+## How to read a rule
 
-## 1. Executive Summary & Core Philosophy
-
-The Safaeewala Booking CRM operates on a **hybrid real-time & operational ledger model**. In commercial cleaning and maid operations in Dubai/UAE:
-1. Operational reality moves faster than rigid schemas: daily assignments, last-minute shift adjustments, cash-on-delivery payments, and overtime are recorded directly in the **Daily Job Sheet**.
-2. Registered databases (Supabase tables for Clients and Employees) exist alongside transactional rosters.
-3. The system enforces **automatic bidirectional synthesis**: transaction records from Excel or manual daily job logs automatically extract, deduplicate, and enrich client profiles, employee work logs, overtime metrics, and recurring billing.
-
----
-
-## 2. Overtime (OT) Calculation Rules & Algorithms
-
-Overtime is one of the most critical labor and financial metrics for cleaning staff management. The system uses a strict **3-tier hierarchical calculation algorithm** defined in [`calcJobOTHours`](file:///e:/ANTIGRAVITY%20PROJECTS/Safaeewala%20Booking%20Dashboard/src/lib/clientDataSync.ts#L75-L97).
-
-### 2.1 The 3-Tier Overtime Determination Algorithm
-
-```mermaid
-flowchart TD
-    Start["DailyJob Row Processed"] --> CheckExplicit{"Tier 1: Explicit ot_hours > 0?"}
-    CheckExplicit -- Yes --> UseExplicit["Return Math.round(ot_hours * 10) / 10"]
-    CheckExplicit -- No --> CheckFlag{"Tier 2: is_overtime == true?"}
-    CheckFlag -- Yes --> UseDuty["Return duty_hours (or elapsed hours)"]
-    CheckFlag -- No --> CheckTimes{"Tier 3: Valid start_time & end_time (HH:mm)?"}
-    CheckTimes -- No --> ReturnZero["Return 0 OT hours"]
-    CheckTimes -- Yes --> CheckCutoff{"end_time past 20:00 (8:00 PM)?"}
-    CheckCutoff -- No --> ReturnZero
-    CheckCutoff -- Yes --> CalcCutoff["Calculate elapsed minutes past 20:00<br/>otMins = endMins - max(startMins, 20:00)<br/>Return Math.round((otMins / 60) * 10) / 10"]
+```
+### R-<AREA>-<NN> — Short title            ← ID never changes, even if the wording does
+- Rule:    what must happen (the requirement)
+- Why:     the business reason
+- Code:    where it is enforced (file → function)
+- Status:  Active | Partial | Planned | Retired   · Since: date / commit
 ```
 
-#### Tier 1: Explicit Overtime Hours
-- If `job.ot_hours` is present and greater than `0`, this value is treated as the ground truth.
-- Formula:
-  $$\text{OT} = \text{round}((\text{job.ot\_hours}) \times 10) / 10$$
-
-#### Tier 2: Explicit Overtime Shift Flag (`is_overtime`)
-- If `job.is_overtime` is marked `true` (e.g. weekend shift, holiday emergency deep clean, or night shift), the entire shift is recognized as overtime.
-- Formula:
-  $$\text{OT} = \text{job.duty\_hours}$$
-
-#### Tier 3: Automatic Time Cutoff (Evening Hours past 20:00)
-- In the UAE domestic cleaning industry, standard day shifts conclude by 20:00 (8:00 PM).
-- Any job extending past `20:00` (1200 minutes from midnight) automatically logs overtime for the duration worked after 8:00 PM.
-- Calculation:
-  $$\text{endMins} = \text{endHour} \times 60 + \text{endMinute}$$
-  $$\text{otStartMins} = \max(\text{startMins}, 1200)$$
-  $$\text{otMins} = \text{endMins} - \text{otStartMins}$$
-  $$\text{OT} = \max(0, \text{round}((\text{otMins} / 60) \times 10) / 10)$$
+Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` Cross-screen sync · `DATA` Data hygiene ·
+`EMP` Employees · `AGN` Agencies · `PAY` Salaries & payouts · `FIN` Invoices & payments · `SEC` Security · `OPS` Operating process
 
 ---
 
-### 2.2 Overtime Aggregations & Performance Thresholds
+## SCHED — Monthly client schedules
 
-1. **Total Logged Time per Employee:**
-   $$\text{Total Workload (hrs)} = \text{Duty Hours} + \text{OT Hours}$$
-2. **Overtime Ratio (% of Worked Time):**
-   $$\text{OT Ratio} = \text{round}\left(\frac{\text{OT Hours}}{\text{Total Workload}} \times 100\right)\%$$
-3. **High Overtime (High OT) Threshold:**
-   - Any cleaner clocking **$\ge 10.0$ hours of OT** within the active date period is automatically flagged with:
-     - Prominent Amber/Orange accent stripe on their employee card.
-     - `HIGH` indicator badge on their work card.
-     - Inclusion in the `⚡ High OT >10h` quick filter view.
-4. **Estimated Overtime Pay Multiplier:**
-   - Base pay rate: `emp.pay_rate_hourly` (Standard default: `AED 14.00/hr`).
-   - Overtime pay rate standard: `AED 17.50/hr` (1.25x base) or `AED 21.00/hr` (1.5x base for holiday/night).
-   - Estimated Overtime Cost formula:
-     $$\text{Estimated OT Cost} = \text{OT Hours} \times 17.5\,\text{AED}$$
+### R-SCHED-01 — Daily Job Sheet edits are temporary
+- **Rule:** *"Monthly Clients kay schedule mein Daily Job Sheet par ki janay wali koi bhi tabdeeli — jaisay time, date, cleaner assignment, ya duration mein change — temporary (aarzi) samjhi jaye gi aur woh Monthly Client kay asal permanent schedule ko kabhi update nahi karay gi."* An edit on `/daily-job-sheet` changes **only that date's `DailyJob` row**.
+- **Why:** One-off swaps (sick cleaner, client asks for a later slot) must not silently rewrite the contract.
+- **Code:** `src/pages/DailyJobSheet.tsx`, `src/pages/JobSheetSpreadsheet.tsx` — edits call `updateDailyJob` only.
+- **Status:** Active · Since: 2026-10
+
+### R-SCHED-02 — The master schedule is permanent and protected
+- **Rule:** `service_days`, `scheduled_time`, `end_time`, `duration_hours`, `preferred_cleaner`, `day_cleaner_assignments` on the client are never overwritten, back-synced or mutated from Daily Job Sheet edits.
+- **Code:** `Client` fields in `src/types/index.ts`; no write path from job sheet to these fields.
+- **Status:** Active · Since: 2026-10
+
+### R-SCHED-03 — Permanent changes only in Monthly Clients / Client Profile
+- **Rule:** Recurring contract changes are made only in `/monthly-clients` or the Client Profile modal.
+- **Status:** Active · Since: 2026-10
 
 ---
 
-## 3. Data Mapping & Normalization Logic
+## ATT — Attendance
 
-When importing daily jobs from Excel or external spreadsheets, raw data often contains non-standard formatting, billing remarks in address fields, and Excel summary footers. The system applies strict normalization layers before any data is aggregated.
+### R-ATT-01 — Absent only when specifically marked
+- **Rule:** *"System available cleaners mein say sirf unhein Absent count karay jo specifically mark hon, jabke blank entries ka matlab ho ga keh cleaner available tha magar koi job assigned nahi thi."*
+  - **Present:** ≥ 1 worked shift that date (a row with duty hours or charges).
+  - **Available / Standby:** no job that date → **never counted as absent**.
+  - **Absent:** only via an explicit mark — Attendance screen override, or a job-sheet row with no hours/charges whose remarks/address say `absent`, `not available`, `medical emergency`, `uninformed`.
+  - **On leave:** `on leave`, `sick leave`, `annual leave`, `emergency leave`, `day off`, `weekly off`, or override category *Approved Leave / Weekly Off*.
+- **Code:** `src/pages/Attendance.tsx` → `attendanceRecords`; overrides in localStorage `safaeewala_cleaner_attendance_overrides` (key `YYYY-MM-DD_<name lowercase>`).
+- **Status:** Active · Since: 2026-10
 
-### 3.1 String Normalization
-- Functions: `normalizeKey(text)` and `normalizeStaffName(name)`.
-- Strip all non-alphanumeric characters, convert to lowercase, and trim leading/trailing whitespace:
-  $$\text{normalized} = \text{text.toLowerCase().replace(/[^a-z0-9]/g, '').trim()}$$
+### R-ATT-02 — A worked row is never an absence
+- **Rule:** A row with `duty_hours > 0` or `charges > 0` is a worked shift whatever its remarks say ("Leave keys at reception" must not mark anyone absent).
+- **Code:** `Attendance.tsx` (`isWorkedShift`), `src/lib/employeeHealth.ts`.
+- **Status:** Active
 
-### 3.2 Address Cleaning & Client Name Extraction
-Raw spreadsheet addresses frequently contain inline payment or monthly tags, such as:
-- `Flat 309 Bldg 31 A(Feb Monthly)` $\rightarrow$ `Flat 309 Bldg 31 A`
-- `807 Nilofer(Monthly) - Cash` $\rightarrow$ `807 Nilofer`
-- `Villa 14, Springs 2 (Pending)` $\rightarrow$ `Villa 14, Springs 2`
+### R-ATT-03 — Manual override wins for that date
+- **Rule:** An Attendance override for a date replaces what the job sheet implies for that cleaner and date.
+- **Status:** Active
 
-**Regex Sanitization Sequence in [`cleanClientNameFromAddress`](file:///e:/ANTIGRAVITY%20PROJECTS/Safaeewala%20Booking%20Dashboard/src/lib/clientDataSync.ts#L16-L29):**
-1. Remove `\s*\([^)]*monthly[^)]*\)` (case-insensitive)
-2. Remove `\s*\([^)]*cash[^)]*\)`
-3. Remove `\s*\([^)]*pending[^)]*\)`
-4. Remove `\s*\([^)]*online[^)]*\)`
-5. Remove `\s*\([^)]*above[^)]*\)`
-6. Strip trailing/leading punctuation: `^[-–—,:\s]+|[-–—,:\s]+$`
+---
 
-### 3.3 Deterministic Entity ID Generation
+## OT — Overtime
 
-| Entity | ID Format | Example |
+### R-OT-01 — Three-tier OT calculation
+- **Rule:** For each job, in order: (1) `ot_hours > 0` → use it (rounded to 0.1); (2) `is_overtime = true` → the whole `duty_hours` is OT; (3) otherwise time past **20:00** counts as OT. Shifts crossing midnight end on the next day.
+- **Code:** `src/lib/clientDataSync.ts → calcJobOTHours`, `src/components/dailyJobSheet/jobSheetUtils.tsx → calcOTHours`.
+- **Status:** Active
+
+### R-OT-02 — High OT flag
+- **Rule:** ≥ 10 OT hours in the selected period = "High OT" (amber accent, `HIGH` badge, `High OT >10h` filter).
+- **Code:** `src/pages/Employees.tsx`.
+- **Status:** Active
+
+---
+
+## SYNC — Cross-screen synchronisation
+
+### R-SYNC-01 — Daily Job Sheet is the operational ledger
+- **Rule:** Clients and staff seen on the job sheet appear automatically in Clients / Employees (`dj-<address>` and `emp-dj-<name>` synthetic records); hours, OT, revenue and history are derived from `dailyJobs`.
+- **Code:** `DataContext.tsx → allClients / allEmployees` via `extractAllClientsFromDailyJobs`, `extractAllEmployeesFromDailyJobs`.
+- **Status:** Active
+
+### R-SYNC-02 — Bookings store IDs, the job sheet stores names
+- **Rule:** `Booking.assigned_crew` holds **employee IDs**; `DailyJob.staff_name` holds **cleaner names** (comma-separated). Always convert with `crewToStaffName` / `staffNameToCrew` — never copy one into the other.
+- **Why:** Name-based matching (agency payouts, history, attendance) fails on IDs; this caused job-sheet rows showing IDs instead of names.
+- **Code:** `clientDataSync.ts → crewToStaffName, staffNameToCrew`; used in `DataContext.addBooking / updateBooking` and `Bookings.tsx`. `DataContext` also shows legacy rows' IDs as names (read-only).
+- **Status:** Active · Since: 2026-10-27 (`4d65fba`)
+
+### R-SYNC-03 — Creating a booking creates its job-sheet row
+- **Rule:** `addBooking` creates a linked `DailyJob` (`booking_id`); `updateBooking` keeps it in step (date, time, duty, staff, address, charges, received on completion).
+- **Code:** `DataContext.tsx → addBooking, updateBooking`.
+- **Status:** Active
+
+### R-SYNC-04 — Staff are matched by whole words
+- **Rule:** An employee matches a job's `staff_name` by normalised full name or whole-word match — "Rupa" must not match "Rupak".
+- **Code:** `clientDataSync.ts → employeeMatchesStaff`.
+- **Status:** Active
+
+---
+
+## DATA — Data hygiene
+
+### R-DATA-01 — Ignore Excel summary / bogus rows
+- **Rule:** Skip rows with no address and no times; no address with charges or received > 1500 (footer totals); `duty_hours > 24`; or text containing `gross`, `pending rcvd`, `total`, `expences`, `net total`, `summary`, `expense`.
+- **Code:** `clientDataSync.ts → isBogusJob, isBogusStaffName`.
+- **Status:** Active
+
+### R-DATA-02 — Clean client names from addresses
+- **Rule:** Remove payment tags in brackets (`(…monthly…)`, `(…cash…)`, `(…pending…)`, `(…online…)`, `(…above…)`) and stray punctuation before matching clients.
+- **Code:** `clientDataSync.ts → cleanClientNameFromAddress`.
+- **Status:** Active
+
+### R-DATA-03 — No dummy data in operational lists
+- **Rule:** Pickers, filters and assign lists show live data only. Demo seed data (`src/lib/seedData.ts`, client ids `c1000001-0000-0000-0000-…`) appears only when there is no real data at all, and is excluded from assign lists.
+- **Code:** `clientDataSync.ts → getAssignableClients`; Employees agency filter reads only `agencies`; dummy agencies removed from `defaultAgencies`.
+- **Status:** Partial — seeds still load when both Supabase and localStorage are empty.
+
+---
+
+## EMP — Employees
+
+### R-EMP-01 — Roles
+- **Rule:** Roles are `cleaner`, `supervisor` (legacy `crew_lead`), `technical` (legacy `ducting`), `store_cleaner`, `driver`. Legacy values display as their new label.
+- **Code:** `src/types/index.ts → EmployeeRole`; `formatEmpRole` in Employees / EmployeeProfile / Reports.
+- **Status:** Active
+
+### R-EMP-02 — Monthly salary and hourly rate
+- **Rule:** Monthly salary is the stored `monthly_salary`, else `pay_rate_hourly × 200` (`MONTHLY_WORK_HOURS`). The Add Employee form stores `pay_rate_hourly = monthly_salary / 200`.
+- **Code:** `clientDataSync.ts → MONTHLY_WORK_HOURS, getEmployeeMonthlySalary`.
+- **Status:** Partial — see Known issue K-02.
+
+### R-EMP-03 — Performance Health Score
+- **Rule:** 0–100 = Attendance 50 (worked days vs specifically-marked absences, last 90 days, per R-ATT-01) + Activity 30 (distinct worked days in last 30 days vs 22) + Compliance 20 (Visa, Passport, Work Permit, EID not expired). Grades: ≥85 Excellent, ≥70 Good, ≥50 Needs Attention, else At Risk.
+- **Code:** `src/lib/employeeHealth.ts → calcEmployeeHealth`; shown on `/employees/:id`.
+- **Status:** Active · Since: 2026-10-27
+
+### R-EMP-04 — Document expiry alerts
+- **Rule:** Employee bell lists Visa, Passport, Work Permit, EID, Medical Insurance, Driving License and contract end dates that are expired or ≤ 30 days away (inactive staff excluded), most urgent first.
+- **Code:** `Employees.tsx → employeeNotifications`.
+- **Status:** Active
+
+### R-EMP-05 — Driver-only fields
+- **Rule:** Driving License, licence type and assigned vehicle are shown/required only for `driver`; Skills and Client Assignment only for other roles.
+- **Code:** Add/Edit Employee popups in `Employees.tsx`, `EmployeeProfile.tsx`.
+- **Status:** Active
+
+---
+
+## AGN — Agencies
+
+### R-AGN-01 — Safaeewala is the parent company
+- **Rule:** `agency-safaeewala` (company type *Parent Company*) is always present; staff with no agency belong to it. Third-party agencies are everything else.
+- **Code:** `DataContext.tsx → defaultAgencies` and agencies loader; `lib/utils.ts → isParentCompanyEmployee, isThirdPartyEmployee`.
+- **Status:** Active
+
+### R-AGN-02 — Agency ↔ staff matching
+- **Rule:** An employee belongs to an agency when `agency_id` equals the agency id **or** `agency_name` equals the agency name (case-insensitive).
+- **Code:** `AgencyDashboard.tsx → agencyStaff`, `lib/agencyAlerts.ts → staffOf`.
+- **Status:** Active
+
+### R-AGN-03 — Agency filter lists live agencies only
+- **Rule:** The Employees agency filter shows only agencies from the Agencies screen, so new agencies appear automatically and old names on employee records do not.
+- **Code:** `Employees.tsx → dynamicAgencies`.
+- **Status:** Active · Since: 2026-10-27
+
+### R-AGN-04 — Agency alerts
+- **Rule:** Agencies bell shows: trade license / contract / Emirates ID / passport expired or ≤ 30 days; payouts `pending`/`processing`; third-party agency with active staff but no paid salary payout in 35 days; agency staff with Visa / Work Permit / Passport / EID expired or ≤ 30 days (grouped per agency). Inactive agencies excluded.
+- **Code:** `src/lib/agencyAlerts.ts → buildAgencyNotifications`.
+- **Status:** Active · Since: 2026-10-27
+
+### R-AGN-05 — Issue date must not be after expiry
+- **Rule:** For trade license, Emirates ID, passport and contract, the issue/start date cannot be after the expiry/end date.
+- **Code:** Add Agency form submit in `Agencies.tsx`.
+- **Status:** Active
+
+---
+
+## PAY — Salaries & payouts
+
+### R-PAY-01 — Agency gross shift revenue
+- **Rule:** Agency "Gross Shift Revenue" = sum of `charges` of job-sheet rows matched (R-SYNC-04) to the agency's staff. Payment status does not affect it.
+- **Code:** `AgencyDashboard.tsx → staffJobsData, financials`.
+- **Status:** Active
+
+### R-PAY-02 — Salary vs advance payouts
+- **Rule:** Payouts have `payment_type` `salary` or `advance` and `status` `paid` / `pending` / `processing`. "Salary paid" counts only `paid` non-advance payouts.
+- **Code:** `AgencyDashboard.tsx → financials`; type `AgencyCommissionPayout`.
+- **Status:** Active
+
+---
+
+## FIN — Invoices & payments
+
+### R-FIN-01 — UAE VAT
+- **Rule:** VAT is 5% of the subtotal unless the invoice is VAT-exempt (`vat_rate = 0` / `apply_vat = false`); company TRN comes from `company_settings` (fallback `100234567890003`).
+- **Code:** `src/pages/Invoices.tsx`, `MonthlyInvoices.tsx`; TRN in `DataContext.tsx`.
+- **Status:** Active
+
+### R-FIN-02 — Monthly client balance
+- **Rule:** Balance due = max(0, total charges − total received) for the client's monthly jobs (`payment_mode = Monthly` or "monthly" in remarks/address).
+- **Code:** `clientDataSync.ts → isMonthlyJob`, monthly summaries.
+- **Status:** Active
+
+---
+
+## SEC — Security
+
+### R-SEC-01 — Login only on production
+- **Rule:** On `localhost` / dev builds the login is bypassed; on the VPS a login is required, locked for 60 s after 5 failed attempts, session lasts 7 days.
+- **Code:** `src/lib/simpleAuth.ts → isLocalEnvironment, SESSION_TTL`.
+- **Status:** Active
+
+### R-SEC-02 — No secrets in the repo or docs
+- **Rule:** Credentials live in `.env` (see `.env.example` for names) and GitHub secrets only — never in code, docs, commits or chat.
+- **Status:** Active
+
+---
+
+## OPS — Operating process
+
+### R-OPS-01 — No browser automation without permission
+- **Rule:** Do not launch browser sub-agents without the user's confirmation.
+- **Status:** Active
+
+### R-OPS-02 — No production deploy without permission
+- **Rule:** Development is local. Do not run `deploy.ps1`, `scp`/`ssh` to the VPS (`187.77.116.14`) **or `git push origin main`** (it auto-deploys via GitHub Actions) without explicit permission. See [prod.md](prod.md).
+- **Status:** Active
+
+### R-OPS-03 — Two agents, two folders
+- **Rule:** Antigravity works in the main folder; Claude works in the `-claude` worktree and merges into `main` only with the user's go-ahead. See [docs/workflow.md](docs/workflow.md).
+- **Status:** Active · Since: 2026-10-27
+
+---
+
+## Known issues (rules not yet fully honoured)
+
+| ID | Issue | Affects |
 |---|---|---|
-| **Synthesized Client** | `dj-${normalizedCleanAddress}` | `dj-flat309bldg31a` |
-| **Synthesized Staff** | `emp-dj-${normalizedStaffName}` | `emp-dj-laxmirani` |
-| **Direct Booking Client** | UUIDv4 | `e9b8f23a-4f51-4122-...` |
-
-### 3.4 Bogus Row Detection (`isBogusJob`)
-To prevent Excel summary rows from polluting operational metrics, a job is filtered out if:
-- Both `address` and `times` are empty / placeholder dashes (`—`, `-`).
-- `address` is empty AND (`charges > 1500` OR `received > 1500`) $\rightarrow$ denotes a footer total.
-- `duty_hours > 24` $\rightarrow$ impossible single-shift duration.
-- Combined text across fields matches reserved summary keywords:
-  `['gross', 'pending rcvd', 'total', 'expences', 'net total', 'summary', 'expense']`.
-
----
-
-## 4. Screen-by-Screen Data Synchronization Rules
-
-### 4.1 Daily Job Sheet (`/daily-job-sheet`)
-*The primary operational ledger of the company.*
-- **Data Ingestion:** Excel files (.xlsx, .xls) parsed with date cell conversions and strict type coercion (`safeNum`).
-- **Persistence:** LocalStorage key `safaeewala_daily_jobs` + Supabase table `daily_jobs`.
-- **Cash & Revenue Rules:**
-  - `charges`: Total invoiceable fee for the visit.
-  - `received`: Amount collected on site by the cleaner (Cash / Instant Online).
-  - `payment_mode`: `'Cash' | 'Online' | 'Pending' | 'Monthly' | 'Above'`.
-  - Cash collected on site directly feeds into the cashier's daily cash register.
-- **Expenses Extraction:** Rows with category markers or remarks containing expense descriptions automatically map to `safaeewala_daily_expenses`.
-
----
-
-### 4.2 Employees & Staff Roster (`/employees` & `/redesign/employees`)
-*Workforce management, duty hours, overtime tracking, and compliance.*
-- **Auto-Discovery Rule (`extractAllEmployeesFromDailyJobs`):**
-  - All staff names appearing on the Daily Job Sheet are normalized.
-  - If a staff member does not exist in registered employees, a synthetic employee profile (`emp-dj-${normName}`) is automatically instantiated.
-  - Known roster names (e.g., Sharmila, Sharada, Laxmi Rani, Parmila, Sita, Krishna, Ibrahim, etc.) are pre-seeded to guarantee complete roster visibility.
-- **Duty & Overtime Aggregation (`staffJobStats`):**
-  - Jobs are filtered by active date range (`activeDateRange`: All Time, Today, Yesterday, 7 Days, 30 Days, 3 Months, 6 Months, Custom).
-  - Regular Duty Hours: $\sum \text{job.duty\_hours}$.
-  - Overtime Hours: $\sum \text{calcJobOTHours(job)}$.
-  - Total Shifts: Count of valid completed jobs in the period.
-- **Live Duty Status Resolution:**
-  1. `emp.status === 'on_leave'` $\rightarrow$ **On Leave**.
-  2. `emp.status === 'inactive'` $\rightarrow$ **Inactive**.
-  3. `todayJob` exists in Daily Job Sheet $\rightarrow$ **On Duty Today** (with location & time, e.g. `Marina Gate (08:00 - 16:00)`).
-  4. Active booking exists for today in Supabase bookings $\rightarrow$ **On Live Job** / **Scheduled**.
-  5. Otherwise $\rightarrow$ **Available / Standby**.
-- **Excel Roster Export:**
-  - Generates `.xlsx` including Employee ID, Full Name, Role, Duty Hours, OT Hours, Total Hours, Shifts Count, Pay Rate, Visa Expiry, and Status.
-
----
-
-### 4.3 Monthly Clients (`/monthly-clients`)
-*Recurring subscription contracts and residential maintenance clients.*
-- **Monthly Job Qualification (`isMonthlyJob`):**
-  - `payment_mode.toLowerCase() === 'monthly'` OR
-  - `job.remarks` contains `'monthly'` OR
-  - `job.address` contains `'monthly'`.
-- **Client Aggregation (`extractMonthlyClientsFromDailyJobs`):**
-  - Groups monthly jobs by cleaned normalized client address.
-  - Calculates:
-    - `totalCharges`: Sum of all monthly job charges in period.
-    - `totalReceived`: Cash and online payments collected.
-    - `balanceDue`: $\max(0, \text{totalCharges} - \text{totalReceived})$.
-    - `visitsCount`: Total cleaning visits completed for the contract.
-- **Schedule Isolation Rule (Temporary Daily Changes vs. Permanent Contract Schedule):**
-  - **Core Rule:** *Monthly Clients kay schedule mein Daily Job Sheet par ki janay wali koi bhi tabdeeli — jaisay time, date, cleaner assignment, ya duration — temporary (aarzi) samjhi jaye gi aur woh Monthly Client kay asal permanent master schedule ko kabhi update nahi karay gi.*
-  - **Daily Job Sheet Scope:** Edits made in `/daily-job-sheet` (e.g. changing start time from 09:00 to 10:00, or reassigning cleaner for a specific date) are strictly isolated to that specific date's `DailyJob` row.
-  - **Permanent Master Schedule Protection:** The client's recurring contract template (`service_days`, `scheduled_time`, `end_time`, `duration_hours`, `preferred_cleaner`, and `day_cleaner_assignments`) remains permanent, immutable, and protected from daily sheet edits.
-  - **Where Permanent Changes Happen:** Permanent contract modifications can ONLY be made inside the Monthly Clients screen (`/monthly-clients`) or Client Profile modal.
-
----
-
-### 4.3.1 Attendance System & Cleaner Classification (`/attendance`)
-*Workforce availability, shift synchronization, and live attendance tracking.*
-- **Daily Job Sheet Live Synchronization:**
-  - Attendance is calculated in real time by scanning `dailyJobs` for the selected date.
-- **Attendance Classification Rule (Haaziri Ka Usool):**
-  1. **Present (Working):** Cleaners who have 1 or more active cleaning shifts logged on the selected date. System aggregates duty hours and overtime.
-  2. **Available (Standby / No Job Assigned):** Cleaners with blank/nil entries (0 jobs assigned on that date) are **strictly classified as Available / Standby** for deployment. **They are NOT counted as absent**.
-  3. **Specifically Absent / On Leave:** A cleaner is ONLY counted as absent if specifically marked with an explicit reason (e.g., remarks/notes containing "Absent", "Sick", "Leave", "Emergency", or manual override).
-- **Daily Sheet Row Styling:** Nil/blank cleaner rows in the Daily Job Sheet reflect calm sky-blue `"Available (No jobs assigned)"` / `"Standby"` badges rather than red absent flags.
-
----
-
-### 4.4 Bookings & Dispatch (`/bookings`)
-*Scheduled appointments, one-off deep cleans, and team dispatch.*
-- **Status Lifecycle:**
-  $$\text{pending} \longrightarrow \text{confirmed} \longrightarrow \text{in\_progress} \longrightarrow \text{completed} \quad (\text{or } \text{cancelled})$$
-- **Automatic Client Linkage:**
-  - When a booking is created, client name is matched against existing clients.
-  - If no match exists, a new Client record is deterministically created with address, city (Dubai), and phone number.
-- **Live Dispatch Integration:**
-  - `assigned_crew` stores employee IDs.
-  - Any booking on today's date in `in_progress` or `confirmed` status feeds directly into the live crew status widgets on the dashboard and employees screens.
-
----
-
-### 4.5 Clients Directory (`/clients` & `/clients/:id`)
-*Customer relationships, property details, and visit histories.*
-- **Unified Client Synthesis (`extractAllClientsFromDailyJobs`):**
-  - Merges Supabase registered clients with auto-discovered clients from the Daily Job Sheet.
-  - Links total historical spend, total booking count, and last service date across all modules.
-
----
-
-### 4.6 Invoices & Billing (`/invoices` & `/monthly-invoices`)
-*VAT-compliant financial invoicing in the UAE.*
-- **TRN Compliance:**
-  - Invoices automatically populate company Tax Registration Number (TRN): `100234567890003` (or custom setting from `company_settings`).
-- **VAT Calculation:**
-  $$\text{VAT Amount} = \text{round}((\text{subtotal} \times 0.05) \times 100) / 100$$
-  $$\text{Total Invoice Amount} = \text{subtotal} + \text{VAT Amount}$$
-- **Status Flow:** `'draft' | 'sent' | 'paid' | 'overdue'`.
-
----
-
-### 4.7 Expenses (`/expenses`)
-*Operational expenditures and petty cash management.*
-- Categorization: Equipment, Chemicals & Cleaning Supplies, Staff Transport & Fuel, Visa & Labor Renewals, Food & Accommodation, Marketing, Petty Cash.
-- Sources: Direct Expenses recorded in app + Daily petty cash recorded on the job sheet.
-
----
-
-### 4.8 Pending Payments (`/pending`)
-*Receivables tracking and cash collection auditing.*
-- Tracks outstanding balances across daily jobs (`payment_mode === 'Pending'`) and unpaid invoices (`status === 'sent' | 'overdue'`).
-- Reconciles cash handed over by crew leads at the end of daily shifts.
-
----
-
-### 4.9 Fluent Forms Leads (`/fluent-forms`)
-*Inbound lead automation from WordPress website forms.*
-- Ingested via local/cloud webhook endpoint `/api/fluent-forms/webhook`.
-- Status pipeline: `'new' | 'contacted' | 'quoted' | 'converted' | 'lost'`.
-- 1-Click Conversion: Converts any qualified lead directly into a confirmed Booking and registered Client profile with all pre-filled contact details.
-
----
-
-## 5. Security & Deployment Isolation Rules
-
-### 5.1 Local vs. VPS Authentication Rules
-- **Rule Definition in [`isLocalEnvironment`](file:///e:/ANTIGRAVITY%20PROJECTS/Safaeewala%20Booking%20Dashboard/src/lib/simpleAuth.ts#L27-L38):**
-  ```ts
-  export function isLocalEnvironment(): boolean {
-    if (typeof window === 'undefined') return false
-    const host = window.location.hostname
-    return (
-      Boolean(import.meta.env.DEV) ||
-      host === 'localhost' ||
-      host === '127.0.0.1' ||
-      host === '::1' ||
-      host.endsWith('.local')
-    )
-  }
-  ```
-- **Local Development (`localhost:5058`):**
-  - **Password Bypass:** `AuthGuard` skips login prompts and automatically signs in as `admin`.
-  - Enables frictionless local iteration, UI testing, and offline work.
-- **VPS Production Server (`187.77.116.14:8080`):**
-  - **Strict Authentication Enforced:** `AuthGuard` requires valid administrator credentials.
-  - Rate limiting active: 5 failed attempts locks login for 60 seconds.
-  - Session TTL: 7 days with persistent storage sync.
+| K-01 | Localhost talks to the **live** backend (`/api` proxy → VPS, live Supabase): saves during testing change production data. | R-OPS-02 |
+| K-02 | Agency payouts derive hourly pay as `monthly_salary / (26 × 8)` (208 h) while the rest of the app uses 200 h. | R-EMP-02, R-PAY-01 |
+| K-03 | Agency saves POST the **whole agency list** (`{ all: next }`); a stale tab can overwrite newer agencies. | R-AGN-* |
+| K-04 | New employee fields (`photo_url`, document numbers/files) may not exist as Supabase columns; if not, they persist only in that browser. | R-EMP-* |
+| K-05 | Seed/demo data still loads when Supabase and localStorage are both empty. | R-DATA-03 |
