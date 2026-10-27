@@ -374,6 +374,8 @@ export interface DailyPendingReceivedItem {
   remarks?: string
   /** Collection made against one specific job (Pending Payments / Payments collect) */
   job_id?: string
+  /** How it was paid: Cash, Bank Transfer, Credit Card, Cheque, Online (AUD-29) */
+  method?: string
   /** Part of this collection that cleared the client's opening balance (pending_amount) */
   opening_applied?: number
   /** How this collection was split over the client's unpaid jobs */

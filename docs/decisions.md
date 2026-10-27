@@ -12,6 +12,12 @@
 > - Affects:  rule IDs, files
 > ```
 
+## DEC-010 — Agency delete removes its staff; pay shown as monthly salary only (2026-10-27)
+- **Context:** Owner request: "jab agency delete ho jaye tab employee ka data bhi delete hoga"; "/hr ko monthly salary mein badlo".
+- **Decision:** Deleting a third-party agency deletes its linked employees (with a named warning in the dialog); shifts on the job sheet are kept as history. Hourly rates are no longer shown or defaulted anywhere; monthly salary is the single pay figure.
+- **Why:** Owner decision; removes orphaned staff (AUD-13) and the three conflicting salary formulas (AUD-06).
+- **Affects:** R-AGN-06, R-DATA-05, R-EMP-02.
+
 ## DEC-009 — Outbox + key/value cloud copy instead of one table per feature (2026-10-27)
 - **Context:** Phase 2 of the audit — browser-only financial data and silently failed Supabase writes.
 - **Decision:** (1) all writes through an outbox that retries and re-applies pending changes; (2) the 7 browser-only keys mirrored as JSON values in one `app_state` table, merged by item `id`.

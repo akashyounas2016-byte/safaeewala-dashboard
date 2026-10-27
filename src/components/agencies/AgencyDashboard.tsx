@@ -14,7 +14,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
 import type { Agency, Employee, DailyJob, AgencySalaryPayout, AgencyDocument, AgencyDocumentCategory, AgencyContactPerson } from '@/types'
 import { formatDate, formatCurrency, daysUntil, isParentCompanyEmployee } from '@/lib/utils'
-import { getEmployeeDailyJobsHistory, employeeMatchesStaff, jobChargeShare } from '@/lib/clientDataSync'
+import { getEmployeeDailyJobsHistory, employeeMatchesStaff, jobChargeShare, shiftSalaryCost, formatMonthlySalary } from '@/lib/clientDataSync'
 import { generateCertificateDataUrl } from '@/lib/agencyCertificates'
 
 // ── Editable Field with Integrated File Upload Icon & Doc Viewer ──
@@ -278,12 +278,11 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
 
     agencyStaff.forEach(emp => {
       const history = getEmployeeDailyJobsHistory(emp, dailyJobs)
-      const hourlyPay = emp.pay_rate_hourly || (emp.monthly_salary ? Math.round(emp.monthly_salary / (26 * 8)) : 15)
 
       history.forEach(job => {
         const rev = jobChargeShare(job)
-        const duty = Number(job.duty_hours) || 4
-        const salaryAlloc = Math.round(hourlyPay * duty)
+        const duty = Number(job.duty_hours) || 0 // no invented 4 h (AUD-11)
+        const salaryAlloc = shiftSalaryCost(emp, duty) // same salary rule as Employees (AUD-06)
 
         items.push({
           job,
@@ -1226,8 +1225,8 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                                 <span className="text-[10.5px] font-normal text-slate-500 block">per month</span>
                               </p>
                             ) : (
-                              <p className="font-bold text-slate-900 text-[12.5px]">
-                                AED {emp.pay_rate_hourly || 12}/hr
+                              <p className="font-bold text-slate-500 text-[12.5px]">
+                                {formatMonthlySalary(emp)}
                               </p>
                             )}
                             <p className="text-[10.5px] font-bold text-teal-700 mt-0.5">
@@ -1320,7 +1319,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                         <div>
                           <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Pay Rate</p>
                           <p className="text-[13px] font-black text-slate-900 mt-0.5">
-                            {emp.monthly_salary ? `${formatCurrency(emp.monthly_salary)}/mo` : `AED ${emp.pay_rate_hourly || 12}/hr`}
+                            {formatMonthlySalary(emp)}
                           </p>
                         </div>
                         <div>
@@ -2777,15 +2776,16 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
               full_name: fd.get('full_name') as string,
               phone: (fd.get('phone') as string) || '',
               role: (fd.get('role') as any) || 'cleaner',
-              nationality: (fd.get('nationality') as string) || 'Nepal',
+              nationality: (fd.get('nationality') as string) || '',
               emirates_id: (fd.get('emirates_id') as string) || '',
               visa_expiry: (fd.get('visa_expiry') as string) || '',
               work_permit_expiry: (fd.get('visa_expiry') as string) || '',
               passport_expiry: '',
-              skills: ['Residential Cleaning', 'Deep Clean'],
+              skills: [],
               status: 'active',
-              pay_rate_hourly: Number(fd.get('pay_rate_hourly')) || 12,
+              // Monthly salary only; no invented hourly rate (AUD-09)
               monthly_salary: Number(fd.get('monthly_salary')) || undefined,
+              pay_rate_hourly: Number(fd.get('monthly_salary')) ? Math.round((Number(fd.get('monthly_salary')) / 200) * 10) / 10 : 0,
               agency_id: agency.id,
               agency_name: agency.name,
               joined_date: todayStr,
@@ -3419,7 +3419,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                 <div className="bg-white rounded-2xl border border-slate-200/90 p-3.5 shadow-2xs">
                   <span className="text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">Cleaner Pay Rate</span>
                   <p className="text-xl font-black text-slate-900 mt-0.5">
-                    {profileStaff.monthly_salary ? `${formatCurrency(profileStaff.monthly_salary)}/mo` : `AED ${profileStaff.pay_rate_hourly || 12}/hr`}
+                    {formatMonthlySalary(profileStaff)}
                   </p>
                   <p className="text-[11px] text-slate-500 mt-0.5">Direct cleaner compensation</p>
                 </div>
@@ -3534,7 +3534,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                           <tr key={idx} className="hover:bg-slate-50/60">
                             <td className="py-2 px-3 font-bold text-slate-800">{formatDate(job.date)}</td>
                             <td className="py-2 px-3 text-slate-700">{job.area || job.address || 'Cleaning Service'}</td>
-                            <td className="py-2 px-3 text-center font-bold text-slate-800">{job.duty_hours || 4}h</td>
+                            <td className="py-2 px-3 text-center font-bold text-slate-800">{job.duty_hours ? `${job.duty_hours}h` : '—'}</td>
                             <td className="py-2 px-3 text-right font-extrabold text-teal-700">AED {job.charges || 0}</td>
                           </tr>
                         ))}

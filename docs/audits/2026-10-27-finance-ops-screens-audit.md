@@ -4,7 +4,7 @@
 > **Question asked:** is the data on each screen synchronised, real and correct (not dummy / hard-coded)? How can the UI/UX be improved?
 > **Method:** code review of `claude/workspace` (`28c66de`, includes audit phases 1-3), tracing each number to its source.
 > Not yet re-checked: Antigravity's uncommitted edits to `PaymentProcessing.tsx` and the new `src/components/payments/` (in progress at the time of this audit).
-> **Fix status (2026-10-27):** all findings fixed except AUD-29 and AUD-38 (low); AUD-43 found and fixed during the work.
+> **Fix status (2026-10-27):** all findings fixed (AUD-24 … AUD-43).
 > Findings continue the numbering of the [data-sync audit](2026-10-27-data-sync-audit.md): **AUD-24 … AUD-42**. UI/UX ideas are **UX-01 … UX-24**. No fixes applied yet.
 
 ## Summary
@@ -58,7 +58,7 @@ Severity: 🔴 High 7 · 🟠 Medium 8 · 🟡 Low 4.
 - **What:** monthly visits are already in job charges; adding the payments again inflates "billed".
 - **Fix:** billed = job charges (+ invoices not tied to jobs); collected = received + recoveries + monthly payments.
 
-### AUD-29 🟡 Payment method reduced to cash/online — 🟡 Open (method kept in the receipt remark)
+### AUD-29 🟡 Payment method reduced to cash/online — ✅ Fixed (`method` stored on receipts)
 - **Where:** `PaymentProcessing.tsx:398-406` — Bank Transfer / Card / Cheque are stored only as `online` + a remark.
 - **Fix:** store `method` on the receipt.
 
@@ -118,7 +118,7 @@ Severity: 🔴 High 7 · 🟠 Medium 8 · 🟡 Low 4.
 
 Real data: registered staff + recent job-sheet names; hard-coded roster removed and shared shifts split in phase 3 (AUD-08, AUD-18); overrides now synced to the cloud (AUD-02).
 
-### AUD-38 🟡 Overrides are keyed by cleaner name — 🟡 Open
+### AUD-38 🟡 Overrides are keyed by cleaner name — ✅ Fixed (overrides keyed `date_id:<employeeId>`, old name keys still read)
 - **Where:** `Attendance.tsx:210` (`${date}_${name lowercase}`).
 - **Impact:** renaming an employee loses their absence history (also affects Health Score).
 - **Fix:** key by employee id when the cleaner is registered.

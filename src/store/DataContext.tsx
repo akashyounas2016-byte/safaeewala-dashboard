@@ -1,13 +1,12 @@
 import { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react'
 import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency } from '../types'
 import { supabase } from '@/lib/supabase'
-import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName } from '@/lib/clientDataSync'
+import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry } from '@/lib/syncQueue'
 import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
 import { nextInvoiceNumber, ensureInvoiceNumber } from '@/lib/invoiceNumber'
-import { seedBookings, seedClients, seedInvoices, seedInventory, seedEmployees } from '@/lib/seedData'
-import { addHoursToTime } from '@/lib/utils'
+import { addHoursToTime, staffOfAgency } from '@/lib/utils'
 
 export const defaultAgencies: Agency[] = [
   {
@@ -133,23 +132,23 @@ function safeNum(val: any): number {
 export function DataProvider({ children }: { children: ReactNode }) {
   const [bookings,      setBookings]      = useState<Booking[]>(() => {
     const saved = safeLocalStorageGet<Booking[]>('safaeewala_bookings', [])
-    return saved.length > 0 ? saved : (seedBookings as Booking[])
+    return saved
   })
   const [clients,       setClients]       = useState<Client[]>(() => {
     const saved = safeLocalStorageGet<Client[]>('safaeewala_clients', [])
-    return saved.length > 0 ? saved : (seedClients as unknown as Client[])
+    return saved
   })
   const [employees,     setEmployees]     = useState<Employee[]>(() => {
     const saved = safeLocalStorageGet<Employee[]>('safaeewala_employees', [])
-    return saved.length > 0 ? saved : (seedEmployees as Employee[])
+    return saved
   })
   const [invoices,      setInvoices]      = useState<Invoice[]>(() => {
     const saved = safeLocalStorageGet<Invoice[]>('safaeewala_invoices', [])
-    return saved.length > 0 ? saved : (seedInvoices as Invoice[])
+    return saved
   })
   const [inventory,     setInventory]     = useState<InventoryItem[]>(() => {
     const saved = safeLocalStorageGet<InventoryItem[]>('safaeewala_inventory', [])
-    return saved.length > 0 ? saved : (seedInventory as InventoryItem[])
+    return saved
   })
   const [dailyJobs,     setDailyJobs]     = useState<DailyJob[]>(() =>
     safeLocalStorageGet<DailyJob[]>('safaeewala_daily_jobs', [])
@@ -313,7 +312,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       } else {
         const saved = safeLocalStorageGet<Booking[]>('safaeewala_bookings', [])
         if (saved.length > 0) setBookings(saved)
-        else setBookings(seedBookings as Booking[])
       }
 
       if (c && c.length > 0) {
@@ -321,7 +319,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       } else {
         const saved = safeLocalStorageGet<Client[]>('safaeewala_clients', [])
         if (saved.length > 0) setClients(saved)
-        else setClients(seedClients as unknown as Client[])
       }
 
       if (e && e.length > 0) {
@@ -329,7 +326,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       } else {
         const saved = safeLocalStorageGet<Employee[]>('safaeewala_employees', [])
         if (saved.length > 0) setEmployees(saved)
-        else setEmployees(seedEmployees as Employee[])
       }
 
       if (i && i.length > 0) {
@@ -337,7 +333,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       } else {
         const saved = safeLocalStorageGet<Invoice[]>('safaeewala_invoices', [])
         if (saved.length > 0) setInvoices(saved)
-        else setInvoices(seedInvoices as Invoice[])
       }
 
       if (inv && inv.length > 0) {
@@ -345,7 +340,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       } else {
         const saved = safeLocalStorageGet<InventoryItem[]>('safaeewala_inventory', [])
         if (saved.length > 0) setInventory(saved)
-        else setInventory(seedInventory as InventoryItem[])
       }
 
       let initialJobs = ((dj || []) as any[]).map(j => ({
@@ -390,13 +384,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
     })
   }, [dailyJobs, employees])
 
+  // Names the user deleted — job-sheet history must not bring them back (AUD-17). Cloud-synced.
+  const [deletedStaffKeys, setDeletedStaffKeys] = useState<string[]>(() => safeLocalStorageGet<string[]>('safaeewala_deleted_staff', []))
+  const [deletedClientKeys, setDeletedClientKeys] = useState<string[]>(() => safeLocalStorageGet<string[]>('safaeewala_deleted_clients', []))
+  const deletedStaffSet = useMemo(() => new Set(deletedStaffKeys), [deletedStaffKeys])
+  const deletedClientSet = useMemo(() => new Set(deletedClientKeys), [deletedClientKeys])
+  const forgetStaffNames = (keys: string[]) => {
+    if (keys.length === 0) return
+    setDeletedStaffKeys(prev => {
+      const next = Array.from(new Set([...prev, ...keys]))
+      safeLocalStorageSet('safaeewala_deleted_staff', next)
+      return next
+    })
+  }
+
   const allClients = useMemo(() => {
-    return extractAllClientsFromDailyJobs(viewDailyJobs, clients, bookings)
-  }, [viewDailyJobs, clients, bookings])
+    return extractAllClientsFromDailyJobs(viewDailyJobs, clients, bookings, deletedClientSet)
+  }, [viewDailyJobs, clients, bookings, deletedClientSet])
 
   const allEmployees = useMemo(() => {
-    return extractAllEmployeesFromDailyJobs(viewDailyJobs, employees)
-  }, [viewDailyJobs, employees])
+    return extractAllEmployeesFromDailyJobs(viewDailyJobs, employees, deletedStaffSet)
+  }, [viewDailyJobs, employees, deletedStaffSet])
+
+  /** Job-sheet name keys that belong to an employee (e.g. "Laxmi" rows for "Laxmi Rani") */
+  const staffKeysOf = (emp: Employee): string[] => {
+    const keys = new Set([normalizeStaffName(emp.full_name)])
+    viewDailyJobs.forEach(j => splitStaffNames(j.staff_name).forEach(n => {
+      if (employeeMatchesStaff(emp, n)) keys.add(normalizeStaffName(n))
+    }))
+    return Array.from(keys).filter(Boolean)
+  }
 
   const store: DataStore = {
     bookings, clients: allClients, employees: allEmployees, agencies, invoices, inventory, loading,
@@ -494,19 +511,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       // When a booking is marked completed for the first time:
       if (patch.status === 'completed' && booking && booking.status !== 'completed') {
-        // 1. Update client total_spent + total_bookings + last_service
-        const client = clients.find(c =>
-          c.full_name.toLowerCase().trim() === booking.client_name.toLowerCase().trim()
-        )
-        if (client) {
-          const clientPatch = {
-            total_spent:    client.total_spent + booking.total_amount,
-            total_bookings: client.total_bookings + 1,
-            last_service:   booking.scheduled_date,
-          }
-          setClients(p => p.map(c => c.id === client.id ? { ...c, ...clientPatch } : c))
-          dbUpdate('clients', client.id, clientPatch)
-        }
+        // 1. Client totals (spent / visits / last service) are derived from the booking's
+        //    job-sheet row, so nothing is added here — adding it too double-counted (AUD-22)
 
         // 2. Auto-create a draft invoice
         const sub = booking.total_amount
@@ -582,9 +588,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
       dbUpdate('clients', id, patch)
     },
     deleteClient: (id) => {
-      const c = clients.find(c => c.id === id)
+      const c = allClients.find(c => c.id === id)
       setClients(p => p.filter(c => c.id !== id))
-      dbDelete('clients', id)
+      if (!id.startsWith('dj-')) dbDelete('clients', id)
+      // Keep a deleted client from re-appearing from job-sheet addresses (AUD-17)
+      if (c) {
+        const keys = [normalizeKey(c.full_name), normalizeKey(cleanClientNameFromAddress(c.full_name))]
+        if (id.startsWith('dj-')) keys.push(id.slice(3))
+        setDeletedClientKeys(prev => {
+          const next = Array.from(new Set([...prev, ...keys.filter(Boolean)]))
+          safeLocalStorageSet('safaeewala_deleted_clients', next)
+          return next
+        })
+      }
       if (c) logAudit('deleted', 'client', id, c.full_name)
     },
 
@@ -612,9 +628,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       dbUpdate('employees', id, patch)
     },
     deleteEmployee: (id) => {
-      const e = employees.find(e => e.id === id)
+      const e = allEmployees.find(e => e.id === id)
       setEmployees(p => p.filter(e => e.id !== id))
-      dbDelete('employees', id)
+      if (!id.startsWith('emp-dj-')) dbDelete('employees', id)
+      // Keep the deleted person from re-appearing as a job-sheet-only employee (AUD-17)
+      if (e) forgetStaffNames(staffKeysOf(e))
       if (e) logAudit('deleted', 'employee', id, e.full_name)
     },
 
@@ -667,6 +685,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
     },
     deleteAgency: (id) => {
       const a = agencies.find(a => a.id === id)
+      // Deleting a third-party agency deletes its staff too (owner decision, 2026-10-27).
+      // The parent company is never deleted together with its staff.
+      if (a && id !== 'agency-safaeewala' && a.company_type !== 'Parent Company') {
+        const staff = staffOfAgency(a, employees)
+        if (staff.length > 0) {
+          const ids = new Set(staff.map(s => s.id))
+          setEmployees(p => p.filter(e => !ids.has(e.id)))
+          staff.forEach(s => {
+            dbDelete('employees', s.id)
+            logAudit('deleted', 'employee', s.id, s.full_name, `with agency ${a.name}`)
+          })
+          forgetStaffNames(staff.flatMap(staffKeysOf))
+        }
+      }
       setAgencies(p => {
         const next = p.filter(a => a.id !== id)
         safeLocalStorageSet('safaeewala_agencies', next)

@@ -3,7 +3,7 @@
 > **Scope:** all screens, with focus on Employees, Agencies, Clients and the shared data layer (`DataContext`, `src/lib`).
 > **Method:** code review of the current `main` (`ec6c9c2`), tracing each number from storage → calculation → screen.
 > Findings were checked against the code; items marked **(verify)** depend on the live Supabase schema, which was not inspected.
-> **Status of fixes:** Phase 1 fixed — AUD-01, AUD-05, AUD-07, AUD-10. Phase 2 code done — AUD-02, AUD-03, AUD-04, AUD-20, AUD-23 (marked ✅; AUD-02/03 need the Supabase migration `supabase/migrations/2026-10-27_phase2_sync.sql` to take full effect). Phase 3 fixed — AUD-08, AUD-14, AUD-15, AUD-18, AUD-19; AUD-13 partly (rename). Others open. Track fixes by ID (`AUD-xx`) in commits and CHANGELOG.
+> **Status of fixes:** Phase 1 fixed — AUD-01, AUD-05, AUD-07, AUD-10. Phase 2 code done — AUD-02, AUD-03, AUD-04, AUD-20, AUD-23 (marked ✅; AUD-02/03 need the Supabase migration `supabase/migrations/2026-10-27_phase2_sync.sql` to take full effect). Phase 3 fixed — AUD-08, AUD-14, AUD-15, AUD-18, AUD-19. Remaining items fixed — AUD-06, 09, 11, 12, 13, 16, 17, 21, 22. **All findings closed.** Track fixes by ID (`AUD-xx`) in commits and CHANGELOG.
 
 ## Summary
 
@@ -33,7 +33,7 @@
 - **Impact:** Reports show much lower revenue/jobs than Overview, Employees or Agencies for the same period.
 - **Fix:** build Reports from `dailyJobs` (same helpers as Employees/Overview); use bookings only for pipeline/forecast.
 
-### AUD-06 🟠 Three different salary models
+### AUD-06 🟠 Three different salary models — ✅ Fixed (one rule: monthly salary; shift cost = monthly ÷ 200 h × duty)
 - **Where:** `src/pages/Reports.tsx:168` (hours × `pay_rate_hourly`); `src/components/agencies/AgencyDashboard.tsx:281` (`monthly_salary / (26×8)`, i.e. 208 h, fallback 15); `src/lib/clientDataSync.ts:315-321` (200 h, `getEmployeeMonthlySalary`).
 - **What:** Payroll in Reports, salary allocation in Agency payouts and salary on Employees use different hour bases.
 - **Impact:** the same cleaner's salary differs between Reports, Agency profile and Employee profile. (Known issue K-02.)
@@ -55,7 +55,7 @@
 - **Impact:** inflated staff counts (e.g. "34 / 34"), ex-staff shown as "Available" every day, wrong roles.
 - **Fix:** remove the hard-coded rosters; staff come only from registered employees + names actually present in the job sheet; synthetic staff inactive after N days without jobs.
 
-### AUD-09 🟠 Fake salary / rate values when data is missing
+### AUD-09 🟠 Fake salary / rate values when data is missing — ✅ Fixed (no 12/15/14 per hour, no "Nepal"/skills defaults; "Not set" shown)
 - **Where:** `EmployeeProfile.tsx:372`, `:1112` (shows **AED 2500/mo** when no salary); `AgencyDashboard.tsx:1230`, `:1323`, `:3422` (shows **AED 12/hr**); `AgencyDashboard.tsx:281` (uses **15/hr**); `AgencyDashboard.tsx:2787` (new agency staff saved with 12/hr); `Employees.tsx:137` (Excel import defaults to 14/hr).
 - **Impact:** looks like real pay data; feeds payroll/payout numbers.
 - **Fix:** show "Not set" (`formatMonthlySalary` already does) and exclude from payroll until set.
@@ -65,12 +65,12 @@
 - **Impact:** editing any field of an employee with no salary writes a fake AED 2500 salary (and hourly rate 12.5) to the database.
 - **Fix:** leave salary empty when not entered.
 
-### AUD-11 🟠 Fake hours in Live Cleaners
+### AUD-11 🟠 Fake hours in Live Cleaners — ✅ Fixed
 - **Where:** `src/pages/Agencies.tsx:425`, `:476` (`duty_hours || 4`), `:448` (booking `duration_hours || 2`).
 - **Impact:** rows without hours show 4 h duty — totals look real.
 - **Fix:** show "—" for unknown hours; don't add to totals.
 
-### AUD-12 🟡 Demo seed data loads when storage is empty
+### AUD-12 🟡 Demo seed data loads when storage is empty — ✅ Fixed (seed fallbacks and demo files removed)
 - **Where:** `src/store/DataContext.tsx:132-148`, `:294-326` (`seedBookings`, `seedClients`, `seedEmployees`, `seedInvoices`, `seedInventory`).
 - **Impact:** a new browser with Supabase slow/unreachable (2 s timeout) shows demo clients/staff (Sarah, Mohammed, Muhammad Tariq …) as if real, and they can be saved back. (Known issue K-05.)
 - **Fix:** show an empty state / "offline" banner instead of seeds in production; keep seeds for a demo flag only. `src/data/mock.ts` is unused and can be deleted.
@@ -92,7 +92,7 @@
 - **Impact:** agencies/payouts "revert" after refresh (the earlier Safaeewala-name bug), parent company may vanish, payouts recorded on one device not visible on another. Plus K-03 (stale tab overwrites the full list).
 - **Fix:** one source of truth for agencies (Supabase *or* `/api`), merge-by-id on load, always inject the parent, send per-agency updates instead of the full list.
 
-### AUD-13 🟠 Renaming or deleting an agency orphans its staff — 🟡 Rename fixed (staff re-linked); delete still open
+### AUD-13 🟠 Renaming or deleting an agency orphans its staff — ✅ Fixed (rename re-links staff; delete removes the agency's staff — owner decision)
 - **Where:** `DataContext.tsx:613` (`updateAgency`), `:633` (`deleteAgency`) — no cascade to employees; matching in `AgencyDashboard.tsx:231-239` uses `agency_id` **or** `agency_name`.
 - **Impact:** staff linked only by name drop out of the renamed agency; after delete, staff keep the old `agency_id`/name, count as third-party, but no filter option shows them (agency filter lists live agencies only).
 - **Fix:** on rename update `agency_name` on linked employees; on delete ask to reassign staff (or move to parent).
@@ -107,12 +107,12 @@
 - **Impact:** a booking whose service address doesn't contain the client's name creates a separate auto-discovered "client" named after the address; the real client's total spent / visits miss it.
 - **Fix:** link via `booking_id → booking.client_id` first, text matching only for hand-typed job-sheet rows.
 
-### AUD-16 🟠 Fuzzy client matching attaches jobs to the wrong client
+### AUD-16 🟠 Fuzzy client matching attaches jobs to the wrong client — ✅ Fixed (partial match only for 2+ word names / specific buildings)
 - **Where:** `clientDataSync.ts:665-672` (whole-word partial match; first registered client wins).
 - **Impact:** a client named e.g. "Ahmed" absorbs jobs for any address containing "Ahmed"; totals shift between clients.
 - **Fix:** prefer exact/ID links; restrict partial matches to building names and show "possible match" instead of auto-attaching.
 
-### AUD-17 🟠 Deleting a synthetic or job-linked record doesn't stick
+### AUD-17 🟠 Deleting a synthetic or job-linked record doesn't stick — ✅ Fixed (deleted names kept in a cloud-synced list)
 - **Where:** `DataContext.tsx:560-565` (`deleteClient`), `deleteEmployee`; records are re-derived by `extractAllClientsFromDailyJobs` / `extractAllEmployeesFromDailyJobs`.
 - **Impact:** deleting a client/employee that appears on the job sheet makes it reappear immediately (as `dj-…` / `emp-dj-…`).
 - **Fix:** keep a "hidden/merged" list for synthetic records, or explain in the UI that history keeps them.
@@ -163,12 +163,12 @@
 
 ## E. Consistency / clean-up
 
-### AUD-21 🟡 Two different "bogus row" filters
+### AUD-21 🟡 Two different "bogus row" filters — ✅ Fixed
 - **Where:** `Overview.tsx:33` (`isBogusSummaryJob`, extra "empty stub" rule) vs `clientDataSync.ts:89` (`isBogusJob`).
 - **Impact:** Overview may exclude rows other screens include.
 - **Fix:** delete the copy; use `isBogusJob` (extend it if the extra rule is wanted).
 
-### AUD-22 🟡 Client "total spent" mixes billed and paid
+### AUD-22 🟡 Client "total spent" mixes billed and paid — ✅ Fixed (derived from job-sheet rows only)
 - **Where:** `clientDataSync.ts:696` (`total_spent = max(stored, sum of charges)`), `DataContext.updateBooking` adds `total_amount` on completion.
 - **Impact:** "spent" is billed charges, not money received; `max()` hides double counting rather than preventing it.
 - **Fix:** compute from jobs (received vs charged shown separately); stop incrementing a stored counter.

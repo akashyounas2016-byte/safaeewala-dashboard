@@ -2,7 +2,7 @@ import type { Booking, DailyJob, Client, Employee, DailyPendingReceivedItem } fr
 import { cleanNum, calcOTHours } from '@/components/dailyJobSheet/jobSheetUtils'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 
-/** Ids used by the demo clients in seedData.ts (shown only when no real data exists) */
+/** Ids of the old demo clients (seed data, removed 2026-10-27) — may still exist in old stored data */
 const SEED_CLIENT_ID_PREFIX = 'c1000001-0000-0000-0000-'
 
 /**
@@ -99,7 +99,9 @@ export function isBogusJob(j: DailyJob): boolean {
   const combined = `${j.staff_name || ''} ${address} ${j.area || ''} ${j.remarks || ''}`.toLowerCase()
   if (summaryWords.some(w => combined.includes(w))) return true
 
-  return (noAddress && noTimes) || (noAddress && (charges > 1500 || received > 1500)) || duty > 24
+  // Empty stub: no address, no money, no service (was an Overview-only rule — AUD-21)
+  const isEmptyStub = noAddress && charges === 0 && received === 0 && (!j.service || j.service === '—')
+  return (noAddress && noTimes) || (noAddress && (charges > 1500 || received > 1500)) || duty > 24 || isEmptyStub
 }
 
 /**
@@ -342,6 +344,11 @@ export function getEmployeeMonthlySalary(emp: Pick<Employee, 'monthly_salary' | 
   if (emp.monthly_salary && emp.monthly_salary > 0) return emp.monthly_salary
   if (emp.pay_rate_hourly && emp.pay_rate_hourly > 0) return Math.round(emp.pay_rate_hourly * MONTHLY_WORK_HOURS)
   return 0
+}
+
+/** Salary cost of one shift, from the monthly salary (0 when no salary is set) — AUD-06 */
+export function shiftSalaryCost(emp: Pick<Employee, 'monthly_salary' | 'pay_rate_hourly'>, dutyHours: number): number {
+  return Math.round((getEmployeeMonthlySalary(emp) / MONTHLY_WORK_HOURS) * (Number(dutyHours) || 0))
 }
 
 export function formatMonthlySalary(emp: Pick<Employee, 'monthly_salary' | 'pay_rate_hourly'>): string {
@@ -649,7 +656,8 @@ export function extractMonthlyClientsFromDailyJobs(
 export function extractAllClientsFromDailyJobs(
   dailyJobs: DailyJob[],
   registeredClients: Client[],
-  bookings: Pick<Booking, 'id' | 'client_id'>[] = []
+  bookings: Pick<Booking, 'id' | 'client_id'>[] = [],
+  deletedKeys: ReadonlySet<string> = new Set()   // clients the user deleted — not re-created from history (AUD-17)
 ): Client[] {
   const result: Client[] = []
   const validJobs = dailyJobs.filter(j => !isBogusJob(j))
@@ -698,11 +706,15 @@ export function extractAllClientsFromDailyJobs(
       matchedJobKeys.add(bNorm)
     }
 
-    // Also check partial (whole-word) matches
+    // Also check partial (whole-word) matches — only for names specific enough to be safe:
+    // a one-word name like "Ahmed" would swallow every address that mentions it (AUD-16)
+    const nameIsSpecific = c.full_name.trim().split(/\s+/).filter(w => w.length > 1).length >= 2
+    const buildingIsSpecific = (c.building_name || '').trim().length >= 4
     jobsByClientKey.forEach((jobs, key) => {
       if (!matchedJobKeys.has(key)) {
         const addr = addressByKey.get(key) || ''
-        if (containsWords(cleanClientNameFromAddress(addr), c.full_name) || (bNorm && containsWords(addr, c.building_name || ''))) {
+        if ((nameIsSpecific && containsWords(cleanClientNameFromAddress(addr), c.full_name)) ||
+            (bNorm && buildingIsSpecific && containsWords(addr, c.building_name || ''))) {
           associatedJobs = [...associatedJobs, ...jobs]
           matchedJobKeys.add(key)
         }
@@ -728,8 +740,10 @@ export function extractAllClientsFromDailyJobs(
         ...c,
         remarks: isMonthly ? (c.remarks || 'Monthly Contract') : c.remarks,
         source: isMonthly ? (c.source || 'monthly') : c.source,
-        total_bookings: Math.max(c.total_bookings, associatedJobs.length),
-        total_spent: Math.max(c.total_spent, djCharges),
+        // Derived from the job sheet; the stored counters were incremented separately and
+        // could double-count, so they are only a fallback for clients with no rows (AUD-22)
+        total_bookings: associatedJobs.length,
+        total_spent: djCharges,
         last_service: latestDate || c.last_service,
       })
     } else {
@@ -739,7 +753,7 @@ export function extractAllClientsFromDailyJobs(
 
   // 2. Add remaining auto-discovered clients from Daily Job Sheet
   jobsByClientKey.forEach((jobs, key) => {
-    if (matchedJobKeys.has(key)) return
+    if (matchedJobKeys.has(key) || deletedKeys.has(key)) return
 
     jobs.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
     const primaryJob = jobs[0]
@@ -937,7 +951,8 @@ export const SYNTHETIC_STAFF_ACTIVE_DAYS = 60
 
 export function extractAllEmployeesFromDailyJobs(
   dailyJobs: DailyJob[],
-  registeredEmployees: Employee[]
+  registeredEmployees: Employee[],
+  deletedKeys: ReadonlySet<string> = new Set()   // staff the user deleted — not re-created from history (AUD-17)
 ): Employee[] {
   const result: Employee[] = []
   const validJobs = dailyJobs.filter(j => !isBogusJob(j) && !isBogusStaffName(j.staff_name))
@@ -971,7 +986,7 @@ export function extractAllEmployeesFromDailyJobs(
 
   // 2. Add auto-discovered staff members from Daily Job Sheet
   jobsByStaff.forEach((jobs, key) => {
-    if (matchedStaffKeys.has(key)) return
+    if (matchedStaffKeys.has(key) || deletedKeys.has(key)) return
 
     // Display name as written in the job sheet
     const displayName = (displayNameByKey.get(key) || key).trim()

@@ -17,7 +17,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import { useCurrentUser } from '@/store/UserContext'
 import type { Booking, BookingFrequency, DailyJob, DailyPendingItem, DailyPendingReceivedItem, Invoice } from '@/types'
-import { cleanClientNameFromAddress, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, jobCollected } from '@/lib/clientDataSync'
+import { cleanClientNameFromAddress, isBogusJob, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, jobCollected } from '@/lib/clientDataSync'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 
 function cleanNum(val: any): number {
@@ -30,20 +30,6 @@ function cleanNum(val: any): number {
   return isNaN(num) ? 0 : num
 }
 
-function isBogusSummaryJob(j: DailyJob): boolean {
-  if (!j) return true
-  const address = (j.address || '').trim()
-  const noAddress = !address || address === '—' || address === '-'
-  const noTimes = (!j.start_time || j.start_time === '—') && (!j.end_time || j.end_time === '—')
-  const duty = Number(j.duty_hours) || 0
-  const charges = Number(j.charges) || 0
-  const received = Number(j.received) || 0
-  const summaryWords = ['gross', 'pending rcvd', 'total', 'expences', 'net total', 'summary']
-  const combined = `${j.staff_name || ''} ${address} ${j.area || ''} ${j.remarks || ''}`.toLowerCase()
-  if (summaryWords.some(w => combined.includes(w))) return true
-  const isEmptyStub = noAddress && charges === 0 && received === 0 && (!j.service || j.service === '—')
-  return (noAddress && noTimes) || (noAddress && (charges > 1500 || received > 1500)) || duty > 24 || isEmptyStub
-}
 
 /** Bookings without a Daily Job Sheet row — a booking with a row is already counted through that row (AUD-01) */
 function bookingsWithoutJobRow(bookings: Booking[], dailyJobs: DailyJob[]): Booking[] {
@@ -406,7 +392,7 @@ function RevenueChart({
 
   // 2. From Daily Jobs Sheet collections
   dailyJobs
-    .filter(j => !isBogusSummaryJob(j))
+    .filter(j => !isBogusJob(j))
     .forEach(j => {
       const key = (j.date || '').slice(0, 7)
       const m = months.find(m => m.key === key)
@@ -528,7 +514,7 @@ function ServiceMixDonut({ bookings, dailyJobs }: { bookings: Booking[]; dailyJo
     if (b.service_type) counts[b.service_type] = (counts[b.service_type] || 0) + 1
   })
   dailyJobs
-    .filter(j => !isBogusSummaryJob(j))
+    .filter(j => !isBogusJob(j))
     .forEach(j => {
       const s = (j.service || '').trim()
       if (s && s !== '—') counts[s] = (counts[s] || 0) + 1
@@ -689,7 +675,7 @@ export function Overview() {
   }, [activeDateRange])
 
   // Valid non-bogus Daily Jobs
-  const validDailyJobs = useMemo(() => dailyJobs.filter(j => !isBogusSummaryJob(j)), [dailyJobs])
+  const validDailyJobs = useMemo(() => dailyJobs.filter(j => !isBogusJob(j)), [dailyJobs])
 
   // Filtered Daily Jobs in period
   const periodDailyJobs = useMemo(() => {

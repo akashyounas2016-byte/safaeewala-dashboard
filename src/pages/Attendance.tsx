@@ -200,6 +200,25 @@ export function Attendance() {
     return map
   }, [employees])
 
+  // Overrides of registered cleaners are keyed by employee id, so renaming an employee keeps
+  // their attendance history; unregistered names (and older entries) use the name (AUD-38)
+  const nameKey = (name: string) => `${selectedDate}_${name.trim().toLowerCase()}`
+  const overrideKeyFor = (name: string) => {
+    const emp = employeeByName.get(name.trim().toLowerCase())
+    return emp ? `${selectedDate}_id:${emp.id}` : nameKey(name)
+  }
+  const getOverride = (name: string) => overrides[overrideKeyFor(name)] ?? overrides[nameKey(name)]
+  /** Write an override under the id key and drop any older name-keyed copy */
+  const putOverride = (name: string, value: AttendanceOverride | null) => {
+    setOverrides(prev => {
+      const next = { ...prev }
+      delete next[nameKey(name)]
+      if (value) next[overrideKeyFor(name)] = value
+      else delete next[overrideKeyFor(name)]
+      return next
+    })
+  }
+
   // ── Process Attendance Records for Every Known Cleaner ──
   const attendanceRecords = useMemo<CleanerAttendanceRecord[]>(() => {
     return allKnownCleaners.map(cleanerName => {
@@ -207,8 +226,7 @@ export function Attendance() {
       const emp = employeeByName.get(key)
       // Automatically fetch all jobs for this cleaner on selected date from Daily Job Sheet (uses employeeMatchesStaff for exact parity)
       const cleanerJobs = dateJobs.filter(j => emp ? employeeMatchesStaff(emp, j.staff_name) : matchesCleaner(j.staff_name, cleanerName))
-      const overrideKey = `${selectedDate}_${key}`
-      const explicitOverride = overrides[overrideKey]
+      const explicitOverride = (emp && overrides[`${selectedDate}_id:${emp.id}`]) || overrides[`${selectedDate}_${key}`]
 
       // Calculate duty and overtime from legitimate shifts
       let dutyHours = 0
@@ -338,16 +356,12 @@ export function Attendance() {
 
   // ── Action Handlers ──
   const handleMarkPresent = (cleanerName: string, defaultHours: number = 8) => {
-    const key = `${selectedDate}_${cleanerName.trim().toLowerCase()}`
-    setOverrides(prev => ({
-      ...prev,
-      [key]: {
-        status: 'present',
-        dutyHours: defaultHours,
-        reason: 'Manually marked as present',
-        updatedAt: new Date().toISOString(),
-      },
-    }))
+    putOverride(cleanerName, {
+      status: 'present',
+      dutyHours: defaultHours,
+      reason: 'Manually marked as present',
+      updatedAt: new Date().toISOString(),
+    })
     setSyncToast(`${cleanerName} marked as Present for ${selectedDate}`)
     setTimeout(() => setSyncToast(null), 3000)
   }
@@ -370,42 +384,29 @@ export function Attendance() {
 
   const handleConfirmMarkAbsent = () => {
     if (!absentModalCleaner) return
-    const key = `${selectedDate}_${absentModalCleaner.trim().toLowerCase()}`
     const fullReason = absenceCustomNote.trim()
       ? `${absenceReasonCategory}: ${absenceCustomNote.trim()}`
       : absenceReasonCategory
 
-    setOverrides(prev => ({
-      ...prev,
-      [key]: {
-        status: absenceReasonCategory === 'Approved Leave' || absenceReasonCategory === 'Weekly Off' ? 'on_leave' : 'absent',
-        reason: fullReason,
-        updatedAt: new Date().toISOString(),
-      },
-    }))
+    putOverride(absentModalCleaner, {
+      status: absenceReasonCategory === 'Approved Leave' || absenceReasonCategory === 'Weekly Off' ? 'on_leave' : 'absent',
+      reason: fullReason,
+      updatedAt: new Date().toISOString(),
+    })
 
     setAbsentModalCleaner(null)
   }
 
   const handleMarkAvailable = (cleanerName: string) => {
-    const key = `${selectedDate}_${cleanerName.trim().toLowerCase()}`
-    setOverrides(prev => ({
-      ...prev,
-      [key]: {
-        status: 'available',
-        reason: undefined,
-        updatedAt: new Date().toISOString(),
-      },
-    }))
+    putOverride(cleanerName, {
+      status: 'available',
+      reason: undefined,
+      updatedAt: new Date().toISOString(),
+    })
   }
 
   const handleClearOverride = (cleanerName: string) => {
-    const key = `${selectedDate}_${cleanerName.trim().toLowerCase()}`
-    setOverrides(prev => {
-      const next = { ...prev }
-      delete next[key]
-      return next
-    })
+    putOverride(cleanerName, null)
   }
 
   // ── CSV Export ──
@@ -844,7 +845,7 @@ export function Attendance() {
                     </button>
                   )}
 
-                  {overrides[`${selectedDate}_${cleaner.name.trim().toLowerCase()}`] && (
+                  {getOverride(cleaner.name) && (
                     <button
                       type="button"
                       onClick={() => handleClearOverride(cleaner.name)}

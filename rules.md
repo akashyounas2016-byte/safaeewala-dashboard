@@ -128,7 +128,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-DATA-03 — No dummy data in operational lists
 - **Rule:** Pickers, filters and assign lists show live data only. Demo seed data (`src/lib/seedData.ts`, client ids `c1000001-0000-0000-0000-…`) appears only when there is no real data at all, and is excluded from assign lists.
 - **Code:** `clientDataSync.ts → getAssignableClients`; Employees agency filter reads only `agencies`; dummy agencies removed from `defaultAgencies`.
-- **Status:** Partial — seeds still load when both Supabase and localStorage are empty.
+- **Status:** Active — seed fallbacks and demo data files removed 2026-10-27 (AUD-12).
 
 ---
 
@@ -140,9 +140,9 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Status:** Active
 
 ### R-EMP-02 — Monthly salary and hourly rate
-- **Rule:** Monthly salary is the stored `monthly_salary`, else `pay_rate_hourly × 200` (`MONTHLY_WORK_HOURS`). The Add Employee form stores `pay_rate_hourly = monthly_salary / 200`. A missing salary is shown as "Not set" and is never filled with a default value (AUD-10).
-- **Code:** `clientDataSync.ts → MONTHLY_WORK_HOURS, getEmployeeMonthlySalary`.
-- **Status:** Partial — see Known issue K-02.
+- **Rule:** Pay is a **monthly salary** everywhere (no per-hour rates shown). Monthly salary = stored `monthly_salary` (legacy records: `pay_rate_hourly × 200`). The salary cost of one shift = monthly ÷ 200 h × duty hours (`shiftSalaryCost`) — used by agency payouts; Reports payroll = monthly salary. A missing salary shows "Not set"; no default values (12/15/14 per hour, 2500) are ever invented.
+- **Code:** `clientDataSync.ts → MONTHLY_WORK_HOURS, getEmployeeMonthlySalary, shiftSalaryCost, formatMonthlySalary`.
+- **Status:** Active · Updated 2026-10-27 (AUD-06, AUD-09, AUD-10)
 
 ### R-EMP-03 — Performance Health Score
 - **Rule:** 0–100 = Attendance 50 (worked days vs specifically-marked absences, last 90 days, per R-ATT-01) + Activity 30 (distinct worked days in last 30 days vs 22) + Compliance 20 (Visa, Passport, Work Permit, EID not expired). Grades: ≥85 Excellent, ≥70 Good, ≥50 Needs Attention, else At Risk.
@@ -182,6 +182,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** Agencies bell shows: trade license / contract / Emirates ID / passport expired or ≤ 30 days; payouts `pending`/`processing`; third-party agency with active staff but no paid salary payout in 35 days; agency staff with Visa / Work Permit / Passport / EID expired or ≤ 30 days (grouped per agency). Inactive agencies excluded.
 - **Code:** `src/lib/agencyAlerts.ts → buildAgencyNotifications`.
 - **Status:** Active · Since: 2026-10-27
+
+### R-AGN-06 — Deleting an agency deletes its staff
+- **Rule:** Deleting a third-party agency also deletes the employees linked to it (R-AGN-02). The delete dialog lists who will be removed. Their past shifts stay on the Daily Job Sheet; deleted names are not re-created from that history. The parent company is never deleted with its staff.
+- **Code:** `DataContext.deleteAgency`, `Agencies.tsx` delete dialog.
+- **Status:** Active · Since: 2026-10-27 (owner decision, DEC-010)
+
+### R-DATA-05 — Deleted records stay deleted
+- **Rule:** Deleting a client or employee records its name key in `safaeewala_deleted_staff` / `safaeewala_deleted_clients` (cloud-synced) so job-sheet history does not bring it back.
+- **Code:** `DataContext.deleteEmployee / deleteClient`; `extractAllEmployeesFromDailyJobs / extractAllClientsFromDailyJobs` (`deletedKeys`).
+- **Status:** Active · Since: 2026-10-27 (AUD-17)
 
 ### R-AGN-05 — Issue date must not be after expiry
 - **Rule:** For trade license, Emirates ID, passport and contract, the issue/start date cannot be after the expiry/end date.
@@ -271,9 +281,9 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 | ID | Issue | Affects |
 |---|---|---|
 | K-01 | Localhost talks to the **live** backend (`/api` proxy → VPS, live Supabase): saves during testing change production data. | R-OPS-02 |
-| K-02 | Agency payouts derive hourly pay as `monthly_salary / (26 × 8)` (208 h) while the rest of the app uses 200 h. | R-EMP-02, R-PAY-01 |
+| ~~K-02~~ | ✅ Fixed 2026-10-27: one salary rule everywhere (R-EMP-02). | R-EMP-02, R-PAY-01 |
 | ~~K-03~~ | ✅ Fixed 2026-10-27: agency saves send only the changed agency; deletes send `remove` (old servers fall back to the full list). | R-AGN-* |
 | K-04 | New employee/agency fields may not exist as Supabase columns → writes rejected. Now visible (banner) and retried; fixed for good once the Phase 2 migration is run. | R-EMP-*, R-SYNC-05 |
-| K-05 | Seed/demo data still loads when Supabase and localStorage are both empty. | R-DATA-03 |
+| ~~K-05~~ | ✅ Fixed 2026-10-27: no seed/demo data is loaded. | R-DATA-03 |
 
 Full list of sync / dummy-data issues with locations: [docs/audits/2026-10-27-data-sync-audit.md](docs/audits/2026-10-27-data-sync-audit.md) (AUD-01 … AUD-23), and for the finance & operations screens: [docs/audits/2026-10-27-finance-ops-screens-audit.md](docs/audits/2026-10-27-finance-ops-screens-audit.md) (AUD-24 … AUD-42).

@@ -7,7 +7,7 @@ import {
 import { TrendingUp, Target, Award, Users, Download, DollarSign, CheckCircle, Percent, Calendar, FileSpreadsheet } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
-import { getEmployeeDailyJobsHistory, isBogusJob } from '@/lib/clientDataSync'
+import { getEmployeeDailyJobsHistory, isBogusJob, getEmployeeMonthlySalary, formatMonthlySalary } from '@/lib/clientDataSync'
 
 function exportCSV(filename: string, rows: string[][]) {
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -169,7 +169,7 @@ export function Reports() {
       // Same matching as Employees / Employee Profile (shared shifts "Sita, Rupa" included)
       const empJobs = getEmployeeDailyJobsHistory(emp, dailyJobs).filter(j => (j.date || '').startsWith(payPeriod))
       const hours  = empJobs.reduce((s, j) => s + (j.duty_hours || 0), 0)
-      const salary = Math.round(hours * emp.pay_rate_hourly)
+      const salary = getEmployeeMonthlySalary(emp)
       return { emp, hours: Math.round(hours * 10) / 10, salary, jobCount: empJobs.length }
     })
     .sort((a, b) => b.salary - a.salary)
@@ -190,7 +190,7 @@ function formatReportRole(role: string | undefined): string {
       'Role':            formatReportRole(r.emp.role),
       'Jobs Logged':     r.jobCount,
       'Hours Worked':    r.hours,
-      'Rate (AED/hr)':   r.emp.pay_rate_hourly,
+      'Monthly Salary (AED)': r.salary,
       'Salary (AED)':    r.salary,
     })))
     const wb = XLSX.utils.book_new()
@@ -527,7 +527,7 @@ function formatReportRole(role: string | undefined): string {
           <table className="w-full text-[13px]">
             <thead>
               <tr className="border-b border-[#E4E8EC] bg-slate-50">
-                {['Employee', 'Role', 'Jobs Logged', 'Hours Worked', 'Rate (AED/hr)', 'Salary (AED)'].map(h => (
+                {['Employee', 'Role', 'Jobs Logged', 'Hours Worked', 'Monthly Salary', 'Salary (AED)'].map(h => (
                   <th key={h} className="text-left px-5 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.07em] whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -557,7 +557,7 @@ function formatReportRole(role: string | undefined): string {
                   <td className="px-5 py-3.5">
                     <span className={`font-semibold ${hours > 0 ? 'text-[#111827]' : 'text-slate-400'}`}>{hours}h</span>
                   </td>
-                  <td className="px-5 py-3.5 text-slate-600">AED {emp.pay_rate_hourly}</td>
+                  <td className="px-5 py-3.5 text-slate-600">{formatMonthlySalary(emp)}</td>
                   <td className="px-5 py-3.5">
                     <span className={`text-[14px] font-bold ${salary > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                       AED {salary.toLocaleString()}

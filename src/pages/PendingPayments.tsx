@@ -528,6 +528,7 @@ export function PendingPayments() {
       cash: collectMode === 'Cash' ? amt : 0,
       online: collectMode === 'Online' ? amt : 0,
       job_id: collectingRecord.jobId,
+      method: collectMode,
       remarks: collectNotes.trim() || undefined, // AUD-25: notes were dropped before
     }
 

@@ -134,7 +134,7 @@ async function parseEmployeesFile(file: File): Promise<Omit<Employee, 'id' | 'cr
         role:                       parseEmpRole(String(r['Role'] ?? '')),
         nationality:                String(r['Nationality'] ?? r['nationality'] ?? '').trim(),
         emirates_id:                String(r['Emirates ID'] ?? r['emirates_id'] ?? '').trim(),
-        pay_rate_hourly:            Number(r['Pay Rate (AED/hr)'] ?? r['pay_rate_hourly']) || 14,
+        pay_rate_hourly:            Number(r['Pay Rate (AED/hr)'] ?? r['pay_rate_hourly']) || 0, // no invented rate (AUD-09)
         monthly_salary:             Number(r['Monthly Salary (AED)'] ?? r['monthly_salary']) || Math.round((Number(r['Pay Rate (AED/hr)']) || 0) * MONTHLY_WORK_HOURS),
         visa_expiry:                toISODate(r['Visa Expiry'] ?? r['visa_expiry']),
         work_permit_expiry:         toISODate(r['Work Permit Expiry'] ?? r['work_permit_expiry']),
@@ -2595,7 +2595,6 @@ export function Employees() {
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: 'Monthly Salary', value: formatMonthlySalary(selected) },
-                  { label: 'Hourly Rate',    value: selected.pay_rate_hourly > 0 ? `AED ${selected.pay_rate_hourly}/hr` : 'Not set' },
                   { label: 'Role',           value: formatEmpRole(selected.role) },
                   { label: 'Agency Source',  value: getEmployeeAgencySource(selected) },
                   { label: 'Joining Date',   value: formatDate(selected.joined_date) },
