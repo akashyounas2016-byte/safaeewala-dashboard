@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle, Clock, Moon, Sun, CheckCircle2, XCircle, Loader2, Send, Key, Link2, Eye, EyeOff, Sparkles, ChevronDown, ChevronUp, Mail } from 'lucide-react'
 import { useDarkMode } from '@/hooks/useDarkMode'
 import { supabase } from '@/lib/supabase'
+import { loadCompanyInfo } from '@/lib/companyInfo'
 import { useIsAdmin, useCurrentUser, useRolePerms, useSetRolePerms, DEFAULT_ROLE_PERMS, ALL_MODULES, type RolePerms, type AppRole } from '@/store/UserContext'
 import * as XLSX from 'xlsx'
 import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured } from '@/lib/googleDrive'
@@ -792,7 +793,7 @@ type CompanyData = Record<string, string>
 type NotifData   = Record<string, boolean>
 
 const DEFAULT_COMPANY: CompanyData = {
-  company_name: 'Safaeewala Cleaning & Maintenance LLC',
+  company_name: 'Safaeewala Cleaning & Technical Services LLC',
   trading_name: 'Safaeewala',
   trn: '100234567890003',
   ded_license: '1089342',
@@ -963,24 +964,33 @@ export function Settings() {
     })
   }, [])
 
+  // Merge into company_settings.data so other sections (e.g. rolePermissions) are not wiped (AUD-43)
+  async function saveSettingsData(patch: Record<string, unknown>) {
+    const { data } = await supabase.from('company_settings').select('data').eq('id', 1).single()
+    const current = (data?.data || {}) as Record<string, unknown>
+    await supabase.from('company_settings').upsert({ id: 1, data: { ...current, ...patch } })
+  }
+
   async function saveCompany(patch: CompanyData) {
     const merged = { ...company, ...patch }
     setCompany(merged)
-    await supabase.from('company_settings').upsert({ id: 1, data: { company: merged, notifications: notif } })
+    await saveSettingsData({ company: merged, notifications: notif })
+    void loadCompanyInfo() // invoices pick up the new details
     setSaved(true); setTimeout(() => setSaved(false), 2000)
   }
 
   async function saveInvoice(patch: CompanyData) {
     const merged = { ...company, ...patch }
     setCompany(merged)
-    await supabase.from('company_settings').upsert({ id: 1, data: { company: merged, notifications: notif } })
+    await saveSettingsData({ company: merged, notifications: notif })
+    void loadCompanyInfo()
     setSaved(true); setTimeout(() => setSaved(false), 2000)
   }
 
   async function toggleNotif(key: string, val: boolean) {
     const updated = { ...notif, [key]: val }
     setNotif(updated)
-    await supabase.from('company_settings').upsert({ id: 1, data: { company, notifications: updated } })
+    await saveSettingsData({ company, notifications: updated })
   }
   const storedRolePerms  = useRolePerms()
   const setStoredPerms   = useSetRolePerms()

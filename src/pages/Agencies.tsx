@@ -13,7 +13,7 @@ import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import type { Agency, AgencyContactPerson, AgencyDocument, AgencyDocumentCategory } from '@/types'
-import { formatDate, isThirdPartyEmployee, isParentCompanyEmployee, slugifyAgencyName } from '@/lib/utils'
+import { formatDate, isThirdPartyEmployee, isParentCompanyEmployee, slugifyAgencyName, staffOfAgency } from '@/lib/utils'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { cleanClientNameFromAddress, employeeMatchesStaff, splitStaffNames, isBogusJob } from '@/lib/clientDataSync'
 import { buildAgencyNotifications } from '@/lib/agencyAlerts'
@@ -379,7 +379,10 @@ export function Agencies() {
   // Extract all live cleaners with their assigned duties for targetLiveDate
   const liveCleanersData = useMemo(() => {
     const dateJobs = (dailyJobs || []).filter(j => (j.date || '').split('T')[0] === targetLiveDate && !isBogusJob(j))
-    const dateBookings = (bookings || []).filter(b => (b.scheduled_date || '').split('T')[0] === targetLiveDate)
+    // A booking that already has a job-sheet row is shown through that row only (AUD-19)
+    const linkedBookingIds = new Set((dailyJobs || []).map(j => j.booking_id).filter(Boolean))
+    const dateBookings = (bookings || []).filter(b =>
+      (b.scheduled_date || '').split('T')[0] === targetLiveDate && !linkedBookingIds.has(b.id))
 
     interface CleanerDutyItem {
       id: string
@@ -421,7 +424,7 @@ export function Agencies() {
 
       empJobs.forEach((j, idx) => {
         const timeStr = j.start_time && j.end_time ? `${j.start_time} - ${j.end_time}` : (j.start_time || 'On Shift')
-        const duty = Number(j.duty_hours) || 4
+        const duty = Number(j.duty_hours) || 0 // no invented hours (AUD-11)
         totalDuty += duty
         duties.push({
           id: `dj-${j.id || idx}`,
@@ -444,7 +447,7 @@ export function Agencies() {
           clientName: b.client_name || 'Client',
           area: b.service_address || 'Dubai Site',
           service: b.service_type || 'Cleaning',
-          dutyHours: Number(b.duration_hours) || 2,
+          dutyHours: Number(b.duration_hours) || 0,
           paymentMode: b.status,
           charges: Number(b.total_amount) || 0,
         })
@@ -472,7 +475,7 @@ export function Agencies() {
         const normKey = rawName.toLowerCase().trim()
         if (!normKey || normKey === '-' || normKey === '—') return
 
-        const dutyHours = Number(j.duty_hours) || 4
+        const dutyHours = Number(j.duty_hours) || 0
         const timeStr = j.start_time && j.end_time ? `${j.start_time} - ${j.end_time}` : (j.start_time || 'On Shift')
         const dutyItem: CleanerDutyItem = {
           id: `dj-raw-${j.id || idx}-${normKey}`,
@@ -494,8 +497,9 @@ export function Agencies() {
           }
         } else {
           const matchedEmp = employees.find(e => employeeMatchesStaff(e, rawName))
-          const isThird = matchedEmp ? isThirdPartyEmployee(matchedEmp) : true
-          const agName = matchedEmp?.agency_name || (isThird ? 'Agency Supplied' : 'Safaeewala Fleet')
+          // Unknown names are not assumed to be agency staff (AUD-19)
+          const isThird = matchedEmp ? isThirdPartyEmployee(matchedEmp) : false
+          const agName = matchedEmp ? (matchedEmp.agency_name || (isThird ? 'Agency Supplied' : 'Safaeewala Fleet')) : 'Unregistered'
 
           cleanersMap.set(normKey, {
             empId: matchedEmp?.id,
@@ -2773,8 +2777,19 @@ export function Agencies() {
               <div className="text-[13px]">
                 <p className="font-bold">Are you sure you want to delete this agency?</p>
                 <p className="text-[12px] text-rose-700 mt-1">
-                  This will remove <strong>"{deleteTarget.name}"</strong> from your vendor list. Cleaners currently assigned to this agency will retain their records.
+                  This will remove <strong>"{deleteTarget.name}"</strong> from your vendor list.
                 </p>
+                {(() => {
+                  // Staff of a deleted agency are deleted with it (owner decision, 2026-10-27)
+                  const staff = staffOfAgency(deleteTarget, employees)
+                  return staff.length > 0 ? (
+                    <p className="text-[12px] text-rose-800 mt-2 font-semibold">
+                      {staff.length} employee{staff.length === 1 ? '' : 's'} of this agency will also be deleted: {staff.slice(0, 5).map(e => e.full_name).join(', ')}{staff.length > 5 ? ` +${staff.length - 5} more` : ''}. Their past shifts stay on the Daily Job Sheet.
+                    </p>
+                  ) : (
+                    <p className="text-[12px] text-rose-700 mt-2">No employees are linked to this agency.</p>
+                  )
+                })()}
               </div>
             </div>
           </div>

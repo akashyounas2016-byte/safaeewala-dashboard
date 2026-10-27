@@ -16,6 +16,7 @@ import type { PaymentMode, EmployeeRole, EmployeeDocument, Employee } from '@/ty
 import { EmployeeDocumentPreviewModal } from '@/components/employees/EmployeeDocumentField'
 import {
   getAssignableClients,
+  formatMonthlySalary,
   getEmployeeDailyJobsHistory,
   calcJobOTHours,
   cleanClientNameFromAddress,
@@ -308,7 +309,7 @@ export function EmployeeProfile() {
                 )}
 
                 <span className="text-[11px] bg-teal-900/80 text-teal-200 border border-teal-700/70 px-2.5 py-0.5 rounded-full font-bold">
-                  AED {(emp.monthly_salary || (emp.pay_rate_hourly ? Math.round(emp.pay_rate_hourly * 200) : 2500)).toLocaleString()}/mo
+                  {formatMonthlySalary(emp)}
                 </span>
 
                 {emp.agency_name && (
@@ -1030,11 +1031,7 @@ export function EmployeeProfile() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-[12.5px]">
                   <div className="p-3 bg-slate-50 rounded-xl border border-[#edf2f7]">
                     <span className="text-slate-400 block text-[10.5px] uppercase font-bold">Monthly Salary</span>
-                    <span className="font-extrabold text-[#111827]">AED {(emp.monthly_salary || (emp.pay_rate_hourly ? Math.round(emp.pay_rate_hourly * 200) : 2500)).toLocaleString()}/mo</span>
-                  </div>
-                  <div className="p-3 bg-slate-50 rounded-xl border border-[#edf2f7]">
-                    <span className="text-slate-400 block text-[10.5px] uppercase font-bold">Hourly Rate</span>
-                    <span className="font-extrabold text-[#111827]">{emp.pay_rate_hourly > 0 ? `AED ${emp.pay_rate_hourly}/hr` : 'Not set'}</span>
+                    <span className="font-extrabold text-[#111827]">{formatMonthlySalary(emp)}</span>
                   </div>
                   <div className="p-3 bg-slate-50 rounded-xl border border-[#edf2f7]">
                     <span className="text-slate-400 block text-[10.5px] uppercase font-bold">Joined Date</span>
@@ -1105,7 +1102,7 @@ export function EmployeeProfile() {
             </p>
             <div className="flex items-center justify-between text-[11px] font-bold text-amber-900 bg-white/70 rounded-xl p-2.5 border border-amber-200">
               <span>OT Rate</span>
-              <span>{emp.pay_rate_hourly > 0 ? `1.5x Standard / AED ${(emp.pay_rate_hourly * 1.5).toFixed(1)}/hr` : '1.5x Standard (rate not set)'}</span>
+              <span>{'1.5× standard rate'}</span>
             </div>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Clock, AlertCircle, CheckCircle, CheckCircle2, DollarSign,
   TrendingUp, Users, Calendar, Search, X, ChevronLeft, ChevronRight,
@@ -11,9 +12,15 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
+import { notify, confirmAsync } from '@/lib/notify'
+import { ReceivablesNav } from '@/components/receivables/ReceivablesNav'
+import { ReceivablesByClient, type CollectMode } from '@/components/receivables/ReceivablesByClient'
+import { CashBook } from '@/components/receivables/CashBook'
+import { Pager, usePagination } from '@/components/common/Pager'
+import { invoicedJobIds, invoiceBalance } from '@/lib/receivables'
 import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
-import { buildPendingCalcContext, loadClientAdjustments, calcJobPending, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
+import { buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, splitStaffNames, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
 import * as XLSX from 'xlsx'
 
 export type PendingDatePreset =
@@ -66,7 +73,8 @@ export interface UnifiedPendingRecord {
   charges: number
   received: number
   pendingAmount: number
-  source: 'Daily Job Sheet' | 'Manual / Side Table'
+  source: 'Daily Job Sheet' | 'Manual / Side Table' | 'Invoice'
+  invoiceId?: string
   status: 'pending' | 'partially_paid' | 'collected'
   jobId?: string
   rawJob?: DailyJob
@@ -75,10 +83,18 @@ export interface UnifiedPendingRecord {
 }
 
 export function PendingPayments() {
-  const { dailyJobs } = useData()
+  const { dailyJobs, invoices, updateInvoice, clients } = useData()
+  const [searchParams] = useSearchParams()
 
   // ── Tab State ──
-  const [activeTab, setActiveTab] = useState<'outstanding' | 'recovered' | 'staff_summary'>('outstanding')
+type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 'cash_book'
+  const tabFromUrl = (): PendingTab => {
+    const t = searchParams.get('tab')
+    return t === 'recovered' || t === 'staff_summary' || t === 'by_client' || t === 'cash_book' ? t : 'outstanding'
+  }
+  const [activeTab, setActiveTab] = useState<PendingTab>(tabFromUrl)
+  // The shared Receivables tab bar (UX-01) switches tabs through the URL
+  useEffect(() => { setActiveTab(tabFromUrl()) }, [searchParams]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Pending Lists from LocalStorage (Synced with Daily Job Sheet) ──
   const [pendingList, setPendingList] = useState<DailyPendingItem[]>(() =>
@@ -93,6 +109,8 @@ export function PendingPayments() {
   })
 
   const pendingCtx = useMemo(() => buildPendingCalcContext(loadClientAdjustments(), pendingRcvdList), [pendingRcvdList])
+  // Jobs billed on a sent invoice are collected through that invoice (UX-18)
+  const invoicedIds = useMemo(() => invoicedJobIds(invoices), [invoices])
 
   useEffect(() => {
     safeLocalStorageSet('safaeewala_daily_pending_items', pendingList)
@@ -296,7 +314,7 @@ export function PendingPayments() {
       if (isBogusJob(job)) return
       const chg = cleanNum(job.charges)
       const rec = cleanNum(job.received) + calcJobLaterReceipts(job, pendingCtx)
-      const due = calcJobPending(job, pendingCtx)
+      const due = calcJobCollectable(job, pendingCtx, invoicedIds)
 
       // Only real dues — a fully paid row stays out even if its mode says "Pending"
       if (due > 0) {
@@ -344,8 +362,31 @@ export function PendingPayments() {
       }
     })
 
+    // 3. Unpaid / partly paid invoices (their visits are not listed separately) — UX-18
+    invoices.forEach(inv => {
+      if (inv.status === 'draft') return
+      const due = invoiceBalance(inv)
+      if (due <= 0) return
+      list.push({
+        id: `inv-${inv.id}`,
+        date: (inv.created_at || '').split('T')[0] || inv.due_date,
+        clientName: inv.client_name,
+        staffName: '—',
+        address: inv.client_address || '—',
+        area: '—',
+        service: `Invoice ${inv.invoice_number}`,
+        charges: inv.total,
+        received: Number(inv.amount_paid) || 0,
+        pendingAmount: due,
+        source: 'Invoice',
+        status: (Number(inv.amount_paid) || 0) > 0 ? 'partially_paid' : 'pending',
+        invoiceId: inv.id,
+        remarks: inv.status === 'overdue' ? `Overdue since ${inv.due_date}` : `Due ${inv.due_date}`,
+      })
+    })
+
     return list
-  }, [dailyJobs, pendingList, pendingCtx])
+  }, [dailyJobs, pendingList, pendingCtx, invoices, invoicedIds])
 
   // Filtered Outstanding Records
   const filteredOutstanding = useMemo(() => {
@@ -369,7 +410,8 @@ export function PendingPayments() {
 
         // Staff filter
         if (staffFilter !== 'all') {
-          if (rec.staffName.toLowerCase().trim() !== staffFilter.toLowerCase().trim()) return false
+          const want = staffFilter.toLowerCase().trim()
+          if (!splitStaffNames(rec.staffName).some(n => n.toLowerCase().trim() === want)) return false
         }
 
         // Source filter
@@ -451,7 +493,7 @@ export function PendingPayments() {
   const distinctStaffList = useMemo(() => {
     const set = new Set<string>()
     allOutstandingRecords.forEach(r => {
-      if (r.staffName && r.staffName !== '—') set.add(r.staffName)
+      if (r.staffName && r.staffName !== '—') splitStaffNames(r.staffName).forEach(n => set.add(n))
     })
     return Array.from(set).sort()
   }, [allOutstandingRecords])
@@ -460,21 +502,28 @@ export function PendingPayments() {
   const staffPendingSummary = useMemo(() => {
     const map = new Map<string, { count: number; totalAmount: number; clients: string[] }>()
     filteredOutstanding.forEach(r => {
-      const staff = r.staffName || 'Unassigned / Direct'
-      if (!map.has(staff)) {
-        map.set(staff, { count: 0, totalAmount: 0, clients: [] })
-      }
-      const entry = map.get(staff)!
-      entry.count += 1
-      entry.totalAmount += r.pendingAmount
-      if (!entry.clients.includes(r.clientName)) {
-        entry.clients.push(r.clientName)
-      }
+      // A shared shift ("Sita, Rupa") is split between its cleaners (AUD-26)
+      const names = r.staffName && r.staffName !== '—' ? splitStaffNames(r.staffName) : []
+      const staffList = names.length > 0 ? names : ['Unassigned / Direct']
+      staffList.forEach(staff => {
+        if (!map.has(staff)) {
+          map.set(staff, { count: 0, totalAmount: 0, clients: [] })
+        }
+        const entry = map.get(staff)!
+        entry.count += 1
+        entry.totalAmount += r.pendingAmount / staffList.length
+        if (!entry.clients.includes(r.clientName)) {
+          entry.clients.push(r.clientName)
+        }
+      })
     })
     return Array.from(map.entries())
       .map(([staff, data]) => ({ staff, ...data }))
       .sort((a, b) => b.totalAmount - a.totalAmount)
   }, [filteredOutstanding])
+
+  const outPager = usePagination(filteredOutstanding, 25)
+  const recPager = usePagination(filteredRecovered, 25)
 
   // ── Mark as Collected Action ──
   const handleOpenCollectModal = (record: UnifiedPendingRecord) => {
@@ -484,44 +533,80 @@ export function PendingPayments() {
     setCollectNotes('')
   }
 
-  const handleSaveCollection = () => {
+  /**
+   * Apply one received amount to dues, oldest first: job rows get a receipt linked by job_id,
+   * manual items are reduced, invoices get amount_paid (and status "paid" when settled).
+   * Returns the amount actually applied.
+   */
+  const applyCollection = (records: UnifiedPendingRecord[], amount: number, mode: CollectMode, notes: string): number => {
+    let remaining = amount
+    const todayStr = new Date().toISOString().split('T')[0]
+    const isCash = mode === 'Cash'
+    const receipts: DailyPendingReceivedItem[] = []
+    const manualCuts = new Map<string, number>()
+    const sorted = [...records].sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    sorted.forEach((rec, i) => {
+      if (remaining <= 0) return
+      // the last record takes any excess (overpayment), others at most their due
+      const pay = i === sorted.length - 1 ? remaining : Math.min(remaining, rec.pendingAmount)
+      if (pay <= 0) return
+      remaining -= pay
+      if (rec.invoiceId) {
+        const inv = invoices.find(x => x.id === rec.invoiceId)
+        if (!inv) return
+        const paid = (Number(inv.amount_paid) || 0) + pay
+        updateInvoice(inv.id, paid >= inv.total - 0.01
+          ? { amount_paid: inv.total, status: 'paid', paid_date: todayStr }
+          : { amount_paid: Math.round(paid * 100) / 100 })
+        return
+      }
+      if (!rec.jobId) manualCuts.set(rec.id, (manualCuts.get(rec.id) || 0) + pay)
+      receipts.push({
+        id: `rcvd-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
+        date: todayStr,
+        client: rec.clientName,
+        cash: isCash ? pay : 0,
+        online: isCash ? 0 : pay,
+        job_id: rec.jobId,
+        method: mode,
+        remarks: notes.trim() || undefined,
+      })
+    })
+    if (manualCuts.size > 0) {
+      setPendingList(prev => prev
+        .map(item => {
+          const cut = manualCuts.get(item.id)
+          if (!cut) return item
+          const left = cleanNum(item.amount) - cut
+          return left > 0 ? { ...item, amount: left } : null
+        })
+        .filter(Boolean) as DailyPendingItem[])
+    }
+    if (receipts.length > 0) setPendingRcvdList(prev => [...receipts, ...prev])
+    return amount - remaining
+  }
+
+  const handleCollectForClient = (records: UnifiedPendingRecord[], amount: number, mode: CollectMode, notes: string) => {
+    if (!(amount > 0)) { notify.error('Please enter a valid collected amount.'); return }
+    const applied = applyCollection(records, amount, mode, notes)
+    notify.success(`AED ${applied.toLocaleString()} recorded from ${records[0]?.clientName || 'client'} (${mode})`)
+  }
+
+  const handleSaveCollection = async () => {
     if (!collectingRecord) return
     const amt = cleanNum(collectAmount)
     if (amt <= 0) {
-      alert('Please enter a valid collected amount.')
+      notify.error('Please enter a valid collected amount.')
+      return
+    }
+    if (amt > collectingRecord.pendingAmount + 0.01 &&
+        !(await confirmAsync({ title: 'More than the amount due', message: `AED ${amt.toLocaleString()} is more than the AED ${collectingRecord.pendingAmount.toLocaleString()} due. Record it anyway?`, confirmLabel: 'Record' }))) {
       return
     }
 
-    const todayStr = new Date().toISOString().split('T')[0]
-
-    // 1. A job's own `received` is left untouched: the collection below is linked
-    //    via job_id, so the cash counts on the collection day only (not twice)
-    if (!collectingRecord.jobId) {
-      // It was in manual pendingList: remove or reduce
-      setPendingList(prev => {
-        return prev
-          .map(item => {
-            if (item.id === collectingRecord.id) {
-              const remaining = cleanNum(item.amount) - amt
-              return remaining > 0 ? { ...item, amount: remaining } : null
-            }
-            return item
-          })
-          .filter(Boolean) as DailyPendingItem[]
-      })
-    }
-
-    // 2. Add an entry to pending received list (safaeewala_daily_pending_rcvd_items)
-    const newRcvdEntry: DailyPendingReceivedItem = {
-      id: `rcvd-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      date: todayStr,
-      client: collectingRecord.clientName,
-      cash: collectMode === 'Cash' ? amt : 0,
-      online: collectMode === 'Online' ? amt : 0,
-      job_id: collectingRecord.jobId,
-    }
-
-    setPendingRcvdList(prev => [newRcvdEntry, ...prev])
+    // A job's own `received` is left untouched: the receipt is linked by job_id, so the cash
+    // counts on the collection day only (not twice). Notes are kept (AUD-25).
+    applyCollection([collectingRecord], amt, collectMode, collectNotes)
     setNotice(`Payment of AED ${amt.toLocaleString()} from ${collectingRecord.clientName} marked as collected (${collectMode})!`)
     setCollectingRecord(null)
   }
@@ -529,7 +614,7 @@ export function PendingPayments() {
   // ── Export to Excel ──
   const handleExportExcel = () => {
     if (filteredOutstanding.length === 0 && filteredRecovered.length === 0) {
-      alert('No pending records to export for this date range.')
+      notify.info('No pending records to export for this date range.')
       return
     }
 
@@ -607,6 +692,9 @@ export function PendingPayments() {
         }
         showSearch={false}
       />
+
+      {/* One Receivables module across Pending and Payments (UX-01) */}
+      <ReceivablesNav />
 
       {/* ── Executive KPI Cards (6 Financial & Recovery Cards) ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
@@ -1044,7 +1132,7 @@ export function PendingPayments() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E4E8EC]">
-                {filteredOutstanding.map(rec => {
+                {outPager.pageItems.map(rec => {
                   const isHigh = rec.pendingAmount >= 500
                   return (
                     <tr key={rec.id} className="hover:bg-red-50/30 transition-colors group">
@@ -1147,6 +1235,7 @@ export function PendingPayments() {
             )}
           </div>
 
+          <Pager {...outPager} />
           {filteredOutstanding.length > 0 && (
             <div className="px-6 py-3.5 bg-slate-50 border-t border-[#E4E8EC] flex items-center justify-between text-[12.5px] font-bold text-slate-700">
               <span>Showing {filteredOutstanding.length} pending client accounts</span>
@@ -1186,7 +1275,7 @@ export function PendingPayments() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E4E8EC]">
-                {filteredRecovered.map(item => {
+                {recPager.pageItems.map(item => {
                   const cash = cleanNum(item.cash)
                   const online = cleanNum(item.online)
                   const tot = cash + online
@@ -1229,6 +1318,7 @@ export function PendingPayments() {
             )}
           </div>
 
+          <Pager {...recPager} />
           {filteredRecovered.length > 0 && (
             <div className="px-6 py-3.5 bg-slate-50 border-t border-[#E4E8EC] flex items-center justify-between text-[12.5px] font-bold text-slate-700">
               <span>Showing {filteredRecovered.length} recovery transactions</span>
@@ -1237,6 +1327,16 @@ export function PendingPayments() {
           )}
         </div>
       )}
+
+      {/* ── By client (UX-08/09/10) and cash book (UX-11) ── */}
+      {activeTab === 'by_client' && (
+        <ReceivablesByClient
+          rows={filteredOutstanding}
+          clients={clients}
+          onCollect={(rows, amount, mode, notes) => handleCollectForClient(rows as UnifiedPendingRecord[], amount, mode, notes)}
+        />
+      )}
+      {activeTab === 'cash_book' && <CashBook receipts={pendingRcvdList} />}
 
       {/* ═══════════════════════════════════════════════════════════════
           TAB 3: PENDING BY STAFF / CLEANER SUMMARY
@@ -1393,12 +1493,12 @@ export function PendingPayments() {
             const f = new FormData(e.currentTarget)
             const amt = cleanNum(f.get('amount'))
             if (amt <= 0) {
-              alert('Please enter a valid pending amount.')
+              notify.error('Please enter a valid pending amount.')
               return
             }
             const client = String(f.get('client') || '').trim()
             if (!client) {
-              alert('Please enter a client name.')
+              notify.error('Please enter a client name.')
               return
             }
 

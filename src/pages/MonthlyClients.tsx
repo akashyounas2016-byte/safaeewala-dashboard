@@ -15,6 +15,9 @@ import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatDate, addHoursToTime, subtractHoursFromTime, calcDurationFromTimes } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
+import { ClientInvoicesLedger } from '@/components/monthlyClients/ClientInvoicesLedger'
+import { notify, confirmAsync } from '@/lib/notify'
+import { nextInvoiceNumber } from '@/lib/invoiceNumber'
 import type { BookingFrequency, DailyJob, RecurringContract, InvoiceLineItem, Employee, Client } from '@/types'
 import {
   extractMonthlyClientsFromDailyJobs,
@@ -151,7 +154,7 @@ export interface MonthlyClientPayment {
 }
 
 export function MonthlyClients() {
-  const { clients, dailyJobs, employees, addClient, addBooking, addInvoice } = useData()
+  const { clients, dailyJobs, employees, addClient, addBooking, addInvoice, invoices } = useData()
 
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState<'clients' | 'payments' | 'contracts' | 'recruitment'>('clients')
@@ -526,7 +529,7 @@ export function MonthlyClients() {
 
   const handleSaveContract = () => {
     if (!contractForm.clientName || !contractForm.serviceType || contractForm.amount <= 0) {
-      alert('Please fill client name, service type, and amount.')
+      notify.error('Please fill client name, service type, and amount.')
       return
     }
 
@@ -547,8 +550,8 @@ export function MonthlyClients() {
     setShowContractModal(false)
   }
 
-  const handleDeleteContract = (id: string) => {
-    if (confirm('Are you sure you want to delete this contract?')) {
+  const handleDeleteContract = async (id: string) => {
+    if (await confirmAsync({ title: 'Delete contract', message: 'Delete this contract?', confirmLabel: 'Delete', tone: 'danger' })) {
       setContracts(prev => prev.filter(c => c.id !== id))
     }
   }
@@ -568,19 +571,25 @@ export function MonthlyClients() {
   }, [clients, contractForm.clientName])
 
   // ── Client Payments Calculations & Helpers ──
+  // Balances compare charges and payments of the SAME period (AUD-39)
+  const periodPayments = useMemo(() => {
+    if (activeRange.isAllTime || !activeRange.start || !activeRange.end) return payments
+    return payments.filter(p => p.date >= activeRange.start && p.date <= activeRange.end)
+  }, [payments, activeRange])
+
   const paymentsByClient = useMemo(() => {
     const map = new Map<string, MonthlyClientPayment[]>()
-    for (const p of payments) {
+    for (const p of periodPayments) {
       const key = p.clientName.trim().toLowerCase()
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(p)
     }
     return map
-  }, [payments])
+  }, [periodPayments])
 
   const totalPaymentsRecorded = useMemo(() => {
-    return payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
-  }, [payments])
+    return periodPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+  }, [periodPayments])
 
   const totalMonthlyBalanceDue = useMemo(() => {
     return Math.max(0, totalMonthlyCharges - (totalMonthlyReceived + totalPaymentsRecorded))
@@ -607,8 +616,8 @@ export function MonthlyClients() {
     setPaymentNotice(`Payment of AED ${newPayment.amount.toLocaleString()} for ${newPayment.clientName} successfully recorded!`)
   }
 
-  const deletePayment = (id: string) => {
-    if (confirm('Are you sure you want to delete this payment record?')) {
+  const deletePayment = async (id: string) => {
+    if (await confirmAsync({ title: 'Delete payment', message: 'Delete this payment record?', confirmLabel: 'Delete', tone: 'danger' })) {
       setPayments(prev => prev.filter(p => p.id !== id))
       setPaymentNotice('Payment record deleted.')
     }
@@ -698,9 +707,7 @@ export function MonthlyClients() {
       setInvoicePreset('this_month')
     }
 
-    const randSuffix = Math.floor(1000 + Math.random() * 9000)
-    const monthCode = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
-    setInvoiceNumber(`INV-${monthCode}-${randSuffix}`)
+    setInvoiceNumber(nextInvoiceNumber(invoices)) // sequential, unique (AUD-36)
 
     setInvoiceIssueDate(todayStr)
     const due = new Date(now)
@@ -854,7 +861,7 @@ export function MonthlyClients() {
     if (!invoiceClient) return
     const win = window.open('', '_blank', 'width=880,height=800')
     if (!win) {
-      alert('Pop-up blocked! Please allow popups to print/download invoice.')
+      notify.error('Pop-up blocked! Please allow popups to print/download invoice.')
       return
     }
 
@@ -2879,6 +2886,9 @@ export function MonthlyClients() {
                 </div>
               </div>
 
+              {/* Invoices for this client — part of the client ledger (UX-21) */}
+              <ClientInvoicesLedger clientName={selectedSummary.name} />
+
               {/* Recorded Payments for this Client */}
               <div className="pt-2">
                 <div className="flex items-center justify-between mb-2.5">
@@ -3031,16 +3041,22 @@ export function MonthlyClients() {
           onSubmit={e => {
             e.preventDefault()
             if (!paymentFormClient.trim()) {
-              alert('Please enter or select a client name.')
+              notify.error('Please enter or select a client name.')
+              return
+            }
+            // Payments must belong to a known monthly client, so balances add up (UX-21)
+            const matched = monthlySummaries.find(c => normalizeKey(c.name) === normalizeKey(paymentFormClient))
+            if (!matched) {
+              notify.error('Pick the client from the list — no monthly client has that name.')
               return
             }
             const amt = Number(paymentFormAmount)
             if (!amt || amt <= 0) {
-              alert('Please enter a valid payment amount.')
+              notify.error('Please enter a valid payment amount.')
               return
             }
             addPayment({
-              clientName: paymentFormClient.trim(),
+              clientName: matched.name,
               amount: amt,
               date: paymentFormDate || new Date().toISOString().split('T')[0],
               paymentMethod: paymentFormMethod,

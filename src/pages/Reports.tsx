@@ -7,7 +7,7 @@ import {
 import { TrendingUp, Target, Award, Users, Download, DollarSign, CheckCircle, Percent, Calendar, FileSpreadsheet } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
-import { getEmployeeDailyJobsHistory } from '@/lib/clientDataSync'
+import { getEmployeeDailyJobsHistory, isBogusJob, getEmployeeMonthlySalary, formatMonthlySalary } from '@/lib/clientDataSync'
 
 function exportCSV(filename: string, rows: string[][]) {
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -49,6 +49,20 @@ export function Reports() {
   const now = new Date()
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
+  /* ── Work done (AUD-05): job-sheet rows + bookings that have no job-sheet row yet ── */
+  const linkedBookingIds = new Set(dailyJobs.map(j => j.booking_id).filter(Boolean))
+  const workItems = [
+    ...dailyJobs.filter(j => !isBogusJob(j)).map(j => ({
+      date: j.date || '',
+      amount: Number(j.charges) || 0,
+      service: j.service || 'General Cleaning',
+    })),
+    ...bookings
+      .filter(b => !linkedBookingIds.has(b.id) && (b.status === 'completed' || b.status === 'in_progress'))
+      .map(b => ({ date: b.scheduled_date || '', amount: b.total_amount || 0, service: b.service_type || 'General Cleaning' })),
+  ]
+  const thisMonthWork = workItems.filter(w => w.date.startsWith(thisMonth))
+
   /* ── Monthly revenue data ── */
   const sliceCount = dateRange === '3m' ? 3 : dateRange === '6m' ? 6 : dateRange === '1y' ? 12 : 24
   const months = Array.from({ length: sliceCount }, (_, i) => {
@@ -63,13 +77,10 @@ export function Reports() {
       jobs: 0,
     }
   })
-  bookings
-    .filter(b => b.status === 'completed' || b.status === 'in_progress')
-    .forEach(b => {
-      const key = b.scheduled_date.slice(0, 7)
-      const m = months.find(m => m.key === key)
-      if (m) { m.revenue += b.total_amount; m.jobs++ }
-    })
+  workItems.forEach(w => {
+    const m = months.find(m => m.key === w.date.slice(0, 7))
+    if (m) { m.revenue += w.amount; m.jobs++ }
+  })
 
   // Dynamic target: 110% of average monthly revenue (min AED 5,000)
   const nonZeroRevs = months.map(m => m.revenue).filter(r => r > 0)
@@ -82,17 +93,12 @@ export function Reports() {
   const completedBookings  = bookings.filter(b => b.status === 'completed')
   const cancelledBookings  = bookings.filter(b => b.status === 'cancelled')
   const activeBookings     = bookings.filter(b => b.status !== 'cancelled')
-  const thisMonthBookings  = bookings.filter(b => b.scheduled_date.startsWith(thisMonth))
-  const thisMonthRevenue   = thisMonthBookings
-    .filter(b => b.status === 'completed' || b.status === 'in_progress')
-    .reduce((s, b) => s + b.total_amount, 0)
-  const totalRevenue       = bookings
-    .filter(b => b.status === 'completed' || b.status === 'in_progress')
-    .reduce((s, b) => s + b.total_amount, 0)
+  const thisMonthRevenue   = thisMonthWork.reduce((s, w) => s + w.amount, 0)
+  const totalRevenue       = workItems.reduce((s, w) => s + w.amount, 0)
   const completionRate     = activeBookings.length > 0
     ? Math.round((completedBookings.length / activeBookings.length) * 100) : 0
-  const avgJobValue        = completedBookings.length > 0
-    ? Math.round(completedBookings.reduce((s, b) => s + b.total_amount, 0) / completedBookings.length) : 0
+  const avgJobValue        = workItems.length > 0
+    ? Math.round(totalRevenue / workItems.length) : 0
   const thisMonthNewClients = clients.filter(c => c.created_at.startsWith(thisMonth)).length
   const repeatClients      = clients.filter(c => c.total_bookings > 1).length
   const repeatRate         = clients.length > 0 ? Math.round((repeatClients / clients.length) * 100) : 0
@@ -106,27 +112,25 @@ export function Reports() {
 
   /* ── Service mix (real) ── */
   const serviceCounts: Record<string, number> = {}
-  bookings.forEach(b => { serviceCounts[b.service_type] = (serviceCounts[b.service_type] || 0) + 1 })
+  workItems.forEach(w => { serviceCounts[w.service] = (serviceCounts[w.service] || 0) + 1 })
   const serviceColors = ['#059669', '#0ea5e9', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b']
   const serviceBreakdown = Object.entries(serviceCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6)
     .map(([name, count], i) => ({
       name,
-      value: bookings.length > 0 ? Math.round((count / bookings.length) * 100) : 0,
+      value: workItems.length > 0 ? Math.round((count / workItems.length) * 100) : 0,
       color: serviceColors[i % serviceColors.length],
-      revenue: bookings
-        .filter(b => b.service_type === name && (b.status === 'completed' || b.status === 'in_progress'))
-        .reduce((s, b) => s + b.total_amount, 0),
+      revenue: workItems.filter(w => w.service === name).reduce((s, w) => s + w.amount, 0),
     }))
 
-  /* ── Staff performance (real — jobs per employee from assigned_crew) ── */
+  /* ── Staff performance (shifts per employee from the Daily Job Sheet) ── */
   const empPerf = employees
     .filter(e => e.status === 'active' || e.status === 'engaged_in_project')
     .map(emp => ({
       name:     emp.full_name.split(' ')[0],
       fullName: emp.full_name,
-      jobs:     bookings.filter(b => b.assigned_crew.includes(emp.id) && b.status === 'completed').length,
+      jobs:     getEmployeeDailyJobsHistory(emp, dailyJobs).length,
       role:     emp.role,
     }))
     .sort((a, b) => b.jobs - a.jobs)
@@ -144,8 +148,8 @@ export function Reports() {
   const topClients = [...clients].sort((a, b) => b.total_spent - a.total_spent).slice(0, 5)
 
   /* ── Ops metrics (real) ── */
-  const thisMonthJobs     = thisMonthBookings.length
-  const thisMonthCompleted = thisMonthBookings.filter(b => b.status === 'completed').length
+  const thisMonthJobs     = thisMonthWork.length
+  const thisMonthCompleted = thisMonthWork.length
   const activeEmployees   = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project').length
   const crewUtilization   = activeEmployees > 0
     ? Math.min(100, Math.round((thisMonthJobs / (activeEmployees * 20)) * 100)) : 0
@@ -165,7 +169,7 @@ export function Reports() {
       // Same matching as Employees / Employee Profile (shared shifts "Sita, Rupa" included)
       const empJobs = getEmployeeDailyJobsHistory(emp, dailyJobs).filter(j => (j.date || '').startsWith(payPeriod))
       const hours  = empJobs.reduce((s, j) => s + (j.duty_hours || 0), 0)
-      const salary = Math.round(hours * emp.pay_rate_hourly)
+      const salary = getEmployeeMonthlySalary(emp)
       return { emp, hours: Math.round(hours * 10) / 10, salary, jobCount: empJobs.length }
     })
     .sort((a, b) => b.salary - a.salary)
@@ -186,7 +190,7 @@ function formatReportRole(role: string | undefined): string {
       'Role':            formatReportRole(r.emp.role),
       'Jobs Logged':     r.jobCount,
       'Hours Worked':    r.hours,
-      'Rate (AED/hr)':   r.emp.pay_rate_hourly,
+      'Monthly Salary (AED)': r.salary,
       'Salary (AED)':    r.salary,
     })))
     const wb = XLSX.utils.book_new()
@@ -231,7 +235,7 @@ function formatReportRole(role: string | undefined): string {
         {[
           { label: 'This Month Revenue',  actual: `AED ${thisMonthRevenue.toLocaleString()}`,      sub: 'Completed + live jobs',  good: thisMonthRevenue > 0,  icon: DollarSign,  iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', badge: thisMonthJobs > 0 ? `${thisMonthJobs} jobs` : 'No jobs yet' },
           { label: 'Completion Rate',     actual: `${completionRate}%`,                             sub: 'Completed / not cancelled', good: completionRate >= 80, icon: CheckCircle, iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    badge: `${completedBookings.length} done` },
-          { label: 'Avg Job Value',       actual: avgJobValue > 0 ? `AED ${avgJobValue.toLocaleString()}` : '—', sub: 'Per completed booking', good: avgJobValue > 0, icon: Target, iconBg: 'bg-amber-50', iconColor: 'text-amber-600', badge: `${completedBookings.length} bookings` },
+          { label: 'Avg Job Value',       actual: avgJobValue > 0 ? `AED ${avgJobValue.toLocaleString()}` : '—', sub: 'Per job (job sheet + bookings)', good: avgJobValue > 0, icon: Target, iconBg: 'bg-amber-50', iconColor: 'text-amber-600', badge: `${workItems.length} jobs` },
           { label: 'Repeat Client Rate',  actual: `${repeatRate}%`,                                sub: 'Clients with 2+ bookings', good: repeatRate >= 50,    icon: Users,       iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  badge: `${repeatClients} clients` },
           { label: 'Invoice Collection',  actual: `${collectionRate}%`,                            sub: 'Paid / total invoices',    good: collectionRate >= 90, icon: Percent,     iconBg: 'bg-teal-50',    iconColor: 'text-teal-600',    badge: `${paidInvoices} paid` },
           { label: 'Pending Collection',  actual: `AED ${pendingCollection.toLocaleString()}`,     sub: 'Sent + overdue invoices',  good: pendingCollection === 0, icon: Award,  iconBg: 'bg-rose-50',    iconColor: 'text-rose-600',    badge: pendingCollection > 0 ? 'Outstanding' : 'All clear' },
@@ -376,7 +380,7 @@ function formatReportRole(role: string | undefined): string {
                 <tbody className="divide-y divide-[#E4E8EC]">
                   {[
                     { metric: 'Total bookings',     value: `${bookings.length}`,                           good: bookings.length > 0 },
-                    { metric: 'Completed jobs',     value: `${completedBookings.length}`,                  good: completedBookings.length > 0 },
+                    { metric: 'Completed jobs',     value: `${workItems.length}`,                          good: workItems.length > 0 },
                     { metric: 'Cancelled jobs',     value: `${cancelledBookings.length}`,                  good: cancelledBookings.length === 0 },
                     { metric: 'Completion rate',    value: `${completionRate}%`,                            good: completionRate >= 80 },
                     { metric: 'Total clients',      value: `${clients.length}`,                            good: clients.length > 0 },
@@ -523,7 +527,7 @@ function formatReportRole(role: string | undefined): string {
           <table className="w-full text-[13px]">
             <thead>
               <tr className="border-b border-[#E4E8EC] bg-slate-50">
-                {['Employee', 'Role', 'Jobs Logged', 'Hours Worked', 'Rate (AED/hr)', 'Salary (AED)'].map(h => (
+                {['Employee', 'Role', 'Jobs Logged', 'Hours Worked', 'Monthly Salary', 'Salary (AED)'].map(h => (
                   <th key={h} className="text-left px-5 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.07em] whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -553,7 +557,7 @@ function formatReportRole(role: string | undefined): string {
                   <td className="px-5 py-3.5">
                     <span className={`font-semibold ${hours > 0 ? 'text-[#111827]' : 'text-slate-400'}`}>{hours}h</span>
                   </td>
-                  <td className="px-5 py-3.5 text-slate-600">AED {emp.pay_rate_hourly}</td>
+                  <td className="px-5 py-3.5 text-slate-600">{formatMonthlySalary(emp)}</td>
                   <td className="px-5 py-3.5">
                     <span className={`text-[14px] font-bold ${salary > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                       AED {salary.toLocaleString()}

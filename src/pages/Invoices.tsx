@@ -14,20 +14,20 @@ import { formatDate } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { Invoice, Client } from '@/types'
 import { extractAllClientsFromDailyJobs } from '@/lib/clientDataSync'
+import { getCompanyInfo, useCompanyInfo } from '@/lib/companyInfo'
+import { nextInvoiceNumber } from '@/lib/invoiceNumber'
+import { invoiceBalance, isPartlyPaid } from '@/lib/receivables'
+import { notify } from '@/lib/notify'
+
+const escapeHtml = (v: string) => v.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
 
 export type InvoiceDatePreset = 'all' | 'today' | 'this_week' | 'this_month' | '7days' | '30days' | 'custom'
 
-const COMPANY = {
-  name: 'Safaeewala Cleaning & Maintenance LLC',
-  trn: '100234567890003',
-  address: 'Dubai, United Arab Emirates',
-  phone: '+971 55 628 2374',
-  email: 'info@safaeewala.com',
-}
 
 /* ─── Status pill ─── */
 function StatusPill({ status }: { status: string }) {
   const cfg: Record<string, { bg: string; text: string }> = {
+    'partly paid': { bg: 'bg-amber-50', text: 'text-amber-800' },
     paid:    { bg: 'bg-emerald-50',  text: 'text-emerald-700' },
     sent:    { bg: 'bg-blue-50',     text: 'text-blue-700' },
     overdue: { bg: 'bg-red-50',      text: 'text-red-700' },
@@ -53,6 +53,9 @@ function printInvoice(invoice: Invoice) {
     </tr>`).join('')
 
   const grossSubtotal = (invoice.subtotal || 0) + (invoice.discount_amount || 0)
+  // Company details from Settings, never hard-coded (AUD-34)
+  const company = getCompanyInfo()
+  const companyTrn = invoice.company_trn || company.trn
 
   win.document.write(`<!DOCTYPE html><html><head>
     <title>Invoice ${invoice.invoice_number}</title>
@@ -65,11 +68,11 @@ function printInvoice(invoice: Invoice) {
       <div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
           <div style="width:32px;height:32px;border-radius:8px;background:#10b981;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:14px">S</div>
-          <span style="font-size:15px;font-weight:700">Safaeewala Cleaning &amp; Maintenance LLC</span>
+          <span style="font-size:15px;font-weight:700">${escapeHtml(company.company_name)}</span>
         </div>
-        <div style="color:#6b7280">Dubai, United Arab Emirates</div>
-        <div style="color:#6b7280">TRN: 100234567890003</div>
-        <div style="color:#6b7280">+971 55 628 2374 · info@safaeewala.com</div>
+        <div style="color:#6b7280">${escapeHtml(company.address)}</div>
+        ${companyTrn ? `<div style="color:#6b7280">TRN: ${escapeHtml(companyTrn)}</div>` : ''}
+        <div style="color:#6b7280">${escapeHtml([company.phone, company.email].filter(Boolean).join(' · '))}</div>
       </div>
       <div style="text-align:right">
         <div style="font-size:22px;font-weight:900">TAX INVOICE</div>
@@ -108,7 +111,10 @@ function printInvoice(invoice: Invoice) {
         <div style="display:flex;justify-content:space-between;padding:5px 0;font-weight:600"><span style="color:#4b5563">Net Subtotal</span><span>AED ${(invoice.subtotal || 0).toLocaleString()}</span></div>
         ` : ''}
         <div style="display:flex;justify-content:space-between;padding:5px 0"><span style="color:#6b7280">VAT (${invoice.vat_rate || 0}%)</span><span>${invoice.vat_rate === 0 ? 'Tax-Exempt (0%)' : `AED ${(invoice.vat_amount || 0).toLocaleString()}`}</span></div>
-        <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #111827;font-size:15px;font-weight:700"><span>Total Due</span><span>AED ${(invoice.total || 0).toLocaleString()}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:10px 0;border-top:2px solid #111827;font-size:15px;font-weight:700"><span>Total</span><span>AED ${(invoice.total || 0).toLocaleString()}</span></div>
+        ${(Number(invoice.amount_paid) || 0) > 0 && invoice.status !== 'paid' ? `
+        <div style="display:flex;justify-content:space-between;padding:5px 0;color:#059669"><span>Paid so far</span><span>AED ${(Number(invoice.amount_paid) || 0).toLocaleString()}</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;font-weight:700;color:#b91c1c"><span>Balance Due</span><span>AED ${invoiceBalance(invoice).toLocaleString()}</span></div>` : ''}
       </div>
     </div>
     ${invoice.notes ? `<div style="margin-top:24px;padding:12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;color:#92400e;font-size:12px">${invoice.notes}</div>` : ''}
@@ -119,6 +125,7 @@ function printInvoice(invoice: Invoice) {
 
 export function Invoices() {
   const { invoices, addInvoice, updateInvoice, deleteInvoice } = useData()
+  const company = useCompanyInfo()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -197,8 +204,21 @@ export function Invoices() {
     return invoices.filter(i => isDateInRange(i.created_at))
   }, [invoices, isDateInRange])
 
-  const totalPaid    = dateFilteredInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
-  const totalPending = dateFilteredInvoices.filter(i => i.status === 'sent').reduce((s, i) => s + i.total, 0)
+  const paidOf = (list: Invoice[]) => list.reduce((s, i) => s + (i.status === 'paid' ? i.total : (Number(i.amount_paid) || 0)), 0)
+  const totalPaid    = paidOf(dateFilteredInvoices)
+  const totalPending = dateFilteredInvoices.filter(i => i.status === 'sent').reduce((s, i) => s + invoiceBalance(i), 0)
+  const paidTrend = useMemo(() => {
+    const { start, end } = activeDateRange as { start?: string; end?: string }
+    if (!start || !end) return { delta: '', up: true }
+    const s0 = new Date(start), e0 = new Date(end)
+    const len = Math.round((e0.getTime() - s0.getTime()) / 86_400_000) + 1
+    const prevEnd = new Date(s0.getTime() - 86_400_000).toISOString().split('T')[0]
+    const prevStart = new Date(s0.getTime() - len * 86_400_000).toISOString().split('T')[0]
+    const prev = paidOf(invoices.filter(i => { const d = (i.created_at || '').split('T')[0]; return d >= prevStart && d <= prevEnd }))
+    if (prev <= 0) return { delta: '', up: true }
+    const pct = Math.round(((totalPaid - prev) / prev) * 100)
+    return { delta: `${pct >= 0 ? '+' : ''}${pct}%`, up: pct >= 0 }
+  }, [activeDateRange, invoices, totalPaid]) // eslint-disable-line react-hooks/exhaustive-deps
   const totalOverdue = dateFilteredInvoices.filter(i => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
   const totalVat     = dateFilteredInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.vat_amount, 0)
   const paidCount    = dateFilteredInvoices.filter(i => i.status === 'paid').length
@@ -283,11 +303,11 @@ export function Invoices() {
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {[
           { label: 'Total Invoices', value: dateFilteredInvoices.length,                   sub: activeDateRange.label, icon: FileText,    iconBg: 'bg-slate-100',  iconColor: 'text-slate-600',   delta: `${dateFilteredInvoices.length}`, deltaUp: true  },
-          { label: 'Paid',           value: `AED ${(totalPaid/1000).toFixed(1)}k`,         sub: `${paidCount} invoices`, icon: CheckCircle, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: '+12%', deltaUp: true  },
-          { label: 'Pending',        value: `AED ${(totalPending/1000).toFixed(1)}k`,      sub: 'Awaiting payment', icon: Clock,       iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: 'Active', deltaUp: true },
-          { label: 'Overdue',        value: `AED ${(totalOverdue/1000).toFixed(1)}k`,      sub: `${overdueInvoices.length} overdue`, icon: AlertCircle, iconBg: 'bg-red-50', iconColor: 'text-red-600', delta: '!', deltaUp: false },
+          { label: 'Paid',           value: `AED ${(totalPaid/1000).toFixed(1)}k`,         sub: `${paidCount} invoices · vs previous period`, icon: CheckCircle, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: paidTrend.delta, deltaUp: paidTrend.up  },
+          { label: 'Pending',        value: `AED ${(totalPending/1000).toFixed(1)}k`,      sub: 'Awaiting payment', icon: Clock,       iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '', deltaUp: true },
+          { label: 'Overdue',        value: `AED ${(totalOverdue/1000).toFixed(1)}k`,      sub: `${overdueInvoices.length} overdue`, icon: AlertCircle, iconBg: 'bg-red-50', iconColor: 'text-red-600', delta: overdueInvoices.length > 0 ? '!' : '', deltaUp: false },
           { label: 'VAT Collected',  value: `AED ${(totalVat/1000).toFixed(1)}k`,          sub: 'From paid invoices', icon: Percent,   iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: '5%',   deltaUp: true  },
-          { label: 'Collection',     value: `${collectionRate}%`,                          sub: 'Payment rate',   icon: TrendingUp,  iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: '+3%',  deltaUp: true  },
+          { label: 'Collection',     value: `${collectionRate}%`,                          sub: 'Payment rate',   icon: TrendingUp,  iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: '',  deltaUp: true  },
         ].map(card => {
           let action: (() => void) | null = null
           if (card.label === 'Total Invoices') action = () => setStatusFilter('all')
@@ -300,9 +320,12 @@ export function Invoices() {
               <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center`}>
                 <card.icon size={18} className={card.iconColor} />
               </div>
-              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${card.deltaUp ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                {card.delta}
-              </span>
+              {/* Only real, data-backed chips — no invented trends (AUD-32, AUD-35) */}
+              {card.delta && (
+                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${card.deltaUp ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                  {card.delta}
+                </span>
+              )}
             </div>
             <p className="text-xl font-bold text-[#111827] tracking-tight">{card.value}</p>
             <p className="text-[12px] font-semibold text-[#111827] mt-1">{card.label}</p>
@@ -487,7 +510,7 @@ export function Invoices() {
                       <td className="px-4 py-3.5">
                         <span className="text-[13px] font-bold text-[#111827]">AED {inv.total.toLocaleString()}</span>
                       </td>
-                      <td className="px-4 py-3.5"><StatusPill status={inv.status} /></td>
+                      <td className="px-4 py-3.5"><StatusPill status={isPartlyPaid(inv) ? 'partly paid' : inv.status} /></td>
                       <td className="px-4 py-3.5">
                         <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                           <button onClick={() => printInvoice(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="Print / Download PDF">
@@ -586,7 +609,7 @@ export function Invoices() {
               {[
                 { label: 'Taxable Revenue',  value: `AED ${dateFilteredInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.subtotal, 0).toLocaleString()}` },
                 { label: 'VAT Collected',    value: `AED ${totalVat.toLocaleString()}` },
-                { label: 'TRN',             value: COMPANY.trn },
+                { label: 'TRN',             value: company.trn || 'Not set — add it in Settings' },
                 { label: 'Next Filing',      value: 'Q2 2026 — Jun 30' },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-center justify-between py-2 border-b border-[#E4E8EC] last:border-0">
@@ -614,6 +637,16 @@ export function Invoices() {
               setSelected(null)
             }}
             onPrint={() => printInvoice(selected)}
+            onRecordPayment={(amount) => {
+              const paid = (Number(selected.amount_paid) || 0) + amount
+              const today = new Date().toISOString().split('T')[0]
+              const patch: Partial<Invoice> = paid >= selected.total - 0.01
+                ? { amount_paid: selected.total, status: 'paid', paid_date: today }
+                : { amount_paid: Math.round(paid * 100) / 100 }
+              updateInvoice(selected.id, patch)
+              setSelected({ ...selected, ...patch })
+              notify.success(`AED ${amount.toLocaleString()} recorded on ${selected.invoice_number}`)
+            }}
             onDelete={() => setConfirmDeleteId(selected.id)}
           />
         )}
@@ -694,7 +727,7 @@ function formatClientAddress(c: Client | any): string {
 }
 
 function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Omit<Invoice, 'id' | 'created_at'>) => void }) {
-  const { clients, dailyJobs } = useData()
+  const { clients, dailyJobs, invoices } = useData()
   const [qty, setQty] = useState(1)
   const [unitPrice, setUnitPrice] = useState(0)
 
@@ -838,14 +871,14 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
       e.preventDefault()
       const fd = new FormData(e.currentTarget)
       const desc = fd.get('description') as string
-      const invoiceNum = `INV-${Date.now().toString().slice(-6)}`
+      const invoiceNum = nextInvoiceNumber(invoices)
       onAdd({
         invoice_number: invoiceNum,
         client_id: clientId || '',
         client_name: clientName.trim(),
         client_address: clientAddress.trim(),
         trn: trn.trim(),
-        company_trn: COMPANY.trn,
+        company_trn: getCompanyInfo().trn,
         due_date: dueDate,
         status: 'sent',
         subtotal: netSubtotal,
@@ -1342,9 +1375,14 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
   )
 }
 
-function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete }: {
+function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete, onRecordPayment }: {
   invoice: Invoice; onMarkPaid: () => void; onSend: () => void; onPrint: () => void; onDelete: () => void
+  onRecordPayment: (amount: number) => void
 }) {
+  const company = useCompanyInfo()
+  const [payAmount, setPayAmount] = useState('')
+  const paidSoFar = Number(invoice.amount_paid) || 0
+  const balance = invoiceBalance(invoice)
   const statusCfg: Record<string, { bg: string; text: string }> = {
     paid:    { bg: 'bg-emerald-50', text: 'text-emerald-700' },
     sent:    { bg: 'bg-blue-50',    text: 'text-blue-700' },
@@ -1359,11 +1397,11 @@ function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete }: {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <div className="w-8 h-8 rounded-xl bg-emerald-500 flex items-center justify-center text-white font-bold text-sm">S</div>
-            <p className="text-[15px] font-bold text-[#111827]">{COMPANY.name}</p>
+            <p className="text-[15px] font-bold text-[#111827]">{company.company_name}</p>
           </div>
-          <p className="text-[12px] text-slate-500">{COMPANY.address}</p>
-          <p className="text-[12px] text-slate-500">TRN: {COMPANY.trn}</p>
-          <p className="text-[12px] text-slate-500">{COMPANY.phone} · {COMPANY.email}</p>
+          <p className="text-[12px] text-slate-500">{company.address}</p>
+          {(invoice.company_trn || company.trn) && <p className="text-[12px] text-slate-500">TRN: {invoice.company_trn || company.trn}</p>}
+          <p className="text-[12px] text-slate-500">{[company.phone, company.email].filter(Boolean).join(' · ')}</p>
         </div>
         <div className="text-right">
           <p className="text-[22px] font-black text-[#111827]">TAX INVOICE</p>
@@ -1439,15 +1477,40 @@ function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete }: {
             </span>
           </div>
           <div className="flex justify-between font-bold text-[15px] text-[#111827] pt-2 border-t-2 border-[#111827]">
-            <span>Total Due</span><span className="text-emerald-700">AED {(invoice.total || 0).toLocaleString()}</span>
+            <span>Total</span><span className="text-emerald-700">AED {(invoice.total || 0).toLocaleString()}</span>
           </div>
+          {paidSoFar > 0 && invoice.status !== 'paid' && (
+            <>
+              <div className="flex justify-between text-emerald-700"><span>Paid so far</span><span>AED {paidSoFar.toLocaleString()}</span></div>
+              <div className="flex justify-between font-bold text-red-700"><span>Balance due</span><span>AED {balance.toLocaleString()}</span></div>
+            </>
+          )}
         </div>
       </div>
 
       <div className="flex gap-3 flex-wrap">
-        <Button variant="outline" size="sm" onClick={onPrint}>
-          <Download size={14} className="mr-1.5" /> Print / PDF
+        <Button variant="outline" size="sm" onClick={onPrint} title="Opens the print dialog — choose 'Save as PDF' to download">
+          <Download size={14} className="mr-1.5" /> Print / Save PDF
         </Button>
+        {invoice.status !== 'paid' && invoice.status !== 'draft' && (
+          <form
+            className="flex items-center gap-1.5"
+            onSubmit={e => {
+              e.preventDefault()
+              const amt = Number(payAmount)
+              if (!(amt > 0)) { notify.error('Enter the amount received.'); return }
+              onRecordPayment(amt)
+              setPayAmount('')
+            }}
+          >
+            <input
+              type="number" min="0" step="0.01" value={payAmount} onChange={e => setPayAmount(e.target.value)}
+              placeholder={`Part payment (max ${balance})`}
+              className="w-[170px] px-2.5 py-1.5 text-[12px] border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500"
+            />
+            <Button type="submit" variant="outline" size="sm">Record payment</Button>
+          </form>
+        )}
         <button
           type="button"
           onClick={onDelete}

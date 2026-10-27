@@ -52,6 +52,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/pages/Attendance.tsx` → `attendanceRecords`; overrides in localStorage `safaeewala_cleaner_attendance_overrides` (key `YYYY-MM-DD_<name lowercase>`).
 - **Status:** Active · Since: 2026-10
 
+### R-ATT-04 — Who appears on the attendance list
+- **Rule:** Registered non-inactive employees, plus unregistered names seen on the job sheet in the last 60 days, plus anyone with a shift on the selected date. Shared rows ("Sita, Rupa") are split per cleaner. No hard-coded roster.
+- **Code:** `Attendance.tsx → allKnownCleaners`.
+- **Status:** Active · Since: 2026-10-27 (AUD-08, AUD-18)
+
 ### R-ATT-02 — A worked row is never an absence
 - **Rule:** A row with `duty_hours > 0` or `charges > 0` is a worked shift whatever its remarks say ("Leave keys at reception" must not mark anyone absent).
 - **Code:** `Attendance.tsx` (`isWorkedShift`), `src/lib/employeeHealth.ts`.
@@ -82,7 +87,8 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-SYNC-01 — Daily Job Sheet is the operational ledger
 - **Rule:** Clients and staff seen on the job sheet appear automatically in Clients / Employees (`dj-<address>` and `emp-dj-<name>` synthetic records); hours, OT, revenue and history are derived from `dailyJobs`.
 - **Code:** `DataContext.tsx → allClients / allEmployees` via `extractAllClientsFromDailyJobs`, `extractAllEmployeesFromDailyJobs`.
-- **Status:** Active
+- Job-sheet-only staff are `active` only while they had a shift in the last 60 days (`SYNTHETIC_STAFF_ACTIVE_DAYS`); role stays `cleaner` until registered. Rows created from a booking belong to the booking's client by id (`booking_id → client_id`), not by address text.
+- **Status:** Active · Updated 2026-10-27 (AUD-08, AUD-15)
 
 ### R-SYNC-02 — Bookings store IDs, the job sheet stores names
 - **Rule:** `Booking.assigned_crew` holds **employee IDs**; `DailyJob.staff_name` holds **cleaner names** (comma-separated). Always convert with `crewToStaffName` / `staffNameToCrew` — never copy one into the other.
@@ -95,6 +101,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `DataContext.tsx → addBooking, updateBooking`.
 - **Status:** Active
 
+### R-SYNC-05 — No change is lost when Supabase is unavailable
+- **Rule:** Every write to Supabase goes through the outbox; a failed write is kept, retried, re-applied on load and shown to the user. Business data that has no table of its own (payments, pending/received items, advances, adjustments, attendance overrides, recurring contracts) is mirrored to `app_state`.
+- **Code:** `src/lib/syncQueue.ts` (`dbInsert/dbUpdate/dbDelete`, `applyOutbox`), `src/lib/cloudState.ts`, `src/components/layout/SyncStatusBanner.tsx`; loader pages through tables (no 1000-row cap).
+- **Status:** Active in code · needs migration `supabase/migrations/2026-10-27_phase2_sync.sql` · Since: 2026-10-27 (AUD-02/03/04/20/23)
+
 ### R-SYNC-04 — Staff are matched by whole words
 - **Rule:** An employee matches a job's `staff_name` by normalised full name or whole-word match — "Rupa" must not match "Rupak".
 - **Code:** `clientDataSync.ts → employeeMatchesStaff`.
@@ -105,7 +116,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ## DATA — Data hygiene
 
 ### R-DATA-01 — Ignore Excel summary / bogus rows
-- **Rule:** Skip rows with no address and no times; no address with charges or received > 1500 (footer totals); `duty_hours > 24`; or text containing `gross`, `pending rcvd`, `total`, `expences`, `net total`, `summary`, `expense`.
+- **Rule:** Skip rows with no address and no times; no address with charges or received > 1500 (footer totals); `duty_hours > 24`; or text containing `gross`, `pending rcvd`, `total`, `expences`, `net total`, `summary` (staff names additionally reject `expense`, `nil`, `none`).
 - **Code:** `clientDataSync.ts → isBogusJob, isBogusStaffName`.
 - **Status:** Active
 
@@ -117,7 +128,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-DATA-03 — No dummy data in operational lists
 - **Rule:** Pickers, filters and assign lists show live data only. Demo seed data (`src/lib/seedData.ts`, client ids `c1000001-0000-0000-0000-…`) appears only when there is no real data at all, and is excluded from assign lists.
 - **Code:** `clientDataSync.ts → getAssignableClients`; Employees agency filter reads only `agencies`; dummy agencies removed from `defaultAgencies`.
-- **Status:** Partial — seeds still load when both Supabase and localStorage are empty.
+- **Status:** Active — seed fallbacks and demo data files removed 2026-10-27 (AUD-12).
 
 ---
 
@@ -129,9 +140,9 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Status:** Active
 
 ### R-EMP-02 — Monthly salary and hourly rate
-- **Rule:** Monthly salary is the stored `monthly_salary`, else `pay_rate_hourly × 200` (`MONTHLY_WORK_HOURS`). The Add Employee form stores `pay_rate_hourly = monthly_salary / 200`. Agency payouts also derive hourly rate via `MONTHLY_WORK_HOURS`.
-- **Code:** `clientDataSync.ts → MONTHLY_WORK_HOURS, getEmployeeMonthlySalary`; `AgencyDashboard.tsx`.
-- **Status:** Active · Standardized: 2026-10-27
+- **Rule:** Pay is a **monthly salary** everywhere (no per-hour rates shown). Monthly salary = stored `monthly_salary` (legacy records: `pay_rate_hourly × 200`). The salary cost of one shift = monthly ÷ 200 h × duty hours (`shiftSalaryCost`) — used by agency payouts; Reports payroll = monthly salary. A missing salary shows "Not set"; no default values (12/15/14 per hour, 2500) are ever invented.
+- **Code:** `clientDataSync.ts → MONTHLY_WORK_HOURS, getEmployeeMonthlySalary, shiftSalaryCost, formatMonthlySalary`.
+- **Status:** Active · Standardized & Updated 2026-10-27 (AUD-06, AUD-09, AUD-10, K-02)
 
 ### R-EMP-03 — Performance Health Score
 - **Rule:** 0–100 = Attendance 50 (worked days vs specifically-marked absences, last 90 days, per R-ATT-01) + Activity 30 (distinct worked days in last 30 days vs 22) + Compliance 20 (Visa, Passport, Work Permit, EID not expired). Grades: ≥85 Excellent, ≥70 Good, ≥50 Needs Attention, else At Risk.
@@ -159,7 +170,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ### R-AGN-02 — Agency ↔ staff matching
 - **Rule:** An employee belongs to an agency when `agency_id` equals the agency id **or** `agency_name` equals the agency name (case-insensitive).
-- **Code:** `AgencyDashboard.tsx → agencyStaff`, `lib/agencyAlerts.ts → staffOf`.
+- **Code:** `lib/utils.ts → employeeBelongsToAgency, staffOfAgency, matchesAgencyFilter` (used by Employees filter and agency alerts; `AgencyDashboard.tsx → agencyStaff` uses the same rule). Renaming an agency re-links its staff (`DataContext.updateAgency`).
 - **Status:** Active
 
 ### R-AGN-03 — Agency filter lists live agencies only
@@ -172,6 +183,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/agencyAlerts.ts → buildAgencyNotifications`.
 - **Status:** Active · Since: 2026-10-27
 
+### R-AGN-06 — Deleting an agency deletes its staff
+- **Rule:** Deleting a third-party agency also deletes the employees linked to it (R-AGN-02). The delete dialog lists who will be removed. Their past shifts stay on the Daily Job Sheet; deleted names are not re-created from that history. The parent company is never deleted with its staff.
+- **Code:** `DataContext.deleteAgency`, `Agencies.tsx` delete dialog.
+- **Status:** Active · Since: 2026-10-27 (owner decision, DEC-010)
+
+### R-DATA-05 — Deleted records stay deleted
+- **Rule:** Deleting a client or employee records its name key in `safaeewala_deleted_staff` / `safaeewala_deleted_clients` (cloud-synced) so job-sheet history does not bring it back.
+- **Code:** `DataContext.deleteEmployee / deleteClient`; `extractAllEmployeesFromDailyJobs / extractAllClientsFromDailyJobs` (`deletedKeys`).
+- **Status:** Active · Since: 2026-10-27 (AUD-17)
+
 ### R-AGN-05 — Issue date must not be after expiry
 - **Rule:** For trade license, Emirates ID, passport and contract, the issue/start date cannot be after the expiry/end date.
 - **Code:** Add Agency form submit in `Agencies.tsx`.
@@ -182,9 +203,9 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ## PAY — Salaries & payouts
 
 ### R-PAY-01 — Agency gross shift revenue
-- **Rule:** Agency "Gross Shift Revenue" = sum of `charges` of job-sheet rows matched (R-SYNC-04) to the agency's staff. Payment status does not affect it.
-- **Code:** `AgencyDashboard.tsx → staffJobsData, financials`.
-- **Status:** Active
+- **Rule:** Agency "Gross Shift Revenue" = sum of each staff member's **share** of job-sheet `charges` (a shared shift is split equally between its cleaners, same as Employees / Employee Profile). Payment status does not affect it.
+- **Code:** `clientDataSync.ts → jobChargeShare`; `AgencyDashboard.tsx → staffJobsData, financials`.
+- **Status:** Active · Updated 2026-10-27 (AUD-07)
 
 ### R-PAY-02 — Salary vs advance payouts
 - **Rule:** Payouts have `payment_type` `salary` or `advance` and `status` `paid` / `pending` / `processing`. "Salary paid" counts only `paid` non-advance payouts.
@@ -195,10 +216,29 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ## FIN — Invoices & payments
 
-### R-FIN-01 — UAE VAT
-- **Rule:** VAT is 5% of the subtotal unless the invoice is VAT-exempt (`vat_rate = 0` / `apply_vat = false`); company TRN comes from `company_settings` (fallback `100234567890003`).
-- **Code:** `src/pages/Invoices.tsx`, `MonthlyInvoices.tsx`; TRN in `DataContext.tsx`.
+### R-FIN-01 — UAE VAT and company details
+- **Rule:** VAT is 5% of the subtotal unless the invoice is VAT-exempt (`vat_rate = 0` / `apply_vat = false`). Company name, TRN, address and phone on invoices and statements come only from Settings (`company_settings`) — no hard-coded values; saving settings merges, never replaces the record.
+- **Code:** `src/lib/companyInfo.ts` (`useCompanyInfo`, `getCompanyInfo`, `updateCompanySettings`); `Invoices.tsx`, `MonthlyInvoices.tsx`, `Settings.tsx`.
 - **Status:** Active
+
+### R-FIN-03 — Revenue is counted once
+- **Rule:** A booking that has a job-sheet row (`booking_id`) is counted only through that row. **Collected** revenue (Overview) = `received`, else `charges` for paid-on-site rows; `Monthly` rows count only via monthly client payments and `Pending` rows only via recoveries. **Billed / work** revenue (Reports) = job-sheet `charges` + bookings without a row.
+- **Code:** `Overview.tsx → jobCollected, bookingsWithoutJobRow`; `Reports.tsx → workItems`.
+- **Status:** Active · Since: 2026-10-27 (AUD-01, AUD-05)
+
+### R-FIN-04 — Invoice numbers
+- **Rule:** One scheme: `SAF-<year>-<NNNN>`, next = highest of the year + 1; `addInvoice` replaces any missing, legacy or duplicate number.
+- **Code:** `src/lib/invoiceNumber.ts`; `DataContext.addInvoice`.
+- **Status:** Active · Since: 2026-10-27 (AUD-36)
+
+### R-FIN-05 — Receivables exclude monthly-contract visits
+- **Rule:** Pending, Payments and Overview chase job-level dues only for non-monthly rows (`calcJobCollectable`); monthly-contract balances live on Monthly Clients (charges − payments of the same period). Payment history and "collected" include later recoveries; "billed" is job charges only.
+- **Code:** `clientDataSync.ts → calcJobCollectable, jobCollected`; `PendingPayments.tsx`, `PaymentProcessing.tsx`, `MonthlyClients.tsx`, `Expenses.tsx`.
+- **Status:** Active · Since: 2026-10-27 (AUD-24, 27, 28, 30, 39)
+
+### R-DATA-04 — No invented numbers on screen
+- **Rule:** KPI trend chips, stock movements and defaults must come from data. No fixed "+3%" deltas; stock increases only when goods are received; monthly statements come from job-sheet visits.
+- **Status:** Active · Since: 2026-10-27 (AUD-32, 33, 35, 37)
 
 ### R-FIN-02 — Monthly client balance
 - **Rule:** Balance due = max(0, total charges − total received) for the client's monthly jobs (`payment_mode = Monthly` or "monthly" in remarks/address).
@@ -241,7 +281,9 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 | ID | Issue | Affects | Status |
 |---|---|---|---|
 | K-01 | Localhost talks to the **live** backend (`/api` proxy → VPS, live Supabase): saves during testing change production data. | R-OPS-02 | Open |
-| K-02 | Agency payouts derive hourly pay as `monthly_salary / (26 × 8)` (208 h) while the rest of the app uses 200 h. | R-EMP-02, R-PAY-01 | **Resolved** (2026-10-27) — standardized to `MONTHLY_WORK_HOURS` (200h) |
-| K-03 | Agency saves POST the **whole agency list** (`{ all: next }`); a stale tab can overwrite newer agencies. | R-AGN-* | Open |
-| K-04 | New employee fields (`photo_url`, document numbers/files) may not exist as Supabase columns; if not, they persist only in that browser. | R-EMP-* | Open |
-| K-05 | Seed/demo data still loads when Supabase and localStorage are both empty. | R-DATA-03 | Open |
+| ~~K-02~~ | ✅ Fixed 2026-10-27: one salary rule everywhere (`MONTHLY_WORK_HOURS` = 200h, R-EMP-02). | R-EMP-02, R-PAY-01 | **Resolved** |
+| ~~K-03~~ | ✅ Fixed 2026-10-27: agency saves send only the changed agency; deletes send `remove` (old servers fall back to the full list). | R-AGN-* | **Resolved** |
+| K-04 | New employee/agency fields may not exist as Supabase columns → writes rejected. Now visible (banner) and retried; fixed for good once the Phase 2 migration is run. | R-EMP-*, R-SYNC-05 | Open |
+| ~~K-05~~ | ✅ Fixed 2026-10-27: no seed/demo data is loaded. | R-DATA-03 | **Resolved** |
+
+Full list of sync / dummy-data issues with locations: [docs/audits/2026-10-27-data-sync-audit.md](docs/audits/2026-10-27-data-sync-audit.md) (AUD-01 … AUD-23), and for the finance & operations screens: [docs/audits/2026-10-27-finance-ops-screens-audit.md](docs/audits/2026-10-27-finance-ops-screens-audit.md) (AUD-24 … AUD-42).

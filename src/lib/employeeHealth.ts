@@ -73,7 +73,9 @@ export function calcEmployeeHealth(emp: Employee, empJobs: DailyJob[]): Employee
   Object.entries(overrides).forEach(([key, o]) => {
     const sep = key.indexOf('_')
     const date = key.slice(0, sep)
-    if (key.slice(sep + 1) !== nameKey || date < windowStart || date > today) return
+    const who = key.slice(sep + 1)
+    // Keys are "date_id:<employeeId>" (current) or "date_<name>" (older entries) — AUD-38
+    if ((who !== `id:${emp.id}` && who !== nameKey) || date < windowStart || date > today) return
     if (o.status === 'absent') {
       absenceByDate.set(date, o.reason || 'Marked absent in Attendance')
       workedDays.delete(date)

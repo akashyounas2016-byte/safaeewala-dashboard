@@ -11,6 +11,9 @@ import { Input, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
+import { isBogusJob, isMonthlyJob, cleanClientNameFromAddress, normalizeKey } from '@/lib/clientDataSync'
+import { getCompanyInfo } from '@/lib/companyInfo'
+import { notify } from '@/lib/notify'
 
 const VAT_RATE = 0.05
 
@@ -34,6 +37,58 @@ function calcEndTime(startTime: string, durationHours: number): string {
 }
 
 type ViewMode = 'card' | 'table' | 'compact'
+
+function StatementInvoiceButton({ s, monthLabel, compact = false }: { s: ClientStatement; monthLabel: string; compact?: boolean }) {
+  const { invoices, addInvoice, clients } = useData()
+  const visitIds = s.visits.map(v => v.id)
+  const existing = invoices.find(inv => inv.job_ids && visitIds.length > 0 && visitIds.every(id => inv.job_ids!.includes(id)))
+  if (existing) {
+    return (
+      <span className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-teal-50 text-teal-700 border border-teal-200" title="Already invoiced">
+        {existing.invoice_number}
+      </span>
+    )
+  }
+  const create = () => {
+    if (s.visits.length === 0) return
+    const client = clients.find(c => c.full_name.toLowerCase() === s.clientName.toLowerCase())
+    const due = new Date(); due.setDate(due.getDate() + 7)
+    addInvoice({
+      invoice_number: '',                       // assigned by addInvoice (SAF-YYYY-NNNN)
+      client_id: client?.id || '',
+      client_name: s.clientName,
+      client_address: s.address,
+      company_trn: getCompanyInfo().trn,
+      line_items: s.visits.map(v => ({
+        description: `Cleaning visit ${v.date} (${v.day})${v.hours ? ` · ${v.hours}h` : ''}`,
+        quantity: 1,
+        unit_price: v.amount,
+        amount: v.amount,
+      })),
+      subtotal: s.subtotal,
+      vat_rate: 5,
+      vat_amount: s.vatAmount,
+      total: Math.round((s.subtotal + s.vatAmount) * 100) / 100,
+      apply_vat: true,
+      status: 'sent',
+      due_date: due.toISOString().split('T')[0],
+      notes: `Monthly statement — ${monthLabel}`,
+      job_ids: visitIds,                        // these visits are now collected through the invoice
+    })
+    notify.success(`Invoice created for ${s.clientName} — see Invoices`)
+  }
+  return (
+    <button
+      onClick={create}
+      className={compact
+        ? 'p-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-700 transition-colors'
+        : 'flex items-center gap-2 px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-[12px] font-semibold transition-colors shadow-sm'}
+      title="Create a numbered invoice from this statement"
+    >
+      <FileText size={14} />{!compact && <span className="hidden sm:inline">Invoice</span>}
+    </button>
+  )
+}
 
 interface Visit {
   id: string
@@ -59,7 +114,7 @@ interface ClientStatement {
 }
 
 export function MonthlyInvoices() {
-  const { bookings, clients, updateBooking } = useData()
+  const { dailyJobs, clients, updateDailyJob } = useData()
   const navigate = useNavigate()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [viewMode, setViewMode]           = useState<ViewMode>('card')
@@ -71,35 +126,39 @@ export function MonthlyInvoices() {
   const prevMonth = () => { const d = new Date(selectedMonth); d.setMonth(d.getMonth() - 1); setSelectedMonth(d) }
   const nextMonth = () => { const d = new Date(selectedMonth); d.setMonth(d.getMonth() + 1); setSelectedMonth(d) }
 
+  // Statements come from monthly-contract visits on the Daily Job Sheet (AUD-37),
+  // the same rows Monthly Clients uses — not from bookings
   const statements = useMemo<ClientStatement[]>(() => {
-    const mb = bookings.filter(b =>
-      b.scheduled_date?.startsWith(monthKey) &&
-      (b.status === 'completed' || b.status === 'confirmed')
-    )
-    const grouped: Record<string, typeof mb> = {}
-    for (const b of mb) {
-      if (!grouped[b.client_name]) grouped[b.client_name] = []
-      grouped[b.client_name].push(b)
+    const monthJobs = dailyJobs.filter(j => !isBogusJob(j) && (j.date || '').startsWith(monthKey) && isMonthlyJob(j))
+    const grouped = new Map<string, { name: string; jobs: typeof monthJobs }>()
+    for (const j of monthJobs) {
+      const name = cleanClientNameFromAddress(j.address || j.area || 'Client') || 'Client'
+      const key = normalizeKey(name)
+      if (!grouped.has(key)) grouped.set(key, { name, jobs: [] })
+      grouped.get(key)!.jobs.push(j)
     }
-    return Object.entries(grouped).map(([clientName, visits]) => {
-      const sorted     = [...visits].sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date))
-      const totalHours = sorted.reduce((s, v) => s + (v.duration_hours || 0), 0)
-      const subtotal   = sorted.reduce((s, v) => s + (v.total_amount || 0), 0)
-      const vatAmount  = subtotal * VAT_RATE
+    return Array.from(grouped.values()).map(({ name: clientName, jobs }) => {
+      const sorted     = [...jobs].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.start_time || '').localeCompare(b.start_time || ''))
+      const totalHours = sorted.reduce((s, v) => s + (Number(v.duty_hours) || 0), 0)
+      const subtotal   = sorted.reduce((s, v) => s + (Number(v.charges) || 0), 0)
+      const vatAmount  = Math.round(subtotal * VAT_RATE * 100) / 100
+      const client = clients.find(c =>
+        normalizeKey(c.full_name) === normalizeKey(clientName) ||
+        (!!c.building_name && normalizeKey(c.building_name) === normalizeKey(clientName)))
       return {
         clientName,
-        clientPhone: sorted[0]?.client_phone || '',
-        address: sorted[0]?.service_address || '',
+        clientPhone: client?.whatsapp || client?.phone || '',
+        address: sorted[0]?.address || '',
         visits: sorted.map(v => ({
           id:        v.id,
-          date:      v.scheduled_date,
-          day:       getDayName(v.scheduled_date),
-          address:   v.service_address,
-          startTime: v.scheduled_time || '',
-          endTime:   calcEndTime(v.scheduled_time || '', v.duration_hours || 0),
-          hours:     v.duration_hours || 0,
-          amount:    v.total_amount || 0,
-          remarks:   v.notes || '',
+          date:      v.date,
+          day:       getDayName(v.date),
+          address:   v.address,
+          startTime: v.start_time || '',
+          endTime:   v.end_time || calcEndTime(v.start_time || '', Number(v.duty_hours) || 0),
+          hours:     Number(v.duty_hours) || 0,
+          amount:    Number(v.charges) || 0,
+          remarks:   v.remarks || '',
         })),
         totalHours,
         subtotal,
@@ -108,7 +167,7 @@ export function MonthlyInvoices() {
         grandTotal: subtotal + vatAmount,
       }
     }).sort((a, b) => a.clientName.localeCompare(b.clientName))
-  }, [bookings, monthKey])
+  }, [dailyJobs, clients, monthKey])
 
   const totalRevenue = statements.reduce((s, c) => s + c.grandTotal, 0)
   const totalHours   = statements.reduce((s, c) => s + c.totalHours, 0)
@@ -120,16 +179,18 @@ export function MonthlyInvoices() {
     const lines  = s.visits.map((v, i) =>
       `${i + 1}. ${shortDate(v.date)} (${v.day})${v.startTime ? ` ${v.startTime}–${v.endTime}` : ''} — ${v.hours}h${v.remarks ? ` | ${v.remarks}` : ''}`
     ).join('\n')
-    const msg = [`Dear ${s.clientName},`, '', `*🧹 Safaeewala LLC — Monthly Statement*`, `*Period: ${monthLabel}*`, `*Address: ${s.address}*`, '', `*Service Visits:*`, lines, '', `Total Hours: ${s.totalHours}h`, `Rate: AED ${s.ratePerHour.toFixed(0)}/hr`, `Subtotal: AED ${s.subtotal.toFixed(2)}`, `VAT (5%): AED ${s.vatAmount.toFixed(2)}`, `*Total: AED ${s.grandTotal.toFixed(2)}*`, '', `Thank you! 🙏`, `Safaeewala LLC · +971 55 628 2374`].join('\n')
+    const company = getCompanyInfo()
+    const msg = [`Dear ${s.clientName},`, '', `*🧹 ${company.company_name} — Monthly Statement*`, `*Period: ${monthLabel}*`, `*Address: ${s.address}*`, '', `*Service Visits:*`, lines, '', `Total Hours: ${s.totalHours}h`, `Rate: AED ${s.ratePerHour.toFixed(0)}/hr`, `Subtotal: AED ${s.subtotal.toFixed(2)}`, `VAT (5%): AED ${s.vatAmount.toFixed(2)}`, `*Total: AED ${s.grandTotal.toFixed(2)}*`, '', `Thank you! 🙏`, `${company.company_name} · ${company.phone}`].join('\n')
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
   const sendEmail = (s: ClientStatement) => {
     const client  = clients.find(c => c.full_name.toLowerCase() === s.clientName.toLowerCase())
     const email   = client?.email || ''
-    const subject = `Safaeewala — Monthly Statement ${monthLabel}`
+    const company = getCompanyInfo()
+    const subject = `${company.trading_name || company.company_name} — Monthly Statement ${monthLabel}`
     const lines   = s.visits.map((v, i) => `${i + 1}. ${shortDate(v.date)} (${v.day}) ${v.startTime ? `${v.startTime}-${v.endTime}` : ''} — ${v.hours}h`).join('%0A')
-    const body    = `Dear ${s.clientName},%0A%0APeriod: ${monthLabel}%0AAddress: ${s.address}%0A%0AVisits:%0A${lines}%0A%0ATotal: AED ${s.grandTotal.toFixed(2)}%0A%0ASafaeewala LLC`
+    const body    = `Dear ${s.clientName},%0A%0APeriod: ${monthLabel}%0AAddress: ${s.address}%0A%0AVisits:%0A${lines}%0A%0ATotal: AED ${s.grandTotal.toFixed(2)}%0A%0A${encodeURIComponent(company.company_name)}`
     window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${body}`
   }
 
@@ -137,12 +198,16 @@ export function MonthlyInvoices() {
     e.preventDefault()
     if (!editVisit) return
     const f = new FormData(e.currentTarget)
-    updateBooking(editVisit.id, {
-      scheduled_date: f.get('date') as string,
-      scheduled_time: f.get('startTime') as string,
-      duration_hours: Number(f.get('hours')) || editVisit.hours,
-      total_amount:   Number(f.get('amount')) || editVisit.amount,
-      notes:          f.get('remarks') as string,
+    // Edits this date's job-sheet row only — the contract schedule is untouched (R-SCHED-01)
+    const start = (f.get('startTime') as string) || editVisit.startTime
+    const hours = Number(f.get('hours')) || editVisit.hours
+    updateDailyJob(editVisit.id, {
+      date:       f.get('date') as string,
+      start_time: start,
+      end_time:   calcEndTime(start, hours),
+      duty_hours: hours,
+      charges:    Number(f.get('amount')) || editVisit.amount,
+      remarks:    f.get('remarks') as string,
     })
     setEditVisit(null)
   }
@@ -241,7 +306,7 @@ export function MonthlyInvoices() {
           { label: 'Total Revenue', value: `AED ${totalRevenue.toFixed(0)}`, icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50' },
           { label: 'Total Clients', value: statements.length,                icon: Users,      color: 'text-blue-600',    bg: 'bg-blue-50'   },
           { label: 'Total Hours',   value: `${totalHours}h`,                 icon: Clock,      color: 'text-violet-600',  bg: 'bg-violet-50' },
-          { label: 'VAT Collected', value: `AED ${totalVAT.toFixed(0)}`,     icon: TrendingUp, color: 'text-amber-600',   bg: 'bg-amber-50'  },
+          { label: 'VAT Billed (5%)', value: `AED ${totalVAT.toFixed(0)}`,     icon: TrendingUp, color: 'text-amber-600',   bg: 'bg-amber-50'  },
         ].map(card => (
           <div key={card.label} className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
             <div className={`w-10 h-10 rounded-xl ${card.bg} flex items-center justify-center mb-3`}>
@@ -286,6 +351,7 @@ export function MonthlyInvoices() {
                       <div className="flex items-center justify-center gap-2">
                         <button onClick={() => sendWhatsApp(s)} className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 transition-colors" title="WhatsApp"><MessageCircle size={14} /></button>
                         <button onClick={() => sendEmail(s)} className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors" title="Email"><Mail size={14} /></button>
+                        <StatementInvoiceButton s={s} monthLabel={monthLabel} compact />
                       </div>
                     </td>
                   </tr>
@@ -318,6 +384,7 @@ export function MonthlyInvoices() {
                 <div className="flex items-center gap-2 shrink-0">
                   <button onClick={() => sendWhatsApp(s)} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-[12px] font-semibold transition-colors shadow-sm"><MessageCircle size={14} /><span className="hidden sm:inline">WhatsApp</span></button>
                   <button onClick={() => sendEmail(s)} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-[12px] font-semibold transition-colors shadow-sm"><Mail size={14} /><span className="hidden sm:inline">Email</span></button>
+                  <StatementInvoiceButton s={s} monthLabel={monthLabel} />
                 </div>
               </div>
               {/* Visit Table */}
@@ -467,6 +534,7 @@ export function MonthlyInvoices() {
                 <div className="flex gap-2">
                   <button onClick={() => sendWhatsApp(s)} className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-600 transition-colors"><MessageCircle size={15} /></button>
                   <button onClick={() => sendEmail(s)} className="p-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors"><Mail size={15} /></button>
+                  <StatementInvoiceButton s={s} monthLabel={monthLabel} compact />
                 </div>
               </div>
             </div>
@@ -509,7 +577,7 @@ export function MonthlyInvoices() {
 function EmptyState({ month }: { month: string }) {
   return (
     <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-12 text-center col-span-full">
-      <p className="text-slate-400 text-[14px]">No completed bookings found for {month}</p>
+      <p className="text-slate-400 text-[14px]">No monthly-contract visits on the Daily Job Sheet for {month}</p>
     </div>
   )
 }

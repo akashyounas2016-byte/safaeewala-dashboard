@@ -12,6 +12,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { formatDate } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
+import { confirmAsync } from '@/lib/notify'
 import type { FluentFormLead, LeadStatus } from '@/types'
 import {
   fetchFluentFormLeads,
@@ -26,6 +27,7 @@ import {
   markFluentFormsAsRead,
   markSingleFluentFormAsRead,
 } from '@/lib/fluentFormsSync'
+import { LeadsKanban, findDuplicateLeads } from '@/components/leads/LeadsKanban'
 import { sendGHLBookingConfirmation } from '@/lib/ghlService'
 
 /* ─── Column Customization Definitions ─── */
@@ -300,6 +302,7 @@ export function FluentFormsLeads() {
   // Modals state
   const [showWebhookModal, setShowWebhookModal] = useState(false)
   const [selectedLead, setSelectedLead]         = useState<FluentFormLead | null>(null)
+  const [boardView, setBoardView]               = useState(false) // UX-23 pipeline board
   const [isEditingLead, setIsEditingLead]       = useState(false)
   const [convertingLead, setConvertingLead]     = useState<FluentFormLead | null>(null)
   const [copiedUrl, setCopiedUrl]               = useState(false)
@@ -433,7 +436,7 @@ export function FluentFormsLeads() {
       if (!alreadyBooked) {
         const scheduledDate = targetLead.preferred_date || new Date().toISOString().split('T')[0]
         const scheduledTime = targetLead.preferred_time || '09:00 AM'
-        const totalAmount   = targetLead.estimated_value || 500
+        const totalAmount   = targetLead.estimated_value || 0 // no invented price
         const serviceType   = targetLead.service || `${targetLead.category} Cleaning`
         const address       = targetLead.address || targetLead.area || 'Dubai'
 
@@ -487,17 +490,25 @@ export function FluentFormsLeads() {
       triggerToast(`Lead status updated to ${newStatus.toUpperCase()}`)
     }
 
+    // First move out of "new" records the response time (UX-23)
+    const patch: Partial<FluentFormLead> = { status: newStatus }
+    if (targetLead && targetLead.status === 'new' && newStatus !== 'new' && !targetLead.responded_at) {
+      patch.responded_at = new Date().toISOString()
+    }
     setLeads(prev => {
-      const updated = prev.map(l => l.id === id ? { ...l, status: newStatus } : l)
+      const updated = prev.map(l => l.id === id ? { ...l, ...patch } : l)
       saveLeadsLocally(updated)
       return updated
     })
-    updateFluentFormLeadStatus(id, newStatus)
+    void updateFluentFormLead(id, patch)
   }
 
+  // Same phone within 7 days → possible duplicate (UX-24)
+  const duplicates = useMemo(() => findDuplicateLeads(leads), [leads])
+
   // Delete lead
-  const handleDeleteLead = (id: string) => {
-    if (!confirm('Are you sure you want to delete this lead?')) return
+  const handleDeleteLead = async (id: string) => {
+    if (!(await confirmAsync({ title: 'Delete lead', message: 'Delete this lead?', confirmLabel: 'Delete', tone: 'danger' }))) return
     setLeads(prev => {
       const updated = prev.filter(l => l.id !== id)
       saveLeadsLocally(updated)
@@ -1165,6 +1176,12 @@ export function FluentFormsLeads() {
           </div>
 
           <div className="flex items-center gap-3">
+            <div className="flex items-center bg-slate-100 rounded-xl p-0.5" role="group" aria-label="View">
+              <button type="button" onClick={() => setBoardView(false)}
+                className={`text-[12px] font-bold px-3 py-1 rounded-lg cursor-pointer ${!boardView ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500'}`}>Table</button>
+              <button type="button" onClick={() => setBoardView(true)}
+                className={`text-[12px] font-bold px-3 py-1 rounded-lg cursor-pointer ${boardView ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500'}`}>Board</button>
+            </div>
             <span className="text-[12px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl">
               {filteredLeads.length} Inquiries
             </span>
@@ -1295,6 +1312,8 @@ export function FluentFormsLeads() {
                 : 'Try adjusting or clearing your date range, page, or category filters.'}
             </p>
           </div>
+        ) : boardView ? (
+          <LeadsKanban leads={filteredLeads} duplicates={duplicates} onMove={handleStatusChange} onOpen={setSelectedLead} />
         ) : (
           <div className="overflow-x-auto rounded-b-[22px]">
             <table className="w-full text-left border-collapse text-[12px]">
@@ -1363,6 +1382,12 @@ export function FluentFormsLeads() {
                             return (
                               <td key={colId} className="py-3 px-4 min-w-[140px]">
                                 <p className="font-bold text-[#111827]">{lead.client_name || 'Guest Client'}</p>
+                                {duplicates.get(lead.id) && (
+                                  <span className="inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200"
+                                    title={`Same phone as ${duplicates.get(lead.id)!.client_name} on ${duplicates.get(lead.id)!.created_at?.split('T')[0]}`}>
+                                    Possible duplicate
+                                  </span>
+                                )}
                               </td>
                             )
 

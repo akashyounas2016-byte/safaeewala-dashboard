@@ -17,7 +17,8 @@ import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import { useCurrentUser } from '@/store/UserContext'
 import type { Booking, BookingFrequency, DailyJob, DailyPendingItem, DailyPendingReceivedItem, Invoice } from '@/types'
-import { cleanClientNameFromAddress, buildPendingCalcContext, loadClientAdjustments, calcJobPending } from '@/lib/clientDataSync'
+import { invoicedJobIds } from '@/lib/receivables'
+import { cleanClientNameFromAddress, isBogusJob, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, jobCollected } from '@/lib/clientDataSync'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 
 function cleanNum(val: any): number {
@@ -30,19 +31,11 @@ function cleanNum(val: any): number {
   return isNaN(num) ? 0 : num
 }
 
-function isBogusSummaryJob(j: DailyJob): boolean {
-  if (!j) return true
-  const address = (j.address || '').trim()
-  const noAddress = !address || address === '—' || address === '-'
-  const noTimes = (!j.start_time || j.start_time === '—') && (!j.end_time || j.end_time === '—')
-  const duty = Number(j.duty_hours) || 0
-  const charges = Number(j.charges) || 0
-  const received = Number(j.received) || 0
-  const summaryWords = ['gross', 'pending rcvd', 'total', 'expences', 'net total', 'summary']
-  const combined = `${j.staff_name || ''} ${address} ${j.area || ''} ${j.remarks || ''}`.toLowerCase()
-  if (summaryWords.some(w => combined.includes(w))) return true
-  const isEmptyStub = noAddress && charges === 0 && received === 0 && (!j.service || j.service === '—')
-  return (noAddress && noTimes) || (noAddress && (charges > 1500 || received > 1500)) || duty > 24 || isEmptyStub
+
+/** Bookings without a Daily Job Sheet row — a booking with a row is already counted through that row (AUD-01) */
+function bookingsWithoutJobRow(bookings: Booking[], dailyJobs: DailyJob[]): Booking[] {
+  const linked = new Set(dailyJobs.map(j => j.booking_id).filter(Boolean))
+  return bookings.filter(b => !linked.has(b.id))
 }
 
 const serviceTypes = [
@@ -389,8 +382,8 @@ function RevenueChart({
     }
   })
 
-  // 1. From Bookings
-  bookings
+  // 1. From Bookings that have no job-sheet row yet
+  bookingsWithoutJobRow(bookings, dailyJobs)
     .filter(b => b.status === 'completed' || b.status === 'in_progress')
     .forEach(b => {
       const key = (b.scheduled_date || '').slice(0, 7)
@@ -400,12 +393,12 @@ function RevenueChart({
 
   // 2. From Daily Jobs Sheet collections
   dailyJobs
-    .filter(j => !isBogusSummaryJob(j))
+    .filter(j => !isBogusJob(j))
     .forEach(j => {
       const key = (j.date || '').slice(0, 7)
       const m = months.find(m => m.key === key)
       if (m) {
-        m.revenue += cleanNum(j.received) || (j.payment_mode !== 'Pending' ? cleanNum(j.charges) : 0)
+        m.revenue += jobCollected(j)
       }
     })
 
@@ -522,7 +515,7 @@ function ServiceMixDonut({ bookings, dailyJobs }: { bookings: Booking[]; dailyJo
     if (b.service_type) counts[b.service_type] = (counts[b.service_type] || 0) + 1
   })
   dailyJobs
-    .filter(j => !isBogusSummaryJob(j))
+    .filter(j => !isBogusJob(j))
     .forEach(j => {
       const s = (j.service || '').trim()
       if (s && s !== '—') counts[s] = (counts[s] || 0) + 1
@@ -683,20 +676,20 @@ export function Overview() {
   }, [activeDateRange])
 
   // Valid non-bogus Daily Jobs
-  const validDailyJobs = useMemo(() => dailyJobs.filter(j => !isBogusSummaryJob(j)), [dailyJobs])
+  const validDailyJobs = useMemo(() => dailyJobs.filter(j => !isBogusJob(j)), [dailyJobs])
 
   // Filtered Daily Jobs in period
   const periodDailyJobs = useMemo(() => {
     return validDailyJobs.filter(j => isDateInRange(j.date))
   }, [validDailyJobs, isDateInRange])
 
-  // Filtered Bookings in period
+  // Filtered Bookings in period (only those without a job-sheet row, so nothing is counted twice)
   const periodBookings = useMemo(() => {
-    return bookings.filter(b => {
+    return bookingsWithoutJobRow(bookings, validDailyJobs).filter(b => {
       const bDate = b.scheduled_date || (b.created_at ? b.created_at.split('T')[0] : '')
       return isDateInRange(bDate)
     })
-  }, [bookings, isDateInRange])
+  }, [bookings, validDailyJobs, isDateInRange])
 
   // ── Unified Operational Jobs for table & counts ──
   const unifiedJobs = useMemo(() => {
@@ -773,12 +766,7 @@ export function Overview() {
   // ── Unified Revenue / Collections in period ──
   const periodRevenue = useMemo(() => {
     // 1. Daily Jobs collections
-    const djRec = periodDailyJobs.reduce((s, j) => {
-      const rec = cleanNum(j.received)
-      if (rec > 0) return s + rec
-      if (j.payment_mode !== 'Pending' && cleanNum(j.charges) > 0) return s + cleanNum(j.charges)
-      return s
-    }, 0)
+    const djRec = periodDailyJobs.reduce((s, j) => s + jobCollected(j), 0)
 
     // 2. Monthly Client Payments
     const monthlyRec = monthlyPayments
@@ -803,8 +791,9 @@ export function Overview() {
     // 1. Daily Jobs with pending dues
     // Same per-job formula as Pending Payments, Daily Job Sheet and Client Profile
     const pendingCtx = buildPendingCalcContext(loadClientAdjustments(), pendingRcvdList)
-    const djPendingList = validDailyJobs.filter(j => calcJobPending(j, pendingCtx) > 0)
-    const djPendingAmt = djPendingList.reduce((s, j) => s + calcJobPending(j, pendingCtx), 0)
+    const invoiced = invoicedJobIds(invoices)
+    const djPendingList = validDailyJobs.filter(j => calcJobCollectable(j, pendingCtx, invoiced) > 0)
+    const djPendingAmt = djPendingList.reduce((s, j) => s + calcJobCollectable(j, pendingCtx, invoiced), 0)
 
     // 2. Side table pending items
     const sideAmt = pendingList.reduce((s, i) => s + cleanNum(i.amount), 0)

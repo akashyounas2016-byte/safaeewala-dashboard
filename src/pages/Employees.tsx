@@ -13,7 +13,7 @@ import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero, type HeroNotification } from '@/components/layout/PageHero'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
-import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee } from '@/lib/utils'
+import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee, matchesAgencyFilter } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { Employee, DailyJob, EmployeeRole, Agency, EmployeeDocument } from '@/types'
 import { getAssignableClients, getEmployeeDailyJobsHistory, calcJobOTHours, getEmployeeMonthlySalary, formatMonthlySalary, splitStaffNames, MONTHLY_WORK_HOURS } from '@/lib/clientDataSync'
@@ -135,7 +135,7 @@ async function parseEmployeesFile(file: File): Promise<Omit<Employee, 'id' | 'cr
         role:                       parseEmpRole(String(r['Role'] ?? '')),
         nationality:                String(r['Nationality'] ?? r['nationality'] ?? '').trim(),
         emirates_id:                String(r['Emirates ID'] ?? r['emirates_id'] ?? '').trim(),
-        pay_rate_hourly:            Number(r['Pay Rate (AED/hr)'] ?? r['pay_rate_hourly']) || 14,
+        pay_rate_hourly:            Number(r['Pay Rate (AED/hr)'] ?? r['pay_rate_hourly']) || 0, // no invented rate (AUD-09)
         monthly_salary:             Number(r['Monthly Salary (AED)'] ?? r['monthly_salary']) || Math.round((Number(r['Pay Rate (AED/hr)']) || 0) * MONTHLY_WORK_HOURS),
         visa_expiry:                toISODate(r['Visa Expiry'] ?? r['visa_expiry']),
         work_permit_expiry:         toISODate(r['Work Permit Expiry'] ?? r['work_permit_expiry']),
@@ -483,12 +483,7 @@ export function Employees() {
       return employees.filter(isParentCompanyEmployee)
     }
     if (agencyFilter !== 'all') {
-      return employees.filter(e =>
-        e.agency_id === agencyFilter ||
-        (e.agency_name && e.agency_name.toLowerCase().trim() === agencyFilter.toLowerCase().trim()) ||
-        (e.agency_name && e.agency_name.toLowerCase().includes(agencyFilter.toLowerCase())) ||
-        agencies.some(a => a.id === agencyFilter && (e.agency_id === a.id || e.agency_name === a.name))
-      )
+      return employees.filter(e => matchesAgencyFilter(e, agencyFilter, agencies)) // AUD-14
     }
     return employees
   }, [employees, agencyFilter, agencies])
@@ -571,11 +566,7 @@ export function Employees() {
       } else if (agencyFilter === 'parent_company' || agencyFilter === 'parent' || agencyFilter === 'safaeewala') {
         if (!isParentCompanyEmployee(e)) return false
       } else if (agencyFilter !== 'all') {
-        const matches =
-          e.agency_id === agencyFilter ||
-          (e.agency_name && e.agency_name.toLowerCase().includes(agencyFilter.toLowerCase())) ||
-          agencies.some(a => a.id === agencyFilter && (e.agency_id === a.id || e.agency_name === a.name))
-        if (!matches) return false
+        if (!matchesAgencyFilter(e, agencyFilter, agencies)) return false // AUD-14
       }
 
       const matchSearch = q === '' ||
@@ -1798,7 +1789,6 @@ export function Employees() {
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: 'Monthly Salary', value: formatMonthlySalary(selected) },
-                  { label: 'Hourly Rate',    value: selected.pay_rate_hourly > 0 ? `AED ${selected.pay_rate_hourly}/hr` : 'Not set' },
                   { label: 'Role',           value: formatEmpRole(selected.role) },
                   { label: 'Agency Source',  value: getEmployeeAgencySource(selected) },
                   { label: 'Joining Date',   value: formatDate(selected.joined_date) },

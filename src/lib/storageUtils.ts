@@ -3,10 +3,13 @@
  * Prevents the application from crashing when large Excel sheets or years of job logs exceed 5MB.
  */
 
+import { onLocalWrite } from '@/lib/cloudState'
+
 export function safeLocalStorageSet(key: string, value: any): boolean {
   try {
     const serialized = typeof value === 'string' ? value : JSON.stringify(value)
     localStorage.setItem(key, serialized)
+    onLocalWrite(key) // business keys are mirrored to Supabase app_state (AUD-02)
     return true
   } catch (err: any) {
     console.warn(`[Storage] Failed to save key "${key}" to localStorage:`, err?.message || err)

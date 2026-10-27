@@ -31,6 +31,7 @@ npm run build               # type-check + production build into dist/
 | [docs/data-model.md](docs/data-model.md) | add/change a field or storage key | Entities, links between them, Supabase tables, localStorage keys |
 | [docs/workflow.md](docs/workflow.md) | commit, merge, or work alongside the other agent | Worktree setup, merge steps, definition of done, how rules are tracked |
 | [docs/decisions.md](docs/decisions.md) | wonder *why* something is the way it is | Dated decision records (`DEC-xxx`) |
+| [docs/audits/](docs/audits/) | want the list of known problems with locations | Dated audit reports (`AUD-xx` findings) |
 | [docs/guides/](docs/guides/) | set up an integration | SMS, Stripe, API, document management guides |
 
 ## How rules are tracked (summary)

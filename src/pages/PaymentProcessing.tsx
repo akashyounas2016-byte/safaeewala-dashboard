@@ -11,10 +11,14 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
+import { ReceivablesNav } from '@/components/receivables/ReceivablesNav'
+import { Pager, usePagination } from '@/components/common/Pager'
+import { notify, confirmAsync } from '@/lib/notify'
 import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem, Client } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { formatDate } from '@/lib/utils'
-import { normalizeKey, buildPendingCalcContext, loadClientAdjustments, calcJobPending, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
+import { invoicedJobIds } from '@/lib/receivables'
+import { normalizeKey, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
 import * as XLSX from 'xlsx'
 import { useNavigate } from 'react-router-dom'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
@@ -175,6 +179,7 @@ export function PaymentProcessing() {
 
   // ── Search & Filter State for History Tab ──
   const [historySearch, setHistorySearch] = useState('')
+  const [historyMethod, setHistoryMethod] = useState('all') // UX-12
 
   // ── Extract All Pending Records ──
   const allPendingRecords = useMemo<PendingRecordItem[]>(() => {
@@ -185,7 +190,7 @@ export function PaymentProcessing() {
       if (isBogusJob(job)) return
       const chg = cleanNum(job.charges)
       const rec = cleanNum(job.received) + calcJobLaterReceipts(job, pendingCtx)
-      const due = calcJobPending(job, pendingCtx)
+      const due = calcJobCollectable(job, pendingCtx, invoicedJobIds(invoices))
 
       if (due > 0) {
         list.push({
@@ -299,7 +304,7 @@ export function PaymentProcessing() {
       id: string
       date: string
       client: string
-      type: 'Daily Job' | 'Monthly Contract'
+      type: 'Daily Job' | 'Monthly Contract' | 'Recovery'
       method: string
       amount: number
       reference?: string
@@ -337,7 +342,24 @@ export function PaymentProcessing() {
       })
     })
 
+    // Later collections of pending dues (Pending / Payments "collect") — AUD-27
+    pendingRcvdList.forEach(p => {
+      const amount = cleanNum(p.cash) + cleanNum(p.online)
+      if (amount <= 0) return
+      records.push({
+        id: `rc-${p.id}`,
+        date: p.date,
+        client: p.client || 'Client',
+        type: 'Recovery',
+        method: p.method || (cleanNum(p.cash) > 0 ? 'Cash' : 'Online'),
+        amount,
+        reference: p.job_id ? `Job ${p.job_id.slice(0, 8)}` : undefined,
+        notes: p.remarks || undefined,
+      })
+    })
+
     return records
+      .filter(r => historyMethod === 'all' || r.method.toLowerCase() === historyMethod.toLowerCase())
       .filter(r => {
         const q = historySearch.toLowerCase().trim()
         if (!q) return true
@@ -351,14 +373,19 @@ export function PaymentProcessing() {
         )
       })
       .sort((a, b) => b.date.localeCompare(a.date))
-  }, [dailyJobs, monthlyPayments, historySearch])
+  }, [dailyJobs, monthlyPayments, pendingRcvdList, historySearch, historyMethod])
+  const historyPager = usePagination(paymentHistoryRecords, 30) // UX-03
 
   // ── Global Stats Calculations ──
   const totalPendingAmt = allPendingRecords.reduce((s, r) => s + r.pendingAmount, 0)
   const totalMonthlyPaid = monthlyPayments.reduce((s, m) => s + m.amount, 0)
-  const totalDailyCollected = dailyJobs.reduce((s, j) => s + cleanNum(j.received), 0)
+  // Collected = received on the day + later recoveries + monthly payments;
+  // billed = job charges only (monthly visits are already in it) — AUD-27, AUD-28
+  const validJobs = dailyJobs.filter(j => !isBogusJob(j))
+  const totalRecovered = pendingRcvdList.reduce((s, p) => s + cleanNum(p.cash) + cleanNum(p.online), 0)
+  const totalDailyCollected = validJobs.reduce((s, j) => s + cleanNum(j.received), 0) + totalRecovered
   const grandTotalCollected = totalDailyCollected + totalMonthlyPaid
-  const totalBilled = dailyJobs.reduce((s, j) => s + cleanNum(j.charges), 0) + totalMonthlyPaid
+  const totalBilled = validJobs.reduce((s, j) => s + cleanNum(j.charges), 0)
   const collectionRate = totalBilled > 0 ? Math.round((grandTotalCollected / totalBilled) * 100) : 100
 
   // ── Handle Save New Monthly Payment ──
@@ -407,6 +434,7 @@ export function PaymentProcessing() {
       cash: collectMethod === 'Cash' ? amt : 0,
       online: collectMethod !== 'Cash' ? amt : 0,
       job_id: selectedPendingItem.jobId,
+      method: collectMethod,
       remarks: `Collected via ${collectMethod}`,
     }
     const nextRcvd = [newRcvdItem, ...rcvdList]
@@ -445,7 +473,7 @@ export function PaymentProcessing() {
       date: item.date || new Date().toISOString().split('T')[0],
       startTime: raw?.start_time || '',
       endTime: raw?.end_time || '',
-      dutyHours: raw?.duty_hours ?? 4,
+      dutyHours: raw?.duty_hours ?? 0,
       charges: item.charges,
       received: item.received,
       paymentMode: item.paymentMode || raw?.payment_mode || 'Pending',
@@ -476,12 +504,17 @@ export function PaymentProcessing() {
     id: string
     date: string
     client: string
-    type: 'Daily Job' | 'Monthly Contract'
+    type: 'Daily Job' | 'Monthly Contract' | 'Recovery'
     method: string
     amount: number
     reference?: string
     notes?: string
   }) => {
+    // Recoveries are receipts against older jobs — they are managed on the Pending screen
+    if (record.type === 'Recovery') {
+      notify.error('This is a recovery of an earlier pending amount. Edit or remove it from the Pending screen (Recovered tab).')
+      return
+    }
     if (record.id.startsWith('dj-rec-')) {
       const rawJobId = record.id.replace('dj-rec-', '')
       const matchedJob = dailyJobs.find(j => j.id === rawJobId)
@@ -498,7 +531,7 @@ export function PaymentProcessing() {
           date: matchedJob.date || record.date,
           startTime: matchedJob.start_time || '',
           endTime: matchedJob.end_time || '',
-          dutyHours: matchedJob.duty_hours ?? 4,
+          dutyHours: matchedJob.duty_hours ?? 0,
           charges: cleanNum(matchedJob.charges),
           received: cleanNum(matchedJob.received),
           paymentMode: matchedJob.payment_mode || record.method || 'Cash',
@@ -696,6 +729,9 @@ export function PaymentProcessing() {
           </div>
         }
       />
+
+      {/* One Receivables module across Pending and Payments (UX-01) */}
+      <ReceivablesNav />
 
       {/* ── Top Financial KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1195,8 +1231,8 @@ export function PaymentProcessing() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                if (confirm(`Delete payment record of AED ${payment.amount} for ${payment.clientName}?`)) {
+                              onClick={async () => {
+                                if (await confirmAsync({ title: 'Delete payment', message: `Delete payment record of AED ${payment.amount} for ${payment.clientName}?`, confirmLabel: 'Delete', tone: 'danger' })) {
                                   setMonthlyPayments(prev => prev.filter(p => p.id !== payment.id))
                                 }
                               }}
@@ -1240,6 +1276,22 @@ export function PaymentProcessing() {
               )}
             </div>
 
+            <select
+              value={historyMethod}
+              onChange={e => setHistoryMethod(e.target.value)}
+              className="text-[12.5px] px-3 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500 font-semibold text-slate-700"
+              title="Filter by payment method"
+            >
+              <option value="all">All methods</option>
+              <option value="Cash">Cash</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Online">Online</option>
+              <option value="Credit Card">Credit Card</option>
+              <option value="Cheque">Cheque</option>
+              <option value="Pending">Pending</option>
+              <option value="Monthly">Monthly</option>
+            </select>
+
             <div className="text-right shrink-0">
               <span className="text-[12px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/60">
                 Total Realized Ledger: <span className="text-emerald-700 font-extrabold">AED {paymentHistoryRecords.reduce((s, r) => s + r.amount, 0).toLocaleString()}</span>
@@ -1272,7 +1324,7 @@ export function PaymentProcessing() {
                       </td>
                     </tr>
                   ) : (
-                    paymentHistoryRecords.map(item => (
+                    historyPager.pageItems.map(item => (
                       <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-5 py-4 text-[12px] font-medium text-slate-700 whitespace-nowrap">
                           {formatDate(item.date)}
@@ -1292,7 +1344,9 @@ export function PaymentProcessing() {
                             className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
                               item.type === 'Monthly Contract'
                                 ? 'bg-teal-50 text-teal-700 border border-teal-200'
-                                : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : item.type === 'Recovery'
+                                  ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                  : 'bg-blue-50 text-blue-700 border border-blue-200'
                             }`}
                           >
                             {item.type}
@@ -1346,6 +1400,7 @@ export function PaymentProcessing() {
                 </tbody>
               </table>
             </div>
+            <Pager {...historyPager} />
           </div>
         </div>
       )}
