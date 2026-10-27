@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
-  ArrowLeft, Phone, Mail, MapPin, Calendar, Star, Clock,
+  ArrowLeft, Phone, Mail, MapPin, Calendar, Star, Clock, Camera, Activity,
   CheckCircle, CheckCircle2, User, Shield, DollarSign, ExternalLink, Pencil,
   Search, FileText, TrendingUp, AlertTriangle, Layers,
   Download, Eye, FileCheck, Truck, Briefcase, Paperclip, Building2, Upload, Trash2
@@ -20,6 +20,7 @@ import {
   splitStaffNames,
   MONTHLY_WORK_HOURS,
 } from '@/lib/clientDataSync'
+import { calcEmployeeHealth, type EmployeeHealth } from '@/lib/employeeHealth'
 
 function formatEmpRole(role?: string): string {
   if (!role) return 'Cleaner'
@@ -39,16 +40,48 @@ const avatarColors = [
   { bg: '#fcecc8', text: '#a8842a' },
 ]
 
-function Avatar({ name, size = 'md', idx = 0 }: { name: string; size?: 'sm' | 'md' | 'lg' | 'xl'; idx?: number }) {
+function Avatar({ name, size = 'md', idx = 0, photoUrl }: { name: string; size?: 'sm' | 'md' | 'lg' | 'xl'; idx?: number; photoUrl?: string }) {
   const parts = name.trim().split(' ')
   const init  = ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'EM'
   const dims  = size === 'xl' ? 'w-20 h-20 text-[22px]' : size === 'lg' ? 'w-14 h-14 text-[16px]' : size === 'sm' ? 'w-8 h-8 text-[11px]' : 'w-10 h-10 text-[13px]'
   const color = avatarColors[idx % avatarColors.length]
+  if (photoUrl) {
+    return <img src={photoUrl} alt={name} className={`${dims} rounded-full object-cover shrink-0 shadow-xs border border-slate-200`} />
+  }
   return (
     <div className={`${dims} rounded-full flex items-center justify-center font-bold shrink-0 shadow-xs`} style={{ background: color.bg, color: color.text }}>
       {init}
     </div>
   )
+}
+
+/** Downscale a picked image to a small square-ish JPEG data URL so it stays light in storage */
+function resizeImageToDataUrl(file: File, maxSize = 256): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error)
+    reader.onload = () => {
+      const img = new Image()
+      img.onerror = () => reject(new Error('Unsupported image'))
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.85))
+      }
+      img.src = reader.result as string
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+const healthTone: Record<EmployeeHealth['grade'], { ring: string; text: string; chip: string }> = {
+  'Excellent':       { ring: '#059669', text: 'text-emerald-700', chip: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  'Good':            { ring: '#0d9488', text: 'text-teal-700',    chip: 'bg-teal-50 text-teal-700 border-teal-200' },
+  'Needs Attention': { ring: '#d97706', text: 'text-amber-700',   chip: 'bg-amber-50 text-amber-800 border-amber-200' },
+  'At Risk':         { ring: '#e11d48', text: 'text-rose-700',    chip: 'bg-rose-50 text-rose-700 border-rose-200' },
 }
 
 function PaymentModeBadge({ mode }: { mode: PaymentMode | string }) {
@@ -205,6 +238,18 @@ export function EmployeeProfile() {
   const totalCashCollected = empJobs.filter(j => j.payment_mode === 'Cash').reduce((s, j) => s + (Number(j.received) || 0), 0)
   const uniqueClients = Array.from(new Set(empJobs.map(j => cleanClientNameFromAddress(j.address)).filter(Boolean)))
 
+  const health = useMemo(() => (emp ? calcEmployeeHealth(emp, empJobs) : null), [emp, empJobs])
+
+  const handlePhotoPick = async (file: File | undefined) => {
+    if (!emp || !file) return
+    if (!file.type.startsWith('image/')) { alert('Please choose an image file.'); return }
+    try {
+      updateEmployee(emp.id, { photo_url: await resizeImageToDataUrl(file) })
+    } catch {
+      alert('Could not read this image. Please try another file.')
+    }
+  }
+
   // Filtered jobs table
   const filteredJobs = useMemo(() => {
     return empJobs.filter(j => {
@@ -277,7 +322,21 @@ export function EmployeeProfile() {
       {/* ── Employee Hero Card ── */}
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-6">
         <div className="flex flex-col sm:flex-row items-start gap-5">
-          <Avatar name={emp.full_name} size="xl" idx={empIdx} />
+          <div className="relative shrink-0">
+            <Avatar name={emp.full_name} size="xl" idx={empIdx} photoUrl={emp.photo_url} />
+            <label
+              className="absolute -bottom-0.5 -right-0.5 w-7 h-7 rounded-full bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center shadow-md ring-2 ring-white cursor-pointer transition-colors"
+              title={emp.photo_url ? 'Change photo' : 'Upload photo'}
+            >
+              <Camera size={13} />
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => { handlePhotoPick(e.target.files?.[0]); e.target.value = '' }}
+              />
+            </label>
+          </div>
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-1.5">
               <h1 className="text-[22px] font-extrabold text-[#111827]">{emp.full_name}</h1>
@@ -344,6 +403,49 @@ export function EmployeeProfile() {
               )}
             </div>
           </div>
+
+          {/* Performance Health Score */}
+          {health && (
+            <div className="w-full sm:w-[300px] shrink-0 rounded-2xl border border-[#E4E8EC] bg-[#f8fafc] p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[11.5px] font-black uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                  <Activity size={13} className="text-teal-600" /> Health Score
+                </p>
+                <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full border ${healthTone[health.grade].chip}`}>
+                  {health.grade}
+                </span>
+              </div>
+              <div className="flex items-center gap-4">
+                <div
+                  className="relative w-[72px] h-[72px] rounded-full shrink-0"
+                  style={{ background: `conic-gradient(${healthTone[health.grade].ring} ${health.score * 3.6}deg, #e2e8f0 0deg)` }}
+                  title={`${health.score} / 100`}
+                >
+                  <div className="absolute inset-[7px] rounded-full bg-white flex flex-col items-center justify-center">
+                    <span className={`text-[20px] font-black leading-none ${healthTone[health.grade].text}`}>{health.score}</span>
+                    <span className="text-[9px] font-bold text-slate-400 mt-0.5">/ 100</span>
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0 space-y-2">
+                  {health.components.map(c => (
+                    <div key={c.label} title={c.detail}>
+                      <div className="flex items-center justify-between text-[10.5px] font-bold text-slate-600">
+                        <span>{c.label}</span>
+                        <span className="text-slate-500">{c.score}/{c.max}</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-slate-200 mt-0.5 overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${(c.score / c.max) * 100}%`, background: healthTone[health.grade].ring }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <p className="text-[10.5px] text-slate-500 mt-3 leading-snug">
+                {health.components[0].detail}
+                {health.absences[0] && <> · Last absence {formatDate(health.absences[0].date)}</>}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Real-Time Track Record Metrics from Daily Job Sheet */}

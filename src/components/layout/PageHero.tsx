@@ -1,5 +1,20 @@
-import { Search, Bell, Plus } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Search, Bell, Plus, X } from 'lucide-react'
 import { useLayout } from './Layout'
+
+export interface HeroNotification {
+  id: string
+  title: string
+  detail?: string
+  tone?: 'danger' | 'warning' | 'info'
+  onClick?: () => void
+}
+
+const toneDot: Record<NonNullable<HeroNotification['tone']>, string> = {
+  danger:  'bg-rose-500',
+  warning: 'bg-amber-500',
+  info:    'bg-sky-500',
+}
 
 interface PageHeroProps {
   title: string
@@ -12,6 +27,8 @@ interface PageHeroProps {
   searchValue?: string
   onSearch?: (value: string) => void
   actions?: React.ReactNode
+  /** When given, the bell opens a panel listing these alerts */
+  notifications?: HeroNotification[]
 }
 
 export function PageHero({
@@ -25,16 +42,30 @@ export function PageHero({
   searchValue = '',
   onSearch,
   actions,
+  notifications,
 }: PageHeroProps) {
   const { openMenu } = useLayout()
+  const [bellOpen, setBellOpen] = useState(false)
+  const bellRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!bellOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) setBellOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [bellOpen])
 
   // Clean any leading "+" sign to prevent double "+" icons
   const cleanActionLabel = actionLabel ? actionLabel.replace(/^\+\s*/, '') : ''
 
   return (
-    <section className="gradient-card rounded-[24px] px-7 py-6 text-white shadow-[0_8px_32px_rgba(15,23,42,0.28)] ring-1 ring-black/10 mb-7 relative overflow-hidden">
-      {/* Glow */}
-      <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
+    <section className="gradient-card rounded-[24px] px-7 py-6 text-white shadow-[0_8px_32px_rgba(15,23,42,0.28)] ring-1 ring-black/10 mb-7 relative">
+      {/* Glow (clipped separately so the notification panel can overflow the hero) */}
+      <div className="absolute inset-0 rounded-[24px] overflow-hidden pointer-events-none">
+        <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl" />
+      </div>
 
       <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
 
@@ -98,14 +129,59 @@ export function PageHero({
           )}
 
           {/* Notification bell */}
-          <button
-            type="button"
-            className="relative w-11 h-11 rounded-2xl border border-white/10 bg-white/10 flex items-center justify-center backdrop-blur-sm hover:bg-white/20 transition-colors shrink-0 cursor-pointer"
-            title="Notifications"
-          >
-            <Bell size={16} className="text-white/80" />
-            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full" />
-          </button>
+          <div ref={bellRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => notifications && setBellOpen(o => !o)}
+              className="relative w-11 h-11 rounded-2xl border border-white/10 bg-white/10 flex items-center justify-center backdrop-blur-sm hover:bg-white/20 transition-colors shrink-0 cursor-pointer"
+              title={notifications ? `${notifications.length} notifications` : 'Notifications'}
+            >
+              <Bell size={16} className="text-white/80" />
+              {notifications ? (
+                notifications.length > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-500 rounded-full text-[10px] font-black text-white flex items-center justify-center ring-2 ring-white/20">
+                    {notifications.length > 99 ? '99+' : notifications.length}
+                  </span>
+                )
+              ) : (
+                <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full" />
+              )}
+            </button>
+
+            {bellOpen && notifications && (
+              <div className="absolute right-0 top-full mt-2 w-[360px] max-w-[calc(100vw-2rem)] bg-white text-slate-800 rounded-2xl border border-slate-200 shadow-[0_16px_40px_rgba(15,23,42,0.18)] z-50 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                  <p className="text-[13px] font-black text-slate-900">Notifications ({notifications.length})</p>
+                  <button
+                    type="button"
+                    onClick={() => setBellOpen(false)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                    title="Close"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <div className="max-h-[360px] overflow-y-auto divide-y divide-slate-100">
+                  {notifications.length === 0 ? (
+                    <p className="px-4 py-8 text-center text-[12px] text-slate-400 font-medium">No alerts right now.</p>
+                  ) : notifications.map(n => (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => { n.onClick?.(); setBellOpen(false) }}
+                      className="w-full text-left px-4 py-2.5 flex items-start gap-2.5 hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${toneDot[n.tone || 'info']}`} />
+                      <span className="min-w-0">
+                        <span className="block text-[12.5px] font-bold text-slate-800 truncate">{n.title}</span>
+                        {n.detail && <span className="block text-[11px] text-slate-500 mt-0.5">{n.detail}</span>}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
         </div>
       </div>

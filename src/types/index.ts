@@ -190,6 +190,7 @@ export interface Employee {
   email?: string
   role: EmployeeRole
   designation?: string
+  photo_url?: string // profile picture as a resized data URL
   gender?: 'male' | 'female' | 'other' | string
   nationality: string
 

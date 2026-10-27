@@ -6,12 +6,13 @@ import {
   TrendingUp, Trash2, CheckCircle, CheckCircle2, Upload, Download, FileSpreadsheet,
   Clock, ExternalLink, FileText, Calendar, RotateCcw, X, Filter,
   Flame, Zap, Briefcase, ArrowUpDown, LayoutGrid, List, ChevronRight, ChevronDown,
-  DollarSign, Award, Sparkles, Building2, MapPin, Eye, Pencil, Check, Paperclip
+  DollarSign, Award, Sparkles, Building2, MapPin, Eye, EyeOff, Pencil, Check, Paperclip
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
-import { PageHero } from '@/components/layout/PageHero'
+import { PageHero, type HeroNotification } from '@/components/layout/PageHero'
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { Employee, DailyJob, EmployeeRole, Agency, EmployeeDocument } from '@/types'
@@ -310,6 +311,25 @@ type ViewMode = 'grid' | 'table'
 export function Employees() {
   const { employees, bookings, dailyJobs, clients, agencies, addEmployee, updateEmployee, deleteEmployee } = useData()
   const navigate = useNavigate()
+
+  // Rows the user chose to hide from the list (persisted per browser)
+  const [hiddenRowIds, setHiddenRowIds] = useState<string[]>(() => safeLocalStorageGet<string[]>('safaeewala_employees_hidden_rows', []))
+  const [rowVisibilityOpen, setRowVisibilityOpen] = useState(false)
+  const [rowVisibilitySearch, setRowVisibilitySearch] = useState('')
+  const rowVisibilityRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    safeLocalStorageSet('safaeewala_employees_hidden_rows', hiddenRowIds)
+  }, [hiddenRowIds])
+  useEffect(() => {
+    if (!rowVisibilityOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (rowVisibilityRef.current && !rowVisibilityRef.current.contains(e.target as Node)) setRowVisibilityOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [rowVisibilityOpen])
+  const toggleRowHidden = (id: string) =>
+    setHiddenRowIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   const [searchParams, setSearchParams] = useSearchParams()
   const xlsxInputRef = useRef<HTMLInputElement>(null)
 
@@ -677,6 +697,7 @@ export function Employees() {
     const q = search.toLowerCase().trim()
 
     return employees.filter(e => {
+      if (hiddenRowIds.includes(e.id)) return false
       const st = staffJobStats.get(e.id)
       const todaySt = getTodayStatus(e)
 
@@ -752,7 +773,42 @@ export function Employees() {
       }
       return a.full_name.localeCompare(b.full_name)
     })
-  }, [employees, search, roleFilter, agencyFilter, statusFilter, workFilter, expiryFilter, sortBy, staffJobStats, agencies])
+  }, [employees, search, roleFilter, agencyFilter, statusFilter, workFilter, expiryFilter, sortBy, staffJobStats, agencies, hiddenRowIds])
+
+  // Employee alerts for the header bell: expired / expiring (≤30 days) documents and contracts
+  const employeeNotifications = useMemo<HeroNotification[]>(() => {
+    const docs: [keyof Employee, string][] = [
+      ['visa_expiry', 'Visa'],
+      ['passport_expiry', 'Passport'],
+      ['work_permit_expiry', 'Work Permit'],
+      ['eid_end_date', 'Emirates ID'],
+      ['medical_insurance_expiry', 'Medical Insurance'],
+      ['driving_license_expiry_date', 'Driving License'],
+      ['end_date', 'Employment contract'],
+    ]
+    const list: (HeroNotification & { days: number })[] = []
+    employees.forEach(e => {
+      if (e.status === 'inactive') return
+      docs.forEach(([field, label]) => {
+        const date = e[field] as string | undefined
+        if (!date) return
+        const days = daysUntil(date)
+        if (days > 30) return
+        const plural = (n: number) => (n === 1 ? '' : 's')
+        list.push({
+          id: `${e.id}-${String(field)}`,
+          title: `${e.full_name}: ${label} ${days < 0 ? 'expired' : 'expiring'}`,
+          detail: days < 0
+            ? `Expired ${-days} day${plural(-days)} ago (${formatDate(date)})`
+            : `${days === 0 ? 'Expires today' : `${days} day${plural(days)} left`} (${formatDate(date)})`,
+          tone: days < 0 ? 'danger' : 'warning',
+          onClick: () => navigate(`/employees/${e.id}`),
+          days,
+        })
+      })
+    })
+    return list.sort((a, b) => a.days - b.days)
+  }, [employees, navigate])
 
   /* Overtime Top Performers Leaderboard */
   const topOTStaff = useMemo(() => {
@@ -1438,7 +1494,7 @@ export function Employees() {
               title="Import employees from Excel/CSV"
             >
               <Upload size={14} />
-              <span>{importing ? 'Importing…' : 'Import Roster'}</span>
+              <span>{importing ? 'Importing…' : 'Import'}</span>
             </button>
             <button
               type="button"
@@ -1447,12 +1503,13 @@ export function Employees() {
               title="Export staff work list with Duty & OT to Excel"
             >
               <FileSpreadsheet size={14} />
-              <span>Export Duty & OT</span>
+              <span>Export</span>
             </button>
           </div>
         }
         actionLabel="Add Employee"
         onAction={handleOpenAddModal}
+        notifications={employeeNotifications}
       />
 
       {/* ── KPI Cards: Focused on Employees' Real Work, Duty Hours & OT ── */}
@@ -1757,10 +1814,91 @@ export function Employees() {
             </button>
           )}
 
-          {/* Showing Count */}
-          <span className="text-[11.5px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200/70 shrink-0 whitespace-nowrap ml-auto">
-            <span className="text-teal-700 font-black">{filtered.length}</span> / {employees.length}
-          </span>
+          {/* Showing Count + Row Visibility (one row) */}
+          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+            <span className="text-[11.5px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200/70 whitespace-nowrap">
+              <span className="text-teal-700 font-black">{filtered.length}</span> / {employees.length}
+            </span>
+            <div ref={rowVisibilityRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setRowVisibilityOpen(o => !o)}
+                className={`relative h-[30px] w-[30px] flex items-center justify-center rounded-xl border transition-colors cursor-pointer ${
+                  hiddenRowIds.length > 0
+                    ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100'
+                    : 'bg-slate-100 border-slate-200/70 text-slate-600 hover:bg-slate-200/70'
+                }`}
+                title={hiddenRowIds.length > 0 ? `${hiddenRowIds.length} rows hidden — show / hide rows` : 'Show / hide rows'}
+              >
+                {hiddenRowIds.length > 0 ? <EyeOff size={14} /> : <Eye size={14} />}
+                {hiddenRowIds.length > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9.5px] font-black flex items-center justify-center">
+                    {hiddenRowIds.length}
+                  </span>
+                )}
+              </button>
+
+              {rowVisibilityOpen && (
+                <div className="absolute right-0 top-full mt-2 w-[300px] bg-white rounded-2xl border border-slate-200 shadow-[0_16px_40px_rgba(15,23,42,0.16)] z-40 overflow-hidden">
+                  <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-100">
+                    <p className="text-[12px] font-black text-slate-900">Show / Hide Rows</p>
+                    <div className="flex items-center gap-2 text-[11px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setHiddenRowIds([])}
+                        className="text-teal-700 hover:text-teal-800 cursor-pointer disabled:text-slate-300 disabled:cursor-default"
+                        disabled={hiddenRowIds.length === 0}
+                      >
+                        Show all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHiddenRowIds(employees.map(e => e.id))}
+                        className="text-slate-500 hover:text-slate-700 cursor-pointer"
+                      >
+                        Hide all
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-2 border-b border-slate-100">
+                    <div className="relative">
+                      <Search size={12} className="absolute left-2.5 top-2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={rowVisibilitySearch}
+                        onChange={e => setRowVisibilitySearch(e.target.value)}
+                        placeholder="Search staff..."
+                        className="w-full pl-7 pr-2 py-1.5 text-[12px] bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-teal-500 focus:bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="max-h-[280px] overflow-y-auto p-1.5 space-y-0.5">
+                    {[...employees]
+                      .filter(e => !rowVisibilitySearch || e.full_name.toLowerCase().includes(rowVisibilitySearch.toLowerCase().trim()))
+                      .sort((a, b) => a.full_name.localeCompare(b.full_name))
+                      .map(e => {
+                        const visible = !hiddenRowIds.includes(e.id)
+                        return (
+                          <label
+                            key={e.id}
+                            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-[12px] cursor-pointer hover:bg-slate-50 ${visible ? 'text-slate-800 font-semibold' : 'text-slate-400'}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={visible}
+                              onChange={() => toggleRowHidden(e.id)}
+                              className="rounded text-teal-600 focus:ring-teal-500 h-3.5 w-3.5 cursor-pointer"
+                            />
+                            <span className="truncate flex-1">{e.full_name}</span>
+                            {!visible && <EyeOff size={11} className="shrink-0" />}
+                          </label>
+                        )
+                      })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Custom Date Pickers (Shown only when datePreset === 'custom') */}
