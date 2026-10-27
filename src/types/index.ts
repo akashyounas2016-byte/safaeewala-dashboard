@@ -108,10 +108,19 @@ export interface AgencyContactPerson {
   role?: string
 }
 
+export type AgencyDocumentCategory =
+  | 'trade_license'
+  | 'tax_registration'
+  | 'agreement'
+  | 'noc'
+  | 'emirates_id'
+  | 'passport'
+  | 'workmen_compensation'
+
 export interface AgencyDocument {
   id: string
   name: string
-  category: 'trade_license' | 'tax_registration' | 'agreement' | 'noc' | 'other'
+  category: AgencyDocumentCategory | 'other'
   file_data?: string // data URL or base64 string
   file_type?: string
   file_size?: number
@@ -156,6 +165,16 @@ export interface Agency {
   replacement_guarantee_enabled?: boolean
   quota_cleaners?: number
   documents?: AgencyDocument[]
+
+  // Owner / signatory identity documents
+  emirates_id_no?: string
+  emirates_id_issue_date?: string
+  emirates_id_expiry_date?: string
+  passport_no?: string
+  passport_issue_date?: string
+  passport_expiry_date?: string
+  emergency_contact?: string
+  workmen_comp_policy_no?: string
   bank_details?: {
     bank_name?: string
     iban?: string

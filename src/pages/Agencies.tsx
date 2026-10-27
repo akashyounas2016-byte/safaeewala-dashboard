@@ -12,7 +12,7 @@ import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData, defaultAgencies } from '@/store/DataContext'
-import type { Agency, AgencyContactPerson, AgencyDocument } from '@/types'
+import type { Agency, AgencyContactPerson, AgencyDocument, AgencyDocumentCategory } from '@/types'
 import { formatDate, isThirdPartyEmployee, isParentCompanyEmployee, slugifyAgencyName } from '@/lib/utils'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { AgencyDashboard } from '@/components/agencies/AgencyDashboard'
@@ -221,7 +221,7 @@ function generateCertificateDataUrl(
 // ── Multi-File Attachment Helper Function ──
 function handleFileUpload(
   files: FileList | null,
-  category: 'trade_license' | 'tax_registration' | 'agreement' | 'noc',
+  category: AgencyDocumentCategory,
   setDocs: React.Dispatch<React.SetStateAction<AgencyDocument[]>>
 ) {
   if (!files || files.length === 0) return
@@ -260,7 +260,7 @@ function InputFieldWithUpload({
   label: string
   placeholder?: string
   defaultValue?: string
-  category: 'trade_license' | 'tax_registration' | 'agreement' | 'noc'
+  category: AgencyDocumentCategory
   documents: AgencyDocument[]
   onAttach: (files: FileList | null) => void
   onRemove: (docId: string) => void
@@ -1415,13 +1415,33 @@ export function Agencies() {
       >
         <form
           id="add-agency-form"
-          className="space-y-4"
+          className="space-y-3.5"
           onSubmit={e => {
             e.preventDefault()
             const fd = new FormData(e.currentTarget)
+            const str = (key: string) => ((fd.get(key) as string) || '').trim() || undefined
+
+            // Issue / start date must not be after the expiry / end date
+            const datePairs: [string, string, string][] = [
+              ['license_issue_date', 'license_expiry_date', 'Trade License'],
+              ['emirates_id_issue_date', 'emirates_id_expiry_date', 'Emirates ID'],
+              ['passport_issue_date', 'passport_expiry_date', 'Passport'],
+              ['contract_start_date', 'contract_end_date', 'Contract'],
+            ]
+            for (const [from, to, label] of datePairs) {
+              const a = str(from), b = str(to)
+              if (a && b && a > b) {
+                alert(`${label}: issue/start date cannot be after the expiry/end date.`)
+                return
+              }
+            }
+
             const contractedAmount = Number(fd.get('contracted_amount')) || undefined
             const primaryContact = addContacts.find(c => c.name.trim())?.name || ''
             const validContacts = addContacts.filter(c => c.name.trim() || c.phone?.trim())
+            const bankName = str('bank_name')
+            const accountTitle = str('account_title')
+            const iban = str('iban')?.replace(/\s+/g, '').toUpperCase()
 
             addAgency({
               name: fd.get('name') as string,
@@ -1429,257 +1449,351 @@ export function Agencies() {
               contact_person: primaryContact || undefined,
               contact_persons: validContacts.length > 0 ? validContacts : undefined,
               phone: fd.get('phone') as string,
-              email: (fd.get('email') as string) || undefined,
-              address: (fd.get('address') as string) || undefined,
+              email: str('email'),
+              address: str('address'),
+              emergency_contact: str('emergency_contact'),
               price: contractedAmount,
               contracted_amount: contractedAmount,
               quota_cleaners: Number(fd.get('quota_cleaners')) || undefined,
               replacement_guarantee: addReplacementGuarantee === 'Yes' ? 'Yes (Replacement supplied within 24 hours)' : 'No',
               replacement_guarantee_enabled: addReplacementGuarantee === 'Yes',
-              contract_ref: (fd.get('contract_ref') as string) || undefined,
-              contract_start_date: (fd.get('contract_start_date') as string) || undefined,
-              contract_end_date: (fd.get('contract_end_date') as string) || undefined,
-              trade_license_no: (fd.get('trade_license_no') as string) || undefined,
-              license_issue_date: (fd.get('license_issue_date') as string) || undefined,
-              license_expiry_date: (fd.get('license_expiry_date') as string) || undefined,
-              trn_no: (fd.get('trn_no') as string) || undefined,
-              noc_no: (fd.get('noc_no') as string) || undefined,
+              contract_ref: str('contract_ref'),
+              contract_start_date: str('contract_start_date'),
+              contract_end_date: str('contract_end_date'),
+              trade_license_no: str('trade_license_no'),
+              license_issue_date: str('license_issue_date'),
+              license_expiry_date: str('license_expiry_date'),
+              trn_no: str('trn_no'),
+              noc_no: str('noc_no'),
+              emirates_id_no: str('emirates_id_no'),
+              emirates_id_issue_date: str('emirates_id_issue_date'),
+              emirates_id_expiry_date: str('emirates_id_expiry_date'),
+              passport_no: str('passport_no'),
+              passport_issue_date: str('passport_issue_date'),
+              passport_expiry_date: str('passport_expiry_date'),
+              workmen_comp_policy_no: str('workmen_comp_policy_no'),
+              bank_details: bankName || accountTitle || iban
+                ? { bank_name: bankName, account_title: accountTitle, iban }
+                : undefined,
               payment_terms: addPaymentTerms,
               termination_notice: addTerminationNotice,
               documents: addDocs,
-              notes: (fd.get('notes') as string) || undefined,
+              notes: str('notes'),
               status: addStatus,
             })
             setShowAddModal(false)
           }}
         >
-          {/* 3-Column Layout without vertical scroll */}
+          {/* ── Row 1: Profile · Contact · Address — single horizontal row ── */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-            {/* Column 1: Core Agency Info & Contacts */}
-            <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 flex flex-col justify-between">
-              <div className="space-y-2.5">
-                <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                  <Building2 size={13} className="text-teal-600" />
-                  <span>Agency Profile & Contacts</span>
-                </h4>
+            {/* Agency Profile */}
+            <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
+              <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                <Building2 size={13} className="text-teal-600" />
+                <span>Agency Profile</span>
+              </h4>
 
-                <Input name="name" label="Agency Name *" placeholder="e.g. Al Safa Manpower LLC" required />
-                <Input name="phone" label="Primary Phone Number *" placeholder="+971 4 000 0000" required />
+              <Input name="name" label="Agency Name *" placeholder="e.g. Al Safa Manpower LLC" required />
+              <div className="grid grid-cols-2 gap-2">
+                <Input name="phone" label="Phone *" placeholder="+971 4 000 0000" required />
                 <Input name="email" label="Email Address" type="email" placeholder="agency@example.ae" />
-                <Input name="address" label="UAE Office Address" placeholder="e.g. Deira Business Center, Dubai" />
-
-                {/* Multiple Contact Persons */}
-                <div className="space-y-1.5 pt-1 border-t border-slate-200/70">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                      <Users size={11} className="text-teal-600" />
-                      <span>Contact Persons ({addContacts.length})</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAddContacts(prev => [
-                          ...prev,
-                          { id: `cp-${Date.now()}`, name: '', phone: '', email: '', role: 'Account Manager' }
-                        ])
-                      }
-                      className="text-[10.5px] font-bold text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100/70 px-2 py-0.5 rounded-lg border border-teal-200/60 transition-colors flex items-center gap-1 cursor-pointer"
-                    >
-                      <Plus size={10} />
-                      <span>Add Contact</span>
-                    </button>
-                  </div>
-
-                  <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
-                    {addContacts.map((cp, idx) => (
-                      <div key={cp.id} className="p-2 rounded-xl bg-white border border-slate-200/80 space-y-1 shadow-2xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[9.5px] font-black uppercase text-slate-400">
-                            Contact #{idx + 1} {idx === 0 ? '(Primary)' : ''}
-                          </span>
-                          {addContacts.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => setAddContacts(prev => prev.filter(c => c.id !== cp.id))}
-                              className="text-slate-400 hover:text-rose-600 p-0.5 rounded transition-colors cursor-pointer"
-                              title="Remove contact"
-                            >
-                              <X size={11} />
-                            </button>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <input
-                            type="text"
-                            placeholder="Full Name *"
-                            value={cp.name}
-                            onChange={e => {
-                              const val = e.target.value
-                              setAddContacts(prev => prev.map(c => c.id === cp.id ? { ...c, name: val } : c))
-                            }}
-                            className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-teal-500 font-medium"
-                            required={idx === 0}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Phone / Role"
-                            value={cp.phone}
-                            onChange={e => {
-                              const val = e.target.value
-                              setAddContacts(prev => prev.map(c => c.id === cp.id ? { ...c, phone: val } : c))
-                            }}
-                            className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-teal-500 font-medium"
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Company Type Dropdown (Shifted below Contact Persons) */}
-                <div className="pt-2 border-t border-slate-200/70">
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
                   <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Company Type</label>
                   <select
                     value={addCompanyType}
                     onChange={e => setAddCompanyType(e.target.value as any)}
-                    className="w-full text-[12px] px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
+                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
                   >
                     <option value="Third Party">Third Party (Vendor)</option>
                     <option value="Parent Company">Parent Company (Safaeewala)</option>
                   </select>
                 </div>
-              </div>
-            </div>
-
-            {/* Column 2: Licensing, Tax & Documents */}
-            <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
-              <h4 className="text-[12px] font-black uppercase tracking-wider text-amber-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                <Shield size={13} className="text-amber-600" />
-                <span>Licensing, Tax & Documents</span>
-              </h4>
-
-              {/* Trade License Field & Integrated Upload */}
-              <InputFieldWithUpload
-                name="trade_license_no"
-                label="Trade license"
-                placeholder="e.g. CN-1829472"
-                category="trade_license"
-                documents={addDocs}
-                onAttach={files => handleFileUpload(files, 'trade_license', setAddDocs)}
-                onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
-                onPreview={doc => setPreviewDoc(doc)}
-              />
-
-              <div className="grid grid-cols-2 gap-2">
-                <Input name="license_issue_date" label="License Issue Date" type="date" />
-                <Input name="license_expiry_date" label="License Expiry Date" type="date" />
-              </div>
-
-              {/* Tax Registration / TRN Field & Integrated Upload */}
-              <InputFieldWithUpload
-                name="trn_no"
-                label="Tax TRN Number"
-                placeholder="e.g. 100234567800001"
-                category="tax_registration"
-                documents={addDocs}
-                onAttach={files => handleFileUpload(files, 'tax_registration', setAddDocs)}
-                onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
-                onPreview={doc => setPreviewDoc(doc)}
-              />
-
-              {/* NOC (No Objection Certificate) Field & Integrated Upload */}
-              <InputFieldWithUpload
-                name="noc_no"
-                label="NOC (No Objection Certificate)"
-                placeholder="e.g. NOC-DXB-2024-912"
-                category="noc"
-                documents={addDocs}
-                onAttach={files => handleFileUpload(files, 'noc', setAddDocs)}
-                onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
-                onPreview={doc => setPreviewDoc(doc)}
-              />
-
-              <Input name="notes" label="Specialty & General Notes" placeholder="Specialties, roster notes..." />
-            </div>
-
-            {/* Column 3: Commercials & Agreement */}
-            <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
-              <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                <Users size={13} className="text-indigo-600" />
-                <span>Commercials & Agreement</span>
-              </h4>
-
-              {/* Contracted Amount */}
-              <Input name="contracted_amount" label="Contracted Amount (AED)" type="number" placeholder="e.g. 5000" />
-
-              <div className="grid grid-cols-2 gap-2">
-                {/* Staff Quota */}
-                <Input name="quota_cleaners" label="Staff Quota (Target Staff)" type="number" placeholder="e.g. 5" defaultValue="5" />
-
-                {/* Staff Replacement Guarantee Yes/No */}
+                {/* Same state as the header toggle */}
                 <div>
-                  <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Replacement Guarantee</label>
+                  <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Vendor Status</label>
                   <select
-                    value={addReplacementGuarantee}
-                    onChange={e => setAddReplacementGuarantee(e.target.value as any)}
+                    value={addStatus}
+                    onChange={e => setAddStatus(e.target.value as 'active' | 'inactive')}
                     className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
                   >
-                    <option value="Yes">Yes (Guaranteed)</option>
-                    <option value="No">No (Not Included)</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
                   </select>
                 </div>
               </div>
+            </div>
 
-              {/* Agreement Field & Integrated Upload */}
-              <InputFieldWithUpload
-                name="contract_ref"
-                label="Agreement / Contract Ref"
-                placeholder="e.g. AGR-2024-ALSAFA-08"
-                category="agreement"
-                documents={addDocs}
-                onAttach={files => handleFileUpload(files, 'agreement', setAddDocs)}
-                onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
-                onPreview={doc => setPreviewDoc(doc)}
-              />
-
-              <div className="grid grid-cols-2 gap-2">
-                <Input name="contract_start_date" label="Start Date" type="date" />
-                <Input name="contract_end_date" label="End Date" type="date" />
+            {/* Contact Persons & Emergency Contact */}
+            <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
+                <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 flex items-center gap-1.5">
+                  <Users size={13} className="text-teal-600" />
+                  <span>Contact Persons ({addContacts.length})</span>
+                </h4>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAddContacts(prev => [
+                      ...prev,
+                      { id: `cp-${Date.now()}`, name: '', phone: '', email: '', role: 'Account Manager' }
+                    ])
+                  }
+                  className="text-[10.5px] font-bold text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100/70 px-2 py-0.5 rounded-lg border border-teal-200/60 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus size={10} />
+                  <span>Add Contact</span>
+                </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                {/* Payment Term */}
-                <div>
-                  <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Payment Term</label>
-                  <select
-                    value={addPaymentTerms}
-                    onChange={e => setAddPaymentTerms(e.target.value)}
-                    className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                  >
-                    <option value="Monthly">Monthly</option>
-                    <option value="Weekly">Weekly</option>
-                    <option value="Bi-Weekly">Bi-Weekly</option>
-                    <option value="Monthly (Net 15)">Monthly (Net 15)</option>
-                    <option value="Monthly (Net 30)">Monthly (Net 30)</option>
-                    <option value="Advance">Advance Paid</option>
-                  </select>
-                </div>
+              <div className="space-y-1.5 max-h-[120px] overflow-y-auto pr-1">
+                {addContacts.map((cp, idx) => (
+                  <div key={cp.id} className="p-2 rounded-xl bg-white border border-slate-200/80 space-y-1 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9.5px] font-black uppercase text-slate-400">
+                        Contact #{idx + 1} {idx === 0 ? '(Primary)' : ''}
+                      </span>
+                      {addContacts.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setAddContacts(prev => prev.filter(c => c.id !== cp.id))}
+                          className="text-slate-400 hover:text-rose-600 p-0.5 rounded transition-colors cursor-pointer"
+                          title="Remove contact"
+                        >
+                          <X size={11} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <input
+                        type="text"
+                        placeholder="Full Name *"
+                        value={cp.name}
+                        onChange={e => {
+                          const val = e.target.value
+                          setAddContacts(prev => prev.map(c => c.id === cp.id ? { ...c, name: val } : c))
+                        }}
+                        className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-teal-500 font-medium"
+                        required={idx === 0}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Phone / Role"
+                        value={cp.phone}
+                        onChange={e => {
+                          const val = e.target.value
+                          setAddContacts(prev => prev.map(c => c.id === cp.id ? { ...c, phone: val } : c))
+                        }}
+                        className="text-[11px] px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-teal-500 font-medium"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-                {/* Termination Notice Period */}
-                <div>
-                  <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Termination Notice</label>
-                  <select
-                    value={addTerminationNotice}
-                    onChange={e => setAddTerminationNotice(e.target.value)}
-                    className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                  >
-                    <option value="1 Month">1 Month Notice</option>
-                    <option value="2 Months">2 Months Notice</option>
-                    <option value="15 Days">15 Days Notice</option>
-                    <option value="3 Months">3 Months Notice</option>
-                    <option value="Immediate">Immediate</option>
-                  </select>
+              <Input name="emergency_contact" label="Emergency Contact Details" placeholder="Name · Relation · +971 50 000 0000" />
+            </div>
+
+            {/* Office Address & Notes */}
+            <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
+              <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                <MapPin size={13} className="text-teal-600" />
+                <span>Area & Office Address</span>
+              </h4>
+
+              <Input name="address" label="Office Address" placeholder="e.g. Deira Business Center, Office 304, Dubai" />
+              <Input name="notes" label="Specialty & General Notes" placeholder="Specialties, roster notes..." />
+            </div>
+          </div>
+
+          {/* ── Row 2: License, Tax & Documents ── */}
+          <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+            <h4 className="text-[12px] font-black uppercase tracking-wider text-amber-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+              <Shield size={13} className="text-amber-600" />
+              <span>License, Tax & Documents</span>
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
+              {/* Trade License */}
+              <div className="space-y-2">
+                <InputFieldWithUpload
+                  name="trade_license_no"
+                  label="Trade License Number"
+                  placeholder="e.g. CN-1829472"
+                  category="trade_license"
+                  documents={addDocs}
+                  onAttach={files => handleFileUpload(files, 'trade_license', setAddDocs)}
+                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onPreview={doc => setPreviewDoc(doc)}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input name="license_issue_date" label="License Issue Date" type="date" />
+                  <Input name="license_expiry_date" label="License Expiry Date" type="date" />
                 </div>
+              </div>
+
+              {/* Emirates ID */}
+              <div className="space-y-2">
+                <InputFieldWithUpload
+                  name="emirates_id_no"
+                  label="Emirates ID (EID)"
+                  placeholder="784-XXXX-XXXXXXX-X"
+                  category="emirates_id"
+                  documents={addDocs}
+                  onAttach={files => handleFileUpload(files, 'emirates_id', setAddDocs)}
+                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onPreview={doc => setPreviewDoc(doc)}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input name="emirates_id_issue_date" label="EID Issue Date" type="date" />
+                  <Input name="emirates_id_expiry_date" label="EID Expiry Date" type="date" />
+                </div>
+              </div>
+
+              {/* Passport */}
+              <div className="space-y-2">
+                <InputFieldWithUpload
+                  name="passport_no"
+                  label="Passport"
+                  placeholder="Passport number"
+                  category="passport"
+                  documents={addDocs}
+                  onAttach={files => handleFileUpload(files, 'passport', setAddDocs)}
+                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onPreview={doc => setPreviewDoc(doc)}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input name="passport_issue_date" label="Passport Issue Date" type="date" />
+                  <Input name="passport_expiry_date" label="Passport Expiry Date" type="date" />
+                </div>
+              </div>
+
+              {/* Tax & NOC */}
+              <div className="space-y-2">
+                <InputFieldWithUpload
+                  name="trn_no"
+                  label="Tax Registration (TRN)"
+                  placeholder="e.g. 100234567800001"
+                  category="tax_registration"
+                  documents={addDocs}
+                  onAttach={files => handleFileUpload(files, 'tax_registration', setAddDocs)}
+                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onPreview={doc => setPreviewDoc(doc)}
+                />
+                <InputFieldWithUpload
+                  name="noc_no"
+                  label="NOC (No Objection Certificate)"
+                  placeholder="e.g. NOC-DXB-2024-912"
+                  category="noc"
+                  documents={addDocs}
+                  onAttach={files => handleFileUpload(files, 'noc', setAddDocs)}
+                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onPreview={doc => setPreviewDoc(doc)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Row 3: Commercial Agreement ── */}
+          <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+            <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+              <FileText size={13} className="text-indigo-600" />
+              <span>Commercial Agreement</span>
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
+              {/* Agreement & Contract Period */}
+              <div className="space-y-2">
+                <InputFieldWithUpload
+                  name="contract_ref"
+                  label="Agreement"
+                  placeholder="e.g. AGR-2024-ALSAFA-08"
+                  category="agreement"
+                  documents={addDocs}
+                  onAttach={files => handleFileUpload(files, 'agreement', setAddDocs)}
+                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onPreview={doc => setPreviewDoc(doc)}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input name="contract_start_date" label="Contract Start Date" type="date" />
+                  <Input name="contract_end_date" label="Contract End Date" type="date" />
+                </div>
+              </div>
+
+              {/* Amount, Staff & Guarantee */}
+              <div className="space-y-2">
+                <Input name="contracted_amount" label="Contract Amount (AED)" type="number" placeholder="e.g. 5000" />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input name="quota_cleaners" label="Recruited Staff" type="number" placeholder="e.g. 5" />
+                  <div>
+                    <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Staff Replacement Guarantee</label>
+                    <select
+                      value={addReplacementGuarantee}
+                      onChange={e => setAddReplacementGuarantee(e.target.value as any)}
+                      className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
+                    >
+                      <option value="Yes">Yes (Guaranteed)</option>
+                      <option value="No">No (Not Included)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Terms & Insurance */}
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Payment Terms</label>
+                    <select
+                      value={addPaymentTerms}
+                      onChange={e => setAddPaymentTerms(e.target.value)}
+                      className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
+                    >
+                      <option value="Monthly">Monthly</option>
+                      <option value="Weekly">Weekly</option>
+                      <option value="Bi-Weekly">Bi-Weekly</option>
+                      <option value="Monthly (Net 15)">Monthly (Net 15)</option>
+                      <option value="Monthly (Net 30)">Monthly (Net 30)</option>
+                      <option value="Advance">Advance Paid</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Termination Notice Period</label>
+                    <select
+                      value={addTerminationNotice}
+                      onChange={e => setAddTerminationNotice(e.target.value)}
+                      className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
+                    >
+                      <option value="1 Month">1 Month Notice</option>
+                      <option value="2 Months">2 Months Notice</option>
+                      <option value="15 Days">15 Days Notice</option>
+                      <option value="3 Months">3 Months Notice</option>
+                      <option value="Immediate">Immediate</option>
+                    </select>
+                  </div>
+                </div>
+                <InputFieldWithUpload
+                  name="workmen_comp_policy_no"
+                  label="Workmen's Compensation Insurance"
+                  placeholder="Policy number"
+                  category="workmen_compensation"
+                  documents={addDocs}
+                  onAttach={files => handleFileUpload(files, 'workmen_compensation', setAddDocs)}
+                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onPreview={doc => setPreviewDoc(doc)}
+                />
+              </div>
+
+              {/* Disbursement Bank Account */}
+              <div className="space-y-2 p-2.5 rounded-xl bg-white border border-slate-200/80">
+                <p className="text-[10.5px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <CreditCard size={11} className="text-slate-500" />
+                  <span>Disbursement Bank Account</span>
+                </p>
+                <Input name="bank_name" label="Bank Name" placeholder="e.g. Emirates NBD" />
+                <Input name="account_title" label="Account Title" placeholder="As per bank records" />
+                <Input name="iban" label="IBAN" placeholder="AE07 0331 2345 6789 0123 456" />
               </div>
             </div>
           </div>

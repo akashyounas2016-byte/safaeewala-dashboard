@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
-import type { Agency, Employee, DailyJob, AgencySalaryPayout, AgencyDocument, AgencyContactPerson } from '@/types'
+import type { Agency, Employee, DailyJob, AgencySalaryPayout, AgencyDocument, AgencyDocumentCategory, AgencyContactPerson } from '@/types'
 import { formatDate, formatCurrency, daysUntil, isParentCompanyEmployee } from '@/lib/utils'
 import { getEmployeeDailyJobsHistory, employeeMatchesStaff } from '@/lib/clientDataSync'
 import { generateCertificateDataUrl } from '@/lib/agencyCertificates'
@@ -34,7 +34,7 @@ function InputFieldWithUpload({
   label: string
   placeholder?: string
   defaultValue?: string
-  category: 'trade_license' | 'tax_registration' | 'agreement' | 'noc'
+  category: AgencyDocumentCategory
   documents: AgencyDocument[]
   onAttach: (files: FileList | null) => void
   onRemove: (docId: string) => void
@@ -189,7 +189,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
   // ── Document Preview & Direct Upload Modals ──
   const [previewDoc, setPreviewDoc] = useState<AgencyDocument | null>(null)
   const [showUploadDocModal, setShowUploadDocModal] = useState(false)
-  const [directUploadCategory, setDirectUploadCategory] = useState<'trade_license' | 'tax_registration' | 'agreement' | 'noc' | 'other'>('trade_license')
+  const [directUploadCategory, setDirectUploadCategory] = useState<AgencyDocumentCategory | 'other'>('trade_license')
 
   // ── Edit Profile Modal Form State ──
   const [editStatus, setEditStatus] = useState<'active' | 'inactive'>(agency.status || 'active')
@@ -436,7 +436,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
   // ── Document Upload with Version History Preservation (for Edit Profile) ──
   const handleEditFileUpload = (
     files: FileList | null,
-    category: 'trade_license' | 'tax_registration' | 'agreement' | 'noc'
+    category: AgencyDocumentCategory
   ) => {
     if (!files || files.length === 0) return
     Array.from(files).forEach(file => {
@@ -1579,7 +1579,10 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                     doc.category === 'trade_license' ? 'Trade License' :
                     doc.category === 'tax_registration' ? 'Tax Registration (TRN)' :
                     doc.category === 'noc' ? 'No Objection Certificate (NOC)' :
-                    doc.category === 'agreement' ? 'Contract Agreement' : 'Compliance Document'
+                    doc.category === 'agreement' ? 'Contract Agreement' :
+                    doc.category === 'emirates_id' ? 'Emirates ID (EID)' :
+                    doc.category === 'passport' ? 'Passport' :
+                    doc.category === 'workmen_compensation' ? "Workmen's Compensation Insurance" : 'Compliance Document'
 
                   return (
                     <div
@@ -1718,7 +1721,10 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                         doc.category === 'trade_license' ? 'Trade License' :
                         doc.category === 'tax_registration' ? 'Tax TRN' :
                         doc.category === 'noc' ? 'MOHRE NOC' :
-                        doc.category === 'agreement' ? 'Agreement' : 'Compliance'
+                        doc.category === 'agreement' ? 'Agreement' :
+                        doc.category === 'emirates_id' ? 'Emirates ID' :
+                        doc.category === 'passport' ? 'Passport' :
+                        doc.category === 'workmen_compensation' ? "Workmen's Comp." : 'Compliance'
 
                       return (
                         <tr
@@ -3109,6 +3115,9 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
               <option value="noc">Ministry Labour Supply NOC (MOHRE)</option>
               <option value="tax_registration">Tax Registration Certificate (TRN)</option>
               <option value="agreement">Contract Agreement / Service Level Agreement (SLA)</option>
+              <option value="emirates_id">Emirates ID (EID)</option>
+              <option value="passport">Passport</option>
+              <option value="workmen_compensation">Workmen's Compensation Insurance</option>
               <option value="other">Other Compliance / Insurance Document</option>
             </select>
           </div>
