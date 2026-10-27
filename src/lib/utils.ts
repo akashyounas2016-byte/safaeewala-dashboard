@@ -133,6 +133,28 @@ export function isThirdPartyEmployee(e: { agency_id?: string; agency_name?: stri
   return !isParentCompanyEmployee(e)
 }
 
+type AgencyRef = { id: string; name: string; company_type?: string }
+type StaffRef = { agency_id?: string; agency_name?: string; email?: string | null }
+
+/** The one definition of "this employee belongs to this agency" (R-AGN-02, AUD-14) */
+export function employeeBelongsToAgency(e: StaffRef, agency: AgencyRef): boolean {
+  if (agency.id === 'agency-safaeewala' || agency.company_type === 'Parent Company') return isParentCompanyEmployee(e)
+  return e.agency_id === agency.id ||
+    Boolean(e.agency_name && e.agency_name.toLowerCase().trim() === agency.name.toLowerCase().trim())
+}
+
+export function staffOfAgency<E extends StaffRef>(agency: AgencyRef, employees: E[]): E[] {
+  return employees.filter(e => employeeBelongsToAgency(e, agency))
+}
+
+/** Employees agency filter value (agency id, name or slug) → does the employee match? */
+export function matchesAgencyFilter(e: StaffRef, filter: string, agencies: AgencyRef[]): boolean {
+  const f = filter.toLowerCase().trim()
+  const agency = agencies.find(a => a.id === filter || a.name.toLowerCase().trim() === f || slugifyAgencyName(a.name) === f)
+  if (agency) return employeeBelongsToAgency(e, agency)
+  return e.agency_id === filter || (e.agency_name || '').toLowerCase().trim() === f
+}
+
 /**
  * Normalizes agency company name into a URL-friendly slug.
  */

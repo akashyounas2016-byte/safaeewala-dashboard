@@ -12,16 +12,8 @@ import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
 import type { DailyJob, Employee } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
-import { calcJobOTHours, isBogusJob, employeeMatchesStaff } from '@/lib/clientDataSync'
+import { calcJobOTHours, isBogusJob, employeeMatchesStaff, splitStaffNames, SYNTHETIC_STAFF_ACTIVE_DAYS } from '@/lib/clientDataSync'
 
-/* ── Standard Schedule Roster Cleaners ── */
-const DEFAULT_SCHEDULE_ROSTER = [
-  'Sharmila', 'Sharada', 'Uma Kumari', 'Ambika', 'Asmita', 'Bimala',
-  'Gau Maya', 'Khima', 'Laxmi Rani', 'Rupa', 'Nim Kumari', 'Uma Sunar',
-  'Parmila', 'Sita', 'Shanti', 'Sabirti', 'Kamala', 'Krishna',
-  'Nobel', 'Ishwor', 'Sushanta', 'Sandesh', 'Ibrahim', 'Dinesh',
-  'Adnan', 'Qasim'
-]
 
 export type AttendanceStatus = 'present' | 'available' | 'absent' | 'on_leave'
 
@@ -174,26 +166,30 @@ export function Attendance() {
         map.set(name.toLowerCase(), name)
       }
     })
-    // 2. Schedule Roster
-    DEFAULT_SCHEDULE_ROSTER.forEach(name => {
-      if (!map.has(name.toLowerCase())) map.set(name.toLowerCase(), name)
-    })
-    // 3. Staff from Daily Jobs history
+    // A name that belongs to a registered employee is that employee, not a new cleaner
+    const isKnown = (name: string) =>
+      map.has(name.toLowerCase()) || employees.some(e => employeeMatchesStaff(e, name))
+    // 2. Unregistered staff seen on the job sheet recently (shared rows split per cleaner — AUD-18;
+    //    no hard-coded roster and no long-gone names — AUD-08)
+    const since = new Date(new Date(selectedDate).getTime() - SYNTHETIC_STAFF_ACTIVE_DAYS * 86_400_000).toISOString().split('T')[0]
     dailyJobs.forEach(j => {
-      const s = (j.staff_name || '').trim()
-      if (s && !map.has(s.toLowerCase())) map.set(s.toLowerCase(), s)
+      if (!j.date || j.date < since || j.date > selectedDate) return
+      splitStaffNames(j.staff_name || '').forEach(name => { if (!isKnown(name)) map.set(name.toLowerCase(), name) })
     })
-    // 4. Staff actively logged on selected date
+    // 3. Anyone logged on the selected date (even if inactive) so their shift is visible
     dateJobs.forEach(j => {
-      const s = (j.staff_name || '').trim()
-      if (s && !map.has(s.toLowerCase())) map.set(s.toLowerCase(), s)
+      splitStaffNames(j.staff_name || '').forEach(name => {
+        if (map.has(name.toLowerCase())) return
+        const emp = employees.find(e => employeeMatchesStaff(e, name))
+        map.set((emp?.full_name || name).toLowerCase(), emp?.full_name || name)
+      })
     })
 
     const bogusStaff = ['total', 'gross', 'summary', 'net total', 'driver', 'n/a', 'na', '—', '-']
     return Array.from(map.values())
       .filter(name => !bogusStaff.includes(name.trim().toLowerCase()))
       .sort((a, b) => a.localeCompare(b))
-  }, [employees, dailyJobs, dateJobs])
+  }, [employees, dailyJobs, dateJobs, selectedDate])
 
   // Map employees by lowercased name for fast lookup
   const employeeByName = useMemo(() => {

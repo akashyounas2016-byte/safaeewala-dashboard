@@ -380,7 +380,10 @@ export function Agencies() {
   // Extract all live cleaners with their assigned duties for targetLiveDate
   const liveCleanersData = useMemo(() => {
     const dateJobs = (dailyJobs || []).filter(j => (j.date || '').split('T')[0] === targetLiveDate && !isBogusJob(j))
-    const dateBookings = (bookings || []).filter(b => (b.scheduled_date || '').split('T')[0] === targetLiveDate)
+    // A booking that already has a job-sheet row is shown through that row only (AUD-19)
+    const linkedBookingIds = new Set((dailyJobs || []).map(j => j.booking_id).filter(Boolean))
+    const dateBookings = (bookings || []).filter(b =>
+      (b.scheduled_date || '').split('T')[0] === targetLiveDate && !linkedBookingIds.has(b.id))
 
     interface CleanerDutyItem {
       id: string
@@ -495,8 +498,9 @@ export function Agencies() {
           }
         } else {
           const matchedEmp = employees.find(e => employeeMatchesStaff(e, rawName))
-          const isThird = matchedEmp ? isThirdPartyEmployee(matchedEmp) : true
-          const agName = matchedEmp?.agency_name || (isThird ? 'Agency Supplied' : 'Safaeewala Fleet')
+          // Unknown names are not assumed to be agency staff (AUD-19)
+          const isThird = matchedEmp ? isThirdPartyEmployee(matchedEmp) : false
+          const agName = matchedEmp ? (matchedEmp.agency_name || (isThird ? 'Agency Supplied' : 'Safaeewala Fleet')) : 'Unregistered'
 
           cleanersMap.set(normKey, {
             empId: matchedEmp?.id,

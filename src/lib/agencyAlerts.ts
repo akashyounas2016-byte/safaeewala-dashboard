@@ -1,6 +1,6 @@
 import type { Agency, Employee } from '@/types'
 import type { HeroNotification } from '@/components/layout/PageHero'
-import { daysUntil, formatDate, isParentCompanyEmployee } from '@/lib/utils'
+import { daysUntil, formatDate, staffOfAgency } from '@/lib/utils'
 
 const ALERT_WINDOW_DAYS = 30       // documents / contracts expiring within this many days
 const PAYOUT_GAP_DAYS = 35         // no salary payout for this long = payment alert
@@ -12,17 +12,6 @@ const expiryText = (date: string) => {
   if (days < 0) return `expired ${plural(-days, 'day')} ago (${formatDate(date)})`
   if (days === 0) return `expires today (${formatDate(date)})`
   return `expires in ${plural(days, 'day')} (${formatDate(date)})`
-}
-
-/** Same staff ↔ agency matching the Agency dashboard uses */
-function staffOf(agency: Agency, employees: Employee[]): Employee[] {
-  if (agency.company_type === 'Parent Company' || agency.id === 'agency-safaeewala') {
-    return employees.filter(isParentCompanyEmployee)
-  }
-  return employees.filter(e =>
-    e.agency_id === agency.id ||
-    (e.agency_name && e.agency_name.toLowerCase().trim() === agency.name.toLowerCase().trim())
-  )
 }
 
 /**
@@ -79,7 +68,7 @@ export function buildAgencyNotifications(
       }, 5)
     }
 
-    const staff = staffOf(agency, employees)
+    const staff = staffOfAgency(agency, employees)
     const activeStaff = staff.filter(e => e.status === 'active' || e.status === 'engaged_in_project')
 
     if (!isParent && activeStaff.length > 0) {

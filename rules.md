@@ -52,6 +52,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/pages/Attendance.tsx` → `attendanceRecords`; overrides in localStorage `safaeewala_cleaner_attendance_overrides` (key `YYYY-MM-DD_<name lowercase>`).
 - **Status:** Active · Since: 2026-10
 
+### R-ATT-04 — Who appears on the attendance list
+- **Rule:** Registered non-inactive employees, plus unregistered names seen on the job sheet in the last 60 days, plus anyone with a shift on the selected date. Shared rows ("Sita, Rupa") are split per cleaner. No hard-coded roster.
+- **Code:** `Attendance.tsx → allKnownCleaners`.
+- **Status:** Active · Since: 2026-10-27 (AUD-08, AUD-18)
+
 ### R-ATT-02 — A worked row is never an absence
 - **Rule:** A row with `duty_hours > 0` or `charges > 0` is a worked shift whatever its remarks say ("Leave keys at reception" must not mark anyone absent).
 - **Code:** `Attendance.tsx` (`isWorkedShift`), `src/lib/employeeHealth.ts`.
@@ -82,7 +87,8 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-SYNC-01 — Daily Job Sheet is the operational ledger
 - **Rule:** Clients and staff seen on the job sheet appear automatically in Clients / Employees (`dj-<address>` and `emp-dj-<name>` synthetic records); hours, OT, revenue and history are derived from `dailyJobs`.
 - **Code:** `DataContext.tsx → allClients / allEmployees` via `extractAllClientsFromDailyJobs`, `extractAllEmployeesFromDailyJobs`.
-- **Status:** Active
+- Job-sheet-only staff are `active` only while they had a shift in the last 60 days (`SYNTHETIC_STAFF_ACTIVE_DAYS`); role stays `cleaner` until registered. Rows created from a booking belong to the booking's client by id (`booking_id → client_id`), not by address text.
+- **Status:** Active · Updated 2026-10-27 (AUD-08, AUD-15)
 
 ### R-SYNC-02 — Bookings store IDs, the job sheet stores names
 - **Rule:** `Booking.assigned_crew` holds **employee IDs**; `DailyJob.staff_name` holds **cleaner names** (comma-separated). Always convert with `crewToStaffName` / `staffNameToCrew` — never copy one into the other.
@@ -164,7 +170,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ### R-AGN-02 — Agency ↔ staff matching
 - **Rule:** An employee belongs to an agency when `agency_id` equals the agency id **or** `agency_name` equals the agency name (case-insensitive).
-- **Code:** `AgencyDashboard.tsx → agencyStaff`, `lib/agencyAlerts.ts → staffOf`.
+- **Code:** `lib/utils.ts → employeeBelongsToAgency, staffOfAgency, matchesAgencyFilter` (used by Employees filter and agency alerts; `AgencyDashboard.tsx → agencyStaff` uses the same rule). Renaming an agency re-links its staff (`DataContext.updateAgency`).
 - **Status:** Active
 
 ### R-AGN-03 — Agency filter lists live agencies only

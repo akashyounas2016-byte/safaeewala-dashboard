@@ -3,7 +3,7 @@
 > **Scope:** all screens, with focus on Employees, Agencies, Clients and the shared data layer (`DataContext`, `src/lib`).
 > **Method:** code review of the current `main` (`ec6c9c2`), tracing each number from storage → calculation → screen.
 > Findings were checked against the code; items marked **(verify)** depend on the live Supabase schema, which was not inspected.
-> **Status of fixes:** Phase 1 fixed — AUD-01, AUD-05, AUD-07, AUD-10. Phase 2 code done — AUD-02, AUD-03, AUD-04, AUD-20, AUD-23 (marked ✅; AUD-02/03 need the Supabase migration `supabase/migrations/2026-10-27_phase2_sync.sql` to take full effect). Others open. Track fixes by ID (`AUD-xx`) in commits and CHANGELOG.
+> **Status of fixes:** Phase 1 fixed — AUD-01, AUD-05, AUD-07, AUD-10. Phase 2 code done — AUD-02, AUD-03, AUD-04, AUD-20, AUD-23 (marked ✅; AUD-02/03 need the Supabase migration `supabase/migrations/2026-10-27_phase2_sync.sql` to take full effect). Phase 3 fixed — AUD-08, AUD-14, AUD-15, AUD-18, AUD-19; AUD-13 partly (rename). Others open. Track fixes by ID (`AUD-xx`) in commits and CHANGELOG.
 
 ## Summary
 
@@ -49,7 +49,7 @@
 
 ## B. Dummy / hard-coded data shown as real
 
-### AUD-08 🔴 Hard-coded 26-name roster creates "active employees"
+### AUD-08 🔴 Hard-coded 26-name roster creates "active employees" — ✅ Fixed (job-sheet-only staff inactive after 60 days without a shift)
 - **Where:** `src/lib/clientDataSync.ts:916-930` (`extractAllEmployeesFromDailyJobs` → `standardRoster`), duplicated in `src/pages/Attendance.tsx:18-24`.
 - **What:** 26 fixed names (Sharmila, Sharada, … Qasim) are always added as `status: 'active'` employees (`:967`) even with zero jobs, and as cleaners on Attendance — including people who left. Roles are guessed from the name (`:959`: qasim/dinesh/adnan → crew lead).
 - **Impact:** inflated staff counts (e.g. "34 / 34"), ex-staff shown as "Available" every day, wrong roles.
@@ -92,17 +92,17 @@
 - **Impact:** agencies/payouts "revert" after refresh (the earlier Safaeewala-name bug), parent company may vanish, payouts recorded on one device not visible on another. Plus K-03 (stale tab overwrites the full list).
 - **Fix:** one source of truth for agencies (Supabase *or* `/api`), merge-by-id on load, always inject the parent, send per-agency updates instead of the full list.
 
-### AUD-13 🟠 Renaming or deleting an agency orphans its staff
+### AUD-13 🟠 Renaming or deleting an agency orphans its staff — 🟡 Rename fixed (staff re-linked); delete still open
 - **Where:** `DataContext.tsx:613` (`updateAgency`), `:633` (`deleteAgency`) — no cascade to employees; matching in `AgencyDashboard.tsx:231-239` uses `agency_id` **or** `agency_name`.
 - **Impact:** staff linked only by name drop out of the renamed agency; after delete, staff keep the old `agency_id`/name, count as third-party, but no filter option shows them (agency filter lists live agencies only).
 - **Fix:** on rename update `agency_name` on linked employees; on delete ask to reassign staff (or move to parent).
 
-### AUD-14 🟠 Employees screen and Agency dashboard count agency staff differently
+### AUD-14 🟠 Employees screen and Agency dashboard count agency staff differently — ✅ Fixed (`lib/utils.ts → employeeBelongsToAgency, staffOfAgency, matchesAgencyFilter`)
 - **Where:** `Employees.tsx:539-542` and `:628-630` use a *substring* match (`agency_name.includes(filter)`), and the two blocks differ from each other; `AgencyDashboard.tsx:236-237` and `lib/agencyAlerts.ts:23-24` use exact match.
 - **Impact:** KPI count, list and agency profile can show different staff numbers for the same agency.
 - **Fix:** one shared `staffOfAgency(agency, employees)` helper used everywhere.
 
-### AUD-15 🔴 Bookings link to clients by address text, not by ID
+### AUD-15 🔴 Bookings link to clients by address text, not by ID — ✅ Fixed
 - **Where:** `DataContext.addBooking` writes the job's `address` = `service_address` (or `"<name> - Dubai"`); `clientDataSync.ts → extractAllClientsFromDailyJobs` links jobs to clients by matching the **address text** with the client name/building (`:626-700`) — it ignores `booking_id`/`client_id`.
 - **Impact:** a booking whose service address doesn't contain the client's name creates a separate auto-discovered "client" named after the address; the real client's total spent / visits miss it.
 - **Fix:** link via `booking_id → booking.client_id` first, text matching only for hand-typed job-sheet rows.
@@ -117,12 +117,12 @@
 - **Impact:** deleting a client/employee that appears on the job sheet makes it reappear immediately (as `dj-…` / `emp-dj-…`).
 - **Fix:** keep a "hidden/merged" list for synthetic records, or explain in the UI that history keeps them.
 
-### AUD-18 🟠 Attendance treats shared shifts as a new cleaner
+### AUD-18 🟠 Attendance treats shared shifts as a new cleaner — ✅ Fixed
 - **Where:** `src/pages/Attendance.tsx:181-190` adds the raw `staff_name` ("Sharada, Ambika") as a cleaner instead of splitting it.
 - **Impact:** phantom cleaners like "Sharada, Ambika" appear in Attendance with their own status.
 - **Fix:** use `splitStaffNames` (as Employees/Agencies do).
 
-### AUD-19 🟠 Live Cleaners counts a booking and its job twice
+### AUD-19 🟠 Live Cleaners counts a booking and its job twice — ✅ Fixed
 - **Where:** `src/pages/Agencies.tsx:411-452` — for each employee adds today's job-sheet rows **and** today's confirmed/in-progress bookings; a booking already has a job row.
 - **Impact:** double duties and double hours in the Live Cleaners modal. Unknown names default to "Agency Supplied" (`:498`) even when they are not agency staff.
 - **Fix:** skip bookings whose `booking_id` exists in today's jobs; label unknown names "Unregistered".

@@ -387,8 +387,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [dailyJobs, employees])
 
   const allClients = useMemo(() => {
-    return extractAllClientsFromDailyJobs(viewDailyJobs, clients)
-  }, [viewDailyJobs, clients])
+    return extractAllClientsFromDailyJobs(viewDailyJobs, clients, bookings)
+  }, [viewDailyJobs, clients, bookings])
 
   const allEmployees = useMemo(() => {
     return extractAllEmployeesFromDailyJobs(viewDailyJobs, employees)
@@ -642,6 +642,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return next
       })
       dbUpdate('agencies', id, patch)
+      // Renaming an agency keeps staff that were linked by name (AUD-13)
+      const before = agencies.find(a => a.id === id)
+      if (before && patch.name && patch.name.trim() !== before.name.trim() && id !== 'agency-safaeewala') {
+        const oldName = before.name.toLowerCase().trim()
+        const linked = new Set(employees
+          .filter(e => e.agency_id === id || (e.agency_name || '').toLowerCase().trim() === oldName)
+          .map(e => e.id))
+        if (linked.size > 0) {
+          const relink = { agency_id: id, agency_name: patch.name }
+          setEmployees(p => p.map(e => linked.has(e.id) ? { ...e, ...relink } : e))
+          linked.forEach(empId => dbUpdate('employees', empId, relink))
+        }
+      }
       if (id === 'agency-safaeewala' && patch.name) {
         supabase.from('company_settings').upsert({
           id: 1,

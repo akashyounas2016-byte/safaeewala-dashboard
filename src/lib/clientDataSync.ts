@@ -1,4 +1,4 @@
-import type { DailyJob, Client, Employee, DailyPendingReceivedItem } from '@/types'
+import type { Booking, DailyJob, Client, Employee, DailyPendingReceivedItem } from '@/types'
 import { cleanNum, calcOTHours } from '@/components/dailyJobSheet/jobSheetUtils'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 
@@ -625,10 +625,17 @@ export function extractMonthlyClientsFromDailyJobs(
  */
 export function extractAllClientsFromDailyJobs(
   dailyJobs: DailyJob[],
-  registeredClients: Client[]
+  registeredClients: Client[],
+  bookings: Pick<Booking, 'id' | 'client_id'>[] = []
 ): Client[] {
   const result: Client[] = []
   const validJobs = dailyJobs.filter(j => !isBogusJob(j))
+
+  // Rows created from a booking belong to the booking's client — linked by id, not by
+  // address text, so a service address that doesn't contain the client's name still counts (AUD-15)
+  const registeredIds = new Set(registeredClients.map(c => c.id))
+  const clientIdByBooking = new Map(bookings.filter(b => b.client_id && registeredIds.has(b.client_id)).map(b => [b.id, b.client_id]))
+  const linkedJobsByClient = new Map<string, DailyJob[]>()
 
   // Map of normalized key to all daily jobs for that client
   const jobsByClientKey = new Map<string, DailyJob[]>()
@@ -636,6 +643,12 @@ export function extractAllClientsFromDailyJobs(
   const addressByKey = new Map<string, string>()
 
   validJobs.forEach(job => {
+    const linkedClientId = job.booking_id ? clientIdByBooking.get(job.booking_id) : undefined
+    if (linkedClientId) {
+      if (!linkedJobsByClient.has(linkedClientId)) linkedJobsByClient.set(linkedClientId, [])
+      linkedJobsByClient.get(linkedClientId)!.push(job)
+      return
+    }
     const rawAddr = (job.address || job.area || '').trim()
     if (!rawAddr || rawAddr === '—' || rawAddr === '-') return
     const key = normalizeKey(cleanClientNameFromAddress(rawAddr)) || normalizeKey(rawAddr)
@@ -651,8 +664,8 @@ export function extractAllClientsFromDailyJobs(
     const cNorm = normalizeKey(c.full_name)
     const bNorm = normalizeKey(c.building_name || '')
 
-    // Find any jobs associated with this client
-    let associatedJobs: DailyJob[] = []
+    // Find any jobs associated with this client (booking-linked rows first)
+    let associatedJobs: DailyJob[] = [...(linkedJobsByClient.get(c.id) || [])]
     if (jobsByClientKey.has(cNorm)) {
       associatedJobs = [...associatedJobs, ...(jobsByClientKey.get(cNorm) || [])]
       matchedJobKeys.add(cNorm)
@@ -896,6 +909,9 @@ export function getEmployeeDailyJobsHistory(emp: Employee, dailyJobs: DailyJob[]
 /**
  * Extracts and synthesizes all employees from Daily Job Sheet into the global Employee directory
  */
+/** Staff found only on the job sheet stay "active" for this many days after their last shift (AUD-08) */
+export const SYNTHETIC_STAFF_ACTIVE_DAYS = 60
+
 export function extractAllEmployeesFromDailyJobs(
   dailyJobs: DailyJob[],
   registeredEmployees: Employee[]
@@ -917,22 +933,6 @@ export function extractAllEmployeesFromDailyJobs(
     })
   })
 
-  // Known roster names from Daily Job Sheet
-  const standardRoster = [
-    'Sharmila', 'Sharada', 'Uma Kumari', 'Ambika', 'Asmita', 'Bimala',
-    'Gau Maya', 'Khima', 'Laxmi Rani', 'Rupa', 'Nim Kumari', 'Uma Sunar',
-    'Parmila', 'Sita', 'Shanti', 'Sabirti', 'Kamala', 'Krishna',
-    'Nobel', 'Ishwor', 'Sushanta', 'Sandesh', 'Ibrahim', 'Dinesh',
-    'Adnan', 'Qasim'
-  ]
-  standardRoster.forEach(name => {
-    const key = normalizeStaffName(name)
-    if (!jobsByStaff.has(key)) {
-      jobsByStaff.set(key, [])
-    }
-    if (!displayNameByKey.has(key)) displayNameByKey.set(key, name)
-  })
-
   // 1. Process registered employees
   const matchedStaffKeys = new Set<string>()
 
@@ -950,10 +950,13 @@ export function extractAllEmployeesFromDailyJobs(
   jobsByStaff.forEach((jobs, key) => {
     if (matchedStaffKeys.has(key)) return
 
-    // Display name as written in the job sheet (or roster)
+    // Display name as written in the job sheet
     const displayName = (displayNameByKey.get(key) || key).trim()
-    const earliestDate = [...jobs].sort((a, b) => (a.date || '').localeCompare(b.date || ''))[0]?.date
-      || new Date().toISOString().split('T')[0]
+    const byDate = [...jobs].sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    const earliestDate = byDate[0]?.date || new Date().toISOString().split('T')[0]
+    // Job-sheet-only staff count as active only while they keep appearing on the sheet (AUD-08)
+    const lastDate = byDate[byDate.length - 1]?.date || ''
+    const activeSince = new Date(Date.now() - SYNTHETIC_STAFF_ACTIVE_DAYS * 86_400_000).toISOString().split('T')[0]
 
     // Only facts known from the job sheet — unknown HR fields stay empty ("Not recorded")
     const newEmp: Employee = {
@@ -961,7 +964,7 @@ export function extractAllEmployeesFromDailyJobs(
       full_name: displayName,
       phone: '',
       email: '',
-      role: ['qasim', 'dinesh', 'adnan', 'supervisor'].some(s => key.includes(s)) ? 'crew_lead' : 'cleaner',
+      role: 'cleaner', // unknown until someone registers the employee
       nationality: '',
       emirates_id: '',
       visa_expiry: '',
@@ -969,7 +972,7 @@ export function extractAllEmployeesFromDailyJobs(
       medical_insurance_expiry: '',
       passport_expiry: '',
       skills: [],
-      status: 'active',
+      status: lastDate >= activeSince ? 'active' : 'inactive',
       pay_rate_hourly: 0,
       joined_date: earliestDate,
       created_at: earliestDate.includes('T') ? earliestDate : `${earliestDate}T08:00:00.000Z`,

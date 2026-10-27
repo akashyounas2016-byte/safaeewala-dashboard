@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main` or `claude/workspace`, not yet confirmed deployed)
 
+- fix(staff, clients, agencies): audit phase 3 — no hard-coded roster, job-sheet-only staff inactive after 60 days (AUD-08), attendance splits shared shifts (AUD-18, R-ATT-04), Live Cleaners no double booking/job (AUD-19), one agency-staff rule everywhere (AUD-14), agency rename keeps staff (AUD-13), booking rows linked to clients by id (AUD-15)
 - fix(sync): audit phase 2 — Supabase write outbox with retry + banner (AUD-03, AUD-20), cloud copy of browser-only payments/attendance in `app_state` (AUD-02), agencies merged from both stores and saved per agency (AUD-04, K-03), loader pages past the 1000-row limit (AUD-23); migration `supabase/migrations/2026-10-27_phase2_sync.sql` (R-SYNC-05)
 - fix(reports, overview, agencies, employees): audit phase 1 — revenue counted once (AUD-01, AUD-05, R-FIN-03), agency revenue split for shared shifts (AUD-07, R-PAY-01), no invented AED 2500 salary (AUD-10, R-EMP-02)
 - docs(audit): data synchronisation & dummy-data audit — 22 findings AUD-01…AUD-22 with locations and fix order

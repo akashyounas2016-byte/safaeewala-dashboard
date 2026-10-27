@@ -13,7 +13,7 @@ import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero, type HeroNotification } from '@/components/layout/PageHero'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
-import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee } from '@/lib/utils'
+import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee, matchesAgencyFilter } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { Employee, DailyJob, EmployeeRole, Agency, EmployeeDocument } from '@/types'
 import { getAssignableClients, getEmployeeDailyJobsHistory, calcJobOTHours, getEmployeeMonthlySalary, formatMonthlySalary, splitStaffNames, MONTHLY_WORK_HOURS } from '@/lib/clientDataSync'
@@ -535,12 +535,7 @@ export function Employees() {
       return employees.filter(isParentCompanyEmployee)
     }
     if (agencyFilter !== 'all') {
-      return employees.filter(e =>
-        e.agency_id === agencyFilter ||
-        (e.agency_name && e.agency_name.toLowerCase().trim() === agencyFilter.toLowerCase().trim()) ||
-        (e.agency_name && e.agency_name.toLowerCase().includes(agencyFilter.toLowerCase())) ||
-        agencies.some(a => a.id === agencyFilter && (e.agency_id === a.id || e.agency_name === a.name))
-      )
+      return employees.filter(e => matchesAgencyFilter(e, agencyFilter, agencies)) // AUD-14
     }
     return employees
   }, [employees, agencyFilter, agencies])
@@ -624,11 +619,7 @@ export function Employees() {
       } else if (agencyFilter === 'parent_company' || agencyFilter === 'parent' || agencyFilter === 'safaeewala') {
         if (!isParentCompanyEmployee(e)) return false
       } else if (agencyFilter !== 'all') {
-        const matches =
-          e.agency_id === agencyFilter ||
-          (e.agency_name && e.agency_name.toLowerCase().includes(agencyFilter.toLowerCase())) ||
-          agencies.some(a => a.id === agencyFilter && (e.agency_id === a.id || e.agency_name === a.name))
-        if (!matches) return false
+        if (!matchesAgencyFilter(e, agencyFilter, agencies)) return false // AUD-14
       }
 
       const matchSearch = q === '' ||
