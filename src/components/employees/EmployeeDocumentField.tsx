@@ -1,14 +1,14 @@
-import React, { useRef } from 'react'
+import React, { useRef, useId } from 'react'
 import {
   FileText, Upload, Eye, Trash2, CheckCircle2, Download,
-  ExternalLink, FileCheck, Shield, AlertCircle, Paperclip, X
+  FileCheck, Paperclip
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import type { EmployeeDocument } from '@/types'
 
 export interface DocumentSectionProps {
-  category: EmployeeDocument['category']
+  category?: EmployeeDocument['category']
   title: string
   doc?: EmployeeDocument | null
   onUpload: (file: File) => void
@@ -23,7 +23,6 @@ export interface DocumentSectionProps {
  * Matches the layout and styling of the provided specification sheets.
  */
 export function EmployeeDocumentSection({
-  category,
   title,
   doc,
   onUpload,
@@ -226,37 +225,61 @@ export function EmployeeDocumentPreviewModal({
 export function EmployeeDocInput({
   name,
   label,
-  placeholder,
-  defaultValue,
   doc,
   onUpload,
   onRemove,
   onPreview,
+  accentColor = 'teal',
 }: {
   name: string
-  label: string
+  label?: string
   placeholder?: string
   defaultValue?: string
   doc?: EmployeeDocument
   onUpload: (file: File) => void
   onRemove: () => void
   onPreview: (doc: EmployeeDocument) => void
+  accentColor?: 'sky' | 'purple' | 'amber' | 'emerald' | 'blue' | 'indigo' | 'teal'
 }) {
-  const uploadInputId = `emp-upload-${name}-${Math.random().toString(36).slice(2, 7)}`
+  const inputId = useId()
+  const uploadInputId = `emp-upload-${name}-${inputId.replace(/:/g, '')}`
+
+  // Accent styles for button hover and preview icons
+  const accentHoverClasses = {
+    sky: 'hover:border-sky-400 hover:text-sky-800 group-hover:text-sky-600',
+    purple: 'hover:border-purple-400 hover:text-purple-800 group-hover:text-purple-600',
+    amber: 'hover:border-amber-400 hover:text-amber-800 group-hover:text-amber-600',
+    emerald: 'hover:border-emerald-400 hover:text-emerald-800 group-hover:text-emerald-600',
+    blue: 'hover:border-blue-400 hover:text-blue-800 group-hover:text-blue-600',
+    indigo: 'hover:border-indigo-400 hover:text-indigo-800 group-hover:text-indigo-600',
+    teal: 'hover:border-teal-400 hover:text-teal-800 group-hover:text-teal-600',
+  }[accentColor]
+
+  const accentPreviewClasses = {
+    sky: 'text-sky-700 hover:bg-sky-50',
+    purple: 'text-purple-700 hover:bg-purple-50',
+    amber: 'text-amber-700 hover:bg-amber-50',
+    emerald: 'text-emerald-700 hover:bg-emerald-50',
+    blue: 'text-blue-700 hover:bg-blue-50',
+    indigo: 'text-indigo-700 hover:bg-indigo-50',
+    teal: 'text-teal-700 hover:bg-teal-50',
+  }[accentColor]
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between">
-        <label className="text-[11.5px] font-bold text-slate-700">{label}</label>
-        {doc ? (
-          <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
-            <CheckCircle2 size={10} />
-            <span>Image Attached</span>
-          </span>
-        ) : (
-          <span className="text-[10px] font-semibold text-slate-400">No image</span>
-        )}
-      </div>
+      {label && (
+        <div className="flex items-center justify-between">
+          <label className="text-[11.5px] font-bold text-slate-700">{label}</label>
+          {doc ? (
+            <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <CheckCircle2 size={10} />
+              <span>Image Attached</span>
+            </span>
+          ) : (
+            <span className="text-[10px] font-semibold text-slate-400">No image</span>
+          )}
+        </div>
+      )}
 
       <input
         id={uploadInputId}
@@ -271,7 +294,7 @@ export function EmployeeDocInput({
       />
 
       {doc ? (
-        <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
+        <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white border border-slate-200/90 shadow-2xs">
           <div className="flex items-center gap-2 min-w-0">
             {doc.file_data?.startsWith('data:image/') ? (
               <img
@@ -297,14 +320,14 @@ export function EmployeeDocInput({
             <button
               type="button"
               onClick={() => onPreview(doc)}
-              className="p-1 rounded-lg text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
+              className={`p-1 rounded-lg ${accentPreviewClasses} transition-colors cursor-pointer`}
               title="Preview Image"
             >
               <Eye size={13} />
             </button>
             <label
               htmlFor={uploadInputId}
-              className="p-1 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 cursor-pointer transition-colors"
+              className={`p-1 rounded-lg text-slate-500 ${accentPreviewClasses} cursor-pointer transition-colors`}
               title="Change Image"
             >
               <Upload size={13} />
@@ -322,9 +345,9 @@ export function EmployeeDocInput({
       ) : (
         <label
           htmlFor={uploadInputId}
-          className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-dashed border-slate-300 bg-white hover:bg-slate-50 hover:border-teal-500 text-slate-600 hover:text-teal-700 transition-all cursor-pointer group shadow-2xs"
+          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-dashed border-slate-300 bg-white ${accentHoverClasses} text-slate-600 transition-all cursor-pointer group shadow-2xs`}
         >
-          <Upload size={13} className="text-slate-400 group-hover:text-teal-600 transition-colors" />
+          <Upload size={13} className="text-slate-400 transition-colors" />
           <span className="text-[11.5px] font-bold">Upload Image / Copy</span>
         </label>
       )}

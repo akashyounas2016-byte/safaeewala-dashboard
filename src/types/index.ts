@@ -67,10 +67,12 @@ export interface Client {
 
 export type EmployeeRole = 'cleaner' | 'supervisor' | 'crew_lead' | 'ducting' | 'technical' | 'store_cleaner' | 'driver'
 
+export type EmployeeDocumentCategory = 'eid' | 'passport' | 'visa' | 'work_permit' | 'driving_license' | 'medical_insurance' | 'noc' | 'other'
+
 export interface EmployeeDocument {
   id: string
   name: string
-  category: 'eid' | 'passport' | 'visa' | 'work_permit' | 'driving_license' | 'medical_insurance' | 'noc' | 'other'
+  category: EmployeeDocumentCategory
   file_data?: string // data URL or base64 string
   file_type?: string
   file_size?: number

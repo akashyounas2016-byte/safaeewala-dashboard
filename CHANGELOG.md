@@ -34,6 +34,10 @@
 - feat(agencies): Add New Agency popup reorganised with identity, insurance and bank fields — `5a00dc6`
 - feat(employees): employee document fields and uploads; "Ducting" role renamed "Technical" (R-EMP-01) — `51e65ca`
 
+## 2026-10-28
+
+- feat(employees): Redesigned Add New Employee and Edit Employee Profile popups (`EmployeeFormModal.tsx`) with distinct light background color tints matching Add Agency modal — Emirates ID (Sky Blue), Passport (Purple), Residency Visa (Amber), and Work Permit (Emerald), plus Blue tint for UAE Driving License; added issue/expiry date consistency validation, tailored hover states, and pure React 19 state initialization (R-EMP-04, D-05, D-09)
+
 ## 2026-10-27
 
 - fix: data consistency and calculation parity across employees and clients — `18036b2`
