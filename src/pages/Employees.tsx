@@ -6,7 +6,7 @@ import {
   TrendingUp, Trash2, CheckCircle, CheckCircle2, Upload, Download, FileSpreadsheet,
   Clock, ExternalLink, FileText, Calendar, RotateCcw, X, Filter,
   Flame, Zap, Briefcase, ArrowUpDown, LayoutGrid, List, ChevronRight, ChevronDown,
-  DollarSign, Award, Sparkles, Building2, MapPin, Eye, Pencil
+  DollarSign, Award, Sparkles, Building2, MapPin, Eye, Pencil, Check, Paperclip
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -214,6 +214,92 @@ function StatusBadge({ status }: { status: string }) {
       <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
       {s.label}
     </span>
+  )
+}
+
+// ── Document number field with inline upload icon (same look as the Add Agency popup) ──
+function EmployeeDocInput({
+  name,
+  label,
+  placeholder,
+  doc,
+  onUpload,
+  onRemove,
+  onPreview,
+}: {
+  name: string
+  label: string
+  placeholder?: string
+  doc?: EmployeeDocument
+  onUpload: (file: File) => void
+  onRemove: () => void
+  onPreview: (doc: EmployeeDocument) => void
+}) {
+  const uploadInputId = `emp-upload-${name}`
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <label className="text-[11.5px] font-bold text-slate-700">{label}</label>
+        {doc && (
+          <span className="text-[10px] font-black text-teal-700 bg-teal-50 border border-teal-200/80 px-1.5 rounded-full flex items-center gap-1">
+            <Paperclip size={9} />
+            <span>1 file</span>
+          </span>
+        )}
+      </div>
+
+      <div className="relative flex items-center">
+        <input
+          name={name}
+          placeholder={placeholder}
+          className="w-full rounded-xl border border-slate-200 bg-white pl-3 pr-10 py-2 text-[12px] font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-600/30 transition-all shadow-2xs"
+        />
+        <label
+          htmlFor={uploadInputId}
+          className="absolute right-1.5 p-1.5 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 cursor-pointer transition-colors"
+          title={doc ? `Replace ${label} document` : `Upload ${label} document`}
+        >
+          <Upload size={14} className="stroke-[2.2]" />
+          <input
+            id={uploadInputId}
+            type="file"
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={e => {
+              const f = e.target.files?.[0]
+              if (f) onUpload(f)
+              e.target.value = ''
+            }}
+          />
+        </label>
+      </div>
+
+      {doc && (
+        <div className="flex flex-wrap gap-1 mt-0.5">
+          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-teal-50/90 border border-teal-200/80 text-[10.5px] text-teal-900 shadow-2xs max-w-full">
+            <Paperclip size={10} className="text-teal-700 shrink-0" />
+            <span className="font-semibold truncate max-w-[125px]" title={doc.name}>{doc.name}</span>
+            <button
+              type="button"
+              onClick={() => onPreview(doc)}
+              className="text-teal-700 hover:text-teal-950 p-0.5 rounded hover:bg-teal-100/80 cursor-pointer"
+              title="Preview / Download Document"
+            >
+              <Eye size={11} />
+            </button>
+            <button
+              type="button"
+              onClick={onRemove}
+              className="text-slate-400 hover:text-rose-600 p-0.5 rounded hover:bg-rose-50 cursor-pointer"
+              title="Remove Document"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -522,30 +608,14 @@ export function Employees() {
     return employees
   }, [employees, agencyFilter, agencies])
 
-  // Dynamic list of Third-Party Agencies from database & employee records
+  // Third-Party Agencies for the filter — sourced only from the Agencies screen's list,
+  // so new agencies appear automatically and stale names on old employee records don't
   const dynamicAgencies = useMemo(() => {
-    const map = new Map<string, { id: string; name: string }>()
-
-    // 1. From database agencies
-    agencies
+    return agencies
       .filter(a => a.company_type !== 'Parent Company' && a.id !== 'agency-safaeewala' && !a.name.toLowerCase().includes('safaeewala'))
-      .forEach(a => {
-        map.set(a.id, { id: a.id, name: a.name })
-      })
-
-    // 2. From employee records (if any additional third-party agency names exist)
-    employees.forEach(e => {
-      if (isThirdPartyEmployee(e) && e.agency_name) {
-        const agName = e.agency_name.trim()
-        const agId = e.agency_id || `agency-name-${agName.toLowerCase().replace(/\s+/g, '-')}`
-        if (!map.has(agId) && !Array.from(map.values()).some(item => item.name.toLowerCase() === agName.toLowerCase())) {
-          map.set(agId, { id: e.agency_id || agName, name: agName })
-        }
-      }
-    })
-
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name))
-  }, [agencies, employees])
+      .map(a => ({ id: a.id, name: a.name }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [agencies])
 
   // Summary aggregation metrics for actual employee work
   const summaryMetrics = useMemo(() => {
@@ -1845,8 +1915,52 @@ export function Employees() {
       </div>
 
       {/* ── Add Employee Modal ── */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="Add New Employee" size="xl">
-        <form className="space-y-4 max-h-[82vh] overflow-y-auto pr-1" onSubmit={e => {
+      <Modal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        title="Add New Employee"
+        size="xl"
+        className="max-w-6xl"
+        headerActions={
+          <div className="flex items-center gap-3">
+            {/* Status lives in the header; `form` attribute keeps it part of the form data */}
+            <div className="flex items-center gap-2 pr-2 border-r border-slate-200">
+              <span className="text-[11px] font-bold text-slate-500">Status:</span>
+              <select
+                name="status"
+                form="add-employee-form"
+                defaultValue="active"
+                className="text-[11.5px] px-2 py-1 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-teal-600 font-bold text-slate-800 cursor-pointer shadow-2xs"
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="on_leave">On Leave</option>
+                <option value="engaged_in_project">Engaged in Project</option>
+              </select>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowModal(false)}
+              className="h-8 px-3 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="add-employee-form"
+              size="sm"
+              className="h-8 px-4 text-[11.5px] bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer flex items-center gap-1.5 shadow-xs"
+            >
+              <Check size={13} className="stroke-[2.5]" />
+              <span>Save Employee</span>
+            </Button>
+          </div>
+        }
+      >
+        <form id="add-employee-form" className="space-y-3.5" onSubmit={e => {
           e.preventDefault()
           const fd = new FormData(e.currentTarget)
           const role = addRole
@@ -1923,372 +2037,316 @@ export function Employees() {
           })
           setShowModal(false)
         }}>
-          {/* Top Section Header with Form Mode Banner */}
-          <div className="bg-gradient-to-r from-blue-50 to-slate-50 border border-blue-200/70 p-3 rounded-2xl flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-[12.5px] font-bold text-blue-950">Employee Form Mode:</span>
-              <span className="text-[11.5px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-600 text-white shadow-2xs">
-                {addRole === 'driver' ? '🚗 For Drivers' : '🧹 For Cleaners & Technical'}
-              </span>
-            </div>
-            <span className="text-[11px] text-slate-500 font-medium">Fields auto-switch based on Designation</span>
-          </div>
+          {/* ── Row 1: Profile · Role & Sourcing · Employment — single horizontal row ── */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+            {/* Employee Profile */}
+            <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
+              <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                <UserCheck size={13} className="text-teal-600" />
+                <span>Employee Profile</span>
+              </h4>
 
-          {/* Row 1: Full Name & Phone */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input name="full_name" label="Full Name" placeholder="e.g. Maria Santos" required />
-            <Input name="phone" label="Phone" placeholder="+971 50 000 0000" />
-          </div>
-
-          {/* Row 2: Nationality & Gender */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input name="nationality" label="Nationality" placeholder="e.g. Filipino, Pakistani, Indian, Nepali..." />
-            <Select name="gender" label="Gender" defaultValue="Female">
-              <option value="Female">Female</option>
-              <option value="Male">Male</option>
-              <option value="Other">Other</option>
-            </Select>
-          </div>
-
-          {/* Row 3: Role / Designation & Agency */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[12px] font-semibold text-slate-700 block mb-1">Designation / Role</label>
-              <select
-                name="role"
-                value={addRole}
-                onChange={e => setAddRole(e.target.value as EmployeeRole)}
-                className="w-full text-[13px] px-3 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-bold text-slate-800"
-                required
-              >
-                <option value="cleaner">Cleaner</option>
-                <option value="supervisor">Supervisor</option>
-                <option value="technical">Technical</option>
-                <option value="store_cleaner">Store Cleaner</option>
-                <option value="driver">Driver</option>
-              </select>
-            </div>
-
-            <Select name="agency_id" label="Agency / Sourcing Source">
-              <option value="">Safaeewala (Parent Company)</option>
-              {agencies.filter(a => a.id !== 'agency-safaeewala' && a.company_type !== 'Parent Company' && !a.name.toLowerCase().includes('safaeewala')).map(a => (
-                <option key={a.id} value={a.id}>
-                  {a.name} ({a.status})
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          {/* ── Document Section 1: EID (Emirates ID) ── */}
-          <EmployeeDocumentSection
-            category="eid"
-            title="EID"
-            doc={addDocs.eid}
-            onUpload={file => handleDocUpload(file, 'eid', setAddDocs)}
-            onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.eid; return n })}
-            onPreview={doc => setPreviewDoc(doc)}
-            description="Emirates ID Document & Start / End Dates"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Input name="eid_start_date" label="EID Start Date" type="date" />
-              <Input name="eid_end_date" label="EID End Date" type="date" />
-              <Input name="emirates_id" label="EID Number" placeholder="784-XXXX-XXXXXXX-X" />
-            </div>
-          </EmployeeDocumentSection>
-
-          {/* ── Document Section 2: Passport ── */}
-          <EmployeeDocumentSection
-            category="passport"
-            title="Passport"
-            doc={addDocs.passport}
-            onUpload={file => handleDocUpload(file, 'passport', setAddDocs)}
-            onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.passport; return n })}
-            onPreview={doc => setPreviewDoc(doc)}
-            description="Passport Document & Start / End Dates"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Input name="passport_start_date" label="Passport Start Date" type="date" />
-              <Input name="passport_expiry" label="Passport End Date" type="date" />
-              <Input name="passport_number" label="Passport Number" placeholder="e.g. A12345678" />
-            </div>
-          </EmployeeDocumentSection>
-
-          {/* ── Document Section 3: Visa ── */}
-          <EmployeeDocumentSection
-            category="visa"
-            title="Visa"
-            doc={addDocs.visa}
-            onUpload={file => handleDocUpload(file, 'visa', setAddDocs)}
-            onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.visa; return n })}
-            onPreview={doc => setPreviewDoc(doc)}
-            description="UAE Residence / Employment Visa"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Input name="visa_start_date" label="Visa Start Date" type="date" />
-              <Input name="visa_expiry" label="Visa End Date" type="date" />
-              <Input name="visa_number" label="Visa Number" placeholder="e.g. 201/2024/XXXXXXX" />
-            </div>
-          </EmployeeDocumentSection>
-
-          {/* ── Document Section 4: Work Permit ── */}
-          <EmployeeDocumentSection
-            category="work_permit"
-            title="Work Permit"
-            doc={addDocs.work_permit}
-            onUpload={file => handleDocUpload(file, 'work_permit', setAddDocs)}
-            onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.work_permit; return n })}
-            onPreview={doc => setPreviewDoc(doc)}
-            description="MOHRE Work Permit / Labor Card"
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Input name="work_permit_start_date" label="Work Permit Start Date" type="date" />
-              <Input name="work_permit_expiry" label="Work Permit End Date" type="date" />
-              <Input name="work_permit_number" label="Work Permit Number" placeholder="e.g. WP-XXXX-XXXX" />
-            </div>
-          </EmployeeDocumentSection>
-
-          {/* ── Document Section 5: Driving License (ONLY for Drivers) ── */}
-          {addRole === 'driver' && (
-            <EmployeeDocumentSection
-              category="driving_license"
-              title="Driving License"
-              doc={addDocs.driving_license}
-              onUpload={file => handleDocUpload(file, 'driving_license', setAddDocs)}
-              onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.driving_license; return n })}
-              onPreview={doc => setPreviewDoc(doc)}
-              description="UAE Driving License Details & Document"
-            >
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Input name="driving_license_no" label="License #" placeholder="e.g. 1234567" />
-                  <div>
-                    <label className="text-[12px] font-semibold text-slate-700 block mb-1">Place of Issue</label>
-                    <select
-                      name="driving_license_place_of_issue"
-                      className="w-full text-[13px] px-3 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-blue-500 font-medium text-slate-800"
-                      defaultValue="Dubai"
-                    >
-                      <option value="Dubai">Dubai</option>
-                      <option value="Abu Dhabi">Abu Dhabi</option>
-                      <option value="Sharjah">Sharjah</option>
-                      <option value="Ajman">Ajman</option>
-                      <option value="Ras Al Khaimah">Ras Al Khaimah</option>
-                      <option value="Fujairah">Fujairah</option>
-                      <option value="Umm Al Quwain">Umm Al Quwain</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Input name="driving_license_issue_date" label="Issue Date" type="date" />
-                  <Input name="driving_license_expiry_date" label="Expiry Date" type="date" />
-                </div>
-              </div>
-            </EmployeeDocumentSection>
-          )}
-
-          {/* Financial & Insurance Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
-            <Input
-              name="monthly_salary"
-              label="Monthly Salary (AED/mo)"
-              type="number"
-              placeholder="e.g. 2500"
-              required
-            />
-
-            {/* Medical Insurance (Blue Accent block with Upload) */}
-            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-[12px] font-bold text-blue-900 block">Medical Insurance</label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    id="med-upload-add"
-                    type="file"
-                    className="hidden"
-                    accept="image/*,application/pdf"
-                    onChange={e => {
-                      const f = e.target.files?.[0]
-                      if (f) handleDocUpload(f, 'medical_insurance', setAddDocs)
-                      e.target.value = ''
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById('med-upload-add')?.click()}
-                    className="text-[10.5px] font-bold px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center gap-1 cursor-pointer transition-all"
-                  >
-                    <Upload size={10} /> {addDocs.medical_insurance ? 'Replace' : 'Upload Card'}
-                  </button>
-                  {addDocs.medical_insurance && (
-                    <button
-                      type="button"
-                      onClick={() => setPreviewDoc(addDocs.medical_insurance)}
-                      className="p-1 rounded text-blue-700 hover:bg-blue-100 cursor-pointer"
-                      title="Preview Document"
-                    >
-                      <Eye size={12} />
-                    </button>
-                  )}
-                </div>
-              </div>
+              <Input name="full_name" label="Full Name *" placeholder="e.g. Maria Santos" required />
               <div className="grid grid-cols-2 gap-2">
-                <input
-                  name="medical_insurance"
-                  placeholder="Policy / Card #"
-                  className="w-full text-[12px] px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg focus:outline-none focus:border-blue-500"
-                />
-                <input
-                  name="medical_insurance_expiry"
-                  type="date"
-                  className="w-full text-[12px] px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg focus:outline-none focus:border-blue-500"
-                  title="Insurance Expiry Date"
-                />
-              </div>
-              {addDocs.medical_insurance && (
-                <p className="text-[10.5px] text-emerald-700 font-bold flex items-center gap-1 truncate">
-                  <CheckCircle2 size={11} className="shrink-0" /> {addDocs.medical_insurance.name}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Joining Date & End Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              name="joined_date"
-              label="Joining Date"
-              type="date"
-              defaultValue={new Date().toISOString().split('T')[0]}
-            />
-            <Input name="end_date" label="End Date" type="date" />
-          </div>
-
-          {/* NOC & Status */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
-            {/* NOC (Blue Accent block with Upload) */}
-            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-[12px] font-bold text-blue-900 block">NOC (No Objection Certificate)</label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    id="noc-upload-add"
-                    type="file"
-                    className="hidden"
-                    accept="image/*,application/pdf"
-                    onChange={e => {
-                      const f = e.target.files?.[0]
-                      if (f) handleDocUpload(f, 'noc', setAddDocs)
-                      e.target.value = ''
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById('noc-upload-add')?.click()}
-                    className="text-[10.5px] font-bold px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center gap-1 cursor-pointer transition-all"
+                <Input name="phone" label="Phone" placeholder="+971 50 000 0000" />
+                <div>
+                  <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Gender</label>
+                  <select
+                    name="gender"
+                    defaultValue="Female"
+                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
                   >
-                    <Upload size={10} /> {addDocs.noc ? 'Replace' : 'Upload NOC'}
-                  </button>
-                  {addDocs.noc && (
-                    <button
-                      type="button"
-                      onClick={() => setPreviewDoc(addDocs.noc)}
-                      className="p-1 rounded text-blue-700 hover:bg-blue-100 cursor-pointer"
-                      title="Preview Document"
-                    >
-                      <Eye size={12} />
-                    </button>
-                  )}
+                    <option value="Female">Female</option>
+                    <option value="Male">Male</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
               </div>
-              <input
-                name="noc"
-                placeholder="NOC Ref # or Notes"
-                className="w-full text-[12px] px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg focus:outline-none focus:border-blue-500"
-              />
-              {addDocs.noc && (
-                <p className="text-[10.5px] text-emerald-700 font-bold flex items-center gap-1 truncate">
-                  <CheckCircle2 size={11} className="shrink-0" /> {addDocs.noc.name}
-                </p>
-              )}
+              <Input name="nationality" label="Nationality" placeholder="e.g. Filipino, Pakistani, Indian, Nepali..." />
             </div>
 
-            <Select name="status" label="Status" defaultValue="active">
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="on_leave">On Leave</option>
-              <option value="engaged_in_project">Engaged in Project</option>
-            </Select>
-          </div>
+            {/* Role & Sourcing */}
+            <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
+                <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 flex items-center gap-1.5">
+                  <Briefcase size={13} className="text-teal-600" />
+                  <span>Role & Sourcing</span>
+                </h4>
+                <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-lg border border-teal-200/60">
+                  {addRole === 'driver' ? 'Driver Form' : 'Cleaner & Technical Form'}
+                </span>
+              </div>
 
-          {/* Conditional Bottom Section: Driver specific vs Cleaner specific */}
-          {addRole === 'driver' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <div>
-                <label className="text-[12px] font-semibold text-slate-700 block mb-1">Licence Type</label>
+                <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Designation / Role *</label>
                 <select
-                  name="driving_license_type"
-                  className="w-full text-[13px] px-3 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-blue-500 font-medium text-slate-800"
-                  defaultValue="Light Vehicle (Automatic)"
+                  name="role"
+                  value={addRole}
+                  onChange={e => setAddRole(e.target.value as EmployeeRole)}
+                  className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
+                  required
                 >
-                  <option value="Light Vehicle (Automatic)">Light Vehicle (Automatic)</option>
-                  <option value="Light Vehicle (Manual)">Light Vehicle (Manual)</option>
-                  <option value="Heavy Bus">Heavy Bus</option>
-                  <option value="Heavy Truck">Heavy Truck</option>
-                  <option value="Motorcycle">Motorcycle</option>
-                  <option value="Forklift">Forklift</option>
+                  <option value="cleaner">Cleaner</option>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="technical">Technical</option>
+                  <option value="store_cleaner">Store Cleaner</option>
+                  <option value="driver">Driver</option>
                 </select>
               </div>
-              <Input
-                name="assigned_vehicle"
-                label="Assign Vehicle"
-                placeholder="e.g. Van 1, Toyota HiAce, Plate #12345"
-              />
+              <div>
+                <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Agency / Sourcing Source</label>
+                <select
+                  name="agency_id"
+                  defaultValue=""
+                  className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
+                >
+                  <option value="">Safaeewala (Parent Company)</option>
+                  {agencies.filter(a => a.id !== 'agency-safaeewala' && a.company_type !== 'Parent Company' && !a.name.toLowerCase().includes('safaeewala')).map(a => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({a.status})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-[10.5px] text-slate-500 font-medium">
+                Document & assignment fields below switch automatically with the designation.
+              </p>
             </div>
-          ) : (
-            <div className="space-y-4 pt-1">
-              {/* Skills */}
-              <Input
-                name="skills"
-                label="Skills (comma separated)"
-                placeholder="Deep Clean, Sofa, Window, Technical, Carpet..."
-              />
 
-              {/* Client Assignee Selection */}
-              <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3.5 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Briefcase size={14} className="text-teal-600" />
-                    <span className="text-[12px] font-black text-slate-800 uppercase tracking-wider">Client Assign</span>
+            {/* Employment & Salary */}
+            <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
+              <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                <DollarSign size={13} className="text-teal-600" />
+                <span>Employment & Salary</span>
+              </h4>
+
+              <Input name="monthly_salary" label="Monthly Salary (AED/mo) *" type="number" placeholder="e.g. 2500" required />
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  name="joined_date"
+                  label="Joining Date"
+                  type="date"
+                  defaultValue={new Date().toISOString().split('T')[0]}
+                />
+                <Input name="end_date" label="End Date" type="date" />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Row 2: Identity & Work Documents ── */}
+          <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+            <h4 className="text-[12px] font-black uppercase tracking-wider text-amber-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+              <Shield size={13} className="text-amber-600" />
+              <span>Identity & Work Documents</span>
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
+              {/* Emirates ID */}
+              <div className="space-y-2">
+                <EmployeeDocInput
+                  name="emirates_id"
+                  label="Emirates ID (EID)"
+                  placeholder="784-XXXX-XXXXXXX-X"
+                  doc={addDocs.eid}
+                  onUpload={file => handleDocUpload(file, 'eid', setAddDocs)}
+                  onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.eid; return n })}
+                  onPreview={doc => setPreviewDoc(doc)}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input name="eid_start_date" label="EID Start Date" type="date" />
+                  <Input name="eid_end_date" label="EID End Date" type="date" />
+                </div>
+              </div>
+
+              {/* Passport */}
+              <div className="space-y-2">
+                <EmployeeDocInput
+                  name="passport_number"
+                  label="Passport"
+                  placeholder="e.g. A12345678"
+                  doc={addDocs.passport}
+                  onUpload={file => handleDocUpload(file, 'passport', setAddDocs)}
+                  onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.passport; return n })}
+                  onPreview={doc => setPreviewDoc(doc)}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input name="passport_start_date" label="Passport Start Date" type="date" />
+                  <Input name="passport_expiry" label="Passport End Date" type="date" />
+                </div>
+              </div>
+
+              {/* Visa */}
+              <div className="space-y-2">
+                <EmployeeDocInput
+                  name="visa_number"
+                  label="Residence / Employment Visa"
+                  placeholder="e.g. 201/2024/XXXXXXX"
+                  doc={addDocs.visa}
+                  onUpload={file => handleDocUpload(file, 'visa', setAddDocs)}
+                  onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.visa; return n })}
+                  onPreview={doc => setPreviewDoc(doc)}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input name="visa_start_date" label="Visa Start Date" type="date" />
+                  <Input name="visa_expiry" label="Visa End Date" type="date" />
+                </div>
+              </div>
+
+              {/* Work Permit */}
+              <div className="space-y-2">
+                <EmployeeDocInput
+                  name="work_permit_number"
+                  label="Work Permit / Labor Card"
+                  placeholder="e.g. WP-XXXX-XXXX"
+                  doc={addDocs.work_permit}
+                  onUpload={file => handleDocUpload(file, 'work_permit', setAddDocs)}
+                  onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.work_permit; return n })}
+                  onPreview={doc => setPreviewDoc(doc)}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input name="work_permit_start_date" label="Permit Start Date" type="date" />
+                  <Input name="work_permit_expiry" label="Permit End Date" type="date" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Row 3: Insurance & Clearance · Role-specific assignment ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+            {/* Insurance & NOC */}
+            <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+              <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                <FileText size={13} className="text-indigo-600" />
+                <span>Insurance & Clearance</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="space-y-2">
+                  <EmployeeDocInput
+                    name="medical_insurance"
+                    label="Medical Insurance"
+                    placeholder="Policy / Card #"
+                    doc={addDocs.medical_insurance}
+                    onUpload={file => handleDocUpload(file, 'medical_insurance', setAddDocs)}
+                    onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.medical_insurance; return n })}
+                    onPreview={doc => setPreviewDoc(doc)}
+                  />
+                  <Input name="medical_insurance_expiry" label="Insurance Expiry Date" type="date" />
+                </div>
+                <div className="space-y-2">
+                  <EmployeeDocInput
+                    name="noc"
+                    label="NOC (No Objection Certificate)"
+                    placeholder="NOC Ref # or Notes"
+                    doc={addDocs.noc}
+                    onUpload={file => handleDocUpload(file, 'noc', setAddDocs)}
+                    onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.noc; return n })}
+                    onPreview={doc => setPreviewDoc(doc)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {addRole === 'driver' ? (
+              /* Driving License & Vehicle (Drivers only) */
+              <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+                <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                  <MapPin size={13} className="text-indigo-600" />
+                  <span>Driving License & Vehicle</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-2">
+                    <EmployeeDocInput
+                      name="driving_license_no"
+                      label="License #"
+                      placeholder="e.g. 1234567"
+                      doc={addDocs.driving_license}
+                      onUpload={file => handleDocUpload(file, 'driving_license', setAddDocs)}
+                      onRemove={() => setAddDocs(prev => { const n = { ...prev }; delete n.driving_license; return n })}
+                      onPreview={doc => setPreviewDoc(doc)}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input name="driving_license_issue_date" label="Issue Date" type="date" />
+                      <Input name="driving_license_expiry_date" label="Expiry Date" type="date" />
+                    </div>
                   </div>
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Place of Issue</label>
+                        <select
+                          name="driving_license_place_of_issue"
+                          defaultValue="Dubai"
+                          className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
+                        >
+                          <option value="Dubai">Dubai</option>
+                          <option value="Abu Dhabi">Abu Dhabi</option>
+                          <option value="Sharjah">Sharjah</option>
+                          <option value="Ajman">Ajman</option>
+                          <option value="Ras Al Khaimah">Ras Al Khaimah</option>
+                          <option value="Fujairah">Fujairah</option>
+                          <option value="Umm Al Quwain">Umm Al Quwain</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Licence Type</label>
+                        <select
+                          name="driving_license_type"
+                          defaultValue="Light Vehicle (Automatic)"
+                          className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
+                        >
+                          <option value="Light Vehicle (Automatic)">Light Vehicle (Automatic)</option>
+                          <option value="Light Vehicle (Manual)">Light Vehicle (Manual)</option>
+                          <option value="Heavy Bus">Heavy Bus</option>
+                          <option value="Heavy Truck">Heavy Truck</option>
+                          <option value="Motorcycle">Motorcycle</option>
+                          <option value="Forklift">Forklift</option>
+                        </select>
+                      </div>
+                    </div>
+                    <Input name="assigned_vehicle" label="Assign Vehicle" placeholder="e.g. Van 1, Toyota HiAce, Plate #12345" />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Skills & Client Assignment (Cleaners & Technical) */
+              <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
+                  <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 flex items-center gap-1.5">
+                    <Sparkles size={13} className="text-indigo-600" />
+                    <span>Skills & Client Assignment</span>
+                  </h4>
                   <div className="flex items-center gap-2">
                     {addClientIds.length > 0 && (
                       <button
                         type="button"
                         onClick={() => setAddClientIds([])}
-                        className="text-[11px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
+                        className="text-[10.5px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
                       >
                         Clear All
                       </button>
                     )}
-                    <span className="text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200 px-2 py-0.5 rounded-full">
+                    <span className="text-[10.5px] font-bold bg-teal-50 text-teal-800 border border-teal-200/60 px-2 py-0.5 rounded-lg">
                       {addClientIds.length} Clients Assigned
                     </span>
                   </div>
                 </div>
 
+                <Input name="skills" label="Skills (comma separated)" placeholder="Deep Clean, Sofa, Window, Technical, Carpet..." />
+
                 <div className="relative">
                   <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search clients by name or company..."
+                    placeholder="Search clients by name or location..."
                     value={clientSearchAdd}
                     onChange={e => setClientSearchAdd(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500"
+                    className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 shadow-2xs"
                   />
                 </div>
 
-                <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                <div className="max-h-[120px] overflow-y-auto space-y-1 pr-1">
                   {clients
                     .filter(c => {
                       if (!clientSearchAdd) return true
@@ -2302,7 +2360,7 @@ export function Employees() {
                       return (
                         <label
                           key={c.id}
-                          className={`flex items-center justify-between p-2 rounded-xl text-[12px] border cursor-pointer transition-colors ${
+                          className={`flex items-center justify-between p-2 rounded-xl text-[11.5px] border cursor-pointer transition-colors shadow-2xs ${
                             checked
                               ? 'bg-teal-50 border-teal-300 text-teal-950 font-bold'
                               : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
@@ -2328,12 +2386,7 @@ export function Employees() {
                     })}
                 </div>
               </div>
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-3">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button type="submit" className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold">Save Employee</Button>
+            )}
           </div>
         </form>
       </Modal>
