@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main` or `claude/workspace`, not yet confirmed deployed)
 
+- docs(audit): data synchronisation & dummy-data audit — 22 findings AUD-01…AUD-22 with locations and fix order
 - docs: documentation structure — README, rules registry with IDs, design, architecture, prod, data model, workflow, decision log (DEC-008) — `ad70b43`
 - feat(agencies, employees): Agency popup agreement / workmen compensation / bank rows, Live Cleaners modal, Edit Employee popups in tinted layout (Antigravity) — `8c9dfb8`
 - feat(agencies): Agencies bell shows document, contract, payout and staff-compliance alerts (R-AGN-04) — `a0d99b9`

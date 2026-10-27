@@ -105,7 +105,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ## DATA — Data hygiene
 
 ### R-DATA-01 — Ignore Excel summary / bogus rows
-- **Rule:** Skip rows with no address and no times; no address with charges or received > 1500 (footer totals); `duty_hours > 24`; or text containing `gross`, `pending rcvd`, `total`, `expences`, `net total`, `summary`, `expense`.
+- **Rule:** Skip rows with no address and no times; no address with charges or received > 1500 (footer totals); `duty_hours > 24`; or text containing `gross`, `pending rcvd`, `total`, `expences`, `net total`, `summary` (staff names additionally reject `expense`, `nil`, `none`).
 - **Code:** `clientDataSync.ts → isBogusJob, isBogusStaffName`.
 - **Status:** Active
 
@@ -245,3 +245,5 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 | K-03 | Agency saves POST the **whole agency list** (`{ all: next }`); a stale tab can overwrite newer agencies. | R-AGN-* |
 | K-04 | New employee fields (`photo_url`, document numbers/files) may not exist as Supabase columns; if not, they persist only in that browser. | R-EMP-* |
 | K-05 | Seed/demo data still loads when Supabase and localStorage are both empty. | R-DATA-03 |
+
+Full list of sync / dummy-data issues with locations: [docs/audits/2026-10-27-data-sync-audit.md](docs/audits/2026-10-27-data-sync-audit.md) (AUD-01 … AUD-22).
