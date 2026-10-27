@@ -1,28 +1,22 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
-  ArrowLeft, Phone, Mail, MapPin, Calendar, Star, Clock, Camera, Activity,
-  CheckCircle, CheckCircle2, User, Shield, DollarSign, ExternalLink, Pencil,
-  Search, FileText, TrendingUp, AlertTriangle, Layers,
-  Download, Eye, FileCheck, Truck, Briefcase, Paperclip, Building2, Upload, Trash2,
-  Flame, Zap, UserCheck, Sparkles, Check
+  ArrowLeft, Phone, Mail, MapPin, Calendar, Clock, Camera, Activity,
+  User, Shield, DollarSign, Pencil,
+  Search, FileText,
+  Download, Eye, FileCheck, Truck, Paperclip, Building2,
+  Flame
 } from 'lucide-react'
 import { useData } from '@/store/DataContext'
-import { Input, Select, Textarea } from '@/components/ui/Input'
 import { formatDate, daysUntil } from '@/lib/utils'
-import { Button } from '@/components/ui/Button'
-import { Modal } from '@/components/ui/Modal'
-import type { PaymentMode, EmployeeRole, EmployeeDocument, Employee } from '@/types'
+import type { PaymentMode, EmployeeDocument, EmployeeDocumentCategory } from '@/types'
 import { EmployeeDocumentPreviewModal } from '@/components/employees/EmployeeDocumentField'
 import {
-  getAssignableClients,
   formatMonthlySalary,
   getEmployeeDailyJobsHistory,
   calcJobOTHours,
   cleanClientNameFromAddress,
   splitStaffNames,
-  MONTHLY_WORK_HOURS,
-  formatEmpRole,
 } from '@/lib/clientDataSync'
 import { calcEmployeeHealth, type EmployeeHealth } from '@/lib/employeeHealth'
 import { EmployeeFormModal } from '@/components/employees/EmployeeFormModal'
@@ -140,7 +134,7 @@ export function EmployeeProfile() {
         list.push({
           id: `doc-${cat}-${emp.id}`,
           name,
-          category: cat as any,
+          category: cat as EmployeeDocumentCategory,
           file_data: fileData,
           file_type: fileData.startsWith('data:image/') ? 'image/jpeg' : 'application/pdf',
           file_size: Math.round(fileData.length * 0.75),

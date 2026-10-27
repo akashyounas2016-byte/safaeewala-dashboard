@@ -14,7 +14,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
 import type { Agency, Employee, DailyJob, AgencySalaryPayout, AgencyDocument, AgencyDocumentCategory, AgencyContactPerson } from '@/types'
 import { formatDate, formatCurrency, daysUntil, isParentCompanyEmployee } from '@/lib/utils'
-import { getEmployeeDailyJobsHistory, employeeMatchesStaff, MONTHLY_WORK_HOURS, jobChargeShare, shiftSalaryCost, formatMonthlySalary } from '@/lib/clientDataSync'
+import { getEmployeeDailyJobsHistory, employeeMatchesStaff, jobChargeShare, shiftSalaryCost, formatMonthlySalary } from '@/lib/clientDataSync'
 import { generateCertificateDataUrl } from '@/lib/agencyCertificates'
 
 // ── Pure Image / Document Upload Field for Agencies (matching EmployeeDocInput style) ──
