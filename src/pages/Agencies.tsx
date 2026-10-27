@@ -17,6 +17,7 @@ import { formatDate, isThirdPartyEmployee, isParentCompanyEmployee, slugifyAgenc
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { AgencyDashboard } from '@/components/agencies/AgencyDashboard'
 import { cleanClientNameFromAddress, employeeMatchesStaff, splitStaffNames, isBogusJob } from '@/lib/clientDataSync'
+import { buildAgencyNotifications } from '@/lib/agencyAlerts'
 
 export { slugifyAgencyName }
 
@@ -534,6 +535,12 @@ export function Agencies() {
     navigate(`/agencies/${encodeURIComponent(slug)}`)
   }
 
+  const agencyNotifications = useMemo(
+    () => buildAgencyNotifications(agencies, employees, handleOpenAgency),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [agencies, employees]
+  )
+
   // ── Search & Filter State ──
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
@@ -687,6 +694,7 @@ export function Agencies() {
         statusChip="Vendor Management"
         actionLabel="Add New Agency"
         onAction={handleOpenAddModal}
+        notifications={agencyNotifications}
       />
 
       {/* ── KPI Stat Cards (Clickable Quick Filters) ── */}
