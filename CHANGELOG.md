@@ -6,9 +6,10 @@
 
 ## Unreleased (in `main` or `claude/workspace`, not yet confirmed deployed)
 
-- docs: documentation structure — README, rules registry with IDs, design, architecture, prod, data model, workflow, decision log (DEC-008)
-- feat(agencies): Agencies bell shows document, contract, payout and staff-compliance alerts (R-AGN-04) — `a713ac0`
-- fix(bookings): job sheet gets cleaner names instead of employee IDs; agency payouts now count booking shifts (R-SYNC-02) — `4d65fba`
+- docs: documentation structure — README, rules registry with IDs, design, architecture, prod, data model, workflow, decision log (DEC-008) — `ad70b43`
+- feat(agencies, employees): Agency popup agreement / workmen compensation / bank rows, Live Cleaners modal, Edit Employee popups in tinted layout (Antigravity) — `8c9dfb8`
+- feat(agencies): Agencies bell shows document, contract, payout and staff-compliance alerts (R-AGN-04) — `a0d99b9`
+- fix(bookings): job sheet gets cleaner names instead of employee IDs; agency payouts now count booking shifts (R-SYNC-02) — `28d15cd`
 - feat(employees): tinted document cards in Add Employee popup, insurance/NOC row, live-only client lists (D-05, R-DATA-03) — `3f83c01`
 - feat(employees): Health Score, profile photo upload, row show/hide, Import/Export labels, Employees bell alerts (R-EMP-03, R-EMP-04) — `ac0e0c7`
 - feat(employees): Add Employee popup redesigned like Add Agency; agency filter from Agencies list only (R-AGN-03) — `1bf35cb`
