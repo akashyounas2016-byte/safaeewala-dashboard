@@ -245,13 +245,15 @@ function handleFileUpload(
 // ── Pure Image / Document Upload Field for Agencies (matching EmployeeDocInput style) ──
 function AgencyDocUploadField({
   label,
+  buttonText,
   category,
   documents,
   onAttach,
   onRemove,
   onPreview,
 }: {
-  label: string
+  label?: string
+  buttonText?: string
   category: AgencyDocumentCategory
   documents: AgencyDocument[]
   onAttach: (files: FileList | null) => void
@@ -264,17 +266,19 @@ function AgencyDocUploadField({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between">
-        <label className="text-[11.5px] font-bold text-slate-700">{label}</label>
-        {doc ? (
-          <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
-            <CheckCircle2 size={10} />
-            <span>Image Attached</span>
-          </span>
-        ) : (
-          <span className="text-[10px] font-semibold text-slate-400">No image</span>
-        )}
-      </div>
+      {label && (
+        <div className="flex items-center justify-between">
+          <label className="text-[11.5px] font-bold text-slate-700">{label}</label>
+          {doc ? (
+            <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <CheckCircle2 size={10} />
+              <span>Image Attached</span>
+            </span>
+          ) : (
+            <span className="text-[10px] font-semibold text-slate-400">No image</span>
+          )}
+        </div>
+      )}
 
       <input
         id={uploadInputId}
@@ -342,7 +346,7 @@ function AgencyDocUploadField({
           className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-dashed border-slate-300 bg-white hover:bg-slate-50 hover:border-teal-500 text-slate-600 hover:text-teal-700 transition-all cursor-pointer group shadow-2xs"
         >
           <Upload size={13} className="text-slate-400 group-hover:text-teal-600 transition-colors" />
-          <span className="text-[11.5px] font-bold">Upload Image / Copy</span>
+          <span className="text-[11.5px] font-bold">{buttonText || 'Upload Image / Copy'}</span>
         </label>
       )}
     </div>
@@ -1788,9 +1792,13 @@ export function Agencies() {
                     <Shield size={12} className="text-amber-600" />
                     Trade License
                   </span>
+                  {addDocs.some(d => d.category === 'trade_license') && (
+                    <span className="text-[9.5px] font-black text-amber-800 bg-amber-100/90 px-1.5 py-0.5 rounded-md border border-amber-200">
+                      ATTACHED
+                    </span>
+                  )}
                 </div>
                 <AgencyDocUploadField
-                  label="Trade License Copy / Image"
                   category="trade_license"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'trade_license', setAddDocs)}
@@ -1810,9 +1818,13 @@ export function Agencies() {
                     <FileText size={12} className="text-sky-600" />
                     Emirates ID (EID)
                   </span>
+                  {addDocs.some(d => d.category === 'emirates_id') && (
+                    <span className="text-[9.5px] font-black text-sky-800 bg-sky-100/90 px-1.5 py-0.5 rounded-md border border-sky-200">
+                      ATTACHED
+                    </span>
+                  )}
                 </div>
                 <AgencyDocUploadField
-                  label="Emirates ID Copy / Image"
                   category="emirates_id"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'emirates_id', setAddDocs)}
@@ -1832,9 +1844,13 @@ export function Agencies() {
                     <FileText size={12} className="text-purple-600" />
                     Passport
                   </span>
+                  {addDocs.some(d => d.category === 'passport') && (
+                    <span className="text-[9.5px] font-black text-purple-800 bg-purple-100/90 px-1.5 py-0.5 rounded-md border border-purple-200">
+                      ATTACHED
+                    </span>
+                  )}
                 </div>
                 <AgencyDocUploadField
-                  label="Passport Copy / Image"
                   category="passport"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'passport', setAddDocs)}
@@ -1854,9 +1870,14 @@ export function Agencies() {
                     <Check size={12} className="text-emerald-600" />
                     Tax & NOC
                   </span>
+                  {addDocs.some(d => d.category === 'tax_registration' || d.category === 'noc') && (
+                    <span className="text-[9.5px] font-black text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded-md border border-emerald-200">
+                      ATTACHED
+                    </span>
+                  )}
                 </div>
                 <AgencyDocUploadField
-                  label="Tax Registration (TRN) Copy"
+                  buttonText="Upload Tax Registration (TRN)"
                   category="tax_registration"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'tax_registration', setAddDocs)}
@@ -1864,7 +1885,7 @@ export function Agencies() {
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <AgencyDocUploadField
-                  label="NOC Clearance Document"
+                  buttonText="Upload NOC Clearance Document"
                   category="noc"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'noc', setAddDocs)}
@@ -1885,12 +1906,18 @@ export function Agencies() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
               {/* Column 1: Commercial Agreement */}
               <div className="bg-white border border-indigo-200/80 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
-                <span className="text-[10.5px] font-bold uppercase tracking-wider text-indigo-800 flex items-center gap-1">
-                  <FileText size={11} className="text-indigo-600" />
-                  Agreement Document
-                </span>
+                <div className="flex items-center justify-between pb-1 border-b border-indigo-200/60">
+                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-indigo-800 flex items-center gap-1">
+                    <FileText size={11} className="text-indigo-600" />
+                    Agreement Document
+                  </span>
+                  {addDocs.some(d => d.category === 'agreement') && (
+                    <span className="text-[9.5px] font-black text-indigo-800 bg-indigo-100/90 px-1.5 py-0.5 rounded-md border border-indigo-200">
+                      ATTACHED
+                    </span>
+                  )}
+                </div>
                 <AgencyDocUploadField
-                  label="Commercial Agreement Document"
                   category="agreement"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'agreement', setAddDocs)}
@@ -1905,12 +1932,18 @@ export function Agencies() {
 
               {/* Column 2: Workman Compensation — Directly aligned beside Agreement */}
               <div className="bg-white border border-indigo-200/80 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
-                <span className="text-[10.5px] font-bold uppercase tracking-wider text-indigo-800 flex items-center gap-1">
-                  <Shield size={11} className="text-indigo-600" />
-                  Workman Compensation
-                </span>
+                <div className="flex items-center justify-between pb-1 border-b border-indigo-200/60">
+                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-indigo-800 flex items-center gap-1">
+                    <Shield size={11} className="text-indigo-600" />
+                    Workman Compensation
+                  </span>
+                  {addDocs.some(d => d.category === 'workmen_compensation') && (
+                    <span className="text-[9.5px] font-black text-indigo-800 bg-indigo-100/90 px-1.5 py-0.5 rounded-md border border-indigo-200">
+                      ATTACHED
+                    </span>
+                  )}
+                </div>
                 <AgencyDocUploadField
-                  label="Workman Compensation Policy"
                   category="workmen_compensation"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'workmen_compensation', setAddDocs)}
@@ -2232,9 +2265,13 @@ export function Agencies() {
                       <Shield size={12} className="text-amber-600" />
                       Trade License
                     </span>
+                    {editDocs.some(d => d.category === 'trade_license') && (
+                      <span className="text-[9.5px] font-black text-amber-800 bg-amber-100/90 px-1.5 py-0.5 rounded-md border border-amber-200">
+                        ATTACHED
+                      </span>
+                    )}
                   </div>
                   <AgencyDocUploadField
-                    label="Trade License Copy / Image"
                     category="trade_license"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'trade_license', setEditDocs)}
@@ -2254,9 +2291,13 @@ export function Agencies() {
                       <FileText size={12} className="text-sky-600" />
                       Emirates ID (EID)
                     </span>
+                    {editDocs.some(d => d.category === 'emirates_id') && (
+                      <span className="text-[9.5px] font-black text-sky-800 bg-sky-100/90 px-1.5 py-0.5 rounded-md border border-sky-200">
+                        ATTACHED
+                      </span>
+                    )}
                   </div>
                   <AgencyDocUploadField
-                    label="Emirates ID Copy / Image"
                     category="emirates_id"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'emirates_id', setEditDocs)}
@@ -2276,9 +2317,13 @@ export function Agencies() {
                       <FileText size={12} className="text-purple-600" />
                       Passport
                     </span>
+                    {editDocs.some(d => d.category === 'passport') && (
+                      <span className="text-[9.5px] font-black text-purple-800 bg-purple-100/90 px-1.5 py-0.5 rounded-md border border-purple-200">
+                        ATTACHED
+                      </span>
+                    )}
                   </div>
                   <AgencyDocUploadField
-                    label="Passport Copy / Image"
                     category="passport"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'passport', setEditDocs)}
@@ -2298,9 +2343,14 @@ export function Agencies() {
                       <Check size={12} className="text-emerald-600" />
                       Tax & NOC
                     </span>
+                    {editDocs.some(d => d.category === 'tax_registration' || d.category === 'noc') && (
+                      <span className="text-[9.5px] font-black text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded-md border border-emerald-200">
+                        ATTACHED
+                      </span>
+                    )}
                   </div>
                   <AgencyDocUploadField
-                    label="Tax Registration (TRN) Copy"
+                    buttonText="Upload Tax Registration (TRN)"
                     category="tax_registration"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'tax_registration', setEditDocs)}
@@ -2308,7 +2358,7 @@ export function Agencies() {
                     onPreview={doc => setPreviewDoc(doc)}
                   />
                   <AgencyDocUploadField
-                    label="NOC Clearance Document"
+                    buttonText="Upload NOC Clearance Document"
                     category="noc"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'noc', setEditDocs)}
@@ -2329,12 +2379,18 @@ export function Agencies() {
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
                 {/* Column 1: Commercial Agreement */}
                 <div className="bg-white border border-indigo-200/80 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
-                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-indigo-800 flex items-center gap-1">
-                    <FileText size={11} className="text-indigo-600" />
-                    Agreement Document
-                  </span>
+                  <div className="flex items-center justify-between pb-1 border-b border-indigo-200/60">
+                    <span className="text-[10.5px] font-bold uppercase tracking-wider text-indigo-800 flex items-center gap-1">
+                      <FileText size={11} className="text-indigo-600" />
+                      Agreement Document
+                    </span>
+                    {editDocs.some(d => d.category === 'agreement') && (
+                      <span className="text-[9.5px] font-black text-indigo-800 bg-indigo-100/90 px-1.5 py-0.5 rounded-md border border-indigo-200">
+                        ATTACHED
+                      </span>
+                    )}
+                  </div>
                   <AgencyDocUploadField
-                    label="Commercial Agreement Document"
                     category="agreement"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'agreement', setEditDocs)}
@@ -2349,12 +2405,18 @@ export function Agencies() {
 
                 {/* Column 2: Workman Compensation — Directly aligned beside Agreement */}
                 <div className="bg-white border border-indigo-200/80 rounded-2xl p-3.5 space-y-2.5 shadow-2xs">
-                  <span className="text-[10.5px] font-bold uppercase tracking-wider text-indigo-800 flex items-center gap-1">
-                    <Shield size={11} className="text-indigo-600" />
-                    Workman Compensation
-                  </span>
+                  <div className="flex items-center justify-between pb-1 border-b border-indigo-200/60">
+                    <span className="text-[10.5px] font-bold uppercase tracking-wider text-indigo-800 flex items-center gap-1">
+                      <Shield size={11} className="text-indigo-600" />
+                      Workman Compensation
+                    </span>
+                    {editDocs.some(d => d.category === 'workmen_compensation') && (
+                      <span className="text-[9.5px] font-black text-indigo-800 bg-indigo-100/90 px-1.5 py-0.5 rounded-md border border-indigo-200">
+                        ATTACHED
+                      </span>
+                    )}
+                  </div>
                   <AgencyDocUploadField
-                    label="Workman Compensation Policy"
                     category="workmen_compensation"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'workmen_compensation', setEditDocs)}

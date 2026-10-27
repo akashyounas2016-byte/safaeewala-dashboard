@@ -36,6 +36,8 @@
 
 ## 2026-10-28
 
+- feat(ui, sync): Added dismiss (`X`) close button to `SyncStatusBanner.tsx` with responsive layout and shadow styling, allowing users to dismiss cloud sync warning notifications at any time while keeping the manual Retry action accessible (AUD-20).
+- fix(agencies, employees): Removed redundant duplicate document title labels above upload buttons across Add New Agency, Edit Agency (`Agencies.tsx`), Agency Profile (`AgencyDashboard.tsx`), Add Employee, and Edit Employee (`EmployeeFormModal.tsx`) popups; placed high-contrast `ATTACHED` status badges cleanly inside the card headers and passed clean, descriptive button labels (`buttonText`) to prevent duplication (R-EMP-04, R-AGN-05).
 - feat(employees): Redesigned Add New Employee and Edit Employee Profile popups (`EmployeeFormModal.tsx`) with distinct light background color tints matching Add Agency modal — Emirates ID (Sky Blue), Passport (Purple), Residency Visa (Amber), and Work Permit (Emerald), plus Blue tint for UAE Driving License; added issue/expiry date consistency validation, tailored hover states, and pure React 19 state initialization (R-EMP-04, D-05, D-09)
 
 ## 2026-10-27

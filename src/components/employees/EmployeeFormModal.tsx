@@ -422,7 +422,6 @@ function EmployeeFormModalContent({
                 </div>
                 <EmployeeDocInput
                   name="eid_file"
-                  label="Emirates ID Copy / Image"
                   placeholder="Upload EID image"
                   doc={docs.eid}
                   accentColor="sky"
@@ -467,7 +466,6 @@ function EmployeeFormModalContent({
                 </div>
                 <EmployeeDocInput
                   name="passport_file"
-                  label="Passport Copy / Image"
                   placeholder="Upload Passport image"
                   doc={docs.passport}
                   accentColor="purple"
@@ -512,7 +510,6 @@ function EmployeeFormModalContent({
                 </div>
                 <EmployeeDocInput
                   name="visa_file"
-                  label="Residency Visa Copy / Image"
                   placeholder="Upload Visa image"
                   doc={docs.visa}
                   accentColor="amber"
@@ -557,7 +554,6 @@ function EmployeeFormModalContent({
                 </div>
                 <EmployeeDocInput
                   name="work_permit_file"
-                  label="Work Permit Copy / Image"
                   placeholder="Upload Work Permit image"
                   doc={docs.work_permit}
                   accentColor="emerald"
@@ -615,7 +611,6 @@ function EmployeeFormModalContent({
                     </div>
                     <EmployeeDocInput
                       name="driving_license_file"
-                      label="UAE Driving License Copy / Image"
                       accentColor="blue"
                       placeholder="Upload Driving License image"
                       doc={docs.driving_license}
