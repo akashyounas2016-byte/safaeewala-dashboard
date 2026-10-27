@@ -15,7 +15,7 @@ import { formatCurrency, formatDate, formatTime, addHoursToTime, calcDurationFro
 import { useData } from '@/store/DataContext'
 import type { Booking, BookingFrequency, BookingStatus } from '@/types'
 import { SourceOriginTag, resolveBookingSource } from '@/lib/sourceTracking'
-import { cleanClientNameFromAddress, isBogusJob, isMonthlyClient } from '@/lib/clientDataSync'
+import { cleanClientNameFromAddress, isBogusJob, isMonthlyClient, crewToStaffName, staffNameToCrew } from '@/lib/clientDataSync'
 
 export type BookingDatePreset = 'today' | '7days' | '30days' | '3months' | '6months' | '1year' | 'all' | 'custom'
 
@@ -173,6 +173,7 @@ export function Bookings() {
     updateDailyJob,
     deleteDailyJob,
     clients,
+    employees,
   } = useData()
   const [view, setView] = useState<'list' | 'calendar' | 'kanban'>('list')
   const xlsxInputRef = useRef<HTMLInputElement>(null)
@@ -200,9 +201,8 @@ export function Bookings() {
 
       if (!linkedJob) return b
 
-      const updatedCrew = linkedJob.staff_name && linkedJob.staff_name !== 'Unassigned'
-        ? linkedJob.staff_name.split(',').map(s => s.trim()).filter(Boolean)
-        : b.assigned_crew
+      // Job sheet stores names; bookings store employee IDs
+      const updatedCrew = staffNameToCrew(linkedJob.staff_name, employees)
 
       return {
         ...b,
@@ -255,9 +255,7 @@ export function Bookings() {
         scheduled_time: j.start_time || '09:00',
         end_time: j.end_time || addHoursToTime(j.start_time || '09:00', j.duty_hours || 4),
         duration_hours: j.duty_hours || 4,
-        assigned_crew: j.staff_name && j.staff_name !== 'Unassigned'
-          ? j.staff_name.split(',').map(s => s.trim()).filter(Boolean)
-          : [],
+        assigned_crew: staffNameToCrew(j.staff_name, employees),
         notes: j.remarks || '',
         total_amount: j.charges || 0,
         created_at: j.created_at || `${j.date}T08:00:00Z`,
@@ -266,7 +264,7 @@ export function Bookings() {
     })
 
     return [...enrichedBookings, ...syntheticBookings]
-  }, [bookings, dailyJobs])
+  }, [bookings, dailyJobs, employees])
 
   const activeDateRange = useMemo(() => {
     const now = new Date()
@@ -725,7 +723,7 @@ export function Bookings() {
                   end_time: patch.end_time ?? selectedBooking.end_time,
                   duty_hours: patch.duration_hours ?? selectedBooking.duration_hours,
                   charges: patch.total_amount ?? selectedBooking.total_amount,
-                  staff_name: patch.assigned_crew && patch.assigned_crew.length > 0 ? patch.assigned_crew.join(', ') : undefined,
+                  staff_name: crewToStaffName(patch.assigned_crew, employees) || undefined,
                   address: patch.service_address ?? selectedBooking.service_address,
                   service: patch.service_type ?? selectedBooking.service_type,
                   received: patch.status === 'completed' ? (patch.total_amount ?? selectedBooking.total_amount) : undefined,

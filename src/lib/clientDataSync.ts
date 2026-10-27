@@ -21,6 +21,33 @@ export function getAssignableClients(clients: Client[]): Client[] {
 }
 
 /**
+ * Booking.assigned_crew holds employee IDs, DailyJob.staff_name holds cleaner names.
+ * Convert crew IDs to the comma-separated names the Daily Job Sheet expects
+ * (values that are not a known ID are assumed to already be names).
+ */
+export function crewToStaffName(crew: string[] | undefined, employees: Employee[]): string {
+  return (crew || [])
+    .map(c => employees.find(e => e.id === c)?.full_name || c)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .join(', ')
+}
+
+/** Reverse of crewToStaffName: Daily Job Sheet names → employee IDs (unknown names kept as-is) */
+export function staffNameToCrew(staffName: string | undefined, employees: Employee[]): string[] {
+  if (!staffName || staffName === 'Unassigned') return []
+  return staffName
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(token =>
+      employees.find(e => e.id === token)?.id ||
+      employees.find(e => normalizeStaffName(e.full_name) === normalizeStaffName(token))?.id ||
+      token
+    )
+}
+
+/**
  * Normalizes text for fuzzy/clean comparison (lowercased, alphanumeric only)
  */
 export function normalizeKey(text: string): string {

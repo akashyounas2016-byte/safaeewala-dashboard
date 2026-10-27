@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react'
 import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency } from '../types'
 import { supabase } from '@/lib/supabase'
-import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs } from '@/lib/clientDataSync'
+import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { seedBookings, seedClients, seedInvoices, seedInventory, seedEmployees } from '@/lib/seedData'
 import { addHoursToTime } from '@/lib/utils'
@@ -355,17 +355,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }).catch(() => setLoading(false))
   }, [])
 
+  // Older booking-synced rows stored employee IDs in staff_name; show them as cleaner names
+  // everywhere (read-only — the row is rewritten with names the next time it is saved)
+  const viewDailyJobs = useMemo(() => {
+    const byId = new Map(employees.map(e => [e.id, e.full_name]))
+    return dailyJobs.map(j => {
+      if (!j.staff_name || !j.staff_name.split(",").some(t => byId.has(t.trim()))) return j
+      return { ...j, staff_name: j.staff_name.split(",").map(t => byId.get(t.trim()) || t.trim()).join(", ") }
+    })
+  }, [dailyJobs, employees])
+
   const allClients = useMemo(() => {
-    return extractAllClientsFromDailyJobs(dailyJobs, clients)
-  }, [dailyJobs, clients])
+    return extractAllClientsFromDailyJobs(viewDailyJobs, clients)
+  }, [viewDailyJobs, clients])
 
   const allEmployees = useMemo(() => {
-    return extractAllEmployeesFromDailyJobs(dailyJobs, employees)
-  }, [dailyJobs, employees])
+    return extractAllEmployeesFromDailyJobs(viewDailyJobs, employees)
+  }, [viewDailyJobs, employees])
 
   const store: DataStore = {
     bookings, clients: allClients, employees: allEmployees, agencies, invoices, inventory, loading,
-    dailyJobs, dailyExpenses,
+    dailyJobs: viewDailyJobs, dailyExpenses,
 
     /* ── Bookings ── */
     addBooking: (b) => {
@@ -405,7 +415,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         id: uid(),
         created_at: now(),
         date: b.scheduled_date || new Date().toISOString().split('T')[0],
-        staff_name: b.assigned_crew && b.assigned_crew.length > 0 ? b.assigned_crew.join(', ') : 'Unassigned',
+        staff_name: crewToStaffName(b.assigned_crew, allEmployees) || 'Unassigned',
         start_time: b.scheduled_time || '09:00',
         end_time: b.end_time || addHoursToTime(b.scheduled_time || '09:00', b.duration_hours || 3),
         duty_hours: safeNum(b.duration_hours || 3),
@@ -446,7 +456,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             start_time: patch.scheduled_time ?? j.start_time,
             end_time: patch.end_time ?? j.end_time,
             duty_hours: patch.duration_hours ? safeNum(patch.duration_hours) : j.duty_hours,
-            staff_name: patch.assigned_crew && patch.assigned_crew.length > 0 ? patch.assigned_crew.join(', ') : j.staff_name,
+            staff_name: crewToStaffName(patch.assigned_crew, allEmployees) || j.staff_name,
             address: patch.service_address ?? j.address,
             charges: patch.total_amount !== undefined ? safeNum(patch.total_amount) : j.charges,
             service: patch.service_type ?? j.service,
