@@ -6,7 +6,10 @@
 
 ## Unreleased (in `main` or `claude/workspace`, not yet confirmed deployed)
 
-- docs: documentation structure — README, rules registry with IDs, design, architecture, prod, data model, workflow, decision log (DEC-008) — `ad70b43`
+- feat(clients): Single row of 6 summary cards with pulsing expander button for secondary metrics; added Pending Balances & Client Distribution widgets; expanded Sorted By options (highest due, bookings, Z-A, service dates)
+- feat(employees): Employee Profile dark hero header integrating staff name and health status; Edit Profile popup unified to Add Employee max-w-6xl 3-row layout (D-09, R-EMP-03)
+- docs: documentation structure — README, rules registry with IDs, design, architecture, prod, data model, workflow, decision log (DEC-008)
+ — `ad70b43`
 - feat(agencies, employees): Agency popup agreement / workmen compensation / bank rows, Live Cleaners modal, Edit Employee popups in tinted layout (Antigravity) — `8c9dfb8`
 - feat(agencies): Agencies bell shows document, contract, payout and staff-compliance alerts (R-AGN-04) — `a0d99b9`
 - fix(bookings): job sheet gets cleaner names instead of employee IDs; agency payouts now count booking shifts (R-SYNC-02) — `28d15cd`

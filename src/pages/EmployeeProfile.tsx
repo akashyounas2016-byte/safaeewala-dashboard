@@ -321,166 +321,156 @@ export function EmployeeProfile() {
         </button>
       </div>
 
-      {/* ── Employee Hero Card ── */}
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-6">
-        <div className="flex flex-col sm:flex-row items-start gap-5">
-          <div className="relative shrink-0">
-            <Avatar name={emp.full_name} size="xl" idx={empIdx} photoUrl={emp.photo_url} />
-            <label
-              className="absolute -bottom-0.5 -right-0.5 w-7 h-7 rounded-full bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center shadow-md ring-2 ring-white cursor-pointer transition-colors"
-              title={emp.photo_url ? 'Change photo' : 'Upload photo'}
-            >
-              <Camera size={13} />
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={e => { handlePhotoPick(e.target.files?.[0]); e.target.value = '' }}
-              />
-            </label>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-1.5">
-              <h1 className="text-[22px] font-extrabold text-[#111827]">{emp.full_name}</h1>
-              <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
-                emp.role === 'crew_lead' || emp.role === 'supervisor' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
-                emp.role === 'driver' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-                (emp.role === 'technical' || emp.role === 'ducting') ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
-                emp.role === 'store_cleaner' ? 'bg-teal-50 text-teal-700 border border-teal-200' :
-                'bg-blue-50 text-blue-700 border border-blue-200'
-              }`}>
-                {emp.role === 'crew_lead' || emp.role === 'supervisor' ? 'Supervisor / Crew Lead' :
-                 emp.role === 'driver' ? '🚗 Driver' :
-                 (emp.role === 'technical' || emp.role === 'ducting') ? '🔧 Technical' :
-                 emp.role === 'store_cleaner' ? 'Store Cleaner' :
-                 '🧹 Cleaner'}
-              </span>
+      {/* ── Employee Dark Hero & Health Status Single Header ── */}
+      <div className="relative rounded-[24px] bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white border border-slate-800 shadow-[0_12px_40px_rgba(15,23,42,0.3)] p-6 sm:p-7 overflow-hidden">
+        {/* Ambient Glow Effects */}
+        <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-teal-500/10 blur-3xl pointer-events-none" />
+        <div className="absolute -left-20 -bottom-20 w-80 h-80 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
 
-              {isDiscoveredFromJobSheet && (
-                <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full font-bold">
-                  Daily Job Sheet Staff
-                </span>
-              )}
-
-              {totalOTHours > 0 && (
-                <span className="text-[11px] bg-amber-50 text-amber-800 border border-amber-300 px-2.5 py-0.5 rounded-full font-bold">
-                  {totalOTHours}h Total OT
-                </span>
-              )}
-
-              <span className="text-[11px] bg-teal-50 text-teal-800 border border-teal-200/90 px-2.5 py-0.5 rounded-full font-bold">
-                AED {(emp.monthly_salary || (emp.pay_rate_hourly ? Math.round(emp.pay_rate_hourly * 200) : 2500)).toLocaleString()}/mo
-              </span>
-
-              {emp.agency_name && (
-                <span className="text-[11px] bg-slate-50 text-slate-600 border border-slate-200 px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1">
-                  <Building2 size={11} className="text-slate-400" /> {emp.agency_name}
-                </span>
-              )}
+        <div className="relative z-10 flex flex-col xl:flex-row xl:items-center justify-between gap-6">
+          {/* Left: Staff Avatar, Name, Badges & Contact Details */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 flex-1 min-w-0">
+            <div className="relative shrink-0">
+              <Avatar name={emp.full_name} size="xl" idx={empIdx} photoUrl={emp.photo_url} />
+              <label
+                className="absolute -bottom-0.5 -right-0.5 w-7 h-7 rounded-full bg-teal-500 hover:bg-teal-400 text-white flex items-center justify-center shadow-md ring-2 ring-slate-900 cursor-pointer transition-colors"
+                title={emp.photo_url ? 'Change photo' : 'Upload photo'}
+              >
+                <Camera size={13} />
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => { handlePhotoPick(e.target.files?.[0]); e.target.value = '' }}
+                />
+              </label>
             </div>
 
-            <p className="text-[13px] text-slate-500 mb-2">
-              {emp.nationality || 'Staff Member'} · Member since {formatDate(emp.joined_date || emp.created_at)}
-            </p>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <h1 className="text-[22px] sm:text-[26px] font-black text-white tracking-tight">{emp.full_name}</h1>
 
-            <div className="flex flex-wrap gap-4 text-[13px] text-slate-600 mt-2">
-              {emp.phone ? (
-                <a href={`tel:${emp.phone}`} className="flex items-center gap-1.5 hover:text-emerald-600 transition-colors">
-                  <Phone size={13} className="text-slate-400" /> {emp.phone}
-                </a>
-              ) : (
-                <span className="text-slate-400 text-[12px] italic">No phone recorded</span>
-              )}
-
-              {emp.email && (
-                <a href={`mailto:${emp.email}`} className="flex items-center gap-1.5 hover:text-emerald-600 transition-colors">
-                  <Mail size={13} className="text-slate-400" /> {emp.email}
-                </a>
-              )}
-
-              {emp.emirates_id && (
-                <span className="flex items-center gap-1.5">
-                  <Shield size={13} className="text-slate-400" /> Emirates ID: {emp.emirates_id}
+                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border shadow-2xs ${
+                  emp.role === 'crew_lead' || emp.role === 'supervisor' ? 'bg-purple-950/80 text-purple-300 border-purple-700/70' :
+                  emp.role === 'driver' ? 'bg-amber-950/80 text-amber-300 border-amber-700/70' :
+                  (emp.role === 'technical' || emp.role === 'ducting') ? 'bg-indigo-950/80 text-indigo-300 border-indigo-700/70' :
+                  emp.role === 'store_cleaner' ? 'bg-teal-950/80 text-teal-300 border-teal-700/70' :
+                  'bg-blue-950/80 text-blue-300 border-blue-700/70'
+                }`}>
+                  {emp.role === 'crew_lead' || emp.role === 'supervisor' ? 'Supervisor / Crew Lead' :
+                   emp.role === 'driver' ? '🚗 Driver' :
+                   (emp.role === 'technical' || emp.role === 'ducting') ? '🔧 Technical' :
+                   emp.role === 'store_cleaner' ? 'Store Cleaner' :
+                   '🧹 Cleaner'}
                 </span>
-              )}
+
+                {isDiscoveredFromJobSheet && (
+                  <span className="text-[11px] bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-bold">
+                    Daily Job Sheet Staff
+                  </span>
+                )}
+
+                {totalOTHours > 0 && (
+                  <span className="text-[11px] bg-amber-950/80 text-amber-300 border border-amber-600/70 px-2.5 py-0.5 rounded-full font-bold">
+                    {totalOTHours}h Total OT
+                  </span>
+                )}
+
+                <span className="text-[11px] bg-teal-950/80 text-teal-300 border border-teal-700/70 px-2.5 py-0.5 rounded-full font-bold">
+                  AED {(emp.monthly_salary || (emp.pay_rate_hourly ? Math.round(emp.pay_rate_hourly * 200) : 2500)).toLocaleString()}/mo
+                </span>
+
+                {emp.agency_name && (
+                  <span className="text-[11px] bg-slate-800/80 text-slate-300 border border-slate-700/70 px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                    <Building2 size={11} className="text-slate-400" /> {emp.agency_name}
+                  </span>
+                )}
+              </div>
+
+              <p className="text-[12.5px] text-slate-400 mb-2.5">
+                {emp.nationality || 'Staff Member'} · Member since {formatDate(emp.joined_date || emp.created_at)}
+              </p>
+
+              <div className="flex flex-wrap gap-2 text-[12px] text-slate-300">
+                {emp.phone ? (
+                  <a href={`tel:${emp.phone}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 hover:border-teal-400 hover:text-teal-300 transition-colors">
+                    <Phone size={12} className="text-teal-400" /> {emp.phone}
+                  </a>
+                ) : (
+                  <span className="text-slate-500 text-[11.5px] italic">No phone recorded</span>
+                )}
+
+                {emp.email && (
+                  <a href={`mailto:${emp.email}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 hover:border-teal-400 hover:text-teal-300 transition-colors">
+                    <Mail size={12} className="text-teal-400" /> {emp.email}
+                  </a>
+                )}
+
+                {emp.emirates_id && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 text-slate-300">
+                    <Shield size={12} className="text-teal-400" /> EID: {emp.emirates_id}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
+
+          {/* Right: Health Status (integrated into this same single header) */}
+          {health && (
+            <div className="xl:border-l xl:border-slate-800/80 xl:pl-6 shrink-0 flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-slate-900/80 border border-slate-800 xl:border-0 xl:bg-transparent p-4 xl:p-0 rounded-2xl">
+              {/* Circular Gauge & Grade */}
+              <div className="flex items-center gap-3.5">
+                <div
+                  className="relative w-15 h-15 rounded-full shrink-0 shadow-lg"
+                  style={{ background: `conic-gradient(${healthTone[health.grade].ring} ${health.score * 3.6}deg, #334155 0deg)` }}
+                  title={`Overall Health Score: ${health.score} / 100`}
+                >
+                  <div className="absolute inset-[5.5px] rounded-full bg-slate-900 flex flex-col items-center justify-center">
+                    <span className="text-[18px] font-black leading-none text-white">{health.score}</span>
+                    <span className="text-[8px] font-bold text-slate-400 mt-0.5">/100</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-[12px] font-black uppercase tracking-wider text-slate-200 flex items-center gap-1">
+                      <Activity size={12} className="text-teal-400" />
+                      Health Score
+                    </span>
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${healthTone[health.grade].chip}`}>
+                      {health.grade}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-medium">
+                    {health.absences[0] ? `Last absence: ${formatDate(health.absences[0].date)}` : '0 Unexcused Absences'}
+                  </p>
+                </div>
+              </div>
+
+              {/* 3 Component Mini Progress Bars */}
+              <div className="flex flex-col gap-1.5 min-w-[175px] w-full sm:w-auto bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60">
+                {health.components.map(c => {
+                  const pct = Math.min(100, Math.round((c.score / c.max) * 100))
+                  return (
+                    <div key={c.label} className="text-[10.5px]">
+                      <div className="flex items-center justify-between font-bold text-slate-300 mb-0.5">
+                        <span className="text-slate-400">{c.label}</span>
+                        <span className="text-white font-extrabold">{c.score} <span className="text-slate-400 font-normal">/{c.max}</span></span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${pct}%`, background: healthTone[health.grade].ring }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
-
-      {/* ── Horizontal Staff Performance & Health Score Bar ── */}
-      {health && (
-        <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 sm:p-5">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-            {/* Left: Overall Health Score Gauge & Grade */}
-            <div className="flex items-center gap-4 shrink-0">
-              {/* Conic Ring Gauge */}
-              <div
-                className="relative w-16 h-16 rounded-full shrink-0 shadow-xs"
-                style={{ background: `conic-gradient(${healthTone[health.grade].ring} ${health.score * 3.6}deg, #f1f5f9 0deg)` }}
-                title={`Overall Health Score: ${health.score} / 100`}
-              >
-                <div className="absolute inset-[6px] rounded-full bg-white flex flex-col items-center justify-center">
-                  <span className={`text-[19px] font-black leading-none ${healthTone[health.grade].text}`}>{health.score}</span>
-                  <span className="text-[8.5px] font-bold text-slate-400 mt-0.5">/ 100</span>
-                </div>
-              </div>
-
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[12px] font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                    <Activity size={14} className="text-teal-600" />
-                    Staff Health Score
-                  </span>
-                  <span className={`text-[10.5px] font-extrabold px-2 py-0.5 rounded-full border shadow-2xs ${healthTone[health.grade].chip}`}>
-                    {health.grade}
-                  </span>
-                </div>
-                <p className="text-[11.5px] text-slate-500 font-medium line-clamp-1">
-                  {health.components[0]?.detail || 'Good standing'}
-                  {health.absences[0] ? ` · Last absence ${formatDate(health.absences[0].date)}` : ' · 0 Unexcused Absences'}
-                </p>
-              </div>
-            </div>
-
-            {/* Subtle Vertical Divider */}
-            <div className="hidden lg:block w-px h-12 bg-slate-200/80 self-center shrink-0" />
-
-            {/* Right: 3 Component Metric Cards in Horizontal Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-1 max-w-3xl">
-              {health.components.map(c => {
-                const pct = Math.min(100, Math.round((c.score / c.max) * 100))
-                const isFull = pct >= 90
-                return (
-                  <div key={c.label} className="bg-slate-50/80 border border-slate-200/70 rounded-2xl p-3 flex flex-col justify-between space-y-1.5">
-                    <div className="flex items-center justify-between gap-1 text-[11.5px]">
-                      <span className="font-bold text-slate-700 truncate">{c.label}</span>
-                      <span className="font-extrabold text-slate-900 bg-white px-1.5 py-0.5 rounded-md border border-slate-200/80 text-[10.5px] shadow-2xs">
-                        {c.score} <span className="text-slate-400 font-semibold">/ {c.max}</span>
-                      </span>
-                    </div>
-
-                    {/* Progress bar */}
-                    <div className="h-1.5 rounded-full bg-slate-200/90 overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{
-                          width: `${pct}%`,
-                          background: isFull ? healthTone[health.grade].ring : '#3b82f6',
-                        }}
-                      />
-                    </div>
-
-                    <p className="text-[10px] text-slate-400 truncate" title={c.detail}>
-                      {c.detail}
-                    </p>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Top 4 KPI Stat Cards Row (Uniform Track Record Metrics) ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1191,9 +1181,54 @@ export function EmployeeProfile() {
       </div>
 
       {/* ── Edit Employee Modal ── */}
-      <Modal open={editOpen} onClose={() => setEditOpen(false)} title={`Edit Employee Profile — ${emp.full_name}`} size="xl">
+      <Modal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title={`Edit Employee Profile — ${emp.full_name}`}
+        size="xl"
+        className="max-w-6xl"
+        headerActions={
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 pr-2 border-r border-slate-200">
+              <span className="text-[11px] font-bold text-slate-500">Status:</span>
+              <select
+                name="status"
+                form="edit-employee-form-profile"
+                defaultValue={emp.status || 'active'}
+                className="text-[11.5px] px-2 py-1 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-teal-600 font-bold text-slate-800 cursor-pointer shadow-2xs"
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="on_leave">On Leave</option>
+                <option value="engaged_in_project">Engaged in Project</option>
+              </select>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEditOpen(false)}
+              className="h-8 px-3 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="edit-employee-form-profile"
+              size="sm"
+              disabled={editSaving}
+              className="h-8 px-4 text-[11.5px] bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer flex items-center gap-1.5 shadow-xs"
+            >
+              <Check size={13} className="stroke-[2.5]" />
+              <span>{editSaving ? 'Saving…' : 'Save Employee'}</span>
+            </Button>
+          </div>
+        }
+      >
         <form
-          className="space-y-4 max-h-[82vh] overflow-y-auto pr-1"
+          id="edit-employee-form-profile"
+          className="space-y-3.5 max-h-[82vh] overflow-y-auto pr-1"
           onSubmit={async e => {
             e.preventDefault()
             const fd = new FormData(e.currentTarget as HTMLFormElement)

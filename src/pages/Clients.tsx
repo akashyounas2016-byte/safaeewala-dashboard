@@ -3,7 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import {
   Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign,
   Heart, Award, CheckCircle, Trash2, ExternalLink, ArrowUpDown, RotateCcw, X, Filter, Clock,
-  Save, Check, ChevronDown, UserCheck, Edit2, LayoutGrid, List
+  Save, Check, ChevronDown, UserCheck, Edit2, LayoutGrid, List, ChevronUp, AlertCircle, Sparkles,
+  Wallet, CalendarCheck
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -133,15 +134,15 @@ export function Clients() {
   const [searchParams, setSearchParams] = useSearchParams()
 
   const initialFilter = searchParams.get('filter') || searchParams.get('type')
-  const [filterType, setFilterType] = useState<'all' | 'active' | 'vip' | 'repeat' | 'monthly' | null>(
-    initialFilter === 'active' || initialFilter === 'vip' || initialFilter === 'repeat' || initialFilter === 'monthly' ? initialFilter : null
+  const [filterType, setFilterType] = useState<'all' | 'active' | 'vip' | 'repeat' | 'monthly' | 'due' | 'inactive' | null>(
+    initialFilter === 'active' || initialFilter === 'vip' || initialFilter === 'repeat' || initialFilter === 'monthly' || initialFilter === 'due' || initialFilter === 'inactive' ? initialFilter : null
   )
   const initialAgency = searchParams.get('agency') || searchParams.get('source') || ''
   const [agencyFilter, setAgencyFilter] = useState<string>(initialAgency)
 
   useEffect(() => {
     const f = searchParams.get('filter') || searchParams.get('type')
-    if (f === 'active' || f === 'vip' || f === 'repeat' || f === 'monthly') {
+    if (f === 'active' || f === 'vip' || f === 'repeat' || f === 'monthly' || f === 'due' || f === 'inactive') {
       setFilterType(f)
     } else if (f === 'all') {
       setFilterType(null)
@@ -159,7 +160,10 @@ export function Clients() {
   const [showBookingModal, setShowBookingModal] = useState(false)
   const [bookingClient, setBookingClient] = useState<{ name: string; phone: string } | null>(null)
   const [areaFilter, setAreaFilter] = useState('all')
-  const [sortOrder, setSortOrder] = useState<'recent' | 'top_spent' | 'name'>('recent')
+  const [sortOrder, setSortOrder] = useState<
+    'recent' | 'top_spent' | 'lowest_spent' | 'pending_due' | 'most_bookings' | 'least_bookings' | 'name' | 'name_asc' | 'name_desc' | 'recent_service' | 'oldest_client'
+  >('recent')
+  const [showAllCards, setShowAllCards] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [datePreset, setDatePreset] = useState<ClientDatePreset>('all')
   const [customStartDate, setCustomStartDate] = useState('')
@@ -302,6 +306,35 @@ export function Clients() {
     return clients.filter(c => isMonthlyClient(c, dailyJobs, allMonthlySummaries)).length
   }, [clients, dailyJobs, allMonthlySummaries])
 
+  // Client pending balance & dues calculation
+  const getClientOutstanding = (c: typeof clients[0]) => {
+    const nameLower = c.full_name.toLowerCase().trim()
+    const clientInvs = invoices.filter(i => i.client_id === c.id || (i.client_name && i.client_name.toLowerCase().trim() === nameLower))
+    const invOutstanding = clientInvs.reduce((s, i) => s + (i.total || 0), 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + (i.total || 0), 0)
+    const clientPendingBalance = calcClientPendingBalance(c, dailyJobs)
+    return Math.max(0, clientPendingBalance + invOutstanding)
+  }
+
+  const clientsWithDue = useMemo(() => {
+    return clients.map(c => ({ client: c, due: getClientOutstanding(c) })).filter(x => x.due > 0)
+  }, [clients, invoices, dailyJobs])
+
+  const totalOutstanding = useMemo(() => {
+    return clientsWithDue.reduce((sum, item) => sum + item.due, 0)
+  }, [clientsWithDue])
+
+  const totalAdvanceAmount = useMemo(() => {
+    return clients.reduce((sum, c) => sum + (c.advance_amount || 0), 0)
+  }, [clients])
+
+  const totalBookingsAll = useMemo(() => {
+    return clients.reduce((sum, c) => sum + (c.total_bookings || 0), 0)
+  }, [clients])
+
+  const inactiveClientsCount = useMemo(() => {
+    return clients.filter(c => !c.last_service || (Date.now() - new Date(c.last_service).getTime()) > 60 * 86400000).length
+  }, [clients])
+
   // Month-over-month deltas
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
@@ -328,15 +361,111 @@ export function Clients() {
         filterType === 'vip' ? c.total_spent > 2000 :
         filterType === 'repeat' ? c.total_bookings > 1 :
         filterType === 'monthly' ? isClientMonthly :
+        filterType === 'due' ? getClientOutstanding(c) > 0 :
+        filterType === 'inactive' ? (!c.last_service || (Date.now() - new Date(c.last_service).getTime()) > 60 * 86400000) :
         true
       )
       const matchDate = isClientInDateRange(c)
       return matchSearch && matchArea && matchFilter && matchDate
     })
+
     if (sortOrder === 'top_spent') return [...base].sort((a, b) => b.total_spent - a.total_spent)
-    if (sortOrder === 'name')      return [...base].sort((a, b) => a.full_name.localeCompare(b.full_name))
+    if (sortOrder === 'lowest_spent') return [...base].sort((a, b) => a.total_spent - b.total_spent)
+    if (sortOrder === 'pending_due') {
+      return [...base].sort((a, b) => getClientOutstanding(b) - getClientOutstanding(a))
+    }
+    if (sortOrder === 'most_bookings') {
+      return [...base].sort((a, b) => {
+        const nameA = a.full_name.toLowerCase().trim()
+        const nameB = b.full_name.toLowerCase().trim()
+        const countA = Math.max(a.total_bookings || 0, bookings.filter(bk => bk.client_id === a.id || bk.client_name?.toLowerCase().trim() === nameA).length)
+        const countB = Math.max(b.total_bookings || 0, bookings.filter(bk => bk.client_id === b.id || bk.client_name?.toLowerCase().trim() === nameB).length)
+        return countB - countA
+      })
+    }
+    if (sortOrder === 'least_bookings') {
+      return [...base].sort((a, b) => {
+        const nameA = a.full_name.toLowerCase().trim()
+        const nameB = b.full_name.toLowerCase().trim()
+        const countA = Math.max(a.total_bookings || 0, bookings.filter(bk => bk.client_id === a.id || bk.client_name?.toLowerCase().trim() === nameA).length)
+        const countB = Math.max(b.total_bookings || 0, bookings.filter(bk => bk.client_id === b.id || bk.client_name?.toLowerCase().trim() === nameB).length)
+        return countA - countB
+      })
+    }
+    if (sortOrder === 'name' || sortOrder === 'name_asc') return [...base].sort((a, b) => a.full_name.localeCompare(b.full_name))
+    if (sortOrder === 'name_desc') return [...base].sort((a, b) => b.full_name.localeCompare(a.full_name))
+    if (sortOrder === 'recent_service') {
+      return [...base].sort((a, b) => (b.last_service || '').localeCompare(a.last_service || ''))
+    }
+    if (sortOrder === 'oldest_client') {
+      return [...base].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
+    }
     return [...base].sort((a, b) => (b.last_service || b.created_at || '').localeCompare(a.last_service || a.created_at || ''))
   })()
+
+  interface KpiCardItem {
+    label: string
+    value: string | number
+    sub: string
+    icon: any
+    iconBg: string
+    iconColor: string
+    delta: string
+    deltaUp: boolean
+    filter: any
+  }
+
+  // 6 Primary Summary Cards (Single Row)
+  const primaryCards: KpiCardItem[] = [
+    { label: 'Total Clients',    value: clients.length, sub: 'Registered accounts', icon: Users, iconBg: 'bg-blue-50', iconColor: 'text-blue-600', delta: clientDeltaLabel, deltaUp: newThisMonth >= 0, filter: null },
+    { label: 'Active Clients',   value: activeClients, sub: 'Recent bookings', icon: TrendingUp, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: `${activeClients} active`, deltaUp: activeClients > 0, filter: 'active' },
+    { label: 'Monthly Clients',  value: monthlyCount, sub: 'Recurring contracts', icon: Star, iconBg: 'bg-teal-50', iconColor: 'text-teal-600', delta: `${monthlyCount} recurring`, deltaUp: monthlyCount > 0, filter: 'monthly' },
+    { label: 'Due Balance',      value: `AED ${totalOutstanding.toLocaleString()}`, sub: 'Pending collections', icon: AlertCircle, iconBg: 'bg-red-50', iconColor: 'text-red-600', delta: `${clientsWithDue.length} owe`, deltaUp: false, filter: 'due' },
+    { label: 'VIP Clients',      value: vipClients, sub: 'AED 2k+ spend', icon: Award, iconBg: 'bg-amber-50', iconColor: 'text-amber-600', delta: vipClients > 0 ? `${vipClients} VIP` : '0 VIP', deltaUp: vipClients > 0, filter: 'vip' },
+    { label: 'Repeat Rate',      value: `${repeatRate}%`, sub: '2+ service visits', icon: Heart, iconBg: 'bg-pink-50', iconColor: 'text-pink-600', delta: `${repeatClients} repeat`, deltaUp: repeatRate > 0, filter: 'repeat' },
+  ]
+
+  // 6 Secondary Cards (Expandable on clicking blinking arrow)
+  const secondaryCards: KpiCardItem[] = [
+    { label: 'Total Revenue',    value: `AED ${(totalSpent / 1000).toFixed(1)}k`, sub: `AED ${totalSpent.toLocaleString()} lifetime`, icon: CheckCircle, iconBg: 'bg-purple-50', iconColor: 'text-purple-600', delta: 'All time', deltaUp: true, filter: null },
+    { label: 'Avg Lifetime',     value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client average', icon: DollarSign, iconBg: 'bg-cyan-50', iconColor: 'text-cyan-600', delta: 'Per Client', deltaUp: true, filter: null },
+    { label: 'New This Month',   value: newThisMonth, sub: 'Joined this month', icon: Sparkles, iconBg: 'bg-indigo-50', iconColor: 'text-indigo-600', delta: clientDeltaLabel, deltaUp: newThisMonth >= newLastMonth, filter: null },
+    { label: 'At-Risk (>60d)',   value: inactiveClientsCount, sub: 'No visits in 60+ days', icon: Clock, iconBg: 'bg-orange-50', iconColor: 'text-orange-600', delta: `${inactiveClientsCount} dormant`, deltaUp: false, filter: 'inactive' },
+    { label: 'Total Bookings',   value: totalBookingsAll, sub: 'Completed visits', icon: CalendarCheck, iconBg: 'bg-sky-50', iconColor: 'text-sky-600', delta: 'All records', deltaUp: true, filter: null },
+    { label: 'Advance Balance',  value: `AED ${totalAdvanceAmount.toLocaleString()}`, sub: 'Client credits / deposits', icon: Wallet, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: 'Deposits', deltaUp: true, filter: null },
+  ]
+
+  const renderCard = (card: KpiCardItem) => {
+    const isSelected = filterType === card.filter && card.filter !== null
+    return (
+      <button
+        key={card.label}
+        type="button"
+        onClick={() => {
+          if (card.filter !== null) {
+            setFilterType(isSelected ? null : (card.filter as any))
+          }
+        }}
+        className={`text-left bg-white rounded-[22px] border-2 shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 sm:p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all cursor-pointer flex flex-col justify-between ${
+          isSelected
+            ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/20'
+            : 'border-[#E4E8EC] hover:border-emerald-200'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div className={`w-9 h-9 rounded-xl ${card.iconBg} flex items-center justify-center shrink-0`}>
+            <card.icon size={17} className={card.iconColor} />
+          </div>
+          <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full truncate shrink-0 ${card.deltaUp ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+            {card.delta}
+          </span>
+        </div>
+        <p className="text-[21px] sm:text-[22px] font-black text-[#111827] tracking-tight leading-tight truncate">{card.value}</p>
+        <p className="text-[12px] font-bold text-slate-800 mt-1 truncate">{card.label}</p>
+        <p className="text-[11px] text-slate-400 mt-0.5 truncate">{card.sub}</p>
+      </button>
+    )
+  }
 
   const topClients = [...clients].sort((a, b) => b.total_spent - a.total_spent).slice(0, 5)
 
@@ -454,6 +583,136 @@ export function Clients() {
       )}
     </div>
   )
+
+  const renderOutstandingDuesWidget = () => (
+    <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 flex flex-col">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-[15px] font-bold text-[#111827]">Pending Balances</h3>
+          <p className="text-[11px] text-slate-400">Clients with unpaid dues</p>
+        </div>
+        <span className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-0.5 rounded-full">
+          {clientsWithDue.length} Client{clientsWithDue.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+      {clientsWithDue.length === 0 ? (
+        <div className="py-8 text-center text-slate-400 my-auto">
+          <CheckCircle size={28} className="mx-auto text-emerald-500 mb-2" />
+          <p className="text-[12px] font-semibold text-slate-700">All Accounts Settled</p>
+          <p className="text-[11px] text-slate-400">Zero pending client balances</p>
+        </div>
+      ) : (
+        <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[280px] pr-1">
+          {clientsWithDue
+            .sort((a, b) => b.due - a.due)
+            .slice(0, 5)
+            .map(({ client: c, due }, idx) => {
+              const cleanPhone = (c.whatsapp || c.phone || '').replace(/[^0-9]/g, '')
+              return (
+                <div key={c.id} className="flex items-center justify-between gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition-colors border border-slate-100">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Avatar name={c.full_name} size="sm" idx={idx} />
+                    <div className="min-w-0">
+                      <Link to={`/clients/${c.id}`} className="text-[12.5px] font-bold text-[#111827] hover:text-emerald-700 truncate block">
+                        {c.full_name}
+                      </Link>
+                      <p className="text-[11px] text-slate-400 truncate">
+                        {c.area || c.city || 'Dubai'} · {c.phone}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="text-[12px] font-extrabold text-red-600 bg-red-50 border border-red-200/80 px-2 py-0.5 rounded-lg block">
+                      AED {due.toLocaleString()}
+                    </span>
+                    {cleanPhone && (
+                      <a
+                        href={`https://wa.me/${cleanPhone}?text=${encodeURIComponent(`Dear ${c.full_name}, this is a gentle reminder from Safaeewala regarding your pending balance of AED ${due.toLocaleString()}. Please let us know if you need any assistance.`)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 hover:underline inline-flex items-center gap-1 mt-0.5"
+                      >
+                        <Phone size={10} />
+                        <span>Remind WA</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+        </div>
+      )}
+      {clientsWithDue.length > 5 && (
+        <button
+          type="button"
+          onClick={() => setFilterType('due')}
+          className="mt-3 pt-2 border-t border-slate-100 text-[11.5px] font-bold text-emerald-600 hover:text-emerald-700 text-center w-full block transition-colors cursor-pointer"
+        >
+          View all {clientsWithDue.length} clients with due balance →
+        </button>
+      )}
+    </div>
+  )
+
+  const renderClientRetentionWidget = () => {
+    const total = clients.length || 1
+    const singleVisit = clients.filter(c => (c.total_bookings || 0) <= 1).length
+    const segments = [
+      { label: 'Monthly Recurring', count: monthlyCount, pct: Math.round((monthlyCount / total) * 100), color: 'bg-teal-500' },
+      { label: 'Repeat Regulars (2+)', count: repeatClients, pct: Math.round((repeatClients / total) * 100), color: 'bg-emerald-500' },
+      { label: 'VIP Clients (2k+)', count: vipClients, pct: Math.round((vipClients / total) * 100), color: 'bg-amber-500' },
+      { label: 'Single-Visit / New', count: singleVisit, pct: Math.round((singleVisit / total) * 100), color: 'bg-blue-400' },
+    ]
+
+    return (
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 flex flex-col">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-[15px] font-bold text-[#111827]">Client Distribution</h3>
+            <p className="text-[11px] text-slate-400">Portfolio breakdown & retention</p>
+          </div>
+          <span className="text-[11px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+            {repeatRate}% Retention
+          </span>
+        </div>
+
+        {/* Stacked multi-color distribution bar */}
+        <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden flex mb-4">
+          {segments.map((seg, idx) => (
+            <div
+              key={idx}
+              className={`${seg.color} h-full transition-all duration-300`}
+              style={{ width: `${seg.pct}%` }}
+              title={`${seg.label}: ${seg.count} (${seg.pct}%)`}
+            />
+          ))}
+        </div>
+
+        <div className="space-y-2.5 flex-1">
+          {segments.map((seg, idx) => (
+            <div key={idx} className="flex items-center justify-between text-[12px]">
+              <div className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${seg.color} shrink-0`} />
+                <span className="font-medium text-slate-700 truncate">{seg.label}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-slate-400 text-[11px]">{seg.pct}%</span>
+                <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md text-[11px]">
+                  {seg.count}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+          <span>Active in 2026: <strong className="text-slate-800">{activeClients}</strong></span>
+          <span>At-Risk / Dormant: <strong className="text-orange-600">{inactiveClientsCount}</strong></span>
+        </div>
+      </div>
+    )
+  }
 
   const renderClientsTable = () => (
     <div className="w-full bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] overflow-hidden">
@@ -626,40 +885,40 @@ export function Clients() {
         showSearch={false}
       />
 
-      {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3.5">
-        {[
-          { label: 'Total Clients',    value: clients.length,             sub: 'All time records', icon: Users,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: clientDeltaLabel,  deltaUp: newThisMonth >= 0, filter: null },
-          { label: 'Monthly Clients',  value: monthlyCount,              sub: 'Active monthly clients', icon: Star,     iconBg: 'bg-teal-50',    iconColor: 'text-teal-600',    delta: `${monthlyCount} active`, deltaUp: monthlyCount > 0, filter: 'monthly' },
-          { label: 'Active (30d)',     value: activeClients,              sub: 'Recent activity', icon: TrendingUp, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: `${activeClients} active`, deltaUp: activeClients > 0, filter: 'active' },
-          { label: 'VIP Clients',      value: vipClients,                 sub: 'AED 2k+ spent',  icon: Award,     iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: vipClients > 0 ? `${vipClients} VIP` : 'None', deltaUp: vipClients > 0, filter: 'vip' },
-          { label: 'Avg Lifetime',     value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client', icon: DollarSign, iconBg: 'bg-teal-50',   iconColor: 'text-teal-600',    delta: avgLtv > 0 ? 'Real' : '—', deltaUp: avgLtv > 0, filter: null },
-          { label: 'Total Revenue',    value: `AED ${(totalSpent/1000).toFixed(1)}k`, sub: 'All clients', icon: CheckCircle, iconBg: 'bg-rose-50', iconColor: 'text-rose-600',    delta: `AED ${totalSpent.toLocaleString()}`, deltaUp: totalSpent > 0, filter: null },
-          { label: 'Repeat Rate',      value: `${repeatRate}%`,           sub: 'Have 2+ visits',  icon: Heart,     iconBg: 'bg-pink-50',    iconColor: 'text-pink-600',    delta: `${repeatClients} clients`, deltaUp: repeatRate > 0, filter: 'repeat' },
-        ].map(card => {
-          const isSelected = filterType === card.filter
-          return (
-            <button
-              key={card.label}
-              onClick={() => setFilterType(isSelected ? null : (card.filter as any))}
-              className={`text-left bg-white rounded-[24px] border-2 shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all cursor-pointer ${
-                isSelected ? 'border-emerald-400 bg-emerald-50/30' : 'border-[#E4E8EC] hover:border-emerald-200'
-              }`}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center`}>
-                  <card.icon size={18} className={card.iconColor} />
-                </div>
-                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${card.deltaUp ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                  {card.delta}
-                </span>
-              </div>
-              <p className="text-2xl font-bold text-[#111827] tracking-tight">{card.value}</p>
-              <p className="text-[12px] font-semibold text-[#111827] mt-1">{card.label}</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">{card.sub}</p>
-            </button>
-          )
-        })}
+      {/* ── KPI Summary Cards: Single Row of 6 Cards ── */}
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
+          {primaryCards.map(renderCard)}
+        </div>
+
+        {/* ── Light-colored Blinking Arrow Button for expanding more cards ── */}
+        <div className="flex justify-center pt-0.5">
+          <button
+            type="button"
+            onClick={() => setShowAllCards(prev => !prev)}
+            className="group inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 hover:bg-slate-100/90 text-slate-600 hover:text-slate-900 border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all duration-200 cursor-pointer text-[12px] font-semibold"
+            title={showAllCards ? "Collapse extra metrics" : "Show more client metrics"}
+          >
+            <span>{showAllCards ? "Collapse Metrics" : `More Client Metrics (${secondaryCards.length})`}</span>
+            <span className="relative flex items-center justify-center w-5 h-5 rounded-full bg-slate-200/70 group-hover:bg-slate-300/80 text-slate-700 transition-colors">
+              {!showAllCards && (
+                <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
+              )}
+              {showAllCards ? (
+                <ChevronUp size={13} className="transition-transform" />
+              ) : (
+                <ChevronDown size={13} className="animate-bounce transition-transform" />
+              )}
+            </span>
+          </button>
+        </div>
+
+        {/* ── Expanded Drawer: Secondary Row of 6 cards ── */}
+        {showAllCards && (
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5 animate-in fade-in slide-in-from-top-2 duration-300">
+            {secondaryCards.map(renderCard)}
+          </div>
+        )}
       </div>
 
       {/* ── Single Unified Filter & Search Bar directly below summary cards ── */}
@@ -707,12 +966,19 @@ export function Clients() {
           <div className="relative shrink-0">
             <select
               value={sortOrder}
-              onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
+              onChange={e => setSortOrder(e.target.value as any)}
               className="text-[13px] pl-3.5 pr-8 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500 text-slate-700 font-medium cursor-pointer appearance-none transition-colors"
             >
-              <option value="recent">Sort by: Recent</option>
-              <option value="top_spent">Sort by: Top Spenders</option>
-              <option value="name">Sort by: Name (A-Z)</option>
+              <option value="recent">Sort by: Recently Active</option>
+              <option value="top_spent">Sort by: Highest Spent (AED ↓)</option>
+              <option value="lowest_spent">Sort by: Lowest Spent (AED ↑)</option>
+              <option value="pending_due">Sort by: Highest Due Balance (AED ↓)</option>
+              <option value="most_bookings">Sort by: Most Bookings / Visits</option>
+              <option value="least_bookings">Sort by: Fewest Bookings</option>
+              <option value="name_asc">Sort by: Name (A → Z)</option>
+              <option value="name_desc">Sort by: Name (Z → A)</option>
+              <option value="recent_service">Sort by: Last Service Date</option>
+              <option value="oldest_client">Sort by: Oldest Joined</option>
             </select>
             <ArrowUpDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
@@ -880,9 +1146,11 @@ export function Clients() {
             renderClientsTable()
           )}
 
-          {/* ── Widgets Underneath Datatable (Responsive 3-Column Grid) ── */}
+          {/* ── Widgets Underneath Datatable (Responsive Grid) ── */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
             {renderTopClientsWidget()}
+            {renderOutstandingDuesWidget()}
+            {renderClientRetentionWidget()}
             {renderTopLocationsWidget()}
             {renderRecentBookingsWidget()}
           </div>
@@ -1033,6 +1301,8 @@ export function Clients() {
         {/* ── Right sidebar widgets ── */}
         <div className="space-y-5">
           {renderTopClientsWidget()}
+          {renderOutstandingDuesWidget()}
+          {renderClientRetentionWidget()}
           {renderTopLocationsWidget()}
           {renderRecentBookingsWidget()}
         </div>
