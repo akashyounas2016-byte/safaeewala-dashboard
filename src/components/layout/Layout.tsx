@@ -7,6 +7,7 @@ import { CRMAIBotModal } from '@/components/ai/CRMAIBotModal'
 import { useData } from '@/store/DataContext'
 import { analyzeCRMHealth } from '@/lib/crmAIBot'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
+import { SyncStatusBanner } from './SyncStatusBanner'
 
 /* ── Layout context — lets PageHero access openMenu and toggleSidebar ── */
 export const LayoutContext = createContext<{
@@ -155,6 +156,8 @@ export function Layout() {
                   </div>
                 </div>
               )}
+
+              <SyncStatusBanner />
 
               <ErrorBoundary key={location.pathname}>
                 <Outlet />

@@ -3,7 +3,7 @@
 > **Scope:** all screens, with focus on Employees, Agencies, Clients and the shared data layer (`DataContext`, `src/lib`).
 > **Method:** code review of the current `main` (`ec6c9c2`), tracing each number from storage → calculation → screen.
 > Findings were checked against the code; items marked **(verify)** depend on the live Supabase schema, which was not inspected.
-> **Status of fixes:** Phase 1 fixed on 2026-10-27 — AUD-01, AUD-05, AUD-07, AUD-10 (marked ✅ below). Others open. Track fixes by ID (`AUD-xx`) in commits and CHANGELOG.
+> **Status of fixes:** Phase 1 fixed — AUD-01, AUD-05, AUD-07, AUD-10. Phase 2 code done — AUD-02, AUD-03, AUD-04, AUD-20, AUD-23 (marked ✅; AUD-02/03 need the Supabase migration `supabase/migrations/2026-10-27_phase2_sync.sql` to take full effect). Others open. Track fixes by ID (`AUD-xx`) in commits and CHANGELOG.
 
 ## Summary
 
@@ -79,14 +79,14 @@
 
 ## C. Synchronisation between Employees, Agencies, Clients and the data layer
 
-### AUD-03 🔴 New employees/clients can disappear after refresh (verify)
+### AUD-03 🔴 New employees/clients can disappear after refresh (verify) — ✅ Fixed in code (+ migration)
 - **Where:** `DataContext.tsx:568-571` (insert), `:298`, `:306` (load).
 - **What:** a new record is added to local state and inserted into Supabase; errors are only `console.error`. On next load, if Supabase returns any rows, the list is **replaced** by Supabase's (no merge with local-only records), and the local cache is then overwritten.
 - **When it bites:** offline / timeout during save, or a Supabase column missing for new fields (`photo_url`, `eid_start_date`, `documents`, … — Supabase rejects the whole insert). **(verify)** which columns exist.
 - **Impact:** an employee added today is gone tomorrow; same pattern for clients and bookings.
 - **Fix:** surface save errors in the UI; on load, merge local records not yet in Supabase and retry; add missing columns (owner approval).
 
-### AUD-04 🔴 Agencies load from two stores; the last one wins
+### AUD-04 🔴 Agencies load from two stores; the last one wins — ✅ Fixed
 - **Where:** `DataContext.tsx:257-276` — `/api/agencies` (VPS JSON) merges into state, then Supabase `agencies` **replaces** the whole list (`setAgencies(dbAgencies)`), without re-adding the Safaeewala parent.
 - **What:** writes go to both stores (`addAgency/updateAgency` POST the full list to `/api` and insert/update Supabase). If one write fails (e.g. missing columns for `payouts`, `documents`, `bank_details`) the stores diverge, and whichever request finishes last decides what the user sees.
 - **Impact:** agencies/payouts "revert" after refresh (the earlier Safaeewala-name bug), parent company may vanish, payouts recorded on one device not visible on another. Plus K-03 (stale tab overwrites the full list).
@@ -131,7 +131,7 @@
 
 ## D. Persistence gaps (browser-only business data)
 
-### AUD-02 🔴 Payments, adjustments and attendance live only in the browser
+### AUD-02 🔴 Payments, adjustments and attendance live only in the browser — ✅ Fixed in code (needs migration)
 - **Where (localStorage only, no Supabase table):**
   - `safaeewala_monthly_client_payments` — `MonthlyClients.tsx`, `Overview.tsx`, `PaymentProcessing.tsx`
   - `safaeewala_daily_pending_items`, `safaeewala_daily_pending_rcvd_items` — `DailyJobSheet.tsx`, `PendingPayments.tsx`, `PaymentProcessing.tsx`, `Overview.tsx`
@@ -142,10 +142,22 @@
 - **Impact:** money received, pending recoveries, advances and absences differ per browser/device (and between localhost and the VPS); clearing the browser or switching laptop loses them; Health Score differs per device.
 - **Fix:** move each to a Supabase table (owner approval for schema), keep localStorage as cache only.
 
-### AUD-20 🟡 Save errors are invisible
+### AUD-20 🟡 Save errors are invisible — ✅ Fixed
 - **Where:** every `supabase.from(...).insert/update/delete(...).then(({ error }) => console.error(error))` in `DataContext.tsx`.
 - **Impact:** users believe data is saved when it isn't (root cause behind AUD-03/04).
 - **Fix:** toast on failure + retry queue.
+
+### AUD-23 🔴 Only the first 1000 rows of each table were loaded — ✅ Fixed
+- **Where:** `DataContext.tsx` loader `q()` — one `select('*')` per table; Supabase returns at most 1000 rows per request.
+- **Impact:** once `daily_jobs` passed 1000 rows, older shifts silently disappeared from every screen (hours, revenue, history).
+- **Fix:** the loader now pages through each table 1000 rows at a time (found during Phase 2, 2026-10-27).
+
+### How Phase 2 works
+- **Outbox (`src/lib/syncQueue.ts`):** every Supabase write goes through `dbInsert / dbUpdate / dbDelete`. A failed write is kept in `safaeewala_sync_outbox`, retried every minute and on reconnect, and re-applied on load so the record is not lost. Inserts are upserts, so retries are safe.
+- **Cloud copy of browser data (`src/lib/cloudState.ts`):** the 7 browser-only keys are mirrored to the Supabase table `app_state`; pulled before the app renders, pushed after each change, merged by `id` when two devices both changed data.
+- **Agencies:** loaded from `/api/agencies` and Supabase together and merged by id (parent always present); saves send only the changed agency (K-03); deletes send `remove`.
+- **Banner:** an amber "N changes not saved to the cloud" banner with the error text and a Retry button appears whenever something is pending.
+- **Tests:** 14 behaviour checks run against an in-memory Supabase (failed insert kept, update folded into pending insert, retry, delete, first upload, two-device merge, deletion not resurrected, reload from cloud, missing table) — all pass.
 
 ---
 

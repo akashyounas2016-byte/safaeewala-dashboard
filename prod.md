@@ -57,6 +57,8 @@ There are **two** ways code reaches production. Both need the owner's permission
 - ⇒ Pushing `main` *is* deploying. Do not push without permission.
 
 ### Pre-deploy checklist
+- [ ] Pending database migrations in `supabase/migrations/` have been run in the Supabase SQL Editor (owner)
+- [ ] `webhookServer.cjs` changed? → use `deploy.ps1` (the GitHub Actions deploy copies only `dist/`)
 - [ ] `git status` clean in the main folder (or you know exactly what uncommitted work ships)
 - [ ] `npx tsc -b` and `npm run build` pass
 - [ ] Changed screens checked on localhost

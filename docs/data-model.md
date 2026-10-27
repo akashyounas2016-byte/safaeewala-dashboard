@@ -19,6 +19,7 @@
 | **InventoryItem** | stock, minimum | `inventory` + `safaeewala_inventory` | |
 | **FluentFormLead** | website form lead, `status` (`new`/`contacted`/`quoted`/`converted`/`lost`) | `fluent_form_leads` + VPS `/data/leads.json` | Webhook `/api/webhook/fluent-forms` |
 | Settings / users | company TRN & name, profiles, audit | `company_settings`, `profiles`, `audit_log` | |
+| **app_state** | `key` (localStorage key), `value` (jsonb), `updated_at` | Supabase `app_state` | Cloud copy of the browser-only business keys (R-SYNC-05) |
 
 ## 2. How records link
 
@@ -42,8 +43,9 @@ Client master schedule ──(generates rows)───────────�
 | UI preferences | `sidebar_nav_order`, `sidebar_favorites`, `sidebar_collapsed`, `daily_job_cols`, `daily_job_col_order`, `excel_*`, `fluent_form_cols`, `fluent_form_col_order`, `employees_hidden_rows`, `hide_admin_card` (plus `agencies_view_mode`, which has no prefix) |
 | Integrations | `fluent_form_leads`, `fluent_form_leads_backup`, `fluent_forms_read*`, `ghl_config*`, `gdrive_webhook_url`, `review_requests`, `cached_reports` |
 | Auth | `auth_session`, `login_attempts`, `admin_custom_credentials` |
+| Sync internals | `sync_outbox` (Supabase writes waiting for retry), `cloud_state_meta` (last sync time / unsynced flag per key) |
 
-Browser storage is per browser **and per port** (5058 and 5059 do not share it). Attendance overrides and hidden rows therefore do not sync between devices.
+Browser storage is per browser **and per port** (5058 and 5059 do not share it). These keys are mirrored to Supabase `app_state` (once the Phase 2 migration is run): `monthly_client_payments`, `daily_pending_items`, `daily_pending_rcvd_items`, `daily_advance_items`, `client_adjustments`, `cleaner_attendance_overrides`, `recurring_contracts`. UI preferences (e.g. hidden rows) stay per browser.
 
 ## 4. Changing the model — checklist
 

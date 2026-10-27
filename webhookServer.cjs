@@ -443,7 +443,10 @@ const server = http.createServer((req, res) => {
       try {
         const payload = JSON.parse(body);
         let current = readAgencies() || [];
-        if (Array.isArray(payload)) {
+        if (payload && payload.remove) {
+          // Delete one agency by id (sent together with a full list for older servers)
+          current = current.filter(a => a.id !== payload.remove);
+        } else if (Array.isArray(payload)) {
           current = payload;
         } else if (payload && Array.isArray(payload.all)) {
           current = payload.all;

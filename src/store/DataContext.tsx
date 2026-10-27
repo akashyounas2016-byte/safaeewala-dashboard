@@ -3,6 +3,7 @@ import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, Daily
 import { supabase } from '@/lib/supabase'
 import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
+import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry } from '@/lib/syncQueue'
 import { seedBookings, seedClients, seedInvoices, seedInventory, seedEmployees } from '@/lib/seedData'
 import { addHoursToTime } from '@/lib/utils'
 
@@ -238,44 +239,61 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   /* ── Load all data on mount with fast timeout guard so offline database never hangs ── */
   useEffect(() => {
+    // Supabase returns at most 1000 rows per request — page through the table so large
+    // ledgers (daily_jobs) are loaded completely. Each page has the 2 s timeout guard.
+    const PAGE = 1000
     const q = async (table: string, order = 'created_at'): Promise<any[]> => {
+      const all: any[] = []
       try {
-        const timeoutPromise = new Promise<any[]>((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), 2000)
-        )
-        const fetchPromise = supabase.from(table).select('*').order(order, { ascending: false }).then(r => r.data ?? [])
-        const data = await Promise.race([fetchPromise, timeoutPromise])
-        return data ?? []
-      } catch { return [] }
+        for (let from = 0; ; from += PAGE) {
+          const timeoutPromise = new Promise<any[]>((_, reject) =>
+            setTimeout(() => reject(new Error('timeout')), 2000)
+          )
+          const fetchPromise = supabase.from(table).select('*').order(order, { ascending: false })
+            .range(from, from + PAGE - 1).then(r => r.data ?? [])
+          const page = await Promise.race([fetchPromise, timeoutPromise])
+          all.push(...(page ?? []))
+          if (!page || page.length < PAGE) break
+        }
+        return all
+      } catch {
+        // A partial read would look like deleted rows — treat it as "no server data" and use the cache
+        return []
+      }
     }
+    // Server rows + local changes still waiting in the outbox (AUD-03)
+    const withPending = <T extends { id: string }>(table: string, rows: T[]) =>
+      rows.length > 0 ? applyOutbox(table, rows) : rows
 
     // Load company settings for TRN used in auto-invoices
     supabase.from('company_settings').select('data').eq('id', 1).single()
       .then(({ data }) => { if (data?.data?.company?.trn) setCompanyTRN(data.data.company.trn) })
 
-    // Load persisted agencies from backend microservice to guarantee synchronization across local and VPS
-    fetch('/api/agencies')
-      .then(r => r.ok ? r.json() : null)
-      .then(serverAgencies => {
-        if (serverAgencies && Array.isArray(serverAgencies) && serverAgencies.length > 0) {
-          setAgencies(prev => {
-            const next = serverAgencies.map((sa: Agency) => {
-              const current = prev.find(p => p.id === sa.id)
-              return current ? { ...current, ...sa } : sa
-            })
-            safeLocalStorageSet('safaeewala_agencies', next)
-            return next
-          })
+    // Agencies live in two stores: the VPS JSON file (/api/agencies, keeps every field) and
+    // Supabase. Read both, merge by id (JSON fields win), never drop the parent company (AUD-04).
+    Promise.all([
+      fetch('/api/agencies').then(r => (r.ok ? r.json() : [])).catch(() => []),
+      q('agencies'),
+    ]).then(([apiList, dbList]) => {
+      const api = Array.isArray(apiList) ? (apiList as Agency[]) : []
+      const db = withPending('agencies', (dbList || []) as Agency[])
+      if (api.length === 0 && db.length === 0) return
+      setAgencies(prev => {
+        const byId = new Map<string, Agency>()
+        db.forEach(a => byId.set(a.id, a))
+        api.forEach(a => byId.set(a.id, { ...byId.get(a.id), ...a }))
+        const next = Array.from(byId.values()).map(a => {
+          const local = prev.find(p => p.id === a.id)
+          return local ? { ...local, ...a } : a
+        })
+        if (!next.some(a => a.id === 'agency-safaeewala' || a.company_type === 'Parent Company')) {
+          const parent = prev.find(a => a.id === 'agency-safaeewala') || defaultAgencies[0]
+          if (parent) next.unshift(parent)
         }
+        safeLocalStorageSet('safaeewala_agencies', next)
+        return next
       })
-      .catch(() => {})
-
-    q('agencies').then(dbAgencies => {
-      if (dbAgencies && dbAgencies.length > 0) {
-        setAgencies(dbAgencies as Agency[])
-        safeLocalStorageSet('safaeewala_agencies', dbAgencies as Agency[])
-      }
-    }).catch(() => {})
+    })
 
     Promise.all([
       q('bookings'),
@@ -287,7 +305,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       q('daily_expenses', 'date'),
     ]).then(([b, c, e, i, inv, dj, de]) => {
       if (b && b.length > 0) {
-        setBookings(b as Booking[])
+        setBookings(withPending('bookings', b as Booking[]))
       } else {
         const saved = safeLocalStorageGet<Booking[]>('safaeewala_bookings', [])
         if (saved.length > 0) setBookings(saved)
@@ -295,7 +313,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
 
       if (c && c.length > 0) {
-        setClients(c as Client[])
+        setClients(withPending('clients', c as Client[]))
       } else {
         const saved = safeLocalStorageGet<Client[]>('safaeewala_clients', [])
         if (saved.length > 0) setClients(saved)
@@ -303,7 +321,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
 
       if (e && e.length > 0) {
-        setEmployees(e as Employee[])
+        setEmployees(withPending('employees', e as Employee[]))
       } else {
         const saved = safeLocalStorageGet<Employee[]>('safaeewala_employees', [])
         if (saved.length > 0) setEmployees(saved)
@@ -311,7 +329,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
 
       if (i && i.length > 0) {
-        setInvoices(i as Invoice[])
+        setInvoices(withPending('invoices', i as Invoice[]))
       } else {
         const saved = safeLocalStorageGet<Invoice[]>('safaeewala_invoices', [])
         if (saved.length > 0) setInvoices(saved)
@@ -319,7 +337,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
 
       if (inv && inv.length > 0) {
-        setInventory(inv as InventoryItem[])
+        setInventory(withPending('inventory', inv as InventoryItem[]))
       } else {
         const saved = safeLocalStorageGet<InventoryItem[]>('safaeewala_inventory', [])
         if (saved.length > 0) setInventory(saved)
@@ -335,7 +353,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         service: j.service || '',
       }))
       if (initialJobs.length > 0) {
-        setDailyJobs(initialJobs)
+        setDailyJobs(withPending('daily_jobs', initialJobs))
       } else {
         const savedJobs = safeLocalStorageGet<DailyJob[]>('safaeewala_daily_jobs', [])
         if (savedJobs.length > 0) setDailyJobs(savedJobs)
@@ -346,13 +364,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
         amount: safeNum(x.amount),
       }))
       if (initialExp.length > 0) {
-        setDailyExpenses(initialExp)
+        setDailyExpenses(withPending('daily_expenses', initialExp))
       } else {
         const savedExp = safeLocalStorageGet<DailyExpense[]>('safaeewala_daily_expenses', [])
         if (savedExp.length > 0) setDailyExpenses(savedExp)
       }
       setLoading(false)
     }).catch(() => setLoading(false))
+
+    // Retry unsaved changes now, on reconnect and every minute
+    return startOutboxRetry()
   }, [])
 
   // Older booking-synced rows stored employee IDs in staff_name; show them as cleaner names
@@ -389,7 +410,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (!matchedClient.source && b.source) {
           const updated = { ...matchedClient, source: b.source }
           setClients(p => p.map(c => c.id === matchedClient.id ? updated : c))
-          supabase.from('clients').update({ source: b.source }).eq('id', matchedClient.id).then(() => {})
+          dbUpdate('clients', matchedClient.id, { source: b.source })
         }
       } else if (!resolvedClientId) {
         const newClient: Client = {
@@ -402,12 +423,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
         resolvedClientId = newClient.id
         setClients(p => [newClient, ...p])
-        supabase.from('clients').insert(newClient).then(({ error }) => { if (error) console.error(error) })
+        dbInsert('clients', newClient)
       }
 
       const row = { ...b, id: uid(), created_at: now(), client_id: resolvedClientId }
       setBookings(p => [row, ...p])
-      supabase.from('bookings').insert(row).then(({ error }) => { if (error) console.error(error) })
+      dbInsert('bookings', row)
       logAudit('created', 'booking', row.id, b.client_name, `${b.service_type} · ${b.scheduled_date}`)
 
       // Automatically synchronize with Daily Job Sheet
@@ -436,12 +457,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         safeLocalStorageSet('safaeewala_daily_jobs', next)
         return next
       })
-      supabase.from('daily_jobs').insert(jobRow).then(({ error }) => { if (error) console.error(error) })
+      dbInsert('daily_jobs', jobRow)
     },
     updateBooking: (id, patch) => {
       const booking = bookings.find(b => b.id === id)
       setBookings(p => p.map(b => b.id === id ? { ...b, ...patch } : b))
-      supabase.from('bookings').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbUpdate('bookings', id, patch)
       if (patch.status && booking) logAudit('status_changed', 'booking', id, booking.client_name, `${booking.status} → ${patch.status}`)
 
       // Update synchronized DailyJob row if exists
@@ -480,8 +501,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             last_service:   booking.scheduled_date,
           }
           setClients(p => p.map(c => c.id === client.id ? { ...c, ...clientPatch } : c))
-          supabase.from('clients').update(clientPatch).eq('id', client.id)
-            .then(({ error }) => { if (error) console.error(error) })
+          dbUpdate('clients', client.id, clientPatch)
         }
 
         // 2. Auto-create a draft invoice
@@ -502,7 +522,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           notes: 'Payment due within 10 days. Bank transfer or cash accepted.',
         }
         setInvoices(p => [invoice, ...p])
-        supabase.from('invoices').insert(invoice).then(({ error }) => { if (error) console.error(error) })
+        dbInsert('invoices', invoice)
 
         // Auto-schedule next occurrence for recurring bookings
         if (booking.frequency !== 'once') {
@@ -517,14 +537,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
             scheduled_date: d.toISOString().split('T')[0],
           }
           setBookings(p => [nextRow, ...p])
-          supabase.from('bookings').insert(nextRow).then(({ error }) => { if (error) console.error(error) })
+          dbInsert('bookings', nextRow)
         }
       }
     },
     deleteBooking: (id) => {
       const b = bookings.find(b => b.id === id)
       setBookings(p => p.filter(b => b.id !== id))
-      supabase.from('bookings').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbDelete('bookings', id)
       setDailyJobs(p => {
         const next = p.filter(j => j.booking_id !== id)
         safeLocalStorageSet('safaeewala_daily_jobs', next)
@@ -538,7 +558,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addClient: (c) => {
       const row = { ...c, id: uid(), created_at: now() }
       setClients(p => [row, ...p])
-      supabase.from('clients').insert(row).then(({ error }) => { if (error) console.error(error) })
+      dbInsert('clients', row)
       logAudit('created', 'client', row.id, c.full_name)
     },
     updateClient: (id, patch) => {
@@ -550,17 +570,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const discovered = allClients.find(c => c.id === id)
         if (discovered) {
           const newSaved = { ...discovered, ...patch }
-          supabase.from('clients').insert(newSaved).then(({ error }) => { if (error) console.error(error) })
+          dbInsert('clients', newSaved)
           return [newSaved, ...p]
         }
         return p
       })
-      supabase.from('clients').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbUpdate('clients', id, patch)
     },
     deleteClient: (id) => {
       const c = clients.find(c => c.id === id)
       setClients(p => p.filter(c => c.id !== id))
-      supabase.from('clients').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbDelete('clients', id)
       if (c) logAudit('deleted', 'client', id, c.full_name)
     },
 
@@ -568,7 +588,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addEmployee: (e) => {
       const row = { ...e, id: uid(), created_at: now() }
       setEmployees(p => [row, ...p])
-      supabase.from('employees').insert(row).then(({ error }) => { if (error) console.error(error) })
+      dbInsert('employees', row)
       logAudit('created', 'employee', row.id, e.full_name, e.role)
     },
     updateEmployee: (id, patch) => {
@@ -580,17 +600,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const discovered = allEmployees.find(e => e.id === id)
         if (discovered) {
           const newSaved = { ...discovered, ...patch }
-          supabase.from('employees').insert(newSaved).then(({ error }) => { if (error) console.error(error) })
+          dbInsert('employees', newSaved)
           return [newSaved, ...p]
         }
         return p
       })
-      supabase.from('employees').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbUpdate('employees', id, patch)
     },
     deleteEmployee: (id) => {
       const e = employees.find(e => e.id === id)
       setEmployees(p => p.filter(e => e.id !== id))
-      supabase.from('employees').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbDelete('employees', id)
       if (e) logAudit('deleted', 'employee', id, e.full_name)
     },
 
@@ -603,11 +623,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         fetch('/api/agencies', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ all: next })
+          body: JSON.stringify({ id: row.id, patch: row }) // only this agency (K-03)
         }).catch(() => {})
         return next
       })
-      supabase.from('agencies').insert(row).then(({ error }) => { if (error) console.error(error) })
+      dbInsert('agencies', row)
       logAudit('created', 'agency', row.id, a.name)
     },
     updateAgency: (id, patch) => {
@@ -617,11 +637,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         fetch('/api/agencies', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, patch, all: next })
+          body: JSON.stringify({ id, patch }) // only this agency — a stale tab can no longer overwrite the list (K-03)
         }).catch(() => {})
         return next
       })
-      supabase.from('agencies').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbUpdate('agencies', id, patch)
       if (id === 'agency-safaeewala' && patch.name) {
         supabase.from('company_settings').upsert({
           id: 1,
@@ -638,11 +658,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         fetch('/api/agencies', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ all: next })
+          body: JSON.stringify({ remove: id, all: next }) // new server: remove by id; old server: full list
         }).catch(() => {})
         return next
       })
-      supabase.from('agencies').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbDelete('agencies', id)
       if (a) logAudit('deleted', 'agency', id, a.name)
     },
 
@@ -650,19 +670,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addInvoice: (i) => {
       const row = { ...i, id: uid(), created_at: now() }
       setInvoices(p => [row, ...p])
-      supabase.from('invoices').insert(row).then(({ error }) => { if (error) console.error(error) })
+      dbInsert('invoices', row)
       logAudit('created', 'invoice', row.id, i.client_name, `AED ${i.total} · ${i.invoice_number}`)
     },
     updateInvoice: (id, patch) => {
       const inv = invoices.find(i => i.id === id)
       setInvoices(p => p.map(i => i.id === id ? { ...i, ...patch } : i))
-      supabase.from('invoices').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbUpdate('invoices', id, patch)
       if (patch.status && inv) logAudit('status_changed', 'invoice', id, inv.client_name, `${inv.status} → ${patch.status}`)
     },
     deleteInvoice: (id) => {
       const inv = invoices.find(i => i.id === id)
       setInvoices(p => p.filter(i => i.id !== id))
-      supabase.from('invoices').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbDelete('invoices', id)
       if (inv) logAudit('deleted', 'invoice', id, inv.client_name)
     },
 
@@ -670,11 +690,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addInventory: (i) => {
       const row = { ...i, id: uid(), created_at: now() }
       setInventory(p => [row, ...p])
-      supabase.from('inventory').insert(row).then(({ error }) => { if (error) console.error(error) })
+      dbInsert('inventory', row)
     },
     updateInventory: (id, patch) => {
       setInventory(p => p.map(i => i.id === id ? { ...i, ...patch } : i))
-      supabase.from('inventory').update(patch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbUpdate('inventory', id, patch)
     },
     /* ── Daily Job Sheet ── */
     addDailyJob: (j) => {
@@ -693,7 +713,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         safeLocalStorageSet('safaeewala_daily_jobs', next)
         return next
       })
-      supabase.from('daily_jobs').insert(row).then(({ error }) => { if (error) console.error(error) })
+      dbInsert('daily_jobs', row)
     },
     updateDailyJob: (id, patch) => {
       const sanitizedPatch = { ...patch }
@@ -707,7 +727,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         safeLocalStorageSet('safaeewala_daily_jobs', next)
         return next
       })
-      supabase.from('daily_jobs').update(sanitizedPatch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbUpdate('daily_jobs', id, sanitizedPatch)
     },
     deleteDailyJob: (id) => {
       setDailyJobs(p => {
@@ -715,7 +735,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         safeLocalStorageSet('safaeewala_daily_jobs', next)
         return next
       })
-      supabase.from('daily_jobs').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbDelete('daily_jobs', id)
     },
     addDailyExpense: (e) => {
       const row = { ...e, amount: safeNum(e.amount), id: uid(), created_at: now() }
@@ -724,7 +744,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         safeLocalStorageSet('safaeewala_daily_expenses', next)
         return next
       })
-      supabase.from('daily_expenses').insert(row).then(({ error }) => { if (error) console.error(error) })
+      dbInsert('daily_expenses', row)
     },
     updateDailyExpense: (id, patch) => {
       const sanitizedPatch = { ...patch }
@@ -734,7 +754,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         safeLocalStorageSet('safaeewala_daily_expenses', next)
         return next
       })
-      supabase.from('daily_expenses').update(sanitizedPatch).eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbUpdate('daily_expenses', id, sanitizedPatch)
     },
     deleteDailyExpense: (id) => {
       setDailyExpenses(p => {
@@ -742,7 +762,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         safeLocalStorageSet('safaeewala_daily_expenses', next)
         return next
       })
-      supabase.from('daily_expenses').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) })
+      dbDelete('daily_expenses', id)
     },
     clearDailyData: (date) => {
       setDailyJobs(p => {
@@ -779,8 +799,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const newStock = item.current_stock + item.reorder_quantity
       const lastRestocked = new Date().toISOString().split('T')[0]
       setInventory(p => p.map(i => i.id === id ? { ...i, current_stock: newStock, last_restocked: lastRestocked } : i))
-      supabase.from('inventory').update({ current_stock: newStock, last_restocked: lastRestocked }).eq('id', id)
-        .then(({ error }) => { if (error) console.error(error) })
+      dbUpdate('inventory', id, { current_stock: newStock, last_restocked: lastRestocked })
     },
   }
 

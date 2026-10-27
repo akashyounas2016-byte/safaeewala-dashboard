@@ -95,6 +95,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `DataContext.tsx → addBooking, updateBooking`.
 - **Status:** Active
 
+### R-SYNC-05 — No change is lost when Supabase is unavailable
+- **Rule:** Every write to Supabase goes through the outbox; a failed write is kept, retried, re-applied on load and shown to the user. Business data that has no table of its own (payments, pending/received items, advances, adjustments, attendance overrides, recurring contracts) is mirrored to `app_state`.
+- **Code:** `src/lib/syncQueue.ts` (`dbInsert/dbUpdate/dbDelete`, `applyOutbox`), `src/lib/cloudState.ts`, `src/components/layout/SyncStatusBanner.tsx`; loader pages through tables (no 1000-row cap).
+- **Status:** Active in code · needs migration `supabase/migrations/2026-10-27_phase2_sync.sql` · Since: 2026-10-27 (AUD-02/03/04/20/23)
+
 ### R-SYNC-04 — Staff are matched by whole words
 - **Rule:** An employee matches a job's `staff_name` by normalised full name or whole-word match — "Rupa" must not match "Rupak".
 - **Code:** `clientDataSync.ts → employeeMatchesStaff`.
@@ -247,8 +252,8 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 |---|---|---|
 | K-01 | Localhost talks to the **live** backend (`/api` proxy → VPS, live Supabase): saves during testing change production data. | R-OPS-02 |
 | K-02 | Agency payouts derive hourly pay as `monthly_salary / (26 × 8)` (208 h) while the rest of the app uses 200 h. | R-EMP-02, R-PAY-01 |
-| K-03 | Agency saves POST the **whole agency list** (`{ all: next }`); a stale tab can overwrite newer agencies. | R-AGN-* |
-| K-04 | New employee fields (`photo_url`, document numbers/files) may not exist as Supabase columns; if not, they persist only in that browser. | R-EMP-* |
+| ~~K-03~~ | ✅ Fixed 2026-10-27: agency saves send only the changed agency; deletes send `remove` (old servers fall back to the full list). | R-AGN-* |
+| K-04 | New employee/agency fields may not exist as Supabase columns → writes rejected. Now visible (banner) and retried; fixed for good once the Phase 2 migration is run. | R-EMP-*, R-SYNC-05 |
 | K-05 | Seed/demo data still loads when Supabase and localStorage are both empty. | R-DATA-03 |
 
 Full list of sync / dummy-data issues with locations: [docs/audits/2026-10-27-data-sync-audit.md](docs/audits/2026-10-27-data-sync-audit.md) (AUD-01 … AUD-22).
