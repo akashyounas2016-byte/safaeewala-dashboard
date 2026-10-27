@@ -129,7 +129,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Status:** Active
 
 ### R-EMP-02 — Monthly salary and hourly rate
-- **Rule:** Monthly salary is the stored `monthly_salary`, else `pay_rate_hourly × 200` (`MONTHLY_WORK_HOURS`). The Add Employee form stores `pay_rate_hourly = monthly_salary / 200`.
+- **Rule:** Monthly salary is the stored `monthly_salary`, else `pay_rate_hourly × 200` (`MONTHLY_WORK_HOURS`). The Add Employee form stores `pay_rate_hourly = monthly_salary / 200`. A missing salary is shown as "Not set" and is never filled with a default value (AUD-10).
 - **Code:** `clientDataSync.ts → MONTHLY_WORK_HOURS, getEmployeeMonthlySalary`.
 - **Status:** Partial — see Known issue K-02.
 
@@ -182,9 +182,9 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ## PAY — Salaries & payouts
 
 ### R-PAY-01 — Agency gross shift revenue
-- **Rule:** Agency "Gross Shift Revenue" = sum of `charges` of job-sheet rows matched (R-SYNC-04) to the agency's staff. Payment status does not affect it.
-- **Code:** `AgencyDashboard.tsx → staffJobsData, financials`.
-- **Status:** Active
+- **Rule:** Agency "Gross Shift Revenue" = sum of each staff member's **share** of job-sheet `charges` (a shared shift is split equally between its cleaners, same as Employees / Employee Profile). Payment status does not affect it.
+- **Code:** `clientDataSync.ts → jobChargeShare`; `AgencyDashboard.tsx → staffJobsData, financials`.
+- **Status:** Active · Updated 2026-10-27 (AUD-07)
 
 ### R-PAY-02 — Salary vs advance payouts
 - **Rule:** Payouts have `payment_type` `salary` or `advance` and `status` `paid` / `pending` / `processing`. "Salary paid" counts only `paid` non-advance payouts.
@@ -199,6 +199,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** VAT is 5% of the subtotal unless the invoice is VAT-exempt (`vat_rate = 0` / `apply_vat = false`); company TRN comes from `company_settings` (fallback `100234567890003`).
 - **Code:** `src/pages/Invoices.tsx`, `MonthlyInvoices.tsx`; TRN in `DataContext.tsx`.
 - **Status:** Active
+
+### R-FIN-03 — Revenue is counted once
+- **Rule:** A booking that has a job-sheet row (`booking_id`) is counted only through that row. **Collected** revenue (Overview) = `received`, else `charges` for paid-on-site rows; `Monthly` rows count only via monthly client payments and `Pending` rows only via recoveries. **Billed / work** revenue (Reports) = job-sheet `charges` + bookings without a row.
+- **Code:** `Overview.tsx → jobCollected, bookingsWithoutJobRow`; `Reports.tsx → workItems`.
+- **Status:** Active · Since: 2026-10-27 (AUD-01, AUD-05)
 
 ### R-FIN-02 — Monthly client balance
 - **Rule:** Balance due = max(0, total charges − total received) for the client's monthly jobs (`payment_mode = Monthly` or "monthly" in remarks/address).

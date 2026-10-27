@@ -854,6 +854,11 @@ export function isBogusStaffName(name: string): boolean {
  * Checks if an Employee matches a staff name from DailyJobSheet
  */
 /** Splits a shared shift entry ("Sharada, Ambika" / "Sita & Rupa") into individual names */
+/** One cleaner's share of a shift's charges — a shared shift ("Sita, Rupa") is split equally (AUD-07) */
+export function jobChargeShare(job: DailyJob): number {
+  return (Number(job.charges) || 0) / Math.max(1, splitStaffNames(job.staff_name).length)
+}
+
 export function splitStaffNames(staffName: string): string[] {
   return (staffName || '')
     .split(/[,/&+]|\band\b/i)

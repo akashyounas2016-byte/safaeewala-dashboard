@@ -45,6 +45,24 @@ function isBogusSummaryJob(j: DailyJob): boolean {
   return (noAddress && noTimes) || (noAddress && (charges > 1500 || received > 1500)) || duty > 24 || isEmptyStub
 }
 
+/**
+ * Money collected for a job-sheet row (AUD-01): the received amount, else the charges for paid-on-site rows.
+ * Monthly rows are collected through monthly client payments and Pending rows through recoveries,
+ * so counting their charges here would count them twice.
+ */
+function jobCollected(j: DailyJob): number {
+  const rec = cleanNum(j.received)
+  if (rec > 0) return rec
+  if (j.payment_mode === 'Pending' || j.payment_mode === 'Monthly') return 0
+  return cleanNum(j.charges)
+}
+
+/** Bookings without a Daily Job Sheet row — a booking with a row is already counted through that row (AUD-01) */
+function bookingsWithoutJobRow(bookings: Booking[], dailyJobs: DailyJob[]): Booking[] {
+  const linked = new Set(dailyJobs.map(j => j.booking_id).filter(Boolean))
+  return bookings.filter(b => !linked.has(b.id))
+}
+
 const serviceTypes = [
   'Standard Clean', 'Deep Clean', 'Move-in', 'Move-out',
   'Commercial', 'Post-construction', 'Office', 'Carpet', 'Window',
@@ -389,8 +407,8 @@ function RevenueChart({
     }
   })
 
-  // 1. From Bookings
-  bookings
+  // 1. From Bookings that have no job-sheet row yet
+  bookingsWithoutJobRow(bookings, dailyJobs)
     .filter(b => b.status === 'completed' || b.status === 'in_progress')
     .forEach(b => {
       const key = (b.scheduled_date || '').slice(0, 7)
@@ -405,7 +423,7 @@ function RevenueChart({
       const key = (j.date || '').slice(0, 7)
       const m = months.find(m => m.key === key)
       if (m) {
-        m.revenue += cleanNum(j.received) || (j.payment_mode !== 'Pending' ? cleanNum(j.charges) : 0)
+        m.revenue += jobCollected(j)
       }
     })
 
@@ -690,13 +708,13 @@ export function Overview() {
     return validDailyJobs.filter(j => isDateInRange(j.date))
   }, [validDailyJobs, isDateInRange])
 
-  // Filtered Bookings in period
+  // Filtered Bookings in period (only those without a job-sheet row, so nothing is counted twice)
   const periodBookings = useMemo(() => {
-    return bookings.filter(b => {
+    return bookingsWithoutJobRow(bookings, validDailyJobs).filter(b => {
       const bDate = b.scheduled_date || (b.created_at ? b.created_at.split('T')[0] : '')
       return isDateInRange(bDate)
     })
-  }, [bookings, isDateInRange])
+  }, [bookings, validDailyJobs, isDateInRange])
 
   // ── Unified Operational Jobs for table & counts ──
   const unifiedJobs = useMemo(() => {
@@ -773,12 +791,7 @@ export function Overview() {
   // ── Unified Revenue / Collections in period ──
   const periodRevenue = useMemo(() => {
     // 1. Daily Jobs collections
-    const djRec = periodDailyJobs.reduce((s, j) => {
-      const rec = cleanNum(j.received)
-      if (rec > 0) return s + rec
-      if (j.payment_mode !== 'Pending' && cleanNum(j.charges) > 0) return s + cleanNum(j.charges)
-      return s
-    }, 0)
+    const djRec = periodDailyJobs.reduce((s, j) => s + jobCollected(j), 0)
 
     // 2. Monthly Client Payments
     const monthlyRec = monthlyPayments

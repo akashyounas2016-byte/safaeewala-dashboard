@@ -3,7 +3,7 @@
 > **Scope:** all screens, with focus on Employees, Agencies, Clients and the shared data layer (`DataContext`, `src/lib`).
 > **Method:** code review of the current `main` (`ec6c9c2`), tracing each number from storage → calculation → screen.
 > Findings were checked against the code; items marked **(verify)** depend on the live Supabase schema, which was not inspected.
-> **Status of fixes:** none applied yet — this report only identifies issues. Track fixes by ID (`AUD-xx`) in commits and CHANGELOG.
+> **Status of fixes:** Phase 1 fixed on 2026-10-27 — AUD-01, AUD-05, AUD-07, AUD-10 (marked ✅ below). Others open. Track fixes by ID (`AUD-xx`) in commits and CHANGELOG.
 
 ## Summary
 
@@ -19,7 +19,7 @@
 
 ## A. Revenue & money calculations
 
-### AUD-01 🔴 Overview revenue double-counts bookings and monthly jobs
+### AUD-01 🔴 Overview revenue double-counts bookings and monthly jobs — ✅ Fixed
 - **Where:** `src/pages/Overview.tsx:774-799` (`periodRevenue`).
 - **What:** Revenue = job-sheet collections **+** completed bookings **+** monthly payments **+** pending recoveries.
   1. Every booking already creates a Daily Job row (`DataContext.addBooking`), so a booking's amount is counted twice.
@@ -27,7 +27,7 @@
 - **Impact:** e.g. a AED 300 booking marked completed shows AED 600 of revenue; monthly clients are counted when billed *and* when paid.
 - **Fix:** derive revenue from the job sheet only (skip bookings that have a linked job, `booking_id`); for `Monthly` jobs count only `monthly_client_payments`, not `charges`.
 
-### AUD-05 🔴 Reports use bookings only, not the Daily Job Sheet
+### AUD-05 🔴 Reports use bookings only, not the Daily Job Sheet — ✅ Fixed
 - **Where:** `src/pages/Reports.tsx:66-72` (monthly revenue), `:89` (total revenue), `:118` (revenue by service), `:129` (staff performance), `:147` (ops metrics).
 - **What:** All Reports revenue, job counts and "staff performance" come from `bookings`. Shifts entered directly on the job sheet (most of the work) are invisible. Booking status is the raw stored status, while the Bookings screen shows a booking as completed once its job has `received > 0` (`Bookings.tsx:214`) — so the two screens disagree.
 - **Impact:** Reports show much lower revenue/jobs than Overview, Employees or Agencies for the same period.
@@ -39,7 +39,7 @@
 - **Impact:** the same cleaner's salary differs between Reports, Agency profile and Employee profile. (Known issue K-02.)
 - **Fix:** one helper (`MONTHLY_WORK_HOURS`) everywhere; decide whether payroll is fixed-monthly or hourly per employee type.
 
-### AUD-07 🟠 Agency revenue counts shared shifts in full for each cleaner
+### AUD-07 🟠 Agency revenue counts shared shifts in full for each cleaner — ✅ Fixed
 - **Where:** `AgencyDashboard.tsx:284`, `:1135`, `:1280`, `:3365`.
 - **What:** Employees (`Employees.tsx:464`) and Employee Profile (`EmployeeProfile.tsx:239`) split a shared shift's `charges` between its cleaners; the Agency dashboard gives each cleaner the full amount.
 - **Impact:** two cleaners from the same agency on a AED 400 shift → agency "Gross Shift Revenue" shows AED 800; cleaner revenue on the agency profile ≠ on the employee profile.
@@ -60,7 +60,7 @@
 - **Impact:** looks like real pay data; feeds payroll/payout numbers.
 - **Fix:** show "Not set" (`formatMonthlySalary` already does) and exclude from payroll until set.
 
-### AUD-10 🔴 Edit Profile silently saves AED 2500 salary
+### AUD-10 🔴 Edit Profile silently saves AED 2500 salary — ✅ Fixed
 - **Where:** `EmployeeProfile.tsx:1202` (`Number(fd.get('monthly_salary')) || (emp.monthly_salary || 2500)`), `:1366` (default value `'2500'`).
 - **Impact:** editing any field of an employee with no salary writes a fake AED 2500 salary (and hourly rate 12.5) to the database.
 - **Fix:** leave salary empty when not entered.

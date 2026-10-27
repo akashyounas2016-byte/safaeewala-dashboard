@@ -14,7 +14,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
 import type { Agency, Employee, DailyJob, AgencySalaryPayout, AgencyDocument, AgencyDocumentCategory, AgencyContactPerson } from '@/types'
 import { formatDate, formatCurrency, daysUntil, isParentCompanyEmployee } from '@/lib/utils'
-import { getEmployeeDailyJobsHistory, employeeMatchesStaff } from '@/lib/clientDataSync'
+import { getEmployeeDailyJobsHistory, employeeMatchesStaff, jobChargeShare } from '@/lib/clientDataSync'
 import { generateCertificateDataUrl } from '@/lib/agencyCertificates'
 
 // ── Editable Field with Integrated File Upload Icon & Doc Viewer ──
@@ -281,7 +281,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
       const hourlyPay = emp.pay_rate_hourly || (emp.monthly_salary ? Math.round(emp.monthly_salary / (26 * 8)) : 15)
 
       history.forEach(job => {
-        const rev = Number(job.charges) || 0
+        const rev = jobChargeShare(job)
         const duty = Number(job.duty_hours) || 4
         const salaryAlloc = Math.round(hourlyPay * duty)
 
@@ -1132,7 +1132,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                       const todayJob = dailyJobs.find(j => j.date === todayStr && employeeMatchesStaff(emp, j.staff_name))
                       const history = getEmployeeDailyJobsHistory(emp, dailyJobs)
                       const totalDuty = history.reduce((acc, j) => acc + (Number(j.duty_hours) || 0), 0)
-                      const cleanerRevenue = history.reduce((acc, j) => acc + (Number(j.charges) || 0), 0)
+                      const cleanerRevenue = Math.round(history.reduce((acc, j) => acc + jobChargeShare(j), 0))
 
                       // Visa expiry alerts
                       const visaDays = emp.visa_expiry ? daysUntil(emp.visa_expiry) : null
@@ -1277,7 +1277,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                 const todayJob = dailyJobs.find(j => j.date === todayStr && employeeMatchesStaff(emp, j.staff_name))
                 const history = getEmployeeDailyJobsHistory(emp, dailyJobs)
                 const totalDuty = history.reduce((acc, j) => acc + (Number(j.duty_hours) || 0), 0)
-                const cleanerRevenue = history.reduce((acc, j) => acc + (Number(j.charges) || 0), 0)
+                const cleanerRevenue = Math.round(history.reduce((acc, j) => acc + jobChargeShare(j), 0))
                 const visaDays = emp.visa_expiry ? daysUntil(emp.visa_expiry) : null
                 const visaValid = visaDays !== null && visaDays > 60
 
@@ -3362,7 +3362,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
       {profileStaff && (() => {
         const history = getEmployeeDailyJobsHistory(profileStaff, dailyJobs)
         const totalDuty = history.reduce((acc, j) => acc + (Number(j.duty_hours) || 0), 0)
-        const cleanerRevenue = history.reduce((acc, j) => acc + (Number(j.charges) || 0), 0)
+        const cleanerRevenue = Math.round(history.reduce((acc, j) => acc + jobChargeShare(j), 0))
         const todayJob = dailyJobs.find(j => j.date === todayStr && employeeMatchesStaff(profileStaff, j.staff_name))
         const visaDays = profileStaff.visa_expiry ? daysUntil(profileStaff.visa_expiry) : null
         const visaValid = visaDays !== null && visaDays > 60

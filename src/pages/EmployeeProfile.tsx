@@ -16,6 +16,7 @@ import type { PaymentMode, EmployeeRole, EmployeeDocument, Employee } from '@/ty
 import { EmployeeDocumentSection, EmployeeDocumentPreviewModal, EmployeeDocInput } from '@/components/employees/EmployeeDocumentField'
 import {
   getAssignableClients,
+  formatMonthlySalary,
   getEmployeeDailyJobsHistory,
   calcJobOTHours,
   cleanClientNameFromAddress,
@@ -369,7 +370,7 @@ export function EmployeeProfile() {
               )}
 
               <span className="text-[11px] bg-teal-50 text-teal-800 border border-teal-200/90 px-2.5 py-0.5 rounded-full font-bold">
-                AED {(emp.monthly_salary || (emp.pay_rate_hourly ? Math.round(emp.pay_rate_hourly * 200) : 2500)).toLocaleString()}/mo
+                {formatMonthlySalary(emp)}
               </span>
 
               {emp.agency_name && (
@@ -1109,7 +1110,7 @@ export function EmployeeProfile() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-[12.5px]">
                   <div className="p-3 bg-slate-50 rounded-xl border border-[#edf2f7]">
                     <span className="text-slate-400 block text-[10.5px] uppercase font-bold">Monthly Salary</span>
-                    <span className="font-extrabold text-[#111827]">AED {(emp.monthly_salary || (emp.pay_rate_hourly ? Math.round(emp.pay_rate_hourly * 200) : 2500)).toLocaleString()}/mo</span>
+                    <span className="font-extrabold text-[#111827]">{formatMonthlySalary(emp)}</span>
                   </div>
                   <div className="p-3 bg-slate-50 rounded-xl border border-[#edf2f7]">
                     <span className="text-slate-400 block text-[10.5px] uppercase font-bold">Hourly Rate</span>
@@ -1199,7 +1200,7 @@ export function EmployeeProfile() {
             const fd = new FormData(e.currentTarget as HTMLFormElement)
             setEditSaving(true)
             const role = editRole
-            const monthly_salary = Number(fd.get('monthly_salary')) || (emp.monthly_salary || 2500)
+            const monthly_salary = Number(fd.get('monthly_salary')) || emp.monthly_salary || 0 // AUD-10: never invent a salary
             const agencyId = (fd.get('agency_id') as string) || ''
             const selAgency = agencies.find(a => a.id === agencyId)
             const docsList: EmployeeDocument[] = Object.values(editDocs)
@@ -1252,7 +1253,7 @@ export function EmployeeProfile() {
 
               // Financial, Insurance & Employment
               monthly_salary,
-              pay_rate_hourly:           Math.round((monthly_salary / MONTHLY_WORK_HOURS) * 10) / 10,
+              pay_rate_hourly:           monthly_salary ? Math.round((monthly_salary / MONTHLY_WORK_HOURS) * 10) / 10 : emp.pay_rate_hourly,
               medical_insurance:         (fd.get('medical_insurance') as string) || undefined,
               medical_insurance_expiry:  (fd.get('medical_insurance_expiry') as string) || undefined,
               medical_insurance_file:    editDocs.medical_insurance?.file_data || emp.medical_insurance_file,
@@ -1363,7 +1364,7 @@ export function EmployeeProfile() {
                 name="monthly_salary"
                 label="Monthly Salary (AED/mo) *"
                 type="number"
-                defaultValue={emp.monthly_salary ? String(emp.monthly_salary) : (emp.pay_rate_hourly ? String(Math.round(emp.pay_rate_hourly * MONTHLY_WORK_HOURS)) : '2500')}
+                defaultValue={emp.monthly_salary ? String(emp.monthly_salary) : (emp.pay_rate_hourly ? String(Math.round(emp.pay_rate_hourly * MONTHLY_WORK_HOURS)) : '')}
                 placeholder="e.g. 2500"
                 required
               />
