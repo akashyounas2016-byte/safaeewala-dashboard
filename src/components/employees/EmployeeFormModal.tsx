@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import {
-  UserCheck, Briefcase, DollarSign, Shield, Car, Sparkles, Search, Check, FileText, FileCheck
+  UserCheck, Briefcase, CreditCard, Shield, Car, Sparkles, Search, Check, FileText, FileCheck
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -355,7 +355,7 @@ function EmployeeFormModalContent({
             {/* Employment & Salary */}
             <div className="space-y-2.5 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80">
               <h4 className="text-[12px] font-black uppercase tracking-wider text-teal-800 border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
-                <DollarSign size={13} className="text-teal-600" />
+                <CreditCard size={13} className="text-teal-600" />
                 <span>Employment & Salary</span>
               </h4>
 
@@ -384,9 +384,6 @@ function EmployeeFormModalContent({
                   defaultValue={initialEmployee?.end_date || ''}
                 />
               </div>
-              <p className="text-[10.5px] text-slate-500 font-medium">
-                Standard hourly rate calculated at {MONTHLY_WORK_HOURS} hours/month.
-              </p>
             </div>
           </div>
 
