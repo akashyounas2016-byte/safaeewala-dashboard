@@ -2,9 +2,10 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import {
   Search, Calendar as CalendarIcon, Clock, MapPin, Phone,
-  ChevronLeft, ChevronRight, List, CalendarDays, Columns3,
-  TrendingUp, CheckCircle, AlertCircle, Upload, Download,
+  ChevronLeft, ChevronRight, CalendarDays, Columns3,
+  TrendingUp, CheckCircle, CheckCircle2, AlertCircle, Upload, Download,
   FileSpreadsheet, MessageCircle, RefreshCw, RotateCcw,
+  LayoutGrid, Table as TableIcon, Eye, User, Users, Sparkles, X, Filter
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -13,11 +14,12 @@ import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatCurrency, formatDate, formatTime, addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
-import type { Booking, BookingFrequency, BookingStatus } from '@/types'
+import type { Booking, BookingFrequency, BookingStatus, Employee } from '@/types'
 import { SourceOriginTag, resolveBookingSource } from '@/lib/sourceTracking'
 import { cleanClientNameFromAddress, isBogusJob, isMonthlyClient, crewToStaffName, staffNameToCrew } from '@/lib/clientDataSync'
 
 export type BookingDatePreset = 'today' | '7days' | '30days' | '3months' | '6months' | '1year' | 'all' | 'custom'
+export type BookingViewMode = 'grid' | 'table' | 'kanban' | 'calendar'
 
 /* ─── Filter chips ─── */
 const statusFilters = [
@@ -160,6 +162,68 @@ async function parseBookingsFile(file: File): Promise<Parameters<(b: any) => voi
     .filter(Boolean) as any[]
 }
 
+/* ─── Helpers for Bookings page ─── */
+function getAssignedCrewNames(assignedCrew: string[] | undefined, employees: Employee[]): string[] {
+  if (!assignedCrew || assignedCrew.length === 0) return []
+  return assignedCrew.map(cId => {
+    const emp = employees.find(e => e.id === cId || e.full_name.toLowerCase().trim() === cId.toLowerCase().trim())
+    return emp ? emp.full_name : cId
+  })
+}
+
+function PaginationControls({
+  currentPage,
+  totalPages,
+  totalItems,
+  pageSize,
+  onPageChange,
+}: {
+  currentPage: number
+  totalPages: number
+  totalItems: number
+  pageSize: number
+  onPageChange: (page: number) => void
+}) {
+  const startItem = (currentPage - 1) * pageSize + 1
+  const endItem = Math.min(currentPage * pageSize, totalItems)
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs px-4 py-3 flex items-center justify-between flex-wrap gap-3 text-[12.5px]">
+      <p className="text-slate-500 font-medium">
+        Showing <span className="font-bold text-slate-800">{startItem}</span> to{' '}
+        <span className="font-bold text-slate-800">{endItem}</span> of{' '}
+        <span className="font-bold text-slate-800">{totalItems}</span> bookings
+      </p>
+
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage <= 1}
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none font-bold text-slate-700 transition-colors cursor-pointer"
+        >
+          <ChevronLeft size={13} />
+          <span>Previous</span>
+        </button>
+
+        <span className="px-3 py-1 font-bold text-slate-700 bg-slate-100 rounded-lg">
+          Page {currentPage} of {totalPages}
+        </span>
+
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage >= totalPages}
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none font-bold text-slate-700 transition-colors cursor-pointer"
+        >
+          <span>Next</span>
+          <ChevronRight size={13} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /* ─── Main Bookings page ─── */
 export function Bookings() {
   const {
@@ -175,7 +239,8 @@ export function Bookings() {
     clients,
     employees,
   } = useData()
-  const [view, setView] = useState<'list' | 'calendar' | 'kanban'>('list')
+  const [view, setView] = useState<BookingViewMode>('grid')
+  const [currentPage, setCurrentPage] = useState(1)
   const xlsxInputRef = useRef<HTMLInputElement>(null)
   const [importing,   setImporting]   = useState(false)
   const [datePreset,  setDatePreset]  = useState<BookingDatePreset>('all')
@@ -242,11 +307,16 @@ export function Bookings() {
         status = 'completed'
       }
 
+      const matchedClient = clients.find(c =>
+        (c.full_name && c.full_name.toLowerCase().trim() === clientName.toLowerCase().trim()) ||
+        (j.address && c.full_name && j.address.toLowerCase().includes(c.full_name.toLowerCase()))
+      )
+
       syntheticBookings.push({
         id: `dj-${j.id}`,
-        client_id: '',
+        client_id: matchedClient?.id || '',
         client_name: clientName,
-        client_phone: '',
+        client_phone: matchedClient?.phone || matchedClient?.whatsapp || '',
         service_address: rawAddr,
         service_type: j.service || (j.material && j.material !== 'No' ? `${j.material} Cleaning` : 'General Cleaning'),
         status,
@@ -264,7 +334,7 @@ export function Bookings() {
     })
 
     return [...enrichedBookings, ...syntheticBookings]
-  }, [bookings, dailyJobs, employees])
+  }, [bookings, dailyJobs, employees, clients])
 
   const activeDateRange = useMemo(() => {
     const now = new Date()
@@ -338,6 +408,18 @@ export function Bookings() {
     .filter(b => b.status === 'completed')
     .reduce((s, b) => s + (b.total_amount || 0), 0)
 
+  // Auto-reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, statusFilter, serviceFilter, datePreset, customStartDate, customEndDate, view])
+
+  const pageSize = view === 'table' ? 20 : 12
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  const paginatedBookings = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filtered.slice(start, start + pageSize)
+  }, [filtered, currentPage, pageSize])
+
   return (
     <div className="space-y-6">
 
@@ -353,350 +435,656 @@ export function Bookings() {
         onSearch={setSearch}
       />
 
-      {/* ── KPI Cards ── */}
+      {/* ── KPI Cards (Clean, Interactive & Real Data) ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           {
             label: 'Pending',
             value: counts.pending,
-            sub: 'Awaiting confirmation',
+            sub: 'Awaiting dispatch & confirmation',
             icon: AlertCircle,
             iconColor: 'text-amber-500',
             iconBg: 'bg-amber-50',
-            delta: '+2',
-            deltaUp: true,
+            badge: counts.pending > 0 ? `${counts.pending} Action Needed` : 'All Clear',
+            badgeColor: counts.pending > 0 ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200',
+            filterKey: 'pending',
           },
           {
             label: 'Scheduled',
             value: counts.confirmed,
-            sub: 'Locked in',
+            sub: 'Confirmed upcoming jobs',
             icon: CalendarIcon,
-            iconColor: 'text-emerald-600',
-            iconBg: 'bg-emerald-50',
-            delta: '+5',
-            deltaUp: true,
+            iconColor: 'text-teal-600',
+            iconBg: 'bg-teal-50',
+            badge: `${counts.total > 0 ? Math.round((counts.confirmed / counts.total) * 100) : 0}% of Total`,
+            badgeColor: 'bg-teal-100 text-teal-800 border-teal-200',
+            filterKey: 'confirmed',
           },
           {
             label: 'Live Now',
             value: counts.in_progress,
-            sub: 'Crew on site',
+            sub: 'Cleaners on site today',
             icon: TrendingUp,
             iconColor: 'text-blue-600',
             iconBg: 'bg-blue-50',
-            delta: 'Real-time',
-            deltaUp: true,
+            badge: counts.in_progress > 0 ? 'Active Duty' : 'Standby',
+            badgeColor: counts.in_progress > 0 ? 'bg-blue-100 text-blue-800 border-blue-200 animate-pulse' : 'bg-slate-100 text-slate-600 border-slate-200',
+            filterKey: 'in_progress',
           },
           {
             label: 'Completed',
             value: counts.completed,
-            sub: `AED ${totalRevenue.toLocaleString()} earned`,
-            icon: CheckCircle,
-            iconColor: 'text-slate-500',
-            iconBg: 'bg-slate-100',
-            delta: '+12%',
-            deltaUp: true,
+            sub: `AED ${totalRevenue.toLocaleString()} billed`,
+            icon: CheckCircle2,
+            iconColor: 'text-emerald-600',
+            iconBg: 'bg-emerald-50',
+            badge: `${counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0}% Done`,
+            badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+            filterKey: 'completed',
           },
-        ].map(card => (
-          <div
-            key={card.label}
-            onClick={() => setStatusFilter(
-              card.label === 'Live Now' ? 'in_progress' :
-              card.label === 'Scheduled' ? 'confirmed' :
-              card.label.toLowerCase()
-            )}
-            className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 cursor-pointer hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all"
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center`}>
-                <card.icon size={18} className={card.iconColor} />
+        ].map(card => {
+          const isActive = statusFilter === card.filterKey
+          return (
+            <div
+              key={card.label}
+              onClick={() => setStatusFilter(isActive ? 'all' : card.filterKey)}
+              className={`rounded-[22px] border transition-all p-5 cursor-pointer relative overflow-hidden ${
+                isActive
+                  ? 'bg-teal-50/40 border-teal-400 shadow-md ring-2 ring-teal-500/20'
+                  : 'bg-white border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.04)] hover:shadow-md hover:border-teal-300'
+              }`}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center shrink-0`}>
+                  <card.icon size={19} className={card.iconColor} />
+                </div>
+                <span className={`text-[10.5px] font-black uppercase px-2 py-0.5 rounded-full border ${card.badgeColor}`}>
+                  {card.badge}
+                </span>
               </div>
-              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${card.deltaUp ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                {card.delta}
-              </span>
+              <p className="text-3xl font-black text-slate-900 tracking-tight">{card.value}</p>
+              <div className="flex items-center justify-between mt-1">
+                <p className="text-[13px] font-bold text-slate-800">{card.label}</p>
+                {isActive && (
+                  <span className="text-[10px] font-black text-teal-700 uppercase tracking-wider bg-teal-100 px-1.5 py-0.5 rounded-md">
+                    Active Filter
+                  </span>
+                )}
+              </div>
+              <p className="text-[11.5px] text-slate-500 mt-0.5 truncate">{card.sub}</p>
             </div>
-            <p className="text-3xl font-bold text-[#111827] tracking-tight">{card.value}</p>
-            <p className="text-[13px] font-medium text-[#111827] mt-1">{card.label}</p>
-            <p className="text-[12px] text-slate-500 mt-0.5">{card.sub}</p>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
-      {/* ── Filters + View Toggle ── */}
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4 space-y-3.5">
-        {/* Row 1: Search, Service Filter, Import/Export, and View Toggle */}
-        <div className="flex flex-wrap items-center gap-3">
-
-          {/* Search */}
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search client, service, or address…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full text-[13px] pl-10 pr-4 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 focus:bg-white placeholder-slate-400 transition-colors"
-            />
-          </div>
-
-          {/* Service filter */}
-          <select
-            value={serviceFilter}
-            onChange={e => setServiceFilter(e.target.value)}
-            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer font-medium"
-          >
-            <option value="all">All Services</option>
-            {serviceTypes.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-
-          {/* Import / Export */}
-          <input
-            ref={xlsxInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            className="hidden"
-            onChange={async e => {
-              const file = e.target.files?.[0]
-              if (!file) return
-              setImporting(true)
-              try {
-                const rows = await parseBookingsFile(file)
-                rows.forEach(r => addBooking(r))
-              } finally {
-                setImporting(false)
-                e.target.value = ''
-              }
-            }}
-          />
-          <button
-            onClick={() => xlsxInputRef.current?.click()}
-            disabled={importing}
-            className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors disabled:opacity-60 cursor-pointer"
-          >
-            <Upload size={13} /> {importing ? 'Importing…' : 'Import Excel'}
-          </button>
-          <button
-            onClick={() => exportBookingsXLSX(filtered)}
-            className="flex items-center gap-1.5 text-[12px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-600 hover:bg-slate-100 font-medium transition-colors cursor-pointer"
-          >
-            <FileSpreadsheet size={13} /> Export Excel
-          </button>
-
-          {/* View toggle */}
-          <div className="flex gap-1 p-1 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl">
-            {([
-              { key: 'list',     icon: List,          label: 'List'   },
-              { key: 'kanban',   icon: Columns3,      label: 'Board'  },
-              { key: 'calendar', icon: CalendarDays,  label: 'Week'   },
-            ] as const).map(v => (
-              <button
-                key={v.key}
-                onClick={() => setView(v.key)}
-                className={`text-[12px] px-3 py-1.5 rounded-lg font-medium inline-flex items-center gap-1.5 transition-all cursor-pointer ${view === v.key ? 'bg-white text-[#111827] shadow-sm font-bold' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                <v.icon size={13} /> {v.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Row 2: Date Range Filter Bar (Today, 7 Days, 30 Days, 3 Months, 6 Months, 1 Year, All Time, Custom Range) */}
-        <div className="pt-3 border-t border-[#E4E8EC] flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[12px] font-bold text-slate-700 mr-1 flex items-center gap-1.5">
-              <CalendarIcon size={14} className="text-emerald-600" />
-              <span>Date Filter:</span>
-            </span>
-
-            {[
-              { id: 'today',   label: 'Today' },
-              { id: '7days',   label: '7 Days' },
-              { id: '30days',  label: '30 Days' },
-              { id: '3months', label: '3 Months' },
-              { id: '6months', label: '6 Months' },
-              { id: '1year',   label: '1 Year' },
-              { id: 'all',     label: 'All Time' },
-              { id: 'custom',  label: 'Custom Range' },
-            ].map(preset => {
-              const active = datePreset === preset.id
-              return (
+      {/* ── Filters + Unified Toolbar (Single Compact Row with Dropdowns) ── */}
+      <div className="bg-white rounded-[22px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.04)] p-4 space-y-3">
+        {/* Main Toolbar Row */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Left: Search & Dropdown Filters in One Row */}
+          <div className="flex flex-1 items-center gap-2.5 flex-wrap min-w-[280px]">
+            {/* Search Input */}
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search client, service, address…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="w-full text-[13px] pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 focus:bg-white placeholder-slate-400 font-medium transition-colors"
+              />
+              {search && (
                 <button
-                  key={preset.id}
                   type="button"
-                  onClick={() => setDatePreset(preset.id as BookingDatePreset)}
-                  className={`px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all cursor-pointer ${
-                    active
-                      ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-                  }`}
+                  onClick={() => setSearch('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
-                  {preset.label}
+                  <X size={13} />
                 </button>
-              )
-            })}
+              )}
+            </div>
+
+            {/* Date Filter Dropdown */}
+            <div className="relative">
+              <select
+                value={datePreset}
+                onChange={e => setDatePreset(e.target.value as BookingDatePreset)}
+                className="text-[12.5px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 font-bold cursor-pointer transition-colors shadow-2xs"
+              >
+                <option value="today">📅 Today</option>
+                <option value="7days">📅 Last 7 Days</option>
+                <option value="30days">📅 Last 30 Days</option>
+                <option value="3months">📅 Last 3 Months</option>
+                <option value="6months">📅 Last 6 Months</option>
+                <option value="1year">📅 Last 1 Year</option>
+                <option value="all">📅 All Time</option>
+                <option value="custom">📅 Custom Range…</option>
+              </select>
+            </div>
+
+            {/* Status Filter Dropdown (Same Row as Date) */}
+            <div className="relative">
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                className="text-[12.5px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 font-bold cursor-pointer transition-colors shadow-2xs"
+              >
+                <option value="all">All Statuses ({counts.total})</option>
+                <option value="pending">⏳ Pending ({counts.pending})</option>
+                <option value="confirmed">📅 Scheduled ({counts.confirmed})</option>
+                <option value="in_progress">🟢 Live Now ({counts.in_progress})</option>
+                <option value="completed">✓ Completed ({counts.completed})</option>
+                <option value="cancelled">✕ Cancelled</option>
+              </select>
+            </div>
+
+            {/* Service Filter Dropdown */}
+            <div className="relative">
+              <select
+                value={serviceFilter}
+                onChange={e => setServiceFilter(e.target.value)}
+                className="text-[12.5px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 font-semibold cursor-pointer transition-colors shadow-2xs"
+              >
+                <option value="all">All Services</option>
+                {serviceTypes.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0 flex-wrap">
-            {/* Custom Date Pickers */}
-            {datePreset === 'custom' && (
-              <div className="flex items-center gap-2 bg-[#f8fafc] border border-emerald-200 rounded-xl px-3 py-1.5 animate-in fade-in duration-150">
-                <span className="text-[11px] font-bold text-emerald-700">From:</span>
-                <input
-                  type="date"
-                  value={customStartDate}
-                  onChange={e => setCustomStartDate(e.target.value)}
-                  className="text-[12px] px-2 py-1 bg-white border border-[#E4E8EC] rounded-lg focus:outline-none focus:border-emerald-500 font-medium"
-                />
-                <span className="text-[11px] font-bold text-emerald-700">To:</span>
-                <input
-                  type="date"
-                  value={customEndDate}
-                  onChange={e => setCustomEndDate(e.target.value)}
-                  className="text-[12px] px-2 py-1 bg-white border border-[#E4E8EC] rounded-lg focus:outline-none focus:border-emerald-500 font-medium"
-                />
-              </div>
-            )}
+          {/* Right: View Switcher (Cards / Table / Board / Calendar) & Excel Actions */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            {/* View Mode Toggle */}
+            <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200/80">
+              <button
+                type="button"
+                onClick={() => setView('grid')}
+                className={`text-[12px] px-2.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                  view === 'grid' ? 'bg-white text-slate-900 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Cards Grid View"
+              >
+                <LayoutGrid size={13} />
+                <span className="hidden sm:inline">Cards</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('table')}
+                className={`text-[12px] px-2.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                  view === 'table' ? 'bg-white text-slate-900 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Table List View"
+              >
+                <TableIcon size={13} />
+                <span className="hidden sm:inline">Table</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('kanban')}
+                className={`text-[12px] px-2.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                  view === 'kanban' ? 'bg-white text-slate-900 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Board Kanban View"
+              >
+                <Columns3 size={13} />
+                <span className="hidden sm:inline">Board</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('calendar')}
+                className={`text-[12px] px-2.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                  view === 'calendar' ? 'bg-white text-slate-900 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Calendar Month View"
+              >
+                <CalendarDays size={13} />
+                <span className="hidden sm:inline">Calendar</span>
+              </button>
+            </div>
 
-            {datePreset !== 'all' && (
+            {/* Import / Export */}
+            <input
+              ref={xlsxInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={async e => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                setImporting(true)
+                try {
+                  const rows = await parseBookingsFile(file)
+                  rows.forEach(r => addBooking(r))
+                } finally {
+                  setImporting(false)
+                  e.target.value = ''
+                }
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => xlsxInputRef.current?.click()}
+              disabled={importing}
+              className="flex items-center gap-1.5 text-[12px] px-2.5 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold transition-colors disabled:opacity-60 cursor-pointer shadow-2xs"
+              title="Import Excel"
+            >
+              <Upload size={13} />
+              <span className="hidden md:inline">{importing ? 'Importing…' : 'Import'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => exportBookingsXLSX(filtered)}
+              className="flex items-center gap-1.5 text-[12px] px-2.5 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold transition-colors cursor-pointer shadow-2xs"
+              title="Export filtered bookings to Excel"
+            >
+              <FileSpreadsheet size={13} />
+              <span className="hidden md:inline">Export</span>
+            </button>
+
+            {/* Reset All Filters */}
+            {(search || serviceFilter !== 'all' || statusFilter !== 'all' || datePreset !== 'all') && (
               <button
                 type="button"
                 onClick={() => {
+                  setSearch('')
+                  setServiceFilter('all')
+                  setStatusFilter('all')
                   setDatePreset('all')
                   setCustomStartDate('')
                   setCustomEndDate('')
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-bold text-slate-500 hover:text-emerald-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
-                title="Reset date filter to All Time"
+                className="text-[12px] px-2 py-1.5 font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
+                title="Clear all active filters"
               >
-                <RotateCcw size={12} />
-                <span>Reset Date</span>
+                Clear
               </button>
             )}
-
-            <span className="text-[12px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/60">
-              Showing: <span className="text-emerald-600 font-extrabold">{filtered.length}</span> jobs ({activeDateRange.label})
-            </span>
           </div>
         </div>
 
-        {/* Row 3: Status chips & Reset All */}
-        <div className="flex items-center justify-between gap-2 flex-wrap pt-3 border-t border-[#E4E8EC]">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[12px] font-bold text-slate-500 mr-1">Status:</span>
-            {statusFilters.map(f => (
-              <button
-                key={f.value}
-                onClick={() => setStatusFilter(f.value)}
-                className={`px-3 py-1 rounded-full text-[12px] font-semibold transition-colors cursor-pointer ${
-                  statusFilter === f.value
-                    ? 'bg-[#111827] text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
+        {/* Custom Date Pickers (if datePreset === 'custom') */}
+        {datePreset === 'custom' && (
+          <div className="pt-2 border-t border-slate-100 flex items-center gap-3 flex-wrap">
+            <span className="text-[11.5px] font-black uppercase text-teal-800">Custom Date Range:</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11.5px] font-bold text-slate-500">From:</span>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={e => setCustomStartDate(e.target.value)}
+                className="text-[12px] px-2 py-1 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-teal-500 font-medium"
+              />
+              <span className="text-[11.5px] font-bold text-slate-500">To:</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={e => setCustomEndDate(e.target.value)}
+                className="text-[12px] px-2 py-1 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-teal-500 font-medium"
+              />
+            </div>
           </div>
-
-          {(search || serviceFilter !== 'all' || statusFilter !== 'all' || datePreset !== 'all') && (
-            <button
-              type="button"
-              onClick={() => {
-                setSearch('')
-                setServiceFilter('all')
-                setStatusFilter('all')
-                setDatePreset('all')
-                setCustomStartDate('')
-                setCustomEndDate('')
-              }}
-              className="text-[11.5px] font-bold text-rose-600 hover:text-rose-800 cursor-pointer"
-            >
-              ✕ Clear All Filters
-            </button>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* ── LIST VIEW ── */}
-      {view === 'list' && (
-        <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {filtered.map((b, idx) => (
-              <div
-                key={b.id}
-                onClick={() => setSelectedBooking(b)}
-                className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] hover:border-emerald-200 transition-all cursor-pointer"
-              >
-                {/* Top row */}
-                <div className="flex items-start justify-between gap-3 mb-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Initials name={b.client_name} idx={idx} />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-[14px] font-semibold text-[#111827] truncate">{b.client_name}</p>
-                        {(() => {
-                          const matchedClient = clients.find(c => c.id === b.client_id || c.full_name.toLowerCase().trim() === b.client_name.toLowerCase().trim())
-                          const isMonthly = b.frequency === 'monthly' || b.frequency === 'weekly' || b.frequency === 'biweekly' || (b.frequency as string) === 'bi-weekly' || (matchedClient && isMonthlyClient(matchedClient, dailyJobs))
-                          return isMonthly ? (
-                            <span className="text-[10px] bg-emerald-600 text-white font-extrabold px-2 py-0.5 rounded-full shadow-2xs tracking-wider uppercase">
-                              Monthly
-                            </span>
-                          ) : null
-                        })()}
-                        <SourceOriginTag source={resolveBookingSource(b)} />
+      {/* ── CARDS GRID VIEW ── */}
+      {view === 'grid' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {paginatedBookings.map((b, idx) => {
+              const assignedNames = getAssignedCrewNames(b.assigned_crew, employees)
+              const matchedClient = clients.find(c => c.id === b.client_id || c.full_name.toLowerCase().trim() === b.client_name.toLowerCase().trim())
+              const isMonthly = b.frequency === 'monthly' || b.frequency === 'weekly' || b.frequency === 'biweekly' || (b.frequency as string) === 'bi-weekly' || (matchedClient && isMonthlyClient(matchedClient, dailyJobs))
+              const clientPhone = b.client_phone || matchedClient?.phone || matchedClient?.whatsapp || ''
+
+              return (
+                <div
+                  key={b.id}
+                  onClick={() => setSelectedBooking(b)}
+                  className="bg-white rounded-[22px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.04)] p-5 hover:shadow-xl hover:border-teal-300 transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden"
+                >
+                  {/* Status Indicator Bar at Top */}
+                  <div className={`absolute top-0 left-0 right-0 h-1.5 ${
+                    b.status === 'in_progress' ? 'bg-gradient-to-r from-blue-500 to-cyan-500' :
+                    b.status === 'confirmed' ? 'bg-gradient-to-r from-emerald-500 to-teal-500' :
+                    b.status === 'pending' ? 'bg-gradient-to-r from-amber-400 to-orange-400' :
+                    b.status === 'completed' ? 'bg-slate-400' : 'bg-rose-400'
+                  }`} />
+
+                  <div>
+                    {/* Header: Client & Status */}
+                    <div className="flex items-start justify-between gap-2.5 mb-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Initials name={b.client_name} idx={idx} />
+                        <div className="min-w-0">
+                          <h4 className="text-[14px] font-bold text-slate-900 group-hover:text-teal-700 transition-colors truncate" title={b.client_name}>
+                            {b.client_name}
+                          </h4>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            {isMonthly && (
+                              <span className="text-[9.5px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                Monthly
+                              </span>
+                            )}
+                            <SourceOriginTag source={resolveBookingSource(b)} />
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-[12px] text-slate-500 mt-0.5 capitalize">{b.service_type} · {b.frequency}</p>
+                      <StatusPill status={b.status} />
+                    </div>
+
+                    {/* Service & Time details box */}
+                    <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100 space-y-2 mb-3">
+                      <div className="flex items-center justify-between text-[11.5px] font-semibold text-slate-700">
+                        <span className="text-teal-800 font-bold flex items-center gap-1.5">
+                          <Sparkles size={12} className="text-teal-600" />
+                          <span>{b.service_type}</span>
+                        </span>
+                        <span className="text-slate-500 text-[11px] capitalize bg-white px-2 py-0.5 rounded-md border border-slate-200/60 font-medium">
+                          {b.frequency}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-[11.5px] text-slate-600 pt-1 border-t border-slate-200/50">
+                        <div className="flex items-center gap-1.5">
+                          <CalendarIcon size={12} className="text-slate-400 shrink-0" />
+                          <span className="tabular-nums font-medium">{formatDate(b.scheduled_date)}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 justify-end">
+                          <Clock size={12} className="text-slate-400 shrink-0" />
+                          <span className="tabular-nums font-medium">
+                            {formatTime(`${b.scheduled_date}T${b.scheduled_time}`)}
+                            {b.duration_hours ? ` (${b.duration_hours}h)` : ''}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-[11.5px] text-slate-600 pt-1 border-t border-slate-200/50">
+                        <MapPin size={12} className="text-slate-400 shrink-0" />
+                        <span className="truncate" title={b.service_address}>
+                          {b.service_address || 'Address not specified'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Assigned Crew Chips */}
+                    <div className="mb-3">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <Users size={12} className="text-slate-400" />
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          Assigned Cleaners ({assignedNames.length})
+                        </span>
+                      </div>
+                      {assignedNames.length > 0 ? (
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {assignedNames.map((name, i) => (
+                            <span
+                              key={i}
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold bg-teal-50 text-teal-800 border border-teal-200/80 px-2 py-0.5 rounded-lg"
+                            >
+                              <User size={10} className="text-teal-600" />
+                              <span className="truncate max-w-[120px]">{name}</span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-lg">
+                          <AlertCircle size={10} />
+                          <span>No cleaners assigned yet</span>
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <StatusPill status={b.status} />
-                </div>
 
-                {/* Details grid */}
-                <div className="grid grid-cols-2 gap-y-2.5 gap-x-3 text-[12px] text-slate-600 mb-4">
-                  <div className="flex items-center gap-1.5">
-                    <CalendarIcon size={13} className="text-slate-400 shrink-0" />
-                    <span className="tabular-nums">{formatDate(b.scheduled_date)}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Clock size={13} className="text-slate-400 shrink-0" />
-                    <span className="tabular-nums">{formatTime(`${b.scheduled_date}T${b.scheduled_time}`)} · {b.duration_hours}h</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 col-span-2">
-                    <MapPin size={13} className="text-slate-400 shrink-0" />
-                    <span className="truncate">{b.service_address}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 col-span-2">
-                    <Phone size={13} className="text-slate-400 shrink-0" />
-                    <span className="tabular-nums">{b.client_phone}</span>
-                  </div>
-                </div>
+                  {/* Card Footer: Pricing & Quick Actions */}
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 mt-2">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Charges</p>
+                      <p className="text-[17px] font-black text-slate-900 tabular-nums">
+                        AED {b.total_amount.toLocaleString()}
+                      </p>
+                    </div>
 
-                {/* Footer */}
-                <div className="flex items-center justify-between pt-3.5 border-t border-[#E4E8EC]">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[12px] text-slate-500">
-                      {b.assigned_crew.length} cleaner{b.assigned_crew.length !== 1 ? 's' : ''} assigned
-                    </span>
-                    {b.frequency !== 'once' && (
-                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full capitalize">
-                        <RefreshCw size={9} /> {b.frequency}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                      {clientPhone && (
+                        <>
+                          <a
+                            href={`tel:${clientPhone}`}
+                            className="p-1.5 rounded-xl text-slate-500 hover:text-teal-700 hover:bg-teal-50 border border-slate-200 hover:border-teal-200 transition-colors cursor-pointer"
+                            title={`Call ${clientPhone}`}
+                          >
+                            <Phone size={13} />
+                          </a>
+                          <a
+                            href={`https://wa.me/${clientPhone.replace(/[^\d+]/g, '').replace(/^\+/, '')}?text=Hello%20${encodeURIComponent(b.client_name)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-xl text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border border-emerald-200 hover:border-emerald-300 transition-colors cursor-pointer"
+                            title="Chat on WhatsApp"
+                          >
+                            <MessageCircle size={13} />
+                          </a>
+                        </>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBooking(b)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-800 text-[11.5px] font-bold border border-slate-200 hover:border-teal-200 transition-colors cursor-pointer"
+                      >
+                        <Eye size={12} />
+                        <span>Details</span>
+                      </button>
+                    </div>
                   </div>
-                  <span className="text-[16px] font-bold text-[#111827] tabular-nums">
-                    AED {b.total_amount.toLocaleString()}
-                  </span>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
+          {/* Empty State */}
           {filtered.length === 0 && (
-            <div className="bg-white rounded-[22px] border border-[#E4E8EC] py-16 text-center">
+            <div className="bg-white rounded-[22px] border border-slate-200 py-16 text-center">
               <CalendarIcon className="mx-auto mb-3 text-slate-300" size={40} strokeWidth={1.25} />
-              <p className="text-[13px] text-slate-500">No bookings match your search</p>
+              <p className="text-[14px] font-bold text-slate-700">No bookings match your filters</p>
+              <p className="text-[12px] text-slate-500 mt-1">Try resetting the date range or clear search keywords.</p>
             </div>
           )}
-        </>
+
+          {/* Pagination */}
+          {filtered.length > pageSize && (
+            <PaginationControls
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filtered.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── TABLE VIEW ── */}
+      {view === 'table' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-[22px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.04)] overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/90 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                    <th className="py-3.5 px-4">Ref / Source</th>
+                    <th className="py-3.5 px-4">Client & Contact</th>
+                    <th className="py-3.5 px-4">Service & Frequency</th>
+                    <th className="py-3.5 px-4">Date & Time</th>
+                    <th className="py-3.5 px-4">Assigned Cleaners</th>
+                    <th className="py-3.5 px-4">Service Address</th>
+                    <th className="py-3.5 px-4 text-right">Amount</th>
+                    <th className="py-3.5 px-4 text-center">Status</th>
+                    <th className="py-3.5 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-[12.5px]">
+                  {paginatedBookings.map((b, idx) => {
+                    const assignedNames = getAssignedCrewNames(b.assigned_crew, employees)
+                    const matchedClient = clients.find(c => c.id === b.client_id || c.full_name.toLowerCase().trim() === b.client_name.toLowerCase().trim())
+                    const isMonthly = b.frequency === 'monthly' || b.frequency === 'weekly' || b.frequency === 'biweekly' || (b.frequency as string) === 'bi-weekly' || (matchedClient && isMonthlyClient(matchedClient, dailyJobs))
+                    const clientPhone = b.client_phone || matchedClient?.phone || matchedClient?.whatsapp || ''
+
+                    return (
+                      <tr
+                        key={b.id}
+                        onClick={() => setSelectedBooking(b)}
+                        className="hover:bg-teal-50/40 transition-colors cursor-pointer group"
+                      >
+                        {/* Ref / Source */}
+                        <td className="py-3 px-4 font-mono font-bold text-[11.5px] text-slate-700 whitespace-nowrap">
+                          <div>
+                            <span>{b.id.startsWith('dj-') ? `DJ-${b.id.slice(3, 8)}` : `BK-${b.id.slice(0, 6)}`}</span>
+                            <div className="mt-0.5">
+                              <SourceOriginTag source={resolveBookingSource(b)} />
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Client & Contact */}
+                        <td className="py-3 px-4 min-w-[160px]">
+                          <div className="flex items-center gap-2.5">
+                            <Initials name={b.client_name} idx={idx} size="sm" />
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-900 group-hover:text-teal-700 transition-colors truncate">
+                                {b.client_name}
+                              </p>
+                              {clientPhone && (
+                                <p className="text-[11px] text-slate-500 font-mono mt-0.5 truncate">
+                                  {clientPhone}
+                                </p>
+                              )}
+                            </div>
+                            {isMonthly && (
+                              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                Monthly
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Service & Frequency */}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 font-bold text-teal-900">
+                            <Sparkles size={11} className="text-teal-600" />
+                            <span>{b.service_type}</span>
+                          </span>
+                          <span className="block text-[11px] text-slate-500 capitalize">
+                            {b.frequency}
+                          </span>
+                        </td>
+
+                        {/* Date & Time */}
+                        <td className="py-3 px-4 whitespace-nowrap tabular-nums">
+                          <p className="font-bold text-slate-800">{formatDate(b.scheduled_date)}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            {formatTime(`${b.scheduled_date}T${b.scheduled_time}`)}
+                            {b.duration_hours ? ` (${b.duration_hours}h)` : ''}
+                          </p>
+                        </td>
+
+                        {/* Assigned Cleaners */}
+                        <td className="py-3 px-4 min-w-[150px]">
+                          {assignedNames.length > 0 ? (
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {assignedNames.map((name, i) => (
+                                <span
+                                  key={i}
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold bg-teal-50 text-teal-800 border border-teal-200/70 px-2 py-0.5 rounded-md"
+                                >
+                                  <User size={10} className="text-teal-600" />
+                                  <span className="truncate max-w-[100px]">{name}</span>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-medium">
+                              Unassigned
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Address */}
+                        <td className="py-3 px-4 max-w-[220px]">
+                          <p className="truncate text-slate-600 text-[12px]" title={b.service_address}>
+                            {b.service_address || '—'}
+                          </p>
+                        </td>
+
+                        {/* Amount */}
+                        <td className="py-3 px-4 text-right whitespace-nowrap font-black font-mono text-[13.5px] text-slate-900">
+                          AED {b.total_amount.toLocaleString()}
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          <StatusPill status={b.status} />
+                        </td>
+
+                        {/* Actions */}
+                        <td className="py-3 px-4 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                          <div className="inline-flex items-center gap-1">
+                            {clientPhone && (
+                              <>
+                                <a
+                                  href={`tel:${clientPhone}`}
+                                  className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                                  title={`Call ${clientPhone}`}
+                                >
+                                  <Phone size={13} />
+                                </a>
+                                <a
+                                  href={`https://wa.me/${clientPhone.replace(/[^\d+]/g, '').replace(/^\+/, '')}?text=Hello%20${encodeURIComponent(b.client_name)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
+                                  title="Chat on WhatsApp"
+                                >
+                                  <MessageCircle size={13} />
+                                </a>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedBooking(b)}
+                              className="p-1.5 rounded-lg text-slate-600 hover:text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
+                              title="View Details"
+                            >
+                              <Eye size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Empty State */}
+            {filtered.length === 0 && (
+              <div className="py-16 text-center">
+                <CalendarIcon className="mx-auto mb-3 text-slate-300" size={40} strokeWidth={1.25} />
+                <p className="text-[14px] font-bold text-slate-700">No bookings match your filters</p>
+                <p className="text-[12px] text-slate-500 mt-1">Try resetting the date range or clear search keywords.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Pagination */}
+          {filtered.length > pageSize && (
+            <PaginationControls
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filtered.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+            />
+          )}
+        </div>
       )}
 
       {/* ── KANBAN VIEW ── */}
