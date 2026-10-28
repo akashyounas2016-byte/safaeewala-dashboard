@@ -132,10 +132,10 @@ function generateCertificateDataUrl(
     ? 'GOVERNMENT OF DUBAI — DEPARTMENT OF ECONOMY & TOURISM'
     : 'MINISTRY OF HUMAN RESOURCES & EMIRATISATION (MOHRE)'
   const emirate = 'DUBAI, UNITED ARAB EMIRATES'
-  const issueDate = escapeXml(agency.license_issue_date || '2024-01-01')
-  const expiryDate = escapeXml(agency.license_expiry_date || '2027-12-31')
+  const issueDate = escapeXml(agency.license_issue_date || 'Not Stated')
+  const expiryDate = escapeXml(agency.license_expiry_date || 'Not Stated')
   const primaryContact = escapeXml(agency.contact_person || 'Authorized Corporate Representative')
-  const trn = escapeXml(agency.trn_no || '100234567800001')
+  const trn = escapeXml(agency.trn_no || 'Not Registered')
   const safeName = escapeXml(agency.name)
   const safeCert = escapeXml(certNumber)
   const safeType = escapeXml(agency.company_type || 'Commercial Partner')
@@ -644,10 +644,11 @@ export function Agencies() {
     setEditingAgency(agency)
   }
 
-  // ── Map of agency ID to count of employees ──
+  // ── Map of agency ID to count of active employees ──
   const staffCountByAgency = useMemo(() => {
     const counts = new Map<string, number>()
     for (const emp of employees) {
+      if (emp.status === 'inactive') continue // Only active cleaners count towards active capacity
       if (emp.agency_id) {
         counts.set(emp.agency_id, (counts.get(emp.agency_id) || 0) + 1)
       } else if (emp.agency_name) {
@@ -687,7 +688,7 @@ export function Agencies() {
   const summaryMetrics = useMemo(() => {
     const total = agencies.length
     const active = agencies.filter(a => a.status === 'active').length
-    const totalStaffFromAgencies = employees.filter(isThirdPartyEmployee).length
+    const totalStaffFromAgencies = employees.filter(e => isThirdPartyEmployee(e) && e.status !== 'inactive').length
     const liveCleanersCount = liveCleanersData.length
 
     return { total, active, totalStaffFromAgencies, liveCleanersCount }

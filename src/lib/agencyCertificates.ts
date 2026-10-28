@@ -22,10 +22,10 @@ export function generateCertificateDataUrl(
     ? 'GOVERNMENT OF DUBAI — DEPARTMENT OF ECONOMY & TOURISM'
     : 'MINISTRY OF HUMAN RESOURCES & EMIRATISATION (MOHRE)'
   const emirate = 'DUBAI, UNITED ARAB EMIRATES'
-  const issueDate = escapeXml(agency.license_issue_date || '2024-01-01')
-  const expiryDate = escapeXml(agency.license_expiry_date || '2027-12-31')
+  const issueDate = escapeXml(agency.license_issue_date || 'Not Stated')
+  const expiryDate = escapeXml(agency.license_expiry_date || 'Not Stated')
   const primaryContact = escapeXml(agency.contact_person || 'Authorized Corporate Representative')
-  const trn = escapeXml(agency.trn_no || '100234567800001')
+  const trn = escapeXml(agency.trn_no || 'Not Registered')
   const safeName = escapeXml(agency.name)
   const safeCert = escapeXml(certNumber)
   const safeType = escapeXml(agency.company_type || 'Commercial Partner')

@@ -659,12 +659,9 @@ function EmployeeFormModalContent({
                           defaultValue={initialEmployee?.driving_license_type || 'Light Vehicle (Automatic)'}
                           className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
                         >
-                          <option value="Light Vehicle (Automatic)">Light Vehicle (Automatic)</option>
                           <option value="Light Vehicle (Manual)">Light Vehicle (Manual)</option>
-                          <option value="Heavy Bus">Heavy Bus</option>
-                          <option value="Heavy Truck">Heavy Truck</option>
-                          <option value="Motorcycle">Motorcycle</option>
-                          <option value="Forklift">Forklift</option>
+                          <option value="Light Vehicle (Automatic)">Light Vehicle (Automatic)</option>
+                          <option value="Van">Van</option>
                         </select>
                       </div>
                     </div>

@@ -1527,12 +1527,14 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                       <Landmark size={13} className="text-teal-600" />
                       <span>Tax TRN Number</span>
                     </span>
-                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
-                      FTA Registered
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                      agency.trn_no ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {agency.trn_no ? 'FTA Registered' : 'Not Registered'}
                     </span>
                   </div>
                   <p className="text-[14px] font-mono font-black text-slate-900 truncate">
-                    {agency.trn_no || '100234567800001'}
+                    {agency.trn_no || 'TRN Not Registered'}
                   </p>
                   <p className="text-[11.5px] text-slate-500 mt-0.5">
                     Federal Tax Authority (UAE)
@@ -1551,7 +1553,9 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                         <span>Preview TRN Doc</span>
                       </button>
                     ) : (
-                      <span className="text-[11px] text-slate-400">Tax verified</span>
+                      <span className="text-[11px] text-slate-400">
+                        {agency.trn_no ? 'Tax verified' : 'No certificate'}
+                      </span>
                     )
                   })()}
                 </div>
@@ -1565,12 +1569,14 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                       <FileText size={13} className="text-teal-600" />
                       <span>Contract Ref</span>
                     </span>
-                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                      In Force
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                      agency.contract_ref || agency.contract_end_date ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {agency.contract_end_date ? 'In Force' : (agency.contract_ref ? 'Active Ref' : 'Standard')}
                     </span>
                   </div>
                   <p className="text-[14px] font-mono font-black text-slate-900 truncate">
-                    {agency.contract_ref || 'AGR-Standard'}
+                    {agency.contract_ref || 'Standard Agreement'}
                   </p>
                   <p className="text-[11.5px] text-slate-500 mt-0.5">
                     {agency.contract_end_date ? `Valid till ${formatDate(agency.contract_end_date)}` : 'Ongoing Partner Contract'}
@@ -1618,7 +1624,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   setDirectUploadCategory('trade_license')
                   setShowUploadDocModal(true)
                 }}
-                className="text-[12px] font-bold border-slate-200 flex items-center gap-1.5"
+                className="text-[12px] font-bold border-slate-200 flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus size={13} className="text-teal-600" />
                 <span>Add / Replace Document</span>
@@ -1734,21 +1740,21 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
             )}
           </div>
 
-          {/* Section 2: Complete Document History & Archived Versions Table */}
+          {/* Section 2: Complete Document History & Archived Versions (Clean Single-Row Layout) */}
           <div className="bg-white rounded-[24px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-6">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
               <div>
                 <h3 className="text-[16px] font-black text-slate-900 flex items-center gap-2">
                   <History size={17} className="text-teal-600" />
-                  <span>Document Version History & Historical Archive</span>
+                  <span>Document Version History & Audit Log</span>
                 </h3>
                 <p className="text-[12px] text-slate-500">
-                  Permanent record of all active and superseded document uploads. When an updated file is uploaded, previous files are preserved here.
+                  Permanent chronological record of active and superseded documents with complete audit trail.
                 </p>
               </div>
 
-              <span className="text-[11.5px] font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200/80">
-                {allDocs.length} Total Records ({archivedDocs.length} Archived History)
+              <span className="text-[11.5px] font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-full border border-slate-200/80">
+                {allDocs.length} Total Records ({archivedDocs.length} Archived)
               </span>
             </div>
 
@@ -1761,110 +1767,156 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-[13px]">
-                  <thead>
-                    <tr className="bg-slate-50/90 border-b border-slate-200/80 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
-                      <th className="py-3 px-4">Version</th>
-                      <th className="py-3 px-4">Document / File Name</th>
-                      <th className="py-3 px-4">Category</th>
-                      <th className="py-3 px-4 text-center">Status</th>
-                      <th className="py-3 px-4">Uploaded Date</th>
-                      <th className="py-3 px-4">Archived / Replaced At</th>
-                      <th className="py-3 px-4">Notes / Remarks</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {allDocs.map((doc, idx) => {
-                      const isActive = doc.is_active !== false && !doc.archived_at
-                      const catLabel =
-                        doc.category === 'trade_license' ? 'Trade License' :
-                        doc.category === 'tax_registration' ? 'Tax TRN' :
-                        doc.category === 'noc' ? 'MOHRE NOC' :
-                        doc.category === 'agreement' ? 'Agreement' :
-                        doc.category === 'emirates_id' ? 'Emirates ID' :
-                        doc.category === 'passport' ? 'Passport' :
-                        doc.category === 'workmen_compensation' ? "Workmen's Comp." : 'Compliance'
+              <div className="space-y-2.5">
+                {/* Header Row for Perfect Desktop Alignment */}
+                <div className="hidden lg:flex items-center gap-4 px-4 py-2 text-[11px] font-extrabold uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                  <span className="w-12 text-center">Version</span>
+                  <span className="flex-1 min-w-[200px]">Document / File Name</span>
+                  <span className="w-48 text-left">Document Category</span>
+                  <span className="w-32 text-center">Compliance Status</span>
+                  <span className="w-40 text-right">Upload & Archival Dates</span>
+                  <span className="w-20 text-right">Actions</span>
+                </div>
 
-                      return (
-                        <tr
-                          key={doc.id || idx}
-                          className={`hover:bg-slate-50/70 transition-colors ${
-                            isActive ? 'bg-emerald-50/30 font-medium' : 'text-slate-600'
-                          }`}
-                        >
-                          <td className="py-3 px-4 font-mono font-bold text-[12px]">
-                            <span className={`px-2 py-0.5 rounded ${
-                              isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'
-                            }`}>
-                              v{doc.version || (allDocs.length - idx)}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2 max-w-xs">
-                              <Paperclip size={13} className={isActive ? 'text-emerald-600 shrink-0' : 'text-slate-400 shrink-0'} />
-                              <span className="truncate font-semibold text-slate-800" title={doc.name}>
-                                {doc.name}
+                {/* Single Row List Items */}
+                {allDocs.map((doc, idx) => {
+                  const isActive = doc.is_active !== false && !doc.archived_at
+                  const catConfig =
+                    doc.category === 'trade_license'
+                      ? { label: 'Trade License', bg: 'bg-amber-50 text-amber-900 border-amber-200/90', icon: Shield }
+                      : doc.category === 'tax_registration'
+                      ? { label: 'Tax Registration (TRN)', bg: 'bg-blue-50 text-blue-900 border-blue-200/90', icon: Landmark }
+                      : doc.category === 'noc'
+                      ? { label: 'Ministry NOC', bg: 'bg-teal-50 text-teal-900 border-teal-200/90', icon: CheckCircle2 }
+                      : doc.category === 'agreement'
+                      ? { label: 'Contract Agreement', bg: 'bg-indigo-50 text-indigo-900 border-indigo-200/90', icon: FileText }
+                      : doc.category === 'emirates_id'
+                      ? { label: 'Emirates ID (EID)', bg: 'bg-sky-50 text-sky-900 border-sky-200/90', icon: FileText }
+                      : doc.category === 'passport'
+                      ? { label: 'Passport', bg: 'bg-purple-50 text-purple-900 border-purple-200/90', icon: FileText }
+                      : doc.category === 'workmen_compensation'
+                      ? { label: "Workmen's Compensation", bg: 'bg-emerald-50 text-emerald-900 border-emerald-200/90', icon: Shield }
+                      : { label: 'Compliance Document', bg: 'bg-slate-50 text-slate-800 border-slate-200', icon: FileCheck }
+
+                  const CatIcon = catConfig.icon
+
+                  return (
+                    <div
+                      key={doc.id || idx}
+                      className={`p-3 sm:px-4 sm:py-3 rounded-2xl border transition-all flex items-center justify-between gap-3 flex-wrap lg:flex-nowrap ${
+                        isActive
+                          ? 'bg-emerald-50/30 border-emerald-200/90 hover:border-emerald-300 hover:bg-emerald-50/50 shadow-2xs'
+                          : 'bg-white border-slate-200/80 hover:border-slate-300 hover:bg-slate-50/60 shadow-2xs'
+                      }`}
+                    >
+                      {/* Column 1: Version Badge (Fixed Width) */}
+                      <div className="w-12 shrink-0 flex items-center justify-center">
+                        <span className={`px-2 py-0.5 rounded-lg font-mono font-black text-[11px] ${
+                          isActive
+                            ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                            : 'bg-slate-100 text-slate-600 border border-slate-200'
+                        }`}>
+                          v{doc.version || (allDocs.length - idx)}
+                        </span>
+                      </div>
+
+                      {/* Column 2: Document / File Info */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                          isActive
+                            ? 'bg-emerald-100/80 text-emerald-800'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          <Paperclip size={15} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-[13px] text-slate-900 truncate" title={doc.name}>
+                            {doc.name}
+                          </p>
+                          <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 truncate">
+                            {doc.file_size ? (
+                              <span className="font-mono font-medium">
+                                {Math.round(doc.file_size / 1024)} KB
                               </span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
-                              {catLabel}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
-                              isActive
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                : 'bg-slate-200 text-slate-600'
-                            }`}>
-                              {isActive ? '● Active' : 'Archived History'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-[12px] text-slate-600 whitespace-nowrap">
-                            {formatDate(doc.uploaded_at)}
-                          </td>
-                          <td className="py-3 px-4 text-[12px] text-slate-500 whitespace-nowrap">
-                            {doc.archived_at ? (
-                              <span className="text-amber-800 font-medium">
-                                {formatDate(doc.archived_at)}
+                            ) : null}
+                            {doc.notes ? (
+                              <span className="truncate italic text-slate-500">
+                                • "{doc.notes}"
                               </span>
                             ) : (
-                              <span className="text-emerald-700 font-bold">— Current</span>
+                              <span className="text-slate-400">
+                                • {isActive ? 'Verified Active Filing' : 'Archived Previous Filing'}
+                              </span>
                             )}
-                          </td>
-                          <td className="py-3 px-4 text-[11.5px] text-slate-500 italic max-w-xs truncate">
-                            {doc.notes || (isActive ? 'Active verified record' : 'Archived after renewal')}
-                          </td>
-                          <td className="py-3 px-4 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setPreviewDoc(doc)}
-                                className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
-                                title="Preview Document"
-                              >
-                                <Eye size={13} />
-                              </button>
-                              {doc.file_data && (
-                                <a
-                                  href={doc.file_data}
-                                  download={doc.name}
-                                  className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                                  title="Download File"
-                                >
-                                  <Download size={13} />
-                                </a>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Column 3: Category Badge (Fixed Width w-48 with icon, perfectly aligned) */}
+                      <div className="w-48 shrink-0 flex items-center justify-start">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11.5px] font-bold border truncate ${catConfig.bg}`}>
+                          <CatIcon size={12} className="shrink-0" />
+                          <span className="truncate">{catConfig.label}</span>
+                        </span>
+                      </div>
+
+                      {/* Column 4: Status Badge (Fixed Width w-32, perfectly aligned) */}
+                      <div className="w-32 shrink-0 flex items-center justify-center">
+                        {isActive ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse shrink-0" />
+                            <span>Active</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                            <History size={10} className="shrink-0 text-slate-400" />
+                            <span>Archived</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Column 5: Upload & Archival Dates (Fixed Width w-40, text-right) */}
+                      <div className="w-40 shrink-0 text-right">
+                        <p className="text-[12px] font-bold text-slate-800">
+                          {formatDate(doc.uploaded_at)}
+                        </p>
+                        <p className="text-[10.5px] text-slate-500 mt-0.5 truncate">
+                          {doc.archived_at ? (
+                            <span className="text-amber-700 font-medium">
+                              Archived: {formatDate(doc.archived_at)}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-700 font-semibold">
+                              ● Current In-Force
+                            </span>
+                          )}
+                        </p>
+                      </div>
+
+                      {/* Column 6: Actions (Fixed Width w-20, flex items-center justify-end) */}
+                      <div className="w-20 shrink-0 flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewDoc(doc)}
+                          className="p-1.5 rounded-xl text-slate-500 hover:text-teal-700 hover:bg-teal-50 border border-transparent hover:border-teal-200 transition-colors cursor-pointer"
+                          title="Preview Document"
+                        >
+                          <Eye size={14} />
+                        </button>
+                        {doc.file_data ? (
+                          <a
+                            href={doc.file_data}
+                            download={doc.name}
+                            className="p-1.5 rounded-xl text-slate-500 hover:text-teal-700 hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-colors cursor-pointer"
+                            title="Download File"
+                          >
+                            <Download size={14} />
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
