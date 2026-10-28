@@ -30,6 +30,7 @@ export const CLOUD_SYNCED_KEYS = [
   'safaeewala_expense_budgets',
   'safaeewala_purchase_orders',
   'safaeewala_inventory_usage',
+  'safaeewala_closed_days',
 ] as const
 
 const TABLE = 'app_state'

@@ -9,6 +9,7 @@ import { nextInvoiceNumber, ensureInvoiceNumber } from '@/lib/invoiceNumber'
 import { addHoursToTime, staffOfAgency } from '@/lib/utils'
 import { defaultAgencies } from '@/lib/defaultAgencies'
 import { todayDubai } from '@/lib/dubaiTime'
+import { describeJobChange } from '@/lib/auditLog'
 export { defaultAgencies }
 
 interface DataStore {
@@ -741,6 +742,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if ('duty_hours' in patch) sanitizedPatch.duty_hours = safeNum(patch.duty_hours)
       if ('ot_hours' in patch) sanitizedPatch.ot_hours = safeNum(patch.ot_hours)
       if ('service' in patch) sanitizedPatch.service = patch.service || ''
+      // Row history (UX-40): who changed which fields
+      const before = dailyJobs.find(j => j.id === id)
+      const change = before ? describeJobChange(before as unknown as Record<string, unknown>, sanitizedPatch as Record<string, unknown>) : ''
+      if (before && change) logAudit('updated', 'daily_job', id, `${before.staff_name} · ${before.date}`, change)
       setDailyJobs(p => {
         const next = p.map(j => j.id === id ? { ...j, ...sanitizedPatch } : j)
         safeLocalStorageSet('safaeewala_daily_jobs', next)
@@ -749,6 +754,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       dbUpdate('daily_jobs', id, sanitizedPatch)
     },
     deleteDailyJob: (id) => {
+      const gone = dailyJobs.find(j => j.id === id)
+      if (gone) logAudit('deleted', 'daily_job', id, `${gone.staff_name} · ${gone.date}`, `${gone.address || ''} · AED ${gone.charges ?? 0}`)
       setDailyJobs(p => {
         const next = p.filter(j => j.id !== id)
         safeLocalStorageSet('safaeewala_daily_jobs', next)
@@ -784,6 +791,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       dbDelete('daily_expenses', id)
     },
     clearDailyData: (date) => {
+      // AUD-55: delete the day's rows one by one through the outbox — a failed delete is retried, and
+      // rows imported right after (new ids) can never be caught by a late "delete where date = …"
+      const jobIds = dailyJobs.filter(j => j.date === date).map(j => j.id)
+      const expenseIds = dailyExpenses.filter(e => e.date === date).map(e => e.id)
       setDailyJobs(p => {
         const next = p.filter(j => j.date !== date)
         safeLocalStorageSet('safaeewala_daily_jobs', next)
@@ -794,22 +805,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
         safeLocalStorageSet('safaeewala_daily_expenses', next)
         return next
       })
-      supabase.from('daily_jobs').delete().eq('date', date).then(({ error }) => { if (error) console.error(error) })
-      supabase.from('daily_expenses').delete().eq('date', date).then(({ error }) => { if (error) console.error(error) })
+      jobIds.forEach(id => dbDelete('daily_jobs', id))
+      expenseIds.forEach(id => dbDelete('daily_expenses', id))
     },
     clearAllDailyData: async () => {
+      const jobIds = dailyJobs.map(j => j.id)
+      const expenseIds = dailyExpenses.map(e => e.id)
       setDailyJobs([])
       setDailyExpenses([])
       safeLocalStorageSet('safaeewala_daily_jobs', [])
       safeLocalStorageSet('safaeewala_daily_expenses', [])
-      try {
-        await Promise.allSettled([
-          supabase.from('daily_jobs').delete().not('id', 'is', null),
-          supabase.from('daily_expenses').delete().not('id', 'is', null),
-        ])
-      } catch (err) {
-        console.error('Error clearing all daily data from Supabase:', err)
+      // One bulk delete per table; if it fails, fall back to per-row deletes through the outbox so
+      // the failure is shown and retried instead of only logged (AUD-55)
+      const bulk = async (table: string, ids: string[]) => {
+        try {
+          const { error } = await supabase.from(table).delete().not('id', 'is', null)
+          if (!error) return
+        } catch { /* fall through */ }
+        ids.forEach(id => dbDelete(table, id))
       }
+      await Promise.all([bulk('daily_jobs', jobIds), bulk('daily_expenses', expenseIds)])
     },
 
     reorderItem: (id) => {

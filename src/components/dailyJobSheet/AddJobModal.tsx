@@ -12,6 +12,7 @@ import {
   COMMON_SERVICES,
 } from './jobSheetUtils'
 import { todayDubai } from '@/lib/dubaiTime'
+import { notify } from '@/lib/notify'
 
 export interface AddJobFormProps {
   employees: { full_name: string }[]
@@ -59,7 +60,7 @@ export function AddJobForm({
     const fd = new FormData(e.currentTarget as HTMLFormElement)
     const finalStaff = selectedStaff.join(', ') || (fd.get('staff_name') as string) || ''
     if (!finalStaff) {
-      alert('Please select at least one staff member / cleaner.')
+      notify.error('Please select at least one staff member / cleaner.')
       return
     }
 

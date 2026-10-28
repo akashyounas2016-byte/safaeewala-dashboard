@@ -54,7 +54,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ### R-ATT-04 — Who appears on the attendance list
 - **Rule:** Registered non-inactive employees, plus unregistered names seen on the job sheet in the last 60 days, plus anyone with a shift on the selected date. Shared rows ("Sita, Rupa") are split per cleaner. No hard-coded roster.
-- **Code:** `Attendance.tsx → allKnownCleaners`.
+- **Code:** `src/lib/attendance.ts → buildCleanerRoster` (Attendance + Daily Job Sheet).
 - **Status:** Active · Since: 2026-10-27 (AUD-08, AUD-18)
 
 ### R-ATT-02 — A worked row is never an absence
@@ -139,6 +139,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** Rows that look like sheet totals or empty stubs are hidden and offered for review, never auto-deleted. Excel mode saves only the rows the user added, edited or removed, keeps unsaved edits through background changes, keeps a local draft and warns before leaving.
 - **Code:** `DailyJobSheet.tsx` (hidden rows notice), `JobSheetSpreadsheet.tsx` (`pendingChanges`, `handleSaveAll`, draft `safaeewala_excel_draft:*`).
 - **Status:** Active · Since: 2026-10-29 (AUD-44, AUD-48, AUD-49, UX-33, UX-34)
+
+### R-DATA-08 — Closed days are locked
+- **Rule:** A day closed on the Daily Job Sheet cannot be edited, added to, deleted from or re-imported until it is reopened (with a confirmation). Row checks warn but never block.
+- **Code:** `src/lib/closedDays.ts`, `DailyJobSheet.tsx → blockIfClosed`, `src/lib/jobChecks.ts`.
+- **Status:** Active · Since: 2026-10-29 (UX-26, UX-27). Excel mode does not check the lock yet.
 
 ---
 

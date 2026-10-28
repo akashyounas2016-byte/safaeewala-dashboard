@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import {
   ChevronLeft, ChevronRight, Calendar, Printer, Download, Plus,
-  Trash2, AlertCircle, AlertTriangle, TrendingUp, Users, Briefcase, CloudUpload,
+  Trash2, AlertCircle, AlertTriangle, Lock, TrendingUp, Users, Briefcase, CloudUpload,
   Upload, CheckCircle, FileSpreadsheet, SlidersHorizontal,
   Clock, DollarSign, Wallet, Search, Filter, X, Pencil, MoreVertical, ChevronDown,
   Receipt, CreditCard, Eye, Settings, Check, Info, GripVertical, ChevronUp, RotateCcw,
@@ -70,18 +70,27 @@ import {
   syncMonthlySchedulesToDailyJobs,
   buildPendingCalcContext,
   loadClientAdjustments,
-  calcJobPending,
+  calcJobCollectable,
+  jobCollected,
+  isBogusJob,
   allocateClientCollection,
   type ScheduledShiftPlan,
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
-import { todayDubai, calendarDate } from '@/lib/dubaiTime'
+import { todayDubai } from '@/lib/dubaiTime'
+import { invoicedJobIds } from '@/lib/receivables'
+import { notify, confirmAsync } from '@/lib/notify'
+import { ImportPreviewModal, type ImportPlan } from '@/components/dailyJobSheet/ImportPreviewModal'
+import { buildCleanerRoster } from '@/lib/attendance'
+import { buildRowChecks } from '@/lib/jobChecks'
+import { parseJobSheetWorkbook } from '@/lib/jobSheetImport'
+import { CLOSED_DAYS_KEY, type ClosedDay } from '@/lib/closedDays'
 
 /* ─── Main Page ─── */
 export function DailyJobSheet() {
   const navigate = useNavigate()
   const { openMenu } = useLayout()
-  const { dailyJobs, dailyExpenses, employees, clients, loading, addDailyJob, updateDailyJob, deleteDailyJob, addDailyExpense, updateDailyExpense, deleteDailyExpense, clearDailyData, clearAllDailyData } = useData()
+  const { dailyJobs, dailyExpenses, employees, clients, invoices, loading, addDailyJob, updateDailyJob, deleteDailyJob, addDailyExpense, updateDailyExpense, deleteDailyExpense, clearDailyData, clearAllDailyData } = useData()
 
   const [searchParams, setSearchParams] = useSearchParams()
   const qDate = searchParams.get('date')
@@ -112,11 +121,24 @@ export function DailyJobSheet() {
     }
   }, [inlineEdit])
 
+  // UX-26: a closed day is locked against edits until it is reopened
+  const [closedDays, setClosedDays] = useState<Record<string, ClosedDay>>(() => safeLocalStorageGet<Record<string, ClosedDay>>(CLOSED_DAYS_KEY, {}))
+  useEffect(() => { safeLocalStorageSet(CLOSED_DAYS_KEY, closedDays) }, [closedDays])
+  const isDayClosed = (date: string) => Boolean(closedDays[date])
+  /** True (and a message) when the date is closed — callers stop */
+  const blockIfClosed = (date: string = selectedDate) => {
+    if (!isDayClosed(date)) return false
+    notify.error(`${fmtDate(date)} is closed. Reopen the day to change it.`)
+    return true
+  }
+
   const startInlineEdit = (
     jobId: string,
     field: 'staff_name' | 'start_time' | 'end_time' | 'address' | 'area' | 'charges' | 'received' | 'date',
     initialVal: string
   ) => {
+    const job = dailyJobs.find(j => j.id === jobId)
+    if (blockIfClosed(job?.date)) return
     setInlineEdit({ jobId, field, tempValue: initialVal })
   }
 
@@ -178,6 +200,8 @@ export function DailyJobSheet() {
     }
   }, [searchParams])
   const [showAddJob, setShowAddJob]         = useState(false)
+  const [addJobStaff, setAddJobStaff]       = useState('')
+  const openAddJob = (staff = '') => { setAddJobStaff(staff); setShowAddJob(true) }
   const [editJob, setEditJob]               = useState<DailyJob | null>(null)
   const [showAddExpense, setShowAddExpense] = useState(false)
   const [editExpense, setEditExpense]       = useState<DailyExpense | null>(null)
@@ -229,7 +253,7 @@ export function DailyJobSheet() {
   // Search & Payment Category Filters
   const [isSearchExpanded, setIsSearchExpanded] = useState(false)
   const [searchQuery, setSearchQuery]           = useState('')
-  const [paymentFilter, setPaymentFilter]       = useState<'ALL' | 'Monthly' | 'Cash' | 'Online' | 'Pending'>('ALL')
+  const [paymentFilter, setPaymentFilter]       = useState<'ALL' | 'Monthly' | 'Cash' | 'Online' | 'Pending' | 'Checks'>('ALL')
   const searchInputRef                          = useRef<HTMLInputElement>(null)
   const searchContainerRef                      = useRef<HTMLDivElement>(null)
 
@@ -498,7 +522,10 @@ export function DailyJobSheet() {
 
   // Shared pending formula (adjustments, advance deductions and later collections included)
   const pendingCtx = useMemo(() => buildPendingCalcContext(loadClientAdjustments(), pendingRcvdList), [pendingRcvdList])
-  const jobPending = (job: DailyJob) => calcJobPending(job, pendingCtx)
+  // AUD-53: same receivable rule as Pending / Payments / Overview — monthly-contract visits are
+  // settled on Monthly Clients and invoiced visits on the invoice (R-FIN-05, R-FIN-06)
+  const invoicedIds = useMemo(() => invoicedJobIds(invoices), [invoices])
+  const jobPending = (job: DailyJob) => calcJobCollectable(job, pendingCtx, invoicedIds)
 
   useEffect(() => {
     safeLocalStorageSet('safaeewala_daily_advance_items', advanceList)
@@ -510,15 +537,9 @@ export function DailyJobSheet() {
     setViewAllDrivers(false)
   }, [selectedDate, pageSize, selectedLetter])
 
-  // Helper to identify and skip accidental imported sheet total/summary rows or empty stubs
-  const isBogusSummaryJob = (j: DailyJob) => {
-    const noAddress = !j.address || j.address === '—' || j.address.trim() === ''
-    const noTimes = (!j.start_time || j.start_time === '—') && (!j.end_time || j.end_time === '—')
-    const hasSummaryNums = cleanNum(j.duty_hours) > 24 || cleanNum(j.charges) > 2000 || cleanNum(j.received) > 2000
-    // Detect empty/broken stub jobs that have no address, 0 charges, 0 received, and no service/remarks
-    const isEmptyStub = noAddress && cleanNum(j.charges) === 0 && cleanNum(j.received) === 0 && (!j.service || j.service === '—') && (!j.remarks || j.remarks === '—')
-    return (noAddress && noTimes) || (noAddress && hasSummaryNums) || cleanNum(j.duty_hours) > 24 || isEmptyStub
-  }
+  // AUD-52: one rule for sheet totals / empty rows everywhere (R-DATA-01)
+  const isBogusSummaryJob = isBogusJob
+
 
   // AUD-44: rows that look like sheet totals / empty stubs are hidden, never auto-deleted.
   // The owner can show them and delete them by hand.
@@ -526,6 +547,8 @@ export function DailyJobSheet() {
   const hiddenRowsInRange = dailyJobs.filter(j => isDateInRange(j.date) && isBogusSummaryJob(j))
   const todayJobs     = dailyJobs.filter(j => isDateInRange(j.date) && (showHiddenRows || !isBogusSummaryJob(j)))
   const todayExpenses = dailyExpenses.filter(e => isDateInRange(e.date))
+  // UX-27: warnings per row (times, amounts, monthly cash, unregistered staff, duplicates)
+  const rowChecks = useMemo(() => buildRowChecks(todayJobs, employees), [todayJobs, employees])
 
 
   // ── Monthly Repeating Schedules Calculation & Auto-Fetch ──
@@ -614,34 +637,8 @@ export function DailyJobSheet() {
     todayJobs.flatMap(j => (j.staff_name || '').split(/[,+/&]/).map(s => s.trim().toLowerCase())).filter(Boolean)
   )
 
-  const allKnownCleaners = useMemo(() => {
-    const map = new Map<string, string>() // lower -> display
-    // From employees list in store
-    employees.forEach(e => {
-      if (e.status === 'active' || e.status === 'engaged_in_project' || !e.status) {
-        map.set(e.full_name.trim().toLowerCase(), e.full_name.trim())
-      }
-    })
-    // From daily jobs history
-    dailyJobs.forEach(j => {
-      if (j.staff_name && j.staff_name.trim()) {
-        const s = j.staff_name.trim()
-        if (!map.has(s.toLowerCase())) map.set(s.toLowerCase(), s)
-      }
-    })
-    // Standard cleaners from schedule roster (ensures Dinesh, Adnan, Qasim are recognized as absent when having 0 jobs)
-    const defaultScheduleRoster = [
-      'Sharmila', 'Sharada', 'Uma Kumari', 'Ambika', 'Asmita', 'Bimala',
-      'Gau Maya', 'Khima', 'Laxmi Rani', 'Rupa', 'Nim Kumari', 'Uma Sunar',
-      'Parmila', 'Sita', 'Shanti', 'Sabirti', 'Kamala', 'Krishna',
-      'Nobel', 'Ishwor', 'Sushanta', 'Sandesh', 'Ibrahim', 'Dinesh',
-      'Adnan', 'Qasim'
-    ]
-    defaultScheduleRoster.forEach(name => {
-      if (!map.has(name.toLowerCase())) map.set(name.toLowerCase(), name)
-    })
-    return Array.from(map.values())
-  }, [employees, dailyJobs])
+  // AUD-51: same cleaner list as Attendance — no hard-coded roster, shared rows split (R-ATT-04)
+  const allKnownCleaners = useMemo(() => buildCleanerRoster(employees, dailyJobs, selectedDate), [employees, dailyJobs, selectedDate])
 
   // Absentees / active employees with nil records (0 jobs today) placed at the bottom
   // Guard: if no data has been uploaded/imported for this date (todayJobs is empty),
@@ -733,7 +730,9 @@ export function DailyJobSheet() {
       } else if (paymentFilter === 'Online') {
         list = list.filter(j => j.payment_mode === 'Online')
       } else if (paymentFilter === 'Pending') {
-        list = list.filter(j => j.payment_mode === 'Pending' || cleanNum(j.charges) > cleanNum(j.received))
+        list = list.filter(j => jobPending(j) > 0)
+      } else if (paymentFilter === 'Checks') {
+        list = list.filter(j => rowChecks.has(j.id))
       }
     }
 
@@ -754,7 +753,7 @@ export function DailyJobSheet() {
     }
 
     return list
-  }, [activeJobRows, selectedLetter, paymentFilter, searchQuery])
+  }, [activeJobRows, selectedLetter, paymentFilter, searchQuery, rowChecks])
 
   const filteredNilRows = useMemo(() => {
     // If a specific payment filter is active (Monthly, Cash, Online, Pending), do not show absent cleaners
@@ -804,8 +803,8 @@ export function DailyJobSheet() {
 
     // 1. Pending jobs from todayJobs (charges > received or payment_mode is 'Pending')
     todayJobs.forEach(job => {
-      const due = calcJobPending(job, pendingCtx)
-      if (!isBogusSummaryJob(job) && due > 0) {
+      const due = calcJobCollectable(job, pendingCtx, invoicedIds)
+      if (!isBogusJob(job) && due > 0) {
         list.push({
           id: `job-${job.id}`,
           date: job.date,
@@ -837,7 +836,7 @@ export function DailyJobSheet() {
     })
 
     return list
-  }, [todayJobs, todayPendingItems, pendingCtx])
+  }, [todayJobs, todayPendingItems, pendingCtx, invoicedIds])
 
   const todayPendingTotalAmt   = todayPendingEntries.reduce((s, i) => s + cleanNum(i.amount), 0)
   const pendingTotalAmt        = todayPendingTotalAmt
@@ -849,9 +848,10 @@ export function DailyJobSheet() {
 
   // ── Auto-calculations ──
   const totalCharges   = todayJobs.reduce((s, j) => s + cleanNum(j.charges), 0)
-  const grossCollected = todayJobs.filter(j => j.payment_mode !== 'Monthly').reduce((s, j) => s + cleanNum(j.received), 0)
+  // AUD-54: collected uses the Overview rule (jobCollected, R-FIN-03)
+  const grossCollected = todayJobs.reduce((s, j) => s + jobCollected(j), 0)
   const pendingTotal   = todayPendingTotalAmt
-  const onlineTotal    = todayJobs.filter(j => j.payment_mode === 'Online').reduce((s, j) => s + cleanNum(j.received), 0)
+  const onlineTotal    = todayJobs.filter(j => j.payment_mode === 'Online').reduce((s, j) => s + jobCollected(j), 0)
   const totalExpenses  = todayExpenses.reduce((s, e) => s + cleanNum(e.amount), 0)
 
   // Net Total updated formula: (Gross Collected + Pending Cash Received) - Total Expenses
@@ -865,7 +865,7 @@ export function DailyJobSheet() {
   // Driver summary — collected per staff (excluding Monthly + Pending)
   const driverSummary = todayJobs.reduce((acc, job) => {
     if (job.payment_mode !== 'Monthly' && job.payment_mode !== 'Pending') {
-      acc[job.staff_name] = (acc[job.staff_name] || 0) + cleanNum(job.received)
+      acc[job.staff_name] = (acc[job.staff_name] || 0) + jobCollected(job)
     }
     return acc
   }, {} as Record<string, number>)
@@ -1263,110 +1263,56 @@ export function DailyJobSheet() {
    * - Single day: "23.xlsx", "Day 23.xlsx" (infers year & month from selectedDate)
    * - Fallback: selectedDate
    */
-  function extractDateFromFilename(fileName: string, fallbackDate: string): string {
-    if (!fileName) return fallbackDate
-
-    // Clean extension
-    const base = fileName.replace(/\.[^/.]+$/, '').trim()
-
-    // 1. Check YYYY-MM-DD or YYYY.MM.DD or YYYY_MM_DD
-    const ymd = base.match(/\b(20\d{2})[-_.](\d{1,2})[-_.](\d{1,2})\b/)
-    if (ymd) {
-      const y = ymd[1]
-      const m = String(parseInt(ymd[2], 10)).padStart(2, '0')
-      const d = String(parseInt(ymd[3], 10)).padStart(2, '0')
-      const mNum = parseInt(m, 10)
-      const dNum = parseInt(d, 10)
-      if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
-        return `${y}-${m}-${d}`
-      }
-    }
-
-    // 2. Check DD-MM-YYYY or DD.MM.YYYY or DD_MM_YYYY
-    const dmy = base.match(/\b(\d{1,2})[-_.](\d{1,2})[-_.](20\d{2})\b/)
-    if (dmy) {
-      const d = String(parseInt(dmy[1], 10)).padStart(2, '0')
-      const m = String(parseInt(dmy[2], 10)).padStart(2, '0')
-      const y = dmy[3]
-      const mNum = parseInt(m, 10)
-      const dNum = parseInt(d, 10)
-      if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
-        return `${y}-${m}-${d}`
-      }
-    }
-
-    // 3. Month text: e.g. "Apr 26", "26 Apr 2026", "26 October 2026", "Oct-26-2026"
-    const monthNames = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?'
-    const monthMap: Record<string, string> = {
-      jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
-      jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
-    }
-
-    // Case 3a: Month Day Year (e.g. "Oct 23 2026" or "October 23, 2026" or "Oct-23")
-    const mdyRegex = new RegExp(`\\b(${monthNames})[\\s_-]*(\\d{1,2})(?:st|nd|rd|th)?[\\s,_-]*(?:(20\\d{2}|\\d{2}))?\\b`, 'i')
-    const mdyMatch = base.match(mdyRegex)
-    if (mdyMatch) {
-      const mKey = mdyMatch[1].toLowerCase().slice(0, 3)
-      const m = monthMap[mKey]
-      const d = String(parseInt(mdyMatch[2], 10)).padStart(2, '0')
-      let y = mdyMatch[3] ? mdyMatch[3] : (fallbackDate.split('-')[0] || String(new Date().getFullYear()))
-      if (y.length === 2) y = '20' + y
-      return `${y}-${m}-${d}`
-    }
-
-    // Case 3b: Day Month Year (e.g. "23 Oct 2026" or "23rd October 2026" or "23-Oct")
-    const dmyTextRegex = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?[\\s,_-]*(${monthNames})[\\s,_-]*(?:(20\\d{2}|\\d{2}))?\\b`, 'i')
-    const dmyTextMatch = base.match(dmyTextRegex)
-    if (dmyTextMatch) {
-      const d = String(parseInt(dmyTextMatch[1], 10)).padStart(2, '0')
-      const mKey = dmyTextMatch[2].toLowerCase().slice(0, 3)
-      const m = monthMap[mKey]
-      let y = dmyTextMatch[3] ? dmyTextMatch[3] : (fallbackDate.split('-')[0] || String(new Date().getFullYear()))
-      if (y.length === 2) y = '20' + y
-      return `${y}-${m}-${d}`
-    }
-
-    // 4. Compact numeric: YYYYMMDD (8 digits)
-    const compactYMD = base.match(/\b(20\d{2})(\d{2})(\d{2})\b/)
-    if (compactYMD) {
-      const y = compactYMD[1]
-      const m = compactYMD[2]
-      const d = compactYMD[3]
-      const mNum = parseInt(m, 10)
-      const dNum = parseInt(d, 10)
-      if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
-        return `${y}-${m}-${d}`
-      }
-    }
-
-    // 5. Compact numeric: DDMMYYYY (8 digits)
-    const compactDMY = base.match(/\b(\d{2})(\d{2})(20\d{2})\b/)
-    if (compactDMY) {
-      const d = compactDMY[1]
-      const m = compactDMY[2]
-      const y = compactDMY[3]
-      const mNum = parseInt(m, 10)
-      const dNum = parseInt(d, 10)
-      if (mNum >= 1 && mNum <= 12 && dNum >= 1 && dNum <= 31) {
-        return `${y}-${m}-${d}`
-      }
-    }
-
-    // 6. Isolated day number only: e.g. "23.xlsx", "Day 23", "Sheet 23"
-    const dayOnlyMatch = base.match(/(?:^|\b)(?:day[\s_-]*)?([1-9]|[12]\d|3[01])(?:st|nd|rd|th)?(?:\b|$)/i)
-    if (dayOnlyMatch) {
-      const d = String(parseInt(dayOnlyMatch[1], 10)).padStart(2, '0')
-      const parts = fallbackDate.split('-')
-      const y = parts[0] || String(new Date().getFullYear())
-      const m = parts[1] || '01'
-      return `${y}-${m}-${d}`
-    }
-
-    return fallbackDate
-  }
 
   const importRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
+  const [importPlan, setImportPlan] = useState<ImportPlan | null>(null)
+
+  /** UX-26: close the selected day after showing its cash summary */
+  async function closeDay() {
+    const cashIn = todayJobs.filter(j => String(j.payment_mode).toLowerCase() === 'cash').reduce((s, j) => s + jobCollected(j), 0)
+    const summary = `${todayJobs.length} jobs · collected AED ${grossCollected.toLocaleString()} (cash AED ${cashIn.toLocaleString()}) · expenses AED ${totalExpenses.toLocaleString()} · net AED ${netTotal.toLocaleString()}`
+    const ok = await confirmAsync({
+      title: `Close ${fmtDate(selectedDate)}?`,
+      message: `${summary}.${rowChecks.size ? ` ${rowChecks.size} row(s) still have checks.` : ''} Compare with the Cash Book, then close. Closed days cannot be edited until reopened.`,
+      confirmLabel: 'Close day',
+    })
+    if (!ok) return
+    setClosedDays(prev => ({ ...prev, [selectedDate]: { closedAt: new Date().toISOString(), summary } }))
+    notify.success(`${fmtDate(selectedDate)} closed`)
+  }
+  async function reopenDay() {
+    const ok = await confirmAsync({ title: 'Reopen day?', message: `Reopen ${fmtDate(selectedDate)} so its entries can be changed again?`, confirmLabel: 'Reopen', tone: 'danger' })
+    if (!ok) return
+    setClosedDays(prev => { const next = { ...prev }; delete next[selectedDate]; return next })
+  }
+
+  /** UX-28: save the previewed import — replaces the day's jobs and expenses only now */
+  function commitImport(plan: ImportPlan) {
+    const targetDate = plan.date
+    if (blockIfClosed(targetDate)) return
+    setImportPlan(null)
+    setDateRangePreset('today')
+    setRangeStartDate('')
+    setRangeEndDate('')
+    setSelectedDate(targetDate)
+    // Re-importing a day replaces it cleanly instead of duplicating rows
+    clearDailyData(targetDate)
+    plan.jobs.forEach(j => addDailyJob(j))
+    plan.expenses.forEach(e => addDailyExpense(e))
+    if (plan.pending.length > 0) setPendingList(prev => [...prev.filter(x => x.date !== targetDate), ...plan.pending])
+    if (plan.pendingRcvd.length > 0) setPendingRcvdList(prev => [...prev.filter(x => x.date !== targetDate), ...plan.pendingRcvd])
+    if (plan.advances.length > 0) setAdvanceList(prev => [...prev.filter(x => x.date !== targetDate), ...plan.advances])
+    setImportNotice({
+      jobs: plan.jobs.length,
+      expenses: plan.expenses.length,
+      pendingCount: plan.pending.length,
+      pendingRcvdCount: plan.pendingRcvd.length,
+      advanceCount: plan.advances.length,
+      date: targetDate,
+      fileName: plan.fileName,
+    })
+  }
 
   async function importJobs(file: File) {
     setImporting(true)
@@ -1374,388 +1320,10 @@ export function DailyJobSheet() {
     try {
       const buf  = await file.arrayBuffer()
       const wb   = XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true })
-
-      // FILE KA NAME HI DATE HOGI: Extract authoritative date from filename
-      const targetDate = extractDateFromFilename(file.name, selectedDate)
-
-      // Reset date range presets so view immediately switches to the imported date
-      setDateRangePreset('today')
-      setRangeStartDate('')
-      setRangeEndDate('')
-      setSelectedDate(targetDate)
-
-      // Clear existing data for this target date so re-importing updates cleanly without duplicating
-      clearDailyData(targetDate)
-
-      // Smart sheet matching with Header Scoring:
-      // Real job sheets contain: Staff, Address, Charges, Received, Location, Duty Hrs, Mode, Service
-      const REQUIRED_JOB_COLS = ['staff', 'address', 'charges', 'received', 'location', 'start time', 'end time', 'duty hrs', 'mode', 'service']
-
-      const scoreSheet = (sheet: XLSX.WorkSheet | undefined): number => {
-        if (!sheet || !sheet['!ref']) return 0
-        const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 })
-        if (!rows || rows.length === 0) return 0
-        let bestScore = 0
-        for (let r = 0; r < Math.min(rows.length, 6); r++) {
-          const row = rows[r]
-          if (!Array.isArray(row)) continue
-          let s = 0
-          const texts = row.map(cell => String(cell || '').toLowerCase().replace(/[^a-z0-9]/g, ''))
-          REQUIRED_JOB_COLS.forEach(col => {
-            const normalized = col.replace(/[^a-z0-9]/g, '')
-            if (texts.some(t => t.includes(normalized))) s += 2
-          })
-          if (texts.some(t => t.includes('expense'))) s += 1
-          if (texts.some(t => t.includes('pending'))) s += 1
-          if (texts.some(t => t.includes('advance'))) s += 1
-          if (s > bestScore) bestScore = s
-        }
-        return bestScore
-      }
-
-      const dayNum = parseInt(targetDate.split('-')[2] || '0', 10)
-      const scoredSheets = wb.SheetNames.map(sn => ({
-        name: sn,
-        score: scoreSheet(wb.Sheets[sn]),
-        isDayMatch: dayNum > 0 && Boolean(sn.match(/^(\d+)/) && parseInt(sn.match(/^(\d+)/)![1], 10) === dayNum),
-        isJobsName: sn.toLowerCase() === 'jobs' || sn.toLowerCase().includes('job sheet') || sn.toLowerCase().includes('schedule')
-      }))
-
-      // Prefer sheets with real job columns (score >= 4)
-      const validSheets = scoredSheets.filter(s => s.score >= 4)
-
-      let sheetName = wb.SheetNames[0]
-      if (validSheets.length > 0) {
-        const dayMatch = validSheets.find(s => s.isDayMatch)
-        if (dayMatch) {
-          sheetName = dayMatch.name
-        } else {
-          const jobsMatch = validSheets.find(s => s.isJobsName)
-          if (jobsMatch) {
-            sheetName = jobsMatch.name
-          } else {
-            validSheets.sort((a, b) => b.score - a.score)
-            sheetName = validSheets[0].name
-          }
-        }
-      } else {
-        if (wb.SheetNames.includes('Jobs')) {
-          sheetName = 'Jobs'
-        } else if (dayNum > 0) {
-          const matchingSheet = wb.SheetNames.find(sn => {
-            const m = sn.match(/^(\d+)/)
-            return m && parseInt(m[1], 10) === dayNum
-          })
-          if (matchingSheet) sheetName = matchingSheet
-        }
-      }
-
-      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[sheetName])
-      if (!rows || rows.length === 0) {
-        alert('No rows found in the Excel sheet.')
-        return
-      }
-
-      // AUD-46: Excel dates are calendar dates — read them with local fields (SheetJS builds a
-      // local-midnight Date), and read text as day/month/year like the UAE sheets are written.
-      const toDate = (v: any) => {
-        if (!v) return targetDate
-        if (v instanceof Date) return isNaN(v.getTime()) ? targetDate : calendarDate(v)
-        const s = String(v).trim()
-        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
-        const dmy = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/)
-        if (dmy) {
-          const year = dmy[3].length === 2 ? 2000 + Number(dmy[3]) : Number(dmy[3])
-          const d = new Date(year, Number(dmy[2]) - 1, Number(dmy[1]))
-          return isNaN(d.getTime()) ? targetDate : calendarDate(d)
-        }
-        const d = new Date(s)
-        return isNaN(d.getTime()) ? targetDate : calendarDate(d)
-      }
-
-      let importedJobCount = 0
-      let importedExpCount = 0
-      let lastStaff = ''
-
-      rows.forEach(r => {
-        // Robust column matching across case, symbols, and alternate names from Excel
-        const nm = (...keys: string[]) => {
-          for (const k of keys) {
-            const normalized = k.toLowerCase().replace(/\s*\([^)]*\)\s*/g, '').replace(/[^a-z0-9]/g, '')
-            for (const [key, val] of Object.entries(r)) {
-              const keyNorm = String(key).toLowerCase().replace(/\s*\([^)]*\)\s*/g, '').replace(/[^a-z0-9]/g, '')
-              if (keyNorm === normalized && val !== undefined && val !== null && val !== '') return val
-            }
-          }
-          return ''
-        }
-
-        const rawStaff = String(nm('Staff', 'staff_name', 'Employee', 'Name') || '').trim()
-        const rawAddress = String(nm('Address', 'address') || '').trim()
-        const rawStart = nm('Start time', 'Start', 'start_time', 'Start Time')
-        const rawEnd = nm('End time', 'End', 'end_time', 'End Time')
-        const rawCharges = nm('Charges', 'charges_aed', 'charges', 'Charge')
-        const rawReceived = nm('Received', 'Receive', 'received_aed', 'received', 'Recv', 'Paid')
-
-        // Skip summary / footer rows (e.g. 'Gross', 'Total', 'Pending Rcvd cash', 'Expences', 'Net Total', or numeric totals)
-        // Check ONLY in main job columns, NOT in side columns (which contain "Advance" and "Total" headers/summaries)
-        const jobColText = [rawStaff, rawAddress, String(nm('Location', 'area', 'Area', 'location') || ''), String(rawCharges)].join(' ').toLowerCase()
-        const isFooterWord = ['gross', 'pending rcvd', 'total', 'expences', 'net total', 'summary'].some(f => jobColText.includes(f))
-
-        const hasNoAddressOrTimes = !rawAddress && (!rawStart || String(rawStart).trim() === '—') && (!rawEnd || String(rawEnd).trim() === '—')
-        const dutyHCheck = cleanNum(nm('Duty Hrs', 'Duty H', 'Duty Hours', 'Duty', 'duty_hours', 'dutyhrs', 'Hrs'))
-        const isNumericTotalRow = hasNoAddressOrTimes && (dutyHCheck > 24 || cleanNum(rawCharges) > 1500 || cleanNum(rawReceived) > 1500)
-
-        // Absent cleaner check (e.g. Nobel where 'Start time' is 'Absent')
-        const isAbsent = String(rawStart).toLowerCase().includes('absent') || String(rawAddress).toLowerCase().includes('absent') || String(rawStaff).toLowerCase().includes('absent')
-
-        if (isFooterWord || isNumericTotalRow || isAbsent) {
-          lastStaff = ''
-          return
-        }
-
-        if (rawStaff) {
-          lastStaff = rawStaff
-        }
-
-        // A valid job has an address OR valid start and end times OR charges > 0
-        const hasJobInfo = Boolean(rawAddress) || cleanNum(rawCharges) > 0 || (Boolean(rawStart) && Boolean(rawEnd) && String(rawStart).trim() !== '—' && String(rawEnd).trim() !== '—')
-
-        if (hasJobInfo && lastStaff) {
-          const sTime = formatTimeOnly(rawStart)
-          const eTime = formatTimeOnly(rawEnd)
-
-          // Header variations: "Duty Hrs", "Duty H", "Duty Hours", "Hrs"
-          let dutyH = cleanNum(nm('Duty Hrs', 'Duty H', 'Duty Hours', 'Duty', 'duty_hours', 'dutyhrs', 'Hrs'))
-          if (dutyH <= 0 && sTime !== '—' && eTime !== '—') {
-            dutyH = calcHours(sTime, eTime)
-          }
-          dutyH = Math.round(dutyH * 10) / 10
-
-          const otVal = Math.round(cleanNum(nm('OT', 'ot_hours', 'overtime', 'OT Hours', 'OTHrs')) * 10) / 10
-          const isOt = String(nm('OT', 'is_overtime')).toLowerCase() === 'yes' || otVal > 0
-
-          let mat = String(nm('Material', 'material', 'Mat') || 'No').trim()
-          if (mat.toUpperCase() === 'YES') mat = 'Yes'
-          else if (mat.toUpperCase() === 'NO') mat = 'No'
-
-          const serviceVal = String(nm('Service', 'service_type', 'service') || '').trim()
-          const locationVal = String(nm('Location', 'area', 'Area', 'location') || '').trim()
-          const modeVal = (String(nm('Mode', 'Mod', 'payment_mode') || 'Cash').trim()) as PaymentMode
-
-          addDailyJob({
-            date:         targetDate, // FILE KA NAME HI DATE HOGI! Strict and authoritative date source
-            staff_name:   lastStaff,
-            start_time:   sTime,
-            end_time:     eTime,
-            duty_hours:   dutyH,
-            ot_hours:     otVal,
-            address:      rawAddress,
-            area:         locationVal,
-            material:     mat as MaterialType,
-            charges:      cleanNum(rawCharges),
-            received:     cleanNum(rawReceived),
-            payment_mode: modeVal,
-            is_overtime:  isOt,
-            remarks:      String(nm('Remarks', 'remarks') || '').trim(),
-            service:      serviceVal,
-          })
-          importedJobCount++
-        }
-
-        // Check if row has an expense in side columns (e.g. 'Expenses' column)
-        let expName = ''
-        let expAmount = 0
-        for (const [k, v] of Object.entries(r)) {
-          if (k.toLowerCase().includes('expense') && typeof v === 'string' && v.trim()) {
-            expName = v.trim()
-          }
-        }
-        if (expName && expName.toLowerCase() !== 'items') {
-          const keys = Object.keys(r)
-          const idx = keys.findIndex(k => k.toLowerCase().includes('expense'))
-          if (idx !== -1 && idx + 1 < keys.length) {
-            const nextVal = r[keys[idx + 1]]
-            if (typeof nextVal === 'number' && nextVal > 0) expAmount = nextVal
-          }
-          if (expAmount > 0 && !expName.toLowerCase().includes('total')) {
-            let cat = 'Other'
-            const l = expName.toLowerCase()
-            if (l.includes('fuel') || l.includes('petrol')) cat = 'Fuel'
-            else if (l.includes('parking')) cat = 'Parking'
-            else if (l.includes('toll') || l.includes('salik')) cat = 'Toll'
-            else if (l.includes('oil') || l.includes('maintenance') || l.includes('labor')) cat = 'Vehicle maintenance'
-            else if (l.includes('supplies') || l.includes('material')) cat = 'Supplies'
-
-            addDailyExpense({
-              date:     targetDate,
-              name:     expName,
-              category: cat,
-              amount:   expAmount,
-            })
-            importedExpCount++
-          }
-        }
-      })
-
-      // Also check if workbook has a dedicated 'Expenses' sheet
-      if (wb.SheetNames.includes('Expenses')) {
-        const expSheetRows = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets['Expenses'])
-        expSheetRows.forEach(er => {
-          const nmE = (...keys: string[]) => {
-            for (const k of keys) {
-              const normalized = k.toLowerCase().replace(/[^a-z0-9]/g, '')
-              for (const [key, val] of Object.entries(er)) {
-                if (String(key).toLowerCase().replace(/[^a-z0-9]/g, '') === normalized && val !== undefined && val !== null && val !== '') return val
-              }
-            }
-            return ''
-          }
-          const eName = String(nmE('name', 'description', 'expense', 'item') || '').trim()
-          const eAmt = cleanNum(nmE('amount', 'cost', 'aed'))
-          if (eName && eAmt > 0 && !eName.toLowerCase().includes('total')) {
-            addDailyExpense({
-              date:     targetDate,
-              name:     eName,
-              category: String(nmE('category', 'cat') || 'Other').trim(),
-              amount:   eAmt,
-            })
-            importedExpCount++
-          }
-        })
-      }
-
-      // Extract Pending, Pending Received, and Advance from side columns (e.g. Q through X)
-      let importedPendingCount = 0
-      let importedPendingRcvdCount = 0
-      let importedAdvanceCount = 0
-
-      const currentSheet = wb.Sheets[sheetName]
-      if (currentSheet) {
-        const range = XLSX.utils.decode_range(currentSheet['!ref'] || 'A1:AS105')
-        const getCell = (r: number, c: number) => {
-          const cell = currentSheet[XLSX.utils.encode_cell({ r, c })]
-          return cell ? cell.v : undefined
-        }
-
-        let pCol = -1, prCol = -1, advCol = -1
-        let dataStartRow = 2
-
-        for (let r = 0; r <= 3; r++) {
-          for (let c = 10; c <= range.e.c; c++) {
-            const val = String(getCell(r, c) || '').toLowerCase().trim()
-            if (val === 'pending' && pCol === -1) {
-              pCol = c
-              dataStartRow = Math.max(dataStartRow, r + 2)
-            }
-            if ((val.includes('pending rcvd') || val.includes('pending received')) && prCol === -1) {
-              prCol = c
-              dataStartRow = Math.max(dataStartRow, r + 2)
-            }
-            if (val === 'advance' && advCol === -1) {
-              advCol = c
-              dataStartRow = Math.max(dataStartRow, r + 2)
-            }
-          }
-        }
-
-        if (pCol === -1 && range.e.c >= 17) pCol = 16
-        if (prCol === -1 && range.e.c >= 20) prCol = 18
-        if (advCol === -1 && range.e.c >= 23) advCol = 21
-
-        const newPendingItems: DailyPendingItem[] = []
-        const newPendingRcvdItems: DailyPendingReceivedItem[] = []
-        const newAdvanceItems: DailyAdvanceItem[] = []
-
-        for (let r = dataStartRow; r <= Math.min(range.e.r, 60); r++) {
-          const vP = pCol >= 0 ? String(getCell(r, pCol) || '').trim() : ''
-          const vPR = prCol >= 0 ? String(getCell(r, prCol) || '').trim() : ''
-          const vAdv = advCol >= 0 ? String(getCell(r, advCol) || '').trim() : ''
-
-          if (pCol >= 0 && vP && !vP.toLowerCase().includes('total')) {
-            const amt = parseFloat(String(getCell(r, pCol + 1) || '0')) || 0
-            newPendingItems.push({
-              id: `${Date.now()}-p-${r}`,
-              date: targetDate,
-              client: vP,
-              amount: amt,
-            })
-          }
-
-          if (prCol >= 0 && vPR && !vPR.toLowerCase().includes('total')) {
-            const cash = parseFloat(String(getCell(r, prCol + 1) || '0')) || 0
-            const online = parseFloat(String(getCell(r, prCol + 2) || '0')) || 0
-            newPendingRcvdItems.push({
-              id: `${Date.now()}-pr-${r}`,
-              date: targetDate,
-              client: vPR,
-              cash,
-              online,
-            })
-          }
-
-          if (advCol >= 0 && vAdv && !vAdv.toLowerCase().includes('total')) {
-            const rcvd = parseFloat(String(getCell(r, advCol + 1) || '0')) || 0
-            const adv = parseFloat(String(getCell(r, advCol + 2) || '0')) || 0
-            newAdvanceItems.push({
-              id: `${Date.now()}-adv-${r}`,
-              date: targetDate,
-              client: vAdv,
-              received: rcvd,
-              advance: adv,
-            })
-          }
-        }
-
-        // Fallback: If side table didn't have Pending Rcvd, check footer summary for 'Pending Rcvd cash'
-        if (newPendingRcvdItems.length === 0) {
-          for (let r = Math.max(0, range.e.r - 20); r <= range.e.r; r++) {
-            for (let c = 0; c <= Math.min(range.e.c, 10); c++) {
-              const val = String(getCell(r, c) || '').toLowerCase().trim()
-              if (val.includes('pending rcvd') || val.includes('pending received')) {
-                for (let offset = 1; offset <= 3; offset++) {
-                  const numVal = parseFloat(String(getCell(r, c + offset) || '0'))
-                  if (numVal > 0 && numVal < 100000) {
-                    newPendingRcvdItems.push({
-                      id: `${Date.now()}-pr-footer-${r}`,
-                      date: targetDate,
-                      client: 'Pending Rcvd cash',
-                      cash: numVal,
-                      online: 0,
-                    })
-                    break
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        if (newPendingItems.length > 0) {
-          importedPendingCount = newPendingItems.length
-          setPendingList(prev => [...prev.filter(x => x.date !== targetDate), ...newPendingItems])
-        }
-        if (newPendingRcvdItems.length > 0) {
-          importedPendingRcvdCount = newPendingRcvdItems.length
-          setPendingRcvdList(prev => [...prev.filter(x => x.date !== targetDate), ...newPendingRcvdItems])
-        }
-        if (newAdvanceItems.length > 0) {
-          importedAdvanceCount = newAdvanceItems.length
-          setAdvanceList(prev => [...prev.filter(x => x.date !== targetDate), ...newAdvanceItems])
-        }
-      }
-
-      setImportNotice({
-        jobs: importedJobCount,
-        expenses: importedExpCount,
-        pendingCount: importedPendingCount,
-        pendingRcvdCount: importedPendingRcvdCount,
-        advanceCount: importedAdvanceCount,
-        date: targetDate,
-        fileName: file.name,
-      })
+      // UX-28: parse only — the preview's "Import" button clears the day and saves
+      setImportPlan(parseJobSheetWorkbook(wb, file.name, selectedDate))
     } catch (err: any) {
-      alert('Failed to import Excel: ' + (err.message || String(err)))
+      notify.error('Failed to import Excel: ' + (err.message || String(err)))
     } finally {
       setImporting(false)
     }
@@ -1808,7 +1376,20 @@ export function DailyJobSheet() {
     if (id === 'remarks') {
       return <td key={id} className="px-3 py-3 text-slate-400 max-w-[140px] truncate">Standby</td>
     }
-    if (id === 'actions' || id === 'ot_hours') {
+    if (id === 'actions') {
+      // UX-30: one click to give an available cleaner a job
+      return (
+        <td key={id} className="px-3 py-3 whitespace-nowrap">
+          {!isDateRange && !isDayClosed(selectedDate) && (
+            <button type="button" onClick={() => openAddJob(row.staff_name)}
+              className="text-[11px] font-bold px-2 py-1 rounded-lg bg-sky-600 text-white hover:bg-sky-700 cursor-pointer">
+              + Assign job
+            </button>
+          )}
+        </td>
+      )
+    }
+    if (id === 'ot_hours') {
       return <td key={id} className="px-3 py-3 text-slate-300 font-medium whitespace-nowrap">—</td>
     }
     return <td key={id} className="px-3 py-3 text-slate-400 font-medium whitespace-nowrap">—</td>
@@ -1897,6 +1478,15 @@ export function DailyJobSheet() {
                   </div>
                 </div>
               )
+            )}
+            {/* UX-27: inline row checks (warnings only) */}
+            {rowChecks.has(job.id) && (
+              <span
+                className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200"
+                title={rowChecks.get(job.id)!.join('\n')}
+              >
+                <AlertTriangle size={10} /> {rowChecks.get(job.id)!.length} check{rowChecks.get(job.id)!.length === 1 ? '' : 's'}
+              </span>
             )}
           </td>
         )
@@ -2298,7 +1888,7 @@ export function DailyJobSheet() {
             <div className="flex gap-1">
               <button
                 type="button"
-                onClick={() => setEditJob(job)}
+                onClick={() => { if (!blockIfClosed(job.date)) setEditJob(job) }}
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                   isMonthly
                     ? 'hover:bg-emerald-200 text-emerald-800 hover:text-emerald-950'
@@ -2310,7 +1900,7 @@ export function DailyJobSheet() {
               </button>
               <button
                 type="button"
-                onClick={() => deleteDailyJob(job.id)}
+                onClick={() => { if (!blockIfClosed(job.date)) deleteDailyJob(job.id) }}
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                   isMonthly
                     ? 'hover:bg-red-100 text-emerald-800 hover:text-red-600'
@@ -2714,7 +2304,7 @@ export function DailyJobSheet() {
             {/* Primary Action: Add Job Button (Solid White with Green text, matching Clients/Fluent Forms) */}
             <button
               type="button"
-              onClick={() => setShowAddJob(true)}
+              onClick={() => { if (!blockIfClosed()) openAddJob() }}
               className="h-11 px-5 rounded-2xl bg-white text-emerald-800 font-extrabold text-[13px] shadow-lg hover:bg-emerald-50 transition-all shrink-0 flex items-center gap-2 cursor-pointer"
             >
               <Plus size={16} strokeWidth={2.5} className="text-emerald-700" />
@@ -2888,6 +2478,24 @@ export function DailyJobSheet() {
         }}
       />
 
+      {/* ── Close day (UX-26) ── */}
+      {!isDateRange && (
+        isDayClosed(selectedDate) ? (
+          <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 rounded-2xl border border-slate-300 bg-slate-100 text-[12.5px] text-slate-800">
+            <span className="flex items-center gap-2">
+              <Lock size={15} className="text-slate-600" />
+              <b>{fmtDate(selectedDate)} is closed</b> — {closedDays[selectedDate].summary} · closed {new Date(closedDays[selectedDate].closedAt).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', dateStyle: 'medium', timeStyle: 'short' })}. Edits are locked.
+            </span>
+            <button type="button" onClick={reopenDay} className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 font-bold hover:bg-slate-50 cursor-pointer">Reopen day</button>
+          </div>
+        ) : todayJobs.length > 0 && (
+          <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-2xl border border-[#E4E8EC] bg-white text-[12.5px] text-slate-600">
+            <span>When the day's entries and cash are checked, close the day to lock it against later changes.{rowChecks.size > 0 ? ` ${rowChecks.size} row(s) still have checks.` : ''}</span>
+            <button type="button" onClick={closeDay} className="px-3 py-1.5 rounded-xl bg-slate-800 text-white font-bold hover:bg-slate-900 cursor-pointer flex items-center gap-1.5"><Lock size={13} /> Close day</button>
+          </div>
+        )
+      )}
+
       {/* ── Hidden rows notice (AUD-44: review instead of auto-delete) ── */}
       {hiddenRowsInRange.length > 0 && (
         <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 rounded-2xl border border-amber-200 bg-amber-50 text-[12.5px] text-amber-900">
@@ -2921,7 +2529,7 @@ export function DailyJobSheet() {
               ) : (
                 <span>
                   {filteredActiveJobRows.length} active {filteredActiveJobRows.length === 1 ? 'job' : 'jobs'}
-                  {filteredNilRows.length > 0 && ` · ${filteredNilRows.length} absentees / nil`}
+                  {filteredNilRows.length > 0 && ` · ${filteredNilRows.length} available (no job)`}
                 </span>
               )}
               {paymentFilter !== 'ALL' && (
@@ -3037,7 +2645,7 @@ export function DailyJobSheet() {
 
             {/* Payment Category Filters (Monthly, Cash, Online, Pending) */}
             <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-[#E4E8EC] text-[11.5px] font-bold">
-              {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending'] as const).map(mode => {
+              {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending', 'Checks'] as const).map(mode => {
                 const isSelected = paymentFilter === mode
                 const count = mode === 'ALL'
                   ? todayJobs.length
@@ -3047,7 +2655,9 @@ export function DailyJobSheet() {
                       ? todayJobs.filter(j => j.payment_mode === 'Cash').length
                       : mode === 'Online'
                         ? todayJobs.filter(j => j.payment_mode === 'Online').length
-                        : todayJobs.filter(j => j.payment_mode === 'Pending' || cleanNum(j.charges) > cleanNum(j.received)).length
+                        : mode === 'Pending'
+                          ? todayJobs.filter(j => jobPending(j) > 0).length
+                          : rowChecks.size
 
                 return (
                   <button
@@ -3064,7 +2674,9 @@ export function DailyJobSheet() {
                               ? 'bg-blue-600 text-white shadow-xs'
                               : mode === 'Pending'
                                 ? 'bg-red-600 text-white shadow-xs'
-                                : 'bg-white text-slate-800 shadow-xs'
+                                : mode === 'Checks'
+                                  ? 'bg-amber-500 text-white shadow-xs'
+                                  : 'bg-white text-slate-800 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                     }`}
                   >
@@ -3460,7 +3072,7 @@ export function DailyJobSheet() {
                     Show All Cleaners
                   </Button>
                 ) : (
-                  <Button size="sm" onClick={() => setShowAddJob(true)}>
+                  <Button size="sm" onClick={() => { if (!blockIfClosed()) openAddJob() }}>
                     <Plus size={13} className="mr-1" /> Add First Job
                   </Button>
                 )}
@@ -3536,9 +3148,9 @@ export function DailyJobSheet() {
         displayedExpenses={displayedExpenses}
         viewAllExpenses={viewAllExpenses}
         onToggleViewAllExpenses={() => setViewAllExpenses(v => !v)}
-        onAddExpense={() => setShowAddExpense(true)}
-        onEditExpense={exp => setEditExpense(exp)}
-        onDeleteExpense={id => deleteDailyExpense(id)}
+        onAddExpense={() => { if (!blockIfClosed()) setShowAddExpense(true) }}
+        onEditExpense={exp => { if (!blockIfClosed(exp.date)) setEditExpense(exp) }}
+        onDeleteExpense={id => { if (!blockIfClosed()) deleteDailyExpense(id) }}
         totalExpenses={totalExpenses}
         driverSummary={driverSummary}
         sortedDrivers={sortedDrivers}
@@ -3616,13 +3228,23 @@ CREATE TABLE daily_expenses (
         </div>
       )}
 
+      {/* ── Import preview (UX-28) ── */}
+      <ImportPreviewModal
+        plan={importPlan}
+        existingJobs={d => dailyJobs.filter(j => j.date === d)}
+        existingExpenses={d => dailyExpenses.filter(e => e.date === d)}
+        onCancel={() => setImportPlan(null)}
+        onConfirm={commitImport}
+      />
+
       {/* ── Add Job Modal ── */}
       <Modal open={showAddJob} onClose={() => setShowAddJob(false)} title="Add Job Entry" size="lg">
         <AddJobForm
           employees={availableEmps}
           onClose={() => setShowAddJob(false)}
           onSave={j => { addDailyJob({ ...j, date: selectedDate }); setShowAddJob(false) }}
-          initial={{ date: selectedDate }}
+          key={addJobStaff || 'new'}
+          initial={{ date: selectedDate, ...(addJobStaff ? { staff_name: addJobStaff } : {}) }}
         />
       </Modal>
 
@@ -3695,7 +3317,7 @@ CREATE TABLE daily_expenses (
         selectedDate={selectedDate}
         todayJobs={todayJobs}
         onClose={() => setEditingDriverStaff(null)}
-        onEditJob={job => setEditJob(job)}
+        onEditJob={job => { if (!blockIfClosed(job.date)) setEditJob(job) }}
       />
 
       {/* ── Add Pending Item Modal ── */}
@@ -3764,7 +3386,7 @@ CREATE TABLE daily_expenses (
       <PendingDetailsModal
         details={selectedPendingDetails}
         onClose={() => setSelectedPendingDetails(null)}
-        onEditJob={job => setEditJob(job)}
+        onEditJob={job => { if (!blockIfClosed(job.date)) setEditJob(job) }}
         onEditPending={item => setEditingPending(item)}
         onMarkCollected={details => {
           if (details.job) {
