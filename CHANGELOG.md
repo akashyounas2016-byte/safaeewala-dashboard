@@ -39,6 +39,12 @@
 
 ## 2026-10-28
 
+- feat(bookings): Redesigned Add Booking popup matching Add Agency reference layout with 2-row compact card design (UX-15, D-05)
+  - **Reference Layout & Color Scheme**: Transformed the modal into an expansive `max-w-6xl` dialog matching the "Add New Agency" reference styling. The header includes the status toggle (`Confirmed` vs `Pending`), clean `Cancel` button, primary `Save Booking` button in teal with `Check` icon, and the close `X` icon.
+  - **Removed Redundant Rows**: Completely removed the "Quick Service Picks" chips row, "+ Enter custom service name" free-text mode, and "Fast Start Time Picks" chip row per user instructions.
+  - **Compact 2-Row Layout (Zero Scrolling)**: Replaced tall vertical tabs with a high-density, horizontal card layout:
+    - Row 1 (3-column grid): Client Information (autocomplete + phone + address), Service & Frequency (16 standard clean services select + frequency + total amount), and Schedule & Timing (date, start/end time, duration, and synchronized shift pill).
+    - Row 2 (2-column grid): Crew Assignment (cleaner search picker + assigned chips) and Special Instructions & Access Notes (clean textarea for gate codes, keys, and special preferences).
 - feat(bookings): Two-row toolbar layout, 6 informative KPI cards, and brand teal border refinements (UX-15, D-05)
   - **Two-Row Toolbar Architecture**: Split the bookings controls into 2 clean, purposeful rows. Top Row houses Search, All Time (Date Preset dropdown), View Mode Toggles (`Cards`, `Table`, `Board`, `Calendar`), All Services dropdown, and a 3-dot kebab menu (`MoreVertical`) containing Excel Import, Excel Export, and Reset Filters. Bottom Row is exclusively dedicated to "All Statuses" segmented pills (`All Statuses`, `Pending`, `Scheduled`, `Live Now`, `Completed`, `Cancelled`) with live counts and active filter badges.
   - **6 Informative KPI Executive Cards**: Expanded the KPI cards from 4 to 6 informative metric cards: Total Bookings (with workload hours and scheduled revenue), Pending Confirmation (action-needed indicator), Scheduled Upcoming (% of workload), Live Now (pulsing live cleaners badge), Completed & Billed (total billed revenue & completion %), and Crew Assigned (assigned vs unassigned warning badge, 1-click filterable to unassigned jobs).
