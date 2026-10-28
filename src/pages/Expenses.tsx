@@ -15,7 +15,8 @@ import type { DailyExpense, DailyPendingReceivedItem } from '@/types'
 import { isBogusJob, jobCollected, getEmployeeMonthlySalary } from '@/lib/clientDataSync'
 import { isParentCompanyEmployee } from '@/lib/utils'
 import { ExpenseBudgets } from '@/components/expenses/ExpenseBudgets'
-import { Pager, usePagination } from '@/components/common/Pager'
+import { Pager } from '@/components/common/Pager'
+import { usePagination } from '@/hooks/usePagination'
 
 /** Shrink a picked receipt image to a small JPEG data URL (PDFs kept as-is up to 1.5 MB) — UX-13 */
 async function readReceipt(file: File): Promise<string> {
@@ -496,7 +497,7 @@ export function Expenses() {
       {/* ── Executive KPI Cards (6 Financial & Operational Cards) ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
         {/* Card 1: Total Expenses */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-red-200 transition-all">
+        <div title="All expenses in the period (Daily Job Sheet + office)" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-red-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Expenses</span>
             <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
@@ -510,7 +511,7 @@ export function Expenses() {
         </div>
 
         {/* Card 2: Job Sheet Field Expenses */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-amber-200 transition-all">
+        <div title="Expenses recorded on the Daily Job Sheet" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-amber-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Job Sheet Ops</span>
             <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
@@ -524,7 +525,7 @@ export function Expenses() {
         </div>
 
         {/* Card 3: Office & Admin Expenses */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-purple-200 transition-all">
+        <div title="Expenses entered directly (office / admin)" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-purple-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Office & Admin</span>
             <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
@@ -538,7 +539,7 @@ export function Expenses() {
         </div>
 
         {/* Card 4: Top Category */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-blue-200 transition-all">
+        <div title="Category with the highest spend in the period" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-blue-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Top Category</span>
             <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
@@ -556,7 +557,7 @@ export function Expenses() {
         </div>
 
         {/* Card 5: Daily Average Expense */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-teal-200 transition-all">
+        <div title="Total expenses ÷ days that have expenses" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-teal-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Daily Average</span>
             <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center">
@@ -570,7 +571,7 @@ export function Expenses() {
         </div>
 
         {/* Card 6: Revenue Ratio & Profit */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-emerald-200 transition-all">
+        <div title="Collected money (job sheet, recoveries, monthly payments, bookings without a job row) against expenses, in-house payroll and paid agency payouts" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-emerald-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Expense Ratio</span>
             <div className={`w-8 h-8 rounded-lg ${profit >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'} flex items-center justify-center`}>

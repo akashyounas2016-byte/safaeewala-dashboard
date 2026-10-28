@@ -7,7 +7,18 @@ import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import { notify } from '@/lib/notify'
 import type { InventoryItem } from '@/types'
-import { EditItemModal, UseStockModal, PurchaseOrdersPanel, SuppliersPanel, useInventoryLedger } from '@/components/inventory/InventoryExtras'
+import { EditItemModal, UseStockModal, PurchaseOrdersPanel, SuppliersPanel } from '@/components/inventory/InventoryExtras'
+import { useInventoryLedger } from '@/hooks/useInventoryLedger'
+
+/** Where each KPI number comes from (UX-06) */
+const KPI_SOURCES: Record<string, string> = {
+  'Total Items': 'Items in the inventory list',
+  'Low Stock': 'Items at or below their minimum stock',
+  'Critical': 'Items below their minimum stock',
+  'Stock Value': 'Sum of current stock × unit cost',
+  'Suppliers': 'Distinct suppliers on inventory items',
+  'Categories': 'Distinct item categories',
+}
 
 function stockLevel(item: InventoryItem) {
   const ratio = item.min_stock > 0 ? item.current_stock / item.min_stock : Infinity
@@ -123,7 +134,7 @@ export function Inventory() {
           { label: 'Suppliers',     value: suppliers.length,                  sub: 'Active vendors', icon: Truck,     iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: '', deltaUp: true },
           { label: 'Categories',    value: categories.length,                 sub: 'Item types',     icon: BarChart3, iconBg: 'bg-slate-100',  iconColor: 'text-slate-600',   delta: '',  deltaUp: true  },
         ].map(card => (
-          <div key={card.label} className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all">
+          <div key={card.label} title={KPI_SOURCES[card.label]} className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all">
             <div className="flex items-start justify-between mb-4">
               <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center`}>
                 <card.icon size={18} className={card.iconColor} />

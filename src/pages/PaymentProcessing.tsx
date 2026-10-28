@@ -12,7 +12,9 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
 import { ReceivablesNav } from '@/components/receivables/ReceivablesNav'
-import { Pager, usePagination } from '@/components/common/Pager'
+import { Pager } from '@/components/common/Pager'
+import { usePagination } from '@/hooks/usePagination'
+import { STANDARD_PRESETS, DEFAULT_FINANCE_PRESET, rangeForPreset, inRange, type StandardPreset } from '@/lib/datePresets'
 import { notify, confirmAsync } from '@/lib/notify'
 import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem, Client } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
@@ -171,7 +173,8 @@ export function PaymentProcessing() {
 
   // ── Search & Filter State for Pending Amounts ──
   const [pendingSearch, setPendingSearch] = useState('')
-  const [pendingDateFilter, setPendingDateFilter] = useState<'all' | 'this_month' | 'last_30' | 'last_7'>('all')
+  // Same presets as the other finance screens (UX-05)
+  const [pendingDateFilter, setPendingDateFilter] = useState<StandardPreset>(DEFAULT_FINANCE_PRESET)
 
   // ── Search & Filter State for Monthly Payments ──
   const [monthlySearch, setMonthlySearch] = useState('')
@@ -241,25 +244,10 @@ export function PaymentProcessing() {
 
   // Filtered Pending Records
   const filteredPendingRecords = useMemo(() => {
-    const today = new Date()
-    const todayStr = today.toISOString().split('T')[0]
-    const curMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
-
+    const range = rangeForPreset(pendingDateFilter)
     return allPendingRecords.filter(r => {
       // Date filter
-      if (pendingDateFilter === 'this_month') {
-        if (!r.date.startsWith(curMonthKey)) return false
-      } else if (pendingDateFilter === 'last_7') {
-        const d = new Date(today)
-        d.setDate(d.getDate() - 7)
-        const dStr = d.toISOString().split('T')[0]
-        if (r.date < dStr || r.date > todayStr) return false
-      } else if (pendingDateFilter === 'last_30') {
-        const d = new Date(today)
-        d.setDate(d.getDate() - 30)
-        const dStr = d.toISOString().split('T')[0]
-        if (r.date < dStr || r.date > todayStr) return false
-      }
+      if (!inRange(range, r.date)) return false
 
       // Search filter
       const q = pendingSearch.toLowerCase().trim()
@@ -736,7 +724,7 @@ export function PaymentProcessing() {
       {/* ── Top Financial KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Total Pending */}
-        <div
+        <div title="Open dues: non-monthly job rows not billed on an invoice + manual items"
           onClick={() => setActiveTab('pending')}
           className={`bg-white rounded-[24px] border p-5 transition-all cursor-pointer ${
             activeTab === 'pending'
@@ -758,7 +746,7 @@ export function PaymentProcessing() {
         </div>
 
         {/* Card 2: Monthly Payments */}
-        <div
+        <div title="Monthly client payments recorded on this screen or Monthly Clients"
           onClick={() => setActiveTab('monthly')}
           className={`bg-white rounded-[24px] border p-5 transition-all cursor-pointer ${
             activeTab === 'monthly'
@@ -780,7 +768,7 @@ export function PaymentProcessing() {
         </div>
 
         {/* Card 3: Total Collections */}
-        <div
+        <div title="Received on jobs + later recoveries + monthly client payments"
           onClick={() => setActiveTab('history')}
           className={`bg-white rounded-[24px] border p-5 transition-all cursor-pointer ${
             activeTab === 'history'
@@ -802,7 +790,7 @@ export function PaymentProcessing() {
         </div>
 
         {/* Card 4: Collection Rate */}
-        <div className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+        <div title="Collected ÷ job-sheet charges" className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
           <div className="flex items-start justify-between mb-4">
             <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
               <DollarSign size={19} />
@@ -922,16 +910,11 @@ export function PaymentProcessing() {
 
               {/* Date Presets */}
               <div className="flex items-center gap-1.5 flex-wrap">
-                {[
-                  { id: 'all',        label: 'All Time' },
-                  { id: 'this_month', label: 'This Month' },
-                  { id: 'last_30',    label: '30 Days' },
-                  { id: 'last_7',     label: '7 Days' },
-                ].map(p => (
+                {STANDARD_PRESETS.filter(p => p.id !== 'custom').map(p => (
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => setPendingDateFilter(p.id as any)}
+                    onClick={() => setPendingDateFilter(p.id)}
                     className={`px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all cursor-pointer ${
                       pendingDateFilter === p.id
                         ? 'bg-amber-500 text-white shadow-xs'

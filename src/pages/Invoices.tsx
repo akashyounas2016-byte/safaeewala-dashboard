@@ -17,11 +17,23 @@ import { extractAllClientsFromDailyJobs } from '@/lib/clientDataSync'
 import { getCompanyInfo, useCompanyInfo } from '@/lib/companyInfo'
 import { nextInvoiceNumber } from '@/lib/invoiceNumber'
 import { invoiceBalance, isPartlyPaid } from '@/lib/receivables'
+import { STANDARD_PRESETS, DEFAULT_FINANCE_PRESET, rangeForPreset, type StandardPreset } from '@/lib/datePresets'
 import { notify } from '@/lib/notify'
 
 const escapeHtml = (v: string) => v.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
 
-export type InvoiceDatePreset = 'all' | 'today' | 'this_week' | 'this_month' | '7days' | '30days' | 'custom'
+// Same presets as the other finance screens (UX-05)
+export type InvoiceDatePreset = StandardPreset
+
+/** Where each KPI number comes from (UX-06) */
+const KPI_SOURCES: Record<string, string> = {
+  'Total Invoices': 'Invoices created in the selected period',
+  'Paid': 'Paid invoices + part payments in the period; the chip compares with the previous period of the same length',
+  'Pending': 'Balance still due on sent invoices',
+  'Overdue': 'Sent invoices past their due date',
+  'VAT Collected': 'VAT on paid invoices',
+  'Collection': 'Paid invoices ÷ all invoices in the period',
+}
 
 
 /* ─── Status pill ─── */
@@ -134,50 +146,15 @@ export function Invoices() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   // Dynamic Date Filter state
-  const [datePreset, setDatePreset] = useState<InvoiceDatePreset>('all')
+  const [datePreset, setDatePreset] = useState<InvoiceDatePreset>(DEFAULT_FINANCE_PRESET)
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
 
   // Calculate active date range
-  const activeDateRange = useMemo(() => {
-    const now = new Date()
-    const todayStr = now.toISOString().split('T')[0]
-
-    if (datePreset === 'today') {
-      return { start: todayStr, end: todayStr, label: 'Today' }
-    }
-    if (datePreset === 'this_week') {
-      const d = new Date(now)
-      const day = d.getDay() // 0 is Sun, 1 is Mon
-      const diff = d.getDate() - day + (day === 0 ? -6 : 1)
-      const monday = new Date(d.setDate(diff))
-      const startStr = monday.toISOString().split('T')[0]
-      return { start: startStr, end: todayStr, label: 'This Week' }
-    }
-    if (datePreset === 'this_month') {
-      const year = now.getFullYear()
-      const month = String(now.getMonth() + 1).padStart(2, '0')
-      const startStr = `${year}-${month}-01`
-      const lastDay = new Date(year, now.getMonth() + 1, 0).getDate()
-      const endStr = `${year}-${month}-${String(lastDay).padStart(2, '0')}`
-      return { start: startStr, end: endStr, label: 'This Month' }
-    }
-    if (datePreset === '7days') {
-      const d = new Date(now)
-      d.setDate(d.getDate() - 6)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 7 Days' }
-    }
-    if (datePreset === '30days') {
-      const d = new Date(now)
-      d.setDate(d.getDate() - 29)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 30 Days' }
-    }
-    if (datePreset === 'custom') {
-      const label = customStartDate && customEndDate ? `${customStartDate} to ${customEndDate}` : 'Custom Range'
-      return { start: customStartDate, end: customEndDate, label }
-    }
-    return { start: '', end: '', label: 'All Time' }
-  }, [datePreset, customStartDate, customEndDate])
+  const activeDateRange = useMemo(
+    () => rangeForPreset(datePreset, { start: customStartDate, end: customEndDate }),
+    [datePreset, customStartDate, customEndDate],
+  )
 
   // Helper: check if invoice date is in selected range
   const isDateInRange = useMemo(() => {
@@ -315,7 +292,7 @@ export function Invoices() {
           else if (card.label === 'Pending') action = () => setStatusFilter('sent')
           else if (card.label === 'Overdue') action = () => setStatusFilter('overdue')
           return (
-          <div key={card.label} onClick={action ?? undefined} className={`bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all ${action ? 'cursor-pointer' : ''}`}>
+          <div key={card.label} title={KPI_SOURCES[card.label]} onClick={action ?? undefined} className={`bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all ${action ? 'cursor-pointer' : ''}`}>
             <div className="flex items-start justify-between mb-4">
               <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center`}>
                 <card.icon size={18} className={card.iconColor} />
@@ -383,15 +360,7 @@ export function Invoices() {
                 <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1">
                   <Calendar size={12} className="text-emerald-600" /> Date:
                 </span>
-                {[
-                  { id: 'all',        label: 'All Time' },
-                  { id: 'today',      label: 'Today' },
-                  { id: 'this_week',  label: 'This Week' },
-                  { id: 'this_month', label: 'This Month' },
-                  { id: '7days',      label: '7 Days' },
-                  { id: '30days',     label: '30 Days' },
-                  { id: 'custom',     label: 'Custom Range' },
-                ].map(preset => {
+                {STANDARD_PRESETS.map(preset => {
                   const active = datePreset === preset.id
                   return (
                     <button

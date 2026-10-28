@@ -1,15 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-
-/** Client-side paging for long lists (UX-03). Resets to page 1 when the list changes length. */
-export function usePagination<T>(items: T[], pageSize = 25) {
-  const [page, setPage] = useState(1)
-  const pages = Math.max(1, Math.ceil(items.length / pageSize))
-  useEffect(() => { setPage(1) }, [items.length, pageSize])
-  const safePage = Math.min(page, pages)
-  const pageItems = useMemo(() => items.slice((safePage - 1) * pageSize, safePage * pageSize), [items, safePage, pageSize])
-  return { page: safePage, pages, setPage, pageItems, total: items.length, pageSize }
-}
 
 export function Pager({ page, pages, setPage, total, pageSize }: {
   page: number; pages: number; setPage: (p: number) => void; total: number; pageSize: number

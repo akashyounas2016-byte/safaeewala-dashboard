@@ -49,7 +49,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - **Available / Standby:** no job that date → **never counted as absent**.
   - **Absent:** only via an explicit mark — Attendance screen override, or a job-sheet row with no hours/charges whose remarks/address say `absent`, `not available`, `medical emergency`, `uninformed`.
   - **On leave:** `on leave`, `sick leave`, `annual leave`, `emergency leave`, `day off`, `weekly off`, or override category *Approved Leave / Weekly Off*.
-- **Code:** `src/pages/Attendance.tsx` → `attendanceRecords`; overrides in localStorage `safaeewala_cleaner_attendance_overrides` (key `YYYY-MM-DD_<name lowercase>`).
+- **Code:** `src/lib/attendance.ts → classifyAttendanceDay` (used by the Attendance list and the monthly calendar); overrides in localStorage `safaeewala_cleaner_attendance_overrides` (key `YYYY-MM-DD_<name lowercase>`).
 - **Status:** Active · Since: 2026-10
 
 ### R-ATT-04 — Who appears on the attendance list
@@ -239,6 +239,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-DATA-04 — No invented numbers on screen
 - **Rule:** KPI trend chips, stock movements and defaults must come from data. No fixed "+3%" deltas; stock increases only when goods are received; monthly statements come from job-sheet visits.
 - **Status:** Active · Since: 2026-10-27 (AUD-32, 33, 35, 37)
+
+### R-FIN-06 — Invoices carry their visits and part payments
+- **Rule:** An invoice may list the job-sheet rows it bills (`job_ids`). Once sent, those rows are collected through the invoice: they leave job-level receivables and the invoice balance (total − `amount_paid`) is shown instead. Part payments add to `amount_paid`; the invoice becomes `paid` when fully settled. One collection over several dues is applied oldest first.
+- **Code:** `lib/receivables.ts` (`invoiceBalance`, `invoicedJobIds`); `calcJobCollectable(job, ctx, invoiced)`; `PendingPayments.tsx → applyCollection`; `Invoices.tsx`; `MonthlyInvoices.tsx` (invoice from statement).
+- **Status:** Active · Since: 2026-10-29 (UX-10, UX-17, UX-18, UX-19)
 
 ### R-FIN-02 — Monthly client balance
 - **Rule:** Balance due = max(0, total charges − total received) for the client's monthly jobs (`payment_mode = Monthly` or "monthly" in remarks/address).

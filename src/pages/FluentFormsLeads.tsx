@@ -27,7 +27,8 @@ import {
   markFluentFormsAsRead,
   markSingleFluentFormAsRead,
 } from '@/lib/fluentFormsSync'
-import { LeadsKanban, findDuplicateLeads } from '@/components/leads/LeadsKanban'
+import { LeadsKanban } from '@/components/leads/LeadsKanban'
+import { findDuplicateLeads } from '@/lib/leads'
 import { sendGHLBookingConfirmation } from '@/lib/ghlService'
 
 /* ─── Column Customization Definitions ─── */

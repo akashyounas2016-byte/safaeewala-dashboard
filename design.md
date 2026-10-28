@@ -82,6 +82,14 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
 - **Document field (D-10):** number input with the upload icon **inside** the input on the right; attached file shows as a teal pill with preview 👁 and remove ✕ (`InputFieldWithUpload` in Agencies, `EmployeeDocInput` in Employees). Dates as a 2-column *Start/Issue · End/Expiry* pair under it.
 - Fields that depend on a choice (e.g. driver-only) swap in place; show a small chip saying which form mode is active.
 
+## 5b. Feedback, paging and period — D-11 … D-14
+
+- **D-11 No browser dialogs:** use `notify.success/error/info` (toasts) and `await confirmAsync({ title, message, tone })` — never `alert()` / `confirm()`.
+- **D-12 Paging:** lists that can grow past ~30 rows use `usePagination` + `<Pager />`.
+- **D-13 Periods:** finance screens use the presets from `lib/datePresets.ts` and open on "This Month".
+- **D-14 Explain numbers:** every KPI tile has a `title` tooltip saying where the number comes from; trend chips appear only when computed from data.
+- **Module tabs:** related screens share one tab bar (e.g. `ReceivablesNav` on Pending and Payments).
+
 ## 6. Domain widgets
 
 - **Duty & OT block:** duty (teal/sky, calm) beside OT (amber, `Flame`/`Zap`, `HIGH` badge at ≥ 10 h) with a split ratio bar under them. Zero OT = neutral grey "No OT recorded".

@@ -16,7 +16,8 @@ import { notify, confirmAsync } from '@/lib/notify'
 import { ReceivablesNav } from '@/components/receivables/ReceivablesNav'
 import { ReceivablesByClient, type CollectMode } from '@/components/receivables/ReceivablesByClient'
 import { CashBook } from '@/components/receivables/CashBook'
-import { Pager, usePagination } from '@/components/common/Pager'
+import { Pager } from '@/components/common/Pager'
+import { usePagination } from '@/hooks/usePagination'
 import { invoicedJobIds, invoiceBalance } from '@/lib/receivables'
 import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
@@ -121,7 +122,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
   }, [pendingRcvdList])
 
   // ── Date Filters State ──
-  const [datePreset, setDatePreset]           = useState<PendingDatePreset>('28days')
+  const [datePreset, setDatePreset]           = useState<PendingDatePreset>('this_month') // same default as other finance screens (UX-05)
   const [customStartDate, setCustomStartDate] = useState<string>('')
   const [customEndDate, setCustomEndDate]     = useState<string>('')
   const [selectedMonth, setSelectedMonth]     = useState<Date>(new Date())
@@ -699,7 +700,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
       {/* ── Executive KPI Cards (6 Financial & Recovery Cards) ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
         {/* Card 1: Total Outstanding Pending */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-red-200 transition-all">
+        <div title="Open dues: job-sheet rows (charges − received − later receipts − adjustments; monthly-contract and invoiced visits excluded) + manual items + unpaid invoice balances" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-red-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Pending</span>
             <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
@@ -713,7 +714,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
         </div>
 
         {/* Card 2: Recovered / Received Payments */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-emerald-200 transition-all">
+        <div title="Receipts recorded via Pending, Payments or the Daily Job Sheet Pending Received box in this period" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-emerald-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Recovered</span>
             <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -727,7 +728,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
         </div>
 
         {/* Card 3: Recovery Rate */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-teal-200 transition-all">
+        <div title="Recovered ÷ (recovered + outstanding)" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-teal-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Recovery Rate</span>
             <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center">
@@ -741,7 +742,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
         </div>
 
         {/* Card 4: Job Sheet Shift Dues */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-amber-200 transition-all">
+        <div title="Outstanding dues that come from Daily Job Sheet rows" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-amber-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Job Sheet Dues</span>
             <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
@@ -755,7 +756,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
         </div>
 
         {/* Card 5: High-Value Priority Dues (> AED 500) */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-orange-200 transition-all">
+        <div title="Outstanding records of AED 500 or more" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-orange-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">High Value (&gt;500)</span>
             <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center">
@@ -769,7 +770,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
         </div>
 
         {/* Card 6: Manual Account Dues */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-purple-200 transition-all">
+        <div title="Manual / side-table pending items" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-purple-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Side Widget Dues</span>
             <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">

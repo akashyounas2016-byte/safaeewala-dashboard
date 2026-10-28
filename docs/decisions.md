@@ -12,6 +12,12 @@
 > - Affects:  rule IDs, files
 > ```
 
+## DEC-011 — Receivables as one module without merging the two screens (2026-10-29)
+- **Context:** UX-01 asked to merge Pending and Payments; Antigravity was rebuilding the Payments screen at the same time.
+- **Decision:** A shared tab bar (`ReceivablesNav`) makes them one module; new receivables features (by-client view, cash book, invoice dues) live on the Pending side. One collection routine (`applyCollection`) serves single rows, client bulk collection and invoices.
+- **Why:** Same user experience with no rewrite of a file another agent was editing; avoids merge conflicts.
+- **Affects:** R-FIN-06, UX-01, UX-08 … UX-11.
+
 ## DEC-010 — Agency delete removes its staff; pay shown as monthly salary only (2026-10-27)
 - **Context:** Owner request: "jab agency delete ho jaye tab employee ka data bhi delete hoga"; "/hr ko monthly salary mein badlo".
 - **Decision:** Deleting a third-party agency deletes its linked employees (with a named warning in the dialog); shifts on the job sheet are kept as history. Hourly rates are no longer shown or defaulted anywhere; monthly salary is the single pay figure.

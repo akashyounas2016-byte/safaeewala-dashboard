@@ -160,7 +160,36 @@ Real data: registered staff + recent job-sheet names; hard-coded roster removed 
 
 ---
 
-## UI/UX recommendations
+## UI/UX recommendations — implementation status (2026-10-29)
+
+| ID | Status | Where |
+|---|---|---|
+| UX-01 | ✅ One "Receivables" tab bar on Pending and Payments (Outstanding · By Client · Cash Book · Collections & History); the two screens were not physically merged to avoid clashing with ongoing Payments work | `components/receivables/ReceivablesNav.tsx` |
+| UX-02 | ✅ Browser alert/confirm replaced by toasts and an in-app confirm dialog | `lib/notify.ts`, `components/common/ConfirmHost.tsx` |
+| UX-03 | ✅ Paging on Pending (outstanding, recovered), Payment History, Expenses, Dues by Client | `hooks/usePagination.ts`, `components/common/Pager.tsx` |
+| UX-04 | ✅ Invoices "Paid" compares with the previous period; chips without data are hidden (inventory has no history, so no trend) | `Invoices.tsx` |
+| UX-05 | 🟡 Shared presets on Invoices and Payments; all finance screens open on "This Month". Pending and Expenses keep their own (already matching) preset bars | `lib/datePresets.ts` |
+| UX-06 | ✅ Every KPI card on Pending, Payments, Expenses, Invoices, Inventory has a tooltip saying where its number comes from | page files |
+| UX-07 | ✅ Attendance shift table scrolls sideways on phones; calendar grid too | `Attendance.tsx`, `AttendanceCalendar.tsx` |
+| UX-08 | ✅ Dues grouped by client, visits expandable | `ReceivablesByClient.tsx` |
+| UX-09 | ✅ Ageing buckets (0-30 / 31-60 / 60+) + WhatsApp reminder | `ReceivablesByClient.tsx`, `lib/receivables.ts` |
+| UX-10 | ✅ One collection for several visits, applied oldest first (one receipt per visit) | `PendingPayments.tsx → applyCollection` |
+| UX-11 | ✅ Daily cash book with opening/closing cash and crew handovers | `components/receivables/CashBook.tsx` |
+| UX-12 | ✅ Payment history filter by method (method now stored on receipts) | `PaymentProcessing.tsx` |
+| UX-13 | ✅ Monthly category budgets + receipt photo/PDF on expenses | `components/expenses/ExpenseBudgets.tsx`, `Expenses.tsx` |
+| UX-14 | ✅ Profit card: collected − expenses − in-house payroll − agency payouts = net | `Expenses.tsx` |
+| UX-15 | ✅ Edit item, record usage, purchase orders with Receive (adds stock + expense) | `components/inventory/InventoryExtras.tsx`, `hooks/useInventoryLedger.ts` |
+| UX-16 | ✅ Suppliers panel; "Create orders" from low-stock banners | `InventoryExtras.tsx` |
+| UX-17 | ✅ Part payments on invoices, balance on screen and print, "Print / Save PDF" | `Invoices.tsx` |
+| UX-18 | ✅ Invoices store `job_ids`; invoiced visits leave job-level receivables and the invoice balance shows instead | `lib/receivables.ts`, `calcJobCollectable` |
+| UX-19 | ✅ "Invoice" button on each monthly statement creates a numbered invoice linked to its visits | `MonthlyInvoices.tsx` |
+| UX-20 | ✅ Monthly calendar per cleaner + month summary export; shared day rule | `components/attendance/AttendanceCalendar.tsx`, `lib/attendance.ts` |
+| UX-21 | ✅ Payments must match a monthly client; invoices added to the client ledger | `MonthlyClients.tsx`, `ClientInvoicesLedger.tsx` |
+| UX-22 | 🟡 New parts built as separate components; the existing 3,700-line file was not split (needs tests first) | — |
+| UX-23 | ✅ Lead pipeline board with move buttons and response time | `components/leads/LeadsKanban.tsx`, `lib/leads.ts` |
+| UX-24 | ✅ "Possible duplicate" (same phone within 7 days); conversion to booking (existing) no longer invents AED 500 | `lib/leads.ts`, `FluentFormsLeads.tsx` |
+
+### Original recommendations
 
 **Cross-screen**
 - **UX-01 Merge Pending and Payments.** Both list the same outstanding items and both have a "collect" flow. One "Receivables" screen with tabs *Outstanding · Collected · Monthly payments · History* removes the duplication and the risk of collecting twice.

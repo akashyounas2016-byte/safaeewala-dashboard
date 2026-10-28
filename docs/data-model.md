@@ -14,7 +14,7 @@
 | **Employee** | `full_name`, `role`, `status` (`active`/`on_leave`/`inactive`/`engaged_in_project`), `monthly_salary`, `pay_rate_hourly`, `agency_id`/`agency_name`, document numbers + start/end dates + files (EID, passport, visa, work permit, driving licence, medical insurance, NOC), `documents[]`, `photo_url`, `assigned_client_ids` | `employees` + `safaeewala_employees` | Synthetic staff from the job sheet have id `emp-dj-<name>`. |
 | **Agency** | `name`, `company_type` (`Parent Company`/`Third Party`), `status`, licence/EID/passport/contract dates, `contact_persons[]`, `bank_details`, `quota_cleaners`, `contracted_amount`, `payouts[]`, `documents[]` | Supabase `agencies` **and** VPS `/data/agencies.json` (`/api/agencies`) + `safaeewala_agencies` | `agency-safaeewala` is the parent (R-AGN-01). |
 | **AgencyCommissionPayout** | `amount`, `payment_date`, `payment_type` (`salary`/`advance`), `status` (`paid`/`pending`/`processing`), `cleaner_id?` | inside `Agency.payouts` | R-PAY-02 |
-| **Invoice** | `items[]`, `subtotal`, `vat_rate`, `vat_amount`, `total`, `status` (`draft`/`sent`/`paid`/`overdue`) | `invoices` + `safaeewala_invoices` | R-FIN-01 |
+| **Invoice** | `items[]`, `subtotal`, `vat_rate`, `vat_amount`, `total`, `status` (`draft`/`sent`/`paid`/`overdue`), `amount_paid`, `job_ids[]` | `invoices` + `safaeewala_invoices` | R-FIN-01 |
 | **DailyExpense** | date, category, amount | `daily_expenses` + `safaeewala_daily_expenses` | |
 | **InventoryItem** | stock, minimum | `inventory` + `safaeewala_inventory` | |
 | **FluentFormLead** | website form lead, `status` (`new`/`contacted`/`quoted`/`converted`/`lost`) | `fluent_form_leads` + VPS `/data/leads.json` | Webhook `/api/webhook/fluent-forms` |
@@ -46,7 +46,7 @@ Client master schedule ──(generates rows)───────────�
 | Auth | `auth_session`, `login_attempts`, `admin_custom_credentials` |
 | Sync internals | `sync_outbox` (Supabase writes waiting for retry), `cloud_state_meta` (last sync time / unsynced flag per key) |
 
-Browser storage is per browser **and per port** (5058 and 5059 do not share it). These keys are mirrored to Supabase `app_state` (once the Phase 2 migration is run): `monthly_client_payments`, `daily_pending_items`, `daily_pending_rcvd_items`, `daily_advance_items`, `client_adjustments`, `cleaner_attendance_overrides`, `recurring_contracts`, `deleted_staff`, `deleted_clients`. UI preferences (e.g. hidden rows) stay per browser.
+Browser storage is per browser **and per port** (5058 and 5059 do not share it). These keys are mirrored to Supabase `app_state` (once the Phase 2 migration is run): `monthly_client_payments`, `daily_pending_items`, `daily_pending_rcvd_items`, `daily_advance_items`, `client_adjustments`, `cleaner_attendance_overrides`, `recurring_contracts`, `deleted_staff`, `deleted_clients`, `cash_handovers`, `expense_budgets`, `purchase_orders`, `inventory_usage`. UI preferences (e.g. hidden rows) stay per browser.
 
 ## 4. Changing the model — checklist
 
