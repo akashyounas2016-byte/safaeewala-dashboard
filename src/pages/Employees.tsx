@@ -19,6 +19,7 @@ import type { Employee, DailyJob, EmployeeRole, Agency, EmployeeDocument } from 
 import { getAssignableClients, getEmployeeDailyJobsHistory, calcJobOTHours, getEmployeeMonthlySalary, formatMonthlySalary, splitStaffNames, MONTHLY_WORK_HOURS } from '@/lib/clientDataSync'
 import { EmployeeFormModal } from '@/components/employees/EmployeeFormModal'
 import { OvertimeWidget, LiveCrewWidget, ComplianceWidget, SkillsWidget } from '@/components/employees/EmployeeWidgets'
+import { todayDubai } from '@/lib/dubaiTime'
 
 /* ─── Excel import/export helpers ─── */
 function toISODate(val: any): string {
@@ -117,7 +118,7 @@ function exportEmployeesXLSX(
   const ws = XLSX.utils.json_to_sheet(rows)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Employees')
-  XLSX.writeFile(wb, `employees-duty-ot-${new Date().toISOString().split('T')[0]}.xlsx`)
+  XLSX.writeFile(wb, `employees-duty-ot-${todayDubai()}.xlsx`)
 }
 
 async function parseEmployeesFile(file: File): Promise<Omit<Employee, 'id' | 'created_at'>[]> {
@@ -142,7 +143,7 @@ async function parseEmployeesFile(file: File): Promise<Omit<Employee, 'id' | 'cr
         passport_expiry:            toISODate(r['Passport Expiry'] ?? r['passport_expiry']),
         skills:                     [],
         status:                     parseEmpStatus(String(r['Status'] ?? '')),
-        joined_date:                toISODate(r['Joining Date'] ?? r['Joined Date'] ?? r['joined_date']) || new Date().toISOString().split('T')[0],
+        joined_date:                toISODate(r['Joining Date'] ?? r['Joined Date'] ?? r['joined_date']) || todayDubai(),
         end_date:                   toISODate(r['End Date'] ?? r['end_date']) || undefined,
         agency_name:                String(r['Agency'] ?? r['agency_name'] ?? '').trim() || undefined,
       } as Omit<Employee, 'id' | 'created_at'>
@@ -387,7 +388,7 @@ export function Employees() {
     }>()
 
     const { start, end } = activeDateRange
-    const todayStr = new Date().toISOString().split('T')[0]
+    const todayStr = todayDubai()
 
     employees.forEach(emp => {
       const allJobs = getEmployeeDailyJobsHistory(emp, dailyJobs)
@@ -431,7 +432,7 @@ export function Employees() {
     if (emp.status === 'on_leave') return { code: 'leave', label: 'On Leave', bg: 'bg-indigo-50 text-indigo-700 border-indigo-200' }
     if (emp.status === 'inactive') return { code: 'inactive', label: 'Inactive', bg: 'bg-slate-100 text-slate-500 border-slate-200' }
 
-    const todayStr = new Date().toISOString().split('T')[0]
+    const todayStr = todayDubai()
     const st = staffJobStats.get(emp.id)
 
     // Check today's daily job

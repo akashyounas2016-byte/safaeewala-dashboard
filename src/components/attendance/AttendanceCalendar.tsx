@@ -3,6 +3,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Download } from 'lucide-react'
 import { classifyAttendanceDay, type AttendanceOverride, type AttendanceStatus } from '@/lib/attendance'
 import { employeeMatchesStaff, isBogusJob, splitStaffNames } from '@/lib/clientDataSync'
 import type { DailyJob, Employee } from '@/types'
+import { todayDubai, monthDubai } from '@/lib/dubaiTime'
 
 const STATUS_STYLE: Record<AttendanceStatus, { cell: string; label: string }> = {
   present:   { cell: 'bg-emerald-500 text-white', label: 'Present' },
@@ -23,7 +24,7 @@ export function AttendanceCalendar({ cleaners, employeeByName, dailyJobs, overri
   dailyJobs: DailyJob[]
   overrides: Record<string, AttendanceOverride>
 }) {
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const [month, setMonth] = useState(() => monthDubai())
   const [cleaner, setCleaner] = useState(cleaners[0] || '')
 
   const days = useMemo(() => {
@@ -53,7 +54,7 @@ export function AttendanceCalendar({ cleaners, employeeByName, dailyJobs, overri
     return classifyAttendanceDay(jobs, override)
   }
 
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = todayDubai()
   const cells = cleaner ? days.map(d => ({ date: d, future: d > todayStr, ...statusFor(cleaner, d) })) : []
   const summary = cells.filter(c => !c.future).reduce((acc, c) => { acc[c.status]++; return acc },
     { present: 0, available: 0, absent: 0, on_leave: 0 } as Record<AttendanceStatus, number>)

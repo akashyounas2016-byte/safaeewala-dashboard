@@ -3,7 +3,9 @@
 > **Screens:** `/daily-job-sheet` (`src/pages/DailyJobSheet.tsx`, 3,796 lines, + `src/components/dailyJobSheet/*`) and its Excel mode `/daily-job-sheet/spreadsheet` (`src/pages/JobSheetSpreadsheet.tsx`, 3,388 lines).
 > **Question:** is the data correct, realistic and in sync with other screens? How can the screen, its UI/UX and the Excel mode be improved?
 > **Method:** code review of `claude/workspace` (`947cb0c`). Date findings were reproduced with `TZ=Asia/Dubai` in Node.
-> Findings continue the audit numbering: **AUD-44 … AUD-58**. Suggestions: **UX-25 … UX-40**. Nothing fixed yet.
+> Findings continue the audit numbering: **AUD-44 … AUD-58**. Suggestions: **UX-25 … UX-40**.
+>
+> **Status 2026-10-29 (Phase 1, `claude/workspace`):** ✅ AUD-44, AUD-46, AUD-47, AUD-48, AUD-49, AUD-50, AUD-58, UX-33, UX-34 fixed. AUD-45 — **won't fix (owner decision):** Delete All stays, it is used to clear test entries at the end of testing. Dates follow Dubai time (DEC-012).
 
 ## Summary
 
@@ -23,21 +25,25 @@
 - **Where:** `DailyJobSheet.tsx:513-520` (`isBogusSummaryJob`) + `:527-533` (effect that calls `deleteDailyJob` for every match, on every change of `dailyJobs`).
 - **What:** any row with no address and no times, or no address/charges/received/service/remarks, is **deleted from the database** as soon as someone opens the Job Sheet. That includes rows that only say "Absent" / "Weekly off" (Attendance relies on them, R-ATT-01) and a blank row someone just added.
 - **Fix:** never delete automatically — hide such rows from totals and show a "N rows look like totals — review" notice with a manual delete.
+- **Status:** ✅ Fixed — rows are hidden with a "N rows look like totals — Show to review" notice; nothing is deleted automatically.
 
 ### AUD-45 🔴 "Delete All Data" wipes the whole history in one click
 - **Where:** header menu `DailyJobSheet.tsx:2803-2809`, confirm `DailyJobModals.tsx:179-240`, action `DataContext.clearAllDailyData` (`:799-811`) + `DailyJobSheet.tsx:3658-3669`.
 - **What:** one confirm deletes **every** daily job and expense in live Supabase plus pending items, recoveries and advances (which are cloud-synced, so the empty lists overwrite the cloud copy). No typed confirmation, no automatic backup/export, no owner-only restriction.
 - **Fix:** owner-only; require typing `DELETE ALL`; download an Excel/JSON backup first; better: remove from the UI and keep it as an admin script.
+- **Status:** ⏸ Won't fix — owner keeps Delete All to clear testing entries (2026-10-29).
 
 ### AUD-48 🔴 Excel mode loses unsaved edits whenever data changes in the background
 - **Where:** `JobSheetSpreadsheet.tsx:1168-1189` — the grid reloads from `dailyJobs` on every change and sets `hasUnsavedChanges = false`. No `beforeunload` / route-leave warning.
 - **What:** a background save, outbox retry, cloud sync, auto-fetched monthly shift or the AUD-44 purge replaces the grid; the user's typing disappears with no message.
 - **Fix:** reload only when the date/filter changes or the user asks; if server data changed while editing, show "data changed — reload / keep mine"; warn before leaving with unsaved edits; keep a local draft.
+- **Status:** ✅ Fixed — grid loads on date/filter change; background changes merge into rows you did not touch; your edits are kept with a "Load latest instead" notice.
 
 ### AUD-49 🔴 "Save All" deletes jobs that are not in the (possibly stale) grid and rewrites every row
 - **Where:** `JobSheetSpreadsheet.tsx:1605-1668`.
 - **What:** every job of the period that is not in the grid is deleted — e.g. a job added from Bookings, another device, or the monthly auto-fetch after the grid was loaded. Every unchanged row is also re-written to Supabase (hundreds of writes in range/all mode). `is_overtime` is updated only for new rows (AUD-58).
 - **Fix:** track deletions explicitly (rows the user removed), save only changed rows (diff against the loaded copy), never delete rows the grid did not load.
+- **Status:** ✅ Fixed — Save writes only added / edited / removed rows (diff against the loaded copy) and asks before overwriting rows changed elsewhere.
 
 ## B. Wrong values
 
@@ -46,16 +52,19 @@
 - **Proof:** `TZ=Asia/Dubai`: cell 27-Oct-2026 → saved as `2026-10-26`.
 - **Impact:** imported shifts land on the previous day (attendance, revenue, payroll per day all wrong). Text dates like `27/10/2026` are parsed by `new Date()` (US order) and can also go wrong.
 - **Fix:** format with local getters (`getFullYear/Month/Date`) or `XLSX.SSF`; parse `dd/mm/yyyy` explicitly.
+- **Status:** ✅ Fixed — Excel dates read with local fields; text `dd/mm/yyyy` parsed explicitly.
 
 ### AUD-47 🟠 "Today" is the UTC date — wrong between 00:00 and 04:00 in Dubai
 - **Where:** `DailyJobSheet.tsx:89, 268, 293`; `JobSheetSpreadsheet.tsx:903, 917-918, 1171-1174, 1612-1614, 1903, 1918`; `AddJobModal.tsx:98` (same pattern exists app-wide).
 - **Proof:** 29-Oct 02:30 Dubai → `today` = `2026-10-28`.
 - **Fix:** one `todayLocal()` helper (local date) used everywhere.
+- **Status:** ✅ Fixed — `src/lib/dubaiTime.ts` (`todayDubai`, `monthDubai`) used app-wide (84 places).
 
 ### AUD-50 🟠 New Excel rows are pre-filled with fake values
 - **Where:** `JobSheetSpreadsheet.tsx:1396-1414` — first employee, 08:00-16:00, 8 h, **AED 200 charged and AED 200 received in cash**, service "House".
 - **Impact:** an unedited row becomes a fake AED 200 cash job (revenue, cash book, payroll).
 - **Fix:** empty amounts and staff; times empty or copied from the row above.
+- **Status:** ✅ Fixed — new rows start with no staff, AED 0 and no service; blank new rows are not saved.
 
 ### AUD-51 🟠 Hard-coded 26-name roster and history names in the "no job today" rows
 - **Where:** `DailyJobSheet.tsx:621-648` (`allKnownCleaners`) — the roster removed elsewhere (AUD-08) is still here; every staff string ever used (including shared "Sita, Rupa" and inactive people) is added.
@@ -88,6 +97,7 @@
 - **Where:** `JobSheetSpreadsheet.tsx:1633-1648` — `is_overtime` set only when inserting (`:1663`).
 
 ---
+- **Status:** ✅ Fixed — `is_overtime` is saved on every edit, not only on new rows.
 
 ## UI/UX & functionality suggestions
 

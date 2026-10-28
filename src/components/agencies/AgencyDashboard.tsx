@@ -16,6 +16,7 @@ import type { Agency, Employee, DailyJob, AgencySalaryPayout, AgencyDocument, Ag
 import { formatDate, formatCurrency, daysUntil, isParentCompanyEmployee } from '@/lib/utils'
 import { getEmployeeDailyJobsHistory, employeeMatchesStaff, jobChargeShare, shiftSalaryCost, formatMonthlySalary } from '@/lib/clientDataSync'
 import { generateCertificateDataUrl } from '@/lib/agencyCertificates'
+import { todayDubai } from '@/lib/dubaiTime'
 
 // ── Pure Image / Document Upload Field for Agencies (matching EmployeeDocInput style) ──
 function AgencyDocUploadField({
@@ -254,7 +255,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
   }, [agencyStaff, staffSearch, roleFilter])
 
   // ── Today's Date String ──
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], [])
+  const todayStr = useMemo(() => todayDubai(), [])
 
   // ── Jobs Completed by this Agency's Staff ──
   const staffJobsData = useMemo(() => {

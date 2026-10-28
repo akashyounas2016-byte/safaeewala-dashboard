@@ -1,3 +1,4 @@
+import { todayDubai } from '@/lib/dubaiTime'
 /**
  * Safaeewala CRM - GoHighLevel (GHL) Integration Service
  * Manages GHL connection credentials, webhook workflow triggers, and booking confirmation email automation.
@@ -95,7 +96,7 @@ export async function testGHLConnection(configOverride?: GHLConfig): Promise<{ s
             phone: '+971501234567',
             email: 'admin@safaeewala.com',
             service: 'Deep Cleaning',
-            date: new Date().toISOString().split('T')[0],
+            date: todayDubai(),
             address: 'Downtown Dubai',
           },
         }),

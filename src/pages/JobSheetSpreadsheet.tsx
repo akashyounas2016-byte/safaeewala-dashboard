@@ -34,6 +34,8 @@ import {
   type ScheduledShiftPlan,
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
+import { todayDubai } from '@/lib/dubaiTime'
+import { confirmAsync } from '@/lib/notify'
 
 /* ─── Column Schema for the Excel Grid (Daily Job Sheet Exact Sequence) ─── */
 export interface ColumnDef {
@@ -782,6 +784,22 @@ export const LIGHT_PALETTE_KEYS = [
 
 const PALETTE_KEYS = Object.keys(BLOCK_PALETTES)
 
+// ── Safe save helpers (AUD-49, UX-33, UX-34) ──
+const SAVED_FIELDS = [
+  'date', 'staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'address', 'area',
+  'charges', 'received', 'payment_mode', 'material', 'service', 'remarks',
+] as const
+const NUMERIC_FIELDS = new Set<string>(['duty_hours', 'ot_hours', 'charges', 'received'])
+const fieldValue = (row: DailyJob, k: (typeof SAVED_FIELDS)[number]) =>
+  NUMERIC_FIELDS.has(k) ? cleanNum(row[k]) : String(row[k] ?? '').trim()
+/** True when the two rows hold the same saved values */
+const sameJobRow = (a: DailyJob, b: DailyJob) => SAVED_FIELDS.every(k => fieldValue(a, k) === fieldValue(b, k))
+/** A new grid row the user never filled in — not worth saving */
+const isBlankNewRow = (r: DailyJob) =>
+  !String(r.address || '').trim() && !String(r.area || '').trim() && cleanNum(r.charges) === 0 &&
+  cleanNum(r.received) === 0 && !String(r.service || '').trim() && !String(r.remarks || '').trim()
+const DRAFT_PREFIX = 'safaeewala_excel_draft:' // local only, never cloud-synced
+
 function safeGet<T>(key: string, fallback: T): T {
   try {
     const val = localStorage.getItem(key)
@@ -894,13 +912,13 @@ function evaluateFormula(
 export function JobSheetSpreadsheet() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { dailyJobs, clients, employees, addDailyJob, updateDailyJob, deleteDailyJob } = useData()
+  const { dailyJobs, clients, addDailyJob, updateDailyJob, deleteDailyJob } = useData()
 
   // ── Target Date Selection & Dynamic Filters ──
   const qDate = searchParams.get('date')
   const initialDate = qDate && /^\d{4}-\d{2}-\d{2}$/.test(qDate)
     ? qDate
-    : new Date().toISOString().split('T')[0]
+    : todayDubai()
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [dateFilterMode, setDateFilterMode] = useState<'single' | 'today' | 'yesterday' | 'range' | 'all'>('single')
   const [rangeStart, setRangeStart] = useState<string>(initialDate)
@@ -914,8 +932,8 @@ export function JobSheetSpreadsheet() {
   const autoSyncedDatesRef = useRef<Set<string>>(new Set())
 
   const effectiveTargetDate = useMemo(() => {
-    if (dateFilterMode === 'today') return new Date().toISOString().split('T')[0]
-    if (dateFilterMode === 'yesterday') return addDaysToYMD(new Date().toISOString().split('T')[0], -1)
+    if (dateFilterMode === 'today') return todayDubai()
+    if (dateFilterMode === 'yesterday') return addDaysToYMD(todayDubai(), -1)
     return selectedDate
   }, [selectedDate, dateFilterMode])
 
@@ -1127,7 +1145,10 @@ export function JobSheetSpreadsheet() {
   const [editingCell, setEditingCell] = useState<{ rowIdx: number; colId: string; tempValue: string } | null>(null)
   const [formulaBarValue, setFormulaBarValue] = useState<string>('')
   const [filterSearch, setFilterSearch] = useState('')
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  // What the grid was loaded from — Save All writes only the differences (AUD-49)
+  const [loadedSnapshot, setLoadedSnapshot] = useState<Map<string, DailyJob>>(() => new Map())
+  const [remoteConflict, setRemoteConflict] = useState(false)
+  const [draftOffer, setDraftOffer] = useState<{ rows: DailyJob[]; savedAt: number } | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   // ── UI View Options (Default: flat grid first as requested) ──
@@ -1164,28 +1185,101 @@ export function JobSheetSpreadsheet() {
   const formulaInputRef = useRef<HTMLInputElement>(null)
   const spreadsheetRef = useRef<HTMLDivElement>(null)
 
-  // Load jobs based on selected date and dynamic date filter mode
+  // Jobs of the period shown in the grid
+  const periodKey = `${dateFilterMode}|${selectedDate}|${rangeStart}|${rangeEnd}`
+  const periodJobs = useMemo(() => {
+    if (dateFilterMode === 'today') { const t = todayDubai(); return dailyJobs.filter(j => j.date === t) }
+    if (dateFilterMode === 'yesterday') { const y = addDaysToYMD(todayDubai(), -1); return dailyJobs.filter(j => j.date === y) }
+    if (dateFilterMode === 'range') return dailyJobs.filter(j => j.date >= rangeStart && j.date <= rangeEnd)
+    if (dateFilterMode === 'all') return [...dailyJobs]
+    return dailyJobs.filter(j => j.date === selectedDate)
+  }, [dailyJobs, dateFilterMode, selectedDate, rangeStart, rangeEnd])
+
+  /** Rows added, edited and removed in the grid compared with what was loaded (UX-33) */
+  const pendingChanges = useMemo(() => {
+    const gridIds = new Set(gridRows.map(r => r.id))
+    const added = gridRows.filter(r => !loadedSnapshot.has(r.id) && !isBlankNewRow(r))
+    const edited = gridRows.filter(r => { const o = loadedSnapshot.get(r.id); return o && !sameJobRow(o, r) })
+    const removed = Array.from(loadedSnapshot.values()).filter(o => !gridIds.has(o.id))
+    return { added, edited, removed, count: added.length + edited.length + removed.length }
+  }, [gridRows, loadedSnapshot])
+  const hasUnsavedChanges = pendingChanges.count > 0
+
+  const latest = useRef({ gridRows, loadedSnapshot, hasUnsavedChanges, periodKey: '' })
   useEffect(() => {
-    let jobs: DailyJob[] = []
-    if (dateFilterMode === 'today') {
-      const today = new Date().toISOString().split('T')[0]
-      jobs = dailyJobs.filter(j => j.date === today)
-    } else if (dateFilterMode === 'yesterday') {
-      const yest = addDaysToYMD(new Date().toISOString().split('T')[0], -1)
-      jobs = dailyJobs.filter(j => j.date === yest)
-    } else if (dateFilterMode === 'range') {
-      jobs = dailyJobs.filter(j => j.date >= rangeStart && j.date <= rangeEnd)
-    } else if (dateFilterMode === 'all') {
-      jobs = [...dailyJobs]
-    } else {
-      jobs = dailyJobs.filter(j => j.date === selectedDate)
+    latest.current.gridRows = gridRows
+    latest.current.loadedSnapshot = loadedSnapshot
+    latest.current.hasUnsavedChanges = hasUnsavedChanges
+  })
+  const reloadAfterSaveRef = useRef(false)
+
+  // Load the grid when the period changes. When jobs change elsewhere (another screen, device,
+  // monthly auto-sync) while the grid has unsaved edits, merge rows the user did not touch and
+  // keep the user's edits — never silently reload over them (AUD-48).
+  useEffect(() => {
+    const clone = (rows: DailyJob[]): DailyJob[] => JSON.parse(JSON.stringify(rows))
+    const { gridRows: grid, loadedSnapshot: snap, hasUnsavedChanges: dirty, periodKey: shownKey } = latest.current
+    const periodChanged = shownKey !== periodKey
+    if (periodChanged || !dirty || reloadAfterSaveRef.current) {
+      reloadAfterSaveRef.current = false
+      latest.current.periodKey = periodKey
+      const rows = clone(periodJobs)
+      setGridRows(rows)
+      setLoadedSnapshot(new Map(rows.map(r => [r.id, r])))
+      setHistory([])
+      setFuture([])
+      setRemoteConflict(false)
+      if (periodChanged) {
+        const draft = safeGet<{ rows: DailyJob[]; savedAt: number } | null>(DRAFT_PREFIX + periodKey, null)
+        setDraftOffer(draft && Array.isArray(draft.rows) ? draft : null)
+      }
+      return
     }
-    const cloned = jobs.length > 0 ? JSON.parse(JSON.stringify(jobs)) : []
-    setGridRows(cloned)
-    setHistory([])
-    setFuture([])
-    setHasUnsavedChanges(false)
-  }, [selectedDate, dateFilterMode, rangeStart, rangeEnd, dailyJobs])
+    const remote = new Map(periodJobs.map(j => [j.id, j]))
+    const nextSnap = new Map(snap)
+    let nextGrid = [...grid]
+    let conflict = false
+    remote.forEach((job, id) => {
+      const was = snap.get(id)
+      if (!was) {
+        nextSnap.set(id, clone([job])[0])
+        if (!nextGrid.some(r => r.id === id)) nextGrid.push(clone([job])[0])
+        return
+      }
+      if (sameJobRow(was, job)) return
+      const mine = nextGrid.find(r => r.id === id)
+      if (mine && !sameJobRow(was, mine)) { conflict = true; return }
+      nextSnap.set(id, clone([job])[0])
+      if (mine) nextGrid = nextGrid.map(r => (r.id === id ? clone([job])[0] : r))
+    })
+    snap.forEach((was, id) => {
+      if (remote.has(id)) return
+      const mine = nextGrid.find(r => r.id === id)
+      if (mine && !sameJobRow(was, mine)) { conflict = true; return }
+      nextSnap.delete(id)
+      nextGrid = nextGrid.filter(r => r.id !== id)
+    })
+    setGridRows(nextGrid)
+    setLoadedSnapshot(nextSnap)
+    if (conflict) setRemoteConflict(true)
+  }, [periodKey, periodJobs])
+
+  // Keep a local draft of unsaved edits so a refresh or leaving the page never loses them (UX-34)
+  useEffect(() => {
+    const key = DRAFT_PREFIX + periodKey
+    try {
+      if (hasUnsavedChanges) localStorage.setItem(key, JSON.stringify({ rows: gridRows, savedAt: Date.now() }))
+      else if (!draftOffer) localStorage.removeItem(key)
+    } catch { /* storage full — the leave warning still protects the edits */ }
+  }, [gridRows, hasUnsavedChanges, periodKey, draftOffer])
+
+  // Warn before closing / refreshing the tab with unsaved edits (UX-34)
+  useEffect(() => {
+    if (!hasUnsavedChanges) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [hasUnsavedChanges])
 
   // Update formula bar when active cell changes
   useEffect(() => {
@@ -1253,7 +1347,6 @@ export function JobSheetSpreadsheet() {
     setHistory(prev => [...prev.slice(-40), JSON.parse(JSON.stringify(gridRows))])
     setFuture([])
     setGridRows(newRows)
-    setHasUnsavedChanges(true)
   }
 
   // ── Undo & Redo ──
@@ -1266,7 +1359,6 @@ export function JobSheetSpreadsheet() {
     setFuture(prev => [JSON.parse(JSON.stringify(gridRows)), ...prev])
     setHistory(prev => prev.slice(0, prev.length - 1))
     setGridRows(previous)
-    setHasUnsavedChanges(true)
     showToast('Undo executed (Ctrl+Z)')
   }
 
@@ -1279,7 +1371,6 @@ export function JobSheetSpreadsheet() {
     setHistory(prev => [...prev, JSON.parse(JSON.stringify(gridRows))])
     setFuture(prev => prev.slice(1))
     setGridRows(next)
-    setHasUnsavedChanges(true)
     showToast('Redo executed (Ctrl+Y)')
   }
 
@@ -1339,8 +1430,8 @@ export function JobSheetSpreadsheet() {
   }
 
   // Commit Cell Edit
-  const commitCellEdit = () => {
-    if (!editingCell) return
+  const commitCellEdit = (): DailyJob[] => {
+    if (!editingCell) return gridRows
     const { rowIdx, colId, tempValue } = editingCell
     const trimmed = tempValue.trim()
 
@@ -1368,6 +1459,7 @@ export function JobSheetSpreadsheet() {
     updated[rowIdx] = row
     pushState(updated)
     setEditingCell(null)
+    return updated
   }
 
   // Formula Bar change
@@ -1397,19 +1489,19 @@ export function JobSheetSpreadsheet() {
     const newJob: DailyJob = {
       id: `new-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       date: selectedDate,
-      staff_name: defaultStaff || employees[0]?.full_name || 'Staff Member',
+      staff_name: defaultStaff || '',
       start_time: '08:00',
       end_time: '16:00',
       duty_hours: 8,
       ot_hours: 0,
       address: '',
       area: '',
-      charges: 200,
-      received: 200,
+      charges: 0,
+      received: 0,
       payment_mode: 'Cash',
       is_overtime: false,
       material: 'No',
-      service: 'House',
+      service: '',
       remarks: '',
       created_at: new Date().toISOString()
     }
@@ -1602,73 +1694,79 @@ export function JobSheetSpreadsheet() {
     }
   }
 
-  // Save All Changes to DataContext (Persistent Storage & Supabase)
-  const handleSaveAll = () => {
-    commitCellEdit()
+  // Save All — writes only rows added, edited or removed in this grid (AUD-49, UX-33).
+  // Rows outside the grid are never touched; rows changed elsewhere since loading ask first.
+  const handleSaveAll = async () => {
+    const rows = commitCellEdit()
+    const gridIds = new Set(rows.map(r => r.id))
+    const added = rows.filter(r => !loadedSnapshot.has(r.id) && !isBlankNewRow(r))
+    const edited = rows.filter(r => { const o = loadedSnapshot.get(r.id); return o && !sameJobRow(o, r) })
+    const removed = Array.from(loadedSnapshot.values()).filter(o => !gridIds.has(o.id))
+    if (added.length + edited.length + removed.length === 0) { showToast('Nothing to save'); return }
 
-    const currentSavedJobs = dateFilterMode === 'single'
-      ? dailyJobs.filter(j => j.date === selectedDate)
-      : dateFilterMode === 'today'
-        ? dailyJobs.filter(j => j.date === new Date().toISOString().split('T')[0])
-        : dateFilterMode === 'yesterday'
-          ? dailyJobs.filter(j => j.date === addDaysToYMD(new Date().toISOString().split('T')[0], -1))
-          : dateFilterMode === 'range'
-            ? dailyJobs.filter(j => j.date >= rangeStart && j.date <= rangeEnd)
-            : [...dailyJobs]
+    const live = new Map(dailyJobs.map(j => [j.id, j]))
+    const changedElsewhere = [...edited, ...removed].filter(r => {
+      const now = live.get(r.id)
+      const was = loadedSnapshot.get(r.id)
+      return !now || (was && !sameJobRow(was, now))
+    })
+    if (changedElsewhere.length > 0) {
+      const ok = await confirmAsync({
+        title: 'Changed on another screen',
+        message: `${changedElsewhere.length} row(s) were changed or deleted somewhere else after you opened this sheet. Save your version over them?`,
+        confirmLabel: 'Save my version',
+        cancelLabel: 'Cancel',
+      })
+      if (!ok) return
+    }
 
-    const currentIds = new Set(currentSavedJobs.map(j => j.id))
-    const updatedIds = new Set(gridRows.map(j => j.id))
-
-    // 1. Delete rows removed in spreadsheet
-    currentSavedJobs.forEach(oldJob => {
-      if (!updatedIds.has(oldJob.id)) {
-        deleteDailyJob(oldJob.id)
-      }
+    const payload = (row: DailyJob) => ({
+      date: row.date || selectedDate,
+      staff_name: row.staff_name,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      duty_hours: cleanNum(row.duty_hours),
+      ot_hours: cleanNum(row.ot_hours),
+      address: row.address,
+      area: row.area,
+      charges: cleanNum(row.charges),
+      received: cleanNum(row.received),
+      payment_mode: row.payment_mode,
+      is_overtime: cleanNum(row.ot_hours) > 0,
+      material: row.material,
+      service: row.service,
+      remarks: row.remarks,
     })
 
-    // 2. Update existing or insert new rows
-    gridRows.forEach(row => {
-      const rowDate = row.date || selectedDate
-      if (currentIds.has(row.id)) {
-        updateDailyJob(row.id, {
-          date: rowDate,
-          staff_name: row.staff_name,
-          start_time: row.start_time,
-          end_time: row.end_time,
-          duty_hours: cleanNum(row.duty_hours),
-          ot_hours: cleanNum(row.ot_hours),
-          address: row.address,
-          area: row.area,
-          charges: cleanNum(row.charges),
-          received: cleanNum(row.received),
-          payment_mode: row.payment_mode,
-          material: row.material,
-          service: row.service,
-          remarks: row.remarks
-        })
-      } else {
-        addDailyJob({
-          date: rowDate,
-          staff_name: row.staff_name,
-          start_time: row.start_time,
-          end_time: row.end_time,
-          duty_hours: cleanNum(row.duty_hours),
-          ot_hours: cleanNum(row.ot_hours),
-          address: row.address,
-          area: row.area,
-          charges: cleanNum(row.charges),
-          received: cleanNum(row.received),
-          payment_mode: row.payment_mode,
-          is_overtime: cleanNum(row.ot_hours) > 0,
-          material: row.material,
-          service: row.service,
-          remarks: row.remarks
-        })
-      }
+    reloadAfterSaveRef.current = true
+    removed.forEach(r => { if (live.has(r.id)) deleteDailyJob(r.id) })
+    edited.forEach(r => {
+      if (live.has(r.id)) updateDailyJob(r.id, payload(r))
+      else addDailyJob(payload(r)) // deleted elsewhere — the user chose to keep their version
     })
+    added.forEach(r => addDailyJob(payload(r)))
 
-    setHasUnsavedChanges(false)
-    showToast('✓ All changes synced successfully to Daily Job Sheet!')
+    try { localStorage.removeItem(DRAFT_PREFIX + periodKey) } catch { /* ignore */ }
+    setDraftOffer(null)
+    setRemoteConflict(false)
+    const parts = [added.length && `${added.length} added`, edited.length && `${edited.length} updated`, removed.length && `${removed.length} deleted`].filter(Boolean)
+    showToast(`✓ Saved: ${parts.join(', ')}`)
+  }
+
+  /** Throw away the grid's edits and load the latest saved jobs */
+  const reloadFromSaved = async () => {
+    if (hasUnsavedChanges) {
+      const ok = await confirmAsync({ title: 'Discard edits?', message: `Discard your ${pendingChanges.count} unsaved change(s) and load the latest saved data?`, confirmLabel: 'Discard & reload', tone: 'danger' })
+      if (!ok) return
+    }
+    const rows: DailyJob[] = JSON.parse(JSON.stringify(periodJobs))
+    setGridRows(rows)
+    setLoadedSnapshot(new Map(rows.map(r => [r.id, r])))
+    setHistory([])
+    setFuture([])
+    setRemoteConflict(false)
+    setDraftOffer(null)
+    try { localStorage.removeItem(DRAFT_PREFIX + periodKey) } catch { /* ignore */ }
   }
 
   // Export Spreadsheet to Excel (.xlsx) with dynamic column order
@@ -1864,7 +1962,7 @@ export function JobSheetSpreadsheet() {
                 <span className="font-extrabold text-[15.5px] tracking-tight">Excel Job Sheet Studio</span>
                 {hasUnsavedChanges && (
                   <span className="text-[9.5px] font-black px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 animate-pulse">
-                    ● Unsaved Changes
+                    ● {pendingChanges.count} unsaved change{pendingChanges.count === 1 ? '' : 's'}
                   </span>
                 )}
               </div>
@@ -1900,7 +1998,7 @@ export function JobSheetSpreadsheet() {
               <button
                 type="button"
                 onClick={() => {
-                  const today = new Date().toISOString().split('T')[0]
+                  const today = todayDubai()
                   setDateFilterMode('today')
                   setSelectedDate(today)
                   setSearchParams({ date: today }, { replace: true })
@@ -1915,7 +2013,7 @@ export function JobSheetSpreadsheet() {
               <button
                 type="button"
                 onClick={() => {
-                  const yest = addDaysToYMD(new Date().toISOString().split('T')[0], -1)
+                  const yest = addDaysToYMD(todayDubai(), -1)
                   setDateFilterMode('yesterday')
                   setSelectedDate(yest)
                   setSearchParams({ date: yest }, { replace: true })
@@ -2055,7 +2153,7 @@ export function JobSheetSpreadsheet() {
             title="Save and synchronize back to main Daily Job Sheet (Ctrl+S)"
           >
             <Save size={14} />
-            <span>{hasUnsavedChanges ? 'Save Changes' : 'Saved'}</span>
+            <span>{hasUnsavedChanges ? `Save ${pendingChanges.count} change${pendingChanges.count === 1 ? '' : 's'}` : 'Saved'}</span>
           </button>
 
           {/* Fullscreen Toggle */}
@@ -2377,6 +2475,26 @@ export function JobSheetSpreadsheet() {
           </div>
         </div>
       </nav>
+
+      {/* ── Draft restore / remote change notices (AUD-48, UX-34) ── */}
+      {draftOffer && (
+        <div className="mx-3 mt-2 flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-xl border border-sky-200 bg-sky-50 text-[12.5px] text-sky-900">
+          <span>You have unsaved edits for this date from {new Date(draftOffer.savedAt).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', dateStyle: 'medium', timeStyle: 'short' })} (Dubai time).</span>
+          <span className="flex gap-2">
+            <button type="button" onClick={() => { pushState(draftOffer.rows); setDraftOffer(null); showToast('Draft restored — click Save to keep it') }}
+              className="px-3 py-1 rounded-lg bg-sky-600 text-white font-bold hover:bg-sky-700 cursor-pointer">Restore edits</button>
+            <button type="button" onClick={() => { setDraftOffer(null); try { localStorage.removeItem(DRAFT_PREFIX + periodKey) } catch { /* ignore */ } }}
+              className="px-3 py-1 rounded-lg bg-white border border-sky-300 font-bold text-sky-800 hover:bg-sky-100 cursor-pointer">Discard</button>
+          </span>
+        </div>
+      )}
+      {remoteConflict && (
+        <div className="mx-3 mt-2 flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-[12.5px] text-amber-900">
+          <span>Some rows you edited were also changed on another screen. Your edits are kept — Save asks before overwriting.</span>
+          <button type="button" onClick={reloadFromSaved}
+            className="px-3 py-1 rounded-lg bg-white border border-amber-300 font-bold text-amber-800 hover:bg-amber-100 cursor-pointer">Load latest instead</button>
+        </div>
+      )}
 
       {/* ── Excel Formula Bar (fx) ── */}
       {showFormulaBar && (

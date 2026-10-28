@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Target, Pencil, Check } from 'lucide-react'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import type { DailyExpense } from '@/types'
+import { monthDubai } from '@/lib/dubaiTime'
 
 const BUDGET_KEY = 'safaeewala_expense_budgets' // cloud-synced: { [category]: monthly AED }
 
@@ -13,7 +14,7 @@ export function ExpenseBudgets({ expenses, categories }: { expenses: DailyExpens
   const [editing, setEditing] = useState(false)
   useEffect(() => { safeLocalStorageSet(BUDGET_KEY, budgets) }, [budgets])
 
-  const month = new Date().toISOString().slice(0, 7)
+  const month = monthDubai()
   const monthLabel = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
   const spent = useMemo(() => {
     const m = new Map<string, number>()

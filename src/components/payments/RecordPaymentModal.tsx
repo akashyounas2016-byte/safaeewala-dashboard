@@ -10,6 +10,7 @@ import { useData } from '@/store/DataContext'
 import type { MonthlyClientPayment, Client } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { calcClientPendingBalance } from '@/lib/clientDataSync'
+import { todayDubai } from '@/lib/dubaiTime'
 
 export interface RecordPaymentModalProps {
   open: boolean
@@ -45,7 +46,7 @@ export function RecordPaymentModal({
   const [clientName, setClientName] = useState(initialClientName)
   const [selectedClientId, setSelectedClientId] = useState<string | undefined>(initialClientId)
   const [amount, setAmount] = useState<string>(initialAmount ? String(initialAmount) : '')
-  const [date, setDate] = useState<string>(() => new Date().toISOString().split('T')[0])
+  const [date, setDate] = useState<string>(() => todayDubai())
   const [paymentMethod, setPaymentMethod] = useState<MonthlyClientPayment['paymentMethod']>('Bank Transfer')
   const [billingMonth, setBillingMonth] = useState<string>(() =>
     new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -62,7 +63,7 @@ export function RecordPaymentModal({
       setClientName(initialClientName)
       setSelectedClientId(initialClientId)
       setAmount(initialAmount ? String(initialAmount) : '')
-      setDate(new Date().toISOString().split('T')[0])
+      setDate(todayDubai())
       setBillingMonth(new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }))
       setReferenceNumber('')
       setNotes('')
@@ -150,7 +151,7 @@ export function RecordPaymentModal({
       clientName: clientName.trim(),
       clientId: selectedClientId,
       amount: amt,
-      date: date || new Date().toISOString().split('T')[0],
+      date: date || todayDubai(),
       paymentMethod,
       referenceNumber: referenceNumber.trim() || undefined,
       invoiceMonth: billingMonth.trim() || undefined,

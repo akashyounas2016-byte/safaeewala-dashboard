@@ -6,6 +6,7 @@ import { isBogusJob, jobCollected, splitStaffNames } from '@/lib/clientDataSync'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { notify } from '@/lib/notify'
 import type { DailyPendingReceivedItem } from '@/types'
+import { todayDubai } from '@/lib/dubaiTime'
 
 /** Cash a crew member handed over to the office (cloud-synced key) */
 export interface CashHandover { id: string; date: string; staff: string; amount: number; notes?: string }
@@ -21,7 +22,7 @@ const aed = (n: number) => `AED ${Math.round(n).toLocaleString()}`
  */
 export function CashBook({ receipts }: { receipts: DailyPendingReceivedItem[] }) {
   const { dailyJobs, dailyExpenses } = useData()
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [date, setDate] = useState(() => todayDubai())
   const [handovers, setHandovers] = useState<CashHandover[]>(() => safeLocalStorageGet<CashHandover[]>(HANDOVER_KEY, []))
   const [form, setForm] = useState({ staff: '', amount: '' })
 

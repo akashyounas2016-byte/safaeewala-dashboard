@@ -17,6 +17,7 @@ import { formatDate, isThirdPartyEmployee, isParentCompanyEmployee, slugifyAgenc
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { cleanClientNameFromAddress, employeeMatchesStaff, splitStaffNames, isBogusJob } from '@/lib/clientDataSync'
 import { buildAgencyNotifications } from '@/lib/agencyAlerts'
+import { todayDubai } from '@/lib/dubaiTime'
 
 // ── Curated Distinct Light Color Themes for Agency Widgets ──
 const LIGHT_AGENCY_CARD_THEMES = [
@@ -367,7 +368,7 @@ export function Agencies() {
   const [liveCleanersSearch, setLiveCleanersSearch] = useState('')
   const [liveCleanersAgencyFilter, setLiveCleanersAgencyFilter] = useState('all')
 
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], [])
+  const todayStr = useMemo(() => todayDubai(), [])
 
   // Target date for live shifts: today if jobs/bookings exist, or fallback to the latest active job sheet date
   const targetLiveDate = useMemo(() => {

@@ -7,8 +7,9 @@ import { useData } from '@/store/DataContext'
 import type { PurchaseOrder, UsageEntry } from '@/hooks/useInventoryLedger'
 import { notify, confirmAsync } from '@/lib/notify'
 import type { InventoryItem } from '@/types'
+import { todayDubai } from '@/lib/dubaiTime'
 
-const today = () => new Date().toISOString().split('T')[0]
+const today = () => todayDubai()
 
 /** Edit an item's details (UX-15) */
 export function EditItemModal({ item, onClose }: { item: InventoryItem | null; onClose: () => void }) {

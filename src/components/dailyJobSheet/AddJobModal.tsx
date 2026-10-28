@@ -11,6 +11,7 @@ import {
   PAYMENT_MODES,
   COMMON_SERVICES,
 } from './jobSheetUtils'
+import { todayDubai } from '@/lib/dubaiTime'
 
 export interface AddJobFormProps {
   employees: { full_name: string }[]
@@ -95,7 +96,7 @@ export function AddJobForm({
             required
           />
         </div>
-        <Input name="date" label="Date" type="date" defaultValue={initial?.date ?? new Date().toISOString().split('T')[0]} required />
+        <Input name="date" label="Date" type="date" defaultValue={initial?.date ?? todayDubai()} required />
       </div>
 
       <div className="grid grid-cols-3 gap-3">

@@ -19,6 +19,7 @@ import { nextInvoiceNumber } from '@/lib/invoiceNumber'
 import { invoiceBalance, isPartlyPaid } from '@/lib/receivables'
 import { STANDARD_PRESETS, DEFAULT_FINANCE_PRESET, rangeForPreset, type StandardPreset } from '@/lib/datePresets'
 import { notify } from '@/lib/notify'
+import { todayDubai } from '@/lib/dubaiTime'
 
 const escapeHtml = (v: string) => v.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
 
@@ -170,7 +171,7 @@ export function Invoices() {
 
   // Auto-mark overdue: sent invoices past their due date
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = todayDubai()
     invoices
       .filter(i => i.status === 'sent' && i.due_date < today)
       .forEach(i => updateInvoice(i.id, { status: 'overdue' }))
@@ -494,7 +495,7 @@ export function Invoices() {
                           )}
                           {inv.status !== 'paid' && (
                             <button
-                              onClick={() => updateInvoice(inv.id, { status: 'paid', paid_date: new Date().toISOString().split('T')[0] })}
+                              onClick={() => updateInvoice(inv.id, { status: 'paid', paid_date: todayDubai() })}
                               className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 transition-colors" title="Mark as paid">
                               <DollarSign size={14} />
                             </button>
@@ -598,7 +599,7 @@ export function Invoices() {
           <InvoiceView
             invoice={selected}
             onMarkPaid={() => {
-              updateInvoice(selected.id, { status: 'paid', paid_date: new Date().toISOString().split('T')[0] })
+              updateInvoice(selected.id, { status: 'paid', paid_date: todayDubai() })
               setSelected(null)
             }}
             onSend={() => {
@@ -608,7 +609,7 @@ export function Invoices() {
             onPrint={() => printInvoice(selected)}
             onRecordPayment={(amount) => {
               const paid = (Number(selected.amount_paid) || 0) + amount
-              const today = new Date().toISOString().split('T')[0]
+              const today = todayDubai()
               const patch: Partial<Invoice> = paid >= selected.total - 0.01
                 ? { amount_paid: selected.total, status: 'paid', paid_date: today }
                 : { amount_paid: Math.round(paid * 100) / 100 }

@@ -75,6 +75,7 @@ import {
   type ScheduledShiftPlan,
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
+import { todayDubai, calendarDate } from '@/lib/dubaiTime'
 
 /* ─── Main Page ─── */
 export function DailyJobSheet() {
@@ -86,7 +87,7 @@ export function DailyJobSheet() {
   const qDate = searchParams.get('date')
   const initialDate = qDate && /^\d{4}-\d{2}-\d{2}$/.test(qDate)
     ? qDate
-    : new Date().toISOString().split('T')[0]
+    : todayDubai()
   const [selectedDate, setSelectedDateState] = useState(initialDate)
 
   // ── Weekly Schedule ↔ Daily Job Sheet Synchronization State ──
@@ -265,7 +266,7 @@ export function DailyJobSheet() {
   const [showRangeMenu, setShowRangeMenu] = useState(false)
 
   const getRangeBounds = (preset: Exclude<DateRangePreset, 'today'>) => {
-    const end = selectedDate || new Date().toISOString().split('T')[0]
+    const end = selectedDate || todayDubai()
     let start = end
     if (preset === '7days') {
       start = addDaysToYMD(end, -6)
@@ -290,7 +291,7 @@ export function DailyJobSheet() {
       setDateRangePreset('today')
       setRangeStartDate('')
       setRangeEndDate('')
-      setSelectedDate(new Date().toISOString().split('T')[0])
+      setSelectedDate(todayDubai())
       setShowRangeMenu(false)
       return
     }
@@ -519,18 +520,13 @@ export function DailyJobSheet() {
     return (noAddress && noTimes) || (noAddress && hasSummaryNums) || cleanNum(j.duty_hours) > 24 || isEmptyStub
   }
 
-  const todayJobs     = dailyJobs.filter(j => isDateInRange(j.date) && !isBogusSummaryJob(j))
+  // AUD-44: rows that look like sheet totals / empty stubs are hidden, never auto-deleted.
+  // The owner can show them and delete them by hand.
+  const [showHiddenRows, setShowHiddenRows] = useState(false)
+  const hiddenRowsInRange = dailyJobs.filter(j => isDateInRange(j.date) && isBogusSummaryJob(j))
+  const todayJobs     = dailyJobs.filter(j => isDateInRange(j.date) && (showHiddenRows || !isBogusSummaryJob(j)))
   const todayExpenses = dailyExpenses.filter(e => isDateInRange(e.date))
 
-  // Automatically purge any accidental summary rows (such as sheet totals imported under Qasim)
-  useEffect(() => {
-    const bogusJobs = dailyJobs.filter(isBogusSummaryJob)
-    if (bogusJobs.length > 0) {
-      bogusJobs.forEach(b => {
-        deleteDailyJob(b.id)
-      })
-    }
-  }, [dailyJobs, deleteDailyJob])
 
   // ── Monthly Repeating Schedules Calculation & Auto-Fetch ──
   const monthlySyncStatus = useMemo(() => {
@@ -1460,13 +1456,21 @@ export function DailyJobSheet() {
         return
       }
 
+      // AUD-46: Excel dates are calendar dates — read them with local fields (SheetJS builds a
+      // local-midnight Date), and read text as day/month/year like the UAE sheets are written.
       const toDate = (v: any) => {
         if (!v) return targetDate
-        if (v instanceof Date) return v.toISOString().split('T')[0]
+        if (v instanceof Date) return isNaN(v.getTime()) ? targetDate : calendarDate(v)
         const s = String(v).trim()
         if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+        const dmy = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/)
+        if (dmy) {
+          const year = dmy[3].length === 2 ? 2000 + Number(dmy[3]) : Number(dmy[3])
+          const d = new Date(year, Number(dmy[2]) - 1, Number(dmy[1]))
+          return isNaN(d.getTime()) ? targetDate : calendarDate(d)
+        }
         const d = new Date(s)
-        return isNaN(d.getTime()) ? targetDate : d.toISOString().split('T')[0]
+        return isNaN(d.getTime()) ? targetDate : calendarDate(d)
       }
 
       let importedJobCount = 0
@@ -2883,6 +2887,23 @@ export function DailyJobSheet() {
           }
         }}
       />
+
+      {/* ── Hidden rows notice (AUD-44: review instead of auto-delete) ── */}
+      {hiddenRowsInRange.length > 0 && (
+        <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 rounded-2xl border border-amber-200 bg-amber-50 text-[12.5px] text-amber-900">
+          <span className="flex items-center gap-2">
+            <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+            {hiddenRowsInRange.length} row{hiddenRowsInRange.length === 1 ? '' : 's'} on this date look like sheet totals or empty rows and {showHiddenRows ? 'are shown below' : 'are hidden'}. Nothing was deleted.
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowHiddenRows(v => !v)}
+            className="px-3 py-1.5 rounded-xl bg-white border border-amber-300 font-bold text-amber-800 hover:bg-amber-100 cursor-pointer"
+          >
+            {showHiddenRows ? 'Hide them' : 'Show to review'}
+          </button>
+        </div>
+      )}
 
       {/* ── Jobs Table ── */}
       <div id="jobs-table-section" className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden scroll-mt-6">

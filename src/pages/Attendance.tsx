@@ -17,6 +17,7 @@ import { calcJobOTHours, isBogusJob, employeeMatchesStaff, splitStaffNames, SYNT
 
 import { classifyAttendanceDay, type AttendanceStatus, type AttendanceOverride } from '@/lib/attendance'
 import { AttendanceCalendar } from '@/components/attendance/AttendanceCalendar'
+import { todayDubai } from '@/lib/dubaiTime'
 export type { AttendanceStatus }
 
 export interface CleanerAttendanceRecord {
@@ -85,7 +86,7 @@ export function Attendance() {
   const qDate = searchParams.get('date')
   const initialDate = qDate && /^\d{4}-\d{2}-\d{2}$/.test(qDate)
     ? qDate
-    : new Date().toISOString().split('T')[0]
+    : todayDubai()
 
   const [selectedDate, setSelectedDate] = useState<string>(initialDate)
 
@@ -116,7 +117,7 @@ export function Attendance() {
 
   const handleTimeframeChange = (val: string) => {
     setTimeframePreset(val)
-    const today = new Date().toISOString().split('T')[0]
+    const today = todayDubai()
     if (val === 'today') {
       handleDateChange(today)
     } else if (val === 'yesterday') {
@@ -500,9 +501,9 @@ export function Attendance() {
           {/* Today Button */}
           <button
             type="button"
-            onClick={() => handleDateChange(new Date().toISOString().split('T')[0])}
+            onClick={() => handleDateChange(todayDubai())}
             className={`px-3 py-2 rounded-xl text-[12px] font-bold border transition-colors cursor-pointer ${
-              selectedDate === new Date().toISOString().split('T')[0]
+              selectedDate === todayDubai()
                 ? 'bg-emerald-600 text-white border-emerald-600 font-extrabold shadow-2xs'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200'
             }`}

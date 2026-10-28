@@ -20,6 +20,7 @@ import type { Booking, BookingFrequency, DailyJob, DailyPendingItem, DailyPendin
 import { invoicedJobIds } from '@/lib/receivables'
 import { cleanClientNameFromAddress, isBogusJob, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, jobCollected } from '@/lib/clientDataSync'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
+import { todayDubai } from '@/lib/dubaiTime'
 
 function cleanNum(val: any): number {
   if (val === null || val === undefined || val === '') return 0
@@ -132,7 +133,7 @@ function NewBookingForm({ onClose, onAdd }: {
   onAdd: (b: Omit<Booking, 'id' | 'created_at'>) => void
 }) {
   const [selectedCrew, setSelectedCrew] = useState<string[]>([])
-  const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [scheduledDate, setScheduledDate] = useState(() => todayDubai())
   const [startTime, setStartTime] = useState('09:00')
   const [duration, setDuration] = useState<number>(3)
   const [endTime, setEndTime] = useState(() => addHoursToTime('09:00', 3))

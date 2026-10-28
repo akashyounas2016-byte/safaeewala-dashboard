@@ -9,6 +9,7 @@ import { notify } from '@/lib/notify'
 import type { InventoryItem } from '@/types'
 import { EditItemModal, UseStockModal, PurchaseOrdersPanel, SuppliersPanel } from '@/components/inventory/InventoryExtras'
 import { useInventoryLedger } from '@/hooks/useInventoryLedger'
+import { todayDubai } from '@/lib/dubaiTime'
 
 /** Where each KPI number comes from (UX-06) */
 const KPI_SOURCES: Record<string, string> = {
@@ -384,7 +385,7 @@ export function Inventory() {
               const qty = Number(fd.get('qty')) || 0
               const cost = Number(fd.get('unit_cost')) || 0
               if (qty <= 0) { notify.error('Enter the quantity received.'); return }
-              const today = new Date().toISOString().split('T')[0]
+              const today = todayDubai()
               updateInventory(receiving.id, {
                 current_stock: receiving.current_stock + qty,
                 unit_cost: cost || receiving.unit_cost,
@@ -459,7 +460,7 @@ export function Inventory() {
             unit_cost: Number(fd.get('unit_cost')),
             location: fd.get('location') as string,
             supplier: fd.get('supplier') as string,
-            last_restocked: new Date().toISOString().split('T')[0],
+            last_restocked: todayDubai(),
           })
           setShowModal(false)
         }}>

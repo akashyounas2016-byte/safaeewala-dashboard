@@ -13,6 +13,7 @@ import { Modal } from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import { getGHLConfig, saveGHLConfig, testGHLConnection, type GHLConfig } from '@/lib/ghlService'
+import { todayDubai } from '@/lib/dubaiTime'
 
 const ROLE_META: Record<AppRole, { label: string; badge: string; desc: string }> = {
   admin:     { label: 'Admin',     badge: 'bg-purple-50 text-purple-700 border-purple-200', desc: 'Full access to all modules including user management and daily job sheet' },
@@ -1016,7 +1017,7 @@ export function Settings() {
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href = url
-    a.download = `safaeewala-backup-${new Date().toISOString().split('T')[0]}.json`
+    a.download = `safaeewala-backup-${todayDubai()}.json`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -1030,7 +1031,7 @@ export function Settings() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inventory),     'Inventory')
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailyJobs),     'Daily Jobs')
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailyExpenses), 'Daily Expenses')
-    XLSX.writeFile(wb, `safaeewala-backup-${new Date().toISOString().split('T')[0]}.xlsx`)
+    XLSX.writeFile(wb, `safaeewala-backup-${todayDubai()}.xlsx`)
   }
 
   async function backupToDrive() {
@@ -1049,7 +1050,7 @@ export function Settings() {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailyExpenses), 'Daily Expenses')
       const buf  = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
       const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const filename = `safaeewala-backup-${new Date().toISOString().split('T')[0]}.xlsx`
+      const filename = `safaeewala-backup-${todayDubai()}.xlsx`
       const link = await uploadToDrive(blob, filename, token)
       setDriveLink(link); setDriveStatus('done')
     } catch (err: any) {

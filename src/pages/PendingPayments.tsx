@@ -23,6 +23,7 @@ import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem } from '@/typ
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, splitStaffNames, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
 import * as XLSX from 'xlsx'
+import { todayDubai } from '@/lib/dubaiTime'
 
 export type PendingDatePreset =
   | 'today'
@@ -541,7 +542,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
    */
   const applyCollection = (records: UnifiedPendingRecord[], amount: number, mode: CollectMode, notes: string): number => {
     let remaining = amount
-    const todayStr = new Date().toISOString().split('T')[0]
+    const todayStr = todayDubai()
     const isCash = mode === 'Cash'
     const receipts: DailyPendingReceivedItem[] = []
     const manualCuts = new Map<string, number>()
@@ -1505,7 +1506,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
 
             const newItem: DailyPendingItem = {
               id: `pend-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-              date: String(f.get('date')) || new Date().toISOString().split('T')[0],
+              date: String(f.get('date')) || todayDubai(),
               client,
               amount: amt,
             }
@@ -1524,7 +1525,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
                 type="date"
                 name="date"
                 required
-                defaultValue={new Date().toISOString().split('T')[0]}
+                defaultValue={todayDubai()}
                 className="w-full text-[13px] px-3.5 py-2.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 font-medium"
               />
             </div>

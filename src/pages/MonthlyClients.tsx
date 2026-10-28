@@ -29,6 +29,7 @@ import {
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
+import { todayDubai } from '@/lib/dubaiTime'
 
 export type MonthlyDatePreset =
   | 'today'
@@ -172,7 +173,7 @@ export function MonthlyClients() {
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false)
   const [paymentFormClient, setPaymentFormClient] = useState('')
   const [paymentFormAmount, setPaymentFormAmount] = useState('')
-  const [paymentFormDate, setPaymentFormDate] = useState(new Date().toISOString().split('T')[0])
+  const [paymentFormDate, setPaymentFormDate] = useState(todayDubai())
   const [paymentFormMethod, setPaymentFormMethod] = useState<'Bank Transfer' | 'Cash' | 'Credit Card' | 'Cheque' | 'Online'>('Bank Transfer')
   const [paymentFormRef, setPaymentFormRef] = useState('')
   const [paymentFormMonth, setPaymentFormMonth] = useState(new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }))
@@ -234,10 +235,10 @@ export function MonthlyClients() {
     serviceType: '',
     frequency: 'weekly',
     amount: 0,
-    startDate: new Date().toISOString().split('T')[0],
+    startDate: todayDubai(),
     renewalDate: '',
     status: 'active',
-    lastBilled: new Date().toISOString().split('T')[0],
+    lastBilled: todayDubai(),
     nextBillingDate: '',
     notes: '',
   })
@@ -496,7 +497,7 @@ export function MonthlyClients() {
 
   // Contract Handlers
   const handleAddContract = (prefillName?: string, prefillPhone?: string, prefillEmail?: string) => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = todayDubai()
     const nextBilling = new Date()
     nextBilling.setDate(nextBilling.getDate() + 7)
     const startDate = new Date()
@@ -598,7 +599,7 @@ export function MonthlyClients() {
   const handleOpenRecordPayment = (clientName?: string, defaultAmount?: number) => {
     setPaymentFormClient(clientName || '')
     setPaymentFormAmount(defaultAmount && defaultAmount > 0 ? String(defaultAmount) : '')
-    setPaymentFormDate(new Date().toISOString().split('T')[0])
+    setPaymentFormDate(todayDubai())
     setPaymentFormMethod('Bank Transfer')
     setPaymentFormRef('')
     setPaymentFormMonth(new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }))
@@ -3058,7 +3059,7 @@ export function MonthlyClients() {
             addPayment({
               clientName: matched.name,
               amount: amt,
-              date: paymentFormDate || new Date().toISOString().split('T')[0],
+              date: paymentFormDate || todayDubai(),
               paymentMethod: paymentFormMethod,
               referenceNumber: paymentFormRef.trim() || undefined,
               invoiceMonth: paymentFormMonth.trim() || undefined,
@@ -3620,7 +3621,7 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: { client
     return [matchedClient.apartment, matchedClient.building_name, matchedClient.area].filter(Boolean).join(', ')
   }, [matchedClient])
 
-  const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [scheduledDate, setScheduledDate] = useState(() => todayDubai())
   const [startTime, setStartTime] = useState('09:00')
   const [duration, setDuration] = useState(3)
   const [endTime, setEndTime] = useState(() => addHoursToTime('09:00', 3))

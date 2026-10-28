@@ -19,6 +19,7 @@ import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
 import { ClientModalForm } from '@/components/clients/ClientModalForm'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
+import { todayDubai } from '@/lib/dubaiTime'
 
 export type ClientDatePreset = 'all' | '7days' | '30days' | '3months' | '6months' | '1year' | 'custom'
 
@@ -1366,7 +1367,7 @@ export function Clients() {
 
           // Sync initial advance or adjustment to financial adjustments ledger
           if (advance > 0 || adjustment > 0) {
-            const todayStr = new Date().toISOString().split('T')[0]
+            const todayStr = todayDubai()
             const existingAdjs = safeLocalStorageGet<any[]>('safaeewala_client_adjustments', []) || []
             const newEntries = [...existingAdjs]
 
@@ -1582,7 +1583,7 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: {
   onClose: () => void; onAdd: (b: any) => void
 }) {
   const [selectedCrew, setSelectedCrew] = useState<string[]>([])
-  const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [scheduledDate, setScheduledDate] = useState(() => todayDubai())
   const [startTime, setStartTime] = useState('09:00')
   const [duration, setDuration] = useState<number>(3)
   const [endTime, setEndTime] = useState(() => addHoursToTime('09:00', 3))

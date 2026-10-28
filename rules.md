@@ -130,6 +130,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `clientDataSync.ts → getAssignableClients`; Employees agency filter reads only `agencies`; dummy agencies removed from `defaultAgencies`.
 - **Status:** Active — seed fallbacks and demo data files removed 2026-10-27 (AUD-12).
 
+### R-DATA-06 — Business dates follow Dubai time
+- **Rule:** "Today", "this month" and every saved business date use the Asia/Dubai calendar, whatever the timezone of the computer. Excel calendar dates are read as written (no UTC shift); text dates are day/month/year.
+- **Code:** `src/lib/dubaiTime.ts` (`todayDubai`, `monthDubai`, `calendarDate`); never `new Date().toISOString().split('T')[0]`.
+- **Status:** Active · Since: 2026-10-29 (AUD-46, AUD-47, DEC-012)
+
+### R-DATA-07 — The job sheet never deletes or overwrites rows by itself
+- **Rule:** Rows that look like sheet totals or empty stubs are hidden and offered for review, never auto-deleted. Excel mode saves only the rows the user added, edited or removed, keeps unsaved edits through background changes, keeps a local draft and warns before leaving.
+- **Code:** `DailyJobSheet.tsx` (hidden rows notice), `JobSheetSpreadsheet.tsx` (`pendingChanges`, `handleSaveAll`, draft `safaeewala_excel_draft:*`).
+- **Status:** Active · Since: 2026-10-29 (AUD-44, AUD-48, AUD-49, UX-33, UX-34)
+
 ---
 
 ## EMP — Employees

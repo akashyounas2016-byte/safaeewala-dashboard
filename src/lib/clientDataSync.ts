@@ -1,6 +1,7 @@
 import type { Booking, DailyJob, Client, Employee, DailyPendingReceivedItem } from '@/types'
 import { cleanNum, calcOTHours } from '@/components/dailyJobSheet/jobSheetUtils'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
+import { todayDubai } from '@/lib/dubaiTime'
 
 /** Ids of the old demo clients (seed data, removed 2026-10-27) — may still exist in old stored data */
 const SEED_CLIENT_ID_PREFIX = 'c1000001-0000-0000-0000-'
@@ -1002,7 +1003,7 @@ export function extractAllEmployeesFromDailyJobs(
     // Display name as written in the job sheet
     const displayName = (displayNameByKey.get(key) || key).trim()
     const byDate = [...jobs].sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-    const earliestDate = byDate[0]?.date || new Date().toISOString().split('T')[0]
+    const earliestDate = byDate[0]?.date || todayDubai()
     // Job-sheet-only staff count as active only while they keep appearing on the sheet (AUD-08)
     const lastDate = byDate[byDate.length - 1]?.date || ''
     const activeSince = new Date(Date.now() - SYNTHETIC_STAFF_ACTIVE_DAYS * 86_400_000).toISOString().split('T')[0]

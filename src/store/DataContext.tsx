@@ -8,6 +8,7 @@ import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/co
 import { nextInvoiceNumber, ensureInvoiceNumber } from '@/lib/invoiceNumber'
 import { addHoursToTime, staffOfAgency } from '@/lib/utils'
 import { defaultAgencies } from '@/lib/defaultAgencies'
+import { todayDubai } from '@/lib/dubaiTime'
 export { defaultAgencies }
 
 interface DataStore {
@@ -420,7 +421,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const jobRow: DailyJob = {
         id: uid(),
         created_at: now(),
-        date: b.scheduled_date || new Date().toISOString().split('T')[0],
+        date: b.scheduled_date || todayDubai(),
         staff_name: crewToStaffName(b.assigned_crew, allEmployees) || 'Unassigned',
         start_time: b.scheduled_time || '09:00',
         end_time: b.end_time || addHoursToTime(b.scheduled_time || '09:00', b.duration_hours || 3),
@@ -815,7 +816,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const item = inventory.find(i => i.id === id)
       if (!item) return
       const newStock = item.current_stock + item.reorder_quantity
-      const lastRestocked = new Date().toISOString().split('T')[0]
+      const lastRestocked = todayDubai()
       setInventory(p => p.map(i => i.id === id ? { ...i, current_stock: newStock, last_restocked: lastRestocked } : i))
       dbUpdate('inventory', id, { current_stock: newStock, last_restocked: lastRestocked })
     },

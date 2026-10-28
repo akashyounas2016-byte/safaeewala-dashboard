@@ -12,6 +12,10 @@
 > - Affects:  rule IDs, files
 > ```
 
+## DEC-012 — Dubai time for business dates; Delete All stays (2026-10-29)
+- **Decision:** All business dates ("today", months, imports) use Asia/Dubai, because the company works in Dubai even when the dashboard is opened from Pakistan. "Delete All Data" on the Daily Job Sheet stays: the owner uses it to clear test entries at the end of testing (AUD-45 won't fix).
+- **Decided by:** owner · **Rules:** R-DATA-06
+
 ## DEC-011 — Receivables as one module without merging the two screens (2026-10-29)
 - **Context:** UX-01 asked to merge Pending and Payments; Antigravity was rebuilding the Payments screen at the same time.
 - **Decision:** A shared tab bar (`ReceivablesNav`) makes them one module; new receivables features (by-client view, cash book, invoice dues) live on the Pending side. One collection routine (`applyCollection`) serves single rows, client bulk collection and invoices.
