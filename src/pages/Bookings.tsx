@@ -5,7 +5,8 @@ import {
   ChevronLeft, ChevronRight, CalendarDays, Columns3,
   TrendingUp, CheckCircle, CheckCircle2, AlertCircle, Upload, Download,
   FileSpreadsheet, MessageCircle, RefreshCw, RotateCcw,
-  LayoutGrid, Table as TableIcon, Eye, User, Users, Sparkles, X, Filter
+  LayoutGrid, Table as TableIcon, Eye, User, Users, Sparkles, X, Filter,
+  MoreVertical, Briefcase
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -61,17 +62,17 @@ function Initials({ name, idx, size = 'md' }: { name: string; idx: number; size?
 }
 
 /* ─── Status pill ─── */
-const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
-  confirmed:   { bg: 'bg-emerald-50',  text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Scheduled' },
-  in_progress: { bg: 'bg-emerald-500', text: 'text-white',        dot: 'bg-white',       label: 'Live' },
-  pending:     { bg: 'bg-amber-50',    text: 'text-amber-700',    dot: 'bg-amber-500',   label: 'Pending' },
-  cancelled:   { bg: 'bg-red-50',      text: 'text-red-700',      dot: 'bg-red-400',     label: 'Cancelled' },
-  completed:   { bg: 'bg-slate-100',   text: 'text-slate-600',    dot: 'bg-slate-400',   label: 'Done' },
+const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string; border: string }> = {
+  confirmed:   { bg: 'bg-emerald-50',  text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Scheduled', border: 'border-emerald-200' },
+  in_progress: { bg: 'bg-teal-50',     text: 'text-teal-700',    dot: 'bg-teal-500 animate-pulse', label: 'Live Now', border: 'border-teal-200' },
+  pending:     { bg: 'bg-amber-50',    text: 'text-amber-700',    dot: 'bg-amber-500',   label: 'Pending',   border: 'border-amber-200' },
+  cancelled:   { bg: 'bg-rose-50',     text: 'text-rose-700',     dot: 'bg-rose-400',    label: 'Cancelled', border: 'border-rose-200' },
+  completed:   { bg: 'bg-slate-50',    text: 'text-slate-700',    dot: 'bg-slate-400',   label: 'Done',      border: 'border-slate-200' },
 }
 function StatusPill({ status }: { status: string }) {
-  const c = statusConfig[status] ?? { bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400', label: status }
+  const c = statusConfig[status] ?? { bg: 'bg-slate-50', text: 'text-slate-700', dot: 'bg-slate-400', label: status, border: 'border-slate-200' }
   return (
-    <span className={`text-[11px] px-2.5 py-[3px] rounded-full font-semibold inline-flex items-center gap-1.5 ${c.bg} ${c.text}`}>
+    <span className={`text-[11px] px-2.5 py-[3px] rounded-full font-semibold inline-flex items-center gap-1.5 border ${c.bg} ${c.text} ${c.border}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
       {c.label}
     </span>
@@ -189,7 +190,7 @@ function PaginationControls({
   const endItem = Math.min(currentPage * pageSize, totalItems)
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs px-4 py-3 flex items-center justify-between flex-wrap gap-3 text-[12.5px]">
+    <div className="bg-white rounded-2xl border border-teal-200/80 shadow-2xs px-4 py-3 flex items-center justify-between flex-wrap gap-3 text-[12.5px]">
       <p className="text-slate-500 font-medium">
         Showing <span className="font-bold text-slate-800">{startItem}</span> to{' '}
         <span className="font-bold text-slate-800">{endItem}</span> of{' '}
@@ -201,13 +202,13 @@ function PaginationControls({
           type="button"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage <= 1}
-          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none font-bold text-slate-700 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-teal-200/80 bg-teal-50/30 hover:bg-teal-100/50 disabled:opacity-40 disabled:pointer-events-none font-bold text-teal-900 transition-colors cursor-pointer"
         >
           <ChevronLeft size={13} />
           <span>Previous</span>
         </button>
 
-        <span className="px-3 py-1 font-bold text-slate-700 bg-slate-100 rounded-lg">
+        <span className="px-3 py-1 font-bold text-teal-900 bg-teal-50 border border-teal-200/60 rounded-lg">
           Page {currentPage} of {totalPages}
         </span>
 
@@ -215,7 +216,7 @@ function PaginationControls({
           type="button"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage >= totalPages}
-          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:pointer-events-none font-bold text-slate-700 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-teal-200/80 bg-teal-50/30 hover:bg-teal-100/50 disabled:opacity-40 disabled:pointer-events-none font-bold text-teal-900 transition-colors cursor-pointer"
         >
           <span>Next</span>
           <ChevronRight size={13} />
@@ -252,6 +253,19 @@ export function Bookings() {
   const [serviceFilter, setServiceFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const [showThreeDotMenu, setShowThreeDotMenu] = useState(false)
+  const threeDotMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close three-dot menu on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (threeDotMenuRef.current && !threeDotMenuRef.current.contains(e.target as Node)) {
+        setShowThreeDotMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // ── Full Synchronization between Bookings & Daily Job Sheet ──
   const synchronizedBookings = useMemo(() => {
@@ -388,14 +402,43 @@ export function Bookings() {
   // Filter by search, status, and service type
   const filtered = useMemo(() => {
     return dateFilteredBookings.filter((b) => {
-      const matchSearch = b.client_name.toLowerCase().includes(search.toLowerCase()) ||
-        b.service_type.toLowerCase().includes(search.toLowerCase()) ||
-        b.service_address.toLowerCase().includes(search.toLowerCase())
-      const matchStatus  = statusFilter === 'all' || b.status === statusFilter
-      const matchService = serviceFilter === 'all' || b.service_type === serviceFilter
+      const q = search.toLowerCase().trim()
+      const matchSearch = !q ||
+        b.client_name.toLowerCase().includes(q) ||
+        b.service_type.toLowerCase().includes(q) ||
+        b.service_address.toLowerCase().includes(q) ||
+        (b.client_phone && b.client_phone.includes(q))
+      
+      const matchStatus = statusFilter === 'all'
+        ? true
+        : statusFilter === 'unassigned'
+        ? (!b.assigned_crew || b.assigned_crew.length === 0) && b.status !== 'completed' && b.status !== 'cancelled'
+        : b.status === statusFilter
+
+      const matchService = serviceFilter === 'all' ||
+        b.service_type.toLowerCase().includes(serviceFilter.toLowerCase())
+      
       return matchSearch && matchStatus && matchService
     })
   }, [dateFilteredBookings, search, statusFilter, serviceFilter])
+
+  const unassignedCount = useMemo(() => {
+    return dateFilteredBookings.filter(
+      b => (!b.assigned_crew || b.assigned_crew.length === 0) &&
+           b.status !== 'completed' &&
+           b.status !== 'cancelled'
+    ).length
+  }, [dateFilteredBookings])
+
+  const totalScheduledHours = useMemo(() => {
+    return dateFilteredBookings.reduce((sum, b) => sum + (b.duration_hours || 0), 0)
+  }, [dateFilteredBookings])
+
+  const totalWorkloadValue = useMemo(() => {
+    return dateFilteredBookings
+      .filter(b => b.status !== 'cancelled')
+      .reduce((s, b) => s + (b.total_amount || 0), 0)
+  }, [dateFilteredBookings])
 
   const counts = {
     total:       dateFilteredBookings.length,
@@ -403,9 +446,10 @@ export function Bookings() {
     confirmed:   dateFilteredBookings.filter(b => b.status === 'confirmed').length,
     in_progress: dateFilteredBookings.filter(b => b.status === 'in_progress').length,
     completed:   dateFilteredBookings.filter(b => b.status === 'completed').length,
+    cancelled:   dateFilteredBookings.filter(b => b.status === 'cancelled').length,
   }
 
-  const totalRevenue = dateFilteredBookings
+  const completedRevenue = dateFilteredBookings
     .filter(b => b.status === 'completed')
     .reduce((s, b) => s + (b.total_amount || 0), 0)
 
@@ -436,18 +480,29 @@ export function Bookings() {
         onSearch={setSearch}
       />
 
-      {/* ── KPI Cards (Clean, Interactive & Real Data) ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ── KPI Cards (6 Comprehensive, Informative Operational Cards) ── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
         {[
+          {
+            label: 'Total Bookings',
+            value: counts.total,
+            sub: `${totalScheduledHours}h total duty`,
+            icon: Briefcase,
+            iconColor: 'text-teal-700',
+            iconBg: 'bg-teal-50',
+            badge: `AED ${totalWorkloadValue.toLocaleString()}`,
+            badgeColor: 'bg-teal-50 text-teal-800 border-teal-200/80',
+            filterKey: 'all',
+          },
           {
             label: 'Pending',
             value: counts.pending,
-            sub: 'Awaiting dispatch & confirmation',
+            sub: 'Awaiting confirmation',
             icon: AlertCircle,
             iconColor: 'text-amber-500',
             iconBg: 'bg-amber-50',
             badge: counts.pending > 0 ? `${counts.pending} Action Needed` : 'All Clear',
-            badgeColor: counts.pending > 0 ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200',
+            badgeColor: counts.pending > 0 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
             filterKey: 'pending',
           },
           {
@@ -458,7 +513,7 @@ export function Bookings() {
             iconColor: 'text-teal-600',
             iconBg: 'bg-teal-50',
             badge: `${counts.total > 0 ? Math.round((counts.confirmed / counts.total) * 100) : 0}% of Total`,
-            badgeColor: 'bg-teal-100 text-teal-800 border-teal-200',
+            badgeColor: 'bg-teal-50 text-teal-800 border-teal-200/80',
             filterKey: 'confirmed',
           },
           {
@@ -466,73 +521,92 @@ export function Bookings() {
             value: counts.in_progress,
             sub: 'Cleaners on site today',
             icon: TrendingUp,
-            iconColor: 'text-blue-600',
-            iconBg: 'bg-blue-50',
-            badge: counts.in_progress > 0 ? 'Active Duty' : 'Standby',
-            badgeColor: counts.in_progress > 0 ? 'bg-blue-100 text-blue-800 border-blue-200 animate-pulse' : 'bg-slate-100 text-slate-600 border-slate-200',
+            iconColor: 'text-cyan-600',
+            iconBg: 'bg-cyan-50',
+            badge: counts.in_progress > 0 ? 'Active Shifts' : 'Standby',
+            badgeColor: counts.in_progress > 0 ? 'bg-cyan-100 text-cyan-800 border-cyan-300 animate-pulse' : 'bg-slate-50 text-slate-600 border-slate-200',
             filterKey: 'in_progress',
           },
           {
             label: 'Completed',
             value: counts.completed,
-            sub: `AED ${totalRevenue.toLocaleString()} billed`,
+            sub: `AED ${completedRevenue.toLocaleString()} billed`,
             icon: CheckCircle2,
             iconColor: 'text-emerald-600',
             iconBg: 'bg-emerald-50',
             badge: `${counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0}% Done`,
-            badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+            badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200/80',
             filterKey: 'completed',
           },
+          {
+            label: 'Crew Assigned',
+            value: `${counts.total - unassignedCount} / ${counts.total}`,
+            sub: unassignedCount > 0 ? `${unassignedCount} jobs unassigned` : '100% staff allocated',
+            icon: Users,
+            iconColor: unassignedCount > 0 ? 'text-amber-600' : 'text-purple-600',
+            iconBg: unassignedCount > 0 ? 'bg-amber-50' : 'bg-purple-50',
+            badge: unassignedCount > 0 ? `${unassignedCount} Unassigned` : '100% Allocated',
+            badgeColor: unassignedCount > 0 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
+            filterKey: unassignedCount > 0 ? 'unassigned' : 'all',
+          },
         ].map(card => {
-          const isActive = statusFilter === card.filterKey
+          const isActive = statusFilter === card.filterKey && card.filterKey !== 'all'
           return (
             <div
               key={card.label}
-              onClick={() => setStatusFilter(isActive ? 'all' : card.filterKey)}
-              className={`rounded-[22px] border transition-all p-5 cursor-pointer relative overflow-hidden ${
+              onClick={() => {
+                if (card.filterKey === 'all') {
+                  setStatusFilter('all')
+                } else {
+                  setStatusFilter(statusFilter === card.filterKey ? 'all' : card.filterKey)
+                }
+              }}
+              className={`rounded-[22px] border transition-all p-4 cursor-pointer relative overflow-hidden flex flex-col justify-between ${
                 isActive
-                  ? 'bg-teal-50/40 border-teal-400 shadow-md ring-2 ring-teal-500/20'
-                  : 'bg-white border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.04)] hover:shadow-md hover:border-teal-300'
+                  ? 'bg-teal-50/70 border-teal-500 shadow-md ring-2 ring-teal-500/20'
+                  : 'bg-white border-teal-100/90 shadow-[0_4px_20px_rgba(13,148,136,0.04)] hover:shadow-md hover:border-teal-300'
               }`}
             >
-              <div className="flex items-start justify-between mb-3">
-                <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center shrink-0`}>
-                  <card.icon size={19} className={card.iconColor} />
+              <div className="flex items-start justify-between mb-2.5">
+                <div className={`w-9 h-9 rounded-xl ${card.iconBg} border border-teal-100 flex items-center justify-center shrink-0`}>
+                  <card.icon size={17} className={card.iconColor} />
                 </div>
-                <span className={`text-[10.5px] font-black uppercase px-2 py-0.5 rounded-full border ${card.badgeColor}`}>
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border truncate max-w-[110px] ${card.badgeColor}`}>
                   {card.badge}
                 </span>
               </div>
-              <p className="text-3xl font-black text-slate-900 tracking-tight">{card.value}</p>
-              <div className="flex items-center justify-between mt-1">
-                <p className="text-[13px] font-bold text-slate-800">{card.label}</p>
-                {isActive && (
-                  <span className="text-[10px] font-black text-teal-700 uppercase tracking-wider bg-teal-100 px-1.5 py-0.5 rounded-md">
-                    Active Filter
-                  </span>
-                )}
+              <div>
+                <p className="text-2xl font-black text-slate-900 tracking-tight">{card.value}</p>
+                <div className="flex items-center justify-between mt-0.5">
+                  <p className="text-[12px] font-bold text-slate-800">{card.label}</p>
+                  {isActive && (
+                    <span className="text-[9.5px] font-black text-teal-800 uppercase tracking-wider bg-teal-100 px-1.5 py-0.5 rounded-md">
+                      Filtered
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5 truncate">{card.sub}</p>
               </div>
-              <p className="text-[11.5px] text-slate-500 mt-0.5 truncate">{card.sub}</p>
             </div>
           )
         })}
       </div>
 
-      {/* ── Filters + Unified Toolbar (Single Compact Row with Dropdowns) ── */}
-      <div className="bg-white rounded-[22px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.04)] p-4 space-y-3">
-        {/* Main Toolbar Row */}
+      {/* ── Filters + Unified Toolbar (Two Organized Rows) ── */}
+      <div className="bg-white rounded-[22px] border border-teal-200/80 shadow-[0_4px_24px_rgba(13,148,136,0.05)] p-4 space-y-3">
+        {/* ── ROW 1 (TOP ROW): Search, All Time, View Toggles, All Services, Three Dot Menu ── */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Left: Search & Dropdown Filters in One Row */}
+          {/* Left Group: Search, All Time, All Services */}
           <div className="flex flex-1 items-center gap-2.5 flex-wrap min-w-[280px]">
             {/* Search Input */}
             <div className="relative flex-1 min-w-[200px]">
-              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-teal-600/70" />
               <input
                 type="text"
-                placeholder="Search client, service, address…"
+                placeholder="Search client, service, phone, address…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full text-[13px] pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 focus:bg-white placeholder-slate-400 font-medium transition-colors"
+                className="w-full text-[13px] pl-9 pr-8 py-2 bg-teal-50/20 border border-teal-200/80 rounded-xl focus:outline-none focus:border-teal-500 focus:bg-white placeholder-slate-400 font-medium transition-colors"
               />
               {search && (
                 <button
@@ -545,46 +619,30 @@ export function Bookings() {
               )}
             </div>
 
-            {/* Date Filter Dropdown */}
+            {/* All Time (Date Preset Dropdown) */}
             <div className="relative">
               <select
                 value={datePreset}
                 onChange={e => setDatePreset(e.target.value as BookingDatePreset)}
-                className="text-[12.5px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 font-bold cursor-pointer transition-colors shadow-2xs"
+                className="text-[12.5px] px-3.5 py-2 bg-teal-50/30 border border-teal-200/80 rounded-xl focus:outline-none focus:border-teal-500 text-teal-950 font-bold cursor-pointer transition-colors shadow-2xs hover:border-teal-300"
               >
+                <option value="all">📅 All Time</option>
                 <option value="today">📅 Today</option>
                 <option value="7days">📅 Last 7 Days</option>
                 <option value="30days">📅 Last 30 Days</option>
                 <option value="3months">📅 Last 3 Months</option>
                 <option value="6months">📅 Last 6 Months</option>
                 <option value="1year">📅 Last 1 Year</option>
-                <option value="all">📅 All Time</option>
                 <option value="custom">📅 Custom Range…</option>
               </select>
             </div>
 
-            {/* Status Filter Dropdown (Same Row as Date) */}
-            <div className="relative">
-              <select
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-                className="text-[12.5px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 font-bold cursor-pointer transition-colors shadow-2xs"
-              >
-                <option value="all">All Statuses ({counts.total})</option>
-                <option value="pending">⏳ Pending ({counts.pending})</option>
-                <option value="confirmed">📅 Scheduled ({counts.confirmed})</option>
-                <option value="in_progress">🟢 Live Now ({counts.in_progress})</option>
-                <option value="completed">✓ Completed ({counts.completed})</option>
-                <option value="cancelled">✕ Cancelled</option>
-              </select>
-            </div>
-
-            {/* Service Filter Dropdown */}
+            {/* All Services Dropdown */}
             <div className="relative">
               <select
                 value={serviceFilter}
                 onChange={e => setServiceFilter(e.target.value)}
-                className="text-[12.5px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 font-semibold cursor-pointer transition-colors shadow-2xs"
+                className="text-[12.5px] px-3.5 py-2 bg-teal-50/30 border border-teal-200/80 rounded-xl focus:outline-none focus:border-teal-500 text-teal-950 font-semibold cursor-pointer transition-colors shadow-2xs hover:border-teal-300"
               >
                 <option value="all">All Services</option>
                 {serviceTypes.map(s => <option key={s} value={s}>{s}</option>)}
@@ -592,15 +650,15 @@ export function Bookings() {
             </div>
           </div>
 
-          {/* Right: View Switcher (Cards / Table / Board / Calendar) & Excel Actions */}
-          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {/* Right Group: View Toggles & Three Dot Menu */}
+          <div className="flex items-center gap-2 shrink-0">
             {/* View Mode Toggle */}
-            <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200/80">
+            <div className="flex items-center p-1 bg-teal-50/40 rounded-xl border border-teal-200/80">
               <button
                 type="button"
                 onClick={() => setView('grid')}
                 className={`text-[12px] px-2.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-                  view === 'grid' ? 'bg-white text-slate-900 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
+                  view === 'grid' ? 'bg-white text-teal-900 shadow-2xs font-black border border-teal-300/40' : 'text-slate-500 hover:text-teal-900'
                 }`}
                 title="Cards Grid View"
               >
@@ -611,7 +669,7 @@ export function Bookings() {
                 type="button"
                 onClick={() => setView('table')}
                 className={`text-[12px] px-2.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-                  view === 'table' ? 'bg-white text-slate-900 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
+                  view === 'table' ? 'bg-white text-teal-900 shadow-2xs font-black border border-teal-300/40' : 'text-slate-500 hover:text-teal-900'
                 }`}
                 title="Table List View"
               >
@@ -622,7 +680,7 @@ export function Bookings() {
                 type="button"
                 onClick={() => setView('kanban')}
                 className={`text-[12px] px-2.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-                  view === 'kanban' ? 'bg-white text-slate-900 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
+                  view === 'kanban' ? 'bg-white text-teal-900 shadow-2xs font-black border border-teal-300/40' : 'text-slate-500 hover:text-teal-900'
                 }`}
                 title="Board Kanban View"
               >
@@ -633,7 +691,7 @@ export function Bookings() {
                 type="button"
                 onClick={() => setView('calendar')}
                 className={`text-[12px] px-2.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-                  view === 'calendar' ? 'bg-white text-slate-900 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
+                  view === 'calendar' ? 'bg-white text-teal-900 shadow-2xs font-black border border-teal-300/40' : 'text-slate-500 hover:text-teal-900'
                 }`}
                 title="Calendar Month View"
               >
@@ -642,47 +700,153 @@ export function Bookings() {
               </button>
             </div>
 
-            {/* Import / Export */}
-            <input
-              ref={xlsxInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              className="hidden"
-              onChange={async e => {
-                const file = e.target.files?.[0]
-                if (!file) return
-                setImporting(true)
-                try {
-                  const rows = await parseBookingsFile(file)
-                  rows.forEach(r => addBooking(r))
-                } finally {
-                  setImporting(false)
-                  e.target.value = ''
-                }
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => xlsxInputRef.current?.click()}
-              disabled={importing}
-              className="flex items-center gap-1.5 text-[12px] px-2.5 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold transition-colors disabled:opacity-60 cursor-pointer shadow-2xs"
-              title="Import Excel"
-            >
-              <Upload size={13} />
-              <span className="hidden md:inline">{importing ? 'Importing…' : 'Import'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => exportBookingsXLSX(filtered)}
-              className="flex items-center gap-1.5 text-[12px] px-2.5 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-700 font-semibold transition-colors cursor-pointer shadow-2xs"
-              title="Export filtered bookings to Excel"
-            >
-              <FileSpreadsheet size={13} />
-              <span className="hidden md:inline">Export</span>
-            </button>
+            {/* Three Dot Menu (Import / Export / Clear) */}
+            <div className="relative" ref={threeDotMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowThreeDotMenu(!showThreeDotMenu)}
+                className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-center ${
+                  showThreeDotMenu
+                    ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                    : 'bg-teal-50/40 text-teal-800 border border-teal-200/80 hover:bg-teal-100/50 hover:border-teal-300'
+                }`}
+                title="More Options (Import / Export)"
+              >
+                <MoreVertical size={16} />
+              </button>
 
-            {/* Reset All Filters */}
-            {(search || serviceFilter !== 'all' || statusFilter !== 'all' || datePreset !== 'all') && (
+              {showThreeDotMenu && (
+                <div className="absolute right-0 top-full mt-1.5 w-56 bg-white rounded-2xl border border-teal-200/90 shadow-xl z-50 py-1.5 divide-y divide-teal-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-3.5 py-1.5 text-[10.5px] font-black uppercase text-teal-700 tracking-wider">
+                    Data & Tools
+                  </div>
+                  <div className="py-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowThreeDotMenu(false)
+                        xlsxInputRef.current?.click()
+                      }}
+                      disabled={importing}
+                      className="w-full px-3.5 py-2 text-left text-[12.5px] font-semibold text-slate-700 hover:bg-teal-50 hover:text-teal-900 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <Upload size={14} className="text-teal-600" />
+                      <span>{importing ? 'Importing…' : 'Import Bookings (Excel)'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowThreeDotMenu(false)
+                        exportBookingsXLSX(filtered)
+                      }}
+                      className="w-full px-3.5 py-2 text-left text-[12.5px] font-semibold text-slate-700 hover:bg-teal-50 hover:text-teal-900 flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <FileSpreadsheet size={14} className="text-emerald-600" />
+                      <span>Export Bookings (Excel)</span>
+                    </button>
+                  </div>
+                  {(search || serviceFilter !== 'all' || statusFilter !== 'all' || datePreset !== 'all') && (
+                    <div className="py-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowThreeDotMenu(false)
+                          setSearch('')
+                          setServiceFilter('all')
+                          setStatusFilter('all')
+                          setDatePreset('all')
+                          setCustomStartDate('')
+                          setCustomEndDate('')
+                        }}
+                        className="w-full px-3.5 py-2 text-left text-[12.5px] font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+                      >
+                        <RotateCcw size={14} />
+                        <span>Reset All Filters</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Custom Date Pickers (if datePreset === 'custom') */}
+        {datePreset === 'custom' && (
+          <div className="pt-2 border-t border-teal-100 flex items-center gap-3 flex-wrap">
+            <span className="text-[11.5px] font-black uppercase text-teal-800">Custom Date Range:</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11.5px] font-bold text-slate-500">From:</span>
+              <input
+                type="date"
+                value={customStartDate}
+                onChange={e => setCustomStartDate(e.target.value)}
+                className="text-[12px] px-2.5 py-1 bg-white border border-teal-200/80 rounded-lg focus:outline-none focus:border-teal-500 font-medium"
+              />
+              <span className="text-[11.5px] font-bold text-slate-500">To:</span>
+              <input
+                type="date"
+                value={customEndDate}
+                onChange={e => setCustomEndDate(e.target.value)}
+                className="text-[12px] px-2.5 py-1 bg-white border border-teal-200/80 rounded-lg focus:outline-none focus:border-teal-500 font-medium"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ── ROW 2 (BOTTOM ROW): Just "All Statuses" ── */}
+        <div className="pt-2.5 border-t border-teal-100/80 flex items-center justify-between gap-2 flex-wrap">
+          {/* Status Pills */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {[
+              { label: 'All Statuses', value: 'all', count: counts.total, color: 'teal' },
+              { label: 'Pending', value: 'pending', count: counts.pending, color: 'amber' },
+              { label: 'Scheduled', value: 'confirmed', count: counts.confirmed, color: 'teal' },
+              { label: 'Live Now', value: 'in_progress', count: counts.in_progress, color: 'cyan' },
+              { label: 'Completed', value: 'completed', count: counts.completed, color: 'emerald' },
+              { label: 'Cancelled', value: 'cancelled', count: counts.cancelled, color: 'rose' },
+            ].map(tab => {
+              const active = statusFilter === tab.value
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setStatusFilter(tab.value)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    active
+                      ? tab.color === 'amber'
+                        ? 'bg-amber-600 text-white shadow-xs border border-amber-600'
+                        : tab.color === 'cyan'
+                        ? 'bg-cyan-700 text-white shadow-xs border border-cyan-700'
+                        : tab.color === 'emerald'
+                        ? 'bg-emerald-600 text-white shadow-xs border border-emerald-600'
+                        : tab.color === 'rose'
+                        ? 'bg-rose-600 text-white shadow-xs border border-rose-600'
+                        : 'bg-teal-700 text-white shadow-xs border border-teal-700'
+                      : 'bg-teal-50/20 text-slate-600 border border-teal-100/90 hover:border-teal-300 hover:bg-teal-50/50'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span
+                    className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${
+                      active
+                        ? 'bg-white/20 text-white'
+                        : 'bg-white text-slate-700 border border-teal-200/60'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Right: Active Count Indicator or Clear Button */}
+          {(search || serviceFilter !== 'all' || statusFilter !== 'all' || datePreset !== 'all') && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-teal-800 bg-teal-50 border border-teal-200/80 px-2.5 py-1 rounded-lg">
+                Filtered: <strong>{filtered.length}</strong> of {counts.total}
+              </span>
               <button
                 type="button"
                 onClick={() => {
@@ -693,37 +857,13 @@ export function Bookings() {
                   setCustomStartDate('')
                   setCustomEndDate('')
                 }}
-                className="text-[12px] px-2 py-1.5 font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
-                title="Clear all active filters"
+                className="text-[11.5px] font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors cursor-pointer"
               >
                 Clear
               </button>
-            )}
-          </div>
-        </div>
-
-        {/* Custom Date Pickers (if datePreset === 'custom') */}
-        {datePreset === 'custom' && (
-          <div className="pt-2 border-t border-slate-100 flex items-center gap-3 flex-wrap">
-            <span className="text-[11.5px] font-black uppercase text-teal-800">Custom Date Range:</span>
-            <div className="flex items-center gap-2">
-              <span className="text-[11.5px] font-bold text-slate-500">From:</span>
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={e => setCustomStartDate(e.target.value)}
-                className="text-[12px] px-2 py-1 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-teal-500 font-medium"
-              />
-              <span className="text-[11.5px] font-bold text-slate-500">To:</span>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={e => setCustomEndDate(e.target.value)}
-                className="text-[12px] px-2 py-1 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-teal-500 font-medium"
-              />
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* ── CARDS GRID VIEW ── */}
@@ -740,11 +880,11 @@ export function Bookings() {
                 <div
                   key={b.id}
                   onClick={() => setSelectedBooking(b)}
-                  className="bg-white rounded-[22px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.04)] p-5 hover:shadow-xl hover:border-teal-300 transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden"
+                  className="bg-white rounded-[22px] border border-teal-100/90 shadow-[0_4px_20px_rgba(13,148,136,0.04)] p-5 hover:shadow-xl hover:border-teal-300 transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden"
                 >
                   {/* Status Indicator Bar at Top */}
                   <div className={`absolute top-0 left-0 right-0 h-1.5 ${
-                    b.status === 'in_progress' ? 'bg-gradient-to-r from-blue-500 to-cyan-500' :
+                    b.status === 'in_progress' ? 'bg-gradient-to-r from-cyan-500 to-teal-500' :
                     b.status === 'confirmed' ? 'bg-gradient-to-r from-emerald-500 to-teal-500' :
                     b.status === 'pending' ? 'bg-gradient-to-r from-amber-400 to-orange-400' :
                     b.status === 'completed' ? 'bg-slate-400' : 'bg-rose-400'
@@ -761,7 +901,7 @@ export function Bookings() {
                           </h4>
                           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                             {isMonthly && (
-                              <span className="text-[9.5px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              <span className="text-[9.5px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
                                 Monthly
                               </span>
                             )}
@@ -773,18 +913,18 @@ export function Bookings() {
                     </div>
 
                     {/* Service & Time details box */}
-                    <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100 space-y-2 mb-3">
+                    <div className="bg-teal-50/30 rounded-xl p-3 border border-teal-100/80 space-y-2 mb-3">
                       <div className="flex items-center justify-between text-[11.5px] font-semibold text-slate-700">
                         <span className="text-teal-800 font-bold flex items-center gap-1.5">
                           <Sparkles size={12} className="text-teal-600" />
                           <span>{b.service_type}</span>
                         </span>
-                        <span className="text-slate-500 text-[11px] capitalize bg-white px-2 py-0.5 rounded-md border border-slate-200/60 font-medium">
+                        <span className="text-slate-500 text-[11px] capitalize bg-white px-2 py-0.5 rounded-md border border-teal-200/60 font-medium">
                           {b.frequency}
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 text-[11.5px] text-slate-600 pt-1 border-t border-slate-200/50">
+                      <div className="grid grid-cols-2 gap-2 text-[11.5px] text-slate-600 pt-1 border-t border-teal-100/60">
                         <div className="flex items-center gap-1.5">
                           <CalendarIcon size={12} className="text-slate-400 shrink-0" />
                           <span className="tabular-nums font-medium">{formatDate(b.scheduled_date)}</span>
@@ -798,7 +938,7 @@ export function Bookings() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 text-[11.5px] text-slate-600 pt-1 border-t border-slate-200/50">
+                      <div className="flex items-center gap-1.5 text-[11.5px] text-slate-600 pt-1 border-t border-teal-100/60">
                         <MapPin size={12} className="text-slate-400 shrink-0" />
                         <span className="truncate" title={b.service_address}>
                           {b.service_address || 'Address not specified'}
@@ -836,7 +976,7 @@ export function Bookings() {
                   </div>
 
                   {/* Card Footer: Pricing & Quick Actions */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 mt-2">
+                  <div className="pt-3 border-t border-teal-100/70 flex items-center justify-between gap-2 mt-2">
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Charges</p>
                       <p className="text-[17px] font-black text-slate-900 tabular-nums">
@@ -849,7 +989,7 @@ export function Bookings() {
                         <>
                           <a
                             href={`tel:${clientPhone}`}
-                            className="p-1.5 rounded-xl text-slate-500 hover:text-teal-700 hover:bg-teal-50 border border-slate-200 hover:border-teal-200 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-xl text-slate-500 hover:text-teal-700 hover:bg-teal-50 border border-teal-200/80 hover:border-teal-300 transition-colors cursor-pointer"
                             title={`Call ${clientPhone}`}
                           >
                             <Phone size={13} />
@@ -858,7 +998,7 @@ export function Bookings() {
                             href={`https://wa.me/${clientPhone.replace(/[^\d+]/g, '').replace(/^\+/, '')}?text=Hello%20${encodeURIComponent(b.client_name)}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-1.5 rounded-xl text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border border-emerald-200 hover:border-emerald-300 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-xl text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border border-emerald-200/80 hover:border-emerald-300 transition-colors cursor-pointer"
                             title="Chat on WhatsApp"
                           >
                             <MessageCircle size={13} />
@@ -869,7 +1009,7 @@ export function Bookings() {
                       <button
                         type="button"
                         onClick={() => setSelectedBooking(b)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-teal-50 text-slate-700 hover:text-teal-800 text-[11.5px] font-bold border border-slate-200 hover:border-teal-200 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-50/40 hover:bg-teal-100/60 text-teal-900 text-[11.5px] font-bold border border-teal-200/80 hover:border-teal-300 transition-colors cursor-pointer"
                       >
                         <Eye size={12} />
                         <span>Details</span>
@@ -883,8 +1023,8 @@ export function Bookings() {
 
           {/* Empty State */}
           {filtered.length === 0 && (
-            <div className="bg-white rounded-[22px] border border-slate-200 py-16 text-center">
-              <CalendarIcon className="mx-auto mb-3 text-slate-300" size={40} strokeWidth={1.25} />
+            <div className="bg-white rounded-[22px] border border-teal-200/80 py-16 text-center">
+              <CalendarIcon className="mx-auto mb-3 text-teal-300" size={40} strokeWidth={1.25} />
               <p className="text-[14px] font-bold text-slate-700">No bookings match your filters</p>
               <p className="text-[12px] text-slate-500 mt-1">Try resetting the date range or clear search keywords.</p>
             </div>
@@ -906,11 +1046,11 @@ export function Bookings() {
       {/* ── TABLE VIEW ── */}
       {view === 'table' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-[22px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.04)] overflow-hidden">
+          <div className="bg-white rounded-[22px] border border-teal-200/80 shadow-[0_4px_20px_rgba(13,148,136,0.04)] overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-50/90 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                  <tr className="bg-teal-50/70 border-b border-teal-200/80 text-[11px] font-black uppercase tracking-wider text-teal-950">
                     <th className="py-3.5 px-4">Ref / Source</th>
                     <th className="py-3.5 px-4">Client & Contact</th>
                     <th className="py-3.5 px-4">Service & Frequency</th>
@@ -922,7 +1062,7 @@ export function Bookings() {
                     <th className="py-3.5 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-[12.5px]">
+                <tbody className="divide-y divide-teal-50/80 text-[12.5px]">
                   {paginatedBookings.map((b, idx) => {
                     const assignedNames = getAssignedCrewNames(b.assigned_crew, employees)
                     const matchedClient = clients.find(c => c.id === b.client_id || c.full_name.toLowerCase().trim() === b.client_name.toLowerCase().trim())
@@ -1196,39 +1336,39 @@ function WeekCalendar({ bookings, onSelect }: { bookings: Booking[]; onSelect: (
   }).length
 
   return (
-    <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+    <div className="bg-white rounded-[22px] border border-teal-200/80 shadow-[0_4px_20px_rgba(13,148,136,0.05)] overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-3">
+      <div className="px-5 py-4 border-b border-teal-100 flex items-center justify-between flex-wrap gap-3 bg-teal-50/30">
         <div>
-          <h3 className="text-[17px] font-bold text-[#111827]">{monthName}</h3>
+          <h3 className="text-[17px] font-bold text-teal-950">{monthName}</h3>
           <p className="text-[12px] text-slate-500 mt-0.5">{monthJobs} jobs · AED {monthRevenue.toLocaleString()} projected</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center border border-[#E4E8EC] rounded-xl overflow-hidden">
-            <button onClick={prevMonth} className="p-2 hover:bg-slate-50 transition-colors"><ChevronLeft size={14} /></button>
-            <button onClick={goToday} className="text-[12px] px-3 py-2 border-l border-r border-[#E4E8EC] hover:bg-slate-50 font-medium">Today</button>
-            <button onClick={nextMonth} className="p-2 hover:bg-slate-50 transition-colors"><ChevronRight size={14} /></button>
+          <div className="flex items-center border border-teal-200/80 rounded-xl overflow-hidden bg-white">
+            <button onClick={prevMonth} className="p-2 hover:bg-teal-50 transition-colors"><ChevronLeft size={14} /></button>
+            <button onClick={goToday} className="text-[12px] px-3 py-2 border-l border-r border-teal-200/80 hover:bg-teal-50 font-bold text-teal-900">Today</button>
+            <button onClick={nextMonth} className="p-2 hover:bg-teal-50 transition-colors"><ChevronRight size={14} /></button>
           </div>
         </div>
       </div>
 
       {/* Day-of-week header */}
-      <div className="grid grid-cols-7 border-b border-[#E4E8EC] bg-slate-50">
+      <div className="grid grid-cols-7 border-b border-teal-100 bg-teal-50/50">
         {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-          <div key={d} className="py-2.5 text-center text-[10.5px] font-semibold text-slate-500 uppercase tracking-[0.08em]">{d}</div>
+          <div key={d} className="py-2.5 text-center text-[10.5px] font-bold text-teal-900 uppercase tracking-[0.08em]">{d}</div>
         ))}
       </div>
 
       {/* Calendar grid */}
       <div className="grid grid-cols-7">
         {cells.map((day, i) => {
-          if (!day) return <div key={i} className="min-h-[100px] border-r border-b border-[#E4E8EC] bg-slate-50/40" />
+          if (!day) return <div key={i} className="min-h-[100px] border-r border-b border-teal-100/60 bg-teal-50/10" />
           const dateStr = `${curYear}-${String(curMonth + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
           const dayBookings = bookingsByDate[dateStr] ?? []
           const isToday = dateStr === todayStr
           return (
-            <div key={i} className={`min-h-[100px] border-r border-b border-[#E4E8EC] p-2 ${isToday ? 'bg-emerald-50/50' : 'hover:bg-slate-50/60'} transition-colors`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold mb-1.5 ${isToday ? 'bg-emerald-500 text-white' : 'text-slate-700'}`}>
+            <div key={i} className={`min-h-[100px] border-r border-b border-teal-100/60 p-2 ${isToday ? 'bg-emerald-50/50' : 'hover:bg-teal-50/30'} transition-colors`}>
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold mb-1.5 ${isToday ? 'bg-emerald-600 text-white' : 'text-slate-700'}`}>
                 {day}
               </div>
               <div className="space-y-1">
@@ -1252,7 +1392,7 @@ function WeekCalendar({ bookings, onSelect }: { bookings: Booking[]; onSelect: (
       </div>
 
       {/* Legend */}
-      <div className="px-5 py-3 border-t border-[#E4E8EC] bg-slate-50 flex items-center gap-5 flex-wrap text-[11px] text-slate-500">
+      <div className="px-5 py-3 border-t border-teal-100 bg-teal-50/30 flex items-center gap-5 flex-wrap text-[11px] text-slate-600">
         {[
           { label: 'Scheduled', dot: 'bg-emerald-500' },
           { label: 'Live',      dot: 'bg-blue-500' },
@@ -1304,7 +1444,7 @@ function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b
               <div
                 key={b.id}
                 onClick={() => onSelect(b)}
-                className="bg-white rounded-[18px] border border-[#E4E8EC] p-4 cursor-pointer hover:shadow-[0_4px_16px_rgba(15,23,42,0.10)] hover:border-emerald-200 transition-all"
+                className="bg-white rounded-[18px] border border-teal-100/90 p-4 cursor-pointer hover:shadow-[0_4px_16px_rgba(13,148,136,0.10)] hover:border-teal-300 transition-all"
               >
                 <div className="flex items-start gap-2.5 mb-3">
                   <div
@@ -1328,14 +1468,14 @@ function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b
                     <span className="truncate">{b.service_address}</span>
                   </div>
                 </div>
-                <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-[#E4E8EC]">
+                <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-teal-100/70">
                   <span className="text-[11px] text-slate-400">{b.duration_hours}h</span>
                   <span className="text-[13px] font-bold text-[#111827]">AED {b.total_amount.toLocaleString()}</span>
                 </div>
               </div>
             ))}
             {(grouped[col.key] ?? []).length === 0 && (
-              <div className="bg-slate-50 rounded-2xl border border-dashed border-[#E4E8EC] py-8 text-center">
+              <div className="bg-teal-50/20 rounded-2xl border border-dashed border-teal-200/80 py-8 text-center">
                 <p className="text-[11px] text-slate-400">No {col.label.toLowerCase()} bookings</p>
               </div>
             )}
