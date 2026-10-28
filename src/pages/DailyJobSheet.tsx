@@ -3734,8 +3734,8 @@ CREATE TABLE daily_expenses (
       <EditAdvanceModal
         item={editingAdvance}
         onClose={() => setEditingAdvance(null)}
-        onSave={(id, client, received, advance) => {
-          setAdvanceList(prev => prev.map(x => x.id === id ? { ...x, client, received, advance } : x))
+        onSave={(id, client, received, advance, notes) => {
+          setAdvanceList(prev => prev.map(x => x.id === id ? { ...x, client, received, advance, notes } : x))
         }}
       />
 

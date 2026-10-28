@@ -396,6 +396,8 @@ export interface DailyAdvanceItem {
   client: string
   received: number
   advance: number
+  client_id?: string
+  notes?: string
 }
 
 export type LeadStatus = 'new' | 'contacted' | 'quoted' | 'converted' | 'lost'
