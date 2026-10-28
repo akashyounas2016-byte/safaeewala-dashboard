@@ -10,9 +10,9 @@ import {
   Calendar, RotateCcw,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
+import { NewBookingModal } from '@/components/bookings/NewBookingModal'
 import { Button } from '@/components/ui/Button'
-import { Input, Select, Textarea } from '@/components/ui/Input'
-import { formatTime, addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
+import { formatTime } from '@/lib/utils'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import { useCurrentUser } from '@/store/UserContext'
@@ -44,243 +44,7 @@ const serviceTypes = [
 ]
 
 
-function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (ids: string[]) => void }) {
-  const { employees } = useData()
-  const [search, setSearch] = useState('')
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  const availableEmps = employees.filter(e => e.status !== 'inactive')
-  const filtered = search
-    ? availableEmps.filter(e => e.full_name.toLowerCase().includes(search.toLowerCase()))
-    : availableEmps
-  const selectedEmps = employees.filter(e => selected.includes(e.id))
-  useEffect(() => {
-    function outside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', outside)
-    return () => document.removeEventListener('mousedown', outside)
-  }, [])
-  function toggle(id: string) {
-    onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id])
-  }
-  return (
-    <div>
-      <p className="text-[12px] font-semibold text-slate-600 mb-2">Assign Crew</p>
-      {selectedEmps.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {selectedEmps.map(emp => (
-            <span key={emp.id} className="inline-flex items-center gap-1 text-[11.5px] bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-medium">
-              {emp.full_name}
-              <button type="button" onClick={() => toggle(emp.id)} className="ml-0.5 hover:text-red-600 font-bold leading-none">×</button>
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="relative" ref={ref}>
-        <input
-          type="text"
-          placeholder={availableEmps.length === 0 ? 'No employees available — add employees first' : 'Search and select cleaners…'}
-          value={search}
-          onFocus={() => setOpen(true)}
-          onChange={e => { setSearch(e.target.value); setOpen(true) }}
-          disabled={availableEmps.length === 0}
-          className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50 focus:outline-none focus:border-emerald-400 placeholder-slate-400 disabled:opacity-50 transition-colors"
-        />
-        {open && (
-          <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-[#E4E8EC] rounded-xl shadow-xl max-h-52 overflow-y-auto">
-            {filtered.length === 0 ? (
-              <p className="text-[12px] text-slate-400 px-4 py-3">No employees match "{search}"</p>
-            ) : filtered.map(emp => {
-              const checked = selected.includes(emp.id)
-              return (
-                <button
-                  key={emp.id}
-                  type="button"
-                  onClick={() => { toggle(emp.id); setSearch('') }}
-                  className={`w-full flex items-center justify-between px-4 py-2.5 text-left border-b border-[#E4E8EC] last:border-0 transition-colors ${checked ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${checked ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>
-                      {checked && <span className="text-white text-[9px] font-bold">✓</span>}
-                    </div>
-                    <div className="truncate">
-                      <p className="text-[12.5px] font-semibold text-[#111827] truncate">{emp.full_name}</p>
-                      <p className="text-[10.5px] text-slate-400">{emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}</p>
-                    </div>
-                  </div>
-                  {emp.status && emp.status !== 'active' && (
-                    <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 capitalize shrink-0 ml-2">
-                      {emp.status.replace(/_/g, ' ')}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </div>
-      {selectedEmps.length > 0 && (
-        <p className="text-[11px] text-emerald-600 font-medium mt-1.5">{selectedEmps.length} cleaner{selectedEmps.length > 1 ? 's' : ''} assigned</p>
-      )}
-    </div>
-  )
-}
 
-function NewBookingForm({ onClose, onAdd }: {
-  onClose: () => void
-  onAdd: (b: Omit<Booking, 'id' | 'created_at'>) => void
-}) {
-  const [selectedCrew, setSelectedCrew] = useState<string[]>([])
-  const [scheduledDate, setScheduledDate] = useState(() => new Date().toISOString().split('T')[0])
-  const [startTime, setStartTime] = useState('09:00')
-  const [duration, setDuration] = useState<number>(3)
-  const [endTime, setEndTime] = useState(() => addHoursToTime('09:00', 3))
-  const formRef = useRef<HTMLFormElement>(null)
-
-  // 2-Way Synchronization:
-  // 1. Changing Start Time recalculates End Time keeping duration intact
-  const handleStartTimeChange = (newStart: string) => {
-    setStartTime(newStart)
-    if (newStart && duration > 0) {
-      setEndTime(addHoursToTime(newStart, duration))
-    }
-  }
-
-  // 2. Changing End Time automatically recalculates Duration
-  const handleEndTimeChange = (newEnd: string) => {
-    setEndTime(newEnd)
-    if (startTime && newEnd) {
-      const calcDur = calcDurationFromTimes(startTime, newEnd)
-      if (calcDur > 0) {
-        setDuration(calcDur)
-      }
-    }
-  }
-
-  // 3. Changing Duration automatically recalculates End Time
-  const handleDurationChange = (newDur: number) => {
-    setDuration(newDur)
-    if (startTime && newDur > 0) {
-      setEndTime(addHoursToTime(startTime, newDur))
-    }
-  }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const fd = new FormData(formRef.current!)
-    onAdd({
-      client_id: '',
-      client_name: fd.get('client_name') as string,
-      client_phone: fd.get('client_phone') as string,
-      service_address: fd.get('service_address') as string,
-      service_type: fd.get('service_type') as string,
-      frequency: (fd.get('frequency') as BookingFrequency) || 'once',
-      scheduled_date: scheduledDate,
-      scheduled_time: startTime,
-      end_time: endTime,
-      duration_hours: duration,
-      total_amount: Number(fd.get('total_amount')) || 0,
-      notes: fd.get('notes') as string,
-      status: 'pending',
-      assigned_crew: selectedCrew,
-    })
-    onClose()
-  }
-
-  return (
-    <form ref={formRef} className="space-y-4" onSubmit={handleSubmit}>
-      <div className="grid grid-cols-2 gap-4">
-        <Input name="client_name" label="Client Name" placeholder="Full name" required />
-        <Input name="client_phone" label="Phone" placeholder="+971 50 000 0000" />
-      </div>
-      <Input name="service_address" label="Service Address" placeholder="Street, unit, neighborhood" />
-      <div className="grid grid-cols-2 gap-4">
-        <Select name="service_type" label="Service Type">
-          <option value="">Select service…</option>
-          {serviceTypes.map(s => <option key={s}>{s}</option>)}
-        </Select>
-        <Select name="frequency" label="Frequency">
-          <option value="once">One-time</option>
-          <option value="weekly">Weekly</option>
-          <option value="biweekly">Bi-weekly</option>
-          <option value="monthly">Monthly</option>
-        </Select>
-      </div>
-
-      {/* ── Start Time, End Time & Duration Row (Auto-Synced) ── */}
-      <div className="bg-slate-50/80 rounded-2xl p-3.5 border border-[#E4E8EC] space-y-2.5">
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <div>
-            <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Date *</label>
-            <input
-              type="date"
-              name="scheduled_date"
-              required
-              value={scheduledDate}
-              onChange={e => setScheduledDate(e.target.value)}
-              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-medium"
-            />
-          </div>
-          <div>
-            <label className="block text-[11.5px] font-bold text-[#111827] mb-1">Start Time *</label>
-            <input
-              type="time"
-              name="scheduled_time"
-              required
-              value={startTime}
-              onChange={e => handleStartTimeChange(e.target.value)}
-              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-[#111827]"
-            />
-          </div>
-          <div>
-            <label className="block text-[11.5px] font-bold text-teal-800 mb-1">End Time *</label>
-            <input
-              type="time"
-              name="end_time"
-              required
-              value={endTime}
-              onChange={e => handleEndTimeChange(e.target.value)}
-              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-teal-700"
-            />
-          </div>
-          <div>
-            <label className="block text-[11.5px] font-bold text-emerald-800 mb-1">Duration (hrs)</label>
-            <input
-              type="number"
-              step="0.5"
-              min="0.5"
-              max="24"
-              name="duration_hours"
-              value={duration}
-              onChange={e => handleDurationChange(parseFloat(e.target.value) || 0)}
-              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-emerald-700"
-            />
-          </div>
-        </div>
-
-        {/* ── Auto-calculated session summary pill ── */}
-        <div className="flex items-center justify-between text-[11.5px] px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-900 font-medium">
-          <span className="flex items-center gap-1.5">
-            <Clock size={13} className="text-emerald-600" />
-            <span>Shift Slot: <strong>{startTime || '—'}</strong> to <strong>{endTime || '—'}</strong></span>
-          </span>
-          <span className="font-extrabold text-emerald-700 bg-white px-2 py-0.5 rounded-md shadow-2xs">
-            {duration} Hour{duration !== 1 ? 's' : ''} auto-synced
-          </span>
-        </div>
-      </div>
-
-      <Input name="total_amount" label="Total Amount (AED)" type="number" placeholder="0.00" />
-      <CrewSelector selected={selectedCrew} onChange={setSelectedCrew} />
-      <Textarea name="notes" label="Notes" placeholder="Access instructions, special requirements…" rows={3} />
-      <div className="flex gap-3 pt-2">
-        <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-        <Button type="submit" className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold">Create Booking</Button>
-      </div>
-    </form>
-  )
-}
 
 /* ─── shared avatar palette ─── */
 const avatarPalette = [
@@ -1393,9 +1157,11 @@ export function Overview() {
       </section>
 
       {/* ── New Booking Modal ── */}
-      <Modal open={showNewBooking} onClose={() => setShowNewBooking(false)} title="New Booking" size="lg">
-        <NewBookingForm onClose={() => setShowNewBooking(false)} onAdd={addBooking} />
-      </Modal>
+      <NewBookingModal
+        open={showNewBooking}
+        onClose={() => setShowNewBooking(false)}
+        onAdd={addBooking}
+      />
     </div>
   )
 }
