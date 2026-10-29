@@ -81,3 +81,4 @@ export function printInvoice(invoice: Invoice) {
   win.focus()
   win.print()
 }
+

@@ -473,3 +473,4 @@ export function BookingInvoiceModal({ booking, open, onClose }: BookingInvoiceMo
     </Modal>
   )
 }
+
