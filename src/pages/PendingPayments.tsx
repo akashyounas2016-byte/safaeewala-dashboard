@@ -701,15 +701,15 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
       {/* ── Executive KPI Cards (6 Financial & Recovery Cards) ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
         {/* Card 1: Total Outstanding Pending */}
-        <div title="Open dues: job-sheet rows (charges − received − later receipts − adjustments; monthly-contract and invoiced visits excluded) + manual items + unpaid invoice balances" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-red-200 transition-all">
+        <div title="Open dues: job-sheet rows (charges − received − later receipts − adjustments; monthly-contract and invoiced visits excluded) + manual items + unpaid invoice balances" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-amber-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Pending</span>
-            <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
               <Clock size={16} />
             </div>
           </div>
           <div>
-            <p className="text-[22px] font-extrabold text-red-950">AED {totalPendingAmount.toLocaleString()}</p>
+            <p className="text-[22px] font-extrabold text-amber-900">AED {totalPendingAmount.toLocaleString()}</p>
             <p className="text-[11px] text-slate-400 mt-0.5">{filteredOutstanding.length} pending accounts</p>
           </div>
         </div>
@@ -789,7 +789,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center justify-between flex-wrap gap-3">
         {/* Left: Active Date Range Display with Month Stepper */}
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
             <Calendar size={18} />
           </div>
 
@@ -798,7 +798,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
               <h2 className="text-[17px] font-extrabold text-[#111827]">
                 {activeRange.label}
               </h2>
-              <span className="text-[10.5px] font-bold px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-200">
+              <span className="text-[10.5px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
                 {filteredOutstanding.length} Active {filteredOutstanding.length === 1 ? 'Due' : 'Dues'}
               </span>
             </div>
@@ -860,7 +860,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
                   onClick={() => setDatePreset(pill.id)}
                   className={`px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all cursor-pointer ${
                     active
-                      ? 'bg-red-600 text-white shadow-xs'
+                      ? 'bg-slate-900 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                   }`}
                 >
@@ -908,11 +908,11 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
                         setShowRangeDropdown(false)
                       }}
                       className={`w-full text-left px-3 py-2 rounded-xl text-[12.5px] font-semibold transition-colors cursor-pointer flex items-center justify-between ${
-                        datePreset === opt.id ? 'bg-red-50 text-red-700 font-bold' : 'text-slate-700 hover:bg-slate-50'
+                        datePreset === opt.id ? 'bg-slate-100 text-slate-900 font-bold' : 'text-slate-700 hover:bg-slate-50'
                       }`}
                     >
                       <span>{opt.label}</span>
-                      {datePreset === opt.id && <span className="w-1.5 h-1.5 rounded-full bg-red-600" />}
+                      {datePreset === opt.id && <span className="w-1.5 h-1.5 rounded-full bg-slate-900" />}
                     </button>
                   ))}
                 </div>
@@ -924,14 +924,14 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
 
       {/* Custom Date Range Pickers (Shown only when 'custom' is active) */}
       {datePreset === 'custom' && (
-        <div className="bg-red-50/60 border border-red-200 rounded-2xl p-4 flex items-center gap-4 flex-wrap animate-in fade-in duration-150">
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center gap-4 flex-wrap animate-in fade-in duration-150">
           <div className="flex items-center gap-2">
             <span className="text-[12px] font-bold text-slate-700">From:</span>
             <input
               type="date"
               value={customStartDate}
               onChange={e => setCustomStartDate(e.target.value)}
-              className="text-[12.5px] px-3 py-1.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 font-medium"
+              className="text-[12.5px] px-3 py-1.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium"
             />
           </div>
           <div className="flex items-center gap-2">
@@ -940,7 +940,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
               type="date"
               value={customEndDate}
               onChange={e => setCustomEndDate(e.target.value)}
-              className="text-[12.5px] px-3 py-1.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 font-medium"
+              className="text-[12.5px] px-3 py-1.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium"
             />
           </div>
           <span className="text-[11.5px] text-slate-500 italic">
@@ -956,13 +956,13 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
             onClick={() => setActiveTab('outstanding')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-bold transition-all cursor-pointer ${
               activeTab === 'outstanding'
-                ? 'bg-red-600 text-white shadow-xs'
+                ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
             <Clock size={15} />
             <span>Outstanding Pending Dues</span>
-            <span className={`text-[11px] px-2 py-0.5 rounded-full ${activeTab === 'outstanding' ? 'bg-red-700 text-white' : 'bg-slate-200 text-slate-700'}`}>
+            <span className={`text-[11px] px-2 py-0.5 rounded-full ${activeTab === 'outstanding' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-700'}`}>
               {filteredOutstanding.length}
             </span>
           </button>
@@ -1001,7 +1001,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
         <div className="flex items-center gap-2">
           <Button
             onClick={() => setShowAddModal(true)}
-            className="text-[12px] h-9 px-3.5 bg-red-600 hover:bg-red-700 text-white font-bold shadow-xs cursor-pointer"
+            className="text-[12px] h-9 px-3.5 bg-teal-700 hover:bg-teal-800 text-white font-bold shadow-xs cursor-pointer"
           >
             <Plus size={14} className="mr-1" /> Add Manual Pending
           </Button>
@@ -1019,7 +1019,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
               placeholder="Search by client name, cleaner, area, or remarks…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full text-[13px] pl-10 pr-9 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 placeholder-slate-400 transition-colors"
+              className="w-full text-[13px] pl-10 pr-9 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 placeholder-slate-400 transition-colors"
             />
             {search && (
               <button
@@ -1036,7 +1036,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
           <select
             value={staffFilter}
             onChange={e => setStaffFilter(e.target.value)}
-            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 text-slate-700 cursor-pointer font-medium"
+            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 cursor-pointer font-medium"
           >
             <option value="all">All Staff / Cleaners</option>
             {distinctStaffList.map(s => <option key={s} value={s}>{s}</option>)}
@@ -1046,7 +1046,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
           <select
             value={sourceFilter}
             onChange={e => setSourceFilter(e.target.value as any)}
-            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 text-slate-700 cursor-pointer font-medium"
+            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 cursor-pointer font-medium"
           >
             <option value="all">All Sources (Job Sheet + Manual)</option>
             <option value="job_sheet">Daily Job Sheet Shifts</option>
@@ -1057,7 +1057,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
           <select
             value={amountFilter}
             onChange={e => setAmountFilter(e.target.value as any)}
-            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 text-slate-700 cursor-pointer font-medium"
+            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 cursor-pointer font-medium"
           >
             <option value="all">All Amounts</option>
             <option value="high">High Dues (≥ AED 500)</option>
@@ -1069,7 +1069,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
           <select
             value={sortOrder}
             onChange={e => setSortOrder(e.target.value as any)}
-            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 text-slate-700 cursor-pointer font-medium"
+            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 cursor-pointer font-medium"
           >
             <option value="highest">Highest Due Amount First</option>
             <option value="lowest">Lowest Due Amount First</option>
@@ -1087,16 +1087,16 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
                 setSourceFilter('all')
                 setAmountFilter('all')
               }}
-              className="flex items-center gap-1 text-[12px] font-bold text-red-600 hover:text-red-700 py-1 px-2.5 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+              className="flex items-center gap-1 text-[12px] font-bold text-slate-500 hover:text-slate-800 py-1 px-2.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <RotateCcw size={13} /> Reset Filters
             </button>
           )}
         </div>
 
-        <div className="px-3.5 py-2 rounded-xl bg-red-50 border border-red-200 text-right">
-          <span className="text-[10px] uppercase font-bold text-red-800 tracking-wider block">Filtered Due Total</span>
-          <span className="text-[15px] font-black text-red-700">
+        <div className="px-3.5 py-2 rounded-xl bg-amber-50/70 border border-amber-200 text-right">
+          <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider block">Filtered Due Total</span>
+          <span className="text-[15px] font-black text-amber-900">
             AED {totalPendingAmount.toLocaleString()}
           </span>
         </div>
@@ -1110,7 +1110,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
           <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <h3 className="text-[16px] font-bold text-[#111827]">Active Outstanding Dues</h3>
-              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-200">
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
                 {filteredOutstanding.length} accounts
               </span>
             </div>
@@ -1137,7 +1137,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
                 {outPager.pageItems.map(rec => {
                   const isHigh = rec.pendingAmount >= 500
                   return (
-                    <tr key={rec.id} className="hover:bg-red-50/30 transition-colors group">
+                    <tr key={rec.id} className="hover:bg-slate-50/80 transition-colors group">
                       {/* Date */}
                       <td className="py-3.5 px-4 font-semibold text-slate-800 whitespace-nowrap">
                         {rec.date ? formatDisplayDate(rec.date) : '—'}
@@ -1186,11 +1186,11 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
 
                       {/* Pending Balance */}
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                        <span className={`text-[14px] font-black ${isHigh ? 'text-red-700' : 'text-amber-800'}`}>
+                        <span className={`text-[14px] font-black ${isHigh ? 'text-rose-700' : 'text-amber-800'}`}>
                           AED {rec.pendingAmount.toLocaleString()}
                         </span>
                         {isHigh && (
-                          <span className="block text-[9.5px] font-extrabold text-red-600 uppercase tracking-wider">
+                          <span className="block text-[9.5px] font-extrabold text-rose-600 uppercase tracking-wider">
                             Priority Due
                           </span>
                         )}
@@ -1241,7 +1241,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
           {filteredOutstanding.length > 0 && (
             <div className="px-6 py-3.5 bg-slate-50 border-t border-[#E4E8EC] flex items-center justify-between text-[12.5px] font-bold text-slate-700">
               <span>Showing {filteredOutstanding.length} pending client accounts</span>
-              <span className="text-red-700 font-black text-[14.5px]">Total Balance Due: AED {totalPendingAmount.toLocaleString()}</span>
+              <span className="text-amber-900 font-black text-[14.5px]">Total Balance Due: AED {totalPendingAmount.toLocaleString()}</span>
             </div>
           )}
         </div>
@@ -1418,7 +1418,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
             <div className="bg-slate-50 border border-[#E4E8EC] rounded-2xl p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] uppercase font-bold text-slate-500">Pending Account Details</span>
-                <span className="text-[11px] font-bold bg-red-100 text-red-800 px-2 py-0.5 rounded-full">
+                <span className="text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-full">
                   Due: AED {collectingRecord.pendingAmount.toLocaleString()}
                 </span>
               </div>
@@ -1526,7 +1526,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
                 name="date"
                 required
                 defaultValue={todayDubai()}
-                className="w-full text-[13px] px-3.5 py-2.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 font-medium"
+                className="w-full text-[13px] px-3.5 py-2.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium"
               />
             </div>
             <div>
@@ -1540,7 +1540,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
                 min="0.01"
                 placeholder="0.00"
                 required
-                className="w-full text-[13px] px-3.5 py-2.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 font-bold text-red-700"
+                className="w-full text-[13px] px-3.5 py-2.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-bold text-slate-900"
               />
             </div>
           </div>
@@ -1554,7 +1554,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
               name="client"
               placeholder="e.g. Villa 24 Springs, Ahmed Al Mansoori"
               required
-              className="w-full text-[13px] px-3.5 py-2.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 font-medium"
+              className="w-full text-[13px] px-3.5 py-2.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium"
             />
           </div>
 
@@ -1566,7 +1566,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
               type="text"
               name="staff"
               placeholder="e.g. Dinesh, Sharmila, Adnan…"
-              className="w-full text-[13px] px-3.5 py-2.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 font-medium"
+              className="w-full text-[13px] px-3.5 py-2.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium"
             />
           </div>
 
@@ -1578,7 +1578,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
               name="remarks"
               rows={2}
               placeholder="Reason for pending payment, client phone, or follow-up notes…"
-              className="w-full text-[13px] px-3.5 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 resize-none"
+              className="w-full text-[13px] px-3.5 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 resize-none"
             />
           </div>
 
@@ -1586,7 +1586,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
             <Button type="button" variant="outline" className="flex-1" onClick={() => setShowAddModal(false)}>
               Cancel
             </Button>
-            <Button type="submit" className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold">
+            <Button type="submit" className="flex-1 bg-teal-700 hover:bg-teal-800 text-white font-bold">
               Save Pending Record
             </Button>
           </div>
