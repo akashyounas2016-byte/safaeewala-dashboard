@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main` or `claude/workspace`, not yet confirmed deployed)
 
+- feat(design): Unified hero banners to CRM signature Dark Slate-Teal palette across ClientProfile and Attendance — replaced divergent royal indigo and flat green gradients with gradient-card / dark slate-teal (from-[#021f24] via-[#062c32] to-[#02181b]) with ambient emerald/teal glow and synchronized accent icons (CLR-01, CLR-02)
+
 - feat(analytics): Purged all hardcoded dummy data from BusinessAnalytics; wired live metrics from dailyJobs, dailyExpenses, clients, and employees (revenue & profit trends, service share, cleaner performance, real MRR, dynamic insights, Excel report export); removed 'Coming Soon' badge from Overview in Sidebar
 
 - feat(bookings): Updated Board View (Kanban) to display strictly first 3 entries vertically per status column with "View All" button; unified status color hierarchy consistency across "Today", "All Time", and all date presets with status normalization and descending date sorting

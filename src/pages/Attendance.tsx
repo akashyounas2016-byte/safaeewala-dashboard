@@ -350,15 +350,20 @@ export function Attendance() {
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-200">
-      {/* ── Top Header Bar (Calendar row standard CMS header styling) ── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-emerald-900 via-teal-950 to-slate-900 text-white rounded-3xl p-6 border border-emerald-800/40 shadow-[0_10px_30px_rgba(6,78,59,0.25)]">
-        <div>
+      {/* ── Top Header Bar (CRM Signature Dark Slate-Teal Hero Header) ── */}
+      <div className="gradient-card rounded-[24px] px-6 sm:px-7 py-5 sm:py-6 text-white shadow-[0_8px_32px_rgba(15,23,42,0.28)] ring-1 ring-black/10 relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-5">
+        {/* Ambient Glow */}
+        <div className="absolute inset-0 rounded-[24px] overflow-hidden pointer-events-none">
+          <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl" />
+        </div>
+
+        <div className="relative z-10 flex-1 min-w-0">
           <div className="flex items-center gap-2.5 mb-1.5">
-            <div className="w-10 h-10 rounded-2xl bg-white/10 text-emerald-400 flex items-center justify-center border border-white/15 shadow-sm">
+            <div className="w-10 h-10 rounded-2xl bg-white/10 text-emerald-400 flex items-center justify-center border border-white/15 shadow-sm shrink-0">
               <UserCheck size={20} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-[22px] font-extrabold text-white tracking-tight">
                   Cleaner Attendance System
                 </h1>
@@ -374,7 +379,7 @@ export function Attendance() {
         </div>
 
         {/* Action Controls & Links */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative z-10 flex items-center gap-2 flex-wrap">
           <button
             type="button"
             onClick={handleFetchDailySheet}

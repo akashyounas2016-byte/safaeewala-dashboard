@@ -638,11 +638,11 @@ export function ClientProfile() {
         </div>
       </div>
 
-      {/* ── Client Dark Hero Card (Midnight Navy / Royal Indigo Theme — Distinct from Employee Dark Teal) ── */}
-      <div className="relative rounded-[24px] bg-gradient-to-br from-[#070d1e] via-[#0c1633] to-[#080f24] text-white border border-indigo-900/60 shadow-[0_14px_45px_rgba(15,23,42,0.4)] p-6 sm:p-7 overflow-hidden">
+      {/* ── Client Dark Hero Card (CRM Signature Dark Slate-Teal Theme — Unified) ── */}
+      <div className="relative rounded-[24px] bg-gradient-to-br from-[#021f24] via-[#062c32] to-[#02181b] text-white border border-teal-800/60 shadow-[0_14px_45px_rgba(4,47,46,0.35)] p-6 sm:p-7 overflow-hidden">
         {/* Ambient Glow Effects (Indigo & Sapphire) */}
-        <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-indigo-500/15 blur-3xl pointer-events-none" />
-        <div className="absolute -left-20 -bottom-20 w-80 h-80 rounded-full bg-blue-500/15 blur-3xl pointer-events-none" />
+        <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-teal-400/15 blur-3xl pointer-events-none" />
+        <div className="absolute -left-20 -bottom-20 w-80 h-80 rounded-full bg-emerald-400/15 blur-3xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col sm:flex-row items-start gap-5">
           <Avatar name={client.full_name} size="xl" idx={clientIdx} />
@@ -672,24 +672,24 @@ export function ClientProfile() {
               )}
             </div>
 
-            {client.nationality && <p className="text-[12.5px] text-indigo-200/70 mb-2.5">{client.nationality}</p>}
+            {client.nationality && <p className="text-[12.5px] text-teal-200/70 mb-2.5">{client.nationality}</p>}
 
             <div className="flex flex-wrap gap-2 text-[12px] text-slate-200 mt-2">
               {client.phone ? (
-                <a href={`tel:${client.phone}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 hover:border-indigo-400 hover:text-white transition-colors">
-                  <Phone size={12} className="text-indigo-400" /> {client.phone}
+                <a href={`tel:${client.phone}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 hover:border-teal-400 hover:text-white transition-colors">
+                  <Phone size={12} className="text-teal-400" /> {client.phone}
                 </a>
               ) : (
-                <span className="text-indigo-300/50 text-[11.5px] italic">No phone added</span>
+                <span className="text-teal-300/50 text-[11.5px] italic">No phone added</span>
               )}
               {client.email && (
-                <a href={`mailto:${client.email}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 hover:border-indigo-400 hover:text-white transition-colors">
-                  <Mail size={12} className="text-indigo-400" /> {client.email}
+                <a href={`mailto:${client.email}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 hover:border-teal-400 hover:text-white transition-colors">
+                  <Mail size={12} className="text-teal-400" /> {client.email}
                 </a>
               )}
               {(client.building_name || client.area) && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 text-slate-200">
-                  <MapPin size={12} className="text-indigo-400 shrink-0" />
+                  <MapPin size={12} className="text-teal-400 shrink-0" />
                   {[client.building_name, client.apartment, client.area, client.city].filter(Boolean).join(', ')}
                 </span>
               )}
@@ -698,7 +698,7 @@ export function ClientProfile() {
         </div>
 
         {/* ── Quick Stats Grid: Redesigned for Dark Midnight Theme ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-5 border-t border-indigo-900/50">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-5 border-t border-teal-800/50">
           <div className="text-center p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.07] transition-all">
             <p className="text-[17px] font-black text-white tracking-tight">AED {totalDJCharges.toLocaleString()}</p>
             <p className="text-[11px] font-bold text-slate-300 mt-1">Total Charges</p>
