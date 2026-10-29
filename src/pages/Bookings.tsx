@@ -63,16 +63,31 @@ function Initials({ name, idx, size = 'md' }: { name: string; idx: number; size?
   )
 }
 
+/* ─── Normalized Booking Status Helper ─── */
+export function normalizeBookingStatus(raw: string | undefined | null): BookingStatus {
+  if (!raw) return 'confirmed'
+  const s = raw.toLowerCase().trim()
+  if (s === 'pending' || s === 'awaiting') return 'pending'
+  if (s === 'in_progress' || s === 'live' || s === 'live now' || s === 'active' || s === 'started' || s === 'on site' || s === 'running') return 'in_progress'
+  if (s === 'completed' || s === 'done' || s === 'finished' || s === 'closed') return 'completed'
+  if (s === 'cancelled' || s === 'canceled' || s === 'rejected') return 'cancelled'
+  if (s === 'confirmed' || s === 'scheduled' || s === 'upcoming') return 'confirmed'
+  return 'confirmed'
+}
+
 /* ─── Status pill ─── */
 const statusConfig: Record<string, { bg: string; text: string; dot: string; label: string; border: string }> = {
   confirmed:   { bg: 'bg-emerald-50',  text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Scheduled', border: 'border-emerald-200' },
-  in_progress: { bg: 'bg-teal-50',     text: 'text-teal-700',    dot: 'bg-teal-500 animate-pulse', label: 'Live Now', border: 'border-teal-200' },
-  pending:     { bg: 'bg-amber-50',    text: 'text-amber-700',    dot: 'bg-amber-500',   label: 'Pending',   border: 'border-amber-200' },
+  scheduled:   { bg: 'bg-emerald-50',  text: 'text-emerald-700', dot: 'bg-emerald-500', label: 'Scheduled', border: 'border-emerald-200' },
+  in_progress: { bg: 'bg-sky-50',      text: 'text-sky-700',     dot: 'bg-sky-500 animate-pulse', label: 'Live Now', border: 'border-sky-200' },
+  live:        { bg: 'bg-sky-50',      text: 'text-sky-700',     dot: 'bg-sky-500 animate-pulse', label: 'Live Now', border: 'border-sky-200' },
+  pending:     { bg: 'bg-orange-50',   text: 'text-orange-700',  dot: 'bg-orange-500',   label: 'Pending',   border: 'border-orange-200' },
   cancelled:   { bg: 'bg-rose-50',     text: 'text-rose-700',     dot: 'bg-rose-400',    label: 'Cancelled', border: 'border-rose-200' },
-  completed:   { bg: 'bg-slate-50',    text: 'text-slate-700',    dot: 'bg-slate-400',   label: 'Done',      border: 'border-slate-200' },
+  completed:   { bg: 'bg-slate-100',   text: 'text-slate-700',    dot: 'bg-slate-400',   label: 'Done',      border: 'border-slate-200' },
 }
 function StatusPill({ status }: { status: string }) {
-  const c = statusConfig[status] ?? { bg: 'bg-slate-50', text: 'text-slate-700', dot: 'bg-slate-400', label: status, border: 'border-slate-200' }
+  const norm = normalizeBookingStatus(status)
+  const c = statusConfig[norm] ?? { bg: 'bg-slate-50', text: 'text-slate-700', dot: 'bg-slate-400', label: status, border: 'border-slate-200' }
   return (
     <span className={`text-[11px] px-2.5 py-[3px] rounded-full font-semibold inline-flex items-center gap-1.5 border ${c.bg} ${c.text} ${c.border}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
@@ -415,34 +430,47 @@ export function Bookings() {
     })
   }, [synchronizedBookings, activeDateRange])
 
-  // Filter by search, status, and service type
+  // Filter by search, status, and service type, with date descending sort for consistency across Today & All Time
   const filtered = useMemo(() => {
-    return dateFilteredBookings.filter((b) => {
-      const q = search.toLowerCase().trim()
-      const matchSearch = !q ||
-        b.client_name.toLowerCase().includes(q) ||
-        b.service_type.toLowerCase().includes(q) ||
-        b.service_address.toLowerCase().includes(q) ||
-        (b.client_phone && b.client_phone.includes(q))
-      
-      const matchStatus = statusFilter === 'all'
-        ? true
-        : statusFilter === 'unassigned'
-        ? (!b.assigned_crew || b.assigned_crew.length === 0) && b.status !== 'completed' && b.status !== 'cancelled'
-        : b.status === statusFilter
+    return dateFilteredBookings
+      .filter((b) => {
+        const q = search.toLowerCase().trim()
+        const matchSearch = !q ||
+          b.client_name.toLowerCase().includes(q) ||
+          b.service_type.toLowerCase().includes(q) ||
+          b.service_address.toLowerCase().includes(q) ||
+          (b.client_phone && b.client_phone.includes(q))
+        
+        const bStatus = normalizeBookingStatus(b.status)
+        const matchStatus = statusFilter === 'all'
+          ? true
+          : statusFilter === 'unassigned'
+          ? (!b.assigned_crew || b.assigned_crew.length === 0) && bStatus !== 'completed' && bStatus !== 'cancelled'
+          : bStatus === statusFilter
 
-      const matchService = serviceFilter === 'all' ||
-        b.service_type.toLowerCase().includes(serviceFilter.toLowerCase())
-      
-      return matchSearch && matchStatus && matchService
-    })
+        const matchService = serviceFilter === 'all' ||
+          b.service_type.toLowerCase().includes(serviceFilter.toLowerCase())
+        
+        return matchSearch && matchStatus && matchService
+      })
+      .sort((a, b) => {
+        const dateA = a.scheduled_date || (a.created_at ? a.created_at.split('T')[0] : '')
+        const dateB = b.scheduled_date || (b.created_at ? b.created_at.split('T')[0] : '')
+        if (dateA !== dateB) return dateB.localeCompare(dateA)
+        const timeA = a.scheduled_time || '00:00'
+        const timeB = b.scheduled_time || '00:00'
+        return timeA.localeCompare(timeB)
+      })
   }, [dateFilteredBookings, search, statusFilter, serviceFilter])
 
   const unassignedCount = useMemo(() => {
     return dateFilteredBookings.filter(
-      b => (!b.assigned_crew || b.assigned_crew.length === 0) &&
-           b.status !== 'completed' &&
-           b.status !== 'cancelled'
+      b => {
+        const bStatus = normalizeBookingStatus(b.status)
+        return (!b.assigned_crew || b.assigned_crew.length === 0) &&
+          bStatus !== 'completed' &&
+          bStatus !== 'cancelled'
+      }
     ).length
   }, [dateFilteredBookings])
 
@@ -452,21 +480,21 @@ export function Bookings() {
 
   const totalWorkloadValue = useMemo(() => {
     return dateFilteredBookings
-      .filter(b => b.status !== 'cancelled')
+      .filter(b => normalizeBookingStatus(b.status) !== 'cancelled')
       .reduce((s, b) => s + (b.total_amount || 0), 0)
   }, [dateFilteredBookings])
 
   const counts = {
     total:       dateFilteredBookings.length,
-    pending:     dateFilteredBookings.filter(b => b.status === 'pending').length,
-    confirmed:   dateFilteredBookings.filter(b => b.status === 'confirmed').length,
-    in_progress: dateFilteredBookings.filter(b => b.status === 'in_progress').length,
-    completed:   dateFilteredBookings.filter(b => b.status === 'completed').length,
-    cancelled:   dateFilteredBookings.filter(b => b.status === 'cancelled').length,
+    pending:     dateFilteredBookings.filter(b => normalizeBookingStatus(b.status) === 'pending').length,
+    confirmed:   dateFilteredBookings.filter(b => normalizeBookingStatus(b.status) === 'confirmed').length,
+    in_progress: dateFilteredBookings.filter(b => normalizeBookingStatus(b.status) === 'in_progress').length,
+    completed:   dateFilteredBookings.filter(b => normalizeBookingStatus(b.status) === 'completed').length,
+    cancelled:   dateFilteredBookings.filter(b => normalizeBookingStatus(b.status) === 'cancelled').length,
   }
 
   const completedRevenue = dateFilteredBookings
-    .filter(b => b.status === 'completed')
+    .filter(b => normalizeBookingStatus(b.status) === 'completed')
     .reduce((s, b) => s + (b.total_amount || 0), 0)
 
   // Auto-reset page when filters change
@@ -640,15 +668,10 @@ export function Bookings() {
     return (totalScheduledHours / counts.total).toFixed(1)
   }, [counts.total, totalScheduledHours])
 
-  // Card background styling when 'All Statuses' is selected
-  const getCardStatusTheme = (status: BookingStatus) => {
-    if (statusFilter !== 'all') {
-      return {
-        cardClass: 'bg-white border-teal-100/90 shadow-[0_4px_20px_rgba(13,148,136,0.04)] hover:shadow-xl hover:border-teal-300',
-        boxClass: 'bg-teal-50/30 border-teal-100/80',
-      }
-    }
-    switch (status) {
+  // Card background styling: consistent status-based pastel color hierarchy across Today, All Time, and all views
+  const getCardStatusTheme = (rawStatus: string | undefined | null) => {
+    const s = normalizeBookingStatus(rawStatus)
+    switch (s) {
       case 'pending':
         // Pending: light orange
         return {
@@ -681,8 +704,8 @@ export function Bookings() {
         }
       default:
         return {
-          cardClass: 'bg-white border-teal-100/90 shadow-[0_4px_20px_rgba(13,148,136,0.04)] hover:shadow-xl hover:border-teal-300',
-          boxClass: 'bg-teal-50/30 border-teal-100/80',
+          cardClass: 'bg-emerald-50/85 border-emerald-200/90 hover:bg-emerald-50 hover:border-emerald-400 shadow-[0_4px_20px_rgba(16,185,129,0.06)] hover:shadow-xl',
+          boxClass: 'bg-white/85 border-emerald-200/70',
         }
     }
   }
@@ -1926,7 +1949,7 @@ function WeekCalendar({ bookings, onSelect }: { bookings: Booking[]; onSelect: (
   )
 }
 
-/* ─── Kanban board (Showing First 5 Entries + "View All" Button) ─── */
+/* ─── Kanban board (Showing First 3 Entries + "View All" Button) ─── */
 function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b: Booking) => void }) {
   const [expandedCols, setExpandedCols] = useState<Record<string, boolean>>({})
 
@@ -1943,7 +1966,7 @@ function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b
   ]
 
   const grouped = cols.reduce((acc, c) => {
-    acc[c.key] = bookings.filter(b => b.status === c.key)
+    acc[c.key] = bookings.filter(b => normalizeBookingStatus(b.status) === c.key)
     return acc
   }, {} as Record<string, Booking[]>)
 
@@ -1952,8 +1975,8 @@ function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b
       {cols.map(col => {
         const colBookings = grouped[col.key] ?? []
         const isExpanded = Boolean(expandedCols[col.key])
-        const displayed = isExpanded ? colBookings : colBookings.slice(0, 5)
-        const hasMore = colBookings.length > 5
+        const displayed = isExpanded ? colBookings : colBookings.slice(0, 3)
+        const hasMore = colBookings.length > 3
 
         return (
           <div key={col.key} className="min-w-[270px] flex-1 flex flex-col">
@@ -2006,14 +2029,14 @@ function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b
                 </div>
               ))}
 
-              {/* View All Button when column has > 5 entries */}
+              {/* View All Button when column has > 3 entries */}
               {hasMore && (
                 <button
                   type="button"
                   onClick={() => toggleExpand(col.key)}
                   className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-teal-50 border border-teal-200/80 text-[11.5px] font-bold text-teal-900 shadow-2xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 >
-                  <span>{isExpanded ? 'Show Less' : `View All (${colBookings.length - 5} more)`}</span>
+                  <span>{isExpanded ? 'Show Less' : `View All (${colBookings.length - 3} more)`}</span>
                   <ChevronDown size={13} className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                 </button>
               )}

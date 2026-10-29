@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main` or `claude/workspace`, not yet confirmed deployed)
 
+- feat(bookings): Updated Board View (Kanban) to display strictly first 3 entries vertically per status column with "View All" button; unified status color hierarchy consistency across "Today", "All Time", and all date presets with status normalization and descending date sorting
 - feat(bookings): Redesigned Booking Details popup (BookingDetailModal) into an executive layout — moved Edit and Delete buttons to top header next to Close (X) button, added Save button in header, restricted bottom footer strictly to workflow status transitions
 - feat(bookings): Updated booking card background colors for "All Statuses" mode — Pending: light orange, Scheduled: light green, Live: light blue, Completed: light grey, Cancelled: light red across Card Grid and Kanban views
 
