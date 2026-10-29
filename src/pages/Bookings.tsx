@@ -328,7 +328,7 @@ export function Bookings() {
     if (paymentBooking.id.startsWith('dj-')) {
       const jobId = paymentBooking.id.replace('dj-', '')
       const curJob = dailyJobs.find(j => j.id === jobId)
-      const curReceived = (curJob?.received !== undefined && curJob?.received !== '') ? Number(curJob.received) : 0
+      const curReceived = (curJob?.received !== undefined && (curJob.received as any) !== '') ? Number(curJob.received) : 0
       const newReceived = curReceived + paidAmt
       updateDailyJob(jobId, { received: newReceived })
     } else {

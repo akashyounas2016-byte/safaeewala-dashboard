@@ -73,10 +73,11 @@ export function BookingInvoiceModal({ booking, open, onClose }: BookingInvoiceMo
       const invNum = nextInvoiceNumber(invoices)
       const newInvDraft: Omit<Invoice, 'id' | 'created_at'> = {
         invoice_number: invNum,
-        client_id: matchedClient?.id || booking.client_id || undefined,
+        client_id: matchedClient?.id || booking.client_id || '',
         client_name: booking.client_name,
         client_address: booking.service_address || 'Dubai, UAE',
         booking_id: booking.id,
+        company_trn: company.trn || '',
         subtotal: bookingAmt,
         vat_rate: vatRate,
         apply_vat: vatRate > 0,
@@ -85,7 +86,7 @@ export function BookingInvoiceModal({ booking, open, onClose }: BookingInvoiceMo
         status: booking.status === 'completed' || (booking.received_amount && booking.received_amount >= booking.total_amount) ? 'paid' : 'sent',
         paid_date: (booking.status === 'completed' || (booking.received_amount && booking.received_amount >= booking.total_amount)) ? todayDubai() : undefined,
         amount_paid: booking.received_amount || (booking.status === 'completed' ? totalAmount : 0),
-        due_date: dueDate || booking.scheduled_date,
+        due_date: dueDate || booking.scheduled_date || todayDubai(),
         line_items: [
           {
             description: `${booking.service_type} (${booking.duration_hours || 3} Hours on ${booking.scheduled_date})`,
@@ -151,7 +152,7 @@ export function BookingInvoiceModal({ booking, open, onClose }: BookingInvoiceMo
                 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                 : existingInvoice.status === 'sent'
                 ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                : existingInvoice.status === 'partly paid'
+                : (existingInvoice.status as any) === 'partly paid'
                 ? 'bg-amber-100 text-amber-800 border border-amber-300'
                 : 'bg-slate-100 text-slate-700'
             }`}>

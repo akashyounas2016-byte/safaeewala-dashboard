@@ -243,19 +243,25 @@ export function ClientProfile() {
         scheduled_time: matchingBooking.scheduled_time || '09:00',
         duration_hours: matchingBooking.duration_hours || 3,
         created_at: matchingBooking.created_at || matchingBooking.scheduled_date,
-      } as Client
+        total_bookings: 1,
+        total_spent: matchingBooking.total_amount || 0,
+      } as unknown as Client
     }
 
     // 6. Synthesize client from DailyJobs if exists there
-    const matchingJob = dailyJobs.find(j =>
-      j.client && (j.client.toLowerCase().trim() === decodedId || (cleanId.length >= 7 && j.phone && j.phone.replace(/\D/g, '').endsWith(cleanId)))
-    )
+    const matchingJob = dailyJobs.find(j => {
+      const jc = (j as any).client || (j as any).client_name || ''
+      const jp = (j as any).phone || ''
+      return (jc && jc.toLowerCase().trim() === decodedId) || (cleanId.length >= 7 && jp && jp.replace(/\D/g, '').endsWith(cleanId))
+    })
     if (matchingJob) {
+      const jc = (matchingJob as any).client || (matchingJob as any).client_name || 'Client'
+      const jp = (matchingJob as any).phone || ''
       return {
-        id: `job-${encodeURIComponent(matchingJob.client)}`,
-        full_name: matchingJob.client,
-        phone: matchingJob.phone || '',
-        whatsapp: matchingJob.phone || '',
+        id: `job-${encodeURIComponent(jc)}`,
+        full_name: jc,
+        phone: jp,
+        whatsapp: jp,
         building_name: matchingJob.address || '',
         apartment: '',
         area: 'Dubai',
@@ -263,7 +269,9 @@ export function ClientProfile() {
         source: 'daily_job_sheet',
         service_days: [],
         created_at: matchingJob.date,
-      } as Client
+        total_bookings: 1,
+        total_spent: Number((matchingJob as any).charges || 0),
+      } as unknown as Client
     }
 
     return null
