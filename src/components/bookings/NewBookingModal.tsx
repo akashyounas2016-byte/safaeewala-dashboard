@@ -852,14 +852,25 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
                       ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
                       : 'bg-slate-100 text-slate-600 border border-slate-200'
                   }`}>
-                    {material === 'Yes' ? 'Required (Yes)' : 'No (Client)'}
+                    {material}
                   </span>
                 </label>
                 <div className="grid grid-cols-2 gap-1 bg-white p-1 rounded-xl border border-emerald-200/80 shadow-2xs h-[38px] items-center">
                   <button
                     type="button"
+                    onClick={() => setMaterial('Yes')}
+                    className={`h-[28px] rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center ${
+                      material === 'Yes'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'text-slate-400 hover:text-emerald-700'
+                    }`}
+                  >
+                    <span>Yes</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setMaterial('No')}
-                    className={`h-[28px] rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                    className={`h-[28px] rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center ${
                       material === 'No'
                         ? 'bg-slate-100 text-slate-800 border border-slate-300 shadow-2xs'
                         : 'text-slate-400 hover:text-slate-600'
@@ -867,39 +878,7 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
                   >
                     <span>No</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setMaterial('Yes')}
-                    className={`h-[28px] rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                      material === 'Yes'
-                        ? 'bg-emerald-600 text-white shadow-2xs'
-                        : 'text-slate-400 hover:text-emerald-700'
-                    }`}
-                  >
-                    <Sparkles size={11} className={material === 'Yes' ? 'text-white' : 'text-emerald-600'} />
-                    <span>Yes (Required)</span>
-                  </button>
                 </div>
-              </div>
-            </div>
-
-            {/* Quick Shift Summary line */}
-            <div className="flex items-center justify-between text-[11px] px-3 py-1.5 rounded-xl bg-emerald-100/70 border border-emerald-200/80 text-emerald-950 font-medium">
-              <span className="flex items-center gap-1.5">
-                <Clock size={12} className="text-emerald-700" />
-                <span>Shift: <strong>{startTime || '—'}</strong> to <strong>{endTime || '—'}</strong></span>
-              </span>
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-emerald-800 bg-white px-2 py-0.5 rounded shadow-2xs">
-                  {duration}h Duty
-                </span>
-                <span className={`font-bold px-2 py-0.5 rounded shadow-2xs ${
-                  material === 'Yes'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-white text-slate-700'
-                }`}>
-                  {material === 'Yes' ? 'Material: Required' : 'Material: No'}
-                </span>
               </div>
             </div>
 

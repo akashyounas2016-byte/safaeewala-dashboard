@@ -3231,14 +3231,14 @@ function BookingDetailModal({
                 />
               </div>
               <div>
-                <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Cleaning Material</label>
+                <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Material</label>
                 <select
                   value={material}
                   onChange={e => setMaterial(e.target.value as 'Yes' | 'No')}
                   className="w-full text-[13px] px-2.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-bold text-slate-900 cursor-pointer"
                 >
-                  <option value="No">No Material</option>
-                  <option value="Yes">Yes (Required)</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
                 </select>
               </div>
             </div>
