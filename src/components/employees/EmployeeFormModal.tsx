@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input'
 import type { Employee, Agency, Client, EmployeeDocument, EmployeeRole } from '@/types'
 import { MONTHLY_WORK_HOURS, formatEmpRole } from '@/lib/clientDataSync'
 import { EmployeeDocInput, EmployeeDocumentPreviewModal } from './EmployeeDocumentField'
+import { todayDubai } from '@/lib/dubaiTime'
 
 export interface EmployeeFormModalProps {
   open: boolean
@@ -184,7 +185,7 @@ function EmployeeFormModalContent({
       medical_insurance: (fd.get('medical_insurance') as string) || undefined,
       medical_insurance_expiry: (fd.get('medical_insurance_expiry') as string) || undefined,
       medical_insurance_file: docs.medical_insurance?.file_data || initialEmployee?.medical_insurance_file,
-      joined_date: (fd.get('joined_date') as string) || initialEmployee?.joined_date || new Date().toISOString().split('T')[0],
+      joined_date: (fd.get('joined_date') as string) || initialEmployee?.joined_date || todayDubai(),
       end_date: (fd.get('end_date') as string) || undefined,
       noc: (fd.get('noc') as string) || undefined,
       noc_file: docs.noc?.file_data || initialEmployee?.noc_file,
@@ -375,7 +376,7 @@ function EmployeeFormModalContent({
                   name="joined_date"
                   label="Joined Date"
                   type="date"
-                  defaultValue={initialEmployee?.joined_date || new Date().toISOString().split('T')[0]}
+                  defaultValue={initialEmployee?.joined_date || todayDubai()}
                 />
                 <Input
                   name="end_date"

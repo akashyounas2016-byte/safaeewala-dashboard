@@ -1,5 +1,6 @@
 import type { Booking, Client, DailyJob, Invoice } from '@/types'
 import { calcJobOTHours, isBogusJob, cleanClientNameFromAddress } from '@/lib/clientDataSync'
+import { todayDubai } from '@/lib/dubaiTime'
 
 export type IssueType = 'duplicate' | 'missing_data' | 'scheduling_conflict' | 'financial_anomaly'
 export type IssueSeverity = 'high' | 'medium' | 'low'
@@ -38,7 +39,7 @@ export interface AIHealthReport {
  */
 export function analyzeCRMHealth(bookings: Booking[], clients: Client[]): AIHealthReport {
   const issues: DetectedIssue[] = []
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = todayDubai()
 
   // 1. Detect Duplicate Bookings
   // Same normalized phone or same client name on the same scheduled date

@@ -30,6 +30,7 @@ import {
 import { LeadsKanban } from '@/components/leads/LeadsKanban'
 import { findDuplicateLeads } from '@/lib/leads'
 import { sendGHLBookingConfirmation } from '@/lib/ghlService'
+import { todayDubai } from '@/lib/dubaiTime'
 
 /* ─── Column Customization Definitions ─── */
 interface FluentColDef {
@@ -402,7 +403,7 @@ export function FluentFormsLeads() {
           service_needed: 'Deep Cleaning',
           property_type: 'Apartment',
           area_location: 'Shoreline Apartments # 6',
-          preferred_date: new Date().toISOString().split('T')[0],
+          preferred_date: todayDubai(),
           source_url: 'https://safaeewala.com/services/deep-cleaning',
         })
       })
@@ -435,7 +436,7 @@ export function FluentFormsLeads() {
       )
 
       if (!alreadyBooked) {
-        const scheduledDate = targetLead.preferred_date || new Date().toISOString().split('T')[0]
+        const scheduledDate = targetLead.preferred_date || todayDubai()
         const scheduledTime = targetLead.preferred_time || '09:00 AM'
         const totalAmount   = targetLead.estimated_value || 0 // no invented price
         const serviceType   = targetLead.service || `${targetLead.category} Cleaning`
@@ -526,7 +527,7 @@ export function FluentFormsLeads() {
     if (!convertingLead) return
     const fd = new FormData(e.currentTarget)
 
-    const scheduledDate = (fd.get('scheduled_date') as string) || new Date().toISOString().split('T')[0]
+    const scheduledDate = (fd.get('scheduled_date') as string) || todayDubai()
     const scheduledTime = (fd.get('scheduled_time') as string) || '09:00 AM'
     const totalAmount   = Number(fd.get('total_amount')) || convertingLead.estimated_value || 500
     const serviceType   = (fd.get('service_type') as string) || convertingLead.service || `${convertingLead.category} Service`
@@ -1919,7 +1920,7 @@ export function FluentFormsLeads() {
                 label="Scheduled Date"
                 name="scheduled_date"
                 type="date"
-                defaultValue={convertingLead.preferred_date || new Date().toISOString().split('T')[0]}
+                defaultValue={convertingLead.preferred_date || todayDubai()}
                 required
               />
               <Input

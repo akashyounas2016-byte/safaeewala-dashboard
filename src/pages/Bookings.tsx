@@ -19,6 +19,7 @@ import { useData } from '@/store/DataContext'
 import type { Booking, BookingFrequency, BookingStatus, Employee } from '@/types'
 import { SourceOriginTag, resolveBookingSource } from '@/lib/sourceTracking'
 import { cleanClientNameFromAddress, isBogusJob, isMonthlyClient, crewToStaffName, staffNameToCrew } from '@/lib/clientDataSync'
+import { todayDubai } from '@/lib/dubaiTime'
 
 export type BookingDatePreset = 'today' | '7days' | '30days' | '3months' | '6months' | '1year' | 'all' | 'custom'
 export type BookingViewMode = 'grid' | 'table' | 'kanban' | 'calendar'
@@ -134,7 +135,7 @@ function exportBookingsXLSX(bookings: Booking[]) {
   const ws = XLSX.utils.json_to_sheet(rows)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Bookings')
-  XLSX.writeFile(wb, `bookings-${new Date().toISOString().split('T')[0]}.xlsx`)
+  XLSX.writeFile(wb, `bookings-${todayDubai()}.xlsx`)
 }
 
 async function parseBookingsFile(file: File): Promise<Parameters<(b: any) => void>[0][]> {
@@ -312,7 +313,7 @@ export function Bookings() {
       const comboKey = `${j.date}__${clientName.toLowerCase().trim()}`
       if (existingDateClientSet.has(comboKey)) return
 
-      const nowStr = new Date().toISOString().split('T')[0]
+      const nowStr = todayDubai()
       let status: BookingStatus = 'confirmed'
       if (j.received > 0) {
         status = 'completed'

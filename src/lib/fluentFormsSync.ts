@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { FluentFormLead, LeadStatus } from '@/types'
 import * as XLSX from 'xlsx'
+import { todayDubai } from '@/lib/dubaiTime'
 
 const STORAGE_KEY = 'safaeewala_fluent_form_leads'
 
@@ -434,7 +435,7 @@ export function exportLeadsToXLSX(leads: FluentFormLead[]) {
   const ws = XLSX.utils.json_to_sheet(rows)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Website Leads')
-  XLSX.writeFile(wb, `fluent-forms-leads-${new Date().toISOString().split('T')[0]}.xlsx`)
+  XLSX.writeFile(wb, `fluent-forms-leads-${todayDubai()}.xlsx`)
 }
 
 /* ─── Webhook Configuration & cURL Helper ─── */

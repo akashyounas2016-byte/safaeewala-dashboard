@@ -20,6 +20,7 @@ import type { Booking, BookingFrequency, DailyJob, DailyPendingItem, DailyPendin
 import { invoicedJobIds } from '@/lib/receivables'
 import { cleanClientNameFromAddress, isBogusJob, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, jobCollected } from '@/lib/clientDataSync'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
+import { todayDubai } from '@/lib/dubaiTime'
 
 function cleanNum(val: any): number {
   if (val === null || val === undefined || val === '') return 0

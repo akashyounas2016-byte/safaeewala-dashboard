@@ -25,6 +25,7 @@ import * as XLSX from 'xlsx'
 import { useNavigate } from 'react-router-dom'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
 import type { MonthlyClientPayment } from '@/types'
+import { todayDubai } from '@/lib/dubaiTime'
 
 export type { MonthlyClientPayment }
 
@@ -157,14 +158,14 @@ export function PaymentProcessing() {
   const [editingItem, setEditingItem] = useState<EditPaymentJobItem | null>(null)
   const [collectAmount, setCollectAmount] = useState('')
   const [collectMethod, setCollectMethod] = useState<'Cash' | 'Bank Transfer' | 'Credit Card' | 'Cheque'>('Cash')
-  const [collectDate, setCollectDate] = useState(new Date().toISOString().split('T')[0])
+  const [collectDate, setCollectDate] = useState(todayDubai())
   const [selectedMonthlyPayment, setSelectedMonthlyPayment] = useState<MonthlyClientPayment | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
 
   // ── Record Monthly Payment Form State ──
   const [mClientName, setMClientName] = useState('')
   const [mAmount, setMAmount] = useState('')
-  const [mDate, setMDate] = useState(new Date().toISOString().split('T')[0])
+  const [mDate, setMDate] = useState(todayDubai())
   const [mMethod, setMMethod] = useState<'Bank Transfer' | 'Cash' | 'Credit Card' | 'Cheque' | 'Online'>('Bank Transfer')
   const [mRef, setMRef] = useState('')
   const [mMonth, setMMonth] = useState(new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }))
@@ -386,7 +387,7 @@ export function PaymentProcessing() {
       id: `mp-${Date.now()}`,
       clientName: mClientName.trim(),
       amount: amt,
-      date: mDate || new Date().toISOString().split('T')[0],
+      date: mDate || todayDubai(),
       paymentMethod: mMethod,
       referenceNumber: mRef.trim() || undefined,
       invoiceMonth: mMonth.trim() || undefined,
@@ -458,7 +459,7 @@ export function PaymentProcessing() {
       area: item.area !== '—' ? item.area : (raw?.area || ''),
       service: item.service,
       staffName: item.staffName !== '—' ? item.staffName : (raw?.staff_name || ''),
-      date: item.date || new Date().toISOString().split('T')[0],
+      date: item.date || todayDubai(),
       startTime: raw?.start_time || '',
       endTime: raw?.end_time || '',
       dutyHours: raw?.duty_hours ?? 0,
@@ -632,7 +633,7 @@ export function PaymentProcessing() {
 
   // ── Export to Excel ──
   const handleExportExcel = () => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = todayDubai()
     if (activeTab === 'pending') {
       const rows = filteredPendingRecords.map((r, i) => ({
         '#': i + 1,

@@ -54,7 +54,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ### R-ATT-04 — Who appears on the attendance list
 - **Rule:** Registered non-inactive employees, plus unregistered names seen on the job sheet in the last 60 days, plus anyone with a shift on the selected date. Shared rows ("Sita, Rupa") are split per cleaner. No hard-coded roster.
-- **Code:** `Attendance.tsx → allKnownCleaners`.
+- **Code:** `src/lib/attendance.ts → buildCleanerRoster` (Attendance + Daily Job Sheet).
 - **Status:** Active · Since: 2026-10-27 (AUD-08, AUD-18)
 
 ### R-ATT-02 — A worked row is never an absence
@@ -129,6 +129,21 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** Pickers, filters and assign lists show live data only. Demo seed data (`src/lib/seedData.ts`, client ids `c1000001-0000-0000-0000-…`) appears only when there is no real data at all, and is excluded from assign lists.
 - **Code:** `clientDataSync.ts → getAssignableClients`; Employees agency filter reads only `agencies`; dummy agencies removed from `defaultAgencies`.
 - **Status:** Active — seed fallbacks and demo data files removed 2026-10-27 (AUD-12).
+
+### R-DATA-06 — Business dates follow Dubai time
+- **Rule:** "Today", "this month" and every saved business date use the Asia/Dubai calendar, whatever the timezone of the computer. Excel calendar dates are read as written (no UTC shift); text dates are day/month/year.
+- **Code:** `src/lib/dubaiTime.ts` (`todayDubai`, `monthDubai`, `calendarDate`); never `new Date().toISOString().split('T')[0]`.
+- **Status:** Active · Since: 2026-10-29 (AUD-46, AUD-47, DEC-012)
+
+### R-DATA-07 — The job sheet never deletes or overwrites rows by itself
+- **Rule:** Rows that look like sheet totals or empty stubs are hidden and offered for review, never auto-deleted. Excel mode saves only the rows the user added, edited or removed, keeps unsaved edits through background changes, keeps a local draft and warns before leaving.
+- **Code:** `DailyJobSheet.tsx` (hidden rows notice), `JobSheetSpreadsheet.tsx` (`pendingChanges`, `handleSaveAll`, draft `safaeewala_excel_draft:*`).
+- **Status:** Active · Since: 2026-10-29 (AUD-44, AUD-48, AUD-49, UX-33, UX-34)
+
+### R-DATA-08 — Closed days are locked
+- **Rule:** A day closed on the Daily Job Sheet cannot be edited, added to, deleted from or re-imported until it is reopened (with a confirmation). Row checks warn but never block.
+- **Code:** `src/lib/closedDays.ts`, `DailyJobSheet.tsx → blockIfClosed`, `src/lib/jobChecks.ts`.
+- **Status:** Active · Since: 2026-10-29 (UX-26, UX-27). Excel mode does not check the lock yet.
 
 ---
 
@@ -291,4 +306,4 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 | K-04 | New employee/agency fields may not exist as Supabase columns → writes rejected. Now visible (banner) and retried; fixed for good once the Phase 2 migration is run. | R-EMP-*, R-SYNC-05 | Open |
 | ~~K-05~~ | ✅ Fixed 2026-10-27: no seed/demo data is loaded. | R-DATA-03 | **Resolved** |
 
-Full list of sync / dummy-data issues with locations: [docs/audits/2026-10-27-data-sync-audit.md](docs/audits/2026-10-27-data-sync-audit.md) (AUD-01 … AUD-23), and for the finance & operations screens: [docs/audits/2026-10-27-finance-ops-screens-audit.md](docs/audits/2026-10-27-finance-ops-screens-audit.md) (AUD-24 … AUD-42).
+Full list of sync / dummy-data issues with locations: [docs/audits/2026-10-27-data-sync-audit.md](docs/audits/2026-10-27-data-sync-audit.md) (AUD-01 … AUD-23), and for the finance & operations screens: [docs/audits/2026-10-27-finance-ops-screens-audit.md](docs/audits/2026-10-27-finance-ops-screens-audit.md) (AUD-24 … AUD-42), and for the Daily Job Sheet & Excel mode: [docs/audits/2026-10-29-daily-job-sheet-audit.md](docs/audits/2026-10-29-daily-job-sheet-audit.md) (AUD-44 … AUD-58).

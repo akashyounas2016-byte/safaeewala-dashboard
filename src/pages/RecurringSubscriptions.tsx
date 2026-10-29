@@ -4,6 +4,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
+import { todayDubai } from '@/lib/dubaiTime'
 
 interface RecurringContract {
   id: string
@@ -84,15 +85,15 @@ export function RecurringSubscriptions() {
     serviceType: '',
     frequency: 'weekly',
     amount: 0,
-    startDate: new Date().toISOString().split('T')[0],
+    startDate: todayDubai(),
     renewalDate: '',
     status: 'active',
-    lastBilled: new Date().toISOString().split('T')[0],
+    lastBilled: todayDubai(),
     nextBillingDate: '',
   })
 
   const handleAdd = () => {
-    const today = new Date().toISOString().split('T')[0]
+    const today = todayDubai()
     const nextBilling = new Date()
     nextBilling.setDate(nextBilling.getDate() + frequencyDays['weekly'])
 

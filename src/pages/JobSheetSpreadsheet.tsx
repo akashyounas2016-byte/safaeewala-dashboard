@@ -8,7 +8,7 @@ import {
   Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table,
   Printer, MoreVertical, ChevronDown, ExternalLink, CornerDownLeft,
   ChevronUp, Eye, EyeOff, SlidersHorizontal, ArrowUp, ArrowDown,
-  CloudUpload, Calendar, GripVertical, Info
+  CloudUpload, Calendar, GripVertical, Info, History
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
@@ -30,10 +30,15 @@ import {
   getScheduledMonthlyShiftsForDate,
   syncMonthlySchedulesToDailyJobs,
   buildPendingCalcContext,
-  calcJobPending,
+  calcJobCollectable,
+  getAssignableClients,
   type ScheduledShiftPlan,
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
+import { todayDubai } from '@/lib/dubaiTime'
+import { confirmAsync } from '@/lib/notify'
+import { invoicedJobIds } from '@/lib/receivables'
+import { fetchRecordHistory, type AuditEntry } from '@/lib/auditLog'
 
 /* ─── Column Schema for the Excel Grid (Daily Job Sheet Exact Sequence) ─── */
 export interface ColumnDef {
@@ -782,6 +787,38 @@ export const LIGHT_PALETTE_KEYS = [
 
 const PALETTE_KEYS = Object.keys(BLOCK_PALETTES)
 
+// ── Safe save helpers (AUD-49, UX-33, UX-34) ──
+const SAVED_FIELDS = [
+  'date', 'staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'address', 'area',
+  'charges', 'received', 'payment_mode', 'material', 'service', 'remarks',
+] as const
+const NUMERIC_FIELDS = new Set<string>(['duty_hours', 'ot_hours', 'charges', 'received'])
+const fieldValue = (row: DailyJob, k: (typeof SAVED_FIELDS)[number]) =>
+  NUMERIC_FIELDS.has(k) ? cleanNum(row[k]) : String(row[k] ?? '').trim()
+/** True when the two rows hold the same saved values */
+const sameJobRow = (a: DailyJob, b: DailyJob) => SAVED_FIELDS.every(k => fieldValue(a, k) === fieldValue(b, k))
+/** A new grid row the user never filled in — not worth saving */
+const isBlankNewRow = (r: DailyJob) =>
+  !String(r.address || '').trim() && !String(r.area || '').trim() && cleanNum(r.charges) === 0 &&
+  cleanNum(r.received) === 0 && !String(r.service || '').trim() && !String(r.remarks || '').trim()
+const DRAFT_PREFIX = 'safaeewala_excel_draft:' // local only, never cloud-synced
+
+/** Column presets (UX-39) — the columns each preset shows */
+const COLUMN_PRESETS: Record<string, string[] | null> = {
+  'All columns': null,
+  Cashier: ['date', 'staff_name', 'address', 'charges', 'received', 'pending', 'payment_mode', 'remarks'],
+  Payroll: ['date', 'staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'remarks'],
+  Ops: ['date', 'staff_name', 'start_time', 'end_time', 'address', 'area', 'service', 'material', 'remarks'],
+}
+/** Temporary id for a grid row that is not saved yet */
+const newRowId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+/** Columns that are calculated, never typed into */
+const READ_ONLY_COLS = new Set(['pending'])
+/** Cell editor → datalist id (UX-35) */
+const AUTOCOMPLETE_LIST: Record<string, string> = { staff_name: 'xl-staff', address: 'xl-address', area: 'xl-area', service: 'xl-service' }
+/** Rows drawn at once in long periods (AUD-56, UX-38) */
+const RENDER_PAGE = 300
+
 function safeGet<T>(key: string, fallback: T): T {
   try {
     const val = localStorage.getItem(key)
@@ -894,13 +931,13 @@ function evaluateFormula(
 export function JobSheetSpreadsheet() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { dailyJobs, clients, employees, addDailyJob, updateDailyJob, deleteDailyJob } = useData()
+  const { dailyJobs, clients, employees, invoices, addDailyJob, updateDailyJob, deleteDailyJob } = useData()
 
   // ── Target Date Selection & Dynamic Filters ──
   const qDate = searchParams.get('date')
   const initialDate = qDate && /^\d{4}-\d{2}-\d{2}$/.test(qDate)
     ? qDate
-    : new Date().toISOString().split('T')[0]
+    : todayDubai()
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [dateFilterMode, setDateFilterMode] = useState<'single' | 'today' | 'yesterday' | 'range' | 'all'>('single')
   const [rangeStart, setRangeStart] = useState<string>(initialDate)
@@ -914,8 +951,8 @@ export function JobSheetSpreadsheet() {
   const autoSyncedDatesRef = useRef<Set<string>>(new Set())
 
   const effectiveTargetDate = useMemo(() => {
-    if (dateFilterMode === 'today') return new Date().toISOString().split('T')[0]
-    if (dateFilterMode === 'yesterday') return addDaysToYMD(new Date().toISOString().split('T')[0], -1)
+    if (dateFilterMode === 'today') return todayDubai()
+    if (dateFilterMode === 'yesterday') return addDaysToYMD(todayDubai(), -1)
     return selectedDate
   }, [selectedDate, dateFilterMode])
 
@@ -996,6 +1033,34 @@ export function JobSheetSpreadsheet() {
   const columns = useMemo(() => {
     return buildColumnsWithLetters(columnOrder, hiddenColIds)
   }, [columnOrder, hiddenColIds])
+
+  // Row history (UX-40) — from audit_log
+  const [rowHistory, setRowHistory] = useState<{ label: string; loading: boolean; entries: AuditEntry[] } | null>(null)
+  const openRowHistory = (job: DailyJob) => {
+    setContextMenu(null)
+    const label = `${job.staff_name || '—'} · ${job.date}`
+    setRowHistory({ label, loading: true, entries: [] })
+    void fetchRecordHistory(job.id).then(entries => setRowHistory(h => (h && h.label === label ? { label, loading: false, entries } : h)))
+  }
+
+  /** UX-39: show only the columns a role needs */
+  const applyColumnPreset = (name: string) => {
+    const keep = COLUMN_PRESETS[name]
+    const next = keep ? DEFAULT_COLUMN_DEFS.map(c => c.id as string).filter(id => !keep.includes(id)) : []
+    setHiddenColIds(next)
+    safeLocalStorageSet('safaeewala_excel_hidden_columns', next)
+    showToast(`Columns: ${name}`)
+  }
+
+  // Autocomplete sources (UX-35) — live data only
+  const staffOptions = useMemo(() => employees.filter(e => e.status !== 'inactive' && e.full_name).map(e => e.full_name.trim()).sort((a, b) => a.localeCompare(b)), [employees])
+  const addressOptions = useMemo(() => {
+    const set = new Set<string>()
+    getAssignableClients(clients).forEach(c => { if (c.full_name) set.add(c.full_name.trim()); if (c.building_name) set.add(c.building_name.trim()) })
+    return Array.from(set).sort((a, b) => a.localeCompare(b)).slice(0, 1000)
+  }, [clients])
+  const areaOptions = useMemo(() => Array.from(new Set(dailyJobs.map(j => (j.area || '').trim()).filter(a => a && a !== '—'))).sort().slice(0, 300), [dailyJobs])
+  const serviceOptions = useMemo(() => Array.from(new Set(dailyJobs.map(j => (j.service || '').trim()).filter(a => a && a !== '—'))).sort().slice(0, 200), [dailyJobs])
 
   const toggleColumnVisibility = (colId: string) => {
     setHiddenColIds(prev => {
@@ -1119,6 +1184,9 @@ export function JobSheetSpreadsheet() {
   const [gridRows, setGridRows] = useState<DailyJob[]>([])
   // Shared pending formula (adjustments, advance deductions, later collections)
   const pendingCtx = useMemo(() => buildPendingCalcContext(), [])
+  // Same receivable rule as the Job Sheet, Pending and Overview (AUD-53, R-FIN-05)
+  const invoicedIds = useMemo(() => invoicedJobIds(invoices), [invoices])
+  const rowPending = (r: DailyJob) => calcJobCollectable(r, pendingCtx, invoicedIds)
   const [history, setHistory]   = useState<DailyJob[][]>([])
   const [future, setFuture]     = useState<DailyJob[][]>([])
 
@@ -1127,7 +1195,10 @@ export function JobSheetSpreadsheet() {
   const [editingCell, setEditingCell] = useState<{ rowIdx: number; colId: string; tempValue: string } | null>(null)
   const [formulaBarValue, setFormulaBarValue] = useState<string>('')
   const [filterSearch, setFilterSearch] = useState('')
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  // What the grid was loaded from — Save All writes only the differences (AUD-49)
+  const [loadedSnapshot, setLoadedSnapshot] = useState<Map<string, DailyJob>>(() => new Map())
+  const [remoteConflict, setRemoteConflict] = useState(false)
+  const [draftOffer, setDraftOffer] = useState<{ rows: DailyJob[]; savedAt: number } | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   // ── UI View Options (Default: flat grid first as requested) ──
@@ -1164,28 +1235,101 @@ export function JobSheetSpreadsheet() {
   const formulaInputRef = useRef<HTMLInputElement>(null)
   const spreadsheetRef = useRef<HTMLDivElement>(null)
 
-  // Load jobs based on selected date and dynamic date filter mode
+  // Jobs of the period shown in the grid
+  const periodKey = `${dateFilterMode}|${selectedDate}|${rangeStart}|${rangeEnd}`
+  const periodJobs = useMemo(() => {
+    if (dateFilterMode === 'today') { const t = todayDubai(); return dailyJobs.filter(j => j.date === t) }
+    if (dateFilterMode === 'yesterday') { const y = addDaysToYMD(todayDubai(), -1); return dailyJobs.filter(j => j.date === y) }
+    if (dateFilterMode === 'range') return dailyJobs.filter(j => j.date >= rangeStart && j.date <= rangeEnd)
+    if (dateFilterMode === 'all') return [...dailyJobs]
+    return dailyJobs.filter(j => j.date === selectedDate)
+  }, [dailyJobs, dateFilterMode, selectedDate, rangeStart, rangeEnd])
+
+  /** Rows added, edited and removed in the grid compared with what was loaded (UX-33) */
+  const pendingChanges = useMemo(() => {
+    const gridIds = new Set(gridRows.map(r => r.id))
+    const added = gridRows.filter(r => !loadedSnapshot.has(r.id) && !isBlankNewRow(r))
+    const edited = gridRows.filter(r => { const o = loadedSnapshot.get(r.id); return o && !sameJobRow(o, r) })
+    const removed = Array.from(loadedSnapshot.values()).filter(o => !gridIds.has(o.id))
+    return { added, edited, removed, count: added.length + edited.length + removed.length }
+  }, [gridRows, loadedSnapshot])
+  const hasUnsavedChanges = pendingChanges.count > 0
+
+  const latest = useRef({ gridRows, loadedSnapshot, hasUnsavedChanges, periodKey: '' })
   useEffect(() => {
-    let jobs: DailyJob[] = []
-    if (dateFilterMode === 'today') {
-      const today = new Date().toISOString().split('T')[0]
-      jobs = dailyJobs.filter(j => j.date === today)
-    } else if (dateFilterMode === 'yesterday') {
-      const yest = addDaysToYMD(new Date().toISOString().split('T')[0], -1)
-      jobs = dailyJobs.filter(j => j.date === yest)
-    } else if (dateFilterMode === 'range') {
-      jobs = dailyJobs.filter(j => j.date >= rangeStart && j.date <= rangeEnd)
-    } else if (dateFilterMode === 'all') {
-      jobs = [...dailyJobs]
-    } else {
-      jobs = dailyJobs.filter(j => j.date === selectedDate)
+    latest.current.gridRows = gridRows
+    latest.current.loadedSnapshot = loadedSnapshot
+    latest.current.hasUnsavedChanges = hasUnsavedChanges
+  })
+  const reloadAfterSaveRef = useRef(false)
+
+  // Load the grid when the period changes. When jobs change elsewhere (another screen, device,
+  // monthly auto-sync) while the grid has unsaved edits, merge rows the user did not touch and
+  // keep the user's edits — never silently reload over them (AUD-48).
+  useEffect(() => {
+    const clone = (rows: DailyJob[]): DailyJob[] => JSON.parse(JSON.stringify(rows))
+    const { gridRows: grid, loadedSnapshot: snap, hasUnsavedChanges: dirty, periodKey: shownKey } = latest.current
+    const periodChanged = shownKey !== periodKey
+    if (periodChanged || !dirty || reloadAfterSaveRef.current) {
+      reloadAfterSaveRef.current = false
+      latest.current.periodKey = periodKey
+      const rows = clone(periodJobs)
+      setGridRows(rows)
+      setLoadedSnapshot(new Map(rows.map(r => [r.id, r])))
+      setHistory([])
+      setFuture([])
+      setRemoteConflict(false)
+      if (periodChanged) {
+        const draft = safeGet<{ rows: DailyJob[]; savedAt: number } | null>(DRAFT_PREFIX + periodKey, null)
+        setDraftOffer(draft && Array.isArray(draft.rows) ? draft : null)
+      }
+      return
     }
-    const cloned = jobs.length > 0 ? JSON.parse(JSON.stringify(jobs)) : []
-    setGridRows(cloned)
-    setHistory([])
-    setFuture([])
-    setHasUnsavedChanges(false)
-  }, [selectedDate, dateFilterMode, rangeStart, rangeEnd, dailyJobs])
+    const remote = new Map(periodJobs.map(j => [j.id, j]))
+    const nextSnap = new Map(snap)
+    let nextGrid = [...grid]
+    let conflict = false
+    remote.forEach((job, id) => {
+      const was = snap.get(id)
+      if (!was) {
+        nextSnap.set(id, clone([job])[0])
+        if (!nextGrid.some(r => r.id === id)) nextGrid.push(clone([job])[0])
+        return
+      }
+      if (sameJobRow(was, job)) return
+      const mine = nextGrid.find(r => r.id === id)
+      if (mine && !sameJobRow(was, mine)) { conflict = true; return }
+      nextSnap.set(id, clone([job])[0])
+      if (mine) nextGrid = nextGrid.map(r => (r.id === id ? clone([job])[0] : r))
+    })
+    snap.forEach((was, id) => {
+      if (remote.has(id)) return
+      const mine = nextGrid.find(r => r.id === id)
+      if (mine && !sameJobRow(was, mine)) { conflict = true; return }
+      nextSnap.delete(id)
+      nextGrid = nextGrid.filter(r => r.id !== id)
+    })
+    setGridRows(nextGrid)
+    setLoadedSnapshot(nextSnap)
+    if (conflict) setRemoteConflict(true)
+  }, [periodKey, periodJobs])
+
+  // Keep a local draft of unsaved edits so a refresh or leaving the page never loses them (UX-34)
+  useEffect(() => {
+    const key = DRAFT_PREFIX + periodKey
+    try {
+      if (hasUnsavedChanges) localStorage.setItem(key, JSON.stringify({ rows: gridRows, savedAt: Date.now() }))
+      else if (!draftOffer) localStorage.removeItem(key)
+    } catch { /* storage full — the leave warning still protects the edits */ }
+  }, [gridRows, hasUnsavedChanges, periodKey, draftOffer])
+
+  // Warn before closing / refreshing the tab with unsaved edits (UX-34)
+  useEffect(() => {
+    if (!hasUnsavedChanges) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [hasUnsavedChanges])
 
   // Update formula bar when active cell changes
   useEffect(() => {
@@ -1201,11 +1345,15 @@ export function JobSheetSpreadsheet() {
   }, [activeCell, gridRows])
 
   // Auto-focus input when cell editing starts
+  const editingKey = editingCell ? `${editingCell.rowIdx}:${editingCell.colId}` : ''
   useEffect(() => {
-    if (editingCell) {
-      setTimeout(() => inputRef.current?.focus(), 25)
-    }
-  }, [editingCell])
+    if (!editingKey) return
+    setTimeout(() => {
+      const el = inputRef.current
+      el?.focus()
+      try { if (el && el.type === 'text') el.setSelectionRange(el.value.length, el.value.length) } catch { /* not a text input */ }
+    }, 25)
+  }, [editingKey])
 
   // Global Click Listener to close Context Menu and Menu Dropdowns
   useEffect(() => {
@@ -1218,42 +1366,12 @@ export function JobSheetSpreadsheet() {
     return () => window.removeEventListener('click', handleGlobalClick)
   }, [])
 
-  // Keyboard Shortcuts (Undo, Redo, Save, Esc)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+Z = Undo
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
-        e.preventDefault()
-        handleUndo()
-      }
-      // Ctrl+Y or Ctrl+Shift+Z = Redo
-      else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
-        e.preventDefault()
-        handleRedo()
-      }
-      // Ctrl+S = Save
-      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault()
-        handleSaveAll()
-      }
-      // Esc = Close menus & clear cell edit
-      else if (e.key === 'Escape') {
-        setContextMenu(null)
-        setActiveMenu(null)
-        setColorPickerCleaner(null)
-        if (editingCell) setEditingCell(null)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [gridRows, history, future, editingCell])
 
   // ── Push State to Undo Stack ──
   const pushState = (newRows: DailyJob[]) => {
     setHistory(prev => [...prev.slice(-40), JSON.parse(JSON.stringify(gridRows))])
     setFuture([])
     setGridRows(newRows)
-    setHasUnsavedChanges(true)
   }
 
   // ── Undo & Redo ──
@@ -1266,7 +1384,6 @@ export function JobSheetSpreadsheet() {
     setFuture(prev => [JSON.parse(JSON.stringify(gridRows)), ...prev])
     setHistory(prev => prev.slice(0, prev.length - 1))
     setGridRows(previous)
-    setHasUnsavedChanges(true)
     showToast('Undo executed (Ctrl+Z)')
   }
 
@@ -1279,7 +1396,6 @@ export function JobSheetSpreadsheet() {
     setHistory(prev => [...prev, JSON.parse(JSON.stringify(gridRows))])
     setFuture(prev => prev.slice(1))
     setGridRows(next)
-    setHasUnsavedChanges(true)
     showToast('Redo executed (Ctrl+Y)')
   }
 
@@ -1328,6 +1444,7 @@ export function JobSheetSpreadsheet() {
 
   // Cell Double-click Handler
   const handleCellDoubleClick = (rowIdx: number, colId: string) => {
+    if (READ_ONLY_COLS.has(colId)) { setActiveCell({ rowIdx, colId }); return }
     const row = gridRows[rowIdx]
     const curVal = row?.[colId as keyof DailyJob]
     setActiveCell({ rowIdx, colId })
@@ -1338,9 +1455,118 @@ export function JobSheetSpreadsheet() {
     })
   }
 
+  /** Index (in gridRows) of each visible row, in screen order */
+  const visibleOrder = () => visibleGridRows.map(r => gridRows.findIndex(g => g.id === r.id)).filter(i => i >= 0)
+
+  /** Move the active cell by rows / columns in screen order (UX-36) */
+  const moveActive = (dRow: number, dCol: number, from = activeCell) => {
+    const order = visibleOrder()
+    if (order.length === 0) return
+    if (!from) { setActiveCell({ rowIdx: order[0], colId: columns[0]?.id as string }); return }
+    const colIds = columns.map(c => c.id as string)
+    let pos = Math.max(0, order.indexOf(from.rowIdx))
+    let ci = Math.max(0, colIds.indexOf(from.colId)) + dCol
+    if (ci >= colIds.length) { ci = 0; pos += 1 } else if (ci < 0) { ci = colIds.length - 1; pos -= 1 }
+    pos = Math.min(order.length - 1, Math.max(0, pos + dRow))
+    setActiveCell({ rowIdx: order[pos], colId: colIds[ci] })
+  }
+
+  /** Put a typed / pasted value into a row, with the same parsing as cell editing */
+  const applyCellValue = (row: DailyJob, colId: string, raw: string): DailyJob => {
+    if (READ_ONLY_COLS.has(colId)) return row
+    const v = raw.trim()
+    const next = { ...row } as DailyJob & Record<string, unknown>
+    if (colId === 'charges' || colId === 'received' || colId === 'duty_hours' || colId === 'ot_hours') next[colId] = cleanNum(v)
+    else if (colId === 'start_time' || colId === 'end_time') {
+      const fmt = formatTimeOnly(v)
+      next[colId] = fmt !== '—' ? fmt : v
+      if (next.start_time && next.end_time && next.start_time !== '—' && next.end_time !== '—') {
+        next.duty_hours = Math.round(calcHours(next.start_time, next.end_time) * 10) / 10
+        next.ot_hours = Math.round(calcOTHours(next.start_time, next.end_time) * 10) / 10
+      }
+    } else next[colId] = v
+    return next
+  }
+
+  const blankRow = (base?: Partial<DailyJob>): DailyJob => ({
+    id: newRowId('new'),
+    date: base?.date || effectiveTargetDate,
+    staff_name: base?.staff_name || '',
+    start_time: '', end_time: '', duty_hours: 0, ot_hours: 0, address: '', area: '',
+    charges: 0, received: 0, payment_mode: 'Cash', is_overtime: false, material: 'No', service: '', remarks: '',
+    created_at: new Date().toISOString(),
+  })
+
+  /** Paste a block copied from Excel / Google Sheets at the active cell; adds rows as needed (UX-32) */
+  const pasteBlock = (text: string) => {
+    if (!activeCell) { showToast('Click a cell first, then paste'); return }
+    const lines = text.replace(/\r/g, '').split('\n')
+    while (lines.length && lines[lines.length - 1] === '') lines.pop()
+    if (lines.length === 0) return
+    const order = visibleOrder()
+    const colIds = columns.map(c => c.id as string)
+    const startPos = Math.max(0, order.indexOf(activeCell.rowIdx))
+    const startCol = Math.max(0, colIds.indexOf(activeCell.colId))
+    const updated = [...gridRows]
+    let added = 0
+    lines.forEach((line, i) => {
+      let idx = order[startPos + i]
+      if (idx === undefined) {
+        updated.push(blankRow(updated[order[order.length - 1]]))
+        idx = updated.length - 1
+        added++
+      }
+      let row = updated[idx]
+      line.split('\t').forEach((cell, j) => {
+        const colId = colIds[startCol + j]
+        if (colId) row = applyCellValue(row, colId, cell)
+      })
+      updated[idx] = row
+    })
+    pushState(updated)
+    showToast(`✓ Pasted ${lines.length} row${lines.length === 1 ? '' : 's'}${added ? ` (${added} new)` : ''}`)
+  }
+
+  /** Ctrl+D — copy the value from the row above into the active cell (UX-32) */
+  const fillDown = () => {
+    if (!activeCell || READ_ONLY_COLS.has(activeCell.colId)) return
+    const order = visibleOrder()
+    const pos = order.indexOf(activeCell.rowIdx)
+    if (pos <= 0) return
+    const above = gridRows[order[pos - 1]]
+    const val = above?.[activeCell.colId as keyof DailyJob]
+    const updated = [...gridRows]
+    updated[activeCell.rowIdx] = applyCellValue(updated[activeCell.rowIdx], activeCell.colId, val == null ? '' : String(val))
+    pushState(updated)
+  }
+
+  /** Delete / Backspace — clear the active cell */
+  const clearActiveCell = () => {
+    if (!activeCell || READ_ONLY_COLS.has(activeCell.colId)) return
+    const updated = [...gridRows]
+    const row = updated[activeCell.rowIdx]
+    if (!row) return
+    updated[activeCell.rowIdx] = applyCellValue(row, activeCell.colId, '')
+    pushState(updated)
+  }
+
+  /** Keys inside the cell editor: Enter / Tab save and move, Esc cancels (UX-36) */
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>) => {
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault()
+      const from = editingCell ? { rowIdx: editingCell.rowIdx, colId: editingCell.colId } : activeCell
+      commitCellEdit()
+      if (e.key === 'Enter') moveActive(e.shiftKey ? -1 : 1, 0, from)
+      else moveActive(0, e.shiftKey ? -1 : 1, from)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setEditingCell(null)
+    }
+  }
+
   // Commit Cell Edit
-  const commitCellEdit = () => {
-    if (!editingCell) return
+  const commitCellEdit = (): DailyJob[] => {
+    if (!editingCell) return gridRows
     const { rowIdx, colId, tempValue } = editingCell
     const trimmed = tempValue.trim()
 
@@ -1368,6 +1594,7 @@ export function JobSheetSpreadsheet() {
     updated[rowIdx] = row
     pushState(updated)
     setEditingCell(null)
+    return updated
   }
 
   // Formula Bar change
@@ -1395,21 +1622,21 @@ export function JobSheetSpreadsheet() {
   // ── Insert Row Above or Below (Used by Right-Click Menu) ──
   const insertRowAt = (targetIdx: number, position: 'above' | 'below', defaultStaff?: string) => {
     const newJob: DailyJob = {
-      id: `new-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      date: selectedDate,
-      staff_name: defaultStaff || employees[0]?.full_name || 'Staff Member',
+      id: newRowId('new'),
+      date: effectiveTargetDate,
+      staff_name: defaultStaff || '',
       start_time: '08:00',
       end_time: '16:00',
       duty_hours: 8,
       ot_hours: 0,
       address: '',
       area: '',
-      charges: 200,
-      received: 200,
+      charges: 0,
+      received: 0,
       payment_mode: 'Cash',
       is_overtime: false,
       material: 'No',
-      service: 'House',
+      service: '',
       remarks: '',
       created_at: new Date().toISOString()
     }
@@ -1434,7 +1661,7 @@ export function JobSheetSpreadsheet() {
     if (!target) return
     const duplicated: DailyJob = {
       ...target,
-      id: `copy-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      id: newRowId('copy'),
       created_at: new Date().toISOString()
     }
     const updated = [...gridRows]
@@ -1543,7 +1770,7 @@ export function JobSheetSpreadsheet() {
         const rowObj: Record<string, any> = { 'Row': i + 1 }
         columns.forEach(col => {
           let val: any = r[col.id as keyof DailyJob]
-          if (col.id === 'pending') val = calcJobPending(r, pendingCtx)
+          if (col.id === 'pending') val = rowPending(r)
           rowObj[col.label] = val !== undefined && val !== null ? val : ''
         })
         return rowObj
@@ -1602,73 +1829,146 @@ export function JobSheetSpreadsheet() {
     }
   }
 
-  // Save All Changes to DataContext (Persistent Storage & Supabase)
-  const handleSaveAll = () => {
-    commitCellEdit()
+  // Save All — writes only rows added, edited or removed in this grid (AUD-49, UX-33).
+  // Rows outside the grid are never touched; rows changed elsewhere since loading ask first.
+  const handleSaveAll = async () => {
+    const rows = commitCellEdit()
+    const gridIds = new Set(rows.map(r => r.id))
+    const added = rows.filter(r => !loadedSnapshot.has(r.id) && !isBlankNewRow(r))
+    const edited = rows.filter(r => { const o = loadedSnapshot.get(r.id); return o && !sameJobRow(o, r) })
+    const removed = Array.from(loadedSnapshot.values()).filter(o => !gridIds.has(o.id))
+    if (added.length + edited.length + removed.length === 0) { showToast('Nothing to save'); return }
 
-    const currentSavedJobs = dateFilterMode === 'single'
-      ? dailyJobs.filter(j => j.date === selectedDate)
-      : dateFilterMode === 'today'
-        ? dailyJobs.filter(j => j.date === new Date().toISOString().split('T')[0])
-        : dateFilterMode === 'yesterday'
-          ? dailyJobs.filter(j => j.date === addDaysToYMD(new Date().toISOString().split('T')[0], -1))
-          : dateFilterMode === 'range'
-            ? dailyJobs.filter(j => j.date >= rangeStart && j.date <= rangeEnd)
-            : [...dailyJobs]
+    const live = new Map(dailyJobs.map(j => [j.id, j]))
+    const changedElsewhere = [...edited, ...removed].filter(r => {
+      const now = live.get(r.id)
+      const was = loadedSnapshot.get(r.id)
+      return !now || (was && !sameJobRow(was, now))
+    })
+    if (changedElsewhere.length > 0) {
+      const ok = await confirmAsync({
+        title: 'Changed on another screen',
+        message: `${changedElsewhere.length} row(s) were changed or deleted somewhere else after you opened this sheet. Save your version over them?`,
+        confirmLabel: 'Save my version',
+        cancelLabel: 'Cancel',
+      })
+      if (!ok) return
+    }
 
-    const currentIds = new Set(currentSavedJobs.map(j => j.id))
-    const updatedIds = new Set(gridRows.map(j => j.id))
-
-    // 1. Delete rows removed in spreadsheet
-    currentSavedJobs.forEach(oldJob => {
-      if (!updatedIds.has(oldJob.id)) {
-        deleteDailyJob(oldJob.id)
-      }
+    const payload = (row: DailyJob) => ({
+      date: row.date || selectedDate,
+      staff_name: row.staff_name,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      duty_hours: cleanNum(row.duty_hours),
+      ot_hours: cleanNum(row.ot_hours),
+      address: row.address,
+      area: row.area,
+      charges: cleanNum(row.charges),
+      received: cleanNum(row.received),
+      payment_mode: row.payment_mode,
+      is_overtime: cleanNum(row.ot_hours) > 0,
+      material: row.material,
+      service: row.service,
+      remarks: row.remarks,
     })
 
-    // 2. Update existing or insert new rows
-    gridRows.forEach(row => {
-      const rowDate = row.date || selectedDate
-      if (currentIds.has(row.id)) {
-        updateDailyJob(row.id, {
-          date: rowDate,
-          staff_name: row.staff_name,
-          start_time: row.start_time,
-          end_time: row.end_time,
-          duty_hours: cleanNum(row.duty_hours),
-          ot_hours: cleanNum(row.ot_hours),
-          address: row.address,
-          area: row.area,
-          charges: cleanNum(row.charges),
-          received: cleanNum(row.received),
-          payment_mode: row.payment_mode,
-          material: row.material,
-          service: row.service,
-          remarks: row.remarks
-        })
-      } else {
-        addDailyJob({
-          date: rowDate,
-          staff_name: row.staff_name,
-          start_time: row.start_time,
-          end_time: row.end_time,
-          duty_hours: cleanNum(row.duty_hours),
-          ot_hours: cleanNum(row.ot_hours),
-          address: row.address,
-          area: row.area,
-          charges: cleanNum(row.charges),
-          received: cleanNum(row.received),
-          payment_mode: row.payment_mode,
-          is_overtime: cleanNum(row.ot_hours) > 0,
-          material: row.material,
-          service: row.service,
-          remarks: row.remarks
-        })
-      }
+    reloadAfterSaveRef.current = true
+    removed.forEach(r => { if (live.has(r.id)) deleteDailyJob(r.id) })
+    edited.forEach(r => {
+      if (live.has(r.id)) updateDailyJob(r.id, payload(r))
+      else addDailyJob(payload(r)) // deleted elsewhere — the user chose to keep their version
     })
+    added.forEach(r => addDailyJob(payload(r)))
 
-    setHasUnsavedChanges(false)
-    showToast('✓ All changes synced successfully to Daily Job Sheet!')
+    try { localStorage.removeItem(DRAFT_PREFIX + periodKey) } catch { /* ignore */ }
+    setDraftOffer(null)
+    setRemoteConflict(false)
+    const parts = [added.length && `${added.length} added`, edited.length && `${edited.length} updated`, removed.length && `${removed.length} deleted`].filter(Boolean)
+    showToast(`✓ Saved: ${parts.join(', ')}`)
+  }
+
+  // Keyboard: Undo/Redo/Save/Esc + Excel keys (arrows, Tab, Enter/F2, Delete, Ctrl+D, type to edit) — UX-36.
+  // The listener reads the latest handler through a ref, so Save never works on stale data.
+  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
+  const clipboardRef = useRef<{ copy: (e: ClipboardEvent) => void; paste: (e: ClipboardEvent) => void }>({ copy: () => {}, paste: () => {} })
+  useEffect(() => {
+    const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+    keyHandlerRef.current = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey
+      if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); return }
+      if (mod && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); handleRedo(); return }
+      if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); void handleSaveAll(); return }
+      if (e.key === 'Escape') {
+        setContextMenu(null)
+        setActiveMenu(null)
+        setColorPickerCleaner(null)
+        if (editingCell) setEditingCell(null)
+        return
+      }
+      // Grid keys only when a cell is selected and nothing else has focus
+      if (editingCell || !activeCell || isTyping(e.target)) return
+      if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); fillDown(); return }
+      if (mod || e.altKey) return
+      const moves: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }
+      if (moves[e.key]) { e.preventDefault(); moveActive(...moves[e.key]); return }
+      if (e.key === 'Tab') { e.preventDefault(); moveActive(0, e.shiftKey ? -1 : 1); return }
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); clearActiveCell(); return }
+      if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); handleCellDoubleClick(activeCell.rowIdx, activeCell.colId); return }
+      // Typing a character starts editing with that character, like Excel
+      if (e.key.length === 1 && !READ_ONLY_COLS.has(activeCell.colId)) {
+        const col = columns.find(c => c.id === activeCell.colId)
+        if (!col || col.type === 'select' || col.type === 'date') return
+        e.preventDefault()
+        setEditingCell({ rowIdx: activeCell.rowIdx, colId: activeCell.colId, tempValue: e.key })
+      }
+    }
+    clipboardRef.current = {
+      copy: (e: ClipboardEvent) => {
+        if (editingCell || !activeCell || isTyping(e.target)) return
+        const v = activeCell.colId === 'pending'
+          ? rowPending(gridRows[activeCell.rowIdx])
+          : gridRows[activeCell.rowIdx]?.[activeCell.colId as keyof DailyJob]
+        e.clipboardData?.setData('text/plain', v == null ? '' : String(v))
+        e.preventDefault()
+      },
+      paste: (e: ClipboardEvent) => {
+        if (editingCell || !activeCell || isTyping(e.target)) return
+        const text = e.clipboardData?.getData('text/plain') || ''
+        if (!text) return
+        e.preventDefault()
+        pasteBlock(text)
+      },
+    }
+  })
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keyHandlerRef.current(e)
+    const onCopy = (e: ClipboardEvent) => clipboardRef.current.copy(e)
+    const onPaste = (e: ClipboardEvent) => clipboardRef.current.paste(e)
+    window.addEventListener('keydown', onKey)
+    document.addEventListener('copy', onCopy)
+    document.addEventListener('paste', onPaste)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.removeEventListener('copy', onCopy)
+      document.removeEventListener('paste', onPaste)
+    }
+  }, [])
+
+  /** Throw away the grid's edits and load the latest saved jobs */
+  const reloadFromSaved = async () => {
+    if (hasUnsavedChanges) {
+      const ok = await confirmAsync({ title: 'Discard edits?', message: `Discard your ${pendingChanges.count} unsaved change(s) and load the latest saved data?`, confirmLabel: 'Discard & reload', tone: 'danger' })
+      if (!ok) return
+    }
+    const rows: DailyJob[] = JSON.parse(JSON.stringify(periodJobs))
+    setGridRows(rows)
+    setLoadedSnapshot(new Map(rows.map(r => [r.id, r])))
+    setHistory([])
+    setFuture([])
+    setRemoteConflict(false)
+    setDraftOffer(null)
+    try { localStorage.removeItem(DRAFT_PREFIX + periodKey) } catch { /* ignore */ }
   }
 
   // Export Spreadsheet to Excel (.xlsx) with dynamic column order
@@ -1677,7 +1977,7 @@ export function JobSheetSpreadsheet() {
       const rowObj: Record<string, any> = { 'Row': i + 1 }
       columns.forEach(col => {
         let val: any = r[col.id as keyof DailyJob]
-        if (col.id === 'pending') val = calcJobPending(r, pendingCtx)
+        if (col.id === 'pending') val = rowPending(r)
         rowObj[col.label] = val !== undefined && val !== null ? val : ''
       })
       return rowObj
@@ -1696,7 +1996,7 @@ export function JobSheetSpreadsheet() {
       const rowObj: Record<string, any> = { 'Row': i + 1 }
       columns.forEach(col => {
         let val: any = r[col.id as keyof DailyJob]
-        if (col.id === 'pending') val = calcJobPending(r, pendingCtx)
+        if (col.id === 'pending') val = rowPending(r)
         rowObj[col.label] = val !== undefined && val !== null ? val : ''
       })
       return rowObj
@@ -1713,7 +2013,8 @@ export function JobSheetSpreadsheet() {
   }
 
   // Filtered rows for search
-  const visibleGridRows = useMemo(() => {
+  const [renderLimit, setRenderLimit] = useState(RENDER_PAGE)
+  const filteredGridRows = useMemo(() => {
     if (!filterSearch.trim()) return gridRows
     const q = filterSearch.toLowerCase()
     return gridRows.filter(r =>
@@ -1724,13 +2025,14 @@ export function JobSheetSpreadsheet() {
       (r.service || '').toLowerCase().includes(q)
     )
   }, [gridRows, filterSearch])
+  const visibleGridRows = useMemo(() => filteredGridRows.slice(0, renderLimit), [filteredGridRows, renderLimit])
 
   // Summary Totals
   const totals = useMemo(() => {
     const totalCharges = gridRows.reduce((s, r) => s + cleanNum(r.charges), 0)
     const totalReceived = gridRows.reduce((s, r) => s + cleanNum(r.received), 0)
     // Per-row dues: an overpaid row must not hide another row's due
-    const totalPending = gridRows.reduce((s, r) => s + calcJobPending(r, pendingCtx), 0)
+    const totalPending = gridRows.reduce((s, r) => s + rowPending(r), 0)
     const totalDuty = Math.round(gridRows.reduce((s, r) => s + cleanNum(r.duty_hours), 0) * 10) / 10
     const totalOT = Math.round(gridRows.reduce((s, r) => s + cleanNum(r.ot_hours), 0) * 10) / 10
     return { totalCharges, totalReceived, totalPending, totalDuty, totalOT }
@@ -1780,7 +2082,7 @@ export function JobSheetSpreadsheet() {
       g.totalOT += cleanNum(row.ot_hours)
       g.totalCharges += cleanNum(row.charges)
       g.totalReceived += cleanNum(row.received)
-      g.totalPending += calcJobPending(row, pendingCtx)
+      g.totalPending += rowPending(row)
     })
 
     groups.forEach(g => {
@@ -1864,7 +2166,7 @@ export function JobSheetSpreadsheet() {
                 <span className="font-extrabold text-[15.5px] tracking-tight">Excel Job Sheet Studio</span>
                 {hasUnsavedChanges && (
                   <span className="text-[9.5px] font-black px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 animate-pulse">
-                    ● Unsaved Changes
+                    ● {pendingChanges.count} unsaved change{pendingChanges.count === 1 ? '' : 's'}
                   </span>
                 )}
               </div>
@@ -1900,7 +2202,7 @@ export function JobSheetSpreadsheet() {
               <button
                 type="button"
                 onClick={() => {
-                  const today = new Date().toISOString().split('T')[0]
+                  const today = todayDubai()
                   setDateFilterMode('today')
                   setSelectedDate(today)
                   setSearchParams({ date: today }, { replace: true })
@@ -1915,7 +2217,7 @@ export function JobSheetSpreadsheet() {
               <button
                 type="button"
                 onClick={() => {
-                  const yest = addDaysToYMD(new Date().toISOString().split('T')[0], -1)
+                  const yest = addDaysToYMD(todayDubai(), -1)
                   setDateFilterMode('yesterday')
                   setSelectedDate(yest)
                   setSearchParams({ date: yest }, { replace: true })
@@ -2055,7 +2357,7 @@ export function JobSheetSpreadsheet() {
             title="Save and synchronize back to main Daily Job Sheet (Ctrl+S)"
           >
             <Save size={14} />
-            <span>{hasUnsavedChanges ? 'Save Changes' : 'Saved'}</span>
+            <span>{hasUnsavedChanges ? `Save ${pendingChanges.count} change${pendingChanges.count === 1 ? '' : 's'}` : 'Saved'}</span>
           </button>
 
           {/* Fullscreen Toggle */}
@@ -2367,6 +2669,7 @@ export function JobSheetSpreadsheet() {
               value={filterSearch}
               onChange={e => setFilterSearch(e.target.value)}
               placeholder="Search staff, location, mode..."
+              title="Filter rows · Excel keys: arrows / Tab move, Enter or F2 edit, Delete clears, Ctrl+D fill down, Ctrl+V pastes a block"
               className="w-48 h-7 pl-8 pr-2.5 text-[11px] bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-600 focus:w-60 transition-all"
             />
             {filterSearch && (
@@ -2377,6 +2680,44 @@ export function JobSheetSpreadsheet() {
           </div>
         </div>
       </nav>
+
+      {/* ── Autocomplete sources (UX-35): live employees and clients only (R-DATA-03) ── */}
+      <datalist id="xl-staff">{staffOptions.map(n => <option key={n} value={n} />)}</datalist>
+      <datalist id="xl-address">{addressOptions.map(n => <option key={n} value={n} />)}</datalist>
+      <datalist id="xl-area">{areaOptions.map(n => <option key={n} value={n} />)}</datalist>
+      <datalist id="xl-service">{serviceOptions.map(n => <option key={n} value={n} />)}</datalist>
+
+      {/* ── Column presets (UX-39) ── */}
+      <div className="mx-3 mt-2 flex items-center gap-2 text-[11.5px] text-slate-600 flex-wrap">
+        <span className="font-bold">Columns:</span>
+        {Object.keys(COLUMN_PRESETS).map(name => (
+          <button key={name} type="button" onClick={() => applyColumnPreset(name)}
+            className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-emerald-50 hover:border-emerald-400 font-semibold cursor-pointer">
+            {name}
+          </button>
+        ))}
+        <span className="ml-auto text-slate-400 hidden md:inline">Arrows/Tab move · Enter/F2 edit · Delete clears · Ctrl+D fill down · Ctrl+V paste block</span>
+      </div>
+
+      {/* ── Draft restore / remote change notices (AUD-48, UX-34) ── */}
+      {draftOffer && (
+        <div className="mx-3 mt-2 flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-xl border border-sky-200 bg-sky-50 text-[12.5px] text-sky-900">
+          <span>You have unsaved edits for this date from {new Date(draftOffer.savedAt).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', dateStyle: 'medium', timeStyle: 'short' })} (Dubai time).</span>
+          <span className="flex gap-2">
+            <button type="button" onClick={() => { pushState(draftOffer.rows); setDraftOffer(null); showToast('Draft restored — click Save to keep it') }}
+              className="px-3 py-1 rounded-lg bg-sky-600 text-white font-bold hover:bg-sky-700 cursor-pointer">Restore edits</button>
+            <button type="button" onClick={() => { setDraftOffer(null); try { localStorage.removeItem(DRAFT_PREFIX + periodKey) } catch { /* ignore */ } }}
+              className="px-3 py-1 rounded-lg bg-white border border-sky-300 font-bold text-sky-800 hover:bg-sky-100 cursor-pointer">Discard</button>
+          </span>
+        </div>
+      )}
+      {remoteConflict && (
+        <div className="mx-3 mt-2 flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-[12.5px] text-amber-900">
+          <span>Some rows you edited were also changed on another screen. Your edits are kept — Save asks before overwriting.</span>
+          <button type="button" onClick={reloadFromSaved}
+            className="px-3 py-1 rounded-lg bg-white border border-amber-300 font-bold text-amber-800 hover:bg-amber-100 cursor-pointer">Load latest instead</button>
+        </div>
+      )}
 
       {/* ── Excel Formula Bar (fx) ── */}
       {showFormulaBar && (
@@ -2675,7 +3016,7 @@ export function JobSheetSpreadsheet() {
                             let displayVal: any = rawVal
 
                             if (col.id === 'pending') {
-                              displayVal = calcJobPending(row, pendingCtx)
+                              displayVal = rowPending(row)
                             }
                             if (col.type === 'number') {
                               displayVal = cleanNum(displayVal)
@@ -2701,7 +3042,7 @@ export function JobSheetSpreadsheet() {
                                       value={editingCell.tempValue}
                                       onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
                                       onBlur={commitCellEdit}
-                                      onKeyDown={e => { if (e.key === 'Enter') commitCellEdit() }}
+                                      onKeyDown={handleEditorKeyDown}
                                       className="w-full h-full bg-white text-[12px] font-mono border-0 outline-none p-0"
                                     >
                                       {col.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -2710,13 +3051,11 @@ export function JobSheetSpreadsheet() {
                                     <input
                                       ref={inputRef}
                                       type={col.type === 'date' ? 'date' : 'text'}
+                                      list={AUTOCOMPLETE_LIST[col.id as string]}
                                       value={editingCell.tempValue}
                                       onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
                                       onBlur={commitCellEdit}
-                                      onKeyDown={e => {
-                                        if (e.key === 'Enter') commitCellEdit()
-                                        if (e.key === 'Escape') setEditingCell(null)
-                                      }}
+                                      onKeyDown={handleEditorKeyDown}
                                       className="w-full h-full bg-white text-[12px] font-mono border-0 outline-none p-0 focus:ring-0"
                                     />
                                   )
@@ -2819,7 +3158,7 @@ export function JobSheetSpreadsheet() {
                       let displayVal: any = rawVal
 
                       if (col.id === 'pending') {
-                        displayVal = calcJobPending(row, pendingCtx)
+                        displayVal = rowPending(row)
                       }
                       if (col.type === 'number') {
                         displayVal = cleanNum(displayVal)
@@ -2851,7 +3190,7 @@ export function JobSheetSpreadsheet() {
                                 value={editingCell.tempValue}
                                 onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
                                 onBlur={commitCellEdit}
-                                onKeyDown={e => { if (e.key === 'Enter') commitCellEdit() }}
+                                onKeyDown={handleEditorKeyDown}
                                 className={`w-full h-full text-[12px] font-mono border-0 outline-none p-0 ${palette.isLight ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
                               >
                                 {col.options.map(opt => <option key={opt} value={opt} className={palette.isLight ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}>{opt}</option>)}
@@ -2860,13 +3199,11 @@ export function JobSheetSpreadsheet() {
                               <input
                                 ref={inputRef}
                                 type={col.type === 'date' ? 'date' : 'text'}
+                                list={AUTOCOMPLETE_LIST[col.id as string]}
                                 value={editingCell.tempValue}
                                 onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
                                 onBlur={commitCellEdit}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') commitCellEdit()
-                                  if (e.key === 'Escape') setEditingCell(null)
-                                }}
+                                onKeyDown={handleEditorKeyDown}
                                 className={`w-full h-full text-[12px] font-mono border-0 outline-none p-0 focus:ring-0 ${palette.isLight ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
                               />
                             )
@@ -2900,7 +3237,7 @@ export function JobSheetSpreadsheet() {
                       className="w-14 text-center"
                     >
                       <button
-                        onClick={() => handleDeleteRow(rowIdx)}
+                        onClick={() => handleDeleteRow(targetIdx)}
                         className="text-slate-400 hover:text-red-600 p-1 rounded transition-colors cursor-pointer"
                         title="Delete row"
                       >
@@ -3179,6 +3516,18 @@ export function JobSheetSpreadsheet() {
 
           <div className="h-px bg-slate-100 my-1" />
 
+          {/* Row history (UX-40) */}
+          <div className="py-0.5">
+            <button
+              type="button"
+              onClick={() => openRowHistory(contextMenu.job)}
+              className="w-full px-3.5 py-1.5 text-left hover:bg-slate-50 text-slate-700 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
+            >
+              <History size={14} />
+              <span>Row history</span>
+            </button>
+          </div>
+
           {/* Delete Row */}
           <div className="py-0.5">
             <button
@@ -3190,6 +3539,38 @@ export function JobSheetSpreadsheet() {
               <span>Delete Row</span>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ── Row history (UX-40) ── */}
+      <Modal open={!!rowHistory} onClose={() => setRowHistory(null)} title={`Row history · ${rowHistory?.label || ''}`} size="md">
+        {rowHistory?.loading ? (
+          <p className="text-[12.5px] text-slate-400 py-6 text-center">Loading…</p>
+        ) : rowHistory && rowHistory.entries.length === 0 ? (
+          <p className="text-[12.5px] text-slate-400 py-6 text-center">No recorded changes for this row yet. History starts with this version; new unsaved rows have none.</p>
+        ) : (
+          <ul className="space-y-2 text-[12.5px]">
+            {rowHistory?.entries.map(h => (
+              <li key={h.id} className="rounded-xl border border-slate-200 px-3 py-2">
+                <p className="font-bold text-slate-800">
+                  {h.action} · {new Date(h.created_at).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', dateStyle: 'medium', timeStyle: 'short' })}
+                  <span className="font-normal text-slate-500"> · {h.user_name || 'System'}</span>
+                </p>
+                {h.details && <p className="text-slate-600 mt-0.5">{h.details}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
+
+      {/* ── Long periods: draw rows in pages (AUD-56, UX-38) ── */}
+      {filteredGridRows.length > visibleGridRows.length && (
+        <div className="px-5 py-2 bg-amber-50 border-t border-amber-200 text-[12px] text-amber-900 flex items-center justify-between shrink-0">
+          <span>Showing {visibleGridRows.length.toLocaleString()} of {filteredGridRows.length.toLocaleString()} rows (totals include all rows).</span>
+          <span className="flex gap-2">
+            <button type="button" onClick={() => setRenderLimit(l => l + RENDER_PAGE)} className="px-3 py-1 rounded-lg bg-white border border-amber-300 font-bold hover:bg-amber-100 cursor-pointer">Show {RENDER_PAGE} more</button>
+            <button type="button" onClick={() => setRenderLimit(filteredGridRows.length)} className="px-3 py-1 rounded-lg bg-white border border-amber-300 font-bold hover:bg-amber-100 cursor-pointer">Show all</button>
+          </span>
         </div>
       )}
 

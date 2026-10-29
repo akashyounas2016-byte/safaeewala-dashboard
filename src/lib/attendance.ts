@@ -1,5 +1,6 @@
-import type { DailyJob } from '@/types'
-import { calcJobOTHours } from '@/lib/clientDataSync'
+import type { DailyJob, Employee } from '@/types'
+import { calcJobOTHours, employeeMatchesStaff, isBogusJob, isBogusStaffName, splitStaffNames, SYNTHETIC_STAFF_ACTIVE_DAYS } from '@/lib/clientDataSync'
+import { addDays } from '@/lib/dubaiTime'
 
 export type AttendanceStatus = 'present' | 'available' | 'absent' | 'on_leave'
 
@@ -73,4 +74,38 @@ export function classifyAttendanceDay(jobs: DailyJob[], override?: AttendanceOve
     absenceReason = m.reason
   }
   return { status, absenceReason, dutyHours, otHours, workedJobs, isManualPresent }
+}
+
+/**
+ * Who appears on the attendance list and the job sheet's "no job" rows (R-ATT-04, AUD-51):
+ * registered non-inactive employees, unregistered names seen on the job sheet in the last 60 days,
+ * and anyone with a shift on the date. Shared rows ("Sita, Rupa") are split. No hard-coded roster.
+ */
+export function buildCleanerRoster(employees: Employee[], dailyJobs: DailyJob[], date: string): string[] {
+  const map = new Map<string, string>() // lower -> display
+  employees.forEach(e => {
+    const name = (e.full_name || '').trim()
+    if (name && e.status !== 'inactive') map.set(name.toLowerCase(), name)
+  })
+  // A name that belongs to a registered employee is that employee, not a new cleaner
+  const isKnown = (name: string) =>
+    map.has(name.toLowerCase()) || employees.some(e => employeeMatchesStaff(e, name))
+  const since = addDays(date, -SYNTHETIC_STAFF_ACTIVE_DAYS)
+  dailyJobs.forEach(j => {
+    if (!j.date || j.date < since || j.date > date || isBogusJob(j)) return
+    splitStaffNames(j.staff_name || '').forEach(name => { if (!isKnown(name)) map.set(name.toLowerCase(), name) })
+  })
+  // Anyone logged on the date (even if inactive) so their shift is visible
+  dailyJobs.forEach(j => {
+    if ((j.date || '').split('T')[0] !== date) return
+    splitStaffNames(j.staff_name || '').forEach(name => {
+      if (map.has(name.toLowerCase())) return
+      const emp = employees.find(e => employeeMatchesStaff(e, name))
+      map.set((emp?.full_name || name).toLowerCase(), emp?.full_name || name)
+    })
+  })
+  const bogusStaff = ['total', 'gross', 'summary', 'net total', 'driver', 'n/a', 'na', '—', '-']
+  return Array.from(map.values())
+    .filter(name => !bogusStaff.includes(name.trim().toLowerCase()) && !isBogusStaffName(name))
+    .sort((a, b) => a.localeCompare(b))
 }

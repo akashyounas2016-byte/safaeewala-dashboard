@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import type { InventoryItem } from '@/types'
+import { todayDubai } from '@/lib/dubaiTime'
 
 /* Cloud-synced keys (see cloudState.ts) */
 const ORDERS_KEY = 'safaeewala_purchase_orders'
@@ -12,7 +13,7 @@ export interface PurchaseOrder {
 }
 export interface UsageEntry { id: string; itemId: string; itemName: string; qty: number; date: string; note?: string }
 
-const today = () => new Date().toISOString().split('T')[0]
+const today = () => todayDubai()
 
 /** Purchase orders + usage log state shared by the Inventory screen (UX-15) */
 export function useInventoryLedger() {

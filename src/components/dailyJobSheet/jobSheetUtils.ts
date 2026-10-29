@@ -1,4 +1,5 @@
 import type { PaymentMode, MaterialType } from '@/types'
+import { todayDubai } from '@/lib/dubaiTime'
 
 export const MATERIALS: MaterialType[] = ['No', 'Yes', 'Sofa', 'Ladder', 'Sofa Seat']
 export const PAYMENT_MODES: PaymentMode[] = ['Cash', 'Online', 'Pending', 'Monthly', 'Above']
@@ -104,7 +105,7 @@ export function fmtDate(d: string) {
  */
 export function addDaysToYMD(ymdStr: string, deltaDays: number): string {
   if (!ymdStr || !/^\d{4}-\d{2}-\d{2}$/.test(ymdStr)) {
-    ymdStr = new Date().toISOString().split('T')[0]
+    ymdStr = todayDubai()
   }
   const [y, m, d] = ymdStr.split('-').map(Number)
   const utcDate = new Date(Date.UTC(y, m - 1, d + deltaDays))

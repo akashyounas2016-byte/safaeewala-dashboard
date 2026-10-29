@@ -25,6 +25,7 @@ import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthl
 import { ClientModalForm } from '@/components/clients/ClientModalForm'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
 import type { MonthlyClientPayment } from '@/types'
+import { todayDubai } from '@/lib/dubaiTime'
 
 /* ─── Client Financial Adjustment & Advance Types ─── */
 export interface ClientFinancialAdjustment {
@@ -182,7 +183,7 @@ export function ClientProfile() {
   const [newAdjModalOpen, setNewAdjModalOpen] = useState(false)
   const [newAdjType, setNewAdjType] = useState<ClientFinancialAdjustment['type']>('discount')
   const [newAdjAmount, setNewAdjAmount] = useState('')
-  const [newAdjDate, setNewAdjDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [newAdjDate, setNewAdjDate] = useState(() => todayDubai())
   const [newAdjNotes, setNewAdjNotes] = useState('')
   const [newAdjJobId, setNewAdjJobId] = useState('')
 
@@ -318,7 +319,7 @@ export function ClientProfile() {
       id: `adj-adv-${Date.now()}`,
       client_id: client.id,
       client_name: client.full_name,
-      date: job.date || new Date().toISOString().split('T')[0],
+      date: job.date || todayDubai(),
       type: 'advance_deduction',
       amount: amt,
       notes: `Service charges deducted from client advance balance [ADJ] (${job.service || 'Shift'})`,
@@ -570,7 +571,7 @@ export function ClientProfile() {
       id: `adj-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       client_id: client.id,
       client_name: client.full_name,
-      date: newAdjDate || new Date().toISOString().split('T')[0],
+      date: newAdjDate || todayDubai(),
       type: newAdjType,
       amount: amt,
       notes: newAdjNotes.trim(),
@@ -1650,7 +1651,7 @@ export function ClientProfile() {
           const adv = patch.advance_amount ?? 0
           const adj = patch.adjustment_amount ?? 0
           if (adv > 0 || adj > 0) {
-            const todayStr = new Date().toISOString().split('T')[0]
+            const todayStr = todayDubai()
             const existingAdjs = safeLocalStorageGet<ClientFinancialAdjustment[]>('safaeewala_client_adjustments', []) || []
             let newEntries = [...existingAdjs]
 

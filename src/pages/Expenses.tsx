@@ -37,6 +37,7 @@ async function readReceipt(file: File): Promise<string> {
 }
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 import * as XLSX from 'xlsx'
+import { todayDubai } from '@/lib/dubaiTime'
 
 export type ExpenseDatePreset =
   | 'today'
@@ -1138,7 +1139,7 @@ export function Expenses() {
             }
 
             addDailyExpense({
-              date: String(f.get('date')) || new Date().toISOString().split('T')[0],
+              date: String(f.get('date')) || todayDubai(),
               name,
               category: String(f.get('category')) || 'Other Operational',
               amount: amt,
@@ -1163,7 +1164,7 @@ export function Expenses() {
                 type="date"
                 name="date"
                 required
-                defaultValue={new Date().toISOString().split('T')[0]}
+                defaultValue={todayDubai()}
                 className="w-full text-[13px] px-3.5 py-2.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-red-500 font-medium"
               />
             </div>
