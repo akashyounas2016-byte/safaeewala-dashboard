@@ -12,6 +12,11 @@
 > - Affects:  rule IDs, files
 > ```
 
+## DEC-014 — Real accounts and login everywhere, including localhost (2026-10-30)
+- **Context:** Audit SEC-01…03: the login was a browser flag with a password inside the JavaScript, and the database answered anyone. The live Supabase project also had no tables (AUD-69).
+- **Decision:** Supabase Auth with admin-created accounts only (no sign-up), roles admin/manager/employee with screen permissions, row-level security for signed-in users. Login is required on localhost too, because the database refuses anonymous requests. Supersedes DEC-002.
+- **Decided by:** owner ("admin user add kr sake, sign up nahi kr ske ga koi, role k hisab se screens") · **Rules:** R-SEC-01, R-SEC-03
+
 ## DEC-013 — Two-scenario Overtime (OT) Policy: Post-8 PM & Excess Basic Hours (2026-10-30)
 - **Context:** Owner clarification on OT rules: "Rules document mein Overtime (OT) ka rule add karen. Do scenarios shamil karen: pehlay yeh ke 8:00 PM kay baad ki janay wali duty har soorat may OT mein consider hogi, basic hours kuch bhee hon. Doosra yeh kay agar koi employee 8:00 PM say pehle apne basic duty hours (8 ghantay) say zayada duty kar lay, to woh extra hours bhee OT mein shamil hon."
 - **Decision:** Two-scenario OT logic:

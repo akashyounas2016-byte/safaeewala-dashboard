@@ -6,7 +6,7 @@
 > [Daily Job Sheet](2026-10-29-daily-job-sheet-audit.md) (AUD-44…58). All of those are fixed except AUD-45 (owner decision).
 >
 > New IDs: security **SEC-01…09**, data/sync **AUD-59…68**, validation **VAL-01…12**, screens **UX-41…60**, colours **CLR-01…08**.
-> Nothing in this file is fixed yet. Severity: 🔴 fix before going live · 🟠 soon · 🟡 later.
+> **Status 2026-10-30 (`claude/workspace`):** SEC-01, SEC-02, SEC-03, SEC-05 fixed in code (needs the owner setup in `docs/setup-auth.md`). New finding **AUD-69 🔴: the live Supabase project had no tables at all** — every record lived only in the browser that created it (no sharing between devices, no cloud copy); fixed by `2026-10-30_initial_schema_and_auth.sql`. Everything else below is still open. Severity: 🔴 fix before going live · 🟠 soon · 🟡 later.
 
 ---
 

@@ -1,3 +1,4 @@
+-- ⚠ SUPERSEDED: the live project had no tables. Run 2026-10-30_initial_schema_and_auth.sql instead of this file.
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Phase 2 data-sync migration (audit AUD-02, AUD-03, AUD-04)          2026-10-27
 --

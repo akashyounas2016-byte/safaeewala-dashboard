@@ -3,7 +3,8 @@ import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDr
 import { useDarkMode } from '@/hooks/useDarkMode'
 import { supabase } from '@/lib/supabase'
 import { loadCompanyInfo } from '@/lib/companyInfo'
-import { useIsAdmin, useCurrentUser, useRolePerms, useSetRolePerms, DEFAULT_ROLE_PERMS, ALL_MODULES, type RolePerms, type AppRole } from '@/store/UserContext'
+import { useIsAdmin, useCurrentUser } from '@/store/UserContext'
+import { UsersAdminPanel, RolePermissionsPanel } from '@/components/settings/UserManagement'
 import * as XLSX from 'xlsx'
 import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured, getDriveWebhookUrl, setDriveWebhookUrl, testDriveWebhook } from '@/lib/googleDrive'
 import { Button } from '@/components/ui/Button'
@@ -14,12 +15,6 @@ import { cn } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import { getGHLConfig, saveGHLConfig, testGHLConnection, type GHLConfig } from '@/lib/ghlService'
 import { todayDubai } from '@/lib/dubaiTime'
-
-const ROLE_META: Record<AppRole, { label: string; badge: string; desc: string }> = {
-  admin:     { label: 'Admin',     badge: 'bg-purple-50 text-purple-700 border-purple-200', desc: 'Full access to all modules including user management and daily job sheet' },
-  developer: { label: 'Developer', badge: 'bg-blue-50 text-blue-700 border-blue-200',       desc: 'Same full access as Admin — for technical team members managing the system' },
-  employee:  { label: 'Employee',  badge: 'bg-slate-100 text-slate-600 border-slate-200',   desc: 'Operational access only — configure accessible modules below' },
-}
 
 const allTabs = [
   { id: 'company',       label: 'Company',        icon: Building,   adminOnly: false },
@@ -32,15 +27,6 @@ const allTabs = [
   { id: 'activity',      label: 'Activity Log',   icon: Clock,      adminOnly: true  },
   { id: 'integrations',  label: 'Integrations',   icon: Globe,     adminOnly: false },
 ]
-
-interface Profile {
-  id: string
-  email: string
-  full_name: string
-  status: 'pending' | 'approved' | 'rejected'
-  role: 'admin' | 'developer' | 'employee'
-  created_at: string
-}
 
 function AppearancePanel() {
   const { isDark, toggleDark } = useDarkMode()
@@ -101,163 +87,7 @@ function AppearancePanel() {
   )
 }
 
-function UsersPanel() {
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [pendingRoles, setPendingRoles] = useState<Record<string, string>>({})
 
-  async function load() {
-    setLoading(true)
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
-    if (data) setProfiles(data as Profile[])
-    setLoading(false)
-  }
-
-  async function approveWithRole(id: string) {
-    const role = pendingRoles[id] ?? 'employee'
-    await supabase.from('profiles').update({ status: 'approved', role }).eq('id', id)
-    setProfiles(p => p.map(u => u.id === id ? { ...u, status: 'approved', role: role as Profile['role'] } : u))
-  }
-
-  async function setStatus(id: string, status: 'approved' | 'rejected') {
-    await supabase.from('profiles').update({ status }).eq('id', id)
-    setProfiles(p => p.map(u => u.id === id ? { ...u, status } : u))
-  }
-
-  useEffect(() => { load() }, [])
-
-  const pending  = profiles.filter(p => p.status === 'pending')
-  const approved = profiles.filter(p => p.status === 'approved')
-  const rejected = profiles.filter(p => p.status === 'rejected')
-
-  const statusBadge = (s: string) => {
-    const cfg: Record<string, string> = {
-      approved: 'bg-emerald-50 text-emerald-700',
-      pending:  'bg-amber-50 text-amber-700',
-      rejected: 'bg-red-50 text-red-600',
-    }
-    return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${cfg[s] ?? ''}`}>{s}</span>
-  }
-
-  return (
-    <div className="space-y-5">
-
-      {/* Pending requests */}
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between">
-          <h3 className="text-[15px] font-bold text-[#111827]">Pending Requests</h3>
-          {pending.length > 0 && (
-            <span className="text-[11px] font-bold bg-amber-100 text-amber-700 px-2.5 py-0.5 rounded-full">
-              {pending.length} waiting
-            </span>
-          )}
-        </div>
-        {loading ? (
-          <p className="text-[13px] text-slate-400 text-center py-8">Loading…</p>
-        ) : pending.length === 0 ? (
-          <p className="text-[13px] text-slate-400 text-center py-8">No pending requests</p>
-        ) : (
-          <div className="divide-y divide-[#E4E8EC]">
-            {pending.map(u => (
-              <div key={u.id} className="px-6 py-4 flex items-center gap-4">
-                <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-[13px] shrink-0">
-                  {(u.full_name || u.email)[0].toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-[#111827]">{u.full_name || '—'}</p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">{u.email}</p>
-                  <p className="text-[10.5px] text-slate-400 mt-0.5">Requested {new Date(u.created_at).toLocaleDateString()}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <select
-                    value={pendingRoles[u.id] ?? 'employee'}
-                    onChange={e => setPendingRoles(r => ({ ...r, [u.id]: e.target.value }))}
-                    className="text-[12px] px-2.5 py-1.5 border border-[#E4E8EC] rounded-xl bg-slate-50 focus:outline-none focus:border-emerald-400 text-slate-700"
-                  >
-                    <option value="employee">Employee</option>
-                    <option value="admin">Admin</option>
-                    <option value="developer">Developer</option>
-                  </select>
-                  <button
-                    onClick={() => setStatus(u.id, 'rejected')}
-                    className="px-3 py-1.5 rounded-xl border border-red-200 text-red-600 text-[12px] font-semibold hover:bg-red-50 transition-colors"
-                  >
-                    Reject
-                  </button>
-                  <button
-                    onClick={() => approveWithRole(u.id)}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-500 text-white text-[12px] font-semibold hover:bg-emerald-600 transition-colors"
-                  >
-                    Approve
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Approved users */}
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#E4E8EC]">
-          <h3 className="text-[15px] font-bold text-[#111827]">Active Users ({approved.length})</h3>
-        </div>
-        <div className="divide-y divide-[#E4E8EC]">
-          {approved.map(u => (
-            <div key={u.id} className="px-6 py-4 flex items-center gap-4">
-              <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-[13px] shrink-0">
-                {(u.full_name || u.email)[0].toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-[#111827]">{u.full_name || '—'}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">{u.email}</p>
-              </div>
-              {statusBadge(u.status)}
-              <button
-                onClick={() => setStatus(u.id, 'rejected')}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-500 text-[12px] font-semibold hover:bg-slate-50 hover:text-red-600 hover:border-red-200 transition-colors"
-              >
-                Revoke
-              </button>
-            </div>
-          ))}
-          {approved.length === 0 && <p className="text-[13px] text-slate-400 text-center py-6">No approved users</p>}
-        </div>
-      </div>
-
-      {/* Rejected users */}
-      {rejected.length > 0 && (
-        <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
-          <div className="px-6 py-4 border-b border-[#E4E8EC]">
-            <h3 className="text-[15px] font-bold text-[#111827]">Rejected ({rejected.length})</h3>
-          </div>
-          <div className="divide-y divide-[#E4E8EC]">
-            {rejected.map(u => (
-              <div key={u.id} className="px-6 py-4 flex items-center gap-4">
-                <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center text-red-500 font-bold text-[13px] shrink-0">
-                  {(u.full_name || u.email)[0].toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-[#111827]">{u.full_name || '—'}</p>
-                  <p className="text-[11px] text-slate-500">{u.email}</p>
-                </div>
-                {statusBadge(u.status)}
-                <button
-                  onClick={() => setStatus(u.id, 'approved')}
-                  className="px-3 py-1.5 rounded-xl border border-emerald-200 text-emerald-600 text-[12px] font-semibold hover:bg-emerald-50 transition-colors"
-                >
-                  Re-approve
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ─── Toggle — controlled ─── */
 function Toggle({ label, description, checked, onChange }: {
   label: string; description: string; checked: boolean; onChange: (v: boolean) => void
 }) {
@@ -966,7 +796,6 @@ export function Settings() {
         const saved = data.data as Record<string, any>
         setCompany(c => ({ ...c, ...saved.company }))
         if (saved.notifications) setNotif(n => ({ ...n, ...saved.notifications }))
-        if (saved.rolePermissions) setRolePerms(r => ({ ...r, ...saved.rolePermissions }))
       }
       setSettingsLoaded(true)
     })
@@ -1000,11 +829,6 @@ export function Settings() {
     setNotif(updated)
     await saveSettingsData({ company, notifications: updated })
   }
-  const storedRolePerms  = useRolePerms()
-  const setStoredPerms   = useSetRolePerms()
-  const [rolePerms,      setRolePerms]      = useState<RolePerms>(DEFAULT_ROLE_PERMS)
-  const [editingRole,    setEditingRole]    = useState<AppRole | null>(null)
-  const [editPerms,      setEditPerms]      = useState<string[]>([])
   const [connectingIntegration, setConnectingIntegration] = useState<IntegrationInfo | null>(null)
   const [saved, setSaved] = useState(false)
   const [editProfileOpen,  setEditProfileOpen]  = useState(false)
@@ -1179,14 +1003,6 @@ export function Settings() {
     }
   }
 
-  async function saveRolePerms(newPerms: RolePerms) {
-    setRolePerms(newPerms)
-    setStoredPerms(newPerms)  // update sidebar immediately
-    const { data } = await supabase.from('company_settings').select('data').eq('id', 1).single()
-    const current = (data?.data ?? {}) as Record<string, any>
-    await supabase.from('company_settings').upsert({ id: 1, data: { ...current, rolePermissions: newPerms } })
-  }
-
   async function saveProfile(name: string) {
     setProfileSaving(true)
     await supabase.from('profiles').update({ full_name: name }).eq('id', currentUserId)
@@ -1270,7 +1086,7 @@ export function Settings() {
           {activeTab === 'appearance' && <AppearancePanel />}
 
           {/* ── Users ── */}
-          {activeTab === 'users' && <UsersPanel />}
+          {activeTab === 'users' && <UsersAdminPanel />}
 
           {/* ── Company ── */}
           {activeTab === 'company' && settingsLoaded && (
@@ -1388,55 +1204,8 @@ export function Settings() {
           )}
 
           {/* ── Roles ── */}
-          {activeTab === 'roles' && (
-            <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
-              <div className="px-6 py-4 border-b border-[#E4E8EC]">
-                <h3 className="text-[15px] font-bold text-[#111827]">Role Permissions</h3>
-                <p className="text-[12px] text-slate-500 mt-1">Define which modules each role can access. Assign roles when approving users in the Users tab.</p>
-              </div>
-              <div className="p-6 space-y-4">
-                {(['admin', 'developer', 'employee'] as const).map(roleKey => {
-                  const meta  = ROLE_META[roleKey]
-                  const perms = rolePerms[roleKey]
-                  return (
-                    <div key={roleKey} className="border border-[#E4E8EC] rounded-xl p-4 hover:border-slate-300 transition-colors">
-                      <div className="flex items-center gap-3 mb-3">
-                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${meta.badge}`}>{meta.label}</span>
-                        <p className="text-[12px] text-slate-500 flex-1">{meta.desc}</p>
-                        {isAdmin && (
-                          <button
-                            onClick={() => { setEditingRole(roleKey); setEditPerms([...perms]) }}
-                            className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 hover:text-slate-700 border border-slate-200 hover:border-slate-300 px-2.5 py-1 rounded-lg transition-colors shrink-0"
-                          >
-                            <Pencil size={11} /> Edit
-                          </button>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {ALL_MODULES.map(mod => {
-                          const has = perms.includes(mod)
-                          return (
-                            <span
-                              key={mod}
-                              className={`text-[11px] px-2 py-0.5 rounded-full font-medium border ${
-                                has
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                  : 'bg-red-50 text-red-500 border-red-200 line-through opacity-60'
-                              }`}
-                            >
-                              {mod}
-                            </span>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+          {activeTab === 'roles' && <RolePermissionsPanel />}
 
-          {/* ── Billing ── */}
           {activeTab === 'billing' && (
             <div className="space-y-4">
               <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
@@ -2103,26 +1872,6 @@ export function Settings() {
                 </div>
               ))}
             </div>
-            {!isAdmin && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle size={13} className="text-amber-600 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-[11.5px] font-semibold text-amber-800">Role mismatch detected</p>
-                    <p className="text-[11px] text-amber-700 mt-0.5 mb-2">Your profile is set to Employee in the database. Click below to restore admin access.</p>
-                    <button
-                      onClick={async () => {
-                        await supabase.from('profiles').update({ role: 'admin' }).eq('id', currentUserId)
-                        window.location.reload()
-                      }}
-                      className="text-[11px] font-bold text-amber-800 underline hover:text-amber-900"
-                    >
-                      Restore Admin Access
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
             <button
               onClick={() => setEditProfileOpen(true)}
               className="w-full mt-4 py-2 rounded-xl border border-[#E4E8EC] text-[12px] font-semibold text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
@@ -2226,45 +1975,6 @@ export function Settings() {
 
         </div>
       </div>
-
-      {/* ── Edit Role Permissions modal ── */}
-      <Modal
-        open={!!editingRole}
-        onClose={() => setEditingRole(null)}
-        title={editingRole ? `Edit ${ROLE_META[editingRole].label} Permissions` : ''}
-        size="sm"
-      >
-        {editingRole && (
-          <div className="space-y-3">
-            <p className="text-[12px] text-slate-500">Toggle which modules this role can access. Changes apply immediately across the app.</p>
-            <div className="space-y-0 divide-y divide-[#E4E8EC]">
-              {ALL_MODULES.map(mod => (
-                <label key={mod} className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-slate-50 -mx-1 px-1 rounded-lg transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={editPerms.includes(mod)}
-                    onChange={e =>
-                      setEditPerms(p => e.target.checked ? [...p, mod] : p.filter(x => x !== mod))
-                    }
-                    className="w-4 h-4 rounded border-slate-300 accent-emerald-600"
-                  />
-                  <span className="text-[13px] text-[#111827] font-medium">{mod}</span>
-                </label>
-              ))}
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="secondary" onClick={() => setEditingRole(null)}>Cancel</Button>
-              <Button onClick={async () => {
-                const newPerms = { ...rolePerms, [editingRole]: editPerms }
-                await saveRolePerms(newPerms)
-                setEditingRole(null)
-              }}>
-                Save Changes
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
 
       {/* ── Edit Profile modal ── */}
       <Modal

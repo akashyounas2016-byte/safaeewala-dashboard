@@ -1,12 +1,11 @@
-import { useEffect, useState, lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import type { Session } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { pullCloudState } from '@/lib/cloudState'
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation, Link } from 'react-router-dom'
 import { DataProvider, useData } from '@/store/DataContext'
-import { UserProvider, useCurrentUser } from '@/store/UserContext'
+import { UserProvider, useAuth, useRolePerms } from '@/store/UserContext'
+import { canAccessModule, firstAllowedPath, moduleForPath } from '@/lib/permissions'
 import { NotificationProvider } from '@/store/NotificationContext'
 import { Layout } from '@/components/layout/Layout'
-import { SimpleAuthProvider, useSimpleAuth, isLocalEnvironment } from '@/lib/simpleAuth'
 import { Login } from '@/pages/Login'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
@@ -66,24 +65,6 @@ const JobSheetSpreadsheet     = lazyWithRetry(() => import('@/pages/JobSheetSpre
 const PendingPayments        = lazyWithRetry(() => import('@/pages/PendingPayments').then(m => ({ default: m.PendingPayments })))
 const Attendance             = lazyWithRetry(() => import('@/pages/Attendance').then(m => ({ default: m.Attendance })))
 
-type ProfileStatus = 'approved' | 'pending' | 'rejected'
-
-async function fetchProfileStatus(userId: string, email: string): Promise<ProfileStatus> {
-  try {
-    const { data: profile } = await supabase
-      .from('profiles').select('status').eq('id', userId).single()
-    if (!profile) {
-      await supabase.from('profiles')
-        .upsert({ id: userId, email, full_name: '', status: 'pending', role: 'employee' })
-        .then(() => {}, () => {})
-      return 'approved'
-    }
-    return profile.status as ProfileStatus
-  } catch {
-    return 'approved'
-  }
-}
-
 function PageLoader() {
   return (
     <div className="min-h-[450px] flex flex-col items-center justify-center p-8 animate-in fade-in duration-200">
@@ -98,53 +79,58 @@ function PageLoader() {
   )
 }
 
-function PendingScreen() {
+function AuthMessage({ icon, title, text, onSignOut }: { icon: string; title: string; text: string; onSignOut: () => void }) {
   return (
     <div className="min-h-screen bg-[#f0f4f8] flex items-center justify-center p-4">
       <div className="w-full max-w-sm text-center">
-        <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-5 text-3xl">⏳</div>
-        <h2 className="text-[20px] font-black text-[#111827] mb-2">Pending Approval</h2>
-        <p className="text-[13px] text-slate-500 mb-8">Your account is waiting for admin approval.</p>
-        <button onClick={() => supabase.auth.signOut()} className="text-[12px] text-slate-500 underline hover:text-slate-700">Sign out</button>
+        <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-5 text-3xl">{icon}</div>
+        <h2 className="text-[20px] font-black text-[#111827] mb-2">{title}</h2>
+        <p className="text-[13px] text-slate-500 mb-8">{text}</p>
+        <button onClick={onSignOut} className="text-[12px] text-slate-500 underline hover:text-slate-700 cursor-pointer">Sign out</button>
       </div>
     </div>
   )
 }
 
-function RejectedScreen() {
+/** Login is required everywhere, localhost included — the database only answers signed-in users (SEC-01, DEC-014) */
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { status, user, signOut } = useAuth()
+  // Screens read payments / attendance from localStorage on mount, so bring the cloud copy in
+  // right after sign-in (max ~2.5 s; on failure the app starts with what this browser has) — AUD-02
+  const [cloudPulledFor, setCloudPulledFor] = useState<string | null>(null)
+  useEffect(() => {
+    if (status !== 'ready' || !user) return
+    let alive = true
+    void pullCloudState().finally(() => { if (alive) setCloudPulledFor(user.id) })
+    return () => { alive = false }
+  }, [status, user])
+  if (status === 'ready' && user && cloudPulledFor !== user.id) return <div className="min-h-screen flex items-center justify-center"><PageLoader /></div>
+  if (status === 'loading') return <div className="min-h-screen flex items-center justify-center"><PageLoader /></div>
+  if (status === 'signed_out') return <Login />
+  if (status === 'no_profile') return <AuthMessage icon="⏳" title="Account not set up" text="This login has no profile yet. Ask the admin to add you in Settings → Users." onSignOut={signOut} />
+  if (status === 'disabled') return <AuthMessage icon="✗" title="Account disabled" text="Your access has been turned off. Contact the admin." onSignOut={signOut} />
+  return <>{children}</>
+}
+
+/** Screen permission by role (R-SEC-03): blocks the URL too, not only the sidebar link */
+function ModuleGate() {
+  const { user } = useAuth()
+  const perms = useRolePerms()
+  const { pathname } = useLocation()
+  const module = moduleForPath(pathname)
+  if (!module || canAccessModule(user?.role, perms, module)) return <Outlet />
+  const home = firstAllowedPath(user?.role, perms)
+  if (pathname === '/' && home && home !== '/') return <Navigate to={home} replace />
   return (
-    <div className="min-h-screen bg-[#f0f4f8] flex items-center justify-center p-4">
-      <div className="w-full max-w-sm text-center">
-        <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-5 text-3xl">✗</div>
-        <h2 className="text-[20px] font-black text-[#111827] mb-2">Access Denied</h2>
-        <p className="text-[13px] text-slate-500 mb-8">Your access request was not approved. Contact the admin.</p>
-        <button onClick={() => supabase.auth.signOut()} className="text-[12px] text-slate-500 underline hover:text-slate-700">Sign out</button>
+    <div className="min-h-[60vh] flex items-center justify-center p-6">
+      <div className="text-center max-w-sm">
+        <div className="text-3xl mb-3">🔒</div>
+        <h2 className="text-[18px] font-black text-[#111827]">No access to {module}</h2>
+        <p className="text-[13px] text-slate-500 mt-1">Your role does not include this screen. Ask the admin if you need it.</p>
+        {home && <Link to={home} className="inline-block mt-4 text-[13px] font-bold text-emerald-700 hover:underline">Go to my screens</Link>}
       </div>
     </div>
   )
-}
-
-function AdminRoute({ children }: { children: React.ReactNode }) {
-  const user = useCurrentUser()
-  if (user === null) return null
-  if (user.role === 'employee') return <Navigate to="/" replace />
-  return <>{children}</>
-}
-
-function AuthGuard({ children }: { children: React.ReactNode }) {
-  const isLocal = isLocalEnvironment()
-  const { isAuthenticated } = useSimpleAuth()
-
-  // Local environment: login screen is disabled
-  if (isLocal) {
-    return <>{children}</>
-  }
-
-  // VPS / Production: login screen is enforced
-  if (!isAuthenticated) {
-    return <Login />
-  }
-  return <>{children}</>
 }
 
 function AppRoutes() {
@@ -156,16 +142,12 @@ function AppRoutes() {
           <Suspense fallback={<PageLoader />}>
             <Routes>
               {/* Standalone Full-Width Excel Spreadsheet (No Sidebar) */}
-              <Route
-                path="daily-job-sheet/spreadsheet"
-                element={
-                  <AdminRoute>
-                    <JobSheetSpreadsheet />
-                  </AdminRoute>
-                }
-              />
+              <Route element={<ModuleGate />}>
+                <Route path="daily-job-sheet/spreadsheet" element={<JobSheetSpreadsheet />} />
+              </Route>
 
               <Route element={<Layout />}>
+               <Route element={<ModuleGate />}>
                 <Route index element={<Overview />} />
                 <Route path="bookings"   element={<Bookings />} />
                 <Route path="fluent-forms" element={<FluentFormsLeads />} />
@@ -190,10 +172,9 @@ function AppRoutes() {
                 <Route path="reports"    element={<Reports />} />
                 <Route path="settings"   element={<Settings />} />
                 <Route path="attendance" element={<Attendance />} />
-                <Route path="daily-job-sheet" element={
-                  <AdminRoute><DailyJobSheet /></AdminRoute>
-                } />
+                <Route path="daily-job-sheet" element={<DailyJobSheet />} />
                 <Route path="login" element={<Navigate to="/" replace />} />
+               </Route>
               </Route>
             </Routes>
           </Suspense>
@@ -205,14 +186,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <SimpleAuthProvider>
-      <AuthGuard>
+    <UserProvider>
+      <AuthGate>
         <DataProvider>
-          <UserProvider>
-            <AppRoutes />
-          </UserProvider>
+          <AppRoutes />
         </DataProvider>
-      </AuthGuard>
-    </SimpleAuthProvider>
+      </AuthGate>
+    </UserProvider>
   )
 }

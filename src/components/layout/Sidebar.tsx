@@ -7,9 +7,10 @@ import {
   CreditCard, TrendingUp, Globe, Clock, LogOut, ChevronLeft, Building2,
   CalendarDays, Star, SlidersHorizontal, ArrowUp, ArrowDown, RotateCcw, Sparkles,
 } from 'lucide-react'
-import { useCurrentUser, useCanAccess } from '@/store/UserContext'
+import { useAuth, useRolePerms } from '@/store/UserContext'
+import { canAccessModule, moduleForPath, ROLE_META } from '@/lib/permissions'
+import { confirmAsync } from '@/lib/notify'
 import { useFluentFormsUnreadCount, markFluentFormsAsRead } from '@/lib/fluentFormsSync'
-import { useSimpleAuth, isLocalEnvironment } from '@/lib/simpleAuth'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
@@ -159,9 +160,8 @@ interface SidebarContentProps {
 }
 
 function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
-  const currentUser    = useCurrentUser()
-  const { logout, currentUser: authUser } = useSimpleAuth()
-  const canAccessDJS   = useCanAccess('Daily Job Sheet')
+  const { user: me, signOut } = useAuth()
+  const rolePerms      = useRolePerms()
   const fluentUnreadCount = useFluentFormsUnreadCount()
 
   // ── Customizer Modal State ──
@@ -243,10 +243,11 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
 
   const accessibleItems = useMemo(() => {
     return sortedNavItems.filter(item => {
-      if (item.adminOnly && !canAccessDJS) return false
-      return true
+      // Only the screens this user's role allows (R-SEC-03)
+      const mod = moduleForPath(item.to)
+      return !mod || canAccessModule(me?.role, rolePerms, mod)
     })
-  }, [sortedNavItems, canAccessDJS])
+  }, [sortedNavItems, me?.role, rolePerms])
 
   // Items pinned to Favorites at the very top
   const favoriteItems = useMemo(() => {
@@ -614,15 +615,15 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
                 className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 text-black shadow-sm"
                 style={{ background: 'linear-gradient(135deg, #fbbf24, #f97316)' }}
               >
-                AY
+                {(me?.full_name || me?.login_id || '?').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()}
               </div>
               <div className="min-w-0">
                 <p className="text-[13px] font-semibold text-white truncate leading-tight">
-                  {authUser || currentUser?.full_name || 'Akash Younas'}
+                  {me?.full_name || me?.login_id || '—'}
                 </p>
                 <p className="text-[10.5px] text-emerald-400 truncate mt-0.5 font-medium flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Admin · Active</span>
+                  <span>{me ? `${ROLE_META[me.role].label} · ${me.login_id}` : '—'}</span>
                 </p>
               </div>
             </div>
@@ -631,13 +632,8 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
               <button
                 type="button"
                 onClick={() => {
-                  if (isLocalEnvironment()) {
-                    alert('Local Environment: Password & Login screen are disabled locally. The login screen is active on the VPS production server.')
-                    return
-                  }
-                  if (window.confirm('Kiya aap Safaeewala CRM se Sign Out karna chahtay hain?')) {
-                    logout()
-                  }
+                  void confirmAsync({ title: 'Sign out?', message: 'Kiya aap Safaeewala CRM se Sign Out karna chahtay hain?', confirmLabel: 'Sign out' })
+                    .then(ok => { if (ok) void signOut() })
                 }}
                 className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                 title="Sign Out / Lock CRM"

@@ -280,10 +280,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ## SEC — Security
 
-### R-SEC-01 — Login only on production
-- **Rule:** On `localhost` / dev builds the login is bypassed; on the VPS a login is required, locked for 60 s after 5 failed attempts, session lasts 7 days.
-- **Code:** `src/lib/simpleAuth.ts → isLocalEnvironment, SESSION_TTL`.
-- **Status:** Active
+### R-SEC-01 — Everyone signs in with their own account; nobody signs up
+- **Rule:** Login is required everywhere (localhost included) through Supabase Auth with a Login ID (e.g. `SW-0007`, stored as `sw-0007@staff.safaeewala.com`) or email + password. Only an admin creates users, resets passwords, changes roles and disables accounts — through the server, which holds the service key. Passwords: 10+ characters with upper case, lower case and a number. The last active admin cannot be disabled or demoted; an admin cannot disable or demote themselves. No password or secret key is ever in a `VITE_` variable or in git.
+- **Code:** `src/store/UserContext.tsx`, `src/pages/Login.tsx`, `src/components/settings/UserManagement.tsx`, `webhookServer.cjs → /api/admin/users`, `supabase/migrations/2026-10-30_initial_schema_and_auth.sql`. Setup: `docs/setup-auth.md`.
+- **Status:** In code on `claude/workspace` · needs the owner setup steps · Since: 2026-10-30 (SEC-01, SEC-02, DEC-014). Replaces the old browser-only login (`simpleAuth`, removed).
+
+### R-SEC-03 — Screens by role; the database checks too
+- **Rule:** Roles: **Admin** (everything), **Manager** and **Employee** (screens ticked in Settings → Roles & Access; defaults: Manager all but Settings, Employee Overview/Bookings/Attendance). A blocked screen is hidden from the menu and its URL shows "No access". The database only answers signed-in active users; deleting records is allowed for Admin and Manager only.
+- **Code:** `src/lib/permissions.ts` (`APP_MODULES`, `moduleForPath`, `canAccessModule`), `App.tsx → AuthGate, ModuleGate`, row-level security in the migration.
+- **Status:** In code · Since: 2026-10-30 (SEC-03)
 
 ### R-SEC-02 — No secrets in the repo or docs
 - **Rule:** Credentials live in `.env` (see `.env.example` for names) and GitHub secrets only — never in code, docs, commits or chat.

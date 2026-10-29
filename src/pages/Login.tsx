@@ -3,78 +3,55 @@ import {
   User, Lock, Eye, EyeOff, ShieldCheck, AlertCircle,
   ArrowRight, Loader2, Sparkles
 } from 'lucide-react'
-import { useSimpleAuth, checkRateLimit } from '@/lib/simpleAuth'
+import { supabase } from '@/lib/supabase'
+import { loginIdToEmail } from '@/lib/permissions'
 
-interface LoginProps {
-  onLoginSuccess?: () => void
-}
-
-export function Login({ onLoginSuccess }: LoginProps) {
-  const { login } = useSimpleAuth()
+/**
+ * Sign in with a Login ID (e.g. SW-0007) or email + password — Supabase Auth (SEC-01).
+ * There is no sign-up: an admin creates every user in Settings → Users.
+ * Supabase limits repeated wrong attempts on the server side.
+ */
+export function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [lockedSeconds, setLockedSeconds] = useState(0)
 
-  // Check rate limit timer on mount
-  useEffect(() => {
-    const rate = checkRateLimit()
-    if (rate.isLocked) {
-      setLockedSeconds(rate.remainingSeconds)
-    }
-  }, [])
-
-  // Countdown timer for lockout
+  // Countdown after too many attempts
   useEffect(() => {
     if (lockedSeconds <= 0) return
-    const interval = setInterval(() => {
-      setLockedSeconds(prev => {
-        if (prev <= 1) {
-          setError(null)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
+    const interval = setInterval(() => setLockedSeconds(prev => (prev <= 1 ? 0 : prev - 1)), 1000)
     return () => clearInterval(interval)
   }, [lockedSeconds])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-
-    if (lockedSeconds > 0) {
-      setError(`Baraye meherbani ${lockedSeconds} second intezar karein.`)
+    if (lockedSeconds > 0) return
+    if (!username.trim() || !password) {
+      setError('Login ID aur password dono darj karein.')
       return
     }
-
-    if (!username.trim() || !password.trim()) {
-      setError('Username aur password dono darj karna lazmi hai.')
-      return
-    }
-
     setLoading(true)
-
-    // Micro-delay for realistic feedback
-    setTimeout(() => {
-      const res = login(username, password, rememberMe)
-      setLoading(false)
-
-      if (res.success) {
-        if (onLoginSuccess) {
-          onLoginSuccess()
-        }
-      } else {
-        setError(res.error || 'Ghalat credentials!')
-        const rate = checkRateLimit()
-        if (rate.isLocked) {
-          setLockedSeconds(rate.remainingSeconds)
-        }
-      }
-    }, 350)
+    const { error: err } = await supabase.auth.signInWithPassword({ email: loginIdToEmail(username), password })
+    setLoading(false)
+    if (!err) {
+      void supabase.rpc('touch_last_login')
+      return // UserProvider picks up the session
+    }
+    const msg = err.message.toLowerCase()
+    if (err.status === 429 || msg.includes('rate limit') || msg.includes('too many')) {
+      setLockedSeconds(60)
+      setError('Bohat zyada koshishein — 1 minute baad dobara try karein.')
+    } else if (msg.includes('banned')) {
+      setError('Ye account band hai. Admin se rabta karein.')
+    } else if (msg.includes('invalid')) {
+      setError('Login ID ya password ghalat hai.')
+    } else {
+      setError('Sign in nahi ho saka: ' + err.message)
+    }
   }
 
   return (
@@ -106,7 +83,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
 
           <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-[11px] font-bold text-emerald-300">
             <ShieldCheck size={12} className="text-emerald-400" />
-            <span>Secure Admin Authentication</span>
+            <span>Secure Staff Sign-In</span>
           </div>
         </div>
 
@@ -115,7 +92,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
           <div className="mb-6">
             <h2 className="text-[18px] font-bold text-white tracking-tight">Sign In</h2>
             <p className="text-[12px] text-slate-400 mt-0.5">
-              Enter your credentials to unlock the operations dashboard
+              Use the Login ID and password your admin gave you
             </p>
           </div>
 
@@ -138,7 +115,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
             {/* Username Input */}
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                Username
+                Login ID
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
@@ -151,7 +128,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
                   autoComplete="username"
                   autoFocus
                   disabled={loading || lockedSeconds > 0}
-                  placeholder="e.g. admin"
+                  placeholder="e.g. SW-0007 or admin"
                   className="w-full pl-10 pr-4 py-2.5 bg-[#091116] border border-[#1f2f38] rounded-xl text-white text-[13.5px] placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-colors disabled:opacity-50"
                 />
               </div>
@@ -186,18 +163,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
               </div>
             </div>
 
-            {/* Remember Me */}
-            <div className="flex items-center justify-between pt-1">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={e => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded bg-[#091116] border-[#1f2f38] text-emerald-600 focus:ring-emerald-500/30 focus:ring-offset-0 cursor-pointer accent-emerald-500"
-                />
-                <span className="text-[12px] text-slate-400 font-medium">Remember this session</span>
-              </label>
-            </div>
+            <p className="text-[11.5px] text-slate-500">Password bhool gaye? Admin se naya password lein — yahan sign-up nahi hota.</p>
 
             {/* Submit Button */}
             <button

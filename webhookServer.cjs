@@ -286,6 +286,182 @@ function healLead(lead) {
   };
 }
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// User management (SEC-01): only an admin creates users — there is no sign-up.
+// Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the server environment; the
+// service key never reaches the browser.
+// ═══════════════════════════════════════════════════════════════════════════
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const LOGIN_EMAIL_DOMAIN = 'staff.safaeewala.com';
+const ROLES = ['admin', 'manager', 'employee'];
+const MAX_BODY = 1024 * 1024; // 1 MB for JSON requests
+
+/** "SW-0007" → "sw-0007@staff.safaeewala.com"; a real email is used as it is */
+function loginIdToEmail(loginId) {
+  const id = String(loginId || '').trim().toLowerCase();
+  return id.includes('@') ? id : `${id}@${LOGIN_EMAIL_DOMAIN}`;
+}
+/** At least 10 characters with upper case, lower case and a number */
+function passwordProblem(pw) {
+  const p = String(pw || '');
+  if (p.length < 10) return 'Password must be at least 10 characters.';
+  if (!/[a-z]/.test(p) || !/[A-Z]/.test(p) || !/[0-9]/.test(p)) return 'Password needs upper case, lower case and a number.';
+  return null;
+}
+
+function readJson(req, max = MAX_BODY) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', c => {
+      size += c.length;
+      if (size > max) { reject(Object.assign(new Error('Request too large'), { status: 413 })); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      try { resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}); }
+      catch { reject(Object.assign(new Error('Invalid JSON'), { status: 400 })); }
+    });
+    req.on('error', reject);
+  });
+}
+function sendJson(res, status, body) {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
+
+function serviceHeaders(extra = {}) {
+  const h = { apikey: SERVICE_KEY, 'Content-Type': 'application/json', ...extra };
+  if (SERVICE_KEY.startsWith('eyJ')) h.Authorization = `Bearer ${SERVICE_KEY}`; // legacy service_role JWT
+  return h;
+}
+async function supa(pathname, { method = 'GET', body, headers } = {}) {
+  const r = await fetch(`${SUPABASE_URL}${pathname}`, { method, headers: serviceHeaders(headers), body: body ? JSON.stringify(body) : undefined });
+  const text = await r.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  if (!r.ok) {
+    const msg = (data && (data.msg || data.message || data.error_description || data.error)) || `Supabase error ${r.status}`;
+    throw Object.assign(new Error(msg), { status: r.status >= 500 ? 502 : 400 });
+  }
+  return data;
+}
+
+/** The caller must be a signed-in, active admin */
+async function requireAdmin(req) {
+  if (!SUPABASE_URL || !SERVICE_KEY) throw Object.assign(new Error('User management is not set up on the server (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).'), { status: 503 });
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!token) throw Object.assign(new Error('Sign in first.'), { status: 401 });
+  const ur = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${token}` } });
+  if (!ur.ok) throw Object.assign(new Error('Session expired — sign in again.'), { status: 401 });
+  const user = await ur.json();
+  const rows = await supa(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,status`);
+  const me = rows && rows[0];
+  if (!me || me.role !== 'admin' || me.status !== 'active') throw Object.assign(new Error('Only an admin can manage users.'), { status: 403 });
+  return user;
+}
+
+async function activeAdminCount() {
+  const rows = await supa('/rest/v1/profiles?role=eq.admin&status=eq.active&select=id');
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
+async function handleAdminUsers(req, res, pathname) {
+  try {
+    const admin = await requireAdmin(req);
+
+    // List users
+    if (req.method === 'GET' && pathname === '/api/admin/users') {
+      const rows = await supa('/rest/v1/profiles?select=*&order=created_at.asc');
+      return sendJson(res, 200, rows || []);
+    }
+
+    // Create a user
+    if (req.method === 'POST' && pathname === '/api/admin/users') {
+      const b = await readJson(req);
+      const loginId = String(b.login_id || '').trim();
+      if (!/^[A-Za-z0-9._@-]{3,60}$/.test(loginId)) return sendJson(res, 400, { error: 'Login ID: 3–60 letters, numbers, dot, dash or underscore.' });
+      if (!ROLES.includes(b.role)) return sendJson(res, 400, { error: 'Choose a role.' });
+      const pwErr = passwordProblem(b.password);
+      if (pwErr) return sendJson(res, 400, { error: pwErr });
+      const taken = await supa(`/rest/v1/profiles?login_id=ilike.${encodeURIComponent(loginId)}&select=id`);
+      if (taken && taken.length) return sendJson(res, 409, { error: `Login ID "${loginId}" is already used.` });
+      if (b.employee_id) {
+        const linked = await supa(`/rest/v1/profiles?employee_id=eq.${encodeURIComponent(b.employee_id)}&select=login_id`);
+        if (linked && linked.length) return sendJson(res, 409, { error: `This employee already has the login "${linked[0].login_id}".` });
+      }
+      const email = loginIdToEmail(loginId);
+      const created = await supa('/auth/v1/admin/users', {
+        method: 'POST',
+        body: { email, password: b.password, email_confirm: true, user_metadata: { login_id: loginId, full_name: b.full_name || '' } },
+      });
+      const userId = created.id || (created.user && created.user.id);
+      try {
+        const rows = await supa('/rest/v1/profiles', {
+          method: 'POST',
+          headers: { Prefer: 'return=representation' },
+          body: { id: userId, login_id: loginId, email, full_name: String(b.full_name || '').trim(), role: b.role, employee_id: b.employee_id || null, status: 'active' },
+        });
+        console.log(`[Users] ${admin.email} created ${loginId} (${b.role})`);
+        return sendJson(res, 201, rows && rows[0]);
+      } catch (err) {
+        await supa(`/auth/v1/admin/users/${userId}`, { method: 'DELETE' }).catch(() => {});
+        throw err;
+      }
+    }
+
+    // Update a user: name, role, employee link, status, password
+    const m = pathname.match(/^\/api\/admin\/users\/([0-9a-f-]{36})$/);
+    if (req.method === 'PATCH' && m) {
+      const id = m[1];
+      const b = await readJson(req);
+      const rows = await supa(`/rest/v1/profiles?id=eq.${id}&select=*`);
+      const target = rows && rows[0];
+      if (!target) return sendJson(res, 404, { error: 'User not found.' });
+      const patch = {};
+      if (typeof b.full_name === 'string') patch.full_name = b.full_name.trim();
+      if (b.employee_id !== undefined) patch.employee_id = b.employee_id || null;
+      if (b.role !== undefined) {
+        if (!ROLES.includes(b.role)) return sendJson(res, 400, { error: 'Unknown role.' });
+        patch.role = b.role;
+      }
+      if (b.status !== undefined) {
+        if (!['active', 'disabled'].includes(b.status)) return sendJson(res, 400, { error: 'Unknown status.' });
+        patch.status = b.status;
+      }
+      // Never lock the company out: the last active admin cannot be disabled or demoted
+      const losesAdmin = target.role === 'admin' && target.status === 'active' &&
+        ((patch.role && patch.role !== 'admin') || patch.status === 'disabled');
+      if (losesAdmin && (await activeAdminCount()) <= 1) return sendJson(res, 400, { error: 'Keep at least one active admin.' });
+      if (id === admin.id && (patch.status === 'disabled' || (patch.role && patch.role !== 'admin'))) {
+        return sendJson(res, 400, { error: 'You cannot disable or demote your own account.' });
+      }
+      if (b.password !== undefined) {
+        const pwErr = passwordProblem(b.password);
+        if (pwErr) return sendJson(res, 400, { error: pwErr });
+        await supa(`/auth/v1/admin/users/${id}`, { method: 'PUT', body: { password: b.password } });
+      }
+      if (patch.status) {
+        // A disabled user is also blocked at the sign-in level
+        await supa(`/auth/v1/admin/users/${id}`, { method: 'PUT', body: { ban_duration: patch.status === 'disabled' ? '876000h' : 'none' } });
+      }
+      let updated = target;
+      if (Object.keys(patch).length) {
+        const out = await supa(`/rest/v1/profiles?id=eq.${id}`, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: patch });
+        updated = out && out[0];
+      }
+      console.log(`[Users] ${admin.email} updated ${target.login_id}: ${Object.keys(patch).concat(b.password !== undefined ? ['password'] : []).join(', ')}`);
+      return sendJson(res, 200, updated);
+    }
+
+    return sendJson(res, 404, { error: 'Endpoint not found' });
+  } catch (err) {
+    return sendJson(res, err.status || 500, { error: err.message || 'Server error' });
+  }
+}
+
 const server = http.createServer((req, res) => {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -300,6 +476,12 @@ const server = http.createServer((req, res) => {
 
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
+
+  // User management (admin only)
+  if (pathname === '/api/admin/users' || pathname.startsWith('/api/admin/users/')) {
+    handleAdminUsers(req, res, pathname);
+    return;
+  }
 
   // 1. GET /api/webhook/fluent-forms -> list leads
   if (req.method === 'GET' && pathname === '/api/webhook/fluent-forms') {
@@ -396,7 +578,9 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       try {
         const payload = JSON.parse(body);
-        const filename = payload.filename || `DailyJobSheet-${Date.now()}.xlsx`;
+        // SEC-05: keep only a plain .xlsx file name — no folders, no '..'
+        const rawName = path.basename(String(payload.filename || '')).replace(/[^A-Za-z0-9._ -]/g, '_');
+        const filename = /^[^.][^/\\]*\.xlsx$/i.test(rawName) ? rawName : `DailyJobSheet-${Date.now()}.xlsx`;
         const backupsDir = path.join(DATA_DIR, 'backups');
         if (!fs.existsSync(backupsDir)) {
           fs.mkdirSync(backupsDir, { recursive: true });
