@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+## 2026-10-30 (Deploy to Production VPS)
+
 - fix(bookings, clients): Fixed client redirection from Booking Details popup (`BookingDetailModal`) — clicking Client ID or Client Name now redirects directly to that specific client's profile (`/clients/:id`), eliminating fallback to the generic clients table (`/clients`). Enhanced `ClientProfile.tsx` resolution to match client by ID, code, name, phone, or dynamically synthesize client history from Bookings/DailyJobs.
 - feat(bookings): Added synchronized 'Invoice' and 'Payment' quick action buttons to every booking card across Card Grid, Table View, Kanban Board, and Booking Details popup.
 - feat(bookings): Created `BookingInvoiceModal` (`BookingInvoiceModal.tsx`) matching CRM Slate-Teal & Emerald theme — supports instant Tax Invoice preview, PDF printing via shared `invoicePrint.ts`, payment status tracking, and 1-click tax invoice generation with UAE VAT (5% / 0% Exempt).
