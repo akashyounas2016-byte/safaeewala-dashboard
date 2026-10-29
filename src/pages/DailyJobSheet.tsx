@@ -84,6 +84,7 @@ import {
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
+import { escapeHtml } from '@/lib/html'
 import { invoicedJobIds } from '@/lib/receivables'
 import { notify, confirmAsync } from '@/lib/notify'
 import { ImportPreviewModal, type ImportPlan } from '@/components/dailyJobSheet/ImportPreviewModal'
@@ -1262,37 +1263,37 @@ export function DailyJobSheet() {
           ? 'background:#fee2e2'
           : ''
       return `<tr style="${rowStyle}">
-        <td>${j.staff_name}</td>
+        <td>${escapeHtml(j.staff_name)}</td>
         <td>${formatTimeOnly(j.start_time)}</td>
         <td>${formatTimeOnly(j.end_time)}</td>
-        <td>${j.address || '—'}</td>
-        <td>${j.area || '—'}</td>
+        <td>${escapeHtml(j.address || '—')}</td>
+        <td>${escapeHtml(j.area || '—')}</td>
         <td style="text-align:right">${j.payment_mode === 'Monthly' ? (cleanNum(j.charges) > 0 ? cleanNum(j.charges) : '—') : cleanNum(j.charges)}</td>
         <td style="text-align:right">${j.payment_mode === 'Pending' || j.payment_mode === 'Monthly' ? '—' : cleanNum(j.received)}</td>
         <td style="text-align:right">${jobPending(j) > 0 ? jobPending(j) : 'Nil'}</td>
         <td style="text-align:center">${cleanNum(j.duty_hours)}h</td>
         <td style="text-align:center">${otDisplay > 0 ? otDisplay + 'h OT' : '0'}</td>
-        <td>${j.material}</td>
-        <td>${j.payment_mode}</td>
-        <td>${j.remarks}</td>
-        <td>${j.service || '—'}</td>
+        <td>${escapeHtml(j.material)}</td>
+        <td>${escapeHtml(j.payment_mode)}</td>
+        <td>${escapeHtml(j.remarks || '')}</td>
+        <td>${escapeHtml(j.service || '—')}</td>
       </tr>`}).join('')
 
     const nilPrintRows = filteredNilRows.map(n => `
-      <tr style="background:#fee2e2;color:#991b1b;font-weight:600">
-        <td>${n.staff_name}</td>
+      <tr style="background:#e0f2fe;color:#075985;font-weight:600">
+        <td>${escapeHtml(n.staff_name)}</td>
         <td>—</td><td>—</td>
-        <td>Absent (No jobs assigned)</td>
+        <td>Available (no job assigned)</td>
         <td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
-        <td><span style="background:#dc2626;color:#fff;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:bold">ABSENT</span></td>
+        <td><span style="background:#0284c7;color:#fff;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:bold">AVAILABLE</span></td>
         <td>—</td><td>—</td>
       </tr>`).join('')
 
     const expRows = todayExpenses.map(e => `
-      <tr><td>${e.name}</td><td>${e.category}</td><td style="text-align:right">AED ${cleanNum(e.amount)}</td></tr>`).join('')
+      <tr><td>${escapeHtml(e.name)}</td><td>${escapeHtml(e.category)}</td><td style="text-align:right">AED ${cleanNum(e.amount)}</td></tr>`).join('')
 
     const driverRows = Object.entries(driverSummary).map(([name, amt]) =>
-      `<tr><td>${name}</td><td style="text-align:right">AED ${amt}</td></tr>`).join('')
+      `<tr><td>${escapeHtml(name)}</td><td style="text-align:right">AED ${amt}</td></tr>`).join('')
 
     const win = window.open('', '_blank', 'width=1100,height=800')
     if (!win) return
@@ -1336,7 +1337,7 @@ export function DailyJobSheet() {
           <td colspan="5">Totals</td>
           <td style="text-align:right">AED ${todayJobs.reduce((s,j)=>s+cleanNum(j.charges),0).toLocaleString()}</td>
           <td style="text-align:right">AED ${grossCollected.toLocaleString()}</td>
-          <td style="text-align:right">AED ${todayJobs.reduce((s,j)=>s+Math.max(0,cleanNum(j.charges)-cleanNum(j.received)),0).toLocaleString()}</td>
+          <td style="text-align:right">AED ${todayJobs.reduce((s,j)=>s+jobPending(j),0).toLocaleString()}</td>
           <td style="text-align:center">${Math.round(todayJobs.reduce((s,j)=>s+cleanNum(j.duty_hours),0)*10)/10}h</td>
           <td style="text-align:center">${Math.round(todayJobs.reduce((s,j)=>s+(cleanNum(j.ot_hours)||calcOTHours(j.start_time,j.end_time)),0)*10)/10}h</td>
           <td colspan="4"></td>

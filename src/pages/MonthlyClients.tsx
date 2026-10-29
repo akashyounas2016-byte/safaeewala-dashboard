@@ -30,6 +30,7 @@ import {
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
 import { todayDubai } from '@/lib/dubaiTime'
+import { escapeHtml } from '@/lib/html'
 
 export type MonthlyDatePreset =
   | 'today'
@@ -872,7 +873,7 @@ export function MonthlyClients() {
       <tr style="border-bottom: 1px solid #e2e8f0;">
         <td style="padding: 10px 12px; font-weight: 500; color: #1e293b; font-size: 12.5px;">
           ${invoiceType === 'detailed' ? `<span style="color:#64748b;font-weight:600;margin-right:6px;">${idx + 1}.</span>` : ''}
-          ${item.description}
+          ${escapeHtml(item.description)}
         </td>
         <td style="padding: 10px 12px; text-align: center; color: #475569; font-size: 12.5px;">${item.quantity}</td>
         <td style="padding: 10px 12px; text-align: right; color: #475569; font-size: 12.5px;">AED ${Number(item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -884,7 +885,7 @@ export function MonthlyClients() {
     <html lang="en">
     <head>
       <meta charset="UTF-8">
-      <title>Invoice ${invoiceNumber} - ${invoiceClient.name}</title>
+      <title>Invoice ${escapeHtml(invoiceNumber)} - ${escapeHtml(invoiceClient.name)}</title>
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; padding: 40px; color: #0f172a; font-size: 13px; line-height: 1.5; background: #fff; }
@@ -935,7 +936,7 @@ export function MonthlyClients() {
           </div>
           <div class="invoice-title-block">
             <div class="invoice-title">TAX INVOICE</div>
-            <div style="font-family: monospace; font-size: 13px; font-weight: 700; color: #0d9488; margin-top: 2px;">${invoiceNumber}</div>
+            <div style="font-family: monospace; font-size: 13px; font-weight: 700; color: #0d9488; margin-top: 2px;">${escapeHtml(invoiceNumber)}</div>
             <div class="invoice-badge">${invoiceType === 'detailed' ? 'Itemized Shifts Invoice' : 'Consolidated Invoice'}</div>
           </div>
         </div>
@@ -943,9 +944,9 @@ export function MonthlyClients() {
         <div class="meta-grid">
           <div class="meta-box">
             <div class="meta-label">Billed To (Client)</div>
-            <div class="meta-val">${invoiceClient.name}</div>
-            <div style="font-size: 12px; color: #475569; margin-top: 3px;">${invoiceClient.rawAddress || 'Dubai'}</div>
-            <div style="font-size: 12px; color: #475569; margin-top: 2px;">Area: ${invoiceClient.area || 'Dubai'}</div>
+            <div class="meta-val">${escapeHtml(invoiceClient.name)}</div>
+            <div style="font-size: 12px; color: #475569; margin-top: 3px;">${escapeHtml(invoiceClient.rawAddress || 'Dubai')}</div>
+            <div style="font-size: 12px; color: #475569; margin-top: 2px;">Area: ${escapeHtml(invoiceClient.area || 'Dubai')}</div>
             <div style="font-size: 12px; color: #0d9488; font-weight: 600; margin-top: 4px;">Account: Monthly Client</div>
           </div>
 
@@ -985,7 +986,7 @@ export function MonthlyClients() {
           <div><strong>Bank:</strong> Commercial Bank of Dubai / First Abu Dhabi Bank (FAB)</div>
           <div><strong>Account Name:</strong> Safaeewala Cleaning &amp; Maintenance LLC</div>
           <div><strong>IBAN:</strong> AE000000000000000000000</div>
-          <div><strong>Notes:</strong> ${invoiceNotes || 'Payment due within 7 days. Please mention invoice number in reference.'}</div>
+          <div><strong>Notes:</strong> ${escapeHtml(invoiceNotes || 'Payment due within 7 days. Please mention invoice number in reference.')}</div>
         </div>
 
         <div class="footer">
