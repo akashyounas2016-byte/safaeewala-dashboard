@@ -224,7 +224,7 @@ export function ClientModalForm({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
-              <div className="md:col-span-5">
+              <div className="md:col-span-4">
                 <Input
                   name="full_name"
                   label="Full Name *"
@@ -234,7 +234,7 @@ export function ClientModalForm({
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
-              <div className="md:col-span-3.5">
+              <div className="md:col-span-4">
                 <Input
                   name="phone"
                   label="Phone Number"
@@ -243,7 +243,7 @@ export function ClientModalForm({
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
-              <div className="md:col-span-3.5">
+              <div className="md:col-span-4">
                 <Input
                   name="whatsapp"
                   label="WhatsApp Number"
