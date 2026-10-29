@@ -25,7 +25,7 @@ export interface NavItemConfig {
 
 export const ALL_NAV_ITEMS: NavItemConfig[] = [
   // ── Workspace ──
-  { to: '/',                 label: 'Overview',          icon: LayoutDashboard, tag: 'Coming Soon', category: 'Workspace' },
+  { to: '/',                 label: 'Overview',          icon: LayoutDashboard, category: 'Workspace' },
   { to: '/bookings',         label: 'Bookings',          icon: CalendarCheck,                              category: 'Workspace' },
   { to: '/daily-job-sheet',  label: 'Daily Job Sheet',   icon: ClipboardList,   adminOnly: true,    category: 'Workspace' },
   { to: '/fluent-forms',     label: 'Fluent Forms',      icon: Globe,                               category: 'Workspace' },
