@@ -10,6 +10,7 @@ import { addHoursToTime, staffOfAgency } from '@/lib/utils'
 import { defaultAgencies } from '@/lib/defaultAgencies'
 import { todayDubai } from '@/lib/dubaiTime'
 import { describeJobChange } from '@/lib/auditLog'
+import { saveDeletionSnapshot } from '@/lib/snapshots'
 export { defaultAgencies }
 
 interface DataStore {
@@ -57,6 +58,8 @@ interface DataStore {
   deleteDailyExpense: (id: string) => void
   clearDailyData:     (date: string) => void
   clearAllDailyData:  () => Promise<void>
+  /** Put back records from a before-delete copy, keeping their ids; existing ids are skipped (BAK-5) */
+  restoreRecords:     (r: { dailyJobs?: DailyJob[]; dailyExpenses?: DailyExpense[]; employees?: Employee[]; agencies?: Agency[] }) => number
 }
 
 const DataContext = createContext<DataStore | null>(null)
@@ -758,6 +761,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // The parent company is never deleted together with its staff.
       if (a && id !== 'agency-safaeewala' && a.company_type !== 'Parent Company') {
         const staff = staffOfAgency(a, employees)
+        // BAK-5: keep a copy of the agency and its staff before they go
+        saveDeletionSnapshot(`Agency ${a.name}`, { agencies: [a], employees: staff })
         if (staff.length > 0) {
           const ids = new Set(staff.map(s => s.id))
           setEmployees(p => p.filter(e => !ids.has(e.id)))
@@ -949,8 +954,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     clearDailyData: (date) => {
       // AUD-55: delete the day's rows one by one through the outbox — a failed delete is retried, and
       // rows imported right after (new ids) can never be caught by a late "delete where date = …"
-      const jobIds = dailyJobs.filter(j => j.date === date).map(j => j.id)
-      const expenseIds = dailyExpenses.filter(e => e.date === date).map(e => e.id)
+      const dayJobs = dailyJobs.filter(j => j.date === date)
+      const dayExpenses = dailyExpenses.filter(e => e.date === date)
+      const jobIds = dayJobs.map(j => j.id)
+      const expenseIds = dayExpenses.map(e => e.id)
+      // BAK-5: keep a copy of the day before it is replaced or deleted
+      saveDeletionSnapshot(`Day ${date}`, { dailyJobs: dayJobs, dailyExpenses: dayExpenses })
       setDailyJobs(p => {
         const next = p.filter(j => j.date !== date)
         safeLocalStorageSet('safaeewala_daily_jobs', next)
@@ -967,6 +976,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     clearAllDailyData: async () => {
       const jobIds = dailyJobs.map(j => j.id)
       const expenseIds = dailyExpenses.map(e => e.id)
+      // BAK-5: Delete All always downloads a full copy first (jobs, expenses, pending, received, advances)
+      const appState: Record<string, unknown> = {}
+      for (const k of ['safaeewala_daily_pending_items', 'safaeewala_daily_pending_rcvd_items', 'safaeewala_daily_advance_items']) {
+        appState[k] = safeLocalStorageGet<unknown[]>(k, [])
+      }
+      saveDeletionSnapshot('Delete All Data', { dailyJobs, dailyExpenses, appState }, { download: true })
       setDailyJobs([])
       setDailyExpenses([])
       safeLocalStorageSet('safaeewala_daily_jobs', [])
@@ -981,6 +996,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ids.forEach(id => dbDelete(table, id))
       }
       await Promise.all([bulk('daily_jobs', jobIds), bulk('daily_expenses', expenseIds)])
+    },
+
+    restoreRecords: (r) => {
+      let restored = 0
+      const putBack = <T extends { id: string }>(
+        rows: T[] | undefined, current: T[], set: (fn: (p: T[]) => T[]) => void, table: string, cacheKey: string,
+      ) => {
+        const have = new Set(current.map(x => x.id))
+        const missing = (rows || []).filter(x => x && x.id && !have.has(x.id))
+        if (missing.length === 0) return
+        restored += missing.length
+        set(p => {
+          const next = [...missing, ...p]
+          safeLocalStorageSet(cacheKey, next)
+          return next
+        })
+        missing.forEach(row => dbInsert(table, row))
+      }
+      putBack(r.agencies, agencies, setAgencies, 'agencies', 'safaeewala_agencies')
+      putBack(r.employees, employees, setEmployees, 'employees', 'safaeewala_employees')
+      putBack(r.dailyJobs, dailyJobs, setDailyJobs, 'daily_jobs', 'safaeewala_daily_jobs')
+      putBack(r.dailyExpenses, dailyExpenses, setDailyExpenses, 'daily_expenses', 'safaeewala_daily_expenses')
+      if (restored > 0) logAudit('restored', 'snapshot', '', `${restored} records`)
+      return restored
     },
 
     reorderItem: (id) => {

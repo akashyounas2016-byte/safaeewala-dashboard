@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { loadCompanyInfo } from '@/lib/companyInfo'
 import { useIsAdmin, useCurrentUser } from '@/store/UserContext'
 import { UsersAdminPanel, RolePermissionsPanel } from '@/components/settings/UserManagement'
+import { BeforeDeleteCopies } from '@/components/settings/BeforeDeleteCopies'
 import * as XLSX from 'xlsx'
 import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured, getDriveWebhookUrl, setDriveWebhookUrl, testDriveWebhook } from '@/lib/googleDrive'
 import { Button } from '@/components/ui/Button'
@@ -1412,6 +1413,9 @@ export function Settings() {
                   </div>
                 </div>
               </div>
+
+              {/* Copies kept automatically before deletes (BAK-5) */}
+              <BeforeDeleteCopies />
 
               {/* Card 1: One-Click Instant Backups (Export Engine) */}
               <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
