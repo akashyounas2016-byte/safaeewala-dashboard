@@ -281,7 +281,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ## SEC — Security
 
 ### R-SEC-01 — Everyone signs in with their own account; nobody signs up
-- **Rule:** Login is required everywhere (localhost included) through Supabase Auth with a Login ID (e.g. `SW-0007`, stored as `sw-0007@staff.safaeewala.com`) or email + password. Only an admin creates users, resets passwords, changes roles and disables accounts — through the server, which holds the service key. Passwords: 10+ characters with upper case, lower case and a number. The last active admin cannot be disabled or demoted; an admin cannot disable or demote themselves. No password or secret key is ever in a `VITE_` variable or in git.
+- **Rule:** Login is required everywhere (localhost included) through Supabase Auth with a Login ID (e.g. `SW-0007`, stored as `crm-sw-0007@safaeewala.com`) or email + password. Only an admin creates users, resets passwords, changes roles and disables accounts — through the server, which holds the service key. Passwords: 10+ characters with upper case, lower case and a number. The last active admin cannot be disabled or demoted; an admin cannot disable or demote themselves. No password or secret key is ever in a `VITE_` variable or in git.
 - **Code:** `src/store/UserContext.tsx`, `src/pages/Login.tsx`, `src/components/settings/UserManagement.tsx`, `webhookServer.cjs → /api/admin/users`, `supabase/migrations/2026-10-30_initial_schema_and_auth.sql`. Setup: `docs/setup-auth.md`.
 - **Status:** In code on `claude/workspace` · needs the owner setup steps · Since: 2026-10-30 (SEC-01, SEC-02, DEC-014). Replaces the old browser-only login (`simpleAuth`, removed).
 

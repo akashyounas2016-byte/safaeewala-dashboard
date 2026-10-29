@@ -294,14 +294,15 @@ function healLead(lead) {
 // ═══════════════════════════════════════════════════════════════════════════
 const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const LOGIN_EMAIL_DOMAIN = 'staff.safaeewala.com';
+const LOGIN_EMAIL_DOMAIN = 'safaeewala.com'; // real mail domain — Supabase rejects domains without mail
+const LOGIN_EMAIL_PREFIX = 'crm-';
 const ROLES = ['admin', 'manager', 'employee'];
 const MAX_BODY = 1024 * 1024; // 1 MB for JSON requests
 
-/** "SW-0007" → "sw-0007@staff.safaeewala.com"; a real email is used as it is */
+/** "SW-0007" → "crm-sw-0007@safaeewala.com"; a real email is used as it is */
 function loginIdToEmail(loginId) {
   const id = String(loginId || '').trim().toLowerCase();
-  return id.includes('@') ? id : `${id}@${LOGIN_EMAIL_DOMAIN}`;
+  return id.includes('@') ? id : `${LOGIN_EMAIL_PREFIX}${id}@${LOGIN_EMAIL_DOMAIN}`;
 }
 /** At least 10 characters with upper case, lower case and a number */
 function passwordProblem(pw) {

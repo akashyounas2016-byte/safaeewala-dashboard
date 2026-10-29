@@ -81,12 +81,15 @@ export function firstAllowedPath(role: AppRole | undefined, perms: RolePerms): s
 }
 
 // ── Login IDs and passwords (same rules as the server, webhookServer.cjs) ──
-export const LOGIN_EMAIL_DOMAIN = 'staff.safaeewala.com'
+// The company domain has real mail (Zoho), so Supabase accepts it; the crm- prefix keeps login
+// addresses apart from real mailboxes. No email is ever sent to them.
+export const LOGIN_EMAIL_DOMAIN = 'safaeewala.com'
+export const LOGIN_EMAIL_PREFIX = 'crm-'
 
-/** "SW-0007" → "sw-0007@staff.safaeewala.com"; a real email is used as it is */
+/** "SW-0007" → "crm-sw-0007@safaeewala.com"; a real email is used as it is */
 export function loginIdToEmail(loginId: string): string {
   const id = loginId.trim().toLowerCase()
-  return id.includes('@') ? id : `${id}@${LOGIN_EMAIL_DOMAIN}`
+  return id.includes('@') ? id : `${LOGIN_EMAIL_PREFIX}${id}@${LOGIN_EMAIL_DOMAIN}`
 }
 
 /** null when the password is strong enough, else what is missing */

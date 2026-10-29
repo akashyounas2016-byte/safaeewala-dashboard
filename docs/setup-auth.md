@@ -29,13 +29,13 @@ and the database refuses anyone who is not signed in.
 
 ## Step 3 — Create the first admin (you)
 1. Supabase → **Authentication → Users → Add user → Create new user**.
-2. Email: `admin@staff.safaeewala.com` (this is your Login ID **admin**; no real mailbox needed).
+2. Email: `crm-admin@safaeewala.com` (this is your Login ID **admin**; no real mailbox needed).
    Password: a strong password only you know. Tick **Auto Confirm User**. Create.
 3. SQL Editor → New query → paste and Run:
    ```sql
    insert into public.profiles (id, login_id, email, full_name, role, status)
    select id, 'admin', email, 'Akash Younas', 'admin', 'active'
-   from auth.users where email = 'admin@staff.safaeewala.com'
+   from auth.users where email = 'crm-admin@safaeewala.com'
    on conflict (id) do update set role = 'admin', status = 'active';
    ```
 
