@@ -463,11 +463,72 @@ async function handleAdminUsers(req, res, pathname) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// API protection (SEC-04)
+// - Browser calls come only from the dashboard's own addresses (CORS allow-list).
+// - Dashboard endpoints need a signed-in, active user once user management is configured
+//   (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY). Until then they stay open so nothing breaks.
+// - The Fluent Forms webhook needs FLUENT_WEBHOOK_SECRET (header X-Webhook-Secret or ?secret=)
+//   once that variable is set on the server.
+// ═══════════════════════════════════════════════════════════════════════════
+const ALLOWED_ORIGINS = new Set([
+  'https://crm.srv1646539.hstgr.cloud',
+  'https://safaeewala.srv1646539.hstgr.cloud',
+  'http://localhost:5058',
+  'http://localhost:5059',
+  ...String(process.env.EXTRA_ALLOWED_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean),
+]);
+const WEBHOOK_SECRET = process.env.FLUENT_WEBHOOK_SECRET || '';
+const authConfigured = () => Boolean(SUPABASE_URL && SERVICE_KEY);
+let warnedOpen = false;
+
+function safeEqual(a, b) {
+  const x = Buffer.from(String(a)); const y = Buffer.from(String(b));
+  return x.length === y.length && require('crypto').timingSafeEqual(x, y);
+}
+
+/** Signed-in, active user from the Authorization header, or null */
+async function activeUserFrom(req) {
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!token) return null;
+  const ur = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${token}` } });
+  if (!ur.ok) return null;
+  const user = await ur.json();
+  const rows = await supa(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,status`);
+  const me = rows && rows[0];
+  return me && me.status === 'active' ? { ...user, role: me.role } : null;
+}
+
+/** { ok } or { ok:false, status, error } for every /api request except /api/admin (own checks) */
+async function authorizeApi(req, pathname, parsedUrl) {
+  const isLeadWebhook = req.method === 'POST' && pathname === '/api/webhook/fluent-forms';
+  if (isLeadWebhook && WEBHOOK_SECRET) {
+    const given = req.headers['x-webhook-secret'] || parsedUrl.searchParams.get('secret') || '';
+    if (given && safeEqual(given, WEBHOOK_SECRET)) return { ok: true };
+  }
+  if (!authConfigured()) {
+    if (isLeadWebhook && WEBHOOK_SECRET) return { ok: false, status: 401, error: 'Webhook secret required' };
+    if (!warnedOpen) { console.warn('[Security] User management is not configured — /api endpoints are open (set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY).'); warnedOpen = true; }
+    return { ok: true };
+  }
+  try {
+    const user = await activeUserFrom(req);
+    if (user) return { ok: true };
+  } catch (err) {
+    return { ok: false, status: 502, error: 'Could not verify the session' };
+  }
+  return { ok: false, status: 401, error: isLeadWebhook ? 'Webhook secret or sign-in required' : 'Sign in first.' };
+}
+
 const server = http.createServer((req, res) => {
   // CORS Headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, apikey, Prefer');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, apikey, Prefer, X-Webhook-Secret');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(200);
@@ -484,6 +545,13 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  authorizeApi(req, pathname, parsedUrl).then(result => {
+    if (!result.ok) return sendJson(res, result.status, { error: result.error });
+    routeApi(req, res, parsedUrl, pathname);
+  }, () => sendJson(res, 500, { error: 'Server error' }));
+});
+
+function routeApi(req, res, parsedUrl, pathname) {
   // 1. GET /api/webhook/fluent-forms -> list leads
   if (req.method === 'GET' && pathname === '/api/webhook/fluent-forms') {
     const leads = readLeads();
@@ -658,7 +726,7 @@ const server = http.createServer((req, res) => {
   // Default 404
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Endpoint not found' }));
-});
+}
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[Safaeewala Webhook Server] Running on http://0.0.0.0:${PORT}`);

@@ -46,9 +46,13 @@ and the database refuses anyone who is not signed in.
    ```
    SUPABASE_URL=https://<your-project>.supabase.co
    SUPABASE_SERVICE_ROLE_KEY=<the key from step 1>
+   FLUENT_WEBHOOK_SECRET=<a long random text you choose>
    ```
    This file stays only on the server. Never put this key in a `VITE_` variable, in git or in chat.
    (Antigravity or Claude can do this step with your permission — it touches the VPS.)
+3. WordPress → Fluent Forms → each form → **Settings → Webhook**: add the secret to the request URL,
+   e.g. `https://crm.srv1646539.hstgr.cloud/api/webhook/fluent-forms?secret=<same text>`.
+   Once the secret is set on the server, website leads without it are refused (SEC-04).
 
 ## Step 5 — Deploy, then sign in
 1. Deploy the new version (needs your permission; `git push origin main` deploys).

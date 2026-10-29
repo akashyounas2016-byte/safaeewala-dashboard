@@ -16,6 +16,7 @@ services:
       # User management (SEC-01): values come from /var/www/safaeewala/.env on the VPS — never commit them
       - SUPABASE_URL=${SUPABASE_URL:-}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
+      - FLUENT_WEBHOOK_SECRET=${FLUENT_WEBHOOK_SECRET:-}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.safaeewala-crm.rule=Host(`crm.srv1646539.hstgr.cloud`) || Host(`safaeewala.srv1646539.hstgr.cloud`)"
