@@ -1,8 +1,9 @@
+import { Link, useNavigate } from 'react-router-dom'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import {
   Search, Calendar as CalendarIcon, Clock, MapPin, Phone,
-  ChevronLeft, ChevronRight, ChevronDown, CalendarDays, Columns3,
+  ChevronLeft, ChevronRight, ChevronDown, CalendarDays, Columns3, SlidersHorizontal, CheckSquare, EyeOff, ExternalLink, GripVertical,
   TrendingUp, CheckCircle, CheckCircle2, AlertCircle, Upload, Download,
   FileSpreadsheet, MessageCircle, RefreshCw, RotateCcw,
   LayoutGrid, Table as TableIcon, Eye, User, Users, Sparkles, X, Filter, Repeat, Check, Trash2, Pencil,
@@ -17,13 +18,55 @@ import { PageHero, type HeroNotification } from '@/components/layout/PageHero'
 import { formatCurrency, formatDate, formatTime, addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { useData } from '@/store/DataContext'
-import type { Booking, BookingFrequency, BookingStatus, Employee } from '@/types'
+import type { Booking, BookingFrequency, BookingStatus, Employee, Client, DailyJob } from '@/types'
 import { SourceOriginTag, resolveBookingSource } from '@/lib/sourceTracking'
 import { cleanClientNameFromAddress, isBogusJob, isMonthlyClient, crewToStaffName, staffNameToCrew, syncMonthlySchedulesToDailyJobs, getScheduledMonthlyShiftsForDate } from '@/lib/clientDataSync'
 import { todayDubai } from '@/lib/dubaiTime'
 
 export type BookingDatePreset = 'today' | '7days' | '30days' | '3months' | '6months' | '1year' | 'all' | 'custom'
 export type BookingViewMode = 'grid' | 'table' | 'kanban' | 'calendar'
+
+/* ─── Table Columns Definition & Customization ─── */
+export interface TableColumnDef {
+  id: string
+  label: string
+  defaultVisible: boolean
+  minWidth?: string
+  align?: 'left' | 'center' | 'right'
+}
+
+export const BOOKING_COLUMNS: TableColumnDef[] = [
+  { id: 'ref',            label: 'Ref / Source',        defaultVisible: true,  minWidth: '125px', align: 'left' },
+  { id: 'client',         label: 'Client & Contact',    defaultVisible: true,  minWidth: '185px', align: 'left' },
+  { id: 'service',        label: 'Service Type',        defaultVisible: true,  minWidth: '150px', align: 'left' },
+  { id: 'frequency',      label: 'Frequency',           defaultVisible: true,  minWidth: '120px', align: 'left' },
+  { id: 'date',           label: 'Scheduled Date',      defaultVisible: true,  minWidth: '125px', align: 'left' },
+  { id: 'time',           label: 'Shift Time',          defaultVisible: true,  minWidth: '120px', align: 'left' },
+  { id: 'duty_hours',     label: 'Duty Hours',          defaultVisible: true,  minWidth: '110px', align: 'center' },
+  { id: 'cleaners',       label: 'Assigned Cleaners',   defaultVisible: true,  minWidth: '170px', align: 'left' },
+  { id: 'crew_size',      label: 'Crew Count',          defaultVisible: false, minWidth: '100px', align: 'center' },
+  { id: 'address',        label: 'Service Address',     defaultVisible: true,  minWidth: '220px', align: 'left' },
+  { id: 'amount',         label: 'Amount (AED)',        defaultVisible: true,  minWidth: '115px', align: 'right' },
+  { id: 'status',         label: 'Status',              defaultVisible: true,  minWidth: '120px', align: 'center' },
+  { id: 'payment_method', label: 'Payment Method',      defaultVisible: false, minWidth: '130px', align: 'left' },
+  { id: 'notes',          label: 'Special Notes',       defaultVisible: false, minWidth: '200px', align: 'left' },
+  { id: 'actions',        label: 'Actions',             defaultVisible: true,  minWidth: '130px', align: 'right' },
+]
+
+export function isMonthlyBooking(b: Booking, clients: Client[] = [], dailyJobs: DailyJob[] = []): boolean {
+  if (b.frequency === 'monthly' || b.frequency === 'weekly' || b.frequency === 'biweekly' || (b.frequency as string) === 'bi-weekly') {
+    return true
+  }
+  const matchedClient = clients.find(c =>
+    (b.client_id && c.id === b.client_id) ||
+    (c.full_name && b.client_name && c.full_name.toLowerCase().trim() === b.client_name.toLowerCase().trim())
+  )
+  if (matchedClient && isMonthlyClient(matchedClient, dailyJobs)) {
+    return true
+  }
+  return false
+}
+
 
 /* ─── Filter chips ─── */
 const statusFilters = [
@@ -379,6 +422,37 @@ export function Bookings() {
       })
     })
 
+    // 3. Ensure scheduled recurring monthly contracts have a shift card synchronized
+    const today = todayDubai()
+    const scheduledMonthly = getScheduledMonthlyShiftsForDate(today, clients, dailyJobs)
+    scheduledMonthly.shifts.forEach(shift => {
+      const shiftClientName = (shift.client?.full_name || '').toLowerCase().trim()
+      if (!shiftClientName) return
+      const existing = enrichedBookings.some(b => b.scheduled_date === today && b.client_name.toLowerCase().trim() === shiftClientName) ||
+                       syntheticBookings.some(b => b.scheduled_date === today && b.client_name.toLowerCase().trim() === shiftClientName)
+      if (!existing) {
+        syntheticBookings.push({
+          id: `monthly-sync-${shift.client?.id || shiftClientName}-${today}`,
+          client_id: shift.client?.id || '',
+          client_name: shift.client?.full_name || '',
+          client_phone: shift.client?.phone || shift.client?.whatsapp || '',
+          service_address: shift.address || shift.area || [shift.client?.apartment, shift.client?.building_name, shift.client?.area].filter(Boolean).join(', ') || 'Dubai',
+          service_type: shift.service || 'Standard Cleaning',
+          status: 'confirmed',
+          frequency: 'monthly',
+          scheduled_date: today,
+          scheduled_time: shift.startTime || '09:00',
+          end_time: shift.endTime || (shift.durationHours ? addHoursToTime(shift.startTime || '09:00', shift.durationHours) : '13:00'),
+          duration_hours: shift.durationHours || 4,
+          assigned_crew: shift.cleanerName ? staffNameToCrew(shift.cleanerName, employees) : [],
+          notes: shift.remarks || 'Monthly Recurring Shift',
+          total_amount: shift.charges || 0,
+          created_at: `${today}T08:00:00Z`,
+          source: 'monthly_schedule',
+        })
+      }
+    })
+
     return [...enrichedBookings, ...syntheticBookings]
   }, [bookings, dailyJobs, employees, clients])
 
@@ -446,6 +520,8 @@ export function Bookings() {
           ? true
           : statusFilter === 'unassigned'
           ? (!b.assigned_crew || b.assigned_crew.length === 0) && bStatus !== 'completed' && bStatus !== 'cancelled'
+          : statusFilter === 'monthly'
+          ? isMonthlyBooking(b, clients, dailyJobs)
           : bStatus === statusFilter
 
         const matchService = serviceFilter === 'all' ||
@@ -502,12 +578,118 @@ export function Bookings() {
     setCurrentPage(1)
   }, [search, statusFilter, serviceFilter, datePreset, customStartDate, customEndDate, view])
 
+  // ── Table View Column Customization & Drag-and-Drop Reordering ──
+  const [columnsOrder, setColumnsOrder] = useState<string[]>(() => {
+    const saved = safeLocalStorageGet<{ order?: string[] }>('safaeewala_bookings_table_cols_v2', {})
+    if (saved.order && Array.isArray(saved.order) && saved.order.length > 0) {
+      const validIds = new Set(BOOKING_COLUMNS.map(c => c.id))
+      const filteredSaved = saved.order.filter(id => validIds.has(id))
+      const missing = BOOKING_COLUMNS.map(c => c.id).filter(id => !filteredSaved.includes(id))
+      return [...filteredSaved, ...missing]
+    }
+    return BOOKING_COLUMNS.map(c => c.id)
+  })
+
+  const [columnsVisibility, setColumnsVisibility] = useState<Record<string, boolean>>(() => {
+    const saved = safeLocalStorageGet<{ visible?: Record<string, boolean> }>('safaeewala_bookings_table_cols_v2', {})
+    const defaults: Record<string, boolean> = {}
+    BOOKING_COLUMNS.forEach(c => {
+      defaults[c.id] = saved.visible && typeof saved.visible[c.id] === 'boolean'
+        ? saved.visible[c.id]
+        : c.defaultVisible
+    })
+    return defaults
+  })
+
+  const [showColumnsPopover, setShowColumnsPopover] = useState(false)
+  const [draggedColId, setDraggedColId] = useState<string | null>(null)
+  const [dragOverColId, setDragOverColId] = useState<string | null>(null)
+  const columnsPopoverRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showColumnsPopover) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (columnsPopoverRef.current && !columnsPopoverRef.current.contains(e.target as Node)) {
+        setShowColumnsPopover(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showColumnsPopover])
+
+  const saveColumnsConfig = (order: string[], visible: Record<string, boolean>) => {
+    setColumnsOrder(order)
+    setColumnsVisibility(visible)
+    safeLocalStorageSet('safaeewala_bookings_table_cols_v2', { order, visible })
+  }
+
+  const handleHeaderDragStart = (e: React.DragEvent, colId: string) => {
+    e.dataTransfer.setData('text/plain', colId)
+    e.dataTransfer.effectAllowed = 'move'
+    setDraggedColId(colId)
+  }
+
+  const handleHeaderDragOver = (e: React.DragEvent, colId: string) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragOverColId !== colId) {
+      setDragOverColId(colId)
+    }
+  }
+
+  const handleHeaderDrop = (e: React.DragEvent, targetColId: string) => {
+    e.preventDefault()
+    setDragOverColId(null)
+    const sourceColId = draggedColId || e.dataTransfer.getData('text/plain')
+    setDraggedColId(null)
+    if (!sourceColId || sourceColId === targetColId) return
+
+    const newOrder = [...columnsOrder]
+    const sourceIdx = newOrder.indexOf(sourceColId)
+    const targetIdx = newOrder.indexOf(targetColId)
+    if (sourceIdx === -1 || targetIdx === -1) return
+
+    newOrder.splice(sourceIdx, 1)
+    newOrder.splice(targetIdx, 0, sourceColId)
+    saveColumnsConfig(newOrder, columnsVisibility)
+  }
+
+  const toggleColumnVisibility = (colId: string) => {
+    if (colId === 'client' || colId === 'actions') return
+    const next = { ...columnsVisibility, [colId]: !columnsVisibility[colId] }
+    saveColumnsConfig(columnsOrder, next)
+  }
+
+  const resetColumnsToDefault = () => {
+    const defaultOrder = BOOKING_COLUMNS.map(c => c.id)
+    const defaultVis: Record<string, boolean> = {}
+    BOOKING_COLUMNS.forEach(c => { defaultVis[c.id] = c.defaultVisible })
+    saveColumnsConfig(defaultOrder, defaultVis)
+  }
+
+  const visibleColumns = useMemo(() => {
+    const colMap = new Map(BOOKING_COLUMNS.map(c => [c.id, c]))
+    return columnsOrder
+      .filter(id => columnsVisibility[id] !== false)
+      .map(id => colMap.get(id))
+      .filter((c): c is TableColumnDef => !!c)
+  }, [columnsOrder, columnsVisibility])
+
   const pageSize = view === 'table' ? 20 : 12
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const paginatedBookings = useMemo(() => {
     const start = (currentPage - 1) * pageSize
     return filtered.slice(start, start + pageSize)
   }, [filtered, currentPage, pageSize])
+
+  const totalPageDutyHours = useMemo(() => {
+    return paginatedBookings.reduce((sum, b) => sum + (Number(b.duration_hours) || 0), 0)
+  }, [paginatedBookings])
+
+  const totalFilteredDutyHours = useMemo(() => {
+    return filtered.reduce((sum, b) => sum + (Number(b.duration_hours) || 0), 0)
+  }, [filtered])
+
 
   // Auto-sync monthly recurring shifts to Daily Job Sheet for today
   useEffect(() => {
@@ -648,12 +830,13 @@ export function Bookings() {
     })
   }
 
-  // Monthly clients count & extra metrics
-  const monthlyClientsCount = useMemo(() => {
-    const regMonthly = clients.filter(c => isMonthlyClient(c, dailyJobs)).length
-    const monthlyBookings = dateFilteredBookings.filter(b => b.frequency === 'monthly').length
-    return Math.max(regMonthly, monthlyBookings)
-  }, [clients, dailyJobs, dateFilteredBookings])
+  // Monthly clients count & extra metrics (strictly in sync with dateFilteredBookings)
+  const monthlyBookingsInScope = useMemo(() => {
+    return dateFilteredBookings.filter(b => isMonthlyBooking(b, clients, dailyJobs)).length
+  }, [dateFilteredBookings, clients, dailyJobs])
+  const totalRegisteredMonthly = useMemo(() => {
+    return clients.filter(c => isMonthlyClient(c, dailyJobs)).length
+  }, [clients, dailyJobs])
 
   const uniqueCleanersOnDuty = useMemo(() => {
     const staffSet = new Set<string>()
@@ -787,8 +970,8 @@ export function Bookings() {
             },
             {
               label: 'Monthly Clients',
-              value: monthlyClientsCount,
-              sub: 'Active recurring contracts',
+              value: monthlyBookingsInScope,
+              sub: `${totalRegisteredMonthly} registered contracts`,
               icon: Repeat,
               iconColor: 'text-teal-700',
               iconBg: 'bg-teal-50',
@@ -1406,31 +1589,166 @@ export function Bookings() {
         </div>
       )}
 
-      {/* ── TABLE VIEW ── */}
+      {/* ── TABLE VIEW (Customizable Columns & Drag-and-Drop Reordering) ── */}
       {view === 'table' && (
         <div className="space-y-4">
+          {/* Table Customization Toolbar */}
+          <div className="flex items-center justify-between gap-3 flex-wrap px-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[12.5px] font-semibold text-slate-600">
+                Showing <span className="font-bold text-teal-900">{paginatedBookings.length}</span> of <span className="font-bold text-teal-900">{filtered.length}</span> bookings
+              </span>
+              <span className="text-[11px] font-medium text-slate-400">·</span>
+              <span className="text-[11.5px] font-bold text-teal-800 bg-teal-50 border border-teal-200/80 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs">
+                <Clock size={11} className="text-teal-600" />
+                <span>Duty Hours: {totalPageDutyHours}h (Page) / {totalFilteredDutyHours}h (Total)</span>
+              </span>
+            </div>
+
+            {/* Customize Columns Popover */}
+            <div className="relative" ref={columnsPopoverRef}>
+              <button
+                type="button"
+                onClick={() => setShowColumnsPopover(v => !v)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold border transition-all cursor-pointer shadow-2xs ${
+                  showColumnsPopover
+                    ? 'bg-teal-900 text-white border-teal-900 ring-2 ring-teal-500/30'
+                    : 'bg-white text-teal-950 border-teal-200/80 hover:bg-teal-50/60 hover:border-teal-300'
+                }`}
+                title="Customize table columns visibility and order"
+              >
+                <SlidersHorizontal size={13} className={showColumnsPopover ? 'text-teal-300' : 'text-teal-700'} />
+                <span>Customize Columns</span>
+                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full ${
+                  showColumnsPopover ? 'bg-teal-800 text-teal-200' : 'bg-teal-100 text-teal-900'
+                }`}>
+                  {visibleColumns.length}/{BOOKING_COLUMNS.length}
+                </span>
+                <ChevronDown size={12} className={`transition-transform duration-200 ${showColumnsPopover ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Popover Dropdown */}
+              {showColumnsPopover && (
+                <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl border border-teal-200/90 shadow-[0_12px_36px_rgba(13,148,136,0.18)] z-50 p-3.5 space-y-3 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex items-center justify-between pb-2 border-b border-teal-100">
+                    <div>
+                      <p className="text-[12.5px] font-black text-teal-950">Table Columns</p>
+                      <p className="text-[10.5px] text-slate-500">Hide/Show or drag headers to reorder</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={resetColumnsToDefault}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 hover:text-teal-900 hover:bg-teal-50 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                      title="Reset to default columns"
+                    >
+                      <RotateCcw size={11} />
+                      <span>Reset</span>
+                    </button>
+                  </div>
+
+                  <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1 text-[12px]">
+                    {BOOKING_COLUMNS.map(col => {
+                      const isFixed = col.id === 'client' || col.id === 'actions'
+                      const isChecked = isFixed ? true : columnsVisibility[col.id] !== false
+                      return (
+                        <label
+                          key={col.id}
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                            isChecked
+                              ? 'bg-teal-50/50 border-teal-200/70 text-slate-800'
+                              : 'bg-slate-50/50 border-slate-200/60 text-slate-400 hover:bg-slate-50'
+                          } ${isFixed ? 'opacity-85 cursor-not-allowed' : ''}`}
+                        >
+                          <span className="flex items-center gap-2 select-none">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              disabled={isFixed}
+                              onChange={() => toggleColumnVisibility(col.id)}
+                              className="rounded text-teal-600 focus:ring-teal-500 h-3.5 w-3.5 accent-teal-600 cursor-pointer"
+                            />
+                            <span className={`font-semibold ${isChecked ? 'text-slate-800' : 'text-slate-500'}`}>
+                              {col.label}
+                            </span>
+                          </span>
+                          {isFixed ? (
+                            <span className="text-[9.5px] font-bold text-teal-700 bg-teal-100/70 px-1.5 py-0.5 rounded">
+                              Required
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {isChecked ? 'Shown' : 'Hidden'}
+                            </span>
+                          )}
+                        </label>
+                      )
+                    })}
+                  </div>
+
+                  <div className="pt-2 border-t border-teal-100/80 flex items-center justify-between text-[11px] text-slate-500">
+                    <span>Drag header labels to reorder</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowColumnsPopover(false)}
+                      className="text-[11px] font-bold text-teal-700 hover:underline cursor-pointer"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Table Container */}
           <div className="bg-white rounded-[22px] border border-teal-200/80 shadow-[0_4px_20px_rgba(13,148,136,0.04)] overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-teal-50/70 border-b border-teal-200/80 text-[11px] font-black uppercase tracking-wider text-teal-950">
-                    <th className="py-3.5 px-4">Ref / Source</th>
-                    <th className="py-3.5 px-4">Client & Contact</th>
-                    <th className="py-3.5 px-4">Service & Frequency</th>
-                    <th className="py-3.5 px-4">Date & Time</th>
-                    <th className="py-3.5 px-4">Assigned Cleaners</th>
-                    <th className="py-3.5 px-4">Service Address</th>
-                    <th className="py-3.5 px-4 text-right">Amount</th>
-                    <th className="py-3.5 px-4 text-center">Status</th>
-                    <th className="py-3.5 px-4 text-right">Actions</th>
+                    {visibleColumns.map((col) => {
+                      const isDraggable = col.id !== 'actions'
+                      const isOver = dragOverColId === col.id
+                      return (
+                        <th
+                          key={col.id}
+                          draggable={isDraggable}
+                          onDragStart={(e) => handleHeaderDragStart(e, col.id)}
+                          onDragOver={(e) => handleHeaderDragOver(e, col.id)}
+                          onDrop={(e) => handleHeaderDrop(e, col.id)}
+                          style={{ minWidth: col.minWidth }}
+                          className={`py-3.5 px-4 select-none transition-all ${
+                            col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : 'text-left'
+                          } ${
+                            isDraggable ? 'cursor-grab active:cursor-grabbing group hover:bg-teal-100/50' : ''
+                          } ${
+                            isOver ? 'bg-teal-200/80 border-l-2 border-teal-600' : ''
+                          }`}
+                          title={isDraggable ? `Drag to reorder column "${col.label}"` : undefined}
+                        >
+                          <div className={`inline-flex items-center gap-1.5 ${
+                            col.align === 'center' ? 'justify-center' : col.align === 'right' ? 'justify-end' : 'justify-start'
+                          }`}>
+                            {isDraggable && (
+                              <GripVertical
+                                size={11}
+                                className="text-teal-400 group-hover:text-teal-700 opacity-40 group-hover:opacity-100 transition-opacity shrink-0"
+                              />
+                            )}
+                            <span>{col.label}</span>
+                          </div>
+                        </th>
+                      )
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-teal-50/80 text-[12.5px]">
                   {paginatedBookings.map((b, idx) => {
                     const assignedNames = getAssignedCrewNames(b.assigned_crew, employees)
-                    const matchedClient = clients.find(c => c.id === b.client_id || c.full_name.toLowerCase().trim() === b.client_name.toLowerCase().trim())
-                    const isMonthly = b.frequency === 'monthly' || b.frequency === 'weekly' || b.frequency === 'biweekly' || (b.frequency as string) === 'bi-weekly' || (matchedClient && isMonthlyClient(matchedClient, dailyJobs))
+                    const matchedClient = clients.find(c => c.id === b.client_id || (c.full_name && b.client_name && c.full_name.toLowerCase().trim() === b.client_name.toLowerCase().trim()))
+                    const isMonthly = isMonthlyBooking(b, clients, dailyJobs)
                     const clientPhone = b.client_phone || matchedClient?.phone || matchedClient?.whatsapp || ''
+                    const relatedInvoice = (invoices || []).find(inv => inv.booking_id === b.id || (inv.client_id === b.client_id && inv.created_at?.startsWith(b.scheduled_date)))
 
                     return (
                       <tr
@@ -1438,133 +1756,269 @@ export function Bookings() {
                         onClick={() => setSelectedBooking(b)}
                         className="hover:bg-teal-50/40 transition-colors cursor-pointer group"
                       >
-                        {/* Ref / Source */}
-                        <td className="py-3 px-4 font-mono font-bold text-[11.5px] text-slate-700 whitespace-nowrap">
-                          <div>
-                            <span>{b.id.startsWith('dj-') ? `DJ-${b.id.slice(3, 8)}` : `BK-${b.id.slice(0, 6)}`}</span>
-                            <div className="mt-0.5">
-                              <SourceOriginTag source={resolveBookingSource(b)} />
-                            </div>
-                          </div>
-                        </td>
+                        {visibleColumns.map((col) => {
+                          if (col.id === 'ref') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 font-mono font-bold text-[11.5px] text-slate-700 whitespace-nowrap">
+                                <div>
+                                  <span>{b.id.startsWith('dj-') ? `DJ-${b.id.slice(3, 8)}` : `BK-${b.id.slice(0, 6)}`}</span>
+                                  <div className="mt-0.5">
+                                    <SourceOriginTag source={resolveBookingSource(b)} />
+                                  </div>
+                                </div>
+                              </td>
+                            )
+                          }
 
-                        {/* Client & Contact */}
-                        <td className="py-3 px-4 min-w-[160px]">
-                          <div className="flex items-center gap-2.5">
-                            <Initials name={b.client_name} idx={idx} size="sm" />
-                            <div className="min-w-0">
-                              <p className="font-bold text-slate-900 group-hover:text-teal-700 transition-colors truncate">
-                                {b.client_name}
-                              </p>
-                              {clientPhone && (
-                                <p className="text-[11px] text-slate-500 font-mono mt-0.5 truncate">
-                                  {clientPhone}
-                                </p>
-                              )}
-                            </div>
-                            {isMonthly && (
-                              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                Monthly
-                              </span>
-                            )}
-                          </div>
-                        </td>
+                          if (col.id === 'client') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 min-w-[185px]">
+                                <div className="flex items-center gap-2.5">
+                                  <Initials name={b.client_name} idx={idx} size="sm" />
+                                  <div className="min-w-0">
+                                    <Link
+                                      to={matchedClient ? `/clients/${matchedClient.id}` : `/clients?search=${encodeURIComponent(b.client_name)}`}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="font-bold text-slate-900 hover:text-teal-700 hover:underline transition-colors truncate block"
+                                      title={`Open ${b.client_name}'s full profile`}
+                                    >
+                                      {b.client_name}
+                                    </Link>
+                                    {clientPhone && (
+                                      <p className="text-[11px] text-slate-500 font-mono mt-0.5 truncate">
+                                        {clientPhone}
+                                      </p>
+                                    )}
+                                  </div>
+                                  {isMonthly && (
+                                    <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                                      Monthly
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                            )
+                          }
 
-                        {/* Service & Frequency */}
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1 font-bold text-teal-900">
-                            <Sparkles size={11} className="text-teal-600" />
-                            <span>{b.service_type}</span>
-                          </span>
-                          <span className="block text-[11px] text-slate-500 capitalize">
-                            {b.frequency}
-                          </span>
-                        </td>
-
-                        {/* Date & Time */}
-                        <td className="py-3 px-4 whitespace-nowrap tabular-nums">
-                          <p className="font-bold text-slate-800">{formatDate(b.scheduled_date)}</p>
-                          <p className="text-[11px] text-slate-500 mt-0.5">
-                            {formatTime(`${b.scheduled_date}T${b.scheduled_time}`)}
-                            {b.duration_hours ? ` (${b.duration_hours}h)` : ''}
-                          </p>
-                        </td>
-
-                        {/* Assigned Cleaners */}
-                        <td className="py-3 px-4 min-w-[150px]">
-                          {assignedNames.length > 0 ? (
-                            <div className="flex items-center gap-1 flex-wrap">
-                              {assignedNames.map((name, i) => (
-                                <span
-                                  key={i}
-                                  className="inline-flex items-center gap-1 text-[11px] font-semibold bg-teal-50 text-teal-800 border border-teal-200/70 px-2 py-0.5 rounded-md"
-                                >
-                                  <User size={10} className="text-teal-600" />
-                                  <span className="truncate max-w-[100px]">{name}</span>
+                          if (col.id === 'service') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 font-bold text-teal-900">
+                                  <Sparkles size={11} className="text-teal-600" />
+                                  <span>{b.service_type}</span>
                                 </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-medium">
-                              Unassigned
-                            </span>
-                          )}
-                        </td>
+                              </td>
+                            )
+                          }
 
-                        {/* Address */}
-                        <td className="py-3 px-4 max-w-[220px]">
-                          <p className="truncate text-slate-600 text-[12px]" title={b.service_address}>
-                            {b.service_address || '—'}
-                          </p>
-                        </td>
+                          if (col.id === 'frequency') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold capitalize ${
+                                  b.frequency === 'monthly'
+                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                    : b.frequency === 'weekly'
+                                    ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                                    : 'bg-slate-100 text-slate-700 border border-slate-200'
+                                }`}>
+                                  {b.frequency || 'once'}
+                                </span>
+                              </td>
+                            )
+                          }
 
-                        {/* Amount */}
-                        <td className="py-3 px-4 text-right whitespace-nowrap font-black font-mono text-[13.5px] text-slate-900">
-                          AED {b.total_amount.toLocaleString()}
-                        </td>
+                          if (col.id === 'date') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 whitespace-nowrap tabular-nums">
+                                <p className="font-bold text-slate-800">{formatDate(b.scheduled_date)}</p>
+                              </td>
+                            )
+                          }
 
-                        {/* Status */}
-                        <td className="py-3 px-4 text-center whitespace-nowrap">
-                          <StatusPill status={b.status} />
-                        </td>
+                          if (col.id === 'time') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 whitespace-nowrap tabular-nums">
+                                <p className="font-bold text-slate-800">{formatTime(`${b.scheduled_date}T${b.scheduled_time}`)}</p>
+                                {b.end_time && (
+                                  <p className="text-[11px] text-slate-500">to {formatTime(`${b.scheduled_date}T${b.end_time}`)}</p>
+                                )}
+                              </td>
+                            )
+                          }
 
-                        {/* Actions */}
-                        <td className="py-3 px-4 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                          <div className="inline-flex items-center gap-1">
-                            {clientPhone && (
-                              <>
-                                <a
-                                  href={`tel:${clientPhone}`}
-                                  className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                                  title={`Call ${clientPhone}`}
-                                >
-                                  <Phone size={13} />
-                                </a>
-                                <a
-                                  href={`https://wa.me/${clientPhone.replace(/[^\d+]/g, '').replace(/^\+/, '')}?text=Hello%20${encodeURIComponent(b.client_name)}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
-                                  title="Chat on WhatsApp"
-                                >
-                                  <MessageCircle size={13} />
-                                </a>
-                              </>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => setSelectedBooking(b)}
-                              className="p-1.5 rounded-lg text-slate-600 hover:text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
-                              title="View Details"
-                            >
-                              <Eye size={13} />
-                            </button>
-                          </div>
-                        </td>
+                          if (col.id === 'duty_hours') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 text-center whitespace-nowrap tabular-nums">
+                                <span className="inline-flex items-center gap-1 font-mono font-bold text-teal-900 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200/80">
+                                  <Clock size={11} className="text-teal-600" />
+                                  <span>{b.duration_hours || 0}h Duty</span>
+                                </span>
+                              </td>
+                            )
+                          }
+
+                          if (col.id === 'cleaners') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 min-w-[150px]">
+                                {assignedNames.length > 0 ? (
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    {assignedNames.map((name, i) => (
+                                      <span
+                                        key={i}
+                                        className="inline-flex items-center gap-1 text-[11px] font-semibold bg-teal-50 text-teal-800 border border-teal-200/70 px-2 py-0.5 rounded-md"
+                                      >
+                                        <User size={10} className="text-teal-600" />
+                                        <span className="truncate max-w-[100px]">{name}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-medium">
+                                    Unassigned
+                                  </span>
+                                )}
+                              </td>
+                            )
+                          }
+
+                          if (col.id === 'crew_size') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 text-center whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 font-mono font-semibold text-slate-700 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200">
+                                  <Users size={11} className="text-slate-500" />
+                                  <span>{b.assigned_crew?.length || 1} Staff</span>
+                                </span>
+                              </td>
+                            )
+                          }
+
+                          if (col.id === 'address') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 max-w-[220px]">
+                                <p className="truncate text-slate-600 text-[12px]" title={b.service_address}>
+                                  {b.service_address || '—'}
+                                </p>
+                              </td>
+                            )
+                          }
+
+                          if (col.id === 'amount') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 text-right whitespace-nowrap font-black font-mono text-[13.5px] text-slate-900">
+                                AED {b.total_amount.toLocaleString()}
+                              </td>
+                            )
+                          }
+
+                          if (col.id === 'status') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 text-center whitespace-nowrap">
+                                <StatusPill status={b.status} />
+                              </td>
+                            )
+                          }
+
+                          if (col.id === 'payment_method') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 whitespace-nowrap">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200 capitalize">
+                                  {(b as any).payment_method || (b as any).payment_mode || (relatedInvoice?.status === 'paid' ? 'Paid' : 'Pending')}
+                                </span>
+                              </td>
+                            )
+                          }
+
+                          if (col.id === 'notes') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 max-w-[200px]">
+                                <p className="truncate text-slate-600 text-[11.5px]" title={b.notes || (b as any).special_instructions || '—'}>
+                                  {b.notes || (b as any).special_instructions || '—'}
+                                </p>
+                              </td>
+                            )
+                          }
+
+                          if (col.id === 'actions') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                                <div className="inline-flex items-center gap-1">
+                                  {clientPhone && (
+                                    <>
+                                      <a
+                                        href={`tel:${clientPhone}`}
+                                        className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                                        title={`Call ${clientPhone}`}
+                                      >
+                                        <Phone size={13} />
+                                      </a>
+                                      <a
+                                        href={`https://wa.me/${clientPhone.replace(/[^\d+]/g, '').replace(/^\+/, '')}?text=Hello%20${encodeURIComponent(b.client_name)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-1.5 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
+                                        title="Chat on WhatsApp"
+                                      >
+                                        <MessageCircle size={13} />
+                                      </a>
+                                    </>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedBooking(b)}
+                                    className="p-1.5 rounded-lg text-slate-600 hover:text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
+                                    title="View Details"
+                                  >
+                                    <Eye size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            )
+                          }
+
+                          return null
+                        })}
                       </tr>
                     )
                   })}
                 </tbody>
+
+                {/* Duty Hours Summary Row in Table Footer */}
+                {paginatedBookings.length > 0 && (
+                  <tfoot className="bg-teal-50/60 border-t-2 border-teal-200/90 text-[12px] font-bold text-teal-950">
+                    <tr>
+                      {visibleColumns.map((col, cIdx) => {
+                        if (cIdx === 0) {
+                          return (
+                            <td key={col.id} className="py-3 px-4 whitespace-nowrap">
+                              <span className="font-extrabold uppercase tracking-wider text-[11px] text-teal-900">
+                                Page Summary ({paginatedBookings.length})
+                              </span>
+                            </td>
+                          )
+                        }
+                        if (col.id === 'duty_hours') {
+                          return (
+                            <td key={col.id} className="py-3 px-4 text-center whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1 font-mono font-black text-teal-950 bg-teal-100/90 px-2.5 py-1 rounded-lg border border-teal-300">
+                                <Clock size={11} className="text-teal-700" />
+                                <span>{totalPageDutyHours} hrs</span>
+                              </span>
+                            </td>
+                          )
+                        }
+                        if (col.id === 'amount') {
+                          const pageTotalAmount = paginatedBookings.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0)
+                          return (
+                            <td key={col.id} className="py-3 px-4 text-right whitespace-nowrap font-mono font-black text-[13px] text-slate-900">
+                              AED {pageTotalAmount.toLocaleString()}
+                            </td>
+                          )
+                        }
+                        return <td key={col.id} className="py-3 px-4"></td>
+                      })}
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
 
@@ -2177,6 +2631,15 @@ function BookingDetailModal({
 }) {
   if (!booking) return null
 
+  const { clients } = useData()
+  const matchedClient = useMemo(() => {
+    if (!booking) return null
+    return (clients || []).find(c =>
+      (booking.client_id && c.id === booking.client_id) ||
+      (c.full_name && booking.client_name && c.full_name.toLowerCase().trim() === booking.client_name.toLowerCase().trim())
+    ) || null
+  }, [booking, clients])
+
   const [isEditing, setIsEditing] = useState(false)
   const [status, setStatus] = useState<BookingStatus>(booking.status)
   const [crew, setCrew] = useState<string[]>(booking.assigned_crew ?? [])
@@ -2521,7 +2984,15 @@ function BookingDetailModal({
               <Initials name={booking.client_name} idx={0} size="lg" />
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-lg font-black text-white">{booking.client_name}</h3>
+                  <Link
+                    to={matchedClient ? `/clients/${matchedClient.id}` : `/clients?search=${encodeURIComponent(booking.client_name)}`}
+                    onClick={onClose}
+                    className="group inline-flex items-center gap-1.5 text-lg font-black text-white hover:text-teal-300 transition-colors cursor-pointer"
+                    title={`Open ${booking.client_name}'s full profile`}
+                  >
+                    <span className="group-hover:underline">{booking.client_name}</span>
+                    <ExternalLink size={14} className="text-teal-400 group-hover:text-teal-200 transition-colors shrink-0" />
+                  </Link>
                   <SourceOriginTag source={resolveBookingSource(booking)} />
                   {booking.frequency === 'monthly' && (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-400 text-emerald-950">

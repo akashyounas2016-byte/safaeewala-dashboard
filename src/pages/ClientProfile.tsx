@@ -194,8 +194,9 @@ export function ClientProfile() {
 
   useEffect(() => { setReviewMap(loadReviews()) }, [])
 
-  const client    = clients.find(c => c.id === id)
-  const clientIdx = clients.findIndex(c => c.id === id)
+  const decodedId = id ? decodeURIComponent(id).toLowerCase().trim() : ''
+  const client    = clients.find(c => c.id === id || (c.full_name && decodedId && c.full_name.toLowerCase().trim() === decodedId))
+  const clientIdx = clients.findIndex(c => c.id === id || (c.full_name && decodedId && c.full_name.toLowerCase().trim() === decodedId))
 
   // Live client payments from unified storage
   const clientRecordedPayments = useMemo(() => {

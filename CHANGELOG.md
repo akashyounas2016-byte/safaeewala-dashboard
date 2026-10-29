@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main` or `claude/workspace`, not yet confirmed deployed)
 
+- feat(bookings): Enhanced Table View with full column customization — interactive "Customize Columns" popover checklist with localStorage persistence, drag-and-drop column reordering across table headers, dedicated "Duty Hours" reorderable column, and a Page Summary Duty Hours footer row. Added toggles for crew size, payment method, and special notes.
+- fix(bookings): Resolved Monthly Clients count vs cards discrepancy (6 vs 5 conflict) by strictly calculating in-scope monthly shifts (`isMonthlyBooking`) and synchronizing recurring monthly contract shifts into the active booking view.
+- feat(bookings): Added direct navigation to Client Profile (`/clients/:id`) from the Booking Details popup header by making the client name an interactive link with an external link indicator.
+
 - docs(backlog): Created PENDING.md documenting the 4-tier corner radii & spacing design system hierarchy with Expenses.tsx as the gold-standard specimen page and checklist for future screen rollout (CLR-04)
 
 - feat(design): De-escalated harsh red alarms across Expenses and PendingPayments — replaced aggressive red-600 buttons, pills, inputs, and borders with calm executive Slate & Teal accents; switched Pending Dues to warm amber for regular receivables and reserved soft rose tones strictly for priority dues (CLR-03)
