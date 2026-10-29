@@ -3391,7 +3391,23 @@ CREATE TABLE daily_expenses (
       />
 
       {/* ── Add Job Modal ── */}
-      <Modal open={showAddJob} onClose={() => setShowAddJob(false)} title="Add Job Entry" size="lg">
+      <Modal
+        open={showAddJob}
+        onClose={() => setShowAddJob(false)}
+        title="Add Job Entry"
+        size="2xl"
+        className="max-w-6xl w-full"
+        headerActions={
+          <button
+            type="submit"
+            form="add-job-entry-form"
+            className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[12.5px] shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+          >
+            <Plus size={15} className="stroke-[3]" />
+            <span>Add Job</span>
+          </button>
+        }
+      >
         <AddJobForm
           employees={availableEmps}
           onClose={() => setShowAddJob(false)}

@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import { useData } from '@/store/DataContext'
 import type { DailyJob, MaterialType, PaymentMode, Client } from '@/types'
@@ -8,10 +6,8 @@ import {
   cleanNum,
   calcHours,
   calcOTHours,
-  MATERIALS,
   PAYMENT_MODES,
   ROW_COLOR_PRESETS,
-  type RowColorPreset,
   formatTime12h,
   formatTime24h,
 } from './jobSheetUtils'
@@ -19,10 +15,10 @@ import { addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
 import { todayDubai } from '@/lib/dubaiTime'
 import { notify } from '@/lib/notify'
 import {
-  User,
   Users,
   Clock,
   MapPin,
+  Building2,
   CreditCard,
   Check,
   X,
@@ -30,7 +26,8 @@ import {
   Package,
   Sparkles,
   FileText,
-  AlertCircle,
+  Search,
+  ChevronDown,
   Plus,
 } from 'lucide-react'
 
@@ -43,13 +40,35 @@ export interface AddJobFormProps {
   existingJobsForDate?: DailyJob[]
 }
 
-const PRESET_MATERIALS = [
+const DEFAULT_PRESET_MATERIALS = [
   'No',
   'Yes',
   'Chemicals Only',
   'Machines Only',
   'Sofa Kit',
   'Ladder',
+]
+
+const POPULAR_AREAS = [
+  'Downtown Dubai',
+  'Dubai Marina',
+  'Business Bay',
+  'Jumeirah Village Circle (JVC)',
+  'Jumeirah Lake Towers (JLT)',
+  'Palm Jumeirah',
+  'The Greens',
+  'Discovery Gardens',
+  'Al Barsha',
+  'Dubai Hills Estate',
+  'Mirdif',
+  'Dubai Silicon Oasis',
+  'Motor City',
+  'JBR',
+  'Damac Hills',
+  'Deira',
+  'Bur Dubai',
+  'Al Furjan',
+  'Arabian Ranches',
 ]
 
 export function AddJobForm({
@@ -61,20 +80,19 @@ export function AddJobForm({
 }: AddJobFormProps) {
   const { clients } = useData()
 
-  // Staff & Team State
+  // ── Staff & Team State ──
   const [selectedStaff, setSelectedStaff] = useState<string[]>(() => {
     if (!initial?.staff_name) return []
     return initial.staff_name.split(/[,+/&]|\band\b/i).map(s => s.trim()).filter(Boolean)
   })
 
-  // Date
+  // ── Date ──
   const [date, setDate] = useState(() => initial?.date || todayDubai())
 
   // Auto-generate team name when multiple cleaners selected
   const defaultTeamName = useMemo(() => {
     if (selectedStaff.length < 2) return ''
     if (initial?.team_name) return initial.team_name
-    // Find next available team letter for this date
     const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     const usedLetters = new Set<string>()
     existingJobsForDate.forEach(j => {
@@ -103,11 +121,21 @@ export function AddJobForm({
     }
   }, [selectedStaff.length, defaultTeamName])
 
-  // Address & Area State
+  // ── Address & Building State ──
   const [address, setAddress] = useState(initial?.address ?? '')
   const [area, setArea] = useState(initial?.area ?? '')
+  const [buildingDropdownOpen, setBuildingDropdownOpen] = useState(false)
+  const [buildingSearch, setBuildingSearch] = useState('')
+  const buildingRef = useRef<HTMLDivElement>(null)
+  const buildingSearchInputRef = useRef<HTMLInputElement>(null)
 
-  // Timing & Duration (Responsive auto-calculations)
+  // ── Area Dropdown State ──
+  const [areaDropdownOpen, setAreaDropdownOpen] = useState(false)
+  const [areaSearch, setAreaSearch] = useState('')
+  const areaRef = useRef<HTMLDivElement>(null)
+  const areaSearchInputRef = useRef<HTMLInputElement>(null)
+
+  // ── Timing & Duration ──
   const [startTime, setStartTime] = useState(initial?.start_time || '09:00')
   const [endTime, setEndTime]     = useState(initial?.end_time || '13:00')
   const [dutyHours, setDutyHours] = useState<number>(() => {
@@ -120,7 +148,6 @@ export function AddJobForm({
   })
   const [isOvertime, setIsOvertime] = useState(Boolean(initial?.is_overtime || Number(otHours) > 0))
 
-  // Responsive synchronization between Start Time, End Time, and Duty Hours
   const handleStartTimeChange = (newStart: string) => {
     setStartTime(newStart)
     if (newStart && dutyHours > 0) {
@@ -156,59 +183,170 @@ export function AddJobForm({
     }
   }
 
-  // Financials
+  // ── Financials ──
   const [charges, setCharges] = useState<number | string>(initial?.charges ?? '')
   const [received, setReceived] = useState<number | string>(initial?.received ?? '')
   const [paymentMode, setPaymentMode] = useState<PaymentMode>(initial?.payment_mode ?? 'Cash')
 
-  // Row Color Preset
+  // ── Row Color Preset (18 options with View All) ──
   const [rowColor, setRowColor] = useState<string>(initial?.row_color || 'default')
+  const [showAllColors, setShowAllColors] = useState(false)
 
-  // Material selection & custom material support
-  const isInitialCustomMaterial = Boolean(
-    initial?.material && !PRESET_MATERIALS.includes(String(initial.material))
-  )
-  const [materialSelect, setMaterialSelect] = useState<string>(() => {
-    if (!initial?.material) return 'No'
-    return isInitialCustomMaterial ? '__custom__' : String(initial.material)
+  // ── Cleaning Material State & Custom Add with Tick/Cross ──
+  const [materialsList, setMaterialsList] = useState<string[]>(() => {
+    const list = [...DEFAULT_PRESET_MATERIALS]
+    if (initial?.material && !list.includes(String(initial.material))) {
+      list.push(String(initial.material))
+    }
+    return list
   })
-  const [customMaterialInput, setCustomMaterialInput] = useState<string>(() => {
-    return isInitialCustomMaterial ? String(initial?.material) : ''
+  const [selectedMaterial, setSelectedMaterial] = useState<string>(() => {
+    return initial?.material ? String(initial.material) : 'No'
   })
+  const [materialDropdownOpen, setMaterialDropdownOpen] = useState(false)
+  const [isAddingCustomMaterial, setIsAddingCustomMaterial] = useState(false)
+  const [customMaterialInput, setCustomMaterialInput] = useState('')
+  const materialRef = useRef<HTMLDivElement>(null)
+  const customMaterialInputRef = useRef<HTMLInputElement>(null)
 
-  // Remarks
+  // ── Remarks ──
   const [remarks, setRemarks] = useState(initial?.remarks ?? '')
 
-  // Client Selection Helper
-  const handleSelectClientAddress = (val: string) => {
-    setAddress(val)
-    const match = clients.find(c =>
-      c.building_name?.toLowerCase().trim() === val.toLowerCase().trim() ||
-      c.full_name?.toLowerCase().trim() === val.toLowerCase().trim() ||
-      `${c.full_name} (${c.building_name || c.area})`.toLowerCase() === val.toLowerCase()
-    )
-    if (match) {
-      if (match.area) setArea(match.area)
-      if (match.building_name) setAddress(match.building_name)
-      if (match.preferred_cleaner && selectedStaff.length === 0) {
-        setSelectedStaff(match.preferred_cleaner.split(/[,+/&]|\band\b/i).map(s => s.trim()).filter(Boolean))
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (buildingRef.current && !buildingRef.current.contains(e.target as Node)) {
+        setBuildingDropdownOpen(false)
       }
-      if (match.scheduled_time) {
-        setStartTime(match.scheduled_time)
-        if (match.duration_hours) {
-          setDutyHours(match.duration_hours)
-          const newEnd = addHoursToTime(match.scheduled_time, match.duration_hours)
-          setEndTime(newEnd)
-          setOtHours(calcOTHours(match.scheduled_time, newEnd))
-        }
+      if (areaRef.current && !areaRef.current.contains(e.target as Node)) {
+        setAreaDropdownOpen(false)
+      }
+      if (materialRef.current && !materialRef.current.contains(e.target as Node)) {
+        setMaterialDropdownOpen(false)
+        setIsAddingCustomMaterial(false)
       }
     }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Auto focus search inputs when dropdown opens
+  useEffect(() => {
+    if (buildingDropdownOpen) {
+      setTimeout(() => buildingSearchInputRef.current?.focus(), 50)
+    } else {
+      setBuildingSearch('')
+    }
+  }, [buildingDropdownOpen])
+
+  useEffect(() => {
+    if (areaDropdownOpen) {
+      setTimeout(() => areaSearchInputRef.current?.focus(), 50)
+    } else {
+      setAreaSearch('')
+    }
+  }, [areaDropdownOpen])
+
+  useEffect(() => {
+    if (isAddingCustomMaterial) {
+      setTimeout(() => customMaterialInputRef.current?.focus(), 50)
+    }
+  }, [isAddingCustomMaterial])
+
+  // ── Unique Client Buildings & Options ──
+  const buildingOptions = useMemo(() => {
+    const list: {
+      key: string
+      building: string
+      clientName: string
+      area: string
+      apartment: string
+      client: Client
+    }[] = []
+    const seen = new Set<string>()
+
+    clients.forEach(c => {
+      const bName = c.building_name?.trim() || ''
+      const name = c.full_name?.trim() || ''
+      const key = `${bName}___${name}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        list.push({
+          key: c.id,
+          building: bName || name,
+          clientName: name,
+          area: c.area || '',
+          apartment: c.apartment || '',
+          client: c,
+        })
+      }
+    })
+    return list
+  }, [clients])
+
+  const filteredBuildings = useMemo(() => {
+    const q = buildingSearch.trim().toLowerCase()
+    if (!q) return buildingOptions
+    return buildingOptions.filter(b =>
+      b.building.toLowerCase().includes(q) ||
+      b.clientName.toLowerCase().includes(q) ||
+      b.area.toLowerCase().includes(q)
+    )
+  }, [buildingOptions, buildingSearch])
+
+  // ── All Available Areas (Presets + Clients) ──
+  const availableAreas = useMemo(() => {
+    const set = new Set<string>(POPULAR_AREAS)
+    clients.forEach(c => {
+      if (c.area?.trim()) set.add(c.area.trim())
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [clients])
+
+  const filteredAreas = useMemo(() => {
+    const q = areaSearch.trim().toLowerCase()
+    if (!q) return availableAreas
+    return availableAreas.filter(a => a.toLowerCase().includes(q))
+  }, [availableAreas, areaSearch])
+
+  // Client Selection Handler
+  const handleSelectClient = (c: Client, chosenAddress?: string) => {
+    const finalAddr = chosenAddress || c.building_name || c.full_name || ''
+    setAddress(finalAddr)
+    if (c.area) setArea(c.area)
+    if (c.preferred_cleaner && selectedStaff.length === 0) {
+      setSelectedStaff(c.preferred_cleaner.split(/[,+/&]|\band\b/i).map(s => s.trim()).filter(Boolean))
+    }
+    if (c.scheduled_time) {
+      setStartTime(c.scheduled_time)
+      if (c.duration_hours) {
+        setDutyHours(c.duration_hours)
+        const newEnd = addHoursToTime(c.scheduled_time, c.duration_hours)
+        setEndTime(newEnd)
+        setOtHours(calcOTHours(c.scheduled_time, newEnd))
+      }
+    }
+    setBuildingDropdownOpen(false)
   }
 
-  // Final Material string
-  const resolvedMaterial: MaterialType = materialSelect === '__custom__'
-    ? (customMaterialInput.trim() || 'Custom Material')
-    : (materialSelect as MaterialType)
+  // Save Custom Material with Tick Icon
+  const handleSaveCustomMaterial = () => {
+    const trimmed = customMaterialInput.trim()
+    if (!trimmed) return
+    if (!materialsList.includes(trimmed)) {
+      setMaterialsList(prev => [...prev, trimmed])
+    }
+    setSelectedMaterial(trimmed)
+    setIsAddingCustomMaterial(false)
+    setCustomMaterialInput('')
+    setMaterialDropdownOpen(false)
+    notify.success(`Custom material "${trimmed}" added!`)
+  }
+
+  const handleCancelCustomMaterial = () => {
+    setIsAddingCustomMaterial(false)
+    setCustomMaterialInput('')
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -220,7 +358,7 @@ export function AddJobForm({
     }
 
     if (!address.trim()) {
-      notify.error('Please enter the client or service address.')
+      notify.error('Please enter the client or building address.')
       return
     }
 
@@ -235,453 +373,686 @@ export function AddJobForm({
       ot_hours:     cleanNum(otHours),
       address:      address.trim(),
       area:         area.trim(),
-      material:     resolvedMaterial,
+      material:     selectedMaterial as MaterialType,
       charges:      cleanNum(charges),
       received:     cleanNum(received),
       payment_mode: paymentMode,
       is_overtime:  isOvertime || cleanNum(otHours) > 0,
       remarks:      remarks.trim(),
-      service:      '', // Service field permanently removed as requested
+      service:      '', // Service field permanently removed per user instruction
     })
   }
 
+  // Presets to display (show 10 initially = 2 rows, or all 18 when expanded)
+  const displayedColorPresets = showAllColors ? ROW_COLOR_PRESETS : ROW_COLOR_PRESETS.slice(0, 10)
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 text-slate-800">
-      {/* ── CARD 1: Staff & Team Assignment ── */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs space-y-3.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
-              <Users size={15} />
+    <form id="add-job-entry-form" onSubmit={handleSubmit} className="text-slate-800">
+      {/* ── EXPANSIVE HORIZONTAL 2-COLUMN LAYOUT (MINIMAL SCROLL) ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+
+        {/* ══════════ LEFT COLUMN: STAFF, SCHEDULE & LOCATION ══════════ */}
+        <div className="space-y-4">
+
+          {/* CARD 1: Staff, Team & Date */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+                  <Users size={15} />
+                </div>
+                <div>
+                  <h4 className="text-[13px] font-bold text-slate-900">Staff & Schedule</h4>
+                  <p className="text-[11px] text-slate-500">Assign cleaner(s) and duty date</p>
+                </div>
+              </div>
+              {selectedStaff.length >= 2 && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  <Sparkles size={11} className="text-indigo-600" />
+                  Team ({selectedStaff.length})
+                </span>
+              )}
             </div>
-            <div>
-              <h4 className="text-[13px] font-bold text-slate-900">Staff & Schedule</h4>
-              <p className="text-[11px] text-slate-500">Assign cleaner(s) and job date</p>
-            </div>
-          </div>
-          {selectedStaff.length >= 2 && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
-              <Sparkles size={11} className="text-indigo-600" />
-              Multi-Cleaner Team ({selectedStaff.length})
-            </span>
-          )}
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-          <div>
-            <CleanerMultiSelect
-              label="Staff Name / Cleaners"
-              name="staff_name"
-              cleaners={employees}
-              selected={selectedStaff}
-              onChange={setSelectedStaff}
-              placeholder="Select cleaner(s)…"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-              Job Date
-            </label>
-            <input
-              type="date"
-              value={date}
-              onChange={e => setDate(e.target.value)}
-              required
-              className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-medium text-slate-800"
-            />
-          </div>
-        </div>
-
-        {/* Conditional Team Name Field (Only when 2+ cleaners selected) */}
-        {selectedStaff.length >= 2 && (
-          <div className="pt-2 border-t border-slate-100 animate-in fade-in slide-in-from-top-1 duration-200">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
-                <Users size={12} className="text-indigo-600" />
-                Team Reference Name <span className="text-slate-400 font-normal lowercase">(auto-generated, click to edit)</span>
-              </label>
-              <button
-                type="button"
-                onClick={() => setTeamName(defaultTeamName)}
-                className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
-              >
-                Reset to {defaultTeamName}
-              </button>
-            </div>
-            <div className="relative">
-              <input
-                type="text"
-                value={teamName}
-                onChange={e => setTeamName(e.target.value)}
-                placeholder="e.g. Team A, Team Alpha…"
-                className="w-full text-[13px] px-3.5 py-2.5 border border-indigo-200 rounded-xl bg-indigo-50/40 text-indigo-950 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-2xs"
-              />
-              <span className="absolute right-3 top-2.5 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300">
-                Primary Lead: {selectedStaff[0]}
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1">
-              Payment & received amount will be recorded under <b>{selectedStaff[0]}</b>; other staff will display reference <b>{teamName || defaultTeamName}</b>.
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* ── CARD 2: Responsive Timing, Hours & OT ── */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs space-y-3.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
-              <Clock size={15} />
-            </div>
-            <div>
-              <h4 className="text-[13px] font-bold text-slate-900">Timing & Duty Hours</h4>
-              <p className="text-[11px] text-slate-500">Responsive auto-calculation across times, duration, and OT</p>
-            </div>
-          </div>
-          {Number(otHours) > 0 && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-100 text-amber-800 border border-amber-300">
-              +{otHours}h Overtime
-            </span>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
-              <span>Start Time</span>
-              <span className="text-blue-600 font-bold normal-case tracking-normal">{formatTime12h(startTime)}</span>
-            </label>
-            <input
-              type="time"
-              value={formatTime24h(startTime)}
-              onChange={e => handleStartTimeChange(e.target.value)}
-              list="add-job-time-options"
-              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-semibold text-slate-800"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
-              <span>End Time</span>
-              <span className="text-blue-600 font-bold normal-case tracking-normal">{formatTime12h(endTime)}</span>
-            </label>
-            <input
-              type="time"
-              value={formatTime24h(endTime)}
-              onChange={e => handleEndTimeChange(e.target.value)}
-              list="add-job-time-options"
-              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-semibold text-slate-800"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-              Duty Hours
-            </label>
-            <input
-              type="number"
-              min="0.5"
-              step="0.5"
-              value={dutyHours}
-              onChange={e => handleDutyHoursChange(Number(e.target.value) || 0)}
-              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-slate-800"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
-              <span>OT Hours</span>
-              <span className="text-[10px] text-slate-400 font-normal">R-OT-01</span>
-            </label>
-            <input
-              type="number"
-              step="0.5"
-              min="0"
-              value={otHours}
-              onChange={e => {
-                const val = e.target.value
-                setOtHours(val)
-                setIsOvertime(Number(val) > 0)
-              }}
-              placeholder="0.0"
-              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-amber-500 focus:bg-white transition-all font-bold text-amber-900"
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 pt-1 text-[12px] text-slate-600">
-          <input
-            type="checkbox"
-            id="modal_is_overtime"
-            checked={isOvertime}
-            onChange={e => setIsOvertime(e.target.checked)}
-            className="w-4 h-4 rounded accent-amber-600 cursor-pointer"
-          />
-          <label htmlFor="modal_is_overtime" className="font-medium cursor-pointer">
-            Mark Shift as Overtime (OT)
-          </label>
-          <span className="text-[11px] text-slate-400 ml-1">
-            · Post-8 PM duty or &gt;8h basic work auto-computes as OT
-          </span>
-        </div>
-      </div>
-
-      {/* ── CARD 3: Client & Location ── */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs space-y-3.5">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
-            <MapPin size={15} />
-          </div>
-          <div>
-            <h4 className="text-[13px] font-bold text-slate-900">Address & Location</h4>
-            <p className="text-[11px] text-slate-500">Client destination and community area</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-              Address / Building / Client
-            </label>
-            <input
-              name="address"
-              list="add-job-clients-address-options"
-              value={address}
-              onChange={e => handleSelectClientAddress(e.target.value)}
-              placeholder="e.g. 202 Escape Tower, Sarah Johnson…"
-              required
-              className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-purple-500 focus:bg-white transition-all text-slate-800 font-semibold"
-            />
-            <datalist id="add-job-clients-address-options">
-              {clients.map(c => {
-                const label = c.building_name ? `${c.full_name} (${c.building_name}${c.area ? `, ${c.area}` : ''})` : c.full_name
-                return <option key={c.id} value={c.building_name || c.full_name}>{label}</option>
-              })}
-            </datalist>
-          </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-              Location / Area
-            </label>
-            <input
-              name="area"
-              value={area}
-              onChange={e => setArea(e.target.value)}
-              placeholder="e.g. Downtown, Marina, Business Bay…"
-              className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-purple-500 focus:bg-white transition-all text-slate-800 font-medium"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ── CARD 4: Financials & Payment ── */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs space-y-3.5">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
-            <CreditCard size={15} />
-          </div>
-          <div>
-            <h4 className="text-[13px] font-bold text-slate-900">Charges & Collection</h4>
-            <p className="text-[11px] text-slate-500">Service billing, collections, and payment mode</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-              Charges (AED)
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={charges}
-              onChange={e => setCharges(e.target.value)}
-              placeholder="0.00"
-              className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-bold text-slate-800"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-              Received (AED)
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={received}
-              onChange={e => setReceived(e.target.value)}
-              placeholder="0.00"
-              className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-bold text-emerald-800"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-              Payment Mode
-            </label>
-            <select
-              value={paymentMode}
-              onChange={e => setPaymentMode(e.target.value as PaymentMode)}
-              className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-semibold text-slate-800 cursor-pointer"
-            >
-              {PAYMENT_MODES.map(m => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* ── CARD 5: Customization (Row Color, Material with Custom, Remarks) ── */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs space-y-3.5">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
-            <Palette size={15} />
-          </div>
-          <div>
-            <h4 className="text-[13px] font-bold text-slate-900">Customization & Materials</h4>
-            <p className="text-[11px] text-slate-500">Pick row color theme and specify supplies</p>
-          </div>
-        </div>
-
-        {/* Row Color Picker */}
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-2 flex items-center gap-1.5">
-            <Palette size={12} className="text-slate-400" />
-            Row Highlight Color
-          </label>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            {ROW_COLOR_PRESETS.map(preset => {
-              const isSelected = rowColor === preset.id
-              return (
-                <button
-                  type="button"
-                  key={preset.id}
-                  onClick={() => setRowColor(preset.id)}
-                  title={preset.label}
-                  className={`group relative flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer text-[12px] font-semibold ${
-                    isSelected
-                      ? 'border-emerald-500 bg-emerald-50/60 text-emerald-950 shadow-xs ring-2 ring-emerald-500/20'
-                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                  }`}
-                >
-                  <span
-                    className="w-4 h-4 rounded-full border border-black/10 shrink-0 shadow-2xs flex items-center justify-center"
-                    style={{ backgroundColor: preset.circleColor }}
-                  >
-                    {isSelected && <Check size={10} className="text-slate-800 stroke-[3]" />}
-                  </span>
-                  <span className="text-[11.5px]">{preset.label.replace('Soft ', '')}</span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Material Selection with Custom Value Support */}
-        <div className="pt-2 border-t border-slate-100">
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center gap-1.5">
-            <Package size={12} className="text-slate-400" />
-            Cleaning Material / Supplies
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <select
-                value={materialSelect}
-                onChange={e => {
-                  const val = e.target.value
-                  setMaterialSelect(val)
-                  if (val !== '__custom__') setCustomMaterialInput('')
-                }}
-                className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-semibold text-slate-800 cursor-pointer"
-              >
-                {PRESET_MATERIALS.map(m => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-                <option value="__custom__">+ Custom Material…</option>
-              </select>
-            </div>
-            {materialSelect === '__custom__' && (
-              <div className="animate-in fade-in slide-in-from-left-2 duration-150">
-                <input
-                  type="text"
-                  value={customMaterialInput}
-                  onChange={e => setCustomMaterialInput(e.target.value)}
-                  placeholder="Enter custom material (e.g. Steam Cleaner, High Ladder)…"
-                  autoFocus
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
+              <div>
+                <CleanerMultiSelect
+                  label="Staff Name / Cleaners"
+                  name="staff_name"
+                  cleaners={employees}
+                  selected={selectedStaff}
+                  onChange={setSelectedStaff}
+                  placeholder="Select cleaner(s)…"
                   required
-                  className="w-full text-[13px] px-3.5 py-2.5 border border-emerald-400 rounded-xl bg-emerald-50/30 text-emerald-950 font-semibold focus:outline-none focus:border-emerald-600 focus:bg-white transition-all"
                 />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
+                  Job Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                  required
+                  className="w-full text-[13px] px-3.5 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-semibold text-slate-800"
+                />
+              </div>
+            </div>
+
+            {/* Conditional Multi-Cleaner Team Field */}
+            {selectedStaff.length >= 2 && (
+              <div className="pt-2 border-t border-slate-100 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+                    <Users size={12} className="text-indigo-600" />
+                    Team Reference <span className="text-slate-400 font-normal lowercase">(auto-generated)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setTeamName(defaultTeamName)}
+                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={teamName}
+                    onChange={e => setTeamName(e.target.value)}
+                    placeholder="e.g. Team A, Team Alpha…"
+                    className="w-full text-[13px] px-3.5 py-2 min-h-[40px] border border-indigo-200 rounded-xl bg-indigo-50/40 text-indigo-950 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-2xs"
+                  />
+                  <span className="absolute right-2.5 top-2 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                    Lead: {selectedStaff[0]}
+                  </span>
+                </div>
+                <p className="text-[10.5px] text-slate-500 mt-1">
+                  Received payment recorded under <b>{selectedStaff[0]}</b>; others display reference <b>{teamName || defaultTeamName}</b>.
+                </p>
               </div>
             )}
           </div>
+
+          {/* CARD 2: Address & Location (Improved Building & Area Dropdowns matching Staff Name style) */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+                <MapPin size={15} />
+              </div>
+              <div>
+                <h4 className="text-[13px] font-bold text-slate-900">Address & Location</h4>
+                <p className="text-[11px] text-slate-500">Center-aligned building selector and community area</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
+
+              {/* Building Dropdown — Styled identical to CleanerMultiSelect */}
+              <div className="relative" ref={buildingRef}>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
+                  <span>Building / Client</span>
+                  <span className="text-red-500">*</span>
+                </label>
+
+                {/* Building Trigger Box */}
+                <div
+                  onClick={() => setBuildingDropdownOpen(prev => !prev)}
+                  className={`w-full flex items-center justify-between border rounded-xl transition-all cursor-pointer px-3.5 py-2 text-[13px] min-h-[42px] ${
+                    buildingDropdownOpen
+                      ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/15'
+                      : address
+                        ? 'bg-emerald-50/30 border-emerald-300/80 text-slate-800 hover:border-emerald-400'
+                        : 'bg-[#f8fafc] border-[#E4E8EC] text-slate-400 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate flex-1 min-w-0 pr-1">
+                    <Building2 size={15} className={address ? 'text-emerald-600 shrink-0' : 'text-slate-400 shrink-0'} />
+                    {address ? (
+                      <span className="font-bold text-slate-900 truncate">{address}</span>
+                    ) : (
+                      <span className="text-slate-400 truncate">Select or enter building…</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {address && (
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation()
+                          setAddress('')
+                        }}
+                        className="p-1 hover:bg-slate-200/60 rounded text-slate-400 hover:text-slate-700 cursor-pointer"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                    <ChevronDown
+                      size={15}
+                      className={`text-slate-400 transition-transform duration-200 ${
+                        buildingDropdownOpen ? 'rotate-180 text-emerald-600' : ''
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Building Dropdown Popover */}
+                {buildingDropdownOpen && (
+                  <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl p-2 animate-in fade-in slide-in-from-top-1 duration-150 max-h-64 flex flex-col">
+                    {/* Search Bar */}
+                    <div className="relative mb-2 shrink-0">
+                      <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                      <input
+                        ref={buildingSearchInputRef}
+                        type="text"
+                        value={buildingSearch}
+                        onChange={e => setBuildingSearch(e.target.value)}
+                        placeholder="Search building or client…"
+                        className="w-full text-[12.5px] pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-medium"
+                      />
+                    </div>
+
+                    {/* Custom Value Option if typing custom building */}
+                    {buildingSearch.trim() && (
+                      <div
+                        onClick={() => {
+                          setAddress(buildingSearch.trim())
+                          setBuildingDropdownOpen(false)
+                        }}
+                        className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[12px] font-bold flex items-center gap-2 cursor-pointer mb-1 shrink-0"
+                      >
+                        <Plus size={13} className="text-emerald-700" />
+                        <span>Use custom building: &ldquo;{buildingSearch.trim()}&rdquo;</span>
+                      </div>
+                    )}
+
+                    {/* Filtered Building & Client List */}
+                    <div className="overflow-y-auto flex-1 space-y-0.5 divide-y divide-slate-100">
+                      {filteredBuildings.length === 0 && !buildingSearch.trim() ? (
+                        <div className="py-4 text-center text-[12px] text-slate-400">
+                          No clients or buildings found
+                        </div>
+                      ) : (
+                        filteredBuildings.map(item => {
+                          const isSelected = address.toLowerCase() === item.building.toLowerCase()
+                          return (
+                            <div
+                              key={item.key}
+                              onClick={() => handleSelectClient(item.client, item.building)}
+                              className={`px-3 py-2 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between ${
+                                isSelected ? 'bg-emerald-50/80 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                              }`}
+                            >
+                              <div className="min-w-0 pr-2">
+                                <div className="text-[12.5px] font-bold text-slate-900 flex items-center gap-1.5 truncate">
+                                  <Building2 size={13} className="text-slate-400 shrink-0" />
+                                  <span className="truncate">{item.building}</span>
+                                </div>
+                                <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                                  {item.clientName} {item.apartment ? `· Apt ${item.apartment}` : ''} {item.area ? `· ${item.area}` : ''}
+                                </div>
+                              </div>
+                              {isSelected && <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />}
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Area Dropdown with Suggestions & Custom Entry — Styled identical to CleanerMultiSelect */}
+              <div className="relative" ref={areaRef}>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
+                  <span>Location / Area</span>
+                  <span className="text-slate-400 text-[10px] normal-case">Dubai Zone</span>
+                </label>
+
+                {/* Area Trigger Box */}
+                <div
+                  onClick={() => setAreaDropdownOpen(prev => !prev)}
+                  className={`w-full flex items-center justify-between border rounded-xl transition-all cursor-pointer px-3.5 py-2 text-[13px] min-h-[42px] ${
+                    areaDropdownOpen
+                      ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/15'
+                      : area
+                        ? 'bg-purple-50/30 border-purple-300/80 text-slate-800 hover:border-purple-400'
+                        : 'bg-[#f8fafc] border-[#E4E8EC] text-slate-400 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate flex-1 min-w-0 pr-1">
+                    <MapPin size={15} className={area ? 'text-purple-600 shrink-0' : 'text-slate-400 shrink-0'} />
+                    {area ? (
+                      <span className="font-bold text-slate-900 truncate">{area}</span>
+                    ) : (
+                      <span className="text-slate-400 truncate">Select or enter area…</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {area && (
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation()
+                          setArea('')
+                        }}
+                        className="p-1 hover:bg-slate-200/60 rounded text-slate-400 hover:text-slate-700 cursor-pointer"
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                    <ChevronDown
+                      size={15}
+                      className={`text-slate-400 transition-transform duration-200 ${
+                        areaDropdownOpen ? 'rotate-180 text-purple-600' : ''
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* Area Dropdown Popover */}
+                {areaDropdownOpen && (
+                  <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl p-2 animate-in fade-in slide-in-from-top-1 duration-150 max-h-60 flex flex-col">
+                    <div className="relative mb-2 shrink-0">
+                      <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                      <input
+                        ref={areaSearchInputRef}
+                        type="text"
+                        value={areaSearch}
+                        onChange={e => setAreaSearch(e.target.value)}
+                        placeholder="Search area (e.g. Marina, Downtown)…"
+                        className="w-full text-[12.5px] pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:border-purple-500 focus:bg-white transition-all font-medium"
+                      />
+                    </div>
+
+                    {areaSearch.trim() && (
+                      <div
+                        onClick={() => {
+                          setArea(areaSearch.trim())
+                          setAreaDropdownOpen(false)
+                        }}
+                        className="px-3 py-2 rounded-lg bg-purple-50 text-purple-900 hover:bg-purple-100 text-[12px] font-bold flex items-center gap-2 cursor-pointer mb-1 shrink-0"
+                      >
+                        <Plus size={13} className="text-purple-700" />
+                        <span>Use custom area: &ldquo;{areaSearch.trim()}&rdquo;</span>
+                      </div>
+                    )}
+
+                    <div className="overflow-y-auto flex-1 space-y-0.5">
+                      {filteredAreas.map(ar => {
+                        const isSelected = area.toLowerCase() === ar.toLowerCase()
+                        return (
+                          <div
+                            key={ar}
+                            onClick={() => {
+                              setArea(ar)
+                              setAreaDropdownOpen(false)
+                            }}
+                            className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between text-[12.5px] ${
+                              isSelected ? 'bg-purple-50 text-purple-950 font-bold' : 'hover:bg-slate-50 text-slate-700 font-medium'
+                            }`}
+                          >
+                            <span className="truncate">{ar}</span>
+                            {isSelected && <Check size={14} className="text-purple-600 stroke-[3] shrink-0" />}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+
         </div>
 
-        {/* Remarks */}
-        <div className="pt-2 border-t border-slate-100">
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center gap-1.5">
-            <FileText size={12} className="text-slate-400" />
-            Shift Remarks & Instructions
-          </label>
-          <input
-            name="remarks"
-            value={remarks}
-            onChange={e => setRemarks(e.target.value)}
-            placeholder="e.g. Balcony wash, Sofa shampoo, Key with security, Online payment…"
-            className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all text-slate-800 font-medium"
-          />
-        </div>
-      </div>
+        {/* ══════════ RIGHT COLUMN: TIMING, FINANCIALS & CUSTOMIZATION ══════════ */}
+        <div className="space-y-4">
 
-      {/* ── ACTION FOOTER ── */}
-      <div className="flex items-center gap-3 pt-2">
-        <Button
-          type="button"
-          variant="outline"
-          className="flex-1 h-11 rounded-xl font-bold text-slate-700 hover:bg-slate-100 border-slate-300 transition-all cursor-pointer"
-          onClick={onClose}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          className="flex-1 h-11 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-[13px] shadow-sm hover:shadow transition-all cursor-pointer flex items-center justify-center gap-2"
-        >
-          <Plus size={16} className="stroke-[2.5]" />
-          <span>Save & Add Job</span>
-        </Button>
+          {/* CARD 3: Timing & Responsive Hours */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
+                  <Clock size={15} />
+                </div>
+                <div>
+                  <h4 className="text-[13px] font-bold text-slate-900">Timing & Duty Hours</h4>
+                  <p className="text-[11px] text-slate-500">Auto-synchronized shift duration and overtime</p>
+                </div>
+              </div>
+              {Number(otHours) > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+                  +{otHours}h OT
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1 flex items-center justify-between">
+                  <span>Start</span>
+                  <span className="text-blue-600 font-bold normal-case">{formatTime12h(startTime)}</span>
+                </label>
+                <input
+                  type="time"
+                  value={formatTime24h(startTime)}
+                  onChange={e => handleStartTimeChange(e.target.value)}
+                  className="w-full text-[13px] px-2.5 py-2 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-semibold text-slate-800"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1 flex items-center justify-between">
+                  <span>End</span>
+                  <span className="text-blue-600 font-bold normal-case">{formatTime12h(endTime)}</span>
+                </label>
+                <input
+                  type="time"
+                  value={formatTime24h(endTime)}
+                  onChange={e => handleEndTimeChange(e.target.value)}
+                  className="w-full text-[13px] px-2.5 py-2 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-semibold text-slate-800"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1">
+                  Duty Hrs
+                </label>
+                <input
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  value={dutyHours}
+                  onChange={e => handleDutyHoursChange(Number(e.target.value) || 0)}
+                  className="w-full text-[13px] px-2.5 py-2 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-slate-800"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1 flex items-center justify-between">
+                  <span>OT Hrs</span>
+                  <span className="text-[9.5px] text-slate-400">R-OT-01</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={otHours}
+                  onChange={e => {
+                    const val = e.target.value
+                    setOtHours(val)
+                    setIsOvertime(Number(val) > 0)
+                  }}
+                  placeholder="0.0"
+                  className="w-full text-[13px] px-2.5 py-2 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-amber-500 focus:bg-white transition-all font-bold text-amber-900"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-0.5 text-[11.5px] text-slate-600">
+              <input
+                type="checkbox"
+                id="add_job_modal_is_overtime"
+                checked={isOvertime}
+                onChange={e => setIsOvertime(e.target.checked)}
+                className="w-4 h-4 rounded accent-amber-600 cursor-pointer"
+              />
+              <label htmlFor="add_job_modal_is_overtime" className="font-semibold cursor-pointer text-slate-700">
+                Mark Shift as Overtime (OT)
+              </label>
+              <span className="text-slate-400">· Shifts &gt;8h or post-8 PM auto-count as OT</span>
+            </div>
+          </div>
+
+          {/* CARD 4: Charges & Payment Mode */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+                <CreditCard size={15} />
+              </div>
+              <div>
+                <h4 className="text-[13px] font-bold text-slate-900">Charges & Collection</h4>
+                <p className="text-[11px] text-slate-500">Service billing and payment status</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
+                  Charges (AED)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={charges}
+                  onChange={e => setCharges(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-bold text-slate-800"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
+                  Received (AED)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={received}
+                  onChange={e => setReceived(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-bold text-emerald-800"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
+                  Payment Mode
+                </label>
+                <select
+                  value={paymentMode}
+                  onChange={e => setPaymentMode(e.target.value as PaymentMode)}
+                  className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-semibold text-slate-800 cursor-pointer"
+                >
+                  {PAYMENT_MODES.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 5: Customization & Supplies (Cleaning Material + 18 Colors with View All) */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
+                <Palette size={15} />
+              </div>
+              <div>
+                <h4 className="text-[13px] font-bold text-slate-900">Customization & Supplies</h4>
+                <p className="text-[11px] text-slate-500">Row highlight colors and supplies specification</p>
+              </div>
+            </div>
+
+            {/* Cleaning Material Dropdown — Styled identical to CleanerMultiSelect with Tick/Cross for Custom Save */}
+            <div className="relative" ref={materialRef}>
+              <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center gap-1.5">
+                <Package size={12} className="text-slate-400" />
+                Cleaning Material / Supplies
+              </label>
+
+              {/* Material Trigger Box */}
+              <div
+                onClick={() => setMaterialDropdownOpen(prev => !prev)}
+                className={`w-full flex items-center justify-between border rounded-xl transition-all cursor-pointer px-3.5 py-2 text-[13px] min-h-[42px] ${
+                  materialDropdownOpen
+                    ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/15'
+                    : selectedMaterial !== 'No'
+                      ? 'bg-amber-50/40 border-amber-300/80 text-slate-800 hover:border-amber-400'
+                      : 'bg-[#f8fafc] border-[#E4E8EC] text-slate-700 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-2 truncate flex-1 min-w-0 pr-1">
+                  <Package size={15} className={selectedMaterial !== 'No' ? 'text-amber-700 shrink-0' : 'text-slate-400 shrink-0'} />
+                  <span className="font-bold text-slate-900 truncate">
+                    {selectedMaterial === 'No' ? 'No Material (Client Supplies)' : selectedMaterial}
+                  </span>
+                </div>
+                <ChevronDown
+                  size={15}
+                  className={`text-slate-400 transition-transform duration-200 shrink-0 ${
+                    materialDropdownOpen ? 'rotate-180 text-amber-600' : ''
+                  }`}
+                />
+              </div>
+
+              {/* Material Dropdown Popover */}
+              {materialDropdownOpen && (
+                <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl p-2 animate-in fade-in slide-in-from-top-1 duration-150 max-h-64 flex flex-col">
+                  {/* Preset & Custom Materials List */}
+                  <div className="overflow-y-auto flex-1 space-y-0.5 divide-y divide-slate-100">
+                    {materialsList.map(m => {
+                      const isSelected = selectedMaterial === m
+                      return (
+                        <div
+                          key={m}
+                          onClick={() => {
+                            setSelectedMaterial(m)
+                            setMaterialDropdownOpen(false)
+                            setIsAddingCustomMaterial(false)
+                          }}
+                          className={`px-3 py-2 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between text-[12.5px] ${
+                            isSelected ? 'bg-amber-50 text-amber-950 font-bold' : 'hover:bg-slate-50 text-slate-700 font-medium'
+                          }`}
+                        >
+                          <span>{m === 'No' ? 'No Material' : m}</span>
+                          {isSelected && <Check size={14} className="text-amber-700 stroke-[3] shrink-0" />}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Add Custom Material Section with Tick & Cross Icons */}
+                  <div className="pt-2 mt-1 border-t border-slate-100 shrink-0">
+                    {!isAddingCustomMaterial ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingCustomMaterial(true)}
+                        className="w-full py-1.5 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100/80 text-emerald-800 text-[12px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Plus size={13} className="text-emerald-700 stroke-[2.5]" />
+                        <span>Add Custom Material…</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1.5 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+                        <input
+                          ref={customMaterialInputRef}
+                          type="text"
+                          value={customMaterialInput}
+                          onChange={e => setCustomMaterialInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              handleSaveCustomMaterial()
+                            } else if (e.key === 'Escape') {
+                              handleCancelCustomMaterial()
+                            }
+                          }}
+                          placeholder="Type custom material (e.g. Steam Cleaner)…"
+                          className="flex-1 text-[12px] px-2.5 py-1.5 border border-emerald-400 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold text-slate-900"
+                        />
+                        {/* Tick button to save immediately */}
+                        <button
+                          type="button"
+                          onClick={handleSaveCustomMaterial}
+                          title="Save Custom Material"
+                          className="w-7 h-7 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-colors shadow-2xs cursor-pointer shrink-0"
+                        >
+                          <Check size={14} className="stroke-[3]" />
+                        </button>
+                        {/* Cross button to cancel */}
+                        <button
+                          type="button"
+                          onClick={handleCancelCustomMaterial}
+                          title="Cancel"
+                          className="w-7 h-7 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                        >
+                          <X size={14} className="stroke-[2.5]" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Shift Remarks */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center gap-1.5">
+                <FileText size={12} className="text-slate-400" />
+                Shift Remarks & Notes
+              </label>
+              <input
+                name="remarks"
+                value={remarks}
+                onChange={e => setRemarks(e.target.value)}
+                placeholder="e.g. Balcony wash, Sofa shampoo, Key with security, Online payment…"
+                className="w-full text-[13px] px-3.5 py-2 min-h-[40px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-500 focus:bg-white transition-all text-slate-800 font-medium"
+              />
+            </div>
+
+            {/* Row Highlight Color Picker (18 presets, initially 2 rows, with "View All" toggle) */}
+            <div className="pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] flex items-center gap-1.5">
+                  <Palette size={12} className="text-slate-400" />
+                  Row Color Theme ({ROW_COLOR_PRESETS.length} Options)
+                </label>
+                {/* View All / Show Less Toggle Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowAllColors(prev => !prev)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer"
+                >
+                  <span>{showAllColors ? 'Show Less' : `View All (${ROW_COLOR_PRESETS.length})`}</span>
+                  <ChevronDown size={12} className={`transition-transform duration-200 ${showAllColors ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
+
+              {/* Color badges grid */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {displayedColorPresets.map(preset => {
+                  const isSelected = rowColor === preset.id
+                  return (
+                    <button
+                      type="button"
+                      key={preset.id}
+                      onClick={() => setRowColor(preset.id)}
+                      title={preset.label}
+                      className={`group relative flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-all cursor-pointer text-[11.5px] font-semibold ${
+                        isSelected
+                          ? 'border-emerald-500 bg-emerald-50/70 text-emerald-950 shadow-xs ring-2 ring-emerald-500/20'
+                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <span
+                        className="w-3.5 h-3.5 rounded-full border border-black/10 shrink-0 shadow-2xs flex items-center justify-center"
+                        style={{ backgroundColor: preset.circleColor }}
+                      >
+                        {isSelected && <Check size={9} className="text-slate-900 stroke-[3.5]" />}
+                      </span>
+                      <span>{preset.label.replace('Soft ', '')}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
       </div>
-      <datalist id="add-job-time-options">
-        <option value="07:00">07:00 AM</option>
-        <option value="07:30">07:30 AM</option>
-        <option value="08:00">08:00 AM</option>
-        <option value="08:30">08:30 AM</option>
-        <option value="09:00">09:00 AM</option>
-        <option value="09:30">09:30 AM</option>
-        <option value="10:00">10:00 AM</option>
-        <option value="10:30">10:30 AM</option>
-        <option value="11:00">11:00 AM</option>
-        <option value="11:30">11:30 AM</option>
-        <option value="12:00">12:00 PM</option>
-        <option value="12:30">12:30 PM</option>
-        <option value="13:00">01:00 PM</option>
-        <option value="13:30">01:30 PM</option>
-        <option value="14:00">02:00 PM</option>
-        <option value="14:30">02:30 PM</option>
-        <option value="15:00">03:00 PM</option>
-        <option value="15:30">03:30 PM</option>
-        <option value="16:00">04:00 PM</option>
-        <option value="16:30">04:30 PM</option>
-        <option value="17:00">05:00 PM</option>
-        <option value="17:30">05:30 PM</option>
-        <option value="18:00">06:00 PM</option>
-        <option value="18:30">06:30 PM</option>
-        <option value="19:00">07:00 PM</option>
-        <option value="19:30">07:30 PM</option>
-        <option value="20:00">08:00 PM</option>
-        <option value="20:30">08:30 PM</option>
-        <option value="21:00">09:00 PM</option>
-        <option value="22:00">10:00 PM</option>
-      </datalist>
     </form>
   )
 }
