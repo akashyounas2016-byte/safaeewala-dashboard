@@ -1217,7 +1217,7 @@ export function JobSheetSpreadsheet() {
 
   // ── Active Color Palette Tab ('solid' or 'light') ──
   const [colorPaletteTab, setColorPaletteTab] = useState<'solid' | 'light'>(() => {
-    return safeGet('safaeewala_excel_color_tab', 'solid')
+    return safeGet('safaeewala_excel_color_tab', 'light')
   })
 
   // ── Right-Click Context Menu State ──
@@ -1727,8 +1727,9 @@ export function JobSheetSpreadsheet() {
     if (customKey && BLOCK_PALETTES[customKey]) {
       return BLOCK_PALETTES[customKey]
     }
-    // Default deterministic assignment
-    const paletteKey = PALETTE_KEYS[idx % PALETTE_KEYS.length]
+    // Default deterministic assignment: Flat Grid Mode defaults to light colors
+    const keyPool = viewMode === 'flat' ? LIGHT_PALETTE_KEYS : PALETTE_KEYS
+    const paletteKey = keyPool[idx % keyPool.length]
     return BLOCK_PALETTES[paletteKey]
   }
 
@@ -3387,37 +3388,17 @@ export function JobSheetSpreadsheet() {
 
           <div className="h-px bg-slate-100 my-1" />
 
-          {/* Color Selection Panel: Header changed to "Colors", with "Light" button to toggle 20 light styles */}
-          <div className="px-3.5 py-2.5 bg-slate-900 text-white rounded-xl mx-2 border border-slate-800 shadow-md">
-            {/* Header: Strictly "Colors" with [Solid] and [Light] toggle buttons */}
-            <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-800">
-              <div className="flex items-center gap-1.5 font-bold text-white text-[12px]">
-                <Palette size={14} className="text-emerald-400" />
+          {/* Color Selection Panel (Clean Light Theme & Circles Only) */}
+          <div className="px-3 py-2.5 bg-white text-slate-800 rounded-2xl mx-1.5 border border-slate-200/90 shadow-md">
+            {/* Header: Clean Light Colors header with [Light] and [Solid] tabs */}
+            <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-100">
+              <div className="flex items-center gap-1.5 font-bold text-slate-900 text-[11.5px]">
+                <Palette size={13} className="text-teal-600" />
                 <span>Colors</span>
-                <span className="text-[10px] text-slate-400 font-normal">
-                  ({colorPaletteTab === 'light' ? '20 Light' : '20 Solid'})
-                </span>
               </div>
               
-              {/* Toggle Buttons: Solid & Light (Clicking Light displays the 20 light colors) */}
-              <div className="flex items-center bg-slate-800 p-0.5 rounded-lg border border-slate-700">
-                <button
-                  type="button"
-                  onMouseDown={e => e.stopPropagation()}
-                  onClick={e => {
-                    e.stopPropagation()
-                    setColorPaletteTab('solid')
-                    safeSet('safaeewala_excel_color_tab', 'solid')
-                  }}
-                  className={`px-2.5 py-0.5 rounded-md text-[10.5px] font-bold transition-all cursor-pointer ${
-                    colorPaletteTab === 'solid'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                  title="Show 20 Solid Dark Colors"
-                >
-                  Solid
-                </button>
+              {/* Toggle Buttons: Light & Solid */}
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                 <button
                   type="button"
                   onMouseDown={e => e.stopPropagation()}
@@ -3426,28 +3407,45 @@ export function JobSheetSpreadsheet() {
                     setColorPaletteTab('light')
                     safeSet('safaeewala_excel_color_tab', 'light')
                   }}
-                  className={`px-2.5 py-0.5 rounded-md text-[10.5px] font-bold transition-all cursor-pointer ${
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
                     colorPaletteTab === 'light'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-teal-600 text-white shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800'
                   }`}
                   title="Show 20 Light Colors"
                 >
                   Light
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={e => e.stopPropagation()}
+                  onClick={e => {
+                    e.stopPropagation()
+                    setColorPaletteTab('solid')
+                    safeSet('safaeewala_excel_color_tab', 'solid')
+                  }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                    colorPaletteTab === 'solid'
+                      ? 'bg-teal-600 text-white shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  title="Show 20 Solid Colors"
+                >
+                  Solid
                 </button>
               </div>
             </div>
 
             {/* Target Cleaner Info */}
             <div className="flex items-center justify-between text-[11px] mb-2 px-0.5">
-              <span className="text-slate-400 font-medium">Cleaner:</span>
-              <span className="text-emerald-300 font-bold truncate max-w-[150px] bg-emerald-950/90 px-2 py-0.5 rounded border border-emerald-500/40">
+              <span className="text-slate-500 font-medium">Cleaner:</span>
+              <span className="text-teal-900 font-bold truncate max-w-[150px] bg-teal-50 px-2 py-0.5 rounded border border-teal-200 text-[10.5px]">
                 {contextMenu.job.staff_name || 'Staff'}
               </span>
             </div>
 
-            {/* Grid of 20 Color Swatches (Solid or Light depending on active tab) */}
-            <div className="grid grid-cols-4 gap-1.5 py-1">
+            {/* Grid of Clean Colored Circles (No text names, purely circles) */}
+            <div className="grid grid-cols-5 gap-2 py-1 place-items-center">
               {(colorPaletteTab === 'light' ? LIGHT_PALETTE_KEYS : SOLID_PALETTE_KEYS).map(pk => {
                 const p = BLOCK_PALETTES[pk]
                 const currentPalette = getCleanerPalette(contextMenu.job.staff_name, 0)
@@ -3462,37 +3460,27 @@ export function JobSheetSpreadsheet() {
                       setCleanerColor(contextMenu.job.staff_name, p.id)
                     }}
                     style={{ backgroundColor: p.solidBg, borderColor: p.solidBorder }}
-                    className={`h-9 rounded-lg border-2 flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer shadow-sm hover:scale-105 relative ${
+                    className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-110 relative ${
                       isSelected
-                        ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-900 scale-105 shadow-md'
-                        : 'hover:border-white'
+                        ? 'ring-2 ring-teal-500 ring-offset-2 scale-110 shadow-sm'
+                        : 'hover:border-slate-400'
                     }`}
                     title={`${p.name} (${colorPaletteTab === 'light' ? 'Light' : 'Solid'})`}
                   >
-                    <div className="flex items-center gap-1">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/20" style={{ backgroundColor: p.hex }} />
-                      {isSelected && (
-                        <Check
-                          size={10}
-                          className={p.isLight ? 'text-slate-900 drop-shadow stroke-[3]' : 'text-white drop-shadow stroke-[3]'}
-                        />
-                      )}
-                    </div>
-                    <span
-                      className={`text-[9px] font-bold truncate max-w-[62px] leading-tight px-0.5 ${
-                        p.isLight ? 'text-slate-900' : 'text-slate-200'
-                      }`}
-                    >
-                      {p.name.split(' ')[0]}
-                    </span>
+                    {isSelected && (
+                      <Check
+                        size={11}
+                        className={p.isLight ? 'text-slate-900 stroke-[3]' : 'text-white stroke-[3]'}
+                      />
+                    )}
                   </button>
                 )
               })}
             </div>
 
             {/* Footer */}
-            <div className="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10.5px] text-slate-400">
-              <span>{colorPaletteTab === 'light' ? '20 Light Styles' : '20 Solid Styles'}</span>
+            <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
+              <span>{colorPaletteTab === 'light' ? '20 Light Colors' : '20 Solid Colors'}</span>
               <button
                 type="button"
                 onMouseDown={e => e.stopPropagation()}
@@ -3507,9 +3495,9 @@ export function JobSheetSpreadsheet() {
                   setGridRows(prev => [...prev])
                   showToast(`Default color restored for ${contextMenu.job.staff_name}`)
                 }}
-                className="text-emerald-400 hover:text-emerald-300 underline font-semibold cursor-pointer"
+                className="text-teal-700 hover:text-teal-900 underline font-semibold cursor-pointer"
               >
-                Reset color
+                Reset
               </button>
             </div>
           </div>

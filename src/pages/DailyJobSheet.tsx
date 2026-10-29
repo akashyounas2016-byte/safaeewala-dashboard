@@ -65,8 +65,10 @@ import { MonthlyScheduleSyncModal } from '@/components/dailyJobSheet/MonthlySche
 import { JobSheetKPIs } from '@/components/dailyJobSheet/JobSheetKPIs'
 import { ExpensesAndDriversPanel } from '@/components/dailyJobSheet/ExpensesAndDriversPanel'
 import { ReconciliationWidgets } from '@/components/dailyJobSheet/ReconciliationWidgets'
+import { EditJobModal } from '@/components/dailyJobSheet/EditJobModal'
 import {
   getScheduledMonthlyShiftsForDate,
+  splitStaffNames,
   syncMonthlySchedulesToDailyJobs,
   syncMonthlySchedulesForDateRange,
   buildPendingCalcContext,
@@ -148,6 +150,7 @@ export function DailyJobSheet() {
     const { field, tempValue } = inlineEdit
     const trimmed = tempValue.trim()
     const patch: Partial<DailyJob> = {}
+    const targetJobId = (job as any)._originalJobId || job.id
 
     if (field === 'staff_name') {
       patch.staff_name = trimmed || job.staff_name
@@ -181,7 +184,7 @@ export function DailyJobSheet() {
       patch.date = trimmed || job.date
     }
 
-    updateDailyJob(job.id, patch)
+    updateDailyJob(targetJobId, patch)
     setInlineEdit(null)
   }
 
@@ -630,10 +633,34 @@ export function DailyJobSheet() {
   }
 
   // Group active jobs by staff member so multiple shifts for an employee display sequentially adjacent
+  // Multi-cleaner assignment (e.g. 3 cleaners) creates individual rows for each cleaner grouped by employee
   const groupedJobs = todayJobs.reduce((acc, job) => {
-    const s = job.staff_name.trim()
-    if (!acc[s]) acc[s] = []
-    acc[s].push(job)
+    const cleaners = splitStaffNames(job.staff_name)
+    if (cleaners.length <= 1) {
+      const s = (cleaners[0] || job.staff_name || 'Unassigned Staff').trim()
+      if (!acc[s]) acc[s] = []
+      acc[s].push(job)
+    } else {
+      // Split into distinct shift rows per cleaner so each employee's shifts are grouped together
+      cleaners.forEach((cleaner, cIdx) => {
+        const s = cleaner.trim()
+        if (!acc[s]) acc[s] = []
+        // Proportionally split revenue so total sheet figures match actual job charges/received
+        const splitCharges = Math.round((cleanNum(job.charges) / cleaners.length) * 100) / 100
+        const splitReceived = Math.round((cleanNum(job.received) / cleaners.length) * 100) / 100
+        acc[s].push({
+          ...job,
+          id: `${job.id}-cleaner-${cleaner.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+          staff_name: cleaner,
+          charges: splitCharges,
+          received: splitReceived,
+          _originalJobId: job.id,
+          _isSplitShift: true,
+          _allCleaners: cleaners,
+          _cleanerIndex: cIdx + 1,
+        } as DailyJob)
+      })
+    }
     return acc
   }, {} as Record<string, DailyJob[]>)
 
@@ -1477,6 +1504,13 @@ export function DailyJobSheet() {
                       {job.staff_name}
                       <Pencil size={11} className="opacity-0 group-hover/cell:opacity-60 text-emerald-700 transition-opacity" />
                     </div>
+                    {(job as any)._isSplitShift && (
+                      <div className="mt-0.5">
+                        <span className="text-[9px] font-bold text-teal-800 bg-teal-100/70 border border-teal-200/90 px-1.5 py-0.2 rounded-full inline-block" title={`Shared job with ${(job as any)._allCleaners?.join(', ')}`}>
+                          Team of {(job as any)._allCleaners?.length}
+                        </span>
+                      </div>
+                    )}
                     {isDateRange && (
                       <div className="text-[10px] text-slate-500 font-normal">{fmtDate(job.date)}</div>
                     )}
@@ -1785,10 +1819,10 @@ export function DailyJobSheet() {
             className={`px-3 py-3 font-semibold whitespace-nowrap group/cell relative ${
               inlineEdit?.jobId === job.id && inlineEdit.field === 'received'
                 ? 'bg-white ring-2 ring-emerald-500 rounded'
-                : 'hover:bg-black/5 cursor-pointer'
+                : 'hover:bg-emerald-50/70 cursor-pointer'
             } ${isMonthly ? 'text-emerald-800 font-medium' : 'text-emerald-700'}`}
-            onDoubleClick={() => !isMonthly && startInlineEdit(job.id, 'received', String(job.received || '0'))}
-            title={isMonthly ? undefined : 'Double-click to edit Received amount'}
+            onDoubleClick={() => startInlineEdit(job.id, 'received', String(job.received || '0'))}
+            title="Click pencil or double-click to edit Received amount"
           >
             {inlineEdit?.jobId === job.id && inlineEdit.field === 'received' ? (
               <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
@@ -1796,6 +1830,7 @@ export function DailyJobSheet() {
                 <input
                   ref={inlineInputRef}
                   type="number"
+                  step="0.01"
                   placeholder="0"
                   value={inlineEdit.tempValue}
                   onChange={e => setInlineEdit({ ...inlineEdit, tempValue: e.target.value })}
@@ -1803,7 +1838,7 @@ export function DailyJobSheet() {
                     if (e.key === 'Enter') saveInlineEdit(job)
                     if (e.key === 'Escape') cancelInlineEdit()
                   }}
-                  className="px-2 py-1 text-xs font-bold bg-white border border-emerald-500 rounded shadow-inner text-slate-800 w-20 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  className="px-2 py-1 text-xs font-bold bg-white border border-emerald-500 rounded shadow-inner text-slate-800 w-24 focus:outline-none focus:ring-2 focus:ring-emerald-400"
                 />
                 <button
                   type="button"
@@ -1823,9 +1858,27 @@ export function DailyJobSheet() {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5">
-                <span>{job.payment_mode === 'Pending' || isMonthly ? '—' : `AED ${cleanNum(job.received).toLocaleString()}`}</span>
-                {!isMonthly && <Pencil size={10} className="opacity-0 group-hover/cell:opacity-50 text-emerald-700 transition-opacity" />}
+              <div
+                className="flex items-center gap-1.5 cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  startInlineEdit(job.id, 'received', String(job.received || '0'))
+                }}
+              >
+                <span className="font-mono font-bold">
+                  {cleanNum(job.received) > 0 ? `AED ${cleanNum(job.received).toLocaleString()}` : (job.payment_mode === 'Pending' || isMonthly ? '—' : 'AED 0')}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    startInlineEdit(job.id, 'received', String(job.received || '0'))
+                  }}
+                  className="p-0.5 rounded text-slate-400 hover:text-emerald-700 hover:bg-emerald-100/60 opacity-0 group-hover/cell:opacity-100 transition-opacity cursor-pointer"
+                  title="Edit Received amount"
+                >
+                  <Pencil size={11} />
+                </button>
               </div>
             )}
           </td>
@@ -1906,7 +1959,7 @@ export function DailyJobSheet() {
             <div className="flex gap-1">
               <button
                 type="button"
-                onClick={() => { if (!blockIfClosed(job.date)) setEditJob(job) }}
+                onClick={() => { if (!blockIfClosed(job.date)) { const target = (job as any)._originalJobId ? (dailyJobs.find(j => j.id === (job as any)._originalJobId) || job) : job; setEditJob(target); } }}
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                   isMonthly
                     ? 'hover:bg-emerald-200 text-emerald-800 hover:text-emerald-950'
@@ -1918,7 +1971,7 @@ export function DailyJobSheet() {
               </button>
               <button
                 type="button"
-                onClick={() => { if (!blockIfClosed(job.date)) deleteDailyJob(job.id) }}
+                onClick={() => { if (!blockIfClosed(job.date)) { const targetId = (job as any)._originalJobId || job.id; deleteDailyJob(targetId); } }}
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                   isMonthly
                     ? 'hover:bg-red-100 text-emerald-800 hover:text-red-600'
@@ -2990,7 +3043,7 @@ export function DailyJobSheet() {
         {/* ── Table Container with Vertical A-Z Rail (Matching red line in user image) ── */}
         <div className="flex">
           {/* Vertical A-Z Rail */}
-          <div className="w-[34px] sm:w-[38px] flex-shrink-0 bg-[#f8fafc] border-r border-[#E4E8EC] py-2 flex flex-col items-center gap-0.5 select-none text-[10px] max-h-[calc(100vh-210px)] overflow-y-auto overscroll-contain">
+          <div className="w-[34px] sm:w-[38px] flex-shrink-0 bg-[#f8fafc] border-r border-[#E4E8EC] py-2 flex flex-col items-center gap-0.5 select-none text-[10px]">
             <button
               onClick={() => setSelectedLetter('ALL')}
               title="Show All Cleaners"
@@ -3026,7 +3079,7 @@ export function DailyJobSheet() {
           </div>
 
           {/* Main Table Area */}
-          <div className="flex-1 overflow-auto max-h-[calc(100vh-210px)] min-w-0 relative overscroll-contain table-scroll-container">
+          <div className="flex-1 overflow-x-auto min-w-0 relative table-scroll-container">
             <table
               className="w-full text-[12px] border-collapse relative"
               style={{ minWidth: Math.max(500, activeColumns.length * 80) }}
@@ -3329,17 +3382,14 @@ CREATE TABLE daily_expenses (
         />
       </Modal>
 
-      {/* ── Edit Job Modal ── */}
-      <Modal open={!!editJob} onClose={() => setEditJob(null)} title="Edit Job Entry" size="lg">
-        {editJob && (
-          <AddJobForm
-            employees={availableEmps}
-            onClose={() => setEditJob(null)}
-            onSave={j => { updateDailyJob(editJob.id, j); setEditJob(null) }}
-            initial={editJob}
-          />
-        )}
-      </Modal>
+      {/* ── Edit Job Modal (Executive Light Themed Layout) ── */}
+      <EditJobModal
+        open={!!editJob}
+        job={editJob}
+        onClose={() => setEditJob(null)}
+        onSave={(id, patch) => updateDailyJob(id, patch)}
+        employees={employees}
+      />
 
       {/* ── Add Expense Modal ── */}
       <AddExpenseModal

@@ -4,7 +4,15 @@
 > rename *Unreleased* to the deploy date and start a new *Unreleased*. Mention rule IDs where relevant.
 > Format: `- type(scope): summary (rule IDs) — commit`
 
-## Unreleased (in `main` or `claude/workspace`, not yet confirmed deployed)
+## Unreleased (in `main`, not yet confirmed deployed)
+
+- feat(daily-job-sheet): Removed trapped inner vertical scrollbar from data table and A-Z rail; displayed page entries naturally using responsive flow and View All pagination (UX-27)
+- feat(daily-job-sheet): Multi-cleaner assignment rows split into individual cleaner entries — each employee's shifts grouped together chronologically with dedicated staff-specific color palettes and proportional revenue split (R-ATT-04, R-PAY-01)
+- feat(daily-job-sheet): Made 'Received' column directly editable inline via double-click and pencil icon across all job types (Cash, Monthly, Online, Pending)
+- feat(excel-studio): Excel Job Sheet Studio Flat Grid Mode default color scheme switched to light pastel palettes; redesigned right-click context menu color picker to clean light theme with circular swatches and removed color text labels
+- feat(daily-job-sheet): Redesigned 'Edit Job Entry' popup (EditJobModal) into an executive 3-card layout matching Add New Booking & Add New Agency with prominent fields for staff, address, charges, and received amount
+
+## 2026-10-29 (Deploy to Production VPS)
 
 - feat(bookings): Enhanced Table View with full column customization — interactive "Customize Columns" popover checklist with localStorage persistence, drag-and-drop column reordering across table headers, dedicated "Duty Hours" reorderable column, and a Page Summary Duty Hours footer row. Added toggles for crew size, payment method, and special notes.
 - fix(bookings): Resolved Monthly Clients count vs cards discrepancy (6 vs 5 conflict) by strictly calculating in-scope monthly shifts (`isMonthlyBooking`) and synchronizing recurring monthly contract shifts into the active booking view.
