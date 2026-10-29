@@ -26,6 +26,7 @@ export interface Booking {
   scheduled_time: string
   end_time?: string
   duration_hours: number
+  material?: 'Yes' | 'No' | string
   assigned_crew: string[]
   notes?: string
   total_amount: number

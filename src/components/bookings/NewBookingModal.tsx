@@ -97,6 +97,7 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
   const [startTime, setStartTime] = useState('09:00')
   const [duration, setDuration] = useState<number>(3)
   const [endTime, setEndTime] = useState(() => addHoursToTime('09:00', 3))
+  const [material, setMaterial] = useState<'No' | 'Yes'>('No')
 
   // Amount & Crew & Notes
   const [totalAmount, setTotalAmount] = useState<number | ''>('')
@@ -325,6 +326,7 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
       setStartTime('09:00')
       setDuration(3)
       setEndTime(addHoursToTime('09:00', 3))
+      setMaterial('No')
       setTotalAmount('')
       setSelectedCrew([])
       setCrewSearch('')
@@ -377,6 +379,7 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
       scheduled_time: startTime,
       end_time: endTime,
       duration_hours: duration,
+      material,
       total_amount: typeof totalAmount === 'number' ? totalAmount : Number(totalAmount) || 0,
       status: bookingStatus,
       assigned_crew: selectedCrew,
@@ -819,20 +822,46 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
               </div>
             </div>
 
-            {/* Duration Hours */}
-            <div>
-              <label className="text-xs font-semibold text-emerald-950 block mb-1">
-                Duty Duration (Hours)
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="0.5"
-                max="24"
-                value={duration}
-                onChange={e => handleDurationChange(parseFloat(e.target.value) || 0)}
-                className="w-full text-[12px] px-3 py-2 bg-white border border-emerald-200/80 rounded-xl focus:outline-none focus:border-emerald-600 font-bold text-emerald-900 shadow-2xs"
-              />
+            {/* Duration Hours & Material Option Side-by-Side */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-emerald-950 block mb-1">
+                  Duty Duration (Hours)
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  max="24"
+                  value={duration}
+                  onChange={e => handleDurationChange(parseFloat(e.target.value) || 0)}
+                  className="w-full text-[12px] px-2.5 py-2 bg-white border border-emerald-200/80 rounded-xl focus:outline-none focus:border-emerald-600 font-bold text-emerald-900 shadow-2xs"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-emerald-950 block mb-1 flex items-center justify-between">
+                  <span>Cleaning Material</span>
+                  <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded transition-colors ${
+                    material === 'Yes'
+                      ? 'bg-emerald-200 text-emerald-950 border border-emerald-300'
+                      : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {material === 'Yes' ? 'Required' : 'No'}
+                  </span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={material}
+                    onChange={e => setMaterial(e.target.value as 'No' | 'Yes')}
+                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-emerald-200/80 rounded-xl focus:outline-none focus:border-emerald-600 font-bold text-slate-800 shadow-2xs cursor-pointer appearance-none pr-7"
+                  >
+                    <option value="No">No (Client Provides)</option>
+                    <option value="Yes">Yes (Material Required)</option>
+                  </select>
+                  <ChevronDown size={13} className="absolute right-2.5 top-3 text-emerald-700 pointer-events-none" />
+                </div>
+              </div>
             </div>
 
           </div>

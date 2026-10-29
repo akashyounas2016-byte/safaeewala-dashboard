@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(bookings): Added 'Cleaning Material' option next to Duty Duration in Schedule & Timing section of Add New Booking popup (NewBookingModal) and Booking Details modal, seamlessly syncing to DailyJob material field (Yes/No)
+
 - feat(daily-job-sheet): Removed trapped inner vertical scrollbar from data table and A-Z rail; displayed page entries naturally using responsive flow and View All pagination (UX-27)
 - feat(daily-job-sheet): Multi-cleaner assignment rows split into individual cleaner entries — each employee's shifts grouped together chronologically with dedicated staff-specific color palettes and proportional revenue split (R-ATT-04, R-PAY-01)
 - feat(daily-job-sheet): Made 'Received' column directly editable inline via double-click and pencil icon across all job types (Cash, Monthly, Online, Pending)

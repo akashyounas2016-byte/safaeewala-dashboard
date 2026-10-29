@@ -497,7 +497,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ot_hours: 0,
         address: b.service_address || `${b.client_name} - Dubai`,
         area: 'Dubai',
-        material: 'No',
+        material: ((b as any).material as any) || 'No',
         charges: safeNum(b.total_amount || 0),
         received: b.status === 'completed' ? safeNum(b.total_amount || 0) : 0,
         payment_mode: b.frequency === 'monthly' ? 'Monthly' : 'Cash',

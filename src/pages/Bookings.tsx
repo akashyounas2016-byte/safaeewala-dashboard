@@ -2654,6 +2654,7 @@ function BookingDetailModal({
   const [startTime, setStartTime] = useState(booking.scheduled_time || '09:00')
   const [duration, setDuration] = useState<number>(booking.duration_hours || 3)
   const [endTime, setEndTime] = useState(() => booking.end_time || addHoursToTime(booking.scheduled_time || '09:00', booking.duration_hours || 3))
+  const [material, setMaterial] = useState<'Yes' | 'No'>(((booking as any).material as any) || 'No')
   const [totalAmount, setTotalAmount] = useState<number>(booking.total_amount || 0)
   const [notes, setNotes] = useState(booking.notes || '')
   const [saveNotice, setSaveNotice] = useState<string | null>(null)
@@ -2671,6 +2672,7 @@ function BookingDetailModal({
     setStartTime(booking.scheduled_time || '09:00')
     setDuration(booking.duration_hours || 3)
     setEndTime(booking.end_time || addHoursToTime(booking.scheduled_time || '09:00', booking.duration_hours || 3))
+    setMaterial(((booking as any).material as any) || 'No')
     setTotalAmount(booking.total_amount || 0)
     setNotes(booking.notes || '')
     setIsEditing(false)
@@ -2719,6 +2721,7 @@ function BookingDetailModal({
       scheduled_time: startTime,
       end_time: endTime,
       duration_hours: duration,
+      material: material,
       total_amount: Number(totalAmount) || 0,
       notes: notes.trim(),
       assigned_crew: crew,
@@ -2877,7 +2880,7 @@ function BookingDetailModal({
 
           {/* Schedule & Timing Grid */}
           <div className="bg-slate-50/80 rounded-2xl p-3.5 border border-slate-200 space-y-2.5">
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
               <div>
                 <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Date *</label>
                 <input
@@ -2909,7 +2912,7 @@ function BookingDetailModal({
                 />
               </div>
               <div>
-                <label className="block text-[11.5px] font-bold text-emerald-800 mb-1">Duration (Hours)</label>
+                <label className="block text-[11.5px] font-bold text-emerald-800 mb-1">Duty Hours</label>
                 <input
                   type="number"
                   step="0.5"
@@ -2919,6 +2922,17 @@ function BookingDetailModal({
                   onChange={e => handleDurationChange(parseFloat(e.target.value) || 0)}
                   className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-bold text-emerald-700"
                 />
+              </div>
+              <div>
+                <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Cleaning Material</label>
+                <select
+                  value={material}
+                  onChange={e => setMaterial(e.target.value as 'Yes' | 'No')}
+                  className="w-full text-[13px] px-2.5 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-bold text-slate-900 cursor-pointer"
+                >
+                  <option value="No">No Material</option>
+                  <option value="Yes">Yes (Required)</option>
+                </select>
               </div>
             </div>
 
