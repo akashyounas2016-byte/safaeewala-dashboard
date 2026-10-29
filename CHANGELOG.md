@@ -6,6 +6,16 @@
 
 ## Unreleased (in `main` or `claude/workspace`, not yet confirmed deployed)
 
+- feat(bookings): Redesigned Booking Details popup (BookingDetailModal) into an executive layout — moved Edit and Delete buttons to top header next to Close (X) button, added Save button in header, restricted bottom footer strictly to workflow status transitions
+- feat(bookings): Updated booking card background colors for "All Statuses" mode — Pending: light orange, Scheduled: light green, Live: light blue, Completed: light grey, Cancelled: light red across Card Grid and Kanban views
+
+- feat(bookings): Removed status toggle from Add Booking popup header; removed "Balcony wash needed" tag from Access & Special Notes to display all quick adds on a single clean row
+
+- feat(daily-job-sheet): Repositioned "LIVE Daily Schedule" tag as a superscript badge directly next to letter "t" in "Daily Job Sheet"; moved "Monthly Sync" button from main header toolbar into the three-dot menu right below "Print Sheet" with live status indicator
+
+- feat(daily-job-sheet): Automated recurring monthly clients generation and background sync system — automatically populates Daily Job Sheet on app startup and single date loads, robust day-matching across 7-day schedules/service_days, interactive Monthly Clients Auto-Sync Bar with status badges & 1-click missing shift generation, multi-day batch generator (Today, Tomorrow, Next 7 Days) with Schedule Isolation protection (R-SCHED-01..03, R-SYNC-03)
+
+- feat(bookings): Add Booking pop-up complete redesign (dynamic client sync, typing + selection address picker, custom service types CRUD, light background widgets); view mode buttons borderless card style; Board view 5-entry limit + View All toggle; professional calendar tab; active header notifications bell (view, read, read all, delete); default date filter set to Today; status-based card backgrounds for All Statuses (Scheduled: light green, Pending: light orange, Live: slightly dark green, Completed: professional neutral); Monthly Clients card + expandable metrics row; full Daily Job Sheet sync for recurring monthly bookings (R-SYNC-03, R-SCHED-01..03)
 - docs(audit): full CRM audit — security SEC-01…09 (browser-only login, password in bundle, open database policies, unauthenticated VPS endpoints, backup path traversal), sync AUD-59…68 (leads in two stores, fake Analytics data), backup BAK-1…7 + recovery runbook, validation VAL-01…12, screens UX-41…60, colours CLR-01…08
 - feat(daily-job-sheet): Phases 2 + 3 — shared cleaner roster (no hard-coded names), one bogus-row rule, pending/collected use the Pending/Overview rules, day delete through the outbox, toasts instead of alerts (AUD-51…57); import preview with editable date and duplicates (UX-28); row checks + "Checks" filter (UX-27); close / reopen day (UX-26, R-DATA-08); "+ Assign job" on available cleaners (UX-30); Excel mode: arrows/Tab/Enter/F2/Delete keys, Ctrl+V block paste, Ctrl+C, Ctrl+D fill-down, autocomplete, column presets, 300-row paging, row history from audit_log (UX-32, 35, 36, 38, 39, 40); import parsing moved to `src/lib/jobSheetImport.ts` (UX-31, partly)
 - fix(dates): business dates follow Dubai time app-wide — `todayDubai`/`monthDubai` replace 84 UTC "today" calls; Excel import no longer saves dates one day early, `dd/mm/yyyy` text read correctly (R-DATA-06, AUD-46, AUD-47, DEC-012)

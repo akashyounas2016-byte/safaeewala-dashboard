@@ -7,7 +7,7 @@ import {
   Upload, CheckCircle, FileSpreadsheet, SlidersHorizontal,
   Clock, DollarSign, Wallet, Search, Filter, X, Pencil, MoreVertical, ChevronDown,
   Receipt, CreditCard, Eye, Settings, Check, Info, GripVertical, ChevronUp, RotateCcw,
-  ExternalLink, Sparkles,
+  ExternalLink, Sparkles, ArrowDownToLine, RefreshCw, CheckCircle2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -68,6 +68,7 @@ import { ReconciliationWidgets } from '@/components/dailyJobSheet/Reconciliation
 import {
   getScheduledMonthlyShiftsForDate,
   syncMonthlySchedulesToDailyJobs,
+  syncMonthlySchedulesForDateRange,
   buildPendingCalcContext,
   loadClientAdjustments,
   calcJobCollectable,
@@ -559,22 +560,26 @@ export function DailyJobSheet() {
     return getScheduledMonthlyShiftsForDate(selectedDate, clients, dailyJobs)
   }, [selectedDate, clients, dailyJobs, isDateRange])
 
-  // Automatically fetch repeating monthly schedules when viewing a single date
+  // Automatically generate repeating monthly client shifts when viewing a single date
+  const isSyncingMonthlyRef = useRef(false)
   useEffect(() => {
     if (!autoSyncMonthly || isDateRange || loading) return
-    if (autoSyncedDatesRef.current.has(selectedDate)) return
+    if (isSyncingMonthlyRef.current) return
 
     if (monthlySyncStatus.pendingSyncCount > 0) {
-      autoSyncedDatesRef.current.add(selectedDate)
+      isSyncingMonthlyRef.current = true
       const res = syncMonthlySchedulesToDailyJobs(selectedDate, clients, dailyJobs, addDailyJob)
       if (res.insertedCount > 0) {
         setImportNotice({
           jobs: res.insertedCount,
           expenses: 0,
           date: selectedDate,
-          fileName: `⚡ Auto-Fetched ${res.insertedCount} Monthly Client Shifts (${res.dayName})`,
+          fileName: `⚡ Auto-Generated ${res.insertedCount} Monthly Client Shifts (${res.dayName})`,
         })
       }
+      setTimeout(() => {
+        isSyncingMonthlyRef.current = false
+      }, 600)
     }
   }, [selectedDate, autoSyncMonthly, isDateRange, loading, monthlySyncStatus.pendingSyncCount, clients, dailyJobs, addDailyJob])
 
@@ -586,6 +591,19 @@ export function DailyJobSheet() {
         expenses: 0,
         date: selectedDate,
         fileName: `⚡ Synced ${res.insertedCount} Monthly Client Shifts (${res.dayName})`,
+      })
+    }
+    setShowMonthlySyncModal(false)
+  }
+
+  const handleSyncDateRange = (dateList: string[]) => {
+    const res = syncMonthlySchedulesForDateRange(dateList, clients, dailyJobs, addDailyJob)
+    if (res.totalInserted > 0) {
+      setImportNotice({
+        jobs: res.totalInserted,
+        expenses: 0,
+        date: selectedDate,
+        fileName: `⚡ Auto-Generated ${res.totalInserted} Monthly Shifts across ${dateList.length} days`,
       })
     }
     setShowMonthlySyncModal(false)
@@ -2004,19 +2022,17 @@ export function DailyJobSheet() {
               </svg>
             </button>
 
-            <div className="flex items-center gap-3 flex-wrap mb-1.5">
-              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-                Daily Job Sheet
-              </h1>
-
-              {/* Status Badge */}
-              <span className="inline-flex items-center gap-2 px-3 py-1 bg-white text-emerald-900 font-extrabold text-[12px] rounded-full shadow-md border border-white/90">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-600" />
+            <div className="flex items-center flex-wrap mb-1.5">
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white inline-flex items-center flex-wrap sm:flex-nowrap">
+                <span>Daily Job Sheet</span>
+                <span className="relative -top-2 sm:-top-2.5 ml-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-white text-emerald-900 font-extrabold text-[10.5px] sm:text-[11px] rounded-full shadow-md border border-white/90 shrink-0 align-top">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600" />
+                  </span>
+                  <span>{isDateRange ? getPresetDisplayName(dateRangePreset) : 'LIVE Daily Schedule'}</span>
                 </span>
-                {isDateRange ? getPresetDisplayName(dateRangePreset) : 'Live Daily Schedule'}
-              </span>
+              </h1>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 text-white/80 text-[13px]">
@@ -2260,35 +2276,6 @@ export function DailyJobSheet() {
               }}
             />
 
-            {/* Weekly Schedule ↔ Daily Job Sheet Synchronization Button */}
-            {!isDateRange && (
-              <button
-                type="button"
-                onClick={() => setShowMonthlySyncModal(true)}
-                title="Weekly Schedule ↔ Daily Job Sheet Synchronization"
-                className={`h-11 px-3.5 rounded-2xl border text-[12.5px] font-bold shadow-sm backdrop-blur-md transition-all flex items-center gap-2 cursor-pointer ${
-                  monthlySyncStatus.pendingSyncCount > 0
-                    ? 'bg-amber-400/25 hover:bg-amber-400/35 border-amber-300/50 text-amber-100 shadow-md ring-2 ring-amber-400/30'
-                    : 'bg-white/10 hover:bg-white/20 border-white/20 text-white'
-                }`}
-              >
-                <Sparkles
-                  size={15}
-                  className={monthlySyncStatus.pendingSyncCount > 0 ? 'text-amber-300 animate-pulse' : 'text-emerald-300'}
-                />
-                <span className="hidden sm:inline">
-                  {monthlySyncStatus.pendingSyncCount > 0
-                    ? `Fetch Monthly (${monthlySyncStatus.pendingSyncCount})`
-                    : `Monthly Synced (${monthlySyncStatus.totalScheduled})`}
-                </span>
-                <span className="sm:hidden">
-                  {monthlySyncStatus.pendingSyncCount > 0
-                    ? `Sync (${monthlySyncStatus.pendingSyncCount})`
-                    : `Synced (${monthlySyncStatus.totalScheduled})`}
-                </span>
-              </button>
-            )}
-
             {/* Import Button */}
             <button
               type="button"
@@ -2337,6 +2324,25 @@ export function DailyJobSheet() {
                     >
                       <Printer size={15} className="text-slate-500" />
                       <span>Print Sheet</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowHeaderMenu(false); setShowMonthlySyncModal(true) }}
+                      className="w-full flex items-center justify-between px-4 py-2.5 text-[12.5px] font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Sparkles size={15} className="text-emerald-600" />
+                        <span>Monthly Sync</span>
+                      </div>
+                      {monthlySyncStatus.pendingSyncCount > 0 ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">
+                          {monthlySyncStatus.pendingSyncCount} Pending
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                          {monthlySyncStatus.totalScheduled} Synced
+                        </span>
+                      )}
                     </button>
                     <button
                       type="button"
@@ -2510,6 +2516,81 @@ export function DailyJobSheet() {
           >
             {showHiddenRows ? 'Hide them' : 'Show to review'}
           </button>
+        </div>
+      )}
+
+      {/* ── Monthly Clients Automated Generation Bar (R-SCHED-01..03, R-SYNC-03) ── */}
+      {!isDateRange && (
+        <div className={`rounded-2xl p-4 transition-all border ${
+          monthlySyncStatus.pendingSyncCount > 0
+            ? 'bg-gradient-to-r from-amber-500/10 via-amber-50 to-orange-50/60 border-amber-300 shadow-sm'
+            : 'bg-gradient-to-r from-emerald-500/10 via-emerald-50/70 to-teal-50/50 border-emerald-200/80 shadow-xs'
+        }`}>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5">
+            {/* Left Status info */}
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
+                monthlySyncStatus.pendingSyncCount > 0
+                  ? 'bg-amber-500 text-white animate-pulse'
+                  : 'bg-emerald-600 text-white'
+              }`}>
+                <Sparkles size={20} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-[13.5px] font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+                    Monthly Clients Auto-Sync
+                    <span className="text-[11px] font-bold text-slate-500">
+                      ({monthlySyncStatus.dayName} Schedule)
+                    </span>
+                  </h4>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold uppercase tracking-wider ${
+                    autoSyncMonthly
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      : 'bg-slate-200 text-slate-700'
+                  }`}>
+                    {autoSyncMonthly ? '● Automation Active' : '○ Automation Paused'}
+                  </span>
+                </div>
+                <p className="text-[12px] text-slate-600 mt-0.5">
+                  {monthlySyncStatus.totalScheduled === 0 ? (
+                    `No recurring monthly clients scheduled for ${monthlySyncStatus.dayName}.`
+                  ) : monthlySyncStatus.pendingSyncCount > 0 ? (
+                    <span className="text-amber-800 font-semibold">
+                      {monthlySyncStatus.pendingSyncCount} of {monthlySyncStatus.totalScheduled} monthly shifts ready to generate for {fmtDate(selectedDate)}.
+                    </span>
+                  ) : (
+                    <span className="text-emerald-800 font-semibold">
+                      ✓ All {monthlySyncStatus.totalScheduled} monthly client shifts are automatically generated and active on this date.
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Right Action buttons */}
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              {monthlySyncStatus.pendingSyncCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSyncAllMonthlyShifts}
+                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-[12px] shadow-sm flex items-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <ArrowDownToLine size={14} className="stroke-[2.5]" />
+                  <span>Generate Missing ({monthlySyncStatus.pendingSyncCount})</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowMonthlySyncModal(true)}
+                className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold text-[12px] shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <RefreshCw size={13} className="text-slate-500" />
+                <span>Sync Center & Multi-Day</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -3425,6 +3506,7 @@ CREATE TABLE daily_expenses (
           dailyJobs={dailyJobs}
           onSyncAll={handleSyncAllMonthlyShifts}
           onSyncShift={handleSyncSingleShift}
+          onSyncDateRange={handleSyncDateRange}
           autoSyncEnabled={autoSyncMonthly}
           onToggleAutoSync={val => {
             setAutoSyncMonthly(val)

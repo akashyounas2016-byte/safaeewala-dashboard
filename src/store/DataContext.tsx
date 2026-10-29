@@ -1,7 +1,7 @@
-import { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency } from '../types'
 import { supabase } from '@/lib/supabase'
-import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress } from '@/lib/clientDataSync'
+import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry } from '@/lib/syncQueue'
 import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
@@ -381,6 +381,48 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return Array.from(keys).filter(Boolean)
   }
 
+  // ── Automated Daily Background Sync for Today's Monthly Clients (R-SCHED-01..03, R-SYNC-03) ──
+  // Automatically populates Daily Job Sheet with today's scheduled monthly clients on app startup / load
+  const hasAutoSyncedTodayRef = useRef(false)
+  useEffect(() => {
+    if (loading || allClients.length === 0) return
+    if (hasAutoSyncedTodayRef.current) return
+
+    const autoSyncEnabled = safeLocalStorageGet<boolean>('safaeewala_auto_sync_monthly_schedules', true)
+    if (!autoSyncEnabled) return
+
+    const today = todayDubai()
+    const scheduledInfo = getScheduledMonthlyShiftsForDate(today, allClients, viewDailyJobs)
+    if (scheduledInfo.pendingSyncCount > 0) {
+      hasAutoSyncedTodayRef.current = true
+      const newJobs: DailyJob[] = []
+      syncMonthlySchedulesToDailyJobs(today, allClients, viewDailyJobs, (job) => {
+        const row: DailyJob = {
+          ...job,
+          charges: safeNum(job.charges),
+          received: safeNum(job.received),
+          duty_hours: safeNum(job.duty_hours),
+          ot_hours: safeNum(job.ot_hours),
+          service: job.service || 'Regular Cleaning',
+          id: uid(),
+          created_at: now()
+        }
+        newJobs.push(row)
+        dbInsert('daily_jobs', row)
+      })
+
+      if (newJobs.length > 0) {
+        setDailyJobs(prev => {
+          const next = [...newJobs, ...prev]
+          safeLocalStorageSet('safaeewala_daily_jobs', next)
+          return next
+        })
+      }
+    } else {
+      hasAutoSyncedTodayRef.current = true
+    }
+  }, [loading, allClients, viewDailyJobs])
+
   const store: DataStore = {
     bookings, clients: allClients, employees: allEmployees, agencies, invoices, inventory, loading,
     dailyJobs: viewDailyJobs, dailyExpenses,
@@ -391,10 +433,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const matchedClient = clients.find(
         c => c.full_name.toLowerCase().trim() === b.client_name.toLowerCase().trim()
       )
+      const isMonthly = b.frequency === 'monthly'
+      const bookingDay = b.scheduled_date ? getDayNameFromDate(b.scheduled_date) : 'Monday'
+      const recurringDays: string[] = (b as any).recurring_days && (b as any).recurring_days.length > 0
+        ? (b as any).recurring_days
+        : [bookingDay]
+
       let resolvedClientId = b.client_id || ''
       if (matchedClient) {
         resolvedClientId = matchedClient.id
-        if (!matchedClient.source && b.source) {
+        if (isMonthly) {
+          const existingDays = Array.isArray(matchedClient.service_days) ? matchedClient.service_days : []
+          const combinedDays = Array.from(new Set([...existingDays, ...recurringDays]))
+          const patch: Partial<Client> = {
+            source: matchedClient.source || 'monthly',
+            service_days: combinedDays,
+            scheduled_time: matchedClient.scheduled_time || b.scheduled_time,
+            end_time: matchedClient.end_time || b.end_time,
+            duration_hours: matchedClient.duration_hours || b.duration_hours,
+            preferred_cleaner: matchedClient.preferred_cleaner || (crewToStaffName(b.assigned_crew, allEmployees) || undefined),
+          }
+          const updated = { ...matchedClient, ...patch }
+          setClients(p => p.map(c => c.id === matchedClient.id ? updated : c))
+          dbUpdate('clients', matchedClient.id, patch)
+        } else if (!matchedClient.source && b.source) {
           const updated = { ...matchedClient, source: b.source }
           setClients(p => p.map(c => c.id === matchedClient.id ? updated : c))
           dbUpdate('clients', matchedClient.id, { source: b.source })
@@ -406,7 +468,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
           area: '', city: 'Dubai',
           total_bookings: 0, total_spent: 0,
           last_service: b.scheduled_date,
-          source: b.source || undefined,
+          source: isMonthly ? 'monthly' : (b.source || undefined),
+          service_days: isMonthly ? recurringDays : undefined,
+          scheduled_time: isMonthly ? b.scheduled_time : undefined,
+          end_time: isMonthly ? b.end_time : undefined,
+          duration_hours: isMonthly ? b.duration_hours : undefined,
+          preferred_cleaner: isMonthly ? (crewToStaffName(b.assigned_crew, allEmployees) || undefined) : undefined,
         }
         resolvedClientId = newClient.id
         setClients(p => [newClient, ...p])

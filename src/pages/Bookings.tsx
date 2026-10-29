@@ -2,10 +2,10 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import {
   Search, Calendar as CalendarIcon, Clock, MapPin, Phone,
-  ChevronLeft, ChevronRight, CalendarDays, Columns3,
+  ChevronLeft, ChevronRight, ChevronDown, CalendarDays, Columns3,
   TrendingUp, CheckCircle, CheckCircle2, AlertCircle, Upload, Download,
   FileSpreadsheet, MessageCircle, RefreshCw, RotateCcw,
-  LayoutGrid, Table as TableIcon, Eye, User, Users, Sparkles, X, Filter,
+  LayoutGrid, Table as TableIcon, Eye, User, Users, Sparkles, X, Filter, Repeat, Check, Trash2, Pencil,
   MoreVertical, Briefcase
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
@@ -13,12 +13,13 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { NewBookingModal } from '@/components/bookings/NewBookingModal'
-import { PageHero } from '@/components/layout/PageHero'
+import { PageHero, type HeroNotification } from '@/components/layout/PageHero'
 import { formatCurrency, formatDate, formatTime, addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { useData } from '@/store/DataContext'
 import type { Booking, BookingFrequency, BookingStatus, Employee } from '@/types'
 import { SourceOriginTag, resolveBookingSource } from '@/lib/sourceTracking'
-import { cleanClientNameFromAddress, isBogusJob, isMonthlyClient, crewToStaffName, staffNameToCrew } from '@/lib/clientDataSync'
+import { cleanClientNameFromAddress, isBogusJob, isMonthlyClient, crewToStaffName, staffNameToCrew, syncMonthlySchedulesToDailyJobs, getScheduledMonthlyShiftsForDate } from '@/lib/clientDataSync'
 import { todayDubai } from '@/lib/dubaiTime'
 
 export type BookingDatePreset = 'today' | '7days' | '30days' | '3months' | '6months' | '1year' | 'all' | 'custom'
@@ -237,6 +238,7 @@ export function Bookings() {
     invoices,
     updateInvoice,
     dailyJobs,
+    addDailyJob,
     updateDailyJob,
     deleteDailyJob,
     clients,
@@ -246,7 +248,7 @@ export function Bookings() {
   const [currentPage, setCurrentPage] = useState(1)
   const xlsxInputRef = useRef<HTMLInputElement>(null)
   const [importing,   setImporting]   = useState(false)
-  const [datePreset,  setDatePreset]  = useState<BookingDatePreset>('all')
+  const [datePreset,  setDatePreset]  = useState<BookingDatePreset>('today')
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate,   setCustomEndDate]   = useState('')
   const [search, setSearch] = useState('')
@@ -256,6 +258,19 @@ export function Bookings() {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [showThreeDotMenu, setShowThreeDotMenu] = useState(false)
   const threeDotMenuRef = useRef<HTMLDivElement>(null)
+  const [showAllCards, setShowAllCards] = useState(false)
+
+  // Notifications state with localStorage persistence
+  const [readNotifIds, setReadNotifIds] = useState<string[]>(() => {
+    return safeLocalStorageGet('safaeewala_bookings_read_notifs', [])
+  })
+  const [deletedNotifIds, setDeletedNotifIds] = useState<string[]>(() => {
+    return safeLocalStorageGet('safaeewala_bookings_deleted_notifs', [])
+  })
+
+  // Daily Job Sheet auto-sync state
+  const [syncedShiftsCount, setSyncedShiftsCount] = useState<number>(0)
+  const hasAutoSyncedRef = useRef(false)
 
   // Close three-dot menu on outside click
   useEffect(() => {
@@ -466,6 +481,212 @@ export function Bookings() {
     return filtered.slice(start, start + pageSize)
   }, [filtered, currentPage, pageSize])
 
+  // Auto-sync monthly recurring shifts to Daily Job Sheet for today
+  useEffect(() => {
+    if (hasAutoSyncedRef.current) return
+    const today = todayDubai()
+    const res = syncMonthlySchedulesToDailyJobs(today, clients, dailyJobs, addDailyJob)
+    if (res.insertedCount > 0) {
+      setSyncedShiftsCount(res.insertedCount)
+      hasAutoSyncedRef.current = true
+    }
+  }, [clients, dailyJobs, addDailyJob])
+
+  const handleSyncDailyJobSheet = () => {
+    const today = todayDubai()
+    const res = syncMonthlySchedulesToDailyJobs(today, clients, dailyJobs, addDailyJob)
+    setSyncedShiftsCount(res.insertedCount)
+    return res
+  }
+
+  // Active Notifications List
+  const readSet = useMemo(() => new Set(readNotifIds), [readNotifIds])
+  const deletedSet = useMemo(() => new Set(deletedNotifIds), [deletedNotifIds])
+
+  const bookingNotifications = useMemo<HeroNotification[]>(() => {
+    const list: HeroNotification[] = []
+    const today = todayDubai()
+
+    // 1. Pending bookings awaiting confirmation
+    const pendingList = synchronizedBookings.filter(b => b.status === 'pending')
+    pendingList.forEach(b => {
+      const id = `pending-${b.id}`
+      if (deletedSet.has(id)) return
+      list.push({
+        id,
+        title: `Pending Booking: ${b.client_name}`,
+        detail: `${b.service_type} on ${b.scheduled_date} at ${b.scheduled_time} awaiting confirmation`,
+        tone: 'warning',
+        time: b.scheduled_date === today ? 'Today' : b.scheduled_date,
+        read: readSet.has(id),
+        onClick: () => {
+          setStatusFilter('pending')
+          setSelectedBooking(b)
+        },
+      })
+    })
+
+    // 2. Unassigned staff on today's active bookings
+    const unassignedToday = synchronizedBookings.filter(
+      b => b.scheduled_date === today &&
+           b.status !== 'completed' &&
+           b.status !== 'cancelled' &&
+           (!b.assigned_crew || b.assigned_crew.length === 0)
+    )
+    unassignedToday.forEach(b => {
+      const id = `unassigned-${b.id}`
+      if (deletedSet.has(id)) return
+      list.push({
+        id,
+        title: `Unassigned Cleaner: ${b.client_name}`,
+        detail: `Today at ${b.scheduled_time} (${b.duration_hours}h) needs cleaner assigned!`,
+        tone: 'danger',
+        time: b.scheduled_time,
+        read: readSet.has(id),
+        onClick: () => {
+          setSelectedBooking(b)
+        },
+      })
+    })
+
+    // 3. Live shifts currently running
+    const liveNow = synchronizedBookings.filter(
+      b => b.status === 'in_progress' && b.scheduled_date === today
+    )
+    liveNow.forEach(b => {
+      const id = `live-${b.id}`
+      if (deletedSet.has(id)) return
+      list.push({
+        id,
+        title: `Shift Live: ${b.client_name}`,
+        detail: `Cleaner on-site (${b.scheduled_time} - ${b.end_time}) • ${b.service_type}`,
+        tone: 'info',
+        time: 'Live',
+        read: readSet.has(id),
+        onClick: () => {
+          setStatusFilter('in_progress')
+          setSelectedBooking(b)
+        },
+      })
+    })
+
+    // 4. Monthly recurring shifts auto-synced notice
+    if (syncedShiftsCount > 0) {
+      const id = `monthly-sync-${today}`
+      if (!deletedSet.has(id)) {
+        list.push({
+          id,
+          title: `Daily Job Sheet Synced`,
+          detail: `${syncedShiftsCount} monthly recurring shifts generated on Daily Job Sheet for today`,
+          tone: 'success',
+          time: 'Today',
+          read: readSet.has(id),
+        })
+      }
+    }
+
+    return list
+  }, [synchronizedBookings, deletedSet, readSet, syncedShiftsCount])
+
+  const handleMarkNotifRead = (id: string) => {
+    setReadNotifIds(prev => {
+      if (prev.includes(id)) return prev
+      const next = [...prev, id]
+      safeLocalStorageSet('safaeewala_bookings_read_notifs', next)
+      return next
+    })
+  }
+
+  const handleMarkAllNotifsRead = () => {
+    const allIds = bookingNotifications.map(n => n.id)
+    setReadNotifIds(allIds)
+    safeLocalStorageSet('safaeewala_bookings_read_notifs', allIds)
+  }
+
+  const handleDeleteNotif = (id: string) => {
+    setDeletedNotifIds(prev => {
+      const next = [...prev, id]
+      safeLocalStorageSet('safaeewala_bookings_deleted_notifs', next)
+      return next
+    })
+  }
+
+  const handleClearAllNotifs = () => {
+    const allIds = bookingNotifications.map(n => n.id)
+    setDeletedNotifIds(prev => {
+      const next = Array.from(new Set([...prev, ...allIds]))
+      safeLocalStorageSet('safaeewala_bookings_deleted_notifs', next)
+      return next
+    })
+  }
+
+  // Monthly clients count & extra metrics
+  const monthlyClientsCount = useMemo(() => {
+    const regMonthly = clients.filter(c => isMonthlyClient(c, dailyJobs)).length
+    const monthlyBookings = dateFilteredBookings.filter(b => b.frequency === 'monthly').length
+    return Math.max(regMonthly, monthlyBookings)
+  }, [clients, dailyJobs, dateFilteredBookings])
+
+  const uniqueCleanersOnDuty = useMemo(() => {
+    const staffSet = new Set<string>()
+    dateFilteredBookings.forEach(b => {
+      (b.assigned_crew || []).forEach(c => staffSet.add(c))
+    })
+    return staffSet.size
+  }, [dateFilteredBookings])
+
+  const avgShiftDuration = useMemo(() => {
+    if (counts.total === 0) return '0.0'
+    return (totalScheduledHours / counts.total).toFixed(1)
+  }, [counts.total, totalScheduledHours])
+
+  // Card background styling when 'All Statuses' is selected
+  const getCardStatusTheme = (status: BookingStatus) => {
+    if (statusFilter !== 'all') {
+      return {
+        cardClass: 'bg-white border-teal-100/90 shadow-[0_4px_20px_rgba(13,148,136,0.04)] hover:shadow-xl hover:border-teal-300',
+        boxClass: 'bg-teal-50/30 border-teal-100/80',
+      }
+    }
+    switch (status) {
+      case 'pending':
+        // Pending: light orange
+        return {
+          cardClass: 'bg-orange-50/85 border-orange-200/90 hover:bg-orange-50 hover:border-orange-400 shadow-[0_4px_20px_rgba(249,115,22,0.06)] hover:shadow-xl',
+          boxClass: 'bg-white/85 border-orange-200/70',
+        }
+      case 'confirmed':
+        // Scheduled: light green
+        return {
+          cardClass: 'bg-emerald-50/85 border-emerald-200/90 hover:bg-emerald-50 hover:border-emerald-400 shadow-[0_4px_20px_rgba(16,185,129,0.06)] hover:shadow-xl',
+          boxClass: 'bg-white/85 border-emerald-200/70',
+        }
+      case 'in_progress':
+        // Live: light blue
+        return {
+          cardClass: 'bg-sky-50/85 border-sky-200/90 hover:bg-sky-50 hover:border-sky-400 shadow-[0_4px_20px_rgba(14,165,233,0.08)] hover:shadow-xl',
+          boxClass: 'bg-white/85 border-sky-200/70',
+        }
+      case 'completed':
+        // Completed: light grey
+        return {
+          cardClass: 'bg-slate-100/80 border-slate-200/90 hover:bg-slate-100 hover:border-slate-300 shadow-[0_4px_20px_rgba(15,23,42,0.04)] hover:shadow-xl',
+          boxClass: 'bg-white/85 border-slate-200/70',
+        }
+      case 'cancelled':
+        // Cancelled: light red
+        return {
+          cardClass: 'bg-rose-50/85 border-rose-200/90 hover:bg-rose-50 hover:border-rose-400 shadow-[0_4px_20px_rgba(244,63,94,0.06)] hover:shadow-xl',
+          boxClass: 'bg-white/85 border-rose-200/70',
+        }
+      default:
+        return {
+          cardClass: 'bg-white border-teal-100/90 shadow-[0_4px_20px_rgba(13,148,136,0.04)] hover:shadow-xl hover:border-teal-300',
+          boxClass: 'bg-teal-50/30 border-teal-100/80',
+        }
+    }
+  }
+
   return (
     <div className="space-y-6">
 
@@ -481,116 +702,253 @@ export function Bookings() {
         onSearch={setSearch}
       />
 
-      {/* ── KPI Cards (6 Comprehensive, Informative Operational Cards) ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
-        {[
-          {
-            label: 'Total Bookings',
-            value: counts.total,
-            sub: `${totalScheduledHours}h total duty`,
-            icon: Briefcase,
-            iconColor: 'text-teal-700',
-            iconBg: 'bg-teal-50',
-            badge: `AED ${totalWorkloadValue.toLocaleString()}`,
-            badgeColor: 'bg-teal-50 text-teal-800 border-teal-200/80',
-            filterKey: 'all',
-          },
-          {
-            label: 'Pending',
-            value: counts.pending,
-            sub: 'Awaiting confirmation',
-            icon: AlertCircle,
-            iconColor: 'text-amber-500',
-            iconBg: 'bg-amber-50',
-            badge: counts.pending > 0 ? `${counts.pending} Action Needed` : 'All Clear',
-            badgeColor: counts.pending > 0 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
-            filterKey: 'pending',
-          },
-          {
-            label: 'Scheduled',
-            value: counts.confirmed,
-            sub: 'Confirmed upcoming jobs',
-            icon: CalendarIcon,
-            iconColor: 'text-teal-600',
-            iconBg: 'bg-teal-50',
-            badge: `${counts.total > 0 ? Math.round((counts.confirmed / counts.total) * 100) : 0}% of Total`,
-            badgeColor: 'bg-teal-50 text-teal-800 border-teal-200/80',
-            filterKey: 'confirmed',
-          },
-          {
-            label: 'Live Now',
-            value: counts.in_progress,
-            sub: 'Cleaners on site today',
-            icon: TrendingUp,
-            iconColor: 'text-cyan-600',
-            iconBg: 'bg-cyan-50',
-            badge: counts.in_progress > 0 ? 'Active Shifts' : 'Standby',
-            badgeColor: counts.in_progress > 0 ? 'bg-cyan-100 text-cyan-800 border-cyan-300 animate-pulse' : 'bg-slate-50 text-slate-600 border-slate-200',
-            filterKey: 'in_progress',
-          },
-          {
-            label: 'Completed',
-            value: counts.completed,
-            sub: `AED ${completedRevenue.toLocaleString()} billed`,
-            icon: CheckCircle2,
-            iconColor: 'text-emerald-600',
-            iconBg: 'bg-emerald-50',
-            badge: `${counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0}% Done`,
-            badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200/80',
-            filterKey: 'completed',
-          },
-          {
-            label: 'Crew Assigned',
-            value: `${counts.total - unassignedCount} / ${counts.total}`,
-            sub: unassignedCount > 0 ? `${unassignedCount} jobs unassigned` : '100% staff allocated',
-            icon: Users,
-            iconColor: unassignedCount > 0 ? 'text-amber-600' : 'text-purple-600',
-            iconBg: unassignedCount > 0 ? 'bg-amber-50' : 'bg-purple-50',
-            badge: unassignedCount > 0 ? `${unassignedCount} Unassigned` : '100% Allocated',
-            badgeColor: unassignedCount > 0 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
-            filterKey: unassignedCount > 0 ? 'unassigned' : 'all',
-          },
-        ].map(card => {
-          const isActive = statusFilter === card.filterKey && card.filterKey !== 'all'
-          return (
-            <div
-              key={card.label}
-              onClick={() => {
-                if (card.filterKey === 'all') {
-                  setStatusFilter('all')
-                } else {
-                  setStatusFilter(statusFilter === card.filterKey ? 'all' : card.filterKey)
-                }
-              }}
-              className={`rounded-[22px] border transition-all p-4 cursor-pointer relative overflow-hidden flex flex-col justify-between ${
-                isActive
-                  ? 'bg-teal-50/70 border-teal-500 shadow-md ring-2 ring-teal-500/20'
-                  : 'bg-white border-teal-100/90 shadow-[0_4px_20px_rgba(13,148,136,0.04)] hover:shadow-md hover:border-teal-300'
+      {/* ── KPI Summary Cards (Row 1 + View All Expandable Row 2) ── */}
+      <div className="space-y-3">
+        {/* ROW 1: Essential Operational Metrics & Monthly Clients */}
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
+          {[
+            {
+              label: 'Total Bookings',
+              value: counts.total,
+              sub: `${totalScheduledHours}h total duty`,
+              icon: Briefcase,
+              iconColor: 'text-teal-700',
+              iconBg: 'bg-teal-50',
+              badge: `AED ${totalWorkloadValue.toLocaleString()}`,
+              badgeColor: 'bg-teal-50 text-teal-800 border-teal-200/80',
+              filterKey: 'all',
+            },
+            {
+              label: 'Scheduled',
+              value: counts.confirmed,
+              sub: 'Confirmed upcoming jobs',
+              icon: CalendarIcon,
+              iconColor: 'text-teal-600',
+              iconBg: 'bg-teal-50',
+              badge: `${counts.total > 0 ? Math.round((counts.confirmed / counts.total) * 100) : 0}% of Total`,
+              badgeColor: 'bg-teal-50 text-teal-800 border-teal-200/80',
+              filterKey: 'confirmed',
+            },
+            {
+              label: 'Live Now',
+              value: counts.in_progress,
+              sub: 'Cleaners on site today',
+              icon: TrendingUp,
+              iconColor: 'text-cyan-600',
+              iconBg: 'bg-cyan-50',
+              badge: counts.in_progress > 0 ? 'Active Shifts' : 'Standby',
+              badgeColor: counts.in_progress > 0 ? 'bg-cyan-100 text-cyan-800 border-cyan-300 animate-pulse' : 'bg-slate-50 text-slate-600 border-slate-200',
+              filterKey: 'in_progress',
+            },
+            {
+              label: 'Pending',
+              value: counts.pending,
+              sub: 'Awaiting confirmation',
+              icon: AlertCircle,
+              iconColor: 'text-amber-500',
+              iconBg: 'bg-amber-50',
+              badge: counts.pending > 0 ? `${counts.pending} Action Needed` : 'All Clear',
+              badgeColor: counts.pending > 0 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
+              filterKey: 'pending',
+            },
+            {
+              label: 'Completed',
+              value: counts.completed,
+              sub: `AED ${completedRevenue.toLocaleString()} billed`,
+              icon: CheckCircle2,
+              iconColor: 'text-emerald-600',
+              iconBg: 'bg-emerald-50',
+              badge: `${counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0}% Done`,
+              badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200/80',
+              filterKey: 'completed',
+            },
+            {
+              label: 'Monthly Clients',
+              value: monthlyClientsCount,
+              sub: 'Active recurring contracts',
+              icon: Repeat,
+              iconColor: 'text-teal-700',
+              iconBg: 'bg-teal-50',
+              badge: 'Job Sheet Synced',
+              badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200/80',
+              filterKey: 'monthly',
+            },
+          ].map(card => {
+            const isActive = statusFilter === card.filterKey && card.filterKey !== 'all'
+            return (
+              <div
+                key={card.label}
+                onClick={() => {
+                  if (card.filterKey === 'all') {
+                    setStatusFilter('all')
+                  } else {
+                    setStatusFilter(statusFilter === card.filterKey ? 'all' : card.filterKey)
+                  }
+                }}
+                className={`rounded-[22px] border transition-all p-4 cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                  isActive
+                    ? 'bg-teal-50/70 border-teal-500 shadow-md ring-2 ring-teal-500/20'
+                    : 'bg-white border-teal-100/90 shadow-[0_4px_20px_rgba(13,148,136,0.04)] hover:shadow-md hover:border-teal-300'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-2.5">
+                  <div className={`w-9 h-9 rounded-xl ${card.iconBg} border border-teal-100 flex items-center justify-center shrink-0`}>
+                    <card.icon size={17} className={card.iconColor} />
+                  </div>
+                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border truncate max-w-[110px] ${card.badgeColor}`}>
+                    {card.badge}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-2xl font-black text-slate-900 tracking-tight">{card.value}</p>
+                  <div className="flex items-center justify-between mt-0.5">
+                    <p className="text-[12px] font-bold text-slate-800">{card.label}</p>
+                    {isActive && (
+                      <span className="text-[9.5px] font-black text-teal-800 uppercase tracking-wider bg-teal-100 px-1.5 py-0.5 rounded-md">
+                        Filtered
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5 truncate">{card.sub}</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* View All Toggle Button */}
+        <div className="flex items-center justify-center pt-0.5">
+          <button
+            type="button"
+            onClick={() => setShowAllCards(prev => !prev)}
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-teal-50/80 hover:bg-teal-100 border border-teal-200/80 text-teal-900 text-[11.5px] font-bold shadow-2xs transition-all cursor-pointer group"
+          >
+            <span>{showAllCards ? 'Collapse Cards' : 'View All Metrics & Cards'}</span>
+            <ChevronDown
+              size={13}
+              className={`transform transition-transform duration-200 text-teal-700 group-hover:text-teal-900 ${
+                showAllCards ? 'rotate-180' : ''
               }`}
-            >
-              <div className="flex items-start justify-between mb-2.5">
-                <div className={`w-9 h-9 rounded-xl ${card.iconBg} border border-teal-100 flex items-center justify-center shrink-0`}>
-                  <card.icon size={17} className={card.iconColor} />
-                </div>
-                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border truncate max-w-[110px] ${card.badgeColor}`}>
-                  {card.badge}
-                </span>
-              </div>
-              <div>
-                <p className="text-2xl font-black text-slate-900 tracking-tight">{card.value}</p>
-                <div className="flex items-center justify-between mt-0.5">
-                  <p className="text-[12px] font-bold text-slate-800">{card.label}</p>
-                  {isActive && (
-                    <span className="text-[9.5px] font-black text-teal-800 uppercase tracking-wider bg-teal-100 px-1.5 py-0.5 rounded-md">
-                      Filtered
+            />
+          </button>
+        </div>
+
+        {/* ROW 2: Expanded Operational Metrics (Rendered when showAllCards is true) */}
+        {showAllCards && (
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5 animate-in fade-in slide-in-from-top-2 duration-200">
+            {[
+              {
+                label: 'Staff Allocated',
+                value: `${counts.total - unassignedCount} / ${counts.total}`,
+                sub: unassignedCount > 0 ? `${unassignedCount} jobs unassigned` : '100% staff allocated',
+                icon: Users,
+                iconColor: unassignedCount > 0 ? 'text-amber-600' : 'text-purple-600',
+                iconBg: unassignedCount > 0 ? 'bg-amber-50' : 'bg-purple-50',
+                badge: unassignedCount > 0 ? `${unassignedCount} Unassigned` : '100% Allocated',
+                badgeColor: unassignedCount > 0 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
+                filterKey: 'unassigned',
+              },
+              {
+                label: 'Total Workload',
+                value: `AED ${totalWorkloadValue.toLocaleString()}`,
+                sub: 'Total booked value',
+                icon: Briefcase,
+                iconColor: 'text-indigo-600',
+                iconBg: 'bg-indigo-50',
+                badge: `${counts.total} Orders`,
+                badgeColor: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+                filterKey: 'all',
+              },
+              {
+                label: 'Billed Revenue',
+                value: `AED ${completedRevenue.toLocaleString()}`,
+                sub: 'Completed shift dues',
+                icon: CheckCircle2,
+                iconColor: 'text-emerald-600',
+                iconBg: 'bg-emerald-50',
+                badge: `${counts.completed} Paid`,
+                badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                filterKey: 'completed',
+              },
+              {
+                label: 'Cleaners on Duty',
+                value: uniqueCleanersOnDuty,
+                sub: 'Active roster on shifts',
+                icon: User,
+                iconColor: 'text-teal-600',
+                iconBg: 'bg-teal-50',
+                badge: 'Active Staff',
+                badgeColor: 'bg-teal-50 text-teal-800 border-teal-200',
+                filterKey: 'all',
+              },
+              {
+                label: 'Avg Shift Duty',
+                value: `${avgShiftDuration}h`,
+                sub: 'Average duty hours',
+                icon: Clock,
+                iconColor: 'text-blue-600',
+                iconBg: 'bg-blue-50',
+                badge: `${totalScheduledHours}h Total`,
+                badgeColor: 'bg-blue-50 text-blue-800 border-blue-200',
+                filterKey: 'all',
+              },
+              {
+                label: 'Job Sheet Sync',
+                value: 'Auto-Sync',
+                sub: `${syncedShiftsCount} shifts synced today`,
+                icon: RefreshCw,
+                iconColor: 'text-emerald-600',
+                iconBg: 'bg-emerald-50',
+                badge: 'Live Sync',
+                badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+                filterKey: 'all',
+                onClick: handleSyncDailyJobSheet,
+              },
+            ].map(card => {
+              const isActive = statusFilter === card.filterKey && card.filterKey !== 'all'
+              return (
+                <div
+                  key={card.label}
+                  onClick={() => {
+                    if (card.onClick) {
+                      card.onClick()
+                    } else if (card.filterKey === 'all') {
+                      setStatusFilter('all')
+                    } else {
+                      setStatusFilter(statusFilter === card.filterKey ? 'all' : card.filterKey)
+                    }
+                  }}
+                  className={`rounded-[22px] border transition-all p-4 cursor-pointer relative overflow-hidden flex flex-col justify-between ${
+                    isActive
+                      ? 'bg-teal-50/70 border-teal-500 shadow-md ring-2 ring-teal-500/20'
+                      : 'bg-white border-teal-100/90 shadow-[0_4px_20px_rgba(13,148,136,0.04)] hover:shadow-md hover:border-teal-300'
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-2.5">
+                    <div className={`w-9 h-9 rounded-xl ${card.iconBg} border border-teal-100 flex items-center justify-center shrink-0`}>
+                      <card.icon size={17} className={card.iconColor} />
+                    </div>
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border truncate max-w-[110px] ${card.badgeColor}`}>
+                      {card.badge}
                     </span>
-                  )}
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-slate-900 tracking-tight">{card.value}</p>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <p className="text-[12px] font-bold text-slate-800">{card.label}</p>
+                      {isActive && (
+                        <span className="text-[9.5px] font-black text-teal-800 uppercase tracking-wider bg-teal-100 px-1.5 py-0.5 rounded-md">
+                          Filtered
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5 truncate">{card.sub}</p>
+                  </div>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5 truncate">{card.sub}</p>
-              </div>
-            </div>
-          )
-        })}
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── Filters + Unified Toolbar (Two Organized Rows) ── */}
@@ -627,8 +985,8 @@ export function Bookings() {
                 onChange={e => setDatePreset(e.target.value as BookingDatePreset)}
                 className="text-[12.5px] px-3.5 py-2 bg-teal-50/30 border border-teal-200/80 rounded-xl focus:outline-none focus:border-teal-500 text-teal-950 font-bold cursor-pointer transition-colors shadow-2xs hover:border-teal-300"
               >
-                <option value="all">📅 All Time</option>
                 <option value="today">📅 Today</option>
+                <option value="all">📅 All Time</option>
                 <option value="7days">📅 Last 7 Days</option>
                 <option value="30days">📅 Last 30 Days</option>
                 <option value="3months">📅 Last 3 Months</option>
@@ -653,52 +1011,32 @@ export function Bookings() {
 
           {/* Right Group: View Toggles & Three Dot Menu */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* View Mode Toggle */}
-            <div className="flex items-center p-1 bg-teal-50/40 rounded-xl border border-teal-200/80">
-              <button
-                type="button"
-                onClick={() => setView('grid')}
-                className={`text-[12px] px-2.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-                  view === 'grid' ? 'bg-white text-teal-900 shadow-2xs font-black border border-teal-300/40' : 'text-slate-500 hover:text-teal-900'
-                }`}
-                title="Cards Grid View"
-              >
-                <LayoutGrid size={13} />
-                <span className="hidden sm:inline">Cards</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setView('table')}
-                className={`text-[12px] px-2.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-                  view === 'table' ? 'bg-white text-teal-900 shadow-2xs font-black border border-teal-300/40' : 'text-slate-500 hover:text-teal-900'
-                }`}
-                title="Table List View"
-              >
-                <TableIcon size={13} />
-                <span className="hidden sm:inline">Table</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setView('kanban')}
-                className={`text-[12px] px-2.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-                  view === 'kanban' ? 'bg-white text-teal-900 shadow-2xs font-black border border-teal-300/40' : 'text-slate-500 hover:text-teal-900'
-                }`}
-                title="Board Kanban View"
-              >
-                <Columns3 size={13} />
-                <span className="hidden sm:inline">Board</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setView('calendar')}
-                className={`text-[12px] px-2.5 py-1.5 rounded-lg font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
-                  view === 'calendar' ? 'bg-white text-teal-900 shadow-2xs font-black border border-teal-300/40' : 'text-slate-500 hover:text-teal-900'
-                }`}
-                title="Calendar Month View"
-              >
-                <CalendarDays size={13} />
-                <span className="hidden sm:inline">Calendar</span>
-              </button>
+            {/* View Mode Toggle (Card-Style Buttons without container background border) */}
+            <div className="flex items-center p-1 bg-slate-100/80 rounded-2xl gap-1">
+              {[
+                { key: 'grid', label: 'Cards', icon: LayoutGrid },
+                { key: 'table', label: 'Table', icon: TableIcon },
+                { key: 'kanban', label: 'Board', icon: Columns3 },
+                { key: 'calendar', label: 'Calendar', icon: CalendarDays },
+              ].map(item => {
+                const active = view === item.key
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setView(item.key as BookingViewMode)}
+                    className={`text-[12px] px-3 py-1.5 rounded-xl font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                      active
+                        ? 'bg-white text-teal-950 shadow-[0_2px_8px_rgba(0,0,0,0.08)] font-black ring-1 ring-black/5'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    }`}
+                    title={`${item.label} View`}
+                  >
+                    <item.icon size={13} className={active ? 'text-teal-700' : 'text-slate-500'} />
+                    <span className="hidden sm:inline">{item.label}</span>
+                  </button>
+                )
+              })}
             </div>
 
             {/* Three Dot Menu (Import / Export / Clear) */}
@@ -755,7 +1093,7 @@ export function Bookings() {
                           setSearch('')
                           setServiceFilter('all')
                           setStatusFilter('all')
-                          setDatePreset('all')
+                          setDatePreset('today')
                           setCustomStartDate('')
                           setCustomEndDate('')
                         }}
@@ -854,7 +1192,7 @@ export function Bookings() {
                   setSearch('')
                   setServiceFilter('all')
                   setStatusFilter('all')
-                  setDatePreset('all')
+                  setDatePreset('today')
                   setCustomStartDate('')
                   setCustomEndDate('')
                 }}
@@ -876,12 +1214,13 @@ export function Bookings() {
               const matchedClient = clients.find(c => c.id === b.client_id || c.full_name.toLowerCase().trim() === b.client_name.toLowerCase().trim())
               const isMonthly = b.frequency === 'monthly' || b.frequency === 'weekly' || b.frequency === 'biweekly' || (b.frequency as string) === 'bi-weekly' || (matchedClient && isMonthlyClient(matchedClient, dailyJobs))
               const clientPhone = b.client_phone || matchedClient?.phone || matchedClient?.whatsapp || ''
+              const theme = getCardStatusTheme(b.status)
 
               return (
                 <div
                   key={b.id}
                   onClick={() => setSelectedBooking(b)}
-                  className="bg-white rounded-[22px] border border-teal-100/90 shadow-[0_4px_20px_rgba(13,148,136,0.04)] p-5 hover:shadow-xl hover:border-teal-300 transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden"
+                  className={`${theme.cardClass} rounded-[22px] border p-5 transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden`}
                 >
                   {/* Status Indicator Bar at Top */}
                   <div className={`absolute top-0 left-0 right-0 h-1.5 ${
@@ -914,7 +1253,7 @@ export function Bookings() {
                     </div>
 
                     {/* Service & Time details box */}
-                    <div className="bg-teal-50/30 rounded-xl p-3 border border-teal-100/80 space-y-2 mb-3">
+                    <div className={`${theme.boxClass} rounded-xl p-3 border space-y-2 mb-3`}>
                       <div className="flex items-center justify-between text-[11.5px] font-semibold text-slate-700">
                         <span className="text-teal-800 font-bold flex items-center gap-1.5">
                           <Sparkles size={12} className="text-teal-600" />
@@ -1242,55 +1581,58 @@ export function Bookings() {
         onAdd={addBooking}
       />
 
-      <Modal open={!!selectedBooking} onClose={() => setSelectedBooking(null)} title="Booking details" size="lg">
-        {selectedBooking && (
-          <BookingDetail
-            booking={selectedBooking}
-            onUpdate={(patch) => {
-              if (selectedBooking.id.startsWith('dj-')) {
-                const jobId = selectedBooking.id.replace('dj-', '')
-                updateDailyJob(jobId, {
-                  date: patch.scheduled_date ?? selectedBooking.scheduled_date,
-                  start_time: patch.scheduled_time ?? selectedBooking.scheduled_time,
-                  end_time: patch.end_time ?? selectedBooking.end_time,
-                  duty_hours: patch.duration_hours ?? selectedBooking.duration_hours,
-                  charges: patch.total_amount ?? selectedBooking.total_amount,
-                  staff_name: crewToStaffName(patch.assigned_crew, employees) || undefined,
-                  address: patch.service_address ?? selectedBooking.service_address,
-                  service: patch.service_type ?? selectedBooking.service_type,
-                  received: patch.status === 'completed' ? (patch.total_amount ?? selectedBooking.total_amount) : undefined,
-                })
-              } else {
-                updateBooking(selectedBooking.id, patch)
-              }
-              setSelectedBooking(b => b ? { ...b, ...patch } : b)
-            }}
-            onDelete={() => {
-              if (selectedBooking.id.startsWith('dj-')) {
-                const jobId = selectedBooking.id.replace('dj-', '')
-                deleteDailyJob(jobId)
-              } else {
-                deleteBooking(selectedBooking.id)
-              }
-              setSelectedBooking(null)
-            }}
-            invoices={invoices}
-            onUpdateInvoice={updateInvoice}
-          />
-        )}
-      </Modal>
+      <BookingDetailModal
+        booking={selectedBooking}
+        open={!!selectedBooking}
+        onClose={() => setSelectedBooking(null)}
+        onUpdate={(patch) => {
+          if (!selectedBooking) return
+          if (selectedBooking.id.startsWith('dj-')) {
+            const jobId = selectedBooking.id.replace('dj-', '')
+            updateDailyJob(jobId, {
+              date: patch.scheduled_date ?? selectedBooking.scheduled_date,
+              start_time: patch.scheduled_time ?? selectedBooking.scheduled_time,
+              end_time: patch.end_time ?? selectedBooking.end_time,
+              duty_hours: patch.duration_hours ?? selectedBooking.duration_hours,
+              charges: patch.total_amount ?? selectedBooking.total_amount,
+              staff_name: crewToStaffName(patch.assigned_crew, employees) || undefined,
+              address: patch.service_address ?? selectedBooking.service_address,
+              service: patch.service_type ?? selectedBooking.service_type,
+              received: patch.status === 'completed' ? (patch.total_amount ?? selectedBooking.total_amount) : undefined,
+            })
+          } else {
+            updateBooking(selectedBooking.id, patch)
+          }
+          setSelectedBooking(prev => prev ? { ...prev, ...patch } : null)
+        }}
+        onDelete={() => {
+          if (!selectedBooking) return
+          if (selectedBooking.id.startsWith('dj-')) {
+            const jobId = selectedBooking.id.replace('dj-', '')
+            deleteDailyJob(jobId)
+          } else {
+            deleteBooking(selectedBooking.id)
+          }
+          setSelectedBooking(null)
+        }}
+        invoices={invoices}
+        onUpdateInvoice={updateInvoice}
+        employees={employees}
+      />
     </div>
   )
 }
 
-/* ─── Month Calendar (real, dynamic) ─── */
+/* ─── Month Calendar (Revamped, Highly Professional & Visually Appealing) ─── */
 function WeekCalendar({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b: Booking) => void }) {
   const today = new Date()
   const [curYear,  setCurYear]  = useState(today.getFullYear())
   const [curMonth, setCurMonth] = useState(today.getMonth())
+  const [expandedDayDate, setExpandedDayDate] = useState<string | null>(null)
 
-  const todayStr = today.toISOString().split('T')[0]
-  const monthName = new Date(curYear, curMonth).toLocaleString('en-GB', { month: 'long', year: 'numeric' })
+  const todayStr = todayDubai()
+  const monthDate = new Date(curYear, curMonth, 1)
+  const monthName = monthDate.toLocaleString('en-GB', { month: 'long', year: 'numeric' })
 
   function prevMonth() {
     if (curMonth === 0) { setCurMonth(11); setCurYear(y => y - 1) }
@@ -1300,125 +1642,304 @@ function WeekCalendar({ bookings, onSelect }: { bookings: Booking[]; onSelect: (
     if (curMonth === 11) { setCurMonth(0); setCurYear(y => y + 1) }
     else setCurMonth(m => m + 1)
   }
-  function goToday() { setCurYear(today.getFullYear()); setCurMonth(today.getMonth()) }
+  function goToday() {
+    const now = new Date()
+    setCurYear(now.getFullYear())
+    setCurMonth(now.getMonth())
+  }
 
-  // Build grid cells
-  const firstDay = new Date(curYear, curMonth, 1).getDay() // 0=Sun
+  // Build grid cells (Mon to Sun)
+  const firstDaySun = new Date(curYear, curMonth, 1).getDay() // 0=Sun
+  const firstDayMon = (firstDaySun + 6) % 7 // 0=Mon ... 6=Sun
   const daysInMonth = new Date(curYear, curMonth + 1, 0).getDate()
   const cells: (number | null)[] = [
-    ...Array(firstDay).fill(null),
+    ...Array(firstDayMon).fill(null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ]
   while (cells.length % 7 !== 0) cells.push(null)
 
-  const bookingsByDate = bookings.reduce<Record<string, Booking[]>>((acc, b) => {
-    (acc[b.scheduled_date] ||= []).push(b)
-    return acc
-  }, {})
+  const bookingsByDate = useMemo(() => {
+    return bookings.reduce<Record<string, Booking[]>>((acc, b) => {
+      const date = b.scheduled_date || (b.created_at ? b.created_at.split('T')[0] : '')
+      if (date) {
+        (acc[date] ||= []).push(b)
+      }
+      return acc
+    }, {})
+  }, [bookings])
 
-  const statusDot: Record<string, string> = {
-    completed:   'bg-slate-400',
-    confirmed:   'bg-emerald-500',
-    in_progress: 'bg-blue-500',
-    pending:     'bg-amber-400',
-    cancelled:   'bg-red-400',
+  const monthBookings = useMemo(() => {
+    return bookings.filter(b => {
+      const d = b.scheduled_date ? new Date(b.scheduled_date) : null
+      return d && d.getFullYear() === curYear && d.getMonth() === curMonth
+    })
+  }, [bookings, curYear, curMonth])
+
+  const monthRevenue = monthBookings
+    .filter(b => b.status !== 'cancelled')
+    .reduce((s, b) => s + (b.total_amount || 0), 0)
+
+  const monthJobs = monthBookings.length
+  const monthConfirmed = monthBookings.filter(b => b.status === 'confirmed').length
+  const monthLive = monthBookings.filter(b => b.status === 'in_progress').length
+  const monthCompleted = monthBookings.filter(b => b.status === 'completed').length
+
+  const statusStyle: Record<string, { bg: string; text: string; dot: string; border: string }> = {
+    confirmed:   { bg: 'bg-emerald-50 hover:bg-emerald-100/80', text: 'text-emerald-800', dot: 'bg-emerald-500', border: 'border-emerald-200' },
+    in_progress: { bg: 'bg-cyan-50 hover:bg-cyan-100/80', text: 'text-cyan-800', dot: 'bg-cyan-500 animate-pulse', border: 'border-cyan-200' },
+    pending:     { bg: 'bg-amber-50 hover:bg-amber-100/80', text: 'text-amber-800', dot: 'bg-amber-500', border: 'border-amber-200' },
+    completed:   { bg: 'bg-slate-50 hover:bg-slate-100/80', text: 'text-slate-700', dot: 'bg-slate-400', border: 'border-slate-200' },
+    cancelled:   { bg: 'bg-rose-50 hover:bg-rose-100/80', text: 'text-rose-700', dot: 'bg-rose-400', border: 'border-rose-200' },
   }
 
-  const monthRevenue = bookings
-    .filter(b => {
-      const d = new Date(b.scheduled_date)
-      return d.getFullYear() === curYear && d.getMonth() === curMonth && b.status !== 'cancelled'
-    })
-    .reduce((s, b) => s + b.total_amount, 0)
-
-  const monthJobs = bookings.filter(b => {
-    const d = new Date(b.scheduled_date)
-    return d.getFullYear() === curYear && d.getMonth() === curMonth
-  }).length
+  const expandedBookings = expandedDayDate ? (bookingsByDate[expandedDayDate] ?? []) : []
 
   return (
-    <div className="bg-white rounded-[22px] border border-teal-200/80 shadow-[0_4px_20px_rgba(13,148,136,0.05)] overflow-hidden">
-      {/* Header */}
-      <div className="px-5 py-4 border-b border-teal-100 flex items-center justify-between flex-wrap gap-3 bg-teal-50/30">
+    <div className="bg-white rounded-[24px] border border-teal-200/80 shadow-[0_4px_24px_rgba(13,148,136,0.06)] overflow-hidden">
+      {/* ── Calendar Header ── */}
+      <div className="px-6 py-4 border-b border-teal-100 bg-gradient-to-r from-teal-50/50 via-white to-teal-50/30 flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h3 className="text-[17px] font-bold text-teal-950">{monthName}</h3>
-          <p className="text-[12px] text-slate-500 mt-0.5">{monthJobs} jobs · AED {monthRevenue.toLocaleString()} projected</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center border border-teal-200/80 rounded-xl overflow-hidden bg-white">
-            <button onClick={prevMonth} className="p-2 hover:bg-teal-50 transition-colors"><ChevronLeft size={14} /></button>
-            <button onClick={goToday} className="text-[12px] px-3 py-2 border-l border-r border-teal-200/80 hover:bg-teal-50 font-bold text-teal-900">Today</button>
-            <button onClick={nextMonth} className="p-2 hover:bg-teal-50 transition-colors"><ChevronRight size={14} /></button>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-teal-100/80 text-teal-800 flex items-center justify-center font-bold">
+              <CalendarDays size={16} />
+            </div>
+            <div>
+              <h3 className="text-[18px] font-black text-teal-950 tracking-tight">{monthName}</h3>
+              <p className="text-[12px] text-slate-500 font-medium">Dubai Timezone (Asia/Dubai) • Operations Schedule</p>
+            </div>
           </div>
+        </div>
+
+        {/* Month Metrics Chips */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11.5px] font-bold px-3 py-1 rounded-xl bg-teal-50 text-teal-900 border border-teal-200/80">
+            {monthJobs} Total Shifts
+          </span>
+          <span className="text-[11.5px] font-bold px-3 py-1 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-200/80">
+            AED {monthRevenue.toLocaleString()} Projected
+          </span>
+          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-xl bg-slate-100 text-slate-700">
+            {monthConfirmed} Scheduled • {monthLive} Live • {monthCompleted} Done
+          </span>
+        </div>
+
+        {/* Navigation Controls */}
+        <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-2xl">
+          <button
+            type="button"
+            onClick={prevMonth}
+            className="p-1.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-white transition-all cursor-pointer"
+            title="Previous Month"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={goToday}
+            className="text-[12px] px-3 py-1 rounded-xl font-bold text-teal-950 bg-white shadow-2xs hover:bg-teal-50 transition-colors cursor-pointer"
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            onClick={nextMonth}
+            className="p-1.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-white transition-all cursor-pointer"
+            title="Next Month"
+          >
+            <ChevronRight size={16} />
+          </button>
         </div>
       </div>
 
-      {/* Day-of-week header */}
-      <div className="grid grid-cols-7 border-b border-teal-100 bg-teal-50/50">
-        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-          <div key={d} className="py-2.5 text-center text-[10.5px] font-bold text-teal-900 uppercase tracking-[0.08em]">{d}</div>
+      {/* ── Day-of-week header ── */}
+      <div className="grid grid-cols-7 border-b border-teal-100 bg-teal-50/40 divide-x divide-teal-100/60">
+        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, idx) => (
+          <div
+            key={d}
+            className={`py-2.5 text-center text-[11px] font-black tracking-wider uppercase ${
+              idx >= 5 ? 'text-amber-800 bg-amber-50/20' : 'text-teal-900'
+            }`}
+          >
+            {d}
+          </div>
         ))}
       </div>
 
-      {/* Calendar grid */}
-      <div className="grid grid-cols-7">
+      {/* ── Calendar Grid ── */}
+      <div className="grid grid-cols-7 divide-x divide-y divide-teal-100/60 bg-slate-50/20">
         {cells.map((day, i) => {
-          if (!day) return <div key={i} className="min-h-[100px] border-r border-b border-teal-100/60 bg-teal-50/10" />
+          if (!day) {
+            return (
+              <div
+                key={`empty-${i}`}
+                className="min-h-[120px] bg-slate-50/40 p-2 opacity-50"
+              />
+            )
+          }
+
           const dateStr = `${curYear}-${String(curMonth + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
           const dayBookings = bookingsByDate[dateStr] ?? []
           const isToday = dateStr === todayStr
+          const isWeekend = (i % 7 === 5) || (i % 7 === 6)
+
           return (
-            <div key={i} className={`min-h-[100px] border-r border-b border-teal-100/60 p-2 ${isToday ? 'bg-emerald-50/50' : 'hover:bg-teal-50/30'} transition-colors`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold mb-1.5 ${isToday ? 'bg-emerald-600 text-white' : 'text-slate-700'}`}>
-                {day}
-              </div>
-              <div className="space-y-1">
-                {dayBookings.slice(0, 3).map(b => (
-                  <button
-                    key={b.id}
-                    onClick={() => onSelect(b)}
-                    className="w-full text-left flex items-center gap-1.5 px-1.5 py-1 rounded-lg hover:bg-white/80 transition-colors group"
+            <div
+              key={`day-${day}`}
+              className={`min-h-[120px] p-2 transition-all flex flex-col justify-between group ${
+                isToday
+                  ? 'bg-emerald-50/60 ring-2 ring-emerald-500/30'
+                  : isWeekend
+                  ? 'bg-amber-50/15 hover:bg-teal-50/30'
+                  : 'bg-white hover:bg-teal-50/25'
+              }`}
+            >
+              <div>
+                {/* Cell Header: Day Number & Count */}
+                <div className="flex items-center justify-between mb-1.5">
+                  <span
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-black transition-all ${
+                      isToday
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-800 group-hover:text-teal-800'
+                    }`}
                   >
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[b.status] ?? 'bg-slate-400'}`} />
-                    <span className="text-[10.5px] font-medium text-slate-700 truncate group-hover:text-emerald-700">{b.client_name}</span>
-                  </button>
-                ))}
-                {dayBookings.length > 3 && (
-                  <p className="text-[10px] text-slate-400 pl-1.5 font-medium">+{dayBookings.length - 3} more</p>
-                )}
+                    {day}
+                  </span>
+                  {dayBookings.length > 0 && (
+                    <span className="text-[10px] font-black text-teal-800 bg-teal-50 border border-teal-200/80 px-1.5 py-0.2 rounded-md">
+                      {dayBookings.length} {dayBookings.length === 1 ? 'shift' : 'shifts'}
+                    </span>
+                  )}
+                </div>
+
+                {/* Day Bookings List (First 3) */}
+                <div className="space-y-1">
+                  {dayBookings.slice(0, 3).map(b => {
+                    const st = statusStyle[b.status] ?? statusStyle.confirmed
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => onSelect(b)}
+                        className={`w-full text-left px-2 py-1 rounded-lg border text-[11px] transition-all flex items-center justify-between gap-1 shadow-2xs cursor-pointer ${st.bg} ${st.border}`}
+                        title={`${b.client_name} - ${b.service_type} at ${b.scheduled_time} (${b.duration_hours}h)`}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${st.dot}`} />
+                          <span className="font-bold text-slate-800 truncate">{b.client_name}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-semibold shrink-0">
+                          {b.scheduled_time?.slice(0, 5)}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
+
+              {/* +X More interactive button */}
+              {dayBookings.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setExpandedDayDate(dateStr)}
+                  className="mt-1 text-[10px] font-bold text-teal-700 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 border border-teal-200/80 py-0.5 px-1.5 rounded text-center transition-colors cursor-pointer"
+                >
+                  +{dayBookings.length - 3} more bookings
+                </button>
+              )}
             </div>
           )
         })}
       </div>
 
-      {/* Legend */}
-      <div className="px-5 py-3 border-t border-teal-100 bg-teal-50/30 flex items-center gap-5 flex-wrap text-[11px] text-slate-600">
-        {[
-          { label: 'Scheduled', dot: 'bg-emerald-500' },
-          { label: 'Live',      dot: 'bg-blue-500' },
-          { label: 'Pending',   dot: 'bg-amber-400' },
-          { label: 'Completed', dot: 'bg-slate-400' },
-          { label: 'Cancelled', dot: 'bg-red-400' },
-        ].map(l => (
-          <div key={l.label} className="flex items-center gap-1.5">
-            <span className={`w-2 h-2 rounded-full ${l.dot}`} />
-            {l.label}
-          </div>
-        ))}
+      {/* ── Status Legend & Summary Footer ── */}
+      <div className="px-6 py-3 border-t border-teal-100 bg-teal-50/30 flex items-center justify-between flex-wrap gap-4 text-[11.5px] text-slate-600">
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="font-bold text-slate-700">Status Legend:</span>
+          {[
+            { label: 'Scheduled', dot: 'bg-emerald-500', count: monthConfirmed },
+            { label: 'Live Now',  dot: 'bg-cyan-500 animate-pulse', count: monthLive },
+            { label: 'Pending',   dot: 'bg-amber-400', count: monthBookings.filter(b => b.status === 'pending').length },
+            { label: 'Completed', dot: 'bg-slate-400', count: monthCompleted },
+            { label: 'Cancelled', dot: 'bg-red-400',   count: monthBookings.filter(b => b.status === 'cancelled').length },
+          ].map(l => (
+            <div key={l.label} className="flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${l.dot}`} />
+              <span className="font-medium text-slate-700">{l.label}</span>
+              <span className="text-[10px] font-bold text-slate-500 bg-white px-1.5 py-0.2 rounded border border-teal-100">
+                {l.count}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
+
+      {/* ── Modal: Day Details (When clicking +X more) ── */}
+      {expandedDayDate && (
+        <Modal
+          open={!!expandedDayDate}
+          onClose={() => setExpandedDayDate(null)}
+          title={`All Bookings on ${expandedDayDate}`}
+          size="md"
+        >
+          <div className="p-4 space-y-3">
+            <p className="text-[12px] text-slate-500">
+              Showing {expandedBookings.length} scheduled shifts for this date. Click any booking to inspect and edit.
+            </p>
+            <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+              {expandedBookings.map((b, idx) => {
+                const st = statusStyle[b.status] ?? statusStyle.confirmed
+                return (
+                  <div
+                    key={b.id}
+                    onClick={() => {
+                      setExpandedDayDate(null)
+                      onSelect(b)
+                    }}
+                    className="p-3 rounded-2xl bg-white border border-teal-100/90 hover:border-teal-300 hover:shadow-md transition-all cursor-pointer flex items-center justify-between gap-3 group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Initials name={b.client_name} idx={idx} size="sm" />
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-bold text-slate-900 group-hover:text-teal-700 truncate">
+                          {b.client_name}
+                        </p>
+                        <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                          {b.service_type} • {b.scheduled_time} ({b.duration_hours}h)
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full border ${st.bg} ${st.text} ${st.border}`}>
+                        {b.status.replace('_', ' ')}
+                      </span>
+                      <p className="text-[12px] font-black text-teal-950 mt-1">AED {b.total_amount?.toLocaleString()}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
 
-/* ─── Kanban board ─── */
+/* ─── Kanban board (Showing First 5 Entries + "View All" Button) ─── */
 function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b: Booking) => void }) {
-  const cols: { key: BookingStatus; label: string; bg: string; border: string; dot: string }[] = [
-    { key: 'pending',     label: 'Pending',   bg: 'bg-amber-50',   border: 'border-amber-200',  dot: 'bg-amber-400' },
-    { key: 'confirmed',   label: 'Scheduled', bg: 'bg-emerald-50', border: 'border-emerald-200', dot: 'bg-emerald-500' },
-    { key: 'in_progress', label: 'Live Now',  bg: 'bg-blue-50',    border: 'border-blue-200',   dot: 'bg-blue-500' },
-    { key: 'completed',   label: 'Completed', bg: 'bg-slate-50',   border: 'border-slate-200',  dot: 'bg-slate-400' },
-    { key: 'cancelled',   label: 'Cancelled', bg: 'bg-red-50',     border: 'border-red-200',    dot: 'bg-red-400' },
+  const [expandedCols, setExpandedCols] = useState<Record<string, boolean>>({})
+
+  const toggleExpand = (colKey: string) => {
+    setExpandedCols(prev => ({ ...prev, [colKey]: !prev[colKey] }))
+  }
+
+  const cols: { key: BookingStatus; label: string; bg: string; border: string; dot: string; badgeColor: string; cardClass: string; boxClass: string }[] = [
+    { key: 'pending',     label: 'Pending',   bg: 'bg-orange-50/70',  border: 'border-orange-200',  dot: 'bg-orange-500', badgeColor: 'bg-orange-100 text-orange-800', cardClass: 'bg-orange-50/85 border-orange-200/90 hover:border-orange-400', boxClass: 'bg-white/85 border-orange-200/70' },
+    { key: 'confirmed',   label: 'Scheduled', bg: 'bg-emerald-50/70', border: 'border-emerald-200', dot: 'bg-emerald-500', badgeColor: 'bg-emerald-100 text-emerald-800', cardClass: 'bg-emerald-50/85 border-emerald-200/90 hover:border-emerald-400', boxClass: 'bg-white/85 border-emerald-200/70' },
+    { key: 'in_progress', label: 'Live Now',  bg: 'bg-sky-50/70',     border: 'border-sky-200',     dot: 'bg-sky-500 animate-pulse', badgeColor: 'bg-sky-100 text-sky-800', cardClass: 'bg-sky-50/85 border-sky-200/90 hover:border-sky-400', boxClass: 'bg-white/85 border-sky-200/70' },
+    { key: 'completed',   label: 'Completed', bg: 'bg-slate-100/70',  border: 'border-slate-200',   dot: 'bg-slate-400', badgeColor: 'bg-slate-200 text-slate-700', cardClass: 'bg-slate-100/80 border-slate-200/90 hover:border-slate-300', boxClass: 'bg-white/85 border-slate-200/70' },
+    { key: 'cancelled',   label: 'Cancelled', bg: 'bg-rose-50/70',    border: 'border-rose-200',    dot: 'bg-rose-400', badgeColor: 'bg-rose-100 text-rose-800', cardClass: 'bg-rose-50/85 border-rose-200/90 hover:border-rose-400', boxClass: 'bg-white/85 border-rose-200/70' },
   ]
 
   const grouped = cols.reduce((acc, c) => {
@@ -1427,62 +1948,85 @@ function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b
   }, {} as Record<string, Booking[]>)
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-2">
-      {cols.map(col => (
-        <div key={col.key} className="min-w-[240px] flex-1">
-          {/* Column header */}
-          <div className={`flex items-center gap-2 px-3 py-2.5 rounded-t-2xl border ${col.bg} ${col.border} mb-2`}>
-            <span className={`w-2 h-2 rounded-full ${col.dot}`} />
-            <span className="text-[12px] font-bold text-slate-700">{col.label}</span>
-            <span className="ml-auto text-[11px] font-semibold text-slate-500 bg-white/60 px-2 py-0.5 rounded-full">
-              {grouped[col.key]?.length ?? 0}
-            </span>
-          </div>
+    <div className="flex gap-4 overflow-x-auto pb-4">
+      {cols.map(col => {
+        const colBookings = grouped[col.key] ?? []
+        const isExpanded = Boolean(expandedCols[col.key])
+        const displayed = isExpanded ? colBookings : colBookings.slice(0, 5)
+        const hasMore = colBookings.length > 5
 
-          {/* Cards */}
-          <div className="space-y-2.5">
-            {(grouped[col.key] ?? []).map((b, idx) => (
-              <div
-                key={b.id}
-                onClick={() => onSelect(b)}
-                className="bg-white rounded-[18px] border border-teal-100/90 p-4 cursor-pointer hover:shadow-[0_4px_16px_rgba(13,148,136,0.10)] hover:border-teal-300 transition-all"
-              >
-                <div className="flex items-start gap-2.5 mb-3">
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
-                    style={{ background: ['#dcefe7','#fce4d6','#e4dff5','#d6e7f5','#fcecc8'][idx % 5], color: ['#0d8a72','#c66a3a','#6b5bb5','#3a7ab8','#a8842a'][idx % 5] }}
-                  >
-                    {b.client_name.split(' ').map((p: string) => p[0]).join('').slice(0,2).toUpperCase()}
+        return (
+          <div key={col.key} className="min-w-[270px] flex-1 flex flex-col">
+            {/* Column Header */}
+            <div className={`flex items-center gap-2 px-3.5 py-2.5 rounded-2xl border ${col.bg} ${col.border} mb-2.5 shadow-2xs`}>
+              <span className={`w-2 h-2 rounded-full ${col.dot}`} />
+              <span className="text-[12.5px] font-bold text-slate-800">{col.label}</span>
+              <span className={`ml-auto text-[11px] font-black px-2 py-0.5 rounded-full ${col.badgeColor}`}>
+                {colBookings.length}
+              </span>
+            </div>
+
+            {/* Cards List */}
+            <div className="space-y-2.5 flex-1">
+              {displayed.map((b, idx) => (
+                <div
+                  key={b.id}
+                  onClick={() => onSelect(b)}
+                  className={`${col.cardClass} rounded-2xl border p-4 cursor-pointer hover:shadow-lg transition-all flex flex-col justify-between group`}
+                >
+                  <div className="flex items-start gap-2.5 mb-2.5">
+                    <Initials name={b.client_name} idx={idx} size="sm" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-bold text-slate-900 group-hover:text-teal-700 transition-colors truncate">
+                        {b.client_name}
+                      </p>
+                      <p className="text-[11px] text-slate-500 truncate mt-0.5">{b.service_type}</p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold text-[#111827] truncate">{b.client_name}</p>
-                    <p className="text-[11px] text-slate-500 capitalize mt-0.5">{b.service_type}</p>
+
+                  <div className={`space-y-1.5 text-[11px] text-slate-500 ${col.boxClass} p-2.5 rounded-xl border`}>
+                    <div className="flex items-center gap-1.5">
+                      <CalendarIcon size={12} className="text-teal-600 shrink-0" />
+                      <span className="font-semibold text-slate-700">{b.scheduled_date} • {b.scheduled_time}</span>
+                    </div>
+                    {b.service_address && (
+                      <div className="flex items-center gap-1.5 truncate">
+                        <MapPin size={12} className="text-slate-400 shrink-0" />
+                        <span className="truncate">{b.service_address}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-100 text-[11.5px]">
+                    <span className="text-[10.5px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                      {b.duration_hours || 3}h duty
+                    </span>
+                    <span className="font-black text-teal-950">AED {b.total_amount?.toLocaleString() || 0}</span>
                   </div>
                 </div>
-                <div className="space-y-1.5 text-[11px] text-slate-500">
-                  <div className="flex items-center gap-1.5">
-                    <CalendarIcon size={11} className="shrink-0" />
-                    <span>{b.scheduled_date} · {b.scheduled_time}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <MapPin size={11} className="shrink-0" />
-                    <span className="truncate">{b.service_address}</span>
-                  </div>
+              ))}
+
+              {/* View All Button when column has > 5 entries */}
+              {hasMore && (
+                <button
+                  type="button"
+                  onClick={() => toggleExpand(col.key)}
+                  className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-teal-50 border border-teal-200/80 text-[11.5px] font-bold text-teal-900 shadow-2xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <span>{isExpanded ? 'Show Less' : `View All (${colBookings.length - 5} more)`}</span>
+                  <ChevronDown size={13} className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                </button>
+              )}
+
+              {colBookings.length === 0 && (
+                <div className="py-8 text-center bg-teal-50/20 rounded-2xl border border-dashed border-teal-200/80">
+                  <p className="text-[11px] text-slate-400">No {col.label.toLowerCase()} bookings</p>
                 </div>
-                <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-teal-100/70">
-                  <span className="text-[11px] text-slate-400">{b.duration_hours}h</span>
-                  <span className="text-[13px] font-bold text-[#111827]">AED {b.total_amount.toLocaleString()}</span>
-                </div>
-              </div>
-            ))}
-            {(grouped[col.key] ?? []).length === 0 && (
-              <div className="bg-teal-50/20 rounded-2xl border border-dashed border-teal-200/80 py-8 text-center">
-                <p className="text-[11px] text-slate-400">No {col.label.toLowerCase()} bookings</p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -1588,23 +2132,63 @@ function waLink(phone: string, msg: string) {
   return `https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`
 }
 
-/* ─── Booking Detail panel ─── */
-type BookingType = ReturnType<typeof useData>['bookings'][0]
-function BookingDetail({ booking, onUpdate, onDelete, invoices, onUpdateInvoice }: {
-  booking: BookingType
-  onUpdate: (patch: Partial<BookingType>) => void
+/* ─── Redesigned Professional Booking Detail Modal ─── */
+function BookingDetailModal({
+  booking,
+  open,
+  onClose,
+  onUpdate,
+  onDelete,
+  invoices,
+  onUpdateInvoice,
+  employees,
+}: {
+  booking: Booking | null
+  open: boolean
+  onClose: () => void
+  onUpdate: (patch: Partial<Booking>) => void
   onDelete: () => void
   invoices: ReturnType<typeof useData>['invoices']
   onUpdateInvoice: (id: string, patch: any) => void
+  employees: Employee[]
 }) {
-  const [status,    setStatus]    = useState(booking.status)
-  const [isEditing, setIsEditing] = useState(false)
-  const [crew,      setCrew]      = useState<string[]>(booking.assigned_crew ?? [])
+  if (!booking) return null
 
+  const [isEditing, setIsEditing] = useState(false)
+  const [status, setStatus] = useState<BookingStatus>(booking.status)
+  const [crew, setCrew] = useState<string[]>(booking.assigned_crew ?? [])
+
+  // Editable fields
+  const [clientName, setClientName] = useState(booking.client_name)
+  const [clientPhone, setClientPhone] = useState(booking.client_phone || '')
+  const [serviceAddress, setServiceAddress] = useState(booking.service_address || '')
+  const [serviceType, setServiceType] = useState(booking.service_type)
+  const [frequency, setFrequency] = useState<BookingFrequency>(booking.frequency)
   const [scheduledDate, setScheduledDate] = useState(booking.scheduled_date)
   const [startTime, setStartTime] = useState(booking.scheduled_time || '09:00')
   const [duration, setDuration] = useState<number>(booking.duration_hours || 3)
   const [endTime, setEndTime] = useState(() => booking.end_time || addHoursToTime(booking.scheduled_time || '09:00', booking.duration_hours || 3))
+  const [totalAmount, setTotalAmount] = useState<number>(booking.total_amount || 0)
+  const [notes, setNotes] = useState(booking.notes || '')
+  const [saveNotice, setSaveNotice] = useState<string | null>(null)
+
+  // Sync state when booking changes
+  useEffect(() => {
+    setStatus(booking.status)
+    setCrew(booking.assigned_crew ?? [])
+    setClientName(booking.client_name)
+    setClientPhone(booking.client_phone || '')
+    setServiceAddress(booking.service_address || '')
+    setServiceType(booking.service_type)
+    setFrequency(booking.frequency)
+    setScheduledDate(booking.scheduled_date)
+    setStartTime(booking.scheduled_time || '09:00')
+    setDuration(booking.duration_hours || 3)
+    setEndTime(booking.end_time || addHoursToTime(booking.scheduled_time || '09:00', booking.duration_hours || 3))
+    setTotalAmount(booking.total_amount || 0)
+    setNotes(booking.notes || '')
+    setIsEditing(false)
+  }, [booking])
 
   const handleStartTimeChange = (newStart: string) => {
     setStartTime(newStart)
@@ -1630,255 +2214,509 @@ function BookingDetail({ booking, onUpdate, onDelete, invoices, onUpdateInvoice 
     }
   }
 
-  function applyStatus(s: BookingStatus) {
+  const handleApplyStatus = (s: BookingStatus) => {
     setStatus(s)
     onUpdate({ status: s })
+    setSaveNotice(`Status updated to ${s.toUpperCase()}`)
+    setTimeout(() => setSaveNotice(null), 3000)
   }
 
-  if (isEditing) {
-    return (
-      <form
-        className="space-y-4"
-        onSubmit={e => {
-          e.preventDefault()
-          const fd = new FormData(e.currentTarget)
-          const patch: Partial<BookingType> = {
-            client_name:    fd.get('client_name') as string,
-            client_phone:   fd.get('client_phone') as string,
-            service_address:fd.get('service_address') as string,
-            service_type:   fd.get('service_type') as string,
-            frequency:      fd.get('frequency') as BookingFrequency,
-            scheduled_date: scheduledDate,
-            scheduled_time: startTime,
-            end_time:       endTime,
-            duration_hours: duration,
-            total_amount:   Number(fd.get('total_amount')),
-            notes:          fd.get('notes') as string,
-            assigned_crew:  crew,
-          }
-          onUpdate(patch)
-          setIsEditing(false)
-        }}
-      >
-        <div className="grid grid-cols-2 gap-4">
-          <Input name="client_name" label="Client Name" defaultValue={booking.client_name} required />
-          <Input name="client_phone" label="Phone" defaultValue={booking.client_phone} />
-        </div>
-        <Input name="service_address" label="Service Address" defaultValue={booking.service_address} />
-        <div className="grid grid-cols-2 gap-4">
-          <Select name="service_type" label="Service Type" defaultValue={booking.service_type}>
-            {serviceTypes.map(s => <option key={s}>{s}</option>)}
-          </Select>
-          <Select name="frequency" label="Frequency" defaultValue={booking.frequency}>
-            <option value="once">One-time</option>
-            <option value="weekly">Weekly</option>
-            <option value="biweekly">Bi-weekly</option>
-            <option value="monthly">Monthly</option>
-          </Select>
-        </div>
-
-        {/* ── Start Time, End Time & Duration Row (Auto-Synced) ── */}
-        <div className="bg-slate-50/80 rounded-2xl p-3.5 border border-[#E4E8EC] space-y-2.5">
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Date *</label>
-              <input
-                type="date"
-                name="scheduled_date"
-                required
-                value={scheduledDate}
-                onChange={e => setScheduledDate(e.target.value)}
-                className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-medium"
-              />
-            </div>
-            <div>
-              <label className="block text-[11.5px] font-bold text-[#111827] mb-1">Start Time *</label>
-              <input
-                type="time"
-                name="scheduled_time"
-                required
-                value={startTime}
-                onChange={e => handleStartTimeChange(e.target.value)}
-                className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-[#111827]"
-              />
-            </div>
-            <div>
-              <label className="block text-[11.5px] font-bold text-teal-800 mb-1">End Time *</label>
-              <input
-                type="time"
-                name="end_time"
-                required
-                value={endTime}
-                onChange={e => handleEndTimeChange(e.target.value)}
-                className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-teal-700"
-              />
-            </div>
-            <div>
-              <label className="block text-[11.5px] font-bold text-emerald-800 mb-1">Duration (hrs)</label>
-              <input
-                type="number"
-                step="0.5"
-                min="0.5"
-                max="24"
-                name="duration_hours"
-                value={duration}
-                onChange={e => handleDurationChange(parseFloat(e.target.value) || 0)}
-                className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-emerald-700"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-[11.5px] px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-900 font-medium">
-            <span className="flex items-center gap-1.5">
-              <Clock size={13} className="text-emerald-600" />
-              <span>Shift Slot: <strong>{startTime || '—'}</strong> to <strong>{endTime || '—'}</strong></span>
-            </span>
-            <span className="font-extrabold text-emerald-700 bg-white px-2 py-0.5 rounded-md shadow-2xs">
-              {duration} Hour{duration !== 1 ? 's' : ''} auto-synced
-            </span>
-          </div>
-        </div>
-
-        <Input name="total_amount" label="Amount (AED)" type="number" defaultValue={String(booking.total_amount)} />
-        <Textarea name="notes" label="Notes" defaultValue={booking.notes} rows={3} />
-        <CrewSelector selected={crew} onChange={setCrew} />
-        <div className="flex gap-3 pt-2">
-          <Button type="button" variant="outline" className="flex-1" onClick={() => setIsEditing(false)}>Cancel</Button>
-          <Button type="submit" className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold">Save Changes</Button>
-        </div>
-      </form>
-    )
+  const handleSave = (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    const patch: Partial<Booking> = {
+      client_name: clientName.trim(),
+      client_phone: clientPhone.trim(),
+      service_address: serviceAddress.trim(),
+      service_type: serviceType,
+      frequency: frequency,
+      scheduled_date: scheduledDate,
+      scheduled_time: startTime,
+      end_time: endTime,
+      duration_hours: duration,
+      total_amount: Number(totalAmount) || 0,
+      notes: notes.trim(),
+      assigned_crew: crew,
+      status: status,
+    }
+    onUpdate(patch)
+    setIsEditing(false)
+    setSaveNotice('Booking changes saved successfully!')
+    setTimeout(() => setSaveNotice(null), 3000)
   }
+
+  const relatedInvoice = invoices.find(inv =>
+    inv.client_id === booking.client_id ||
+    inv.client_name.toLowerCase().trim() === booking.client_name.toLowerCase().trim()
+  )
+  const invoicePaid = relatedInvoice?.status === 'paid'
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Initials name={booking.client_name} idx={0} size="lg" />
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-bold text-[#111827] text-[16px]">{booking.client_name}</p>
-              <SourceOriginTag source={resolveBookingSource(booking)} />
-            </div>
-            <p className="text-[12.5px] text-slate-500 mt-0.5">{booking.client_phone}</p>
-          </div>
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="xl"
+      className="max-w-3xl"
+      title={
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <span className="font-extrabold text-[16px] text-slate-900">
+            {isEditing ? 'Edit Booking' : 'Booking Details'}
+          </span>
+          <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-md">
+            #{booking.id.slice(0, 8)}
+          </span>
+          {saveNotice && (
+            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 animate-in fade-in">
+              ✓ {saveNotice}
+            </span>
+          )}
         </div>
-        <StatusPill status={status} />
-      </div>
+      }
+      headerActions={
+        <div className="flex items-center gap-2">
+          {isEditing ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-[12px] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="booking-detail-form"
+                className="px-3.5 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-[12px] shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Check size={13} strokeWidth={2.5} />
+                <span>Save</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+              >
+                <Pencil size={12} className="text-slate-500" />
+                <span>Edit</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSave()}
+                className="px-3.5 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-[12px] shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Check size={13} strokeWidth={2.5} />
+                <span>Save</span>
+              </button>
+            </>
+          )}
 
-      <div className="grid grid-cols-2 gap-3">
-        {[
-          { label: 'Service',   value: booking.service_type },
-          { label: 'Frequency', value: booking.frequency },
-          { label: 'Date',      value: formatDate(booking.scheduled_date) },
-          { label: 'Time',      value: formatTime(`${booking.scheduled_date}T${booking.scheduled_time}`) },
-          { label: 'Duration',  value: `${booking.duration_hours} Hours` },
-          { label: 'Amount',    value: `AED ${booking.total_amount.toLocaleString()}` },
-        ].map(({ label, value }) => (
-          <div key={label} className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC]">
-            <p className="text-[10.5px] text-slate-500 uppercase tracking-[0.08em] font-semibold">{label}</p>
-            <p className="text-[13px] font-semibold text-[#111827] mt-1 capitalize">{value}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-slate-50 border border-[#E4E8EC] rounded-xl p-3">
-        <p className="text-[10.5px] text-slate-500 uppercase tracking-[0.08em] font-semibold">Address</p>
-        <p className="text-[13px] font-semibold text-[#111827] mt-1">{booking.service_address || '—'}</p>
-      </div>
-
-      {booking.notes && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-          <p className="text-[10.5px] text-amber-700 uppercase tracking-[0.08em] font-semibold">Notes</p>
-          <p className="text-[13px] text-amber-700 mt-1">{booking.notes}</p>
-        </div>
-      )}
-
-      {/* Crew Assignment */}
-      <div className="border border-[#E4E8EC] rounded-xl p-3">
-        <p className="text-[10.5px] text-slate-500 uppercase tracking-[0.08em] font-semibold mb-2">Assigned Crew</p>
-        <CrewSelector
-          selected={crew}
-          onChange={ids => { setCrew(ids); onUpdate({ assigned_crew: ids }) }}
-        />
-      </div>
-
-      {/* Invoice Status */}
-      {(() => {
-        const relatedInvoice = invoices.find(inv =>
-          inv.client_id === booking.client_id ||
-          inv.client_name.toLowerCase().trim() === booking.client_name.toLowerCase().trim()
-        )
-        const invoicePaid = relatedInvoice?.status === 'paid'
-        return (
-          <div className="border border-[#E4E8EC] rounded-xl p-3">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={invoicePaid}
-                onChange={() => {
-                  if (relatedInvoice) {
-                    onUpdateInvoice(relatedInvoice.id, { status: invoicePaid ? 'sent' : 'paid' })
-                  }
-                }}
-                className="w-4 h-4 rounded accent-emerald-500"
-              />
-              <div>
-                <p className="text-[13px] font-semibold text-[#111827]">Invoice Paid</p>
-                {relatedInvoice ? (
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Status: <span className={invoicePaid ? 'text-emerald-600 font-medium' : 'text-amber-600 font-medium'}>{invoicePaid ? 'Paid' : 'Pending'}</span>
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-slate-400 mt-0.5">No invoice found</p>
-                )}
-              </div>
-            </label>
-          </div>
-        )
-      })()}
-
-      {/* WhatsApp / Call actions */}
-      {booking.client_phone && (
-        <div className="flex gap-2 flex-wrap">
-          <a
-            href={`tel:${booking.client_phone}`}
-            className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl border border-[#E4E8EC] text-slate-600 hover:bg-slate-50 transition-colors"
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm('Are you sure you want to delete this booking? This action cannot be undone.')) {
+                onDelete()
+              }
+            }}
+            className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Delete this booking"
           >
-            <Phone size={13} /> Call Client
-          </a>
-          {(status === 'confirmed' || status === 'in_progress') && (
-            <a
-              href={waLink(booking.client_phone, buildConfirmationMsg(booking))}
-              target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
-            >
-              <MessageCircle size={13} /> Send Confirmation
-            </a>
+            <Trash2 size={12} />
+            <span>Delete</span>
+          </button>
+        </div>
+      }
+    >
+      {isEditing ? (
+        <form id="booking-detail-form" onSubmit={handleSave} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Client Name *</label>
+              <input
+                type="text"
+                required
+                value={clientName}
+                onChange={e => setClientName(e.target.value)}
+                className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-medium text-slate-900"
+              />
+            </div>
+            <div>
+              <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Phone / WhatsApp</label>
+              <input
+                type="text"
+                value={clientPhone}
+                onChange={e => setClientPhone(e.target.value)}
+                className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-medium text-slate-900"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Service Address</label>
+            <input
+              type="text"
+              value={serviceAddress}
+              onChange={e => setServiceAddress(e.target.value)}
+              className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-medium text-slate-900"
+              placeholder="e.g. Villa 42, Arabian Ranches or Marina Gate Tower 1"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Service Type</label>
+              <select
+                value={serviceType}
+                onChange={e => setServiceType(e.target.value)}
+                className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-medium text-slate-900"
+              >
+                {serviceTypes.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Frequency</label>
+              <select
+                value={frequency}
+                onChange={e => setFrequency(e.target.value as BookingFrequency)}
+                className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-medium text-slate-900"
+              >
+                <option value="once">One-time Service</option>
+                <option value="weekly">Weekly Recurring</option>
+                <option value="biweekly">Bi-weekly Recurring</option>
+                <option value="monthly">Monthly Contract</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Schedule & Timing Grid */}
+          <div className="bg-slate-50/80 rounded-2xl p-3.5 border border-slate-200 space-y-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Date *</label>
+                <input
+                  type="date"
+                  required
+                  value={scheduledDate}
+                  onChange={e => setScheduledDate(e.target.value)}
+                  className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-medium"
+                />
+              </div>
+              <div>
+                <label className="block text-[11.5px] font-bold text-slate-900 mb-1">Start Time *</label>
+                <input
+                  type="time"
+                  required
+                  value={startTime}
+                  onChange={e => handleStartTimeChange(e.target.value)}
+                  className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-bold text-slate-900"
+                />
+              </div>
+              <div>
+                <label className="block text-[11.5px] font-bold text-teal-800 mb-1">End Time *</label>
+                <input
+                  type="time"
+                  required
+                  value={endTime}
+                  onChange={e => handleEndTimeChange(e.target.value)}
+                  className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-bold text-teal-700"
+                />
+              </div>
+              <div>
+                <label className="block text-[11.5px] font-bold text-emerald-800 mb-1">Duration (Hours)</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  max="24"
+                  value={duration}
+                  onChange={e => handleDurationChange(parseFloat(e.target.value) || 0)}
+                  className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-bold text-emerald-700"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-[11.5px] px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-900 font-medium">
+              <span className="flex items-center gap-1.5">
+                <Clock size={13} className="text-emerald-600" />
+                <span>Shift: <strong>{startTime || '—'}</strong> to <strong>{endTime || '—'}</strong></span>
+              </span>
+              <span className="font-extrabold text-emerald-700 bg-white px-2 py-0.5 rounded-md shadow-2xs">
+                {duration} Hour{duration !== 1 ? 's' : ''} Duty
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div>
+              <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Amount (AED)</label>
+              <input
+                type="number"
+                min="0"
+                value={totalAmount}
+                onChange={e => setTotalAmount(parseFloat(e.target.value) || 0)}
+                className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-bold text-slate-900"
+              />
+            </div>
+            <div>
+              <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Status</label>
+              <select
+                value={status}
+                onChange={e => setStatus(e.target.value as BookingStatus)}
+                className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-medium text-slate-900"
+              >
+                <option value="pending">Pending</option>
+                <option value="confirmed">Scheduled (Confirmed)</option>
+                <option value="in_progress">Live Now (In Progress)</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11.5px] font-bold text-slate-700 mb-1">Notes / Instructions</label>
+            <textarea
+              rows={2}
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              className="w-full text-[12.5px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-medium text-slate-900 resize-none"
+              placeholder="Special instructions, gate pass code, pet info..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11.5px] font-bold text-slate-700 mb-1.5">Assigned Crew</label>
+            <CrewSelector selected={crew} onChange={setCrew} />
+          </div>
+        </form>
+      ) : (
+        <div className="space-y-4">
+          {/* 1. Client & Status Profile Banner */}
+          <div className="bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white rounded-2xl p-4 shadow-md flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <Initials name={booking.client_name} idx={0} size="lg" />
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-lg font-black text-white">{booking.client_name}</h3>
+                  <SourceOriginTag source={resolveBookingSource(booking)} />
+                  {booking.frequency === 'monthly' && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-400 text-emerald-950">
+                      Monthly Contract
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 mt-1 text-[12px] text-slate-300">
+                  {booking.client_phone ? (
+                    <a href={`tel:${booking.client_phone}`} className="flex items-center gap-1 hover:text-white transition-colors">
+                      <Phone size={12} className="text-emerald-400" />
+                      <span>{booking.client_phone}</span>
+                    </a>
+                  ) : (
+                    <span className="text-slate-400">No phone recorded</span>
+                  )}
+                  <span>·</span>
+                  <span className="capitalize">{booking.frequency} Cleaning</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="shrink-0">
+              <StatusPill status={status} />
+            </div>
+          </div>
+
+          {/* 2. Structured 4-Card Service & Scheduling Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Card 1: Schedule & Timing */}
+            <div className="bg-emerald-50/60 rounded-2xl p-3.5 border border-emerald-200/80">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10.5px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <CalendarIcon size={12} />
+                  <span>Schedule & Duty</span>
+                </span>
+                <span className="text-[10.5px] font-extrabold bg-white text-emerald-800 px-2 py-0.5 rounded-md border border-emerald-200 shadow-2xs">
+                  {duration}h Duration
+                </span>
+              </div>
+              <p className="text-[14px] font-black text-slate-900 mt-1">
+                {formatDate(scheduledDate)}
+              </p>
+              <p className="text-[12px] font-mono font-semibold text-slate-600 mt-0.5 flex items-center gap-1.5">
+                <Clock size={12} className="text-slate-400" />
+                <span>{startTime || '09:00'} – {endTime || '12:00'}</span>
+              </p>
+            </div>
+
+            {/* Card 2: Cleaning Service */}
+            <div className="bg-teal-50/60 rounded-2xl p-3.5 border border-teal-200/80">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10.5px] font-bold text-teal-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles size={12} />
+                  <span>Service Type</span>
+                </span>
+                <span className="text-[10.5px] font-extrabold bg-white text-teal-800 px-2 py-0.5 rounded-md border border-teal-200 shadow-2xs capitalize">
+                  {frequency}
+                </span>
+              </div>
+              <p className="text-[14px] font-black text-slate-900 mt-1">
+                {serviceType}
+              </p>
+              <p className="text-[11.5px] text-slate-500 mt-0.5">
+                Standard Professional Cleaning
+              </p>
+            </div>
+
+            {/* Card 3: Location / Address */}
+            <div className="bg-sky-50/60 rounded-2xl p-3.5 border border-sky-200/80">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10.5px] font-bold text-sky-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <MapPin size={12} />
+                  <span>Service Address</span>
+                </span>
+                <span className="text-[10.5px] font-extrabold bg-white text-sky-800 px-2 py-0.5 rounded-md border border-sky-200 shadow-2xs">
+                  Dubai
+                </span>
+              </div>
+              <p className="text-[13px] font-bold text-slate-900 mt-1 leading-snug">
+                {serviceAddress || 'Address not specified'}
+              </p>
+            </div>
+
+            {/* Card 4: Charges & Payment */}
+            <div className="bg-amber-50/60 rounded-2xl p-3.5 border border-amber-200/80">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10.5px] font-bold text-amber-800 uppercase tracking-wider">
+                  Total Charges
+                </span>
+                <span className={`text-[10.5px] font-extrabold px-2 py-0.5 rounded-md border shadow-2xs ${
+                  invoicePaid
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    : 'bg-white text-amber-800 border-amber-200'
+                }`}>
+                  {invoicePaid ? 'Invoice Paid' : 'Payment Pending'}
+                </span>
+              </div>
+              <p className="text-[18px] font-black text-slate-900 mt-0.5">
+                AED {totalAmount.toLocaleString()}
+              </p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {relatedInvoice ? `Invoice: ${relatedInvoice.invoice_number || 'Generated'}` : 'No invoice generated yet'}
+              </p>
+            </div>
+          </div>
+
+          {/* 3. Assigned Crew */}
+          <div className="bg-slate-50/90 rounded-2xl p-3.5 border border-slate-200">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                <Users size={13} className="text-slate-500" />
+                <span>Assigned Cleaners ({crew.length})</span>
+              </p>
+              <span className="text-[11px] text-slate-400 font-medium">Re-assign below</span>
+            </div>
+            <CrewSelector
+              selected={crew}
+              onChange={ids => {
+                setCrew(ids)
+                onUpdate({ assigned_crew: ids })
+              }}
+            />
+          </div>
+
+          {/* 4. Access & Special Notes (if any) */}
+          {notes && (
+            <div className="bg-amber-50/80 border border-amber-200/90 rounded-2xl p-3.5 text-xs">
+              <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                <AlertCircle size={12} className="text-amber-600" />
+                <span>Access & Special Notes</span>
+              </p>
+              <p className="text-amber-900 font-medium leading-relaxed">{notes}</p>
+            </div>
           )}
-          {status === 'confirmed' && (
-            <a
-              href={waLink(booking.client_phone, buildReminderMsg(booking))}
-              target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
-            >
-              <MessageCircle size={13} /> Send Reminder
-            </a>
+
+          {/* 5. Quick WhatsApp & Phone Communication Bar */}
+          {clientPhone && (
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              <a
+                href={`tel:${clientPhone}`}
+                className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-[11.5px] flex items-center gap-1.5 transition-colors shadow-2xs"
+              >
+                <Phone size={13} className="text-slate-500" />
+                <span>Call Client</span>
+              </a>
+              {(status === 'confirmed' || status === 'in_progress') && (
+                <a
+                  href={waLink(clientPhone, buildConfirmationMsg(booking))}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11.5px] flex items-center gap-1.5 transition-colors shadow-2xs"
+                >
+                  <MessageCircle size={13} className="text-emerald-600" />
+                  <span>Send WhatsApp Confirmation</span>
+                </a>
+              )}
+              {status === 'confirmed' && (
+                <a
+                  href={waLink(clientPhone, buildReminderMsg(booking))}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 rounded-xl border border-sky-200 bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-[11.5px] flex items-center gap-1.5 transition-colors shadow-2xs"
+                >
+                  <MessageCircle size={13} className="text-sky-600" />
+                  <span>Send WhatsApp Reminder</span>
+                </a>
+              )}
+            </div>
           )}
+
+          {/* 6. Workflow Status Action Buttons (NO Edit and NO Delete buttons here!) */}
+          <div className="pt-2 border-t border-slate-200 flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+              Status:
+            </span>
+            {status === 'pending' && (
+              <button
+                type="button"
+                onClick={() => handleApplyStatus('confirmed')}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[12px] shadow-xs cursor-pointer flex-1 flex items-center justify-center gap-1.5 transition-all"
+              >
+                <Check size={14} strokeWidth={2.5} />
+                <span>Confirm Booking</span>
+              </button>
+            )}
+            {status === 'confirmed' && (
+              <button
+                type="button"
+                onClick={() => handleApplyStatus('in_progress')}
+                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-[12px] shadow-xs cursor-pointer flex-1 flex items-center justify-center gap-1.5 transition-all"
+              >
+                <Clock size={14} />
+                <span>Start Job</span>
+              </button>
+            )}
+            {status === 'in_progress' && (
+              <button
+                type="button"
+                onClick={() => handleApplyStatus('completed')}
+                className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-[12px] shadow-xs cursor-pointer flex-1 flex items-center justify-center gap-1.5 transition-all"
+              >
+                <CheckCircle size={14} />
+                <span>Mark Complete</span>
+              </button>
+            )}
+            {status !== 'cancelled' && status !== 'completed' && (
+              <button
+                type="button"
+                onClick={() => handleApplyStatus('cancelled')}
+                className="px-3 py-2 rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 text-rose-700 font-bold text-[12px] cursor-pointer transition-colors"
+              >
+                Cancel Shift
+              </button>
+            )}
+          </div>
         </div>
       )}
-
-      <div className="flex gap-2 pt-1 flex-wrap">
-        <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>Edit</Button>
-        {status === 'pending'     && <Button className="flex-1" size="sm" onClick={() => applyStatus('confirmed')}>Confirm</Button>}
-        {status === 'confirmed'   && <Button className="flex-1" size="sm" onClick={() => applyStatus('in_progress')}>Start Job</Button>}
-        {status === 'in_progress' && <Button className="flex-1" size="sm" onClick={() => applyStatus('completed')}>Mark Complete</Button>}
-        {status !== 'cancelled' && status !== 'completed' && (
-          <Button variant="danger" size="sm" onClick={() => applyStatus('cancelled')}>Cancel</Button>
-        )}
-        <Button variant="danger" size="sm" onClick={onDelete}>Delete</Button>
-      </div>
-    </div>
+    </Modal>
   )
 }
-

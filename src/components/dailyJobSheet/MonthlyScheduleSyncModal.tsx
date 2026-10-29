@@ -3,7 +3,8 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import {
   CheckCircle2, Clock, ArrowDownToLine,
-  Search, RefreshCw, Check, ShieldCheck
+  Search, RefreshCw, Check, ShieldCheck,
+  Calendar, Sparkles, CalendarDays
 } from 'lucide-react'
 import type { Client, DailyJob } from '@/types'
 import {
@@ -11,6 +12,7 @@ import {
   type ScheduledShiftPlan
 } from '@/lib/clientDataSync'
 import { fmtDate } from './jobSheetUtils'
+import { todayDubai, addDays } from '@/lib/dubaiTime'
 
 interface MonthlyScheduleSyncModalProps {
   open: boolean
@@ -20,6 +22,7 @@ interface MonthlyScheduleSyncModalProps {
   dailyJobs: DailyJob[]
   onSyncAll: () => void
   onSyncShift?: (shift: ScheduledShiftPlan) => void
+  onSyncDateRange?: (dates: string[]) => void
   autoSyncEnabled: boolean
   onToggleAutoSync: (enabled: boolean) => void
 }
@@ -32,10 +35,12 @@ export function MonthlyScheduleSyncModal({
   dailyJobs,
   onSyncAll,
   onSyncShift,
+  onSyncDateRange,
   autoSyncEnabled,
   onToggleAutoSync,
 }: MonthlyScheduleSyncModalProps) {
   const [searchQuery, setSearchQuery] = useState('')
+  const [batchNotice, setBatchNotice] = useState<string | null>(null)
 
   const syncData = useMemo(() => {
     return getScheduledMonthlyShiftsForDate(dateStr, clients, dailyJobs)
@@ -52,6 +57,19 @@ export function MonthlyScheduleSyncModal({
       s.area.toLowerCase().includes(q)
     )
   }, [syncData.shifts, searchQuery])
+
+  const handleQuickBatch = (daysAhead: number) => {
+    if (!onSyncDateRange) return
+    const today = todayDubai()
+    if (daysAhead === 0) {
+      onSyncDateRange([today])
+    } else if (daysAhead === 1) {
+      onSyncDateRange([addDays(today, 1)])
+    } else {
+      const dates = Array.from({ length: daysAhead }, (_, i) => addDays(today, i))
+      onSyncDateRange(dates)
+    }
+  }
 
   return (
     <Modal
@@ -74,7 +92,7 @@ export function MonthlyScheduleSyncModal({
               </span>
             </div>
             <p className="text-[12px] text-slate-300 mt-1 leading-relaxed">
-              Monthly clients kay repeating contracts unkay assigned cleaners aur fixed timings kay sath Daily Job Sheet mein automatically fetch kiye ja rahay hain.
+              Monthly clients kay repeating contracts unkay assigned cleaners aur fixed timings kay sath Daily Job Sheet mein automatically generate aur sync kiye jatay hain.
             </p>
           </div>
 
@@ -124,6 +142,50 @@ export function MonthlyScheduleSyncModal({
           </div>
         </div>
 
+        {/* Multi-Day Auto-Generation Toolbar */}
+        {onSyncDateRange && (
+          <div className="p-3.5 bg-gradient-to-r from-emerald-50/60 via-teal-50/40 to-slate-50 rounded-xl border border-emerald-200/70">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <p className="text-[12.5px] font-bold text-slate-900 flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-emerald-600" />
+                  <span>Batch Generate Upcoming Schedules</span>
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Aany walay dino kay monthly shifts aik click mein pehlay say generate kar lein:
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleQuickBatch(0)}
+                  className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold text-[11px] shadow-xs cursor-pointer flex items-center gap-1"
+                >
+                  <Calendar size={12} className="text-emerald-600" />
+                  <span>Today</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickBatch(1)}
+                  className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold text-[11px] shadow-xs cursor-pointer flex items-center gap-1"
+                >
+                  <Calendar size={12} className="text-teal-600" />
+                  <span>Tomorrow</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickBatch(7)}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <CalendarDays size={13} />
+                  <span>Next 7 Days (Week)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Auto-Sync Toggle Banner */}
         <div className="flex items-center justify-between p-3.5 bg-slate-50/90 rounded-xl border border-slate-200/90 text-xs">
           <div className="flex items-center gap-2.5">
@@ -132,10 +194,10 @@ export function MonthlyScheduleSyncModal({
             </div>
             <div>
               <p className="font-bold text-slate-900 text-[12.5px]">
-                Auto-Fetch Repeating Schedules on Date Load
+                Auto-Generate Repeating Schedules on Date Load
               </p>
               <p className="text-[11px] text-slate-500">
-                Jab bhi aap koi date open karenge, us din scheduled monthly clients automatically unkay assigned cleaners kay sath add ho jayein gay.
+                Jab bhi aap koi date open karenge ya dashboard start ho ga, us din scheduled monthly clients automatically unkay assigned cleaners kay sath generate ho jayein gay.
               </p>
             </div>
           </div>
@@ -206,8 +268,8 @@ export function MonthlyScheduleSyncModal({
                       <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500">
                         <span className="flex items-center gap-1 font-mono text-slate-600 font-medium">
                           <Clock size={11} className="text-slate-400" />
-                          <span>{shift.startTime} – {shift.endTime}</span>
-                          <span className="text-slate-400">({shift.durationHours}h)</span>
+                          <span>{shift.startTime || '09:00'} – {shift.endTime || '13:00'}</span>
+                          <span className="text-slate-400">({shift.durationHours || 4}h)</span>
                         </span>
                         <span>·</span>
                         <span className="truncate max-w-[280px]" title={shift.address}>

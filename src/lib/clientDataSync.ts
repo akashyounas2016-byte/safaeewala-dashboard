@@ -1,5 +1,5 @@
 import type { Booking, DailyJob, Client, Employee, DailyPendingReceivedItem } from '@/types'
-import { cleanNum, calcOTHours } from '@/components/dailyJobSheet/jobSheetUtils'
+import { cleanNum, calcHours, calcOTHours } from '@/components/dailyJobSheet/jobSheetUtils'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
 
@@ -1063,6 +1063,130 @@ export function getDayNameFromDate(dateStr: string): DayOfWeekName {
   return DAYS_OF_WEEK_NAMES[dt.getDay()]
 }
 
+/**
+ * Normalizes and checks if a stored day string (e.g. 'Mon', 'monday', 'Monday')
+ * matches the target day of week.
+ */
+export function matchesDayName(storedDay: string, targetDay: DayOfWeekName): boolean {
+  if (!storedDay || !targetDay) return false
+  const s = storedDay.toLowerCase().trim()
+  const t = targetDay.toLowerCase().trim()
+  if (s === t) return true
+  // Check standard 3-letter abbreviation (e.g. 'mon' vs 'monday')
+  if (s.length >= 3 && t.length >= 3) {
+    if (s.slice(0, 3) === t.slice(0, 3)) return true
+  }
+  return false
+}
+
+/**
+ * Checks whether a client has a recurring schedule on targetDay
+ */
+export function isClientScheduledForDay(client: Client, targetDay: DayOfWeekName): boolean {
+  // Sunday is off-day by default unless explicitly enabled in day_schedules
+  if (targetDay === 'Sunday') {
+    if (client.day_schedules) {
+      for (const [key, sched] of Object.entries(client.day_schedules)) {
+        if (matchesDayName(key, 'Sunday') && (sched as any).enabled === true) {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
+  // 1. Check day_schedules map (takes precedence)
+  if (client.day_schedules) {
+    for (const [key, sched] of Object.entries(client.day_schedules)) {
+      if (matchesDayName(key, targetDay)) {
+        if ((sched as any).enabled !== false) return true
+        if ((sched as any).enabled === false) return false
+      }
+    }
+  }
+
+  // 2. Check day_cleaner_assignments map
+  if (client.day_cleaner_assignments) {
+    for (const [key, cln] of Object.entries(client.day_cleaner_assignments)) {
+      if (cln && cln.trim() && matchesDayName(key, targetDay)) return true
+    }
+  }
+
+  // 3. Check service_days (array or comma-separated string)
+  if (client.service_days) {
+    let rawList: string[] = []
+    if (Array.isArray(client.service_days)) {
+      rawList = client.service_days.flatMap(d => String(d).split(',').map(x => x.trim()))
+    } else if (typeof client.service_days === 'string') {
+      rawList = String(client.service_days).split(',').map(x => x.trim())
+    }
+    if (rawList.some(d => matchesDayName(d, targetDay))) return true
+  }
+
+  // 4. Notes or remarks containing 'daily' or 'everyday'
+  const notesAndRemarks = `${client.remarks || ''} ${client.notes || ''}`.toLowerCase()
+  if (notesAndRemarks.includes('daily') || notesAndRemarks.includes('everyday')) {
+    return true
+  }
+
+  return false
+}
+
+/**
+ * Extracts cleaner, start time, end time, and duration for a client on targetDay
+ */
+export function getClientShiftDetailsForDay(client: Client, targetDay: DayOfWeekName): {
+  cleanerName: string
+  startTime: string
+  endTime: string
+  durationHours: number
+} {
+  let cleaner = ''
+  let startTime = client.scheduled_time || ''
+  let endTime = client.end_time || ''
+  let duration = client.duration_hours || 0
+
+  // 1. Day schedules
+  if (client.day_schedules) {
+    for (const [key, sched] of Object.entries(client.day_schedules)) {
+      if (matchesDayName(key, targetDay) && (sched as any).enabled !== false) {
+        if (sched.cleaner?.trim()) cleaner = sched.cleaner.trim()
+        if (sched.startTime?.trim()) startTime = sched.startTime.trim()
+        if (sched.endTime?.trim()) endTime = sched.endTime.trim()
+        if (sched.duration && Number(sched.duration) > 0) duration = Number(sched.duration)
+        break
+      }
+    }
+  }
+
+  // 2. Day cleaner assignments
+  if (!cleaner && client.day_cleaner_assignments) {
+    for (const [key, cln] of Object.entries(client.day_cleaner_assignments)) {
+      if (matchesDayName(key, targetDay) && cln?.trim()) {
+        cleaner = cln.trim()
+        break
+      }
+    }
+  }
+
+  // 3. Preferred cleaner fallback
+  if (!cleaner && client.preferred_cleaner?.trim()) {
+    cleaner = client.preferred_cleaner.trim()
+  }
+
+  if (!cleaner) {
+    cleaner = 'Unassigned'
+  }
+
+  // Compute duration if missing but start and end time exist
+  if ((!duration || duration <= 0) && startTime && endTime) {
+    const calc = calcHours(startTime, endTime)
+    if (calc > 0) duration = calc
+  }
+
+  return { cleanerName: cleaner, startTime, endTime, durationHours: duration }
+}
+
 export interface ScheduledShiftPlan {
   client: Client
   dayName: DayOfWeekName
@@ -1096,16 +1220,6 @@ export function getScheduledMonthlyShiftsForDate(
   shifts: ScheduledShiftPlan[]
 } {
   const dayName = getDayNameFromDate(dateStr)
-  // Sunday is an off day — no regular monthly shifts are scheduled
-  if (dayName === 'Sunday') {
-    return {
-      dayName: 'Sunday',
-      totalScheduled: 0,
-      alreadySyncedCount: 0,
-      pendingSyncCount: 0,
-      shifts: []
-    }
-  }
   const jobsOnDate = dailyJobs.filter(j => j.date === dateStr && !isBogusJob(j))
 
   // Combine registered clients with monthly summaries from daily job history
@@ -1146,7 +1260,6 @@ export function getScheduledMonthlyShiftsForDate(
         notes: 'Monthly Client',
         source: 'monthly',
         preferred_cleaner: s.cleaners[0] || s.preferred_cleaner || '',
-        // No invented schedule: a client without real service days is not auto-synced
         service_days: s.service_days,
         scheduled_time: s.scheduled_time,
         end_time: s.end_time,
@@ -1164,32 +1277,14 @@ export function getScheduledMonthlyShiftsForDate(
   const shifts: ScheduledShiftPlan[] = []
 
   clientMap.forEach(client => {
-    // Check if client is scheduled on this dayName
-    const daySchedule = client.day_schedules?.[dayName]
-    const serviceDays = Array.isArray(client.service_days) ? client.service_days : []
-    const hasDayInServiceDays = serviceDays.some(d => d.toLowerCase() === dayName.toLowerCase())
-    const hasDayAssignment = Boolean(client.day_cleaner_assignments?.[dayName])
-    const isDayExplicitlyEnabled = daySchedule ? (daySchedule as any).enabled !== false : false
-
-    // If day is not scheduled for this client, skip
-    if (!hasDayInServiceDays && !hasDayAssignment && !isDayExplicitlyEnabled) {
+    // Check if client is scheduled on this day
+    if (!isClientScheduledForDay(client, dayName)) {
       return
     }
 
-    // 1. Cleaner assignment for this day
-    const assignedCleaner =
-      daySchedule?.cleaner?.trim() ||
-      client.day_cleaner_assignments?.[dayName]?.trim() ||
-      client.preferred_cleaner?.trim() ||
-      'Unassigned'
+    const { cleanerName, startTime, endTime, durationHours } = getClientShiftDetailsForDay(client, dayName)
 
-    // 2. Start time, end time, and duration
-    // Left blank when the contract has no time — the sheet must not invent duty hours
-    const startTimeRaw = daySchedule?.startTime || client.scheduled_time || ''
-    const endTimeRaw = daySchedule?.endTime || client.end_time || ''
-    const durationHours = daySchedule?.duration || client.duration_hours || 0
-
-    // 3. Format address with building and client name
+    // Format address with building and client name
     const bldg = (client.building_name || '').trim()
     const apt = (client.apartment || '').trim()
     const bldgApt = [bldg, apt ? `Apt ${apt}` : ''].filter(Boolean).join(' ')
@@ -1206,15 +1301,13 @@ export function getScheduledMonthlyShiftsForDate(
       formattedAddr = `${clientName} (Monthly)`
     }
 
-    // 4. Area
     const area = client.area || 'Dubai'
 
-    // 5. Remarks
     const remarks = client.remarks
       ? (client.remarks.includes('Monthly') ? client.remarks : `${client.remarks} (Monthly Schedule)`)
       : '(Monthly Schedule)'
 
-    // 6. Check if this client already has a job on dateStr in dailyJobs
+    // Check if this client already has a job on dateStr in dailyJobs
     const matchedJob = jobsOnDate.find(j => {
       if (jobMatchesClient(j, client)) return true
 
@@ -1227,9 +1320,9 @@ export function getScheduledMonthlyShiftsForDate(
     shifts.push({
       client,
       dayName,
-      cleanerName: assignedCleaner,
-      startTime: startTimeRaw,
-      endTime: endTimeRaw,
+      cleanerName,
+      startTime,
+      endTime,
       durationHours,
       address: formattedAddr,
       area,
@@ -1311,3 +1404,42 @@ export function syncMonthlySchedulesToDailyJobs(
   }
 }
 
+/**
+ * Multi-day automated generation for a list of dates (e.g. Next 7 Days).
+ * Ensures sequential deduplication as jobs are created.
+ */
+export function syncMonthlySchedulesForDateRange(
+  dateList: string[],
+  clients: Client[],
+  dailyJobs: DailyJob[],
+  addDailyJob: (job: Omit<DailyJob, 'id' | 'created_at'>) => void
+): {
+  totalInserted: number
+  byDate: Record<string, number>
+  insertedClients: string[]
+} {
+  let totalInserted = 0
+  const byDate: Record<string, number> = {}
+  const allInsertedClients: string[] = []
+  const currentJobs: DailyJob[] = [...dailyJobs]
+
+  dateList.forEach(d => {
+    const res = syncMonthlySchedulesToDailyJobs(d, clients, currentJobs, (newJob) => {
+      addDailyJob(newJob)
+      currentJobs.push({
+        ...newJob,
+        id: `gen-${d}-${Math.random()}`,
+        created_at: new Date().toISOString()
+      } as DailyJob)
+    })
+    byDate[d] = res.insertedCount
+    totalInserted += res.insertedCount
+    allInsertedClients.push(...res.insertedClients)
+  })
+
+  return {
+    totalInserted,
+    byDate,
+    insertedClients: allInsertedClients,
+  }
+}
