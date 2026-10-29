@@ -11,7 +11,7 @@ import { Select } from '@/components/ui/Input'
 import { useData } from '@/store/DataContext'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { todayDubai, monthDubai } from '@/lib/dubaiTime'
-import { isBogusJob, cleanClientNameFromAddress } from '@/lib/clientDataSync'
+import { isBogusJob, cleanClientNameFromAddress, jobCollected } from '@/lib/clientDataSync'
 
 function cleanNum(v: any): number {
   if (typeof v === 'number') return isNaN(v) ? 0 : v
@@ -51,7 +51,8 @@ export function BusinessAnalytics() {
       const expensesInMonth = dailyExpenses.filter(e => e.date && e.date.startsWith(m.key))
 
       const revenue = jobsInMonth.reduce((sum, j) => sum + (cleanNum(j.charges) || cleanNum(j.received)), 0)
-      const received = jobsInMonth.reduce((sum, j) => sum + cleanNum(j.received), 0)
+      // Collected = same rule as Overview (R-FIN-03)
+      const received = jobsInMonth.reduce((sum, j) => sum + jobCollected(j), 0)
       const expenses = expensesInMonth.reduce((sum, e) => sum + cleanNum(e.amount), 0)
       const profit = revenue - expenses
       const jobsCompleted = jobsInMonth.filter(j => cleanNum(j.received) > 0 || j.date < todayDubai()).length
@@ -163,7 +164,6 @@ export function BusinessAnalytics() {
         jobsCompleted: data.jobsCount,
         hours: Math.round(data.hoursCount * 10) / 10,
         earnings: Math.round(data.revenueCount),
-        rating: 4.8, // standard operational benchmark
       }
     })
 
@@ -174,16 +174,14 @@ export function BusinessAnalytics() {
   // Live Monthly Recurring Revenue (MRR) & Client Metrics
   const clientMetrics = useMemo(() => {
     const activeClientsCount = clients.length
-    const monthlyClients = clients.filter(c =>
-      c.source === 'monthly' ||
-      c.service_days ||
-      (c as any).frequency === 'monthly' ||
-      (c as any).payment_mode === 'Monthly'
-    )
-    const mrr = monthlyClients.reduce((sum, c) => {
-      const rate = cleanNum((c as any).monthly_rate || (c as any).contract_amount || c.total_spent)
-      return sum + rate
-    }, 0)
+    // Monthly contracts = clients with a weekly schedule (AUD-64: an empty list is not a contract)
+    const monthlyClients = clients.filter(c => (c.service_days?.length ?? 0) > 0 || c.source === 'monthly')
+    // Recurring revenue = what monthly-contract visits were actually charged in the latest month
+    // (lifetime spend is not a monthly figure)
+    const latestKey = recentMonths[recentMonths.length - 1]?.key || ''
+    const mrr = dailyJobs
+      .filter(j => !isBogusJob(j) && String(j.payment_mode).toLowerCase() === 'monthly' && (j.date || '').startsWith(latestKey))
+      .reduce((sum, j) => sum + cleanNum(j.charges), 0)
     const avgRevPerClient = activeClientsCount > 0 ? Math.round(totalRevenue / activeClientsCount) : 0
 
     return {
@@ -192,7 +190,7 @@ export function BusinessAnalytics() {
       mrr,
       avgRevPerClient,
     }
-  }, [clients, totalRevenue])
+  }, [clients, totalRevenue, dailyJobs, recentMonths])
 
   // Export Analytics to Excel
   const handleExport = () => {
@@ -240,7 +238,7 @@ export function BusinessAnalytics() {
       <PageHero
         title="Business Analytics"
         subtitle={`Live operational performance & financial metrics · ${todayDubai()}`}
-        statusChip="Live Supabase Sync"
+        statusChip="Live data"
         actions={
           <div className="flex items-center gap-2.5">
             <Select
@@ -586,7 +584,7 @@ export function BusinessAnalytics() {
             <RefreshCw size={16} className="text-emerald-600" />
           </div>
           <p className="text-2xl font-black text-emerald-800">AED {clientMetrics.mrr.toLocaleString()}</p>
-          <p className="text-[11.5px] text-slate-500">From {clientMetrics.monthlyClientsCount} active monthly recurring contracts</p>
+          <p className="text-[11.5px] text-slate-500">Monthly-contract visits charged this month · {clientMetrics.monthlyClientsCount} contracts</p>
         </div>
 
         <div className="bg-white rounded-[22px] border border-teal-100/90 p-5 shadow-2xs space-y-3">
