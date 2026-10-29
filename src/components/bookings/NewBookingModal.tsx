@@ -822,45 +822,84 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
               </div>
             </div>
 
-            {/* Duration Hours & Material Option Side-by-Side */}
+            {/* Duty Hours & Cleaning Material Side-by-Side */}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-xs font-semibold text-emerald-950 block mb-1">
-                  Duty Duration (Hours)
+                  Duty Hours
                 </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0.5"
-                  max="24"
-                  value={duration}
-                  onChange={e => handleDurationChange(parseFloat(e.target.value) || 0)}
-                  className="w-full text-[12px] px-2.5 py-2 bg-white border border-emerald-200/80 rounded-xl focus:outline-none focus:border-emerald-600 font-bold text-emerald-900 shadow-2xs"
-                />
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0.5"
+                    max="24"
+                    value={duration}
+                    onChange={e => handleDurationChange(parseFloat(e.target.value) || 0)}
+                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-emerald-200/80 rounded-xl focus:outline-none focus:border-emerald-600 font-medium text-slate-600 shadow-2xs"
+                  />
+                  <span className="absolute right-2.5 top-2.5 text-[11px] font-semibold text-slate-400 pointer-events-none">
+                    hrs
+                  </span>
+                </div>
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-emerald-950 block mb-1 flex items-center justify-between">
-                  <span>Cleaning Material</span>
-                  <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded transition-colors ${
+                  <span>Material</span>
+                  <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded transition-colors ${
                     material === 'Yes'
-                      ? 'bg-emerald-200 text-emerald-950 border border-emerald-300'
-                      : 'bg-slate-200 text-slate-700'
+                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                      : 'bg-slate-100 text-slate-600 border border-slate-200'
                   }`}>
-                    {material === 'Yes' ? 'Required' : 'No'}
+                    {material === 'Yes' ? 'Required (Yes)' : 'No (Client)'}
                   </span>
                 </label>
-                <div className="relative">
-                  <select
-                    value={material}
-                    onChange={e => setMaterial(e.target.value as 'No' | 'Yes')}
-                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-emerald-200/80 rounded-xl focus:outline-none focus:border-emerald-600 font-bold text-slate-800 shadow-2xs cursor-pointer appearance-none pr-7"
+                <div className="grid grid-cols-2 gap-1 bg-white p-1 rounded-xl border border-emerald-200/80 shadow-2xs h-[38px] items-center">
+                  <button
+                    type="button"
+                    onClick={() => setMaterial('No')}
+                    className={`h-[28px] rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                      material === 'No'
+                        ? 'bg-slate-100 text-slate-800 border border-slate-300 shadow-2xs'
+                        : 'text-slate-400 hover:text-slate-600'
+                    }`}
                   >
-                    <option value="No">No (Client Provides)</option>
-                    <option value="Yes">Yes (Material Required)</option>
-                  </select>
-                  <ChevronDown size={13} className="absolute right-2.5 top-3 text-emerald-700 pointer-events-none" />
+                    <span>No</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMaterial('Yes')}
+                    className={`h-[28px] rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                      material === 'Yes'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'text-slate-400 hover:text-emerald-700'
+                    }`}
+                  >
+                    <Sparkles size={11} className={material === 'Yes' ? 'text-white' : 'text-emerald-600'} />
+                    <span>Yes (Required)</span>
+                  </button>
                 </div>
+              </div>
+            </div>
+
+            {/* Quick Shift Summary line */}
+            <div className="flex items-center justify-between text-[11px] px-3 py-1.5 rounded-xl bg-emerald-100/70 border border-emerald-200/80 text-emerald-950 font-medium">
+              <span className="flex items-center gap-1.5">
+                <Clock size={12} className="text-emerald-700" />
+                <span>Shift: <strong>{startTime || '—'}</strong> to <strong>{endTime || '—'}</strong></span>
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-emerald-800 bg-white px-2 py-0.5 rounded shadow-2xs">
+                  {duration}h Duty
+                </span>
+                <span className={`font-bold px-2 py-0.5 rounded shadow-2xs ${
+                  material === 'Yes'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-white text-slate-700'
+                }`}>
+                  {material === 'Yes' ? 'Material: Required' : 'Material: No'}
+                </span>
               </div>
             </div>
 
