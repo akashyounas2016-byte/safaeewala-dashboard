@@ -7,6 +7,11 @@
 ## Unreleased (in `main`, not yet confirmed deployed)
 
 ## 2026-10-30 (Deploy to Production VPS)
+- feat(daily-job-sheet): Redesigned 'Add Job' popup with clean, professional theme matching Add New Booking & Add New Agency — added conditional 'Team Name' field auto-generated on 2+ cleaner selection with click-to-edit, responsive bidirectional timing calculations across Start Time, End Time, Duty Hours, and OT hours (R-OT-01), light circular Row Color presets, removed Service field, and added Material dropdown with custom input support.
+- feat(daily-job-sheet): Multi-cleaner jobs show Received amount and payment details exclusively under the primary cleaner, with other staff displaying Team Reference badge ('Team A' / 'Team B') to eliminate duplicate figures and ensure ledger accuracy.
+- feat(daily-job-sheet): Resolved job widget scroll issues with precision container scrolling on #main-content-scroll and breathing margins.
+- feat(daily-job-sheet): Removed 'Closed Day' strip and 'Monthly Client Auto Sync' notification bar from beneath summary cards, consolidating Monthly Client Sync and Day Close/Reopen into the top header 3-dot dropdown menu.
+
 - **Overtime Policy (R-OT-01, DEC-013):** Documented and implemented two-scenario Overtime policy:
   - Scenario 1: Work performed after 8:00 PM (20:00) is strictly Overtime, regardless of basic hours worked.
   - Scenario 2: Work performed before 8:00 PM exceeding standard 8 basic hours counts as Overtime.

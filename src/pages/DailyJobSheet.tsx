@@ -43,6 +43,7 @@ import {
   DEFAULT_VISIBLE_COLUMNS,
   type ColumnConfig,
   type StaffPalette,
+  ROW_COLOR_PRESETS,
 } from '@/components/dailyJobSheet/jobSheetUtils'
 import { PaymentBadge, AddressCell } from '@/components/dailyJobSheet/JobSheetBadges'
 import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
@@ -632,6 +633,18 @@ export function DailyJobSheet() {
     })
   }
 
+  // Map multi-cleaner jobs to consistent Team references (e.g. Team A, Team B, or custom team_name)
+  const multiCleanerJobs = todayJobs.filter(j => splitStaffNames(j.staff_name).length > 1)
+  const jobTeamMap = new Map<string, string>()
+  multiCleanerJobs.forEach((job, idx) => {
+    if (job.team_name && job.team_name.trim()) {
+      jobTeamMap.set(job.id, job.team_name.trim())
+    } else {
+      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+      jobTeamMap.set(job.id, `Team ${letters[idx % letters.length]}`)
+    }
+  })
+
   // Group active jobs by staff member so multiple shifts for an employee display sequentially adjacent
   // Multi-cleaner assignment (e.g. 3 cleaners) creates individual rows for each cleaner grouped by employee
   const groupedJobs = todayJobs.reduce((acc, job) => {
@@ -641,21 +654,27 @@ export function DailyJobSheet() {
       if (!acc[s]) acc[s] = []
       acc[s].push(job)
     } else {
+      const teamRef = jobTeamMap.get(job.id) || job.team_name || 'Team A'
       // Split into distinct shift rows per cleaner so each employee's shifts are grouped together
       cleaners.forEach((cleaner, cIdx) => {
         const s = cleaner.trim()
         if (!acc[s]) acc[s] = []
-        // Proportionally split revenue so total sheet figures match actual job charges/received
-        const splitCharges = Math.round((cleanNum(job.charges) / cleaners.length) * 100) / 100
-        const splitReceived = Math.round((cleanNum(job.received) / cleaners.length) * 100) / 100
+        const isPrimary = cIdx === 0
+        // Multi-cleaner display rule:
+        // Primary cleaner holds the full charges & received amount so sheet figures are accurate and not duplicated.
+        // Secondary staff hold 0 charges/received and display Team Reference ('Team A' / 'Team B').
         acc[s].push({
           ...job,
           id: `${job.id}-cleaner-${cleaner.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
           staff_name: cleaner,
-          charges: splitCharges,
-          received: splitReceived,
+          charges: isPrimary ? cleanNum(job.charges) : 0,
+          received: isPrimary ? cleanNum(job.received) : 0,
           _originalJobId: job.id,
           _isSplitShift: true,
+          _isPrimaryCleaner: isPrimary,
+          _isSecondaryCleaner: !isPrimary,
+          _primaryCleanerName: cleaners[0],
+          _teamReference: teamRef,
           _allCleaners: cleaners,
           _cleanerIndex: cIdx + 1,
         } as DailyJob)
@@ -937,13 +956,20 @@ export function DailyJobSheet() {
   // Smooth scroll helper with highlight pulse for card navigation
   const scrollToElement = (elementId: string) => {
     const el = document.getElementById(elementId)
-    if (el) {
+    if (!el) return
+    const container = document.getElementById('main-content-scroll')
+    if (container) {
+      const containerRect = container.getBoundingClientRect()
+      const elRect = el.getBoundingClientRect()
+      const targetScrollTop = container.scrollTop + (elRect.top - containerRect.top) - 30
+      container.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'smooth' })
+    } else {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      el.classList.add('ring-4', 'ring-emerald-400', 'ring-offset-2', 'transition-all', 'duration-300')
-      setTimeout(() => {
-        el.classList.remove('ring-4', 'ring-emerald-400', 'ring-offset-2')
-      }, 1800)
     }
+    el.classList.add('ring-4', 'ring-emerald-400', 'ring-offset-2', 'transition-all', 'duration-300')
+    setTimeout(() => {
+      el.classList.remove('ring-4', 'ring-emerald-400', 'ring-offset-2')
+    }, 1800)
   }
 
   // ── Excel export ──
@@ -1752,6 +1778,13 @@ export function DailyJobSheet() {
         )
 
       case 'charges':
+        if ((job as any)._isSecondaryCleaner) {
+          return (
+            <td key={id} className="px-3 py-3 font-semibold whitespace-nowrap text-slate-400 text-[11.5px]" title={`Charges recorded under primary cleaner ${(job as any)._primaryCleanerName || ''}`}>
+              <span className="italic">Included ({(job as any)._teamReference || 'Team A'})</span>
+            </td>
+          )
+        }
         return (
           <td
             key={id}
@@ -1806,6 +1839,11 @@ export function DailyJobSheet() {
                 ) : (
                   <span className="text-[#111827]">AED {cleanNum(job.charges).toLocaleString()}</span>
                 )}
+                {(job as any)._isPrimaryCleaner && (job as any)._allCleaners && (
+                  <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200">
+                    {(job as any)._allCleaners.length} staff
+                  </span>
+                )}
                 <Pencil size={10} className="opacity-0 group-hover/cell:opacity-50 text-emerald-700 transition-opacity" />
               </div>
             )}
@@ -1813,6 +1851,19 @@ export function DailyJobSheet() {
         )
 
       case 'received':
+        if ((job as any)._isSecondaryCleaner) {
+          return (
+            <td key={id} className="px-3 py-3 font-semibold whitespace-nowrap">
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200/90 font-bold text-[11px] shadow-2xs"
+                title={`Payment received recorded under primary cleaner: ${(job as any)._primaryCleanerName || 'Lead cleaner'}`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                <span>{(job as any)._teamReference || 'Team A'}</span>
+              </span>
+            </td>
+          )
+        }
         return (
           <td
             key={id}
@@ -1868,6 +1919,14 @@ export function DailyJobSheet() {
                 <span className="font-mono font-bold">
                   {cleanNum(job.received) > 0 ? `AED ${cleanNum(job.received).toLocaleString()}` : (job.payment_mode === 'Pending' || isMonthly ? '—' : 'AED 0')}
                 </span>
+                {(job as any)._isPrimaryCleaner && (job as any)._teamReference && (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black bg-indigo-100 text-indigo-800 border border-indigo-200 shadow-2xs"
+                    title={`Multi-cleaner team lead (${(job as any)._allCleaners?.join(', ')})`}
+                  >
+                    {(job as any)._teamReference} (Lead)
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -1917,6 +1976,19 @@ export function DailyJobSheet() {
         )
 
       case 'payment_mode':
+        if ((job as any)._isSecondaryCleaner) {
+          return (
+            <td key={id} className="px-3 py-3">
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 font-bold text-[11px]"
+                title={`Payment managed by primary cleaner ${(job as any)._primaryCleanerName || 'Lead'}`}
+              >
+                <Users size={12} className="text-slate-400" />
+                <span>{(job as any)._teamReference || 'Team A'}</span>
+              </span>
+            </td>
+          )
+        }
         return (
           <td key={id} className="px-3 py-3">
             {isMonthly ? (
@@ -2385,7 +2457,7 @@ export function DailyJobSheet() {
                     >
                       <div className="flex items-center gap-2.5">
                         <Sparkles size={15} className="text-emerald-600" />
-                        <span>Monthly Sync</span>
+                        <span>Monthly Clients Sync</span>
                       </div>
                       {monthlySyncStatus.pendingSyncCount > 0 ? (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">
@@ -2397,6 +2469,39 @@ export function DailyJobSheet() {
                         </span>
                       )}
                     </button>
+
+                    {monthlySyncStatus.pendingSyncCount > 0 && !isDateRange && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowHeaderMenu(false); handleSyncAllMonthlyShifts() }}
+                        className="w-full flex items-center gap-2 px-4 py-2 text-[11.5px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors cursor-pointer text-left pl-9"
+                      >
+                        <ArrowDownToLine size={13} />
+                        <span>Generate Missing Shifts ({monthlySyncStatus.pendingSyncCount})</span>
+                      </button>
+                    )}
+
+                    {!isDateRange && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowHeaderMenu(false)
+                          if (isDayClosed(selectedDate)) {
+                            reopenDay()
+                          } else {
+                            closeDay()
+                          }
+                        }}
+                        className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-[12.5px] font-semibold transition-colors cursor-pointer text-left ${
+                          isDayClosed(selectedDate)
+                            ? 'text-amber-800 hover:bg-amber-50'
+                            : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <Lock size={15} className={isDayClosed(selectedDate) ? 'text-amber-600' : 'text-slate-500'} />
+                        <span>{isDayClosed(selectedDate) ? 'Reopen Day (Unlock Edits)' : 'Close Day (Lock Edits)'}</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => { setShowHeaderMenu(false); exportExcel() }}
@@ -2537,24 +2642,6 @@ export function DailyJobSheet() {
         }}
       />
 
-      {/* ── Close day (UX-26) ── */}
-      {!isDateRange && (
-        isDayClosed(selectedDate) ? (
-          <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 rounded-2xl border border-slate-300 bg-slate-100 text-[12.5px] text-slate-800">
-            <span className="flex items-center gap-2">
-              <Lock size={15} className="text-slate-600" />
-              <b>{fmtDate(selectedDate)} is closed</b> — {closedDays[selectedDate].summary} · closed {new Date(closedDays[selectedDate].closedAt).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', dateStyle: 'medium', timeStyle: 'short' })}. Edits are locked.
-            </span>
-            <button type="button" onClick={reopenDay} className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 font-bold hover:bg-slate-50 cursor-pointer">Reopen day</button>
-          </div>
-        ) : todayJobs.length > 0 && (
-          <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-2xl border border-[#E4E8EC] bg-white text-[12.5px] text-slate-600">
-            <span>When the day's entries and cash are checked, close the day to lock it against later changes.{rowChecks.size > 0 ? ` ${rowChecks.size} row(s) still have checks.` : ''}</span>
-            <button type="button" onClick={closeDay} className="px-3 py-1.5 rounded-xl bg-slate-800 text-white font-bold hover:bg-slate-900 cursor-pointer flex items-center gap-1.5"><Lock size={13} /> Close day</button>
-          </div>
-        )
-      )}
-
       {/* ── Hidden rows notice (AUD-44: review instead of auto-delete) ── */}
       {hiddenRowsInRange.length > 0 && (
         <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 rounded-2xl border border-amber-200 bg-amber-50 text-[12.5px] text-amber-900">
@@ -2569,81 +2656,6 @@ export function DailyJobSheet() {
           >
             {showHiddenRows ? 'Hide them' : 'Show to review'}
           </button>
-        </div>
-      )}
-
-      {/* ── Monthly Clients Automated Generation Bar (R-SCHED-01..03, R-SYNC-03) ── */}
-      {!isDateRange && (
-        <div className={`rounded-2xl p-4 transition-all border ${
-          monthlySyncStatus.pendingSyncCount > 0
-            ? 'bg-gradient-to-r from-amber-500/10 via-amber-50 to-orange-50/60 border-amber-300 shadow-sm'
-            : 'bg-gradient-to-r from-emerald-500/10 via-emerald-50/70 to-teal-50/50 border-emerald-200/80 shadow-xs'
-        }`}>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5">
-            {/* Left Status info */}
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
-                monthlySyncStatus.pendingSyncCount > 0
-                  ? 'bg-amber-500 text-white animate-pulse'
-                  : 'bg-emerald-600 text-white'
-              }`}>
-                <Sparkles size={20} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="text-[13.5px] font-black text-slate-900 tracking-tight flex items-center gap-1.5">
-                    Monthly Clients Auto-Sync
-                    <span className="text-[11px] font-bold text-slate-500">
-                      ({monthlySyncStatus.dayName} Schedule)
-                    </span>
-                  </h4>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold uppercase tracking-wider ${
-                    autoSyncMonthly
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      : 'bg-slate-200 text-slate-700'
-                  }`}>
-                    {autoSyncMonthly ? '● Automation Active' : '○ Automation Paused'}
-                  </span>
-                </div>
-                <p className="text-[12px] text-slate-600 mt-0.5">
-                  {monthlySyncStatus.totalScheduled === 0 ? (
-                    `No recurring monthly clients scheduled for ${monthlySyncStatus.dayName}.`
-                  ) : monthlySyncStatus.pendingSyncCount > 0 ? (
-                    <span className="text-amber-800 font-semibold">
-                      {monthlySyncStatus.pendingSyncCount} of {monthlySyncStatus.totalScheduled} monthly shifts ready to generate for {fmtDate(selectedDate)}.
-                    </span>
-                  ) : (
-                    <span className="text-emerald-800 font-semibold">
-                      ✓ All {monthlySyncStatus.totalScheduled} monthly client shifts are automatically generated and active on this date.
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-
-            {/* Right Action buttons */}
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              {monthlySyncStatus.pendingSyncCount > 0 && (
-                <button
-                  type="button"
-                  onClick={handleSyncAllMonthlyShifts}
-                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-[12px] shadow-sm flex items-center gap-1.5 cursor-pointer transition-all"
-                >
-                  <ArrowDownToLine size={14} className="stroke-[2.5]" />
-                  <span>Generate Missing ({monthlySyncStatus.pendingSyncCount})</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setShowMonthlySyncModal(true)}
-                className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold text-[12px] shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
-              >
-                <RefreshCw size={13} className="text-slate-500" />
-                <span>Sync Center & Multi-Day</span>
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -3104,15 +3116,22 @@ export function DailyJobSheet() {
                   const otHrs = calcOTHours(job.start_time, job.end_time)
                   const otDisplay = cleanNum(job.ot_hours) || otHrs
 
-                  // Cleaner unique color palette
+                  // Cleaner unique color palette & custom row color preset
                   const palette = staffColorMap.get(job.staff_name.trim().toLowerCase()) || STAFF_COLOR_PALETTES[0]
+                  const customColorPreset = job.row_color ? ROW_COLOR_PRESETS.find(p => p.id === job.row_color) : null
 
                   // Detect first shift of this staff in the visible list for clear separation
                   const prevRow = idx > 0 ? displayedRows[idx - 1] : null
                   const isFirstShiftOfStaff = !prevRow || prevRow.staff_name?.trim().toLowerCase() !== job.staff_name.trim().toLowerCase()
 
-                  // If monthly client, apply lighter green background; otherwise staff color palette
-                  const rowClass = isMonthly
+                  // Row background & border left styling
+                  const rowClass = customColorPreset && customColorPreset.rowBg
+                    ? `transition-colors ${customColorPreset.rowBg} ${customColorPreset.borderLeft} ${
+                        isFirstShiftOfStaff
+                          ? 'border-t-2 border-t-slate-300 shadow-[inset_0_1px_0_rgba(0,0,0,0.03)]'
+                          : 'border-t border-t-slate-200/50'
+                      }`
+                    : isMonthly
                     ? `transition-colors bg-emerald-100/90 hover:bg-emerald-200/90 text-emerald-950 border-l-[5px] border-l-emerald-600 ${
                         isFirstShiftOfStaff
                           ? 'border-t-2 border-t-emerald-300 shadow-[inset_0_1px_0_rgba(0,0,0,0.02)]'
@@ -3379,6 +3398,7 @@ CREATE TABLE daily_expenses (
           onSave={j => { addDailyJob({ ...j, date: selectedDate }); setShowAddJob(false) }}
           key={addJobStaff || 'new'}
           initial={{ date: selectedDate, ...(addJobStaff ? { staff_name: addJobStaff } : {}) }}
+          existingJobsForDate={todayJobs}
         />
       </Modal>
 

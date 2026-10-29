@@ -318,13 +318,15 @@ export interface InventoryItem {
 }
 
 export type PaymentMode = 'Cash' | 'Online' | 'Pending' | 'Monthly' | 'Above'
-export type MaterialType = 'No' | 'Yes' | 'Sofa' | 'Ladder' | 'Sofa Seat'
+export type MaterialType = 'No' | 'Yes' | 'Sofa' | 'Ladder' | 'Sofa Seat' | (string & {})
 
 export interface DailyJob {
   id: string
   created_at: string
   date: string
   staff_name: string
+  team_name?: string
+  row_color?: string
   start_time: string
   end_time: string
   duty_hours: number

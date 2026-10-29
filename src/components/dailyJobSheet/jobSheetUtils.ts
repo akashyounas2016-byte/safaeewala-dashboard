@@ -251,3 +251,22 @@ export const DEFAULT_VISIBLE_COLUMNS: Record<string, boolean> = {
   service:      true,
   actions:      true,
 }
+
+export interface RowColorPreset {
+  id: string
+  label: string
+  circleColor: string
+  rowBg: string
+  borderLeft: string
+}
+
+export const ROW_COLOR_PRESETS: RowColorPreset[] = [
+  { id: 'default', label: 'Default / Auto Palette', circleColor: '#f1f5f9', rowBg: '', borderLeft: '' },
+  { id: 'emerald', label: 'Soft Emerald', circleColor: '#d1fae5', rowBg: 'bg-emerald-50/70 hover:bg-emerald-100/70', borderLeft: 'border-l-[5px] border-l-emerald-500' },
+  { id: 'sky', label: 'Soft Sky', circleColor: '#e0f2fe', rowBg: 'bg-sky-50/70 hover:bg-sky-100/70', borderLeft: 'border-l-[5px] border-l-sky-500' },
+  { id: 'amber', label: 'Soft Amber', circleColor: '#fef3c7', rowBg: 'bg-amber-50/70 hover:bg-amber-100/70', borderLeft: 'border-l-[5px] border-l-amber-500' },
+  { id: 'purple', label: 'Soft Violet', circleColor: '#ede9fe', rowBg: 'bg-purple-50/70 hover:bg-purple-100/70', borderLeft: 'border-l-[5px] border-l-purple-500' },
+  { id: 'rose', label: 'Soft Rose', circleColor: '#ffe4e6', rowBg: 'bg-rose-50/70 hover:bg-rose-100/70', borderLeft: 'border-l-[5px] border-l-rose-500' },
+  { id: 'teal', label: 'Soft Teal', circleColor: '#ccfbf1', rowBg: 'bg-teal-50/70 hover:bg-teal-100/70', borderLeft: 'border-l-[5px] border-l-teal-500' },
+  { id: 'blue', label: 'Soft Blue', circleColor: '#dbeafe', rowBg: 'bg-blue-50/70 hover:bg-blue-100/70', borderLeft: 'border-l-[5px] border-l-blue-500' },
+]
