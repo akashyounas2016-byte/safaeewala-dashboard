@@ -32,6 +32,12 @@ export interface Booking {
   total_amount: number
   created_at: string
   source?: 'fluent_forms' | 'whatsapp' | 'manual' | 'daily_job_sheet' | string
+  // Dynamic sync & collection status
+  is_sheet_synced?: boolean
+  received_amount?: number
+  pending_due?: number
+  is_partially_paid?: boolean
+  job_sheet_id?: string
 }
 
 export interface Client {

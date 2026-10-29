@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency } from '../types'
 import { supabase } from '@/lib/supabase'
-import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs } from '@/lib/clientDataSync'
+import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry } from '@/lib/syncQueue'
 import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
@@ -24,6 +24,7 @@ interface DataStore {
   addBooking:      (b: Omit<Booking, 'id' | 'created_at'>) => void
   updateBooking:   (id: string, patch: Partial<Booking>) => void
   deleteBooking:   (id: string) => void
+  pushBookingToDailyJob: (bookingId: string) => void
 
   addClient:       (c: Omit<Client, 'id' | 'created_at'>) => void
   updateClient:    (id: string, patch: Partial<Client>) => void
@@ -596,6 +597,41 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from('daily_jobs').delete().eq('booking_id', id).then(({ error }) => { if (error) console.error(error) })
       if (b) logAudit('deleted', 'booking', id, b.client_name)
     },
+    pushBookingToDailyJob: (bookingId) => {
+      const b = bookings.find(x => x.id === bookingId)
+      if (!b) return
+      // Prevent duplicate push if already linked
+      const existing = dailyJobs.find(j => j.booking_id === bookingId)
+      if (existing) return
+
+      const jobRow: DailyJob = {
+        id: uid(),
+        created_at: now(),
+        date: b.scheduled_date || todayDubai(),
+        staff_name: crewToStaffName(b.assigned_crew, allEmployees) || 'Unassigned',
+        start_time: b.scheduled_time || '09:00',
+        end_time: b.end_time || addHoursToTime(b.scheduled_time || '09:00', b.duration_hours || 3),
+        duty_hours: safeNum(b.duration_hours || 3),
+        ot_hours: 0,
+        address: b.service_address || `${b.client_name} - Dubai`,
+        area: 'Dubai',
+        material: ((b as any).material as any) || 'No',
+        charges: safeNum(b.total_amount || 0),
+        received: b.status === 'completed' ? safeNum(b.total_amount || 0) : 0,
+        payment_mode: b.frequency === 'monthly' ? 'Monthly' : 'Cash',
+        is_overtime: false,
+        remarks: b.notes ? `[Booking] ${b.notes}` : `Booking: ${b.service_type || 'Standard Clean'}`,
+        service: b.service_type || 'Standard Clean',
+        booking_id: b.id,
+      }
+      setDailyJobs(p => {
+        const next = [jobRow, ...p]
+        safeLocalStorageSet('safaeewala_daily_jobs', next)
+        return next
+      })
+      dbInsert('daily_jobs', jobRow)
+      logAudit('created', 'daily_job', jobRow.id, jobRow.staff_name, `Synced from Booking #${b.id.slice(0, 6)}`)
+    },
 
     /* ── Clients ── */
     addClient: (c) => {
@@ -819,6 +855,59 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return next
       })
       dbUpdate('daily_jobs', id, sanitizedPatch)
+
+      // Bidirectional sync for regular / one-time bookings (R-SYNC-03):
+      // When a shift linked to a regular booking is edited on Daily Job Sheet,
+      // keep the booking record in step with date, timing, duty, staff, address, charges & completion.
+      // (Strictly adheres to R-SCHED-01..03: Permanent monthly recurring client contracts are NEVER mutated!).
+      if (before?.booking_id) {
+        const linkedBooking = bookings.find(b => b.id === before.booking_id)
+        if (linkedBooking && linkedBooking.frequency !== 'monthly') {
+          const bookingPatch: Partial<Booking> = {}
+          if ('date' in sanitizedPatch && sanitizedPatch.date && sanitizedPatch.date !== linkedBooking.scheduled_date) {
+            bookingPatch.scheduled_date = sanitizedPatch.date
+          }
+          if ('start_time' in sanitizedPatch && sanitizedPatch.start_time && sanitizedPatch.start_time !== linkedBooking.scheduled_time) {
+            bookingPatch.scheduled_time = sanitizedPatch.start_time
+          }
+          if ('end_time' in sanitizedPatch && sanitizedPatch.end_time && sanitizedPatch.end_time !== linkedBooking.end_time) {
+            bookingPatch.end_time = sanitizedPatch.end_time
+          }
+          if ('duty_hours' in sanitizedPatch && sanitizedPatch.duty_hours !== undefined && sanitizedPatch.duty_hours !== linkedBooking.duration_hours) {
+            bookingPatch.duration_hours = sanitizedPatch.duty_hours
+          }
+          if ('charges' in sanitizedPatch && sanitizedPatch.charges !== undefined && sanitizedPatch.charges !== linkedBooking.total_amount) {
+            bookingPatch.total_amount = sanitizedPatch.charges
+          }
+          if ('address' in sanitizedPatch && sanitizedPatch.address && sanitizedPatch.address !== linkedBooking.service_address) {
+            bookingPatch.service_address = sanitizedPatch.address
+          }
+          if ('service' in sanitizedPatch && sanitizedPatch.service && sanitizedPatch.service !== linkedBooking.service_type) {
+            bookingPatch.service_type = sanitizedPatch.service
+          }
+          if ('staff_name' in sanitizedPatch && sanitizedPatch.staff_name) {
+            const crewIds = staffNameToCrew(sanitizedPatch.staff_name, allEmployees)
+            if (crewIds.length > 0 && JSON.stringify(crewIds) !== JSON.stringify(linkedBooking.assigned_crew)) {
+              bookingPatch.assigned_crew = crewIds
+            }
+          }
+          if ('received' in sanitizedPatch && sanitizedPatch.received !== undefined) {
+            const finalCharges = sanitizedPatch.charges !== undefined ? sanitizedPatch.charges : (before.charges || linkedBooking.total_amount || 0)
+            if (sanitizedPatch.received >= finalCharges && finalCharges > 0 && linkedBooking.status !== 'completed') {
+              bookingPatch.status = 'completed'
+            }
+          }
+
+          if (Object.keys(bookingPatch).length > 0) {
+            setBookings(prev => {
+              const next = prev.map(b => b.id === before.booking_id ? { ...b, ...bookingPatch } : b)
+              safeLocalStorageSet('safaeewala_bookings', next)
+              return next
+            })
+            dbUpdate('bookings', before.booking_id, bookingPatch)
+          }
+        }
+      }
     },
     deleteDailyJob: (id) => {
       const gone = dailyJobs.find(j => j.id === id)

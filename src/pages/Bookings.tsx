@@ -7,8 +7,9 @@ import {
   TrendingUp, CheckCircle, CheckCircle2, AlertCircle, Upload, Download,
   FileSpreadsheet, MessageCircle, RefreshCw, RotateCcw,
   LayoutGrid, Table as TableIcon, Eye, User, Users, Sparkles, X, Filter, Repeat, Check, Trash2, Pencil,
-  MoreVertical, Briefcase
+  MoreVertical, Briefcase, Plus
 } from 'lucide-react'
+import { notify } from '@/lib/notify'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -46,7 +47,8 @@ export const BOOKING_COLUMNS: TableColumnDef[] = [
   { id: 'cleaners',       label: 'Assigned Cleaners',   defaultVisible: true,  minWidth: '170px', align: 'left' },
   { id: 'crew_size',      label: 'Crew Count',          defaultVisible: false, minWidth: '100px', align: 'center' },
   { id: 'address',        label: 'Service Address',     defaultVisible: true,  minWidth: '220px', align: 'left' },
-  { id: 'amount',         label: 'Amount (AED)',        defaultVisible: true,  minWidth: '115px', align: 'right' },
+  { id: 'amount',         label: 'Amount (AED)',        defaultVisible: true,  minWidth: '120px', align: 'right' },
+  { id: 'collection',     label: 'Collection & Sync',   defaultVisible: true,  minWidth: '160px', align: 'left' },
   { id: 'status',         label: 'Status',              defaultVisible: true,  minWidth: '120px', align: 'center' },
   { id: 'payment_method', label: 'Payment Method',      defaultVisible: false, minWidth: '130px', align: 'left' },
   { id: 'notes',          label: 'Special Notes',       defaultVisible: false, minWidth: '200px', align: 'left' },
@@ -299,6 +301,7 @@ export function Bookings() {
     addDailyJob,
     updateDailyJob,
     deleteDailyJob,
+    pushBookingToDailyJob,
     clients,
     employees,
   } = useData()
@@ -353,10 +356,23 @@ export function Bookings() {
         ))
       )
 
-      if (!linkedJob) return b
+      if (!linkedJob) {
+        return {
+          ...b,
+          is_sheet_synced: false,
+          received_amount: b.status === 'completed' ? b.total_amount : 0,
+          pending_due: b.status === 'completed' ? 0 : b.total_amount,
+          is_partially_paid: false,
+        }
+      }
 
       // Job sheet stores names; bookings store employee IDs
       const updatedCrew = staffNameToCrew(linkedJob.staff_name, employees)
+      const linkedReceived = Number(linkedJob.received || 0)
+      const finalCharges = Number(linkedJob.charges || b.total_amount || 0)
+      const pendingDue = Math.max(0, finalCharges - linkedReceived)
+      const isPartiallyPaid = linkedReceived > 0 && pendingDue > 0
+      const isFullyCollected = linkedReceived >= finalCharges && finalCharges > 0
 
       return {
         ...b,
@@ -364,8 +380,13 @@ export function Bookings() {
         scheduled_time: linkedJob.start_time || b.scheduled_time,
         end_time: linkedJob.end_time || b.end_time,
         duration_hours: linkedJob.duty_hours || b.duration_hours,
-        total_amount: linkedJob.charges || b.total_amount,
-        status: linkedJob.received > 0 ? 'completed' : b.status,
+        total_amount: finalCharges,
+        status: isFullyCollected ? 'completed' : b.status,
+        is_sheet_synced: true,
+        received_amount: linkedReceived,
+        pending_due: pendingDue,
+        is_partially_paid: isPartiallyPaid,
+        job_sheet_id: linkedJob.id,
       }
     })
 
@@ -401,6 +422,10 @@ export function Bookings() {
         (j.address && c.full_name && j.address.toLowerCase().includes(c.full_name.toLowerCase()))
       )
 
+      const jReceived = Number(j.received || 0)
+      const jCharges = Number(j.charges || 0)
+      const jDue = Math.max(0, jCharges - jReceived)
+
       syntheticBookings.push({
         id: `dj-${j.id}`,
         client_id: matchedClient?.id || '',
@@ -416,9 +441,14 @@ export function Bookings() {
         duration_hours: j.duty_hours || 0,
         assigned_crew: staffNameToCrew(j.staff_name, employees),
         notes: j.remarks || '',
-        total_amount: j.charges || 0,
+        total_amount: jCharges,
         created_at: j.created_at || `${j.date}T08:00:00Z`,
         source: 'daily_job_sheet',
+        is_sheet_synced: true,
+        received_amount: jReceived,
+        pending_due: jDue,
+        is_partially_paid: jReceived > 0 && jDue > 0,
+        job_sheet_id: j.id,
       })
     })
 
@@ -1452,6 +1482,26 @@ export function Bookings() {
                               </span>
                             )}
                             <SourceOriginTag source={resolveBookingSource(b)} />
+                            {b.is_sheet_synced ? (
+                              <span className="text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1" title="Synchronized on Daily Job Sheet">
+                                <Check size={10} className="text-emerald-600" />
+                                <span>Sheet Linked</span>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  pushBookingToDailyJob(b.id)
+                                  notify.success(`Booking #${b.id.slice(0, 6)} pushed to Daily Job Sheet!`)
+                                }}
+                                className="text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 transition-colors cursor-pointer flex items-center gap-1"
+                                title="Click to push this shift to Daily Job Sheet"
+                              >
+                                <Plus size={9} />
+                                <span>Push to Sheet</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1528,6 +1578,15 @@ export function Bookings() {
                       <p className="text-[17px] font-black text-slate-900 tabular-nums">
                         AED {b.total_amount.toLocaleString()}
                       </p>
+                      {b.is_partially_paid ? (
+                        <p className="text-[10.5px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md mt-0.5 inline-block">
+                          Paid: AED {b.received_amount} · Due: AED {b.pending_due}
+                        </p>
+                      ) : b.status === 'completed' || (b.received_amount && b.received_amount >= b.total_amount && b.total_amount > 0) ? (
+                        <p className="text-[10px] font-bold text-emerald-700 flex items-center gap-1 mt-0.5">
+                          <Check size={11} /> Fully Collected
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
@@ -1905,7 +1964,59 @@ export function Bookings() {
                           if (col.id === 'amount') {
                             return (
                               <td key={col.id} className="py-3 px-4 text-right whitespace-nowrap font-black font-mono text-[13.5px] text-slate-900">
-                                AED {b.total_amount.toLocaleString()}
+                                <div>AED {b.total_amount.toLocaleString()}</div>
+                                {b.is_partially_paid && (
+                                  <div className="text-[10px] font-bold text-amber-700">
+                                    Rec: AED {b.received_amount}
+                                  </div>
+                                )}
+                              </td>
+                            )
+                          }
+
+                          if (col.id === 'collection') {
+                            return (
+                              <td key={col.id} className="py-3 px-4 whitespace-nowrap">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-1.5">
+                                    {b.is_sheet_synced ? (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200" title="Synchronized on Daily Job Sheet">
+                                        <Check size={11} className="text-emerald-600" />
+                                        <span>Sheet Linked</span>
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          pushBookingToDailyJob(b.id)
+                                          notify.success(`Booking #${b.id.slice(0, 6)} successfully pushed to Daily Job Sheet!`)
+                                        }}
+                                        className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 transition-colors cursor-pointer"
+                                        title="Click to push this booking to Daily Job Sheet"
+                                      >
+                                        <Plus size={10} />
+                                        <span>Push to Sheet</span>
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    {b.is_partially_paid ? (
+                                      <span className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md inline-block">
+                                        Paid: AED {b.received_amount} (Due: {b.pending_due})
+                                      </span>
+                                    ) : b.status === 'completed' || (b.received_amount && b.received_amount >= b.total_amount && b.total_amount > 0) ? (
+                                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md inline-block">
+                                        Collected: AED {b.received_amount || b.total_amount}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-medium text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md inline-block">
+                                        Uncollected: AED {b.total_amount}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </td>
                             )
                           }
@@ -2478,7 +2589,12 @@ function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b
                     <span className="text-[10.5px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
                       {b.duration_hours || 3}h duty
                     </span>
-                    <span className="font-black text-teal-950">AED {b.total_amount?.toLocaleString() || 0}</span>
+                    <div className="text-right">
+                      <span className="font-black text-teal-950 block">AED {b.total_amount?.toLocaleString() || 0}</span>
+                      {b.is_partially_paid && (
+                        <span className="text-[9.5px] font-bold text-amber-700 block">Paid: AED {b.received_amount}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -2631,7 +2747,7 @@ function BookingDetailModal({
 }) {
   if (!booking) return null
 
-  const { clients } = useData()
+  const { clients, pushBookingToDailyJob } = useData()
   const matchedClient = useMemo(() => {
     if (!booking) return null
     return (clients || []).find(c =>
@@ -3111,6 +3227,50 @@ function BookingDetailModal({
               <p className="text-[11px] text-slate-500 mt-0.5">
                 {relatedInvoice ? `Invoice: ${relatedInvoice.invoice_number || 'Generated'}` : 'No invoice generated yet'}
               </p>
+
+              {/* Daily Job Sheet Live Sync & Collections Status */}
+              <div className="mt-2.5 pt-2 border-t border-amber-200/70 text-[11px] space-y-1">
+                {booking.is_sheet_synced ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-600 font-medium flex items-center gap-1 text-emerald-800">
+                        <Check size={11} className="text-emerald-600" />
+                        Daily Job Sheet:
+                      </span>
+                      <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        Linked ✓
+                      </span>
+                    </div>
+                    {booking.received_amount !== undefined && (
+                      <div className="flex items-center justify-between text-slate-700">
+                        <span>Collected on Site:</span>
+                        <strong className="text-slate-900 tabular-nums">AED {booking.received_amount}</strong>
+                      </div>
+                    )}
+                    {booking.is_partially_paid && (
+                      <div className="flex items-center justify-between text-amber-800 bg-amber-100/70 px-2 py-1 rounded-md font-bold text-[10.5px]">
+                        <span>Remaining Due:</span>
+                        <span>AED {booking.pending_due}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">Daily Job Sheet:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        pushBookingToDailyJob(booking.id)
+                        notify.success(`Booking #${booking.id.slice(0, 6)} successfully pushed to Daily Job Sheet!`)
+                      }}
+                      className="px-2 py-0.5 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold border border-amber-300 transition-colors text-[10.5px] cursor-pointer flex items-center gap-1"
+                    >
+                      <Plus size={10} />
+                      <span>Push to Sheet</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
