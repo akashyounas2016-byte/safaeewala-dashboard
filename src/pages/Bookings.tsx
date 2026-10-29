@@ -7,7 +7,7 @@ import {
   TrendingUp, CheckCircle, CheckCircle2, AlertCircle, Upload, Download,
   FileSpreadsheet, MessageCircle, RefreshCw, RotateCcw,
   LayoutGrid, Table as TableIcon, Eye, User, Users, Sparkles, X, Filter, Repeat, Check, Trash2, Pencil,
-  MoreVertical, Briefcase, Plus
+  MoreVertical, Briefcase, Plus, Wallet, FileText, Receipt
 } from 'lucide-react'
 import { notify } from '@/lib/notify'
 import { Card, CardContent } from '@/components/ui/Card'
@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { NewBookingModal } from '@/components/bookings/NewBookingModal'
+import { BookingInvoiceModal } from '@/components/bookings/BookingInvoiceModal'
+import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
 import { PageHero, type HeroNotification } from '@/components/layout/PageHero'
 import { formatCurrency, formatDate, formatTime, addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
@@ -317,6 +319,31 @@ export function Bookings() {
   const [serviceFilter, setServiceFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const [invoiceBooking, setInvoiceBooking] = useState<Booking | null>(null)
+  const [paymentBooking, setPaymentBooking] = useState<Booking | null>(null)
+
+  const handlePaymentSuccess = (payment: any) => {
+    if (!paymentBooking) return
+    const paidAmt = Number(payment.amount) || 0
+    if (paymentBooking.id.startsWith('dj-')) {
+      const jobId = paymentBooking.id.replace('dj-', '')
+      const curJob = dailyJobs.find(j => j.id === jobId)
+      const curReceived = (curJob?.received !== undefined && curJob?.received !== '') ? Number(curJob.received) : 0
+      const newReceived = curReceived + paidAmt
+      updateDailyJob(jobId, { received: newReceived })
+    } else {
+      const curReceived = Number(paymentBooking.received_amount) || 0
+      const newReceived = curReceived + paidAmt
+      const isFullyPaid = newReceived >= (paymentBooking.total_amount || 0)
+      updateBooking(paymentBooking.id, {
+        received_amount: newReceived,
+        ...(isFullyPaid ? { status: 'completed' as BookingStatus } : {})
+      })
+    }
+    notify.success(`Payment of AED ${paidAmt.toLocaleString()} recorded for ${paymentBooking.client_name}`)
+    setPaymentBooking(null)
+  }
+
   const [showThreeDotMenu, setShowThreeDotMenu] = useState(false)
   const threeDotMenuRef = useRef<HTMLDivElement>(null)
   const [showAllCards, setShowAllCards] = useState(false)
@@ -1613,10 +1640,31 @@ export function Bookings() {
 
                       <button
                         type="button"
-                        onClick={() => setSelectedBooking(b)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-50/40 hover:bg-teal-100/60 text-teal-900 text-[11.5px] font-bold border border-teal-200/80 hover:border-teal-300 transition-colors cursor-pointer"
+                        onClick={() => setInvoiceBooking(b)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-50/70 hover:bg-purple-100 text-purple-900 text-[11.5px] font-bold border border-purple-200/80 hover:border-purple-300 transition-all cursor-pointer shadow-2xs"
+                        title="View or Generate Tax Invoice"
                       >
-                        <Eye size={12} />
+                        <FileText size={12} className="text-purple-600" />
+                        <span>Invoice</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPaymentBooking(b)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50/70 hover:bg-emerald-100 text-emerald-950 text-[11.5px] font-bold border border-emerald-200/80 hover:border-emerald-300 transition-all cursor-pointer shadow-2xs"
+                        title="Record Client Payment"
+                      >
+                        <Wallet size={12} className="text-emerald-700" />
+                        <span>Payment</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBooking(b)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-50/60 hover:bg-teal-100 text-teal-950 text-[11.5px] font-bold border border-teal-200/80 hover:border-teal-300 transition-all cursor-pointer shadow-2xs"
+                        title="View Booking Details"
+                      >
+                        <Eye size={12} className="text-teal-700" />
                         <span>Details</span>
                       </button>
                     </div>
@@ -2075,6 +2123,22 @@ export function Bookings() {
                                   )}
                                   <button
                                     type="button"
+                                    onClick={() => setInvoiceBooking(b)}
+                                    className="p-1.5 rounded-lg text-purple-700 hover:text-purple-900 hover:bg-purple-50 transition-colors cursor-pointer"
+                                    title="View or Generate Tax Invoice"
+                                  >
+                                    <FileText size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPaymentBooking(b)}
+                                    className="p-1.5 rounded-lg text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 transition-colors cursor-pointer"
+                                    title="Record Client Payment"
+                                  >
+                                    <Wallet size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => setSelectedBooking(b)}
                                     className="p-1.5 rounded-lg text-slate-600 hover:text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
                                     title="View Details"
@@ -2157,7 +2221,7 @@ export function Bookings() {
       )}
 
       {/* ── KANBAN VIEW ── */}
-      {view === 'kanban' && <KanbanBoard bookings={filtered} onSelect={setSelectedBooking} />}
+      {view === 'kanban' && <KanbanBoard bookings={filtered} onSelect={setSelectedBooking} onInvoice={setInvoiceBooking} onPayment={setPaymentBooking} />}
 
       {/* ── CALENDAR VIEW ── */}
       {view === 'calendar' && <WeekCalendar bookings={filtered} onSelect={setSelectedBooking} />}
@@ -2206,6 +2270,36 @@ export function Bookings() {
         invoices={invoices}
         onUpdateInvoice={updateInvoice}
         employees={employees}
+        onOpenInvoice={b => setInvoiceBooking(b)}
+        onOpenPayment={b => setPaymentBooking(b)}
+      />
+
+      {/* Invoice Modal for Selected Booking */}
+      <BookingInvoiceModal
+        booking={invoiceBooking}
+        open={!!invoiceBooking}
+        onClose={() => setInvoiceBooking(null)}
+      />
+
+      {/* Record Payment Modal for Selected Booking */}
+      <RecordPaymentModal
+        open={!!paymentBooking}
+        onClose={() => setPaymentBooking(null)}
+        initialClientName={paymentBooking?.client_name || ''}
+        initialClientId={paymentBooking?.client_id}
+        initialAmount={
+          paymentBooking?.pending_due !== undefined && paymentBooking.pending_due > 0
+            ? paymentBooking.pending_due
+            : (paymentBooking?.total_amount || 0)
+        }
+        bookingContext={paymentBooking ? {
+          id: paymentBooking.id,
+          service_type: paymentBooking.service_type,
+          scheduled_date: paymentBooking.scheduled_date,
+          total_amount: paymentBooking.total_amount,
+          duration_hours: paymentBooking.duration_hours,
+        } : undefined}
+        onSuccess={handlePaymentSuccess}
       />
     </div>
   )
@@ -2515,7 +2609,17 @@ function WeekCalendar({ bookings, onSelect }: { bookings: Booking[]; onSelect: (
 }
 
 /* ─── Kanban board (Showing First 3 Entries + "View All" Button) ─── */
-function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b: Booking) => void }) {
+function KanbanBoard({
+  bookings,
+  onSelect,
+  onInvoice,
+  onPayment,
+}: {
+  bookings: Booking[]
+  onSelect: (b: Booking) => void
+  onInvoice?: (b: Booking) => void
+  onPayment?: (b: Booking) => void
+}) {
   const [expandedCols, setExpandedCols] = useState<Record<string, boolean>>({})
 
   const toggleExpand = (colKey: string) => {
@@ -2595,6 +2699,40 @@ function KanbanBoard({ bookings, onSelect }: { bookings: Booking[]; onSelect: (b
                         <span className="text-[9.5px] font-bold text-amber-700 block">Paid: AED {b.received_amount}</span>
                       )}
                     </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-1 pt-2 border-t border-slate-100/80 mt-2" onClick={e => e.stopPropagation()}>
+                    {onInvoice && (
+                      <button
+                        type="button"
+                        onClick={() => onInvoice(b)}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold text-purple-800 bg-purple-50/80 hover:bg-purple-100 border border-purple-200 transition-colors flex items-center gap-1 cursor-pointer"
+                        title="Invoice"
+                      >
+                        <FileText size={10} className="text-purple-600" />
+                        <span>Invoice</span>
+                      </button>
+                    )}
+                    {onPayment && (
+                      <button
+                        type="button"
+                        onClick={() => onPayment(b)}
+                        className="px-2 py-1 rounded-lg text-[10px] font-bold text-emerald-800 bg-emerald-50/80 hover:bg-emerald-100 border border-emerald-200 transition-colors flex items-center gap-1 cursor-pointer"
+                        title="Record Payment"
+                      >
+                        <Wallet size={10} className="text-emerald-600" />
+                        <span>Payment</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onSelect(b)}
+                      className="px-2 py-1 rounded-lg text-[10px] font-bold text-teal-800 bg-teal-50/80 hover:bg-teal-100 border border-teal-200 transition-colors flex items-center gap-1 cursor-pointer"
+                      title="Details"
+                    >
+                      <Eye size={10} className="text-teal-600" />
+                      <span>Details</span>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -2735,6 +2873,8 @@ function BookingDetailModal({
   invoices,
   onUpdateInvoice,
   employees,
+  onOpenInvoice,
+  onOpenPayment,
 }: {
   booking: Booking | null
   open: boolean
@@ -2744,6 +2884,8 @@ function BookingDetailModal({
   invoices: ReturnType<typeof useData>['invoices']
   onUpdateInvoice: (id: string, patch: any) => void
   employees: Employee[]
+  onOpenInvoice?: (b: Booking) => void
+  onOpenPayment?: (b: Booking) => void
 }) {
   if (!booking) return null
 
@@ -2752,9 +2894,24 @@ function BookingDetailModal({
     if (!booking) return null
     return (clients || []).find(c =>
       (booking.client_id && c.id === booking.client_id) ||
-      (c.full_name && booking.client_name && c.full_name.toLowerCase().trim() === booking.client_name.toLowerCase().trim())
+      (c.full_name && booking.client_name && c.full_name.toLowerCase().trim() === booking.client_name.toLowerCase().trim()) ||
+      (booking.client_phone && c.phone && c.phone.replace(/\D/g, '').endsWith(booking.client_phone.replace(/\D/g, '')))
     ) || null
   }, [booking, clients])
+
+  // Guaranteed direct link to client's profile (never falls back to generic /clients table)
+  const clientProfileId = useMemo(() => {
+    if (matchedClient?.id) return matchedClient.id
+    if (booking?.client_id) return booking.client_id
+    return encodeURIComponent(booking?.client_name || '')
+  }, [matchedClient, booking])
+
+  const displayClientId = useMemo(() => {
+    if ((matchedClient as any)?.client_code) return (matchedClient as any).client_code
+    if (matchedClient?.id) return matchedClient.id.slice(0, 8).toUpperCase()
+    if (booking?.client_id) return booking.client_id.slice(0, 8).toUpperCase()
+    return `CL-${booking?.id.slice(0, 5).toUpperCase()}`
+  }, [matchedClient, booking])
 
   const [isEditing, setIsEditing] = useState(false)
   const [status, setStatus] = useState<BookingStatus>(booking.status)
@@ -2866,9 +3023,19 @@ function BookingDetailModal({
           <span className="font-extrabold text-[16px] text-slate-900">
             {isEditing ? 'Edit Booking' : 'Booking Details'}
           </span>
-          <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-md">
+          <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-md" title="Booking Reference ID">
             #{booking.id.slice(0, 8)}
           </span>
+          <Link
+            to={`/clients/${clientProfileId}`}
+            onClick={onClose}
+            className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold text-teal-800 hover:text-teal-950 bg-teal-50 hover:bg-teal-100/90 border border-teal-200/90 px-2.5 py-0.5 rounded-md transition-all cursor-pointer shadow-2xs group"
+            title={`Open client profile for ${booking.client_name}`}
+          >
+            <User size={11} className="text-teal-600 group-hover:text-teal-800" />
+            <span>Client ID: <strong className="text-teal-950 font-extrabold">#{displayClientId}</strong></span>
+            <ExternalLink size={10} className="text-teal-500 group-hover:text-teal-700" />
+          </Link>
           {saveNotice && (
             <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 animate-in fade-in">
               ✓ {saveNotice}
@@ -2915,6 +3082,30 @@ function BookingDetailModal({
                 <span>Save</span>
               </button>
             </>
+          )}
+
+          {onOpenInvoice && (
+            <button
+              type="button"
+              onClick={() => onOpenInvoice(booking)}
+              className="px-3 py-1.5 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+              title="View or Create Invoice for this booking"
+            >
+              <FileText size={12} className="text-purple-600" />
+              <span>Invoice</span>
+            </button>
+          )}
+
+          {onOpenPayment && (
+            <button
+              type="button"
+              onClick={() => onOpenPayment(booking)}
+              className="px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+              title="Record Payment for this booking"
+            >
+              <Wallet size={12} className="text-emerald-700" />
+              <span>Payment</span>
+            </button>
           )}
 
           <button
@@ -3109,13 +3300,13 @@ function BookingDetailModal({
       ) : (
         <div className="space-y-4">
           {/* 1. Client & Status Profile Banner */}
-          <div className="bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white rounded-2xl p-4 shadow-md flex items-center justify-between gap-3 flex-wrap">
+          <div className="bg-gradient-to-r from-[#021f24] via-[#062c32] to-[#02181b] text-white rounded-2xl p-4 shadow-md flex items-center justify-between gap-3 flex-wrap border border-teal-800/40">
             <div className="flex items-center gap-3">
               <Initials name={booking.client_name} idx={0} size="lg" />
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Link
-                    to={matchedClient ? `/clients/${matchedClient.id}` : `/clients?search=${encodeURIComponent(booking.client_name)}`}
+                    to={`/clients/${clientProfileId}`}
                     onClick={onClose}
                     className="group inline-flex items-center gap-1.5 text-lg font-black text-white hover:text-teal-300 transition-colors cursor-pointer"
                     title={`Open ${booking.client_name}'s full profile`}
@@ -3123,6 +3314,19 @@ function BookingDetailModal({
                     <span className="group-hover:underline">{booking.client_name}</span>
                     <ExternalLink size={14} className="text-teal-400 group-hover:text-teal-200 transition-colors shrink-0" />
                   </Link>
+
+                  {/* Clickable Client ID Badge */}
+                  <Link
+                    to={`/clients/${clientProfileId}`}
+                    onClick={onClose}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-teal-900/80 hover:bg-teal-800 text-teal-200 border border-teal-600/50 hover:border-teal-400 transition-all cursor-pointer shadow-2xs group"
+                    title={`Open Client Profile #${displayClientId}`}
+                  >
+                    <User size={10} className="text-teal-400 group-hover:text-teal-200" />
+                    <span>Client ID: <strong className="text-white font-extrabold">#{displayClientId}</strong></span>
+                    <ExternalLink size={10} className="text-teal-400 group-hover:text-teal-200 ml-0.5" />
+                  </Link>
+
                   <SourceOriginTag source={resolveBookingSource(booking)} />
                   {booking.frequency === 'monthly' && (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-400 text-emerald-950">
@@ -3269,6 +3473,30 @@ function BookingDetailModal({
                       <span>Push to Sheet</span>
                     </button>
                   </div>
+                )}
+              </div>
+
+              {/* Quick Invoice & Payment Buttons */}
+              <div className="flex items-center gap-1.5 pt-2 border-t border-amber-200/70 mt-2">
+                {onOpenInvoice && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenInvoice(booking)}
+                    className="flex-1 py-1.5 px-2 rounded-xl bg-purple-100/70 hover:bg-purple-200/80 text-purple-900 border border-purple-200 text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                  >
+                    <FileText size={11} className="text-purple-700" />
+                    <span>{relatedInvoice ? 'View Invoice' : 'Generate Invoice'}</span>
+                  </button>
+                )}
+                {onOpenPayment && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenPayment(booking)}
+                    className="flex-1 py-1.5 px-2 rounded-xl bg-emerald-100/70 hover:bg-emerald-200/80 text-emerald-950 border border-emerald-200 text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                  >
+                    <Wallet size={11} className="text-emerald-700" />
+                    <span>Record Payment</span>
+                  </button>
                 )}
               </div>
             </div>

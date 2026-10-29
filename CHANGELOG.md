@@ -6,6 +6,11 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(bookings, clients): Fixed client redirection from Booking Details popup (`BookingDetailModal`) — clicking Client ID or Client Name now redirects directly to that specific client's profile (`/clients/:id`), eliminating fallback to the generic clients table (`/clients`). Enhanced `ClientProfile.tsx` resolution to match client by ID, code, name, phone, or dynamically synthesize client history from Bookings/DailyJobs.
+- feat(bookings): Added synchronized 'Invoice' and 'Payment' quick action buttons to every booking card across Card Grid, Table View, Kanban Board, and Booking Details popup.
+- feat(bookings): Created `BookingInvoiceModal` (`BookingInvoiceModal.tsx`) matching CRM Slate-Teal & Emerald theme — supports instant Tax Invoice preview, PDF printing via shared `invoicePrint.ts`, payment status tracking, and 1-click tax invoice generation with UAE VAT (5% / 0% Exempt).
+- feat(payments): Enhanced `RecordPaymentModal` (`RecordPaymentModal.tsx`) with booking context header and two-way collection sync — recording payment directly updates booking `received_amount`, marks status completed on full settlement, and syncs to Daily Job Sheet.
+
 - feat(sync, bookings): Implemented bidirectional sync from Daily Job Sheet to regular Bookings — edits to one-time job shifts (`updateDailyJob`) automatically update the linked booking's date, start/end time, duty duration, cleaner assignments, address, charges, and completion status while strictly preserving Monthly Clients schedule isolation (`R-SCHED-01..03`, `R-SYNC-03`).
 - feat(bookings): Added live Daily Job Sheet synchronization indicator (`Sheet Linked ✓` vs `+ Push to Sheet`) across Card Grid, Kanban Board, Table View, and Booking Details Modal with 1-click `pushBookingToDailyJob` capability.
 - feat(bookings): Added partial payment & collection tracking on Bookings screen — shows live received amounts and pending dues (`Paid: AED X · Due: AED Y`), dedicated 'Collection & Sync' Table View column, and live collections widget in Booking Details Modal.

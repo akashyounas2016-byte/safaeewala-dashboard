@@ -195,8 +195,84 @@ export function ClientProfile() {
   useEffect(() => { setReviewMap(loadReviews()) }, [])
 
   const decodedId = id ? decodeURIComponent(id).toLowerCase().trim() : ''
-  const client    = clients.find(c => c.id === id || (c.full_name && decodedId && c.full_name.toLowerCase().trim() === decodedId))
-  const clientIdx = clients.findIndex(c => c.id === id || (c.full_name && decodedId && c.full_name.toLowerCase().trim() === decodedId))
+  const client = useMemo(() => {
+    if (!id && !decodedId) return null
+
+    // 1. Direct match by ID (exact or case-insensitive)
+    let found = clients.find(c => c.id === id || c.id.toLowerCase() === decodedId)
+    if (found) return found
+
+    // 2. Match by full_name
+    found = clients.find(c => c.full_name && c.full_name.toLowerCase().trim() === decodedId)
+    if (found) return found
+
+    // 3. Match by client_code
+    found = clients.find(c => (c as any).client_code && (c as any).client_code.toLowerCase().trim() === decodedId)
+    if (found) return found
+
+    // 4. Match by phone or whatsapp
+    const cleanId = decodedId.replace(/\D/g, '')
+    if (cleanId.length >= 7) {
+      found = clients.find(c => {
+        const p1 = (c.phone || '').replace(/\D/g, '')
+        const p2 = (c.whatsapp || '').replace(/\D/g, '')
+        return (p1 && (p1.endsWith(cleanId) || cleanId.endsWith(p1))) ||
+               (p2 && (p2.endsWith(cleanId) || cleanId.endsWith(p2)))
+      })
+      if (found) return found
+    }
+
+    // 5. Synthesize client from existing Bookings if not in clients table yet
+    const matchingBooking = bookings.find(b =>
+      b.client_id === id ||
+      (b.client_name && b.client_name.toLowerCase().trim() === decodedId) ||
+      (cleanId.length >= 7 && b.client_phone && b.client_phone.replace(/\D/g, '').endsWith(cleanId))
+    )
+    if (matchingBooking) {
+      return {
+        id: matchingBooking.client_id || `booking-${matchingBooking.id}`,
+        full_name: matchingBooking.client_name,
+        phone: matchingBooking.client_phone || '',
+        whatsapp: matchingBooking.client_phone || '',
+        building_name: matchingBooking.service_address || '',
+        apartment: '',
+        area: 'Dubai',
+        city: 'Dubai',
+        source: matchingBooking.source || 'booking',
+        service_days: [],
+        scheduled_time: matchingBooking.scheduled_time || '09:00',
+        duration_hours: matchingBooking.duration_hours || 3,
+        created_at: matchingBooking.created_at || matchingBooking.scheduled_date,
+      } as Client
+    }
+
+    // 6. Synthesize client from DailyJobs if exists there
+    const matchingJob = dailyJobs.find(j =>
+      j.client && (j.client.toLowerCase().trim() === decodedId || (cleanId.length >= 7 && j.phone && j.phone.replace(/\D/g, '').endsWith(cleanId)))
+    )
+    if (matchingJob) {
+      return {
+        id: `job-${encodeURIComponent(matchingJob.client)}`,
+        full_name: matchingJob.client,
+        phone: matchingJob.phone || '',
+        whatsapp: matchingJob.phone || '',
+        building_name: matchingJob.address || '',
+        apartment: '',
+        area: 'Dubai',
+        city: 'Dubai',
+        source: 'daily_job_sheet',
+        service_days: [],
+        created_at: matchingJob.date,
+      } as Client
+    }
+
+    return null
+  }, [clients, bookings, dailyJobs, id, decodedId])
+
+  const clientIdx = useMemo(() => {
+    if (!client) return -1
+    return clients.findIndex(c => c.id === client.id)
+  }, [clients, client])
 
   // Live client payments from unified storage
   const clientRecordedPayments = useMemo(() => {

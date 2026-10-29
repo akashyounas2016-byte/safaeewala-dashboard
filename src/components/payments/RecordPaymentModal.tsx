@@ -18,6 +18,13 @@ export interface RecordPaymentModalProps {
   initialClientName?: string
   initialClientId?: string
   initialAmount?: number | string
+  bookingContext?: {
+    id: string
+    service_type: string
+    scheduled_date: string
+    total_amount: number
+    duration_hours?: number
+  }
   onSuccess?: (payment: MonthlyClientPayment) => void
 }
 
@@ -39,6 +46,7 @@ export function RecordPaymentModal({
   initialClientName = '',
   initialClientId,
   initialAmount = '',
+  bookingContext,
   onSuccess,
 }: RecordPaymentModalProps) {
   const { clients, dailyJobs, invoices } = useData()
@@ -184,6 +192,27 @@ export function RecordPaymentModal({
       className="max-w-xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {bookingContext && (
+          <div className="bg-gradient-to-r from-[#021f24] via-[#062c32] to-[#02181b] text-white rounded-2xl p-3.5 shadow-md border border-teal-800/40 flex items-center justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-bold text-teal-300">Booking Payment</span>
+                <span className="text-[10.5px] font-mono text-slate-300 bg-teal-900/80 px-2 py-0.5 rounded border border-teal-700/60">
+                  #{bookingContext.id.slice(0, 8)}
+                </span>
+              </div>
+              <p className="text-[11.5px] text-slate-300 mt-0.5">
+                {bookingContext.service_type} · {bookingContext.scheduled_date} ({bookingContext.duration_hours || 3}h)
+              </p>
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Charges</span>
+              <span className="text-[15px] font-black text-emerald-400 font-mono">
+                AED {bookingContext.total_amount.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* ── Client Name Field with Dynamic Suggestions ── */}
         <div className="relative" ref={dropdownRef}>
