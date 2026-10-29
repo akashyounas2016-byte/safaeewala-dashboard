@@ -9,6 +9,9 @@ import type { Employee, Agency, Client, EmployeeDocument, EmployeeRole } from '@
 import { MONTHLY_WORK_HOURS, formatEmpRole } from '@/lib/clientDataSync'
 import { EmployeeDocInput, EmployeeDocumentPreviewModal } from './EmployeeDocumentField'
 import { todayDubai } from '@/lib/dubaiTime'
+import { useData } from '@/store/DataContext'
+import { notify, confirmAsync } from '@/lib/notify'
+import { findDuplicateEmployee, formatEmiratesId, isUaeMobile, isValidEmiratesId } from '@/lib/validation'
 
 export interface EmployeeFormModalProps {
   open: boolean
@@ -107,7 +110,9 @@ function EmployeeFormModalContent({
     })
   }
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const { employees } = useData()
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     const str = (key: string) => ((fd.get(key) as string) || '').trim() || undefined
@@ -123,7 +128,7 @@ function EmployeeFormModalContent({
     for (const [from, to, label] of datePairs) {
       const a = str(from), b = str(to)
       if (a && b && a > b) {
-        alert(`${label}: issue date cannot be after the expiry date.`)
+        notify.error(`${label}: issue date cannot be after the expiry date.`)
         return
       }
     }
@@ -198,6 +203,31 @@ function EmployeeFormModalContent({
 
       // Document history
       documents: docsList.length > 0 ? docsList : initialEmployee?.documents,
+    }
+
+    // VAL-04: Emirates ID is 15 digits starting with 784 — stored as 784-YYYY-NNNNNNN-N
+    if (patch.emirates_id) {
+      if (!isValidEmiratesId(patch.emirates_id)) {
+        notify.error('Emirates ID must be 15 digits starting with 784, e.g. 784-1990-1234567-1.')
+        return
+      }
+      patch.emirates_id = formatEmiratesId(patch.emirates_id)
+    }
+    // VAL-03: UAE mobile format (other countries are allowed after a confirm)
+    if (patch.phone && !isUaeMobile(patch.phone)) {
+      const ok = await confirmAsync({ title: 'Phone number', message: `"${patch.phone}" does not look like a UAE mobile (050 123 4567). Save it anyway?`, confirmLabel: 'Save anyway' })
+      if (!ok) return
+    }
+    // VAL-01: the same Emirates ID / passport / phone means the same person — never two records
+    const dup = findDuplicateEmployee(employees, { emirates_id: patch.emirates_id || '', passport_number: patch.passport_number, phone: patch.phone || '' }, initialEmployee?.id)
+    if (dup) {
+      if (dup.reason === 'same phone number') {
+        const ok = await confirmAsync({ title: 'Possible duplicate employee', message: `${dup.employee.full_name} already has this phone number. Save anyway?`, confirmLabel: 'Save anyway', tone: 'danger' })
+        if (!ok) return
+      } else {
+        notify.error(`${dup.employee.full_name} is already registered with the ${dup.reason}. Open that employee instead.`)
+        return
+      }
     }
 
     onSave(patch)

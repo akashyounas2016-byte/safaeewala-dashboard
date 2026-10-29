@@ -18,6 +18,9 @@ import {
 } from 'lucide-react'
 import type { Client, Employee } from '@/types'
 import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
+import { useData } from '@/store/DataContext'
+import { confirmAsync } from '@/lib/notify'
+import { findDuplicateClient, isUaeMobile } from '@/lib/validation'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 
 export interface ClientModalFormProps {
@@ -78,7 +81,9 @@ export function ClientModalForm({
     return unique.sort((a, b) => a.localeCompare(b))
   }, [employees, selectedCleaners])
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const { clients } = useData()
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
     const clientName = String(f.get('full_name') || '').trim() || (isEdit ? initialClient?.full_name || 'Client' : 'New Client')
@@ -104,6 +109,27 @@ export function ClientModalForm({
       advance_amount:    advance,
       adjustment_amount: adjustment,
       pending_amount:    pending,
+    }
+
+    // VAL-03: UAE mobile format (other countries are allowed after a confirm)
+    if (patch.phone && !isUaeMobile(patch.phone)) {
+      const ok = await confirmAsync({
+        title: 'Phone number',
+        message: `"${patch.phone}" does not look like a UAE mobile (050 123 4567). Save it anyway?`,
+        confirmLabel: 'Save anyway',
+      })
+      if (!ok) return
+    }
+    // VAL-02: same phone, or same name + building → probably the same client
+    const dup = findDuplicateClient(clients, { full_name: patch.full_name || '', phone: patch.phone || '', building_name: patch.building_name }, initialClient?.id)
+    if (dup) {
+      const ok = await confirmAsync({
+        title: 'Possible duplicate client',
+        message: `"${dup.client.full_name}" already exists with the ${dup.reason}${dup.client.building_name ? ` (${dup.client.building_name})` : ''}. Save a separate client anyway?`,
+        confirmLabel: 'Save anyway',
+        tone: 'danger',
+      })
+      if (!ok) return
     }
 
     onSave(patch)
