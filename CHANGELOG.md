@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main` or `claude/workspace`, not yet confirmed deployed)
 
+- docs(backlog): Created PENDING.md documenting the 4-tier corner radii & spacing design system hierarchy with Expenses.tsx as the gold-standard specimen page and checklist for future screen rollout (CLR-04)
+
 - feat(design): De-escalated harsh red alarms across Expenses and PendingPayments — replaced aggressive red-600 buttons, pills, inputs, and borders with calm executive Slate & Teal accents; switched Pending Dues to warm amber for regular receivables and reserved soft rose tones strictly for priority dues (CLR-03)
 
 - feat(design): Unified hero banners to CRM signature Dark Slate-Teal palette across ClientProfile and Attendance — replaced divergent royal indigo and flat green gradients with gradient-card / dark slate-teal (from-[#021f24] via-[#062c32] to-[#02181b]) with ambient emerald/teal glow and synchronized accent icons (CLR-01, CLR-02)

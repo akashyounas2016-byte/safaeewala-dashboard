@@ -485,7 +485,7 @@ export function Expenses() {
           <button
             type="button"
             onClick={handleExportExcel}
-            className="h-11 px-4 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/20 text-white font-semibold text-sm backdrop-blur-sm transition-all shrink-0 flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+            className="h-10 px-4 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-white font-semibold text-sm backdrop-blur-sm transition-all shrink-0 flex items-center justify-center gap-2 cursor-pointer shadow-xs"
             title="Export filtered expenses to Excel"
           >
             <Download size={15} strokeWidth={2.2} />
@@ -498,10 +498,10 @@ export function Expenses() {
       {/* ── Executive KPI Cards (6 Financial & Operational Cards) ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
         {/* Card 1: Total Expenses */}
-        <div title="All expenses in the period (Daily Job Sheet + office)" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-slate-300 transition-all">
+        <div title="All expenses in the period (Daily Job Sheet + office)" className="bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-slate-300 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Expenses</span>
-            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
               <TrendingDown size={16} />
             </div>
           </div>
@@ -512,10 +512,10 @@ export function Expenses() {
         </div>
 
         {/* Card 2: Job Sheet Field Expenses */}
-        <div title="Expenses recorded on the Daily Job Sheet" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-amber-200 transition-all">
+        <div title="Expenses recorded on the Daily Job Sheet" className="bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-amber-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Job Sheet Ops</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
               <Truck size={16} />
             </div>
           </div>
@@ -526,10 +526,10 @@ export function Expenses() {
         </div>
 
         {/* Card 3: Office & Admin Expenses */}
-        <div title="Expenses entered directly (office / admin)" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-purple-200 transition-all">
+        <div title="Expenses entered directly (office / admin)" className="bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-purple-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Office & Admin</span>
-            <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
               <Building2 size={16} />
             </div>
           </div>
@@ -540,10 +540,10 @@ export function Expenses() {
         </div>
 
         {/* Card 4: Top Category */}
-        <div title="Category with the highest spend in the period" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-blue-200 transition-all">
+        <div title="Category with the highest spend in the period" className="bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-blue-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Top Category</span>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
               <PieChart size={16} />
             </div>
           </div>
@@ -558,10 +558,10 @@ export function Expenses() {
         </div>
 
         {/* Card 5: Daily Average Expense */}
-        <div title="Total expenses ÷ days that have expenses" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-teal-200 transition-all">
+        <div title="Total expenses ÷ days that have expenses" className="bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-teal-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Daily Average</span>
-            <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
               <Calendar size={16} />
             </div>
           </div>
@@ -572,10 +572,10 @@ export function Expenses() {
         </div>
 
         {/* Card 6: Revenue Ratio & Profit */}
-        <div title="Collected money (job sheet, recoveries, monthly payments, bookings without a job row) against expenses, in-house payroll and paid agency payouts" className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-emerald-200 transition-all">
+        <div title="Collected money (job sheet, recoveries, monthly payments, bookings without a job row) against expenses, in-house payroll and paid agency payouts" className="bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-emerald-200 transition-all">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Expense Ratio</span>
-            <div className={`w-8 h-8 rounded-lg ${profit >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'} flex items-center justify-center`}>
+            <div className={`w-9 h-9 rounded-xl ${profit >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'} flex items-center justify-center`}>
               <DollarSign size={16} />
             </div>
           </div>
@@ -604,7 +604,7 @@ export function Expenses() {
       <ExpenseBudgets expenses={dailyExpenses} categories={Object.keys(CATEGORY_COLORS)} />
 
       {/* ── Date Preset Filter Bar (Quick Pills & Dropdown Engine) ── */}
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center justify-between flex-wrap gap-3">
+      <div className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center justify-between flex-wrap gap-3">
         {/* Left: Active Date Range Display with Month Stepper */}
         <div className="flex items-center gap-3 flex-wrap">
           <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
@@ -674,7 +674,7 @@ export function Expenses() {
                   key={pill.id}
                   type="button"
                   onClick={() => setDatePreset(pill.id)}
-                  className={`px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all cursor-pointer ${
+                  className={`px-3.5 py-1.5 rounded-xl text-[12px] font-bold transition-all cursor-pointer ${
                     active
                       ? 'bg-slate-900 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -765,7 +765,7 @@ export function Expenses() {
       )}
 
       {/* ── Toolbar: Search, Category Filter, Source Filter & Sorting ── */}
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4 flex items-center justify-between flex-wrap gap-3">
+      <div className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3 flex-1 min-w-[280px] flex-wrap">
           {/* Search */}
           <div className="relative flex-1 min-w-[220px]">
@@ -829,7 +829,7 @@ export function Expenses() {
                 setCategoryFilter('all')
                 setSourceFilter('all')
               }}
-              className="flex items-center gap-1 text-[12px] font-bold text-slate-500 hover:text-slate-800 py-1 px-2.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              className="flex items-center gap-1 text-[12px] font-bold text-slate-500 hover:text-slate-800 py-1.5 px-3 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
             >
               <RotateCcw size={13} /> Reset Filters
             </button>
@@ -846,7 +846,7 @@ export function Expenses() {
           </div>
           <Button
             onClick={() => setShowAddModal(true)}
-            className="bg-teal-700 hover:bg-teal-800 text-white font-bold text-[12px] h-10 px-4 shadow-xs"
+            className="bg-teal-700 hover:bg-teal-800 text-white font-bold text-[12px] h-10 px-4 rounded-xl shadow-xs cursor-pointer"
           >
             <Plus size={14} className="mr-1" /> Add Expense
           </Button>
@@ -857,7 +857,7 @@ export function Expenses() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
         {/* Complete Expense History Table (Takes 2 Columns on XL) */}
-        <div className="xl:col-span-2 bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden flex flex-col justify-between">
+        <div className="xl:col-span-2 bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden flex flex-col justify-between">
           <div>
             <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
@@ -988,7 +988,7 @@ export function Expenses() {
                   </p>
                   <Button
                     onClick={() => setShowAddModal(true)}
-                    className="mt-4 bg-teal-700 hover:bg-teal-800 text-white font-bold"
+                    className="mt-4 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-xl"
                   >
                     <Plus size={14} className="mr-1" /> Add Expense
                   </Button>
@@ -1010,7 +1010,7 @@ export function Expenses() {
         <div className="space-y-6">
 
           {/* By Category Breakdown */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+          <div className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-[15px] font-bold text-[#111827] flex items-center gap-2">
                 <PieChart size={16} className="text-teal-700" />
@@ -1056,7 +1056,7 @@ export function Expenses() {
           </div>
 
           {/* By Source Distribution */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+          <div className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
             <h3 className="text-[15px] font-bold text-[#111827] mb-3 flex items-center gap-2">
               <Truck size={16} className="text-amber-600" />
               <span>Source Distribution</span>
@@ -1102,7 +1102,7 @@ export function Expenses() {
           </div>
 
           {/* Quick Add CTA Card */}
-          <div className="bg-gradient-to-br from-slate-50 via-teal-50/30 to-emerald-50/20 border border-teal-200/60 rounded-[22px] p-5 text-center">
+          <div className="bg-gradient-to-br from-slate-50 via-teal-50/30 to-emerald-50/20 border border-teal-200/60 rounded-[24px] p-5 text-center">
             <Receipt className="mx-auto text-teal-700 mb-2" size={32} />
             <h4 className="text-[14px] font-bold text-slate-900">Add Operational Expense</h4>
             <p className="text-[11.5px] text-slate-500 mt-1 max-w-xs mx-auto">
@@ -1110,7 +1110,7 @@ export function Expenses() {
             </p>
             <Button
               onClick={() => setShowAddModal(true)}
-              className="mt-3.5 w-full bg-teal-700 hover:bg-teal-800 text-white font-bold"
+              className="mt-3.5 w-full bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-xl"
             >
               <Plus size={14} className="mr-1" /> Record New Expense
             </Button>
