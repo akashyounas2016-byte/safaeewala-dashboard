@@ -16,61 +16,77 @@ export function cleanNum(val: unknown): number {
   return isNaN(num) ? 0 : num
 }
 
-export function formatTimeOnly(val: unknown): string {
-  if (val === null || val === undefined || val === '') return '—'
+export function parseTimeToMinutes(val: unknown): number | null {
+  if (val === null || val === undefined || val === '') return null
   if (typeof val === 'number') {
-    if (isNaN(val)) return '—'
+    if (isNaN(val)) return null
     const frac = val >= 1 ? val - Math.floor(val) : val
-    if (frac >= 0) {
-      const totalMinutes = Math.round(frac * 24 * 60)
-      const hh = String(Math.floor(totalMinutes / 60) % 24).padStart(2, '0')
-      const mm = String(totalMinutes % 60).padStart(2, '0')
-      return `${hh}:${mm}`
-    }
+    return Math.round(frac * 24 * 60) % (24 * 60)
   }
   if (val instanceof Date) {
-    const hh = String(val.getHours()).padStart(2, '0')
-    const mm = String(val.getMinutes()).padStart(2, '0')
-    return `${hh}:${mm}`
+    if (isNaN(val.getTime())) return null
+    return val.getHours() * 60 + val.getMinutes()
   }
   const str = String(val).trim()
-  if (!str || str === '—') return '—'
+  if (!str || str === '—' || str === '-') return null
 
+  // 12-hour format e.g. "08:30 AM", "4:00 PM", "12:00pm"
   const ampmMatch = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)\b/i)
   if (ampmMatch) {
     let hh = parseInt(ampmMatch[1], 10)
-    const mm = ampmMatch[2]
+    const mm = parseInt(ampmMatch[2], 10)
     const mer = ampmMatch[3].toUpperCase()
     if (mer === 'PM' && hh < 12) hh += 12
     if (mer === 'AM' && hh === 12) hh = 0
-    return `${String(hh).padStart(2, '0')}:${mm}`
+    return (hh * 60 + mm) % (24 * 60)
   }
 
+  // 24-hour format e.g. "08:30", "16:00", "20:15"
   const timeMatch = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\b/)
   if (timeMatch) {
-    const hh = timeMatch[1].padStart(2, '0')
-    const mm = timeMatch[2]
-    return `${hh}:${mm}`
+    const hh = parseInt(timeMatch[1], 10)
+    const mm = parseInt(timeMatch[2], 10)
+    return (hh * 60 + mm) % (24 * 60)
   }
 
-  const parsed = new Date(str)
+  const parsed = new Date(str.includes('T') ? str : '2000-01-01T' + str)
   if (!isNaN(parsed.getTime())) {
-    const hh = String(parsed.getHours()).padStart(2, '0')
-    const mm = String(parsed.getMinutes()).padStart(2, '0')
-    return `${hh}:${mm}`
+    return (parsed.getHours() * 60 + parsed.getMinutes()) % (24 * 60)
   }
 
-  return str
+  return null
+}
+
+export function formatTime24h(val: unknown): string {
+  const mins = parseTimeToMinutes(val)
+  if (mins === null) return ''
+  const hh = String(Math.floor(mins / 60)).padStart(2, '0')
+  const mm = String(mins % 60).padStart(2, '0')
+  return `${hh}:${mm}`
+}
+
+/**
+ * Universal 12-Hour AM/PM Time Formatter (e.g. "09:00 AM", "04:30 PM", "08:00 PM")
+ */
+export function formatTime12h(val: unknown): string {
+  const mins = parseTimeToMinutes(val)
+  if (mins === null) return '—'
+  let hh = Math.floor(mins / 60)
+  const mm = String(mins % 60).padStart(2, '0')
+  const mer = hh >= 12 ? 'PM' : 'AM'
+  hh = hh % 12 || 12
+  return `${String(hh).padStart(2, '0')}:${mm} ${mer}`
+}
+
+export function formatTimeOnly(val: unknown): string {
+  return formatTime12h(val)
 }
 
 export function calcHours(start: string, end: string): number {
-  const s = formatTimeOnly(start)
-  const e = formatTimeOnly(end)
-  if (s === '—' || e === '—' || !s.includes(':') || !e.includes(':')) return 0
-  const [sh, sm] = s.split(':').map(Number)
-  const [eh, em] = e.split(':').map(Number)
-  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return 0
-  let diff = eh * 60 + em - (sh * 60 + sm)
+  const startMins = parseTimeToMinutes(start)
+  const endMins   = parseTimeToMinutes(end)
+  if (startMins === null || endMins === null) return 0
+  let diff = endMins - startMins
   if (diff < 0) diff += 24 * 60
   return diff > 0 ? Math.round(diff / 60 * 10) / 10 : 0
 }
@@ -82,14 +98,9 @@ export function calcHours(start: string, end: string): number {
  * Combined: Excess pre-8 PM hours + post-8 PM hours = Total OT.
  */
 export function calcOTHours(start: string, end: string): number {
-  const s = formatTimeOnly(start)
-  const e = formatTimeOnly(end)
-  if (s === '—' || e === '—' || !s.includes(':') || !e.includes(':')) return 0
-  const [sh, sm] = s.split(':').map(Number)
-  const [eh, em] = e.split(':').map(Number)
-  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return 0
-  const startMins = sh * 60 + sm
-  let endMins     = eh * 60 + em
+  const startMins = parseTimeToMinutes(start)
+  let endMins     = parseTimeToMinutes(end)
+  if (startMins === null || endMins === null) return 0
   // Shift crossing midnight (e.g. 19:00 → 01:00) ends on the next day
   if (endMins < startMins) endMins += 24 * 60
 

@@ -10,6 +10,8 @@ import {
   MATERIALS,
   PAYMENT_MODES,
   COMMON_SERVICES,
+  formatTime12h,
+  formatTime24h,
 } from './jobSheetUtils'
 import {
   User, Clock, MapPin, CreditCard, Check, X,
@@ -199,19 +201,25 @@ export function EditJobModal({
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] font-semibold text-teal-950 block mb-1">Start Time</label>
+                <label className="text-[11px] font-semibold text-teal-950 flex items-center justify-between mb-1">
+                  <span>Start Time</span>
+                  <span className="text-teal-700 font-bold">({formatTime12h(startTime)})</span>
+                </label>
                 <input
                   type="time"
-                  value={startTime}
+                  value={formatTime24h(startTime)}
                   onChange={e => setStartTime(e.target.value)}
                   className="w-full text-[12px] px-2.5 py-1.5 bg-white border border-teal-200/80 rounded-xl focus:outline-none focus:border-teal-600 font-mono text-slate-800"
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-teal-950 block mb-1">End Time</label>
+                <label className="text-[11px] font-semibold text-teal-950 flex items-center justify-between mb-1">
+                  <span>End Time</span>
+                  <span className="text-teal-700 font-bold">({formatTime12h(endTime)})</span>
+                </label>
                 <input
                   type="time"
-                  value={endTime}
+                  value={formatTime24h(endTime)}
                   onChange={e => setEndTime(e.target.value)}
                   className="w-full text-[12px] px-2.5 py-1.5 bg-white border border-teal-200/80 rounded-xl focus:outline-none focus:border-teal-600 font-mono text-slate-800"
                 />

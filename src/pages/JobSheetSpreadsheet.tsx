@@ -8,13 +8,15 @@ import {
   Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table,
   Printer, MoreVertical, ChevronDown, ExternalLink, CornerDownLeft,
   ChevronUp, Eye, EyeOff, SlidersHorizontal, ArrowUp, ArrowDown,
-  CloudUpload, Calendar, GripVertical, Info, History
+  CloudUpload, Calendar, GripVertical, Info, History, Pencil, Edit2
 } from 'lucide-react'
+import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
+import { SpreadsheetEditModal } from '@/components/dailyJobSheet/SpreadsheetEditModal'
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
 import type { DailyJob, PaymentMode, MaterialType } from '@/types'
 import {
-  calcHours, calcOTHours, formatTimeOnly, cleanNum, fmtDate, addDaysToYMD
+  calcHours, calcOTHours, formatTimeOnly, formatTime12h, formatTime24h, cleanNum, fmtDate, addDaysToYMD
 } from '@/components/dailyJobSheet/jobSheetUtils'
 import {
   authorizeGoogleDrive,
@@ -52,26 +54,24 @@ export interface ColumnDef {
 }
 
 export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
-  { id: 'date',         label: 'Date',             width: '110px', type: 'date',   formulaHint: 'YYYY-MM-DD' },
   { id: 'staff_name',   label: 'Staff Name',       width: '170px', type: 'text',   formulaHint: 'Cleaner/Driver name' },
-  { id: 'start_time',   label: 'Start Time',       width: '100px', type: 'time',   formulaHint: 'e.g. 08:00 AM' },
-  { id: 'end_time',     label: 'End Time',         width: '100px', type: 'time',   formulaHint: 'e.g. 04:00 PM' },
-  { id: 'address',      label: 'Client / Address', width: '230px', type: 'text',   formulaHint: 'Customer location' },
-  { id: 'area',         label: 'Location / Area',  width: '140px', type: 'text',   formulaHint: 'Dubai area/suburb' },
-  { id: 'charges',      label: 'Charges (AED)',    width: '120px', type: 'number', formulaHint: '=SUM(...)' },
-  { id: 'received',     label: 'Received (AED)',   width: '120px', type: 'number', formulaHint: 'Cash/Online collected' },
-  { id: 'pending',      label: 'Pending (AED)',    width: '115px', type: 'formula', formulaHint: 'Charges minus Received' },
+  { id: 'start_time',   label: 'Start Time',       width: '105px', type: 'time',   formulaHint: 'e.g. 08:00 AM' },
+  { id: 'end_time',     label: 'End Time',         width: '105px', type: 'time',   formulaHint: 'e.g. 04:00 PM' },
   { id: 'duty_hours',   label: 'Duty Hrs',         width: '90px',  type: 'number', formulaHint: '=calcHours(...)' },
   { id: 'ot_hours',     label: 'OT Hrs',           width: '90px',  type: 'number', formulaHint: '=calcOT(...)' },
+  { id: 'address',      label: 'Client',           width: '230px', type: 'text',   formulaHint: 'Client name & location' },
+  { id: 'area',         label: 'Area',             width: '135px', type: 'text',   formulaHint: 'Dubai area/suburb' },
   { id: 'material',     label: 'Material',         width: '95px',  type: 'select', options: ['No', 'Yes', 'Sofa', 'Ladder'] },
-  { id: 'payment_mode', label: 'Payment Mode',     width: '125px', type: 'select', options: ['Cash', 'Online', 'Monthly', 'Pending'] },
-  { id: 'remarks',      label: 'Remarks',          width: '170px', type: 'text',   formulaHint: 'Notes' },
-  { id: 'service',      label: 'Service',          width: '135px', type: 'text',   formulaHint: 'Deep Clean, Regular, etc.' },
+  { id: 'charges',      label: 'Charges',          width: '115px', type: 'number', formulaHint: 'Gross charges' },
+  { id: 'received',     label: 'Received',         width: '115px', type: 'number', formulaHint: 'Cash/Online collected' },
+  { id: 'pending',      label: 'Pending',          width: '110px', type: 'formula', formulaHint: 'Charges minus Received' },
+  { id: 'payment_mode', label: 'Mode',             width: '120px', type: 'select', options: ['Cash', 'Online', 'Monthly', 'Pending'] },
+  { id: 'remarks',      label: 'Notes',            width: '170px', type: 'text',   formulaHint: 'Notes' },
 ]
 
 export function buildColumnsWithLetters(order: string[], hiddenIds: string[] = []): ColumnDef[] {
   const map = new Map<string, Omit<ColumnDef, 'col'>>(DEFAULT_COLUMN_DEFS.map(c => [c.id, c]))
-  const validIds = order.filter(id => map.has(id))
+  const validIds = order.filter(id => map.has(id) && id !== 'date' && id !== 'service')
   DEFAULT_COLUMN_DEFS.forEach(c => {
     if (!validIds.includes(c.id)) validIds.push(c.id)
   })
@@ -789,8 +789,8 @@ const PALETTE_KEYS = Object.keys(BLOCK_PALETTES)
 
 // ── Safe save helpers (AUD-49, UX-33, UX-34) ──
 const SAVED_FIELDS = [
-  'date', 'staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'address', 'area',
-  'charges', 'received', 'payment_mode', 'material', 'service', 'remarks',
+  'staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'address', 'area',
+  'material', 'charges', 'received', 'payment_mode', 'remarks',
 ] as const
 const NUMERIC_FIELDS = new Set<string>(['duty_hours', 'ot_hours', 'charges', 'received'])
 const fieldValue = (row: DailyJob, k: (typeof SAVED_FIELDS)[number]) =>
@@ -800,22 +800,22 @@ const sameJobRow = (a: DailyJob, b: DailyJob) => SAVED_FIELDS.every(k => fieldVa
 /** A new grid row the user never filled in — not worth saving */
 const isBlankNewRow = (r: DailyJob) =>
   !String(r.address || '').trim() && !String(r.area || '').trim() && cleanNum(r.charges) === 0 &&
-  cleanNum(r.received) === 0 && !String(r.service || '').trim() && !String(r.remarks || '').trim()
+  cleanNum(r.received) === 0 && !String(r.remarks || '').trim()
 const DRAFT_PREFIX = 'safaeewala_excel_draft:' // local only, never cloud-synced
 
 /** Column presets (UX-39) — the columns each preset shows */
 const COLUMN_PRESETS: Record<string, string[] | null> = {
   'All columns': null,
-  Cashier: ['date', 'staff_name', 'address', 'charges', 'received', 'pending', 'payment_mode', 'remarks'],
-  Payroll: ['date', 'staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'remarks'],
-  Ops: ['date', 'staff_name', 'start_time', 'end_time', 'address', 'area', 'service', 'material', 'remarks'],
+  Cashier: ['staff_name', 'address', 'material', 'charges', 'received', 'pending', 'payment_mode', 'remarks'],
+  Payroll: ['staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'remarks'],
+  Ops: ['staff_name', 'start_time', 'end_time', 'address', 'area', 'material', 'remarks'],
 }
 /** Temporary id for a grid row that is not saved yet */
 const newRowId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 /** Columns that are calculated, never typed into */
 const READ_ONLY_COLS = new Set(['pending'])
 /** Cell editor → datalist id (UX-35) */
-const AUTOCOMPLETE_LIST: Record<string, string> = { staff_name: 'xl-staff', address: 'xl-address', area: 'xl-area', service: 'xl-service' }
+const AUTOCOMPLETE_LIST: Record<string, string> = { staff_name: 'xl-staff', address: 'xl-address', area: 'xl-area' }
 /** Rows drawn at once in long periods (AUD-56, UX-38) */
 const RENDER_PAGE = 300
 
@@ -1200,6 +1200,10 @@ export function JobSheetSpreadsheet() {
   const [remoteConflict, setRemoteConflict] = useState(false)
   const [draftOffer, setDraftOffer] = useState<{ rows: DailyJob[]; savedAt: number } | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [showThreeDotMenu, setShowThreeDotMenu] = useState(false)
+  const [showAddJobModal, setShowAddJobModal] = useState(false)
+  const [editingRowState, setEditingRowState] = useState<{ row: DailyJob; index: number } | null>(null)
+  const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'Monthly' | 'Cash' | 'Online' | 'Pending'>('ALL')
 
   // ── UI View Options (Default: flat grid first as requested) ──
   const [viewMode, setViewMode] = useState<'blocks' | 'flat'>(() => {
@@ -1491,9 +1495,9 @@ export function JobSheetSpreadsheet() {
   const blankRow = (base?: Partial<DailyJob>): DailyJob => ({
     id: newRowId('new'),
     date: base?.date || effectiveTargetDate,
-    staff_name: base?.staff_name || '',
+    staff_name: '',
     start_time: '', end_time: '', duty_hours: 0, ot_hours: 0, address: '', area: '',
-    charges: 0, received: 0, payment_mode: 'Cash', is_overtime: false, material: 'No', service: '', remarks: '',
+    charges: 0, received: 0, payment_mode: 'Cash', is_overtime: false, material: 'No', remarks: '',
     created_at: new Date().toISOString(),
   })
 
@@ -1619,15 +1623,28 @@ export function JobSheetSpreadsheet() {
     }
   }
 
-  // ── Insert Row Above or Below (Used by Right-Click Menu) ──
-  const insertRowAt = (targetIdx: number, position: 'above' | 'below', defaultStaff?: string) => {
+  // ── Open & Save Row Edit Modal ──
+  const handleOpenEditModal = (row: DailyJob, index: number) => {
+    setEditingRowState({ row: { ...row }, index })
+  }
+
+  const handleSaveEditedRow = (updatedRow: DailyJob, index: number) => {
+    const updated = [...gridRows]
+    updated[index] = updatedRow
+    pushState(updated)
+    setEditingRowState(null)
+    showToast(`✓ Row #${index + 1} updated successfully`)
+  }
+
+  // ── Insert Row Above or Below (Used by Right-Click Menu & Add Row - Guaranteed completely empty) ──
+  const insertRowAt = (targetIdx: number, position: 'above' | 'below', _defaultStaff?: string) => {
     const newJob: DailyJob = {
       id: newRowId('new'),
       date: effectiveTargetDate,
-      staff_name: defaultStaff || '',
-      start_time: '08:00',
-      end_time: '16:00',
-      duty_hours: 8,
+      staff_name: '',
+      start_time: '',
+      end_time: '',
+      duty_hours: 0,
       ot_hours: 0,
       address: '',
       area: '',
@@ -1636,18 +1653,17 @@ export function JobSheetSpreadsheet() {
       payment_mode: 'Cash',
       is_overtime: false,
       material: 'No',
-      service: '',
       remarks: '',
       created_at: new Date().toISOString()
     }
 
-    const insertIdx = position === 'above' ? targetIdx : targetIdx + 1
+    const insertIdx = position === 'above' ? Math.max(0, targetIdx) : targetIdx + 1
     const updated = [...gridRows]
     updated.splice(insertIdx, 0, newJob)
     pushState(updated)
-    setActiveCell({ rowIdx: insertIdx, colId: 'address' })
+    setActiveCell({ rowIdx: insertIdx, colId: 'staff_name' })
     setContextMenu(null)
-    showToast(`✓ Row added ${position === 'above' ? 'at top (above)' : 'at bottom (below)'}`)
+    showToast(`✓ Empty row added ${position === 'above' ? 'at top (above)' : 'at bottom (below)'}`)
   }
 
   // Add New Row at bottom of sheet
@@ -2013,19 +2029,41 @@ export function JobSheetSpreadsheet() {
     showToast('Spreadsheet downloaded as .csv')
   }
 
-  // Filtered rows for search
+  // Filter Counts for Header Quick Filter Tabs
+  const filterCounts = useMemo(() => {
+    let monthly = 0, cash = 0, online = 0, pending = 0
+    for (const r of gridRows) {
+      if (r.payment_mode === 'Monthly') monthly++
+      else if (r.payment_mode === 'Cash') cash++
+      else if (r.payment_mode === 'Online') online++
+      if (r.payment_mode === 'Pending' || rowPending(r) > 0) pending++
+    }
+    return { all: gridRows.length, monthly, cash, online, pending }
+  }, [gridRows, pendingCtx])
+
+  // Filtered rows for search and payment mode tabs
   const [renderLimit, setRenderLimit] = useState(RENDER_PAGE)
   const filteredGridRows = useMemo(() => {
-    if (!filterSearch.trim()) return gridRows
+    let list = gridRows
+    if (paymentModeFilter === 'Monthly') {
+      list = list.filter(r => r.payment_mode === 'Monthly')
+    } else if (paymentModeFilter === 'Cash') {
+      list = list.filter(r => r.payment_mode === 'Cash')
+    } else if (paymentModeFilter === 'Online') {
+      list = list.filter(r => r.payment_mode === 'Online')
+    } else if (paymentModeFilter === 'Pending') {
+      list = list.filter(r => r.payment_mode === 'Pending' || rowPending(r) > 0)
+    }
+    if (!filterSearch.trim()) return list
     const q = filterSearch.toLowerCase()
-    return gridRows.filter(r =>
+    return list.filter(r =>
       (r.staff_name || '').toLowerCase().includes(q) ||
       (r.address || '').toLowerCase().includes(q) ||
       (r.area || '').toLowerCase().includes(q) ||
       (r.payment_mode || '').toLowerCase().includes(q) ||
-      (r.service || '').toLowerCase().includes(q)
+      (r.remarks || '').toLowerCase().includes(q)
     )
-  }, [gridRows, filterSearch])
+  }, [gridRows, paymentModeFilter, filterSearch, pendingCtx])
   const visibleGridRows = useMemo(() => filteredGridRows.slice(0, renderLimit), [filteredGridRows, renderLimit])
 
   // Summary Totals
@@ -2313,38 +2351,113 @@ export function JobSheetSpreadsheet() {
             )}
           </div>
 
-          {/* Monthly Schedules Sync Button */}
-          {dateFilterMode !== 'range' && dateFilterMode !== 'all' && (
-            <button
-              type="button"
-              onClick={() => setShowMonthlySyncModal(true)}
-              title="Weekly Schedule ↔ Daily Job Sheet Synchronization"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[12px] font-bold transition-all cursor-pointer shadow-xs ${
-                monthlySyncStatus.pendingSyncCount > 0
-                  ? 'bg-amber-400 hover:bg-amber-300 text-amber-950 border-amber-300 font-extrabold shadow-md'
-                  : 'bg-white/15 hover:bg-white/25 text-white border-white/25'
-              }`}
-            >
-              <Sparkles size={14} className={monthlySyncStatus.pendingSyncCount > 0 ? 'text-amber-950 animate-pulse' : 'text-emerald-300'} />
-              <span>
-                {monthlySyncStatus.pendingSyncCount > 0
-                  ? `Fetch Monthly (${monthlySyncStatus.pendingSyncCount})`
-                  : `Monthly Synced (${monthlySyncStatus.totalScheduled})`}
-              </span>
-            </button>
-          )}
+          {/* ── Quick Filter Tabs (Monthly, Cash, Online, Pending) ── */}
+          <div className="flex items-center bg-black/25 rounded-xl p-0.5 border border-white/20 text-white text-[11px] font-bold">
+            {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending'] as const).map(tab => {
+              const count = tab === 'ALL' ? filterCounts.all : filterCounts[tab.toLowerCase() as keyof typeof filterCounts]
+              const isActive = paymentModeFilter === tab
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setPaymentModeFilter(tab)}
+                  className={`px-2 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                    isActive
+                      ? 'bg-white text-emerald-950 shadow-xs'
+                      : 'text-white/80 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <span>{tab}</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
+                    isActive ? 'bg-emerald-100 text-emerald-900' : 'bg-white/20 text-white'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
 
-          {/* Backup / Send to Google Drive Button (Replaces Add Row) */}
+          {/* ── Dedicated Add Job Button ── */}
           <button
             type="button"
-            onClick={handleBackupToDrive}
-            disabled={isBackingUp}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-[12px] border border-white/25 transition-all cursor-pointer shadow-xs disabled:opacity-50"
-            title="Backup Excel sheet to Google Drive / VPS"
+            onClick={() => setShowAddJobModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-black text-[12px] shadow-sm transition-all cursor-pointer active:scale-95"
+            title="Add a new job entry for this date"
           >
-            <CloudUpload size={14} className="text-emerald-300" />
-            <span>{isBackingUp ? 'Backing up…' : 'Send to Google Drive'}</span>
+            <Plus size={14} className="stroke-[3]" />
+            <span>Add Job</span>
           </button>
+
+          {/* ── Three-Dot Menu (Save to Google Drive & Monthly Schedules Sync) ── */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowThreeDotMenu(!showThreeDotMenu)}
+              className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-[12px] border border-white/25 transition-all cursor-pointer shadow-xs"
+              title="More Options (Google Drive Backup, Monthly Sync)"
+            >
+              <MoreVertical size={16} />
+            </button>
+
+            {showThreeDotMenu && (
+              <div
+                onClick={e => e.stopPropagation()}
+                className="absolute right-0 top-full mt-1.5 w-60 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-slate-800 text-[12px]"
+              >
+                {/* Monthly Sync */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowThreeDotMenu(false)
+                    setShowMonthlySyncModal(true)
+                  }}
+                  className="w-full px-3.5 py-2 hover:bg-slate-50 flex items-center justify-between gap-2 text-left cursor-pointer transition-colors"
+                >
+                  <span className="flex items-center gap-2 font-semibold">
+                    <Sparkles size={14} className="text-amber-600" />
+                    <span>Monthly Sync</span>
+                  </span>
+                  {monthlySyncStatus.pendingSyncCount > 0 ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                      {monthlySyncStatus.pendingSyncCount} pending
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 font-semibold">
+                      {monthlySyncStatus.totalScheduled} synced
+                    </span>
+                  )}
+                </button>
+
+                {/* Save to Google Drive */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowThreeDotMenu(false)
+                    handleBackupToDrive()
+                  }}
+                  disabled={isBackingUp}
+                  className="w-full px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-left cursor-pointer transition-colors disabled:opacity-50"
+                >
+                  <CloudUpload size={14} className="text-emerald-600" />
+                  <span className="font-semibold">{isBackingUp ? 'Backing up…' : 'Save to Google Drive'}</span>
+                </button>
+
+                {/* Google Drive / Webhook Config */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowThreeDotMenu(false)
+                    setShowDriveModal(true)
+                  }}
+                  className="w-full px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-left cursor-pointer transition-colors text-slate-500 border-t border-slate-100 mt-1 pt-2"
+                >
+                  <SlidersHorizontal size={13} />
+                  <span>Drive Webhook Settings</span>
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Save All Button */}
           <button
@@ -2752,22 +2865,7 @@ export function JobSheetSpreadsheet() {
 
           {/* Quick Formula Helpers & Column Customization */}
           <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
-            <button
-              type="button"
-              onClick={() => handleFormulaBarChange(`=SUM(I)`)}
-              className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 border border-slate-300 text-slate-600 transition-colors cursor-pointer"
-              title="Insert Auto-Sum formula for Charges"
-            >
-              ∑ AutoSum
-            </button>
-            <button
-              type="button"
-              onClick={() => handleFormulaBarChange(`=I-J`)}
-              className="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 border border-slate-300 text-slate-600 transition-colors cursor-pointer"
-              title="Insert Formula: Charges minus Received"
-            >
-              =I - J
-            </button>
+
             <button
               type="button"
               onClick={resetColumnOrder}
@@ -2794,9 +2892,6 @@ export function JobSheetSpreadsheet() {
           {/* Header: Excel Column Letters (A, B, C...) */}
           <thead className="sticky top-0 z-20 bg-[#f3f4f6] text-slate-600 shadow-xs">
             <tr className="border-b border-slate-300">
-              <th className="w-12 h-6 bg-[#e5e7eb] border-r border-slate-300 text-[11px] font-bold text-center select-none sticky left-0 z-30">
-                #
-              </th>
               {columns.map(col => (
                 <th
                   key={col.col}
@@ -2810,14 +2905,11 @@ export function JobSheetSpreadsheet() {
                   {col.col}
                 </th>
               ))}
-              <th className="w-14 border-r border-slate-300 bg-[#e5e7eb] text-[10px] font-bold">Act</th>
+              <th className="w-20 border-r border-slate-300 bg-[#e5e7eb] text-[10px] font-bold text-center">Action</th>
             </tr>
 
             {/* Column Label / Name Row with Drag & Drop */}
             <tr className="border-b-2 border-slate-400 bg-slate-100 text-slate-800 font-sans font-bold text-[11.5px]">
-              <th className="w-12 h-7 bg-slate-200 border-r border-slate-300 text-center sticky left-0 z-30 font-mono text-[10px] text-slate-500">
-                ROW
-              </th>
               {columns.map(col => (
                 <th
                   key={col.id}
@@ -2838,7 +2930,7 @@ export function JobSheetSpreadsheet() {
                   </div>
                 </th>
               ))}
-              <th className="w-14 border-r border-slate-300 text-center text-[10.5px]">DEL</th>
+              <th className="w-20 border-r border-slate-300 text-center text-[10.5px] font-bold">Action</th>
             </tr>
           </thead>
 
@@ -2853,7 +2945,7 @@ export function JobSheetSpreadsheet() {
                   <React.Fragment key={group.cleanerName}>
                     {/* ── Cleaner Block Section Header Banner ── */}
                     <tr className={`${palette.headerBg} ${palette.headerText} border-t-2 border-b border-black/20 select-none shadow-xs`}>
-                      <td colSpan={columns.length + 2} className="px-3 py-2">
+                      <td colSpan={columns.length + 1} className="px-3 py-2">
                         <div className="flex items-center justify-between flex-wrap gap-2 font-sans">
                           {/* Left: Cleaner Info & Badges */}
                           <div className="flex items-center gap-3">
@@ -3018,8 +3110,9 @@ export function JobSheetSpreadsheet() {
 
                             if (col.id === 'pending') {
                               displayVal = rowPending(row)
-                            }
-                            if (col.type === 'number') {
+                            } else if (col.id === 'start_time' || col.id === 'end_time') {
+                              displayVal = rawVal ? formatTime12h(rawVal) : '—'
+                            } else if (col.type === 'number') {
                               displayVal = cleanNum(displayVal)
                             }
 
@@ -3079,15 +3172,26 @@ export function JobSheetSpreadsheet() {
                             )
                           })}
 
-                          {/* Delete Row Column */}
-                          <td className="w-14 border-r border-slate-200 text-center">
-                            <button
-                              onClick={() => handleDeleteRow(globalIndex)}
-                              className="text-slate-400 hover:text-red-600 p-1 rounded transition-colors cursor-pointer"
-                              title="Delete row"
-                            >
-                              <Trash2 size={13} />
-                            </button>
+                          {/* Action Column: Edit + Delete */}
+                          <td className="w-20 border-r border-slate-200 text-center px-1">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(row, globalIndex)}
+                                className="text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 p-1 rounded transition-colors cursor-pointer"
+                                title="Edit entry"
+                              >
+                                <Pencil size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteRow(globalIndex)}
+                                className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors cursor-pointer"
+                                title="Delete row"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       )
@@ -3227,7 +3331,7 @@ export function JobSheetSpreadsheet() {
                       )
                     })}
 
-                    {/* Delete Row Column (Block Right Perimeter Border: 5px solid matching cleaner color) */}
+                    {/* Action Column: Edit + Delete */}
                     <td
                       style={{
                         backgroundColor: palette.solidBg,
@@ -3235,15 +3339,26 @@ export function JobSheetSpreadsheet() {
                         borderTop: blockTopBorder,
                         borderBottom: blockBottomBorder,
                       }}
-                      className="w-14 text-center"
+                      className="w-20 text-center px-1"
                     >
-                      <button
-                        onClick={() => handleDeleteRow(targetIdx)}
-                        className="text-slate-400 hover:text-red-600 p-1 rounded transition-colors cursor-pointer"
-                        title="Delete row"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditModal(row, targetIdx)}
+                          className="text-white/80 hover:text-white p-1 rounded hover:bg-white/20 transition-colors cursor-pointer"
+                          title="Edit entry"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRow(targetIdx)}
+                          className="text-white/60 hover:text-red-300 p-1 rounded hover:bg-red-500/30 transition-colors cursor-pointer"
+                          title="Delete row"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )
@@ -3251,66 +3366,7 @@ export function JobSheetSpreadsheet() {
             </tbody>
           )}
 
-          {/* ── Table Footer Summary (Appears at end of table when scrolled down) ── */}
-          <tfoot className="bg-slate-200/90 border-t-2 border-slate-400 font-mono text-[11.5px] select-none">
-            <tr className="border-b border-slate-300 font-bold">
-              <td className="w-12 h-8 bg-slate-300 border-r border-slate-400 text-center font-black text-slate-800">
-                TOTAL
-              </td>
-              {columns.map(col => {
-                if (col.id === 'charges') {
-                  return (
-                    <td key={col.id} style={{ width: col.width }} className="px-2 py-1.5 border-r border-slate-300 text-right font-black text-indigo-950">
-                      AED {totals.totalCharges.toLocaleString()}
-                    </td>
-                  )
-                }
-                if (col.id === 'received') {
-                  return (
-                    <td key={col.id} style={{ width: col.width }} className="px-2 py-1.5 border-r border-slate-300 text-right font-black text-emerald-950">
-                      AED {totals.totalReceived.toLocaleString()}
-                    </td>
-                  )
-                }
-                if (col.id === 'pending') {
-                  return (
-                    <td key={col.id} style={{ width: col.width }} className="px-2 py-1.5 border-r border-slate-300 text-right font-black text-rose-800">
-                      AED {totals.totalPending.toLocaleString()}
-                    </td>
-                  )
-                }
-                if (col.id === 'duty_hours') {
-                  return (
-                    <td key={col.id} style={{ width: col.width }} className="px-2 py-1.5 border-r border-slate-300 text-right font-black text-slate-900">
-                      {totals.totalDuty}h
-                    </td>
-                  )
-                }
-                if (col.id === 'ot_hours') {
-                  return (
-                    <td key={col.id} style={{ width: col.width }} className="px-2 py-1.5 border-r border-slate-300 text-right font-black text-amber-900">
-                      {totals.totalOT}h
-                    </td>
-                  )
-                }
-                if (col.id === 'staff_name') {
-                  return (
-                    <td key={col.id} style={{ width: col.width }} className="px-2 py-1.5 border-r border-slate-300 text-left font-black text-slate-800 bg-emerald-100/60">
-                      Total {cleanerGroups.length} Cleaners
-                    </td>
-                  )
-                }
-                return (
-                  <td key={col.id} style={{ width: col.width }} className="px-2 py-1.5 border-r border-slate-300 text-slate-400">
-                    —
-                  </td>
-                )
-              })}
-              <td className="w-14 border-r border-slate-300 text-center font-bold text-slate-400">
-                —
-              </td>
-            </tr>
-          </tfoot>
+
         </table>
 
         {/* Empty State */}
@@ -3751,6 +3807,50 @@ export function JobSheetSpreadsheet() {
             safeLocalStorageSet('safaeewala_auto_sync_monthly_schedules', val)
           }}
         />
+      )}
+      {/* ── Spreadsheet Edit Entry Modal (Professional Pop-up) ── */}
+      {editingRowState && (
+        <SpreadsheetEditModal
+          open={Boolean(editingRowState)}
+          row={editingRowState.row}
+          index={editingRowState.index}
+          onClose={() => setEditingRowState(null)}
+          onSave={handleSaveEditedRow}
+          employees={employees}
+          clients={clients}
+          areaOptions={areaOptions}
+        />
+      )}
+
+      {/* ── Dedicated Add Job Modal (From Header Button) ── */}
+      {showAddJobModal && (
+        <Modal
+          open={showAddJobModal}
+          onClose={() => setShowAddJobModal(false)}
+          title="Add New Daily Job Entry"
+          size="lg"
+        >
+          <div className="p-4 max-h-[85vh] overflow-y-auto">
+            <AddJobForm
+              employees={employees}
+              clients={clients}
+              initial={{ date: effectiveTargetDate, start_time: '09:00', end_time: '13:00', duty_hours: 4 }}
+              existingJobsForDate={dailyJobs.filter(j => j.date === effectiveTargetDate)}
+              onSave={jobData => {
+                const newJob: DailyJob = {
+                  ...jobData,
+                  id: newRowId('new'),
+                  created_at: new Date().toISOString()
+                }
+                const updated = [newJob, ...gridRows]
+                pushState(updated)
+                setShowAddJobModal(false)
+                showToast(`✓ Job added for ${newJob.staff_name || 'Staff'}`)
+              }}
+              onClose={() => setShowAddJobModal(false)}
+            />
+          </div>
+        </Modal>
       )}
     </div>
   )

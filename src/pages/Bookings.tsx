@@ -782,7 +782,7 @@ export function Bookings() {
       list.push({
         id,
         title: `Pending Booking: ${b.client_name}`,
-        detail: `${b.service_type} on ${b.scheduled_date} at ${b.scheduled_time} awaiting confirmation`,
+        detail: `${b.service_type} on ${b.scheduled_date} at ${formatTime(b.scheduled_time)} awaiting confirmation`,
         tone: 'warning',
         time: b.scheduled_date === today ? 'Today' : b.scheduled_date,
         read: readSet.has(id),
@@ -806,7 +806,7 @@ export function Bookings() {
       list.push({
         id,
         title: `Unassigned Cleaner: ${b.client_name}`,
-        detail: `Today at ${b.scheduled_time} (${b.duration_hours}h) needs cleaner assigned!`,
+        detail: `Today at ${formatTime(b.scheduled_time)} (${b.duration_hours}h) needs cleaner assigned!`,
         tone: 'danger',
         time: b.scheduled_time,
         read: readSet.has(id),
@@ -826,7 +826,7 @@ export function Bookings() {
       list.push({
         id,
         title: `Shift Live: ${b.client_name}`,
-        detail: `Cleaner on-site (${b.scheduled_time} - ${b.end_time}) • ${b.service_type}`,
+        detail: `Cleaner on-site (${formatTime(b.scheduled_time)} - ${formatTime(b.end_time)}) • ${b.service_type}`,
         tone: 'info',
         time: 'Live',
         read: readSet.has(id),
@@ -2504,14 +2504,14 @@ function WeekCalendar({ bookings, onSelect }: { bookings: Booking[]; onSelect: (
                         type="button"
                         onClick={() => onSelect(b)}
                         className={`w-full text-left px-2 py-1 rounded-lg border text-[11px] transition-all flex items-center justify-between gap-1 shadow-2xs cursor-pointer ${st.bg} ${st.border}`}
-                        title={`${b.client_name} - ${b.service_type} at ${b.scheduled_time} (${b.duration_hours}h)`}
+                        title={`${b.client_name} - ${b.service_type} at ${formatTime(b.scheduled_time)} (${b.duration_hours}h)`}
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${st.dot}`} />
                           <span className="font-bold text-slate-800 truncate">{b.client_name}</span>
                         </div>
                         <span className="text-[10px] text-slate-500 font-semibold shrink-0">
-                          {b.scheduled_time?.slice(0, 5)}
+                          {formatTime(b.scheduled_time)}
                         </span>
                       </button>
                     )
@@ -2587,7 +2587,7 @@ function WeekCalendar({ bookings, onSelect }: { bookings: Booking[]; onSelect: (
                           {b.client_name}
                         </p>
                         <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                          {b.service_type} • {b.scheduled_time} ({b.duration_hours}h)
+                          {b.service_type} • {formatTime(b.scheduled_time)} ({b.duration_hours}h)
                         </p>
                       </div>
                     </div>
@@ -2679,7 +2679,7 @@ function KanbanBoard({
                   <div className={`space-y-1.5 text-[11px] text-slate-500 ${col.boxClass} p-2.5 rounded-xl border`}>
                     <div className="flex items-center gap-1.5">
                       <CalendarIcon size={12} className="text-teal-600 shrink-0" />
-                      <span className="font-semibold text-slate-700">{b.scheduled_date} • {b.scheduled_time}</span>
+                      <span className="font-semibold text-slate-700">{b.scheduled_date} • {formatTime(b.scheduled_time)}</span>
                     </div>
                     {b.service_address && (
                       <div className="flex items-center gap-1.5 truncate">

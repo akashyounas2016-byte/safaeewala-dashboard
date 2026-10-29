@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
-import { formatDate, addHoursToTime, subtractHoursFromTime, calcDurationFromTimes } from '@/lib/utils'
+import { formatDate, formatTime, addHoursToTime, subtractHoursFromTime, calcDurationFromTimes } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import { ClientInvoicesLedger } from '@/components/monthlyClients/ClientInvoicesLedger'
 import { notify, confirmAsync } from '@/lib/notify'
@@ -1237,7 +1237,7 @@ export function MonthlyClients() {
                         )}
                         {c.scheduled_time && (
                           <span className="text-slate-500 font-medium text-[10px] ml-0.5">
-                            {c.scheduled_time}
+                            {formatTime(c.scheduled_time)}
                           </span>
                         )}
                       </div>
@@ -1956,7 +1956,7 @@ export function MonthlyClients() {
                                 {c.scheduled_time && (
                                   <span className="text-slate-600 font-semibold text-[10.5px] flex items-center gap-0.5">
                                     <Clock size={10} className="text-slate-400" />
-                                    {c.scheduled_time}{c.end_time ? `–${c.end_time}` : ''}
+                                    {formatTime(c.scheduled_time)}{c.end_time ? ` – ${formatTime(c.end_time)}` : ''}
                                   </span>
                                 )}
                               </div>
@@ -3761,7 +3761,7 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: { client
         <div className="flex items-center justify-between text-[11.5px] px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-900 font-medium">
           <span className="flex items-center gap-1.5">
             <Clock size={13} className="text-emerald-600" />
-            <span>Shift Slot: <strong>{startTime || '—'}</strong> to <strong>{endTime || '—'}</strong></span>
+            <span>Shift Slot: <strong>{formatTime(startTime)}</strong> to <strong>{formatTime(endTime)}</strong></span>
           </span>
           <span className="font-extrabold text-emerald-700 bg-white px-2 py-0.5 rounded-md shadow-2xs">
             {duration} Hour{duration !== 1 ? 's' : ''} auto-synced

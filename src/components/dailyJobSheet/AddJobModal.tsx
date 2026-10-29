@@ -12,6 +12,8 @@ import {
   PAYMENT_MODES,
   ROW_COLOR_PRESETS,
   type RowColorPreset,
+  formatTime12h,
+  formatTime24h,
 } from './jobSheetUtils'
 import { addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
 import { todayDubai } from '@/lib/dubaiTime'
@@ -347,24 +349,28 @@ export function AddJobForm({
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-              Start Time
+            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
+              <span>Start Time</span>
+              <span className="text-blue-600 font-bold normal-case tracking-normal">{formatTime12h(startTime)}</span>
             </label>
             <input
               type="time"
-              value={startTime}
+              value={formatTime24h(startTime)}
               onChange={e => handleStartTimeChange(e.target.value)}
+              list="add-job-time-options"
               className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-semibold text-slate-800"
             />
           </div>
           <div>
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-              End Time
+            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
+              <span>End Time</span>
+              <span className="text-blue-600 font-bold normal-case tracking-normal">{formatTime12h(endTime)}</span>
             </label>
             <input
               type="time"
-              value={endTime}
+              value={formatTime24h(endTime)}
               onChange={e => handleEndTimeChange(e.target.value)}
+              list="add-job-time-options"
               className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-slate-50/70 focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-semibold text-slate-800"
             />
           </div>
@@ -644,6 +650,38 @@ export function AddJobForm({
           <span>Save & Add Job</span>
         </Button>
       </div>
+      <datalist id="add-job-time-options">
+        <option value="07:00">07:00 AM</option>
+        <option value="07:30">07:30 AM</option>
+        <option value="08:00">08:00 AM</option>
+        <option value="08:30">08:30 AM</option>
+        <option value="09:00">09:00 AM</option>
+        <option value="09:30">09:30 AM</option>
+        <option value="10:00">10:00 AM</option>
+        <option value="10:30">10:30 AM</option>
+        <option value="11:00">11:00 AM</option>
+        <option value="11:30">11:30 AM</option>
+        <option value="12:00">12:00 PM</option>
+        <option value="12:30">12:30 PM</option>
+        <option value="13:00">01:00 PM</option>
+        <option value="13:30">01:30 PM</option>
+        <option value="14:00">02:00 PM</option>
+        <option value="14:30">02:30 PM</option>
+        <option value="15:00">03:00 PM</option>
+        <option value="15:30">03:30 PM</option>
+        <option value="16:00">04:00 PM</option>
+        <option value="16:30">04:30 PM</option>
+        <option value="17:00">05:00 PM</option>
+        <option value="17:30">05:30 PM</option>
+        <option value="18:00">06:00 PM</option>
+        <option value="18:30">06:30 PM</option>
+        <option value="19:00">07:00 PM</option>
+        <option value="19:30">07:30 PM</option>
+        <option value="20:00">08:00 PM</option>
+        <option value="20:30">08:30 PM</option>
+        <option value="21:00">09:00 PM</option>
+        <option value="22:00">10:00 PM</option>
+      </datalist>
     </form>
   )
 }

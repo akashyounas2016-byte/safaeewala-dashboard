@@ -8,7 +8,7 @@ import {
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
 import type { Booking, Invoice } from '@/types'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatTime } from '@/lib/utils'
 import { nextInvoiceNumber } from '@/lib/invoiceNumber'
 import { printInvoice } from '@/lib/invoicePrint'
 import { notify } from '@/lib/notify'
@@ -188,7 +188,7 @@ export function BookingInvoiceModal({ booking, open, onClose }: BookingInvoiceMo
               <span>·</span>
               <span className="flex items-center gap-1">
                 <Clock size={12} className="text-teal-400" />
-                <span>{booking.scheduled_time || '09:00'} ({booking.duration_hours || 3}h)</span>
+                <span>{formatTime(booking.scheduled_time || '09:00')} ({booking.duration_hours || 3}h)</span>
               </span>
               <span>·</span>
               <span className="flex items-center gap-1">

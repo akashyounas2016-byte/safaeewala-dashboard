@@ -25,7 +25,56 @@ export function formatDate(date: string | Date | null | undefined) {
   }).format(d)
 }
 
-export function formatDateTime(date: string | Date | null | undefined) {
+export function formatTime12h(val: unknown): string {
+  if (val === null || val === undefined || val === '') return '—'
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '—'
+    let hh = val.getHours()
+    const mm = String(val.getMinutes()).padStart(2, '0')
+    const mer = hh >= 12 ? 'PM' : 'AM'
+    hh = hh % 12 || 12
+    return `${String(hh).padStart(2, '0')}:${mm} ${mer}`
+  }
+  const str = String(val).trim()
+  if (!str || str === '—' || str === '-') return '—'
+
+  // Already 12h format e.g. "09:00 AM" or "2:30 pm"
+  const ampmMatch = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)\b/i)
+  if (ampmMatch) {
+    let hh = parseInt(ampmMatch[1], 10)
+    const mm = ampmMatch[2]
+    const mer = ampmMatch[3].toUpperCase()
+    hh = hh % 12 || 12
+    return `${String(hh).padStart(2, '0')}:${mm} ${mer}`
+  }
+
+  // 24h format e.g. "09:00", "14:30", "20:00:00"
+  const timeMatch = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\b/)
+  if (timeMatch) {
+    let hh = parseInt(timeMatch[1], 10)
+    const mm = timeMatch[2]
+    const mer = hh >= 12 ? 'PM' : 'AM'
+    hh = hh % 12 || 12
+    return `${String(hh).padStart(2, '0')}:${mm} ${mer}`
+  }
+
+  const d = new Date(str.includes('T') ? str : '2000-01-01T' + str)
+  if (!isNaN(d.getTime())) {
+    let hh = d.getHours()
+    const mm = String(d.getMinutes()).padStart(2, '0')
+    const mer = hh >= 12 ? 'PM' : 'AM'
+    hh = hh % 12 || 12
+    return `${String(hh).padStart(2, '0')}:${mm} ${mer}`
+  }
+
+  return str
+}
+
+export function formatTime(date: string | Date | null | undefined): string {
+  return formatTime12h(date)
+}
+
+export function formatDateTime(date: string | Date | null | undefined): string {
   if (!date) return '—'
   const d = new Date(date)
   if (isNaN(d.getTime())) return '—'
@@ -35,16 +84,7 @@ export function formatDateTime(date: string | Date | null | undefined) {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(d)
-}
-
-export function formatTime(date: string | Date | null | undefined) {
-  if (!date) return '—'
-  const d = new Date(date)
-  if (isNaN(d.getTime())) return '—'
-  return new Intl.DateTimeFormat('en-AE', {
-    hour: '2-digit',
-    minute: '2-digit',
+    hour12: true,
   }).format(d)
 }
 
@@ -71,9 +111,20 @@ export function daysUntil(date: string | Date | null | undefined) {
  */
 export function addHoursToTime(timeStr: string, durationHours: number): string {
   if (!timeStr) return ''
-  const parts = timeStr.split(':')
-  const h = parseInt(parts[0] || '9', 10)
-  const m = parseInt(parts[1] || '0', 10)
+  const str = String(timeStr).trim()
+  let h = 9, m = 0
+  const ampmMatch = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)\b/i)
+  if (ampmMatch) {
+    h = parseInt(ampmMatch[1], 10)
+    m = parseInt(ampmMatch[2], 10)
+    const mer = ampmMatch[3].toUpperCase()
+    if (mer === 'PM' && h < 12) h += 12
+    if (mer === 'AM' && h === 12) h = 0
+  } else {
+    const parts = str.split(':')
+    h = parseInt(parts[0] || '9', 10)
+    m = parseInt(parts[1] || '0', 10)
+  }
   const totalM = h * 60 + m + Math.round(durationHours * 60)
   const newH = Math.floor(totalM / 60) % 24
   const newM = totalM % 60
@@ -81,31 +132,51 @@ export function addHoursToTime(timeStr: string, durationHours: number): string {
 }
 
 /**
- * Calculates duration in hours between Start Time and End Time (HH:MM).
+ * Calculates duration in hours between Start Time and End Time (supports 12h and 24h).
  */
 export function calcDurationFromTimes(startStr: string, endStr: string): number {
   if (!startStr || !endStr) return 0
-  const [sh, sm] = startStr.split(':').map(Number)
-  const [eh, em] = endStr.split(':').map(Number)
-  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return 0
-
-  let startM = sh * 60 + sm
-  let endM = eh * 60 + em
-  if (endM < startM) {
-    endM += 24 * 60 // cross midnight
+  const parseMins = (s: string) => {
+    const str = String(s).trim()
+    const ampmMatch = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)\b/i)
+    if (ampmMatch) {
+      let h = parseInt(ampmMatch[1], 10)
+      const m = parseInt(ampmMatch[2], 10)
+      if (ampmMatch[3].toUpperCase() === 'PM' && h < 12) h += 12
+      if (ampmMatch[3].toUpperCase() === 'AM' && h === 12) h = 0
+      return h * 60 + m
+    }
+    const [sh, sm] = str.split(':').map(Number)
+    if (isNaN(sh) || isNaN(sm)) return null
+    return sh * 60 + sm
   }
+  const startM = parseMins(startStr)
+  let endM = parseMins(endStr)
+  if (startM === null || endM === null) return 0
+  if (endM < startM) endM += 24 * 60 // cross midnight
   const diffMinutes = endM - startM
   return Math.round((diffMinutes / 60) * 10) / 10
 }
 
 /**
- * Calculates Start Time given End Time (HH:MM) and duration in hours.
+ * Calculates Start Time given End Time and duration in hours.
  */
 export function subtractHoursFromTime(timeStr: string, durationHours: number): string {
   if (!timeStr) return ''
-  const parts = timeStr.split(':')
-  const h = parseInt(parts[0] || '13', 10)
-  const m = parseInt(parts[1] || '0', 10)
+  const str = String(timeStr).trim()
+  let h = 13, m = 0
+  const ampmMatch = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)\b/i)
+  if (ampmMatch) {
+    h = parseInt(ampmMatch[1], 10)
+    m = parseInt(ampmMatch[2], 10)
+    const mer = ampmMatch[3].toUpperCase()
+    if (mer === 'PM' && h < 12) h += 12
+    if (mer === 'AM' && h === 12) h = 0
+  } else {
+    const parts = str.split(':')
+    h = parseInt(parts[0] || '13', 10)
+    m = parseInt(parts[1] || '0', 10)
+  }
   let totalM = h * 60 + m - Math.round(durationHours * 60)
   while (totalM < 0) totalM += 24 * 60
   const newH = Math.floor(totalM / 60) % 24

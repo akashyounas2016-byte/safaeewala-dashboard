@@ -4,7 +4,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import type { Client, Employee } from '@/types'
-import { addHoursToTime, subtractHoursFromTime, calcDurationFromTimes } from '@/lib/utils'
+import { addHoursToTime, subtractHoursFromTime, calcDurationFromTimes, formatTime12h } from '@/lib/utils'
 
 export const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 export const DAY_SHORT: Record<string, string> = {
@@ -480,18 +480,19 @@ export function AddMonthlyClientModalForm({
 
                     {/* Col 2: Start Time (HH:MM) */}
                     <td className="py-2 px-3 align-middle">
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="time"
-                          value={row.startTime}
-                          disabled={!isEnabled}
-                          onChange={e => updateDaySchedule(day, 'startTime', e.target.value)}
-                          className={`w-full h-8 px-2 text-[12px] font-mono border rounded-lg focus:outline-none transition-all ${
-                            isEnabled
-                              ? 'bg-white border-slate-200 focus:border-emerald-500 text-slate-800 shadow-2xs'
-                              : 'bg-slate-100/60 border-slate-200/60 text-slate-400 cursor-not-allowed'
-                          }`}
-                        />
+                      <div>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="time"
+                            value={row.startTime}
+                            disabled={!isEnabled}
+                            onChange={e => updateDaySchedule(day, 'startTime', e.target.value)}
+                            className={`w-full h-8 px-2 text-[12px] font-mono border rounded-lg focus:outline-none transition-all ${
+                              isEnabled
+                                ? 'bg-white border-slate-200 focus:border-emerald-500 text-slate-800 shadow-2xs'
+                                : 'bg-slate-100/60 border-slate-200/60 text-slate-400 cursor-not-allowed'
+                            }`}
+                          />
                         {isEnabled && row.endTime && (
                           <button
                             type="button"
@@ -503,22 +504,25 @@ export function AddMonthlyClientModalForm({
                           </button>
                         )}
                       </div>
+                      {isEnabled && <span className="text-[9.5px] font-bold text-emerald-700 block mt-0.5">{formatTime12h(row.startTime)}</span>}
+                    </div>
                     </td>
 
                     {/* Col 3: End Time (HH:MM) */}
                     <td className="py-2 px-3 align-middle">
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="time"
-                          value={row.endTime}
-                          disabled={!isEnabled}
-                          onChange={e => updateDaySchedule(day, 'endTime', e.target.value)}
-                          className={`w-full h-8 px-2 text-[12px] font-mono border rounded-lg focus:outline-none transition-all ${
-                            isEnabled
-                              ? 'bg-white border-slate-200 focus:border-teal-500 text-slate-800 shadow-2xs'
-                              : 'bg-slate-100/60 border-slate-200/60 text-slate-400 cursor-not-allowed'
-                          }`}
-                        />
+                      <div>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="time"
+                            value={row.endTime}
+                            disabled={!isEnabled}
+                            onChange={e => updateDaySchedule(day, 'endTime', e.target.value)}
+                            className={`w-full h-8 px-2 text-[12px] font-mono border rounded-lg focus:outline-none transition-all ${
+                              isEnabled
+                                ? 'bg-white border-slate-200 focus:border-teal-500 text-slate-800 shadow-2xs'
+                                : 'bg-slate-100/60 border-slate-200/60 text-slate-400 cursor-not-allowed'
+                            }`}
+                          />
                         {isEnabled && row.startTime && (
                           <button
                             type="button"
@@ -530,6 +534,8 @@ export function AddMonthlyClientModalForm({
                           </button>
                         )}
                       </div>
+                      {isEnabled && <span className="text-[9.5px] font-bold text-teal-700 block mt-0.5">{formatTime12h(row.endTime)}</span>}
+                    </div>
                     </td>
 
                     {/* Col 4: Duration (2, 3, 4, 5 Hours) */}

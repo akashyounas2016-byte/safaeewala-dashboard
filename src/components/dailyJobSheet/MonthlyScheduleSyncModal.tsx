@@ -11,7 +11,7 @@ import {
   getScheduledMonthlyShiftsForDate,
   type ScheduledShiftPlan
 } from '@/lib/clientDataSync'
-import { fmtDate } from './jobSheetUtils'
+import { fmtDate, formatTime12h } from './jobSheetUtils'
 import { todayDubai, addDays } from '@/lib/dubaiTime'
 
 interface MonthlyScheduleSyncModalProps {
@@ -268,7 +268,7 @@ export function MonthlyScheduleSyncModal({
                       <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-500">
                         <span className="flex items-center gap-1 font-mono text-slate-600 font-medium">
                           <Clock size={11} className="text-slate-400" />
-                          <span>{shift.startTime || '09:00'} – {shift.endTime || '13:00'}</span>
+                          <span>{formatTime12h(shift.startTime || '09:00')} – {formatTime12h(shift.endTime || '13:00')}</span>
                           <span className="text-slate-400">({shift.durationHours || 4}h)</span>
                         </span>
                         <span>·</span>

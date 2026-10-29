@@ -1441,7 +1441,7 @@ export function ClientProfile() {
                             )}
                           </div>
                           <div className="flex flex-wrap gap-3 text-[12px] text-slate-500">
-                            <span className="flex items-center gap-1"><Calendar size={11} /> {formatDate(b.scheduled_date)} at {b.scheduled_time}</span>
+                            <span className="flex items-center gap-1"><Calendar size={11} /> {formatDate(b.scheduled_date)} at {formatTimeOnly(b.scheduled_time)}</span>
                             <span className="flex items-center gap-1"><MapPin size={11} className="shrink-0" /> {b.service_address}</span>
                             {b.assigned_crew?.length > 0 && (
                               <span className="flex items-center gap-1"><User size={11} /> {crewNames(b.assigned_crew)}</span>
@@ -1593,7 +1593,7 @@ export function ClientProfile() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[12px] font-semibold text-[#111827] truncate">{b.service_type}</p>
-                      <p className="text-[11px] text-slate-500">{formatDate(b.scheduled_date)} · {b.scheduled_time}</p>
+                      <p className="text-[11px] text-slate-500">{formatDate(b.scheduled_date)} · {formatTimeOnly(b.scheduled_time)}</p>
                     </div>
                     <StatusPill status={b.status} />
                   </div>

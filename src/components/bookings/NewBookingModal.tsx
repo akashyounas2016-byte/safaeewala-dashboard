@@ -7,7 +7,7 @@ import {
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useData } from '@/store/DataContext'
-import { addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
+import { addHoursToTime, calcDurationFromTimes, formatTime12h } from '@/lib/utils'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import type { Booking, BookingFrequency, BookingStatus, Client } from '@/types'
 import { todayDubai } from '@/lib/dubaiTime'
@@ -797,26 +797,30 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
             {/* Start Time & End Time */}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-xs font-semibold text-emerald-950 block mb-1">
-                  Start Time <span className="text-red-500">*</span>
+                <label className="text-xs font-semibold text-emerald-950 flex items-center justify-between mb-1">
+                  <span>Start Time <span className="text-red-500">*</span></span>
+                  <span className="text-emerald-700 font-bold">({formatTime12h(startTime)})</span>
                 </label>
                 <input
                   type="time"
                   required
                   value={startTime}
                   onChange={e => handleStartTimeChange(e.target.value)}
+                  list="new-booking-time-options"
                   className="w-full text-[12px] px-2.5 py-2 bg-white border border-emerald-200/80 rounded-xl focus:outline-none focus:border-emerald-600 font-medium text-slate-600 shadow-2xs"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-emerald-950 block mb-1">
-                  End Time
+                <label className="text-xs font-semibold text-emerald-950 flex items-center justify-between mb-1">
+                  <span>End Time</span>
+                  <span className="text-emerald-700 font-bold">({formatTime12h(endTime)})</span>
                 </label>
                 <input
                   type="time"
                   value={endTime}
                   onChange={e => handleEndTimeChange(e.target.value)}
+                  list="new-booking-time-options"
                   className="w-full text-[12px] px-2.5 py-2 bg-white border border-emerald-200/80 rounded-xl focus:outline-none focus:border-emerald-600 font-medium text-slate-600 shadow-2xs"
                 />
               </div>
@@ -1175,7 +1179,37 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
               </Button>
             </div>
           </div>
-        </Modal>
+          <datalist id="new-booking-time-options">
+        <option value="07:00">07:00 AM</option>
+        <option value="07:30">07:30 AM</option>
+        <option value="08:00">08:00 AM</option>
+        <option value="08:30">08:30 AM</option>
+        <option value="09:00">09:00 AM</option>
+        <option value="09:30">09:30 AM</option>
+        <option value="10:00">10:00 AM</option>
+        <option value="10:30">10:30 AM</option>
+        <option value="11:00">11:00 AM</option>
+        <option value="11:30">11:30 AM</option>
+        <option value="12:00">12:00 PM</option>
+        <option value="12:30">12:30 PM</option>
+        <option value="13:00">01:00 PM</option>
+        <option value="13:30">01:30 PM</option>
+        <option value="14:00">02:00 PM</option>
+        <option value="14:30">02:30 PM</option>
+        <option value="15:00">03:00 PM</option>
+        <option value="15:30">03:30 PM</option>
+        <option value="16:00">04:00 PM</option>
+        <option value="16:30">04:30 PM</option>
+        <option value="17:00">05:00 PM</option>
+        <option value="17:30">05:30 PM</option>
+        <option value="18:00">06:00 PM</option>
+        <option value="18:30">06:30 PM</option>
+        <option value="19:00">07:00 PM</option>
+        <option value="19:30">07:30 PM</option>
+        <option value="20:00">08:00 PM</option>
+        <option value="21:00">09:00 PM</option>
+      </datalist>
+    </Modal>
       )}
     </Modal>
   )
