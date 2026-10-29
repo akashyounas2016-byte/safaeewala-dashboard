@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle, Clock, Moon, Sun, CheckCircle2, XCircle, Loader2, Send, Key, Link2, Eye, EyeOff, Sparkles, ChevronDown, ChevronUp, Mail } from 'lucide-react'
+import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle, Clock, Moon, Sun, CheckCircle2, XCircle, Loader2, Send, Key, Link2, Eye, EyeOff, Sparkles, ChevronDown, ChevronUp, Mail, HelpCircle, Database, Server, RefreshCw, FileText, Check, Copy, Info, ShieldCheck } from 'lucide-react'
 import { useDarkMode } from '@/hooks/useDarkMode'
 import { supabase } from '@/lib/supabase'
 import { loadCompanyInfo } from '@/lib/companyInfo'
 import { useIsAdmin, useCurrentUser, useRolePerms, useSetRolePerms, DEFAULT_ROLE_PERMS, ALL_MODULES, type RolePerms, type AppRole } from '@/store/UserContext'
 import * as XLSX from 'xlsx'
-import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured } from '@/lib/googleDrive'
+import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured, getDriveWebhookUrl, setDriveWebhookUrl, testDriveWebhook } from '@/lib/googleDrive'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { PageHero } from '@/components/layout/PageHero'
@@ -28,6 +28,7 @@ const allTabs = [
   { id: 'notifications', label: 'Notifications',  icon: Bell,       adminOnly: false },
   { id: 'roles',         label: 'Roles & Access', icon: Shield,     adminOnly: false },
   { id: 'billing',       label: 'Billing',        icon: CreditCard, adminOnly: false },
+  { id: 'backup',        label: 'Backup',         icon: HardDrive,  adminOnly: false },
   { id: 'activity',      label: 'Activity Log',   icon: Clock,      adminOnly: true  },
   { id: 'integrations',  label: 'Integrations',   icon: Globe,     adminOnly: false },
 ]
@@ -936,7 +937,13 @@ export function Settings() {
   const currentUser = useCurrentUser()
   const roleLoaded  = currentUser !== null
   const tabs        = allTabs.filter(t => !t.adminOnly || !roleLoaded || isAdmin)
-  const [activeTab, setActiveTab] = useState('company')
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const p = new URLSearchParams(window.location.search).get('tab')
+      if (p && allTabs.some(t => t.id === p)) return p
+    } catch {}
+    return 'company'
+  })
   const [userEmail, setUserEmail] = useState('')
   const [company,  setCompany]   = useState<CompanyData>(DEFAULT_COMPANY)
   const [notif,    setNotif]     = useState<NotifData>(DEFAULT_NOTIF)
@@ -1009,7 +1016,121 @@ export function Settings() {
   const [driveError, setDriveError] = useState('')
   const [importStatus, setImportStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [importError,  setImportError]  = useState('')
+  const [importSuccessMsg, setImportSuccessMsg] = useState('')
   const importRef = useRef<HTMLInputElement>(null)
+
+  const [showBackupHelpModal, setShowBackupHelpModal] = useState(false)
+  const [driveWebhookUrl, setDriveWebhookUrlState] = useState(() => getDriveWebhookUrl())
+  const [webhookSaveSuccess, setWebhookSaveSuccess] = useState(false)
+  const [webhookTesting, setWebhookTesting] = useState(false)
+  const [webhookTestResult, setWebhookTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null)
+
+  const [backupRestoreConfirmOpen, setBackupRestoreConfirmOpen] = useState(false)
+  const [stagedBackupFile, setStagedBackupFile] = useState<File | null>(null)
+  const [stagedBackupSummary, setStagedBackupSummary] = useState<{ tables: { name: string; count: number }[]; total: number } | null>(null)
+
+  const totalRecords = bookings.length + clients.length + employees.length + invoices.length + inventory.length + dailyJobs.length + dailyExpenses.length
+
+  function handleCopySnippet(text: string, key: string) {
+    navigator.clipboard.writeText(text)
+    setCopiedSnippet(key)
+    setTimeout(() => setCopiedSnippet(null), 2000)
+  }
+
+  function handleSaveWebhook() {
+    setDriveWebhookUrl(driveWebhookUrl)
+    setWebhookSaveSuccess(true)
+    setTimeout(() => setWebhookSaveSuccess(false), 2500)
+  }
+
+  async function handleTestWebhook() {
+    if (!driveWebhookUrl.trim()) {
+      setWebhookTestResult({ success: false, message: 'Please enter a webhook URL first.' })
+      return
+    }
+    setWebhookTesting(true)
+    setWebhookTestResult(null)
+    try {
+      const res = await testDriveWebhook(driveWebhookUrl.trim())
+      setWebhookTestResult(res)
+    } catch (err: any) {
+      setWebhookTestResult({ success: false, message: err.message || 'Webhook ping failed' })
+    } finally {
+      setWebhookTesting(false)
+    }
+  }
+
+  async function handleFileSelected(file: File) {
+    try {
+      setImportError('')
+      const text = await file.text()
+      const data = JSON.parse(text)
+      const tables: { name: string; count: number }[] = [
+        { name: 'Bookings',       count: Array.isArray(data.bookings) ? data.bookings.length : 0 },
+        { name: 'Clients',        count: Array.isArray(data.clients) ? data.clients.length : 0 },
+        { name: 'Employees',      count: Array.isArray(data.employees) ? data.employees.length : 0 },
+        { name: 'Invoices',       count: Array.isArray(data.invoices) ? data.invoices.length : 0 },
+        { name: 'Inventory',      count: Array.isArray(data.inventory) ? data.inventory.length : 0 },
+        { name: 'Daily Jobs',     count: Array.isArray(data.dailyJobs) ? data.dailyJobs.length : 0 },
+        { name: 'Daily Expenses', count: Array.isArray(data.dailyExpenses) ? data.dailyExpenses.length : 0 },
+      ]
+      const total = tables.reduce((acc, t) => acc + t.count, 0)
+      if (total === 0) {
+        setImportError('Selected JSON file does not appear to contain any recognized Safaeewala backup tables.')
+        return
+      }
+      setStagedBackupFile(file)
+      setStagedBackupSummary({ tables, total })
+      setBackupRestoreConfirmOpen(true)
+    } catch (err: any) {
+      setImportError('Invalid JSON format: ' + (err.message || 'Could not parse file'))
+    }
+  }
+
+  async function executeRestore() {
+    if (!stagedBackupFile) return
+    try {
+      setImportStatus('loading')
+      setImportError('')
+      const text = await stagedBackupFile.text()
+      const data = JSON.parse(text)
+      const tables: [string, any[]][] = [
+        ['bookings',       data.bookings       ?? []],
+        ['clients',        data.clients        ?? []],
+        ['employees',      data.employees      ?? []],
+        ['invoices',       data.invoices       ?? []],
+        ['inventory',      data.inventory      ?? []],
+        ['daily_jobs',     data.dailyJobs      ?? []],
+        ['daily_expenses', data.dailyExpenses  ?? []],
+      ]
+      let restoredCount = 0
+      for (const [table, rows] of tables) {
+        if (rows.length > 0) {
+          const batchSize = 200
+          for (let i = 0; i < rows.length; i += batchSize) {
+            const batch = rows.slice(i, i + batchSize)
+            const { error } = await supabase.from(table).upsert(batch)
+            if (error) throw new Error(`Error restoring table ${table}: ${error.message}`)
+            restoredCount += batch.length
+          }
+        }
+      }
+      setImportStatus('done')
+      setImportSuccessMsg(`Successfully restored ${restoredCount} records into Supabase!`)
+      setBackupRestoreConfirmOpen(false)
+      setStagedBackupFile(null)
+      setStagedBackupSummary(null)
+      setTimeout(() => {
+        setImportStatus('idle')
+        setImportSuccessMsg('')
+      }, 6000)
+    } catch (err: any) {
+      setImportError(err.message || 'Import failed')
+      setImportStatus('error')
+      setBackupRestoreConfirmOpen(false)
+    }
+  }
 
   function downloadBackup() {
     const data = { bookings, clients, employees, invoices, inventory, dailyJobs, dailyExpenses, exported_at: new Date().toISOString() }
@@ -1439,6 +1560,516 @@ export function Settings() {
 
           {/* ── Activity Log ── */}
           {activeTab === 'activity' && <ActivityLogPanel />}
+
+          {/* ── Backup & Disaster Recovery ── */}
+          {activeTab === 'backup' && (
+            <div className="space-y-6">
+              {/* Header Hero Banner */}
+              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white rounded-[22px] p-6 shadow-[0_4px_20px_rgba(15,23,42,0.12)] relative overflow-hidden">
+                <div className="flex flex-wrap items-start justify-between gap-4 relative z-10">
+                  <div className="max-w-xl">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[11px] font-bold uppercase tracking-wider mb-2.5">
+                      <ShieldCheck size={13} className="text-emerald-400" />
+                      Centralized Data Protection
+                    </div>
+                    <h2 className="text-[20px] font-bold text-white tracking-tight">
+                      Backup & Disaster Recovery Center
+                    </h2>
+                    <p className="text-[13px] text-slate-300 mt-1 leading-relaxed">
+                      Instant multi-sheet Excel & JSON downloads, safe non-destructive restore engine, Google Drive cloud integration, and VPS disaster recovery architecture.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <button
+                      onClick={() => setShowBackupHelpModal(true)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-[12.5px] font-bold transition-all backdrop-blur-xs cursor-pointer shadow-xs"
+                    >
+                      <HelpCircle size={15} className="text-emerald-300" />
+                      How-To & Help Guide
+                    </button>
+                    <a
+                      href="https://supabase.com/dashboard"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[12.5px] font-bold transition-all shadow-xs"
+                    >
+                      <Database size={15} />
+                      Supabase Console
+                    </a>
+                  </div>
+                </div>
+
+                {/* 4 Health / Storage Chips */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-5 border-t border-white/10 relative z-10">
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-slate-300">Total Live Records</span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    </div>
+                    <p className="text-[20px] font-black text-white mt-0.5">{totalRecords.toLocaleString()}</p>
+                    <p className="text-[10.5px] text-emerald-300 mt-0.5 font-medium">Across all 7 collections</p>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-slate-300">Protected Tables</span>
+                      <Database size={13} className="text-blue-300" />
+                    </div>
+                    <p className="text-[20px] font-black text-white mt-0.5">7 Tables</p>
+                    <p className="text-[10.5px] text-blue-200 mt-0.5 font-medium">Bookings, Clients, Crew, etc.</p>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-slate-300">Google Drive Sync</span>
+                      <CloudUpload size={13} className="text-amber-300" />
+                    </div>
+                    <p className="text-[14px] font-bold text-white mt-1 truncate">
+                      {gdriveConfigured ? 'OAuth Active' : (driveWebhookUrl ? 'Webhook Ready' : 'Standby')}
+                    </p>
+                    <p className="text-[10.5px] text-amber-200 mt-0.5 font-medium">
+                      {gdriveConfigured ? 'Direct 1-click cloud sync' : (driveWebhookUrl ? 'n8n automation endpoint' : 'Manual / Webhook')}
+                    </p>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-slate-300">Server Disk Backups</span>
+                      <Server size={13} className="text-emerald-300" />
+                    </div>
+                    <p className="text-[14px] font-bold text-white mt-1">/data/backups/</p>
+                    <p className="text-[10.5px] text-emerald-200 mt-0.5 font-medium">VPS Docker volume mounted</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 1: One-Click Instant Backups (Export Engine) */}
+              <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+                <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold shrink-0">
+                      <Download size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-[15px] font-bold text-[#111827]">Instant Local Backups (Export Engine)</h3>
+                      <p className="text-[12px] text-slate-500">Download a full timestamped snapshot directly to your computer's Downloads folder</p>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                    Offline Ready
+                  </span>
+                </div>
+
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Excel Backup Card */}
+                    <div className="border border-emerald-200/80 bg-gradient-to-br from-emerald-50/40 to-white rounded-2xl p-5 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-2.5 mb-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                            <FileSpreadsheet size={16} />
+                          </div>
+                          <div>
+                            <h4 className="text-[14px] font-bold text-slate-900">Microsoft Excel Spreadsheet</h4>
+                            <span className="text-[11px] font-bold text-emerald-700">7 Separate Sheets (.xlsx)</span>
+                          </div>
+                        </div>
+                        <p className="text-[12px] text-slate-600 mb-3 leading-relaxed">
+                          Formatted workbook containing complete records for Bookings ({bookings.length}), Clients ({clients.length}), Employees ({employees.length}), Invoices ({invoices.length}), Inventory ({inventory.length}), Daily Jobs ({dailyJobs.length}), and Expenses ({dailyExpenses.length}).
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 mb-4">
+                          {['Bookings', 'Clients', 'Staff', 'Invoices', 'Inventory', 'Daily Jobs', 'Expenses'].map(tag => (
+                            <span key={tag} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white border border-emerald-200 text-emerald-800">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={downloadExcel}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[12.5px] font-bold transition-all shadow-xs cursor-pointer"
+                      >
+                        <FileSpreadsheet size={15} />
+                        Download Full Excel (.xlsx)
+                      </button>
+                    </div>
+
+                    {/* JSON Dump Card */}
+                    <div className="border border-slate-200 bg-gradient-to-br from-slate-50 to-white rounded-2xl p-5 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-2.5 mb-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center shadow-xs">
+                            <Database size={16} />
+                          </div>
+                          <div>
+                            <h4 className="text-[14px] font-bold text-slate-900">Technical JSON Data Dump</h4>
+                            <span className="text-[11px] font-bold text-slate-600">Full Raw Database Structure (.json)</span>
+                          </div>
+                        </div>
+                        <p className="text-[12px] text-slate-600 mb-3 leading-relaxed">
+                          Complete raw structured export with ISO timestamps, primary keys, and relationships. Directly compatible with the Restore Engine below for 1-click database recovery.
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 mb-4">
+                          {['100% Schema', 'ISO Timestamps', 'Direct Restore', 'Developer Dump'].map(tag => (
+                            <span key={tag} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={downloadBackup}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[12.5px] font-bold transition-all shadow-xs cursor-pointer"
+                      >
+                        <Download size={15} />
+                        Download JSON Backup (.json)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-[#E4E8EC] flex items-center gap-2 text-[11.5px] text-slate-500">
+                    <Info size={13} className="text-slate-400 shrink-0" />
+                    <span>Files are saved directly to your computer as <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">safaeewala-backup-{todayDubai()}.xlsx / .json</code></span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Safe Database Recovery & Restore Engine */}
+              <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+                <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold shrink-0">
+                      <ShieldCheck size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-[15px] font-bold text-[#111827]">Safe Database Recovery & Restore Engine</h3>
+                      <p className="text-[12px] text-slate-500">Restore or synchronize records from any previously downloaded JSON backup file</p>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    Non-Destructive Upsert
+                  </span>
+                </div>
+
+                <div className="p-6 space-y-4">
+                  <div className="bg-blue-50/60 border border-blue-200/80 rounded-xl p-4 flex items-start gap-3">
+                    <ShieldCheck size={18} className="text-blue-600 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[12.5px] font-bold text-blue-900">Safety Guarantee: Non-Destructive Upsert</p>
+                      <p className="text-[12px] text-blue-800 mt-0.5 leading-relaxed">
+                        Restoring a backup will safely match existing records by their unique ID and update them, while inserting any missing records. It will <strong className="font-bold underline">never</strong> delete or wipe unrelated database records.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* File Upload Box */}
+                  <input
+                    ref={importRef}
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0]
+                      if (file) handleFileSelected(file)
+                      e.target.value = ''
+                    }}
+                  />
+
+                  <div className="border-2 border-dashed border-slate-200 hover:border-blue-400 bg-slate-50/50 hover:bg-blue-50/20 rounded-2xl p-6 text-center transition-all">
+                    <div className="w-12 h-12 rounded-full bg-white border border-slate-200 shadow-2xs mx-auto flex items-center justify-center text-slate-600 mb-3">
+                      <Upload size={22} className="text-blue-600" />
+                    </div>
+                    <h4 className="text-[14px] font-bold text-slate-800 mb-1">
+                      Select JSON Backup File
+                    </h4>
+                    <p className="text-[12px] text-slate-500 max-w-md mx-auto mb-4">
+                      Choose any valid <code className="bg-slate-200/80 px-1.5 py-0.5 rounded text-slate-700">safaeewala-backup-*.json</code> file from your computer to inspect and restore.
+                    </p>
+                    <button
+                      onClick={() => importRef.current?.click()}
+                      disabled={importStatus === 'loading'}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[12.5px] font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                    >
+                      {importStatus === 'loading' ? (
+                        <>
+                          <Loader2 size={15} className="animate-spin" />
+                          Processing & Restoring Records…
+                        </>
+                      ) : (
+                        <>
+                          <Upload size={15} />
+                          Browse & Import JSON Backup
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Import Success Message */}
+                  {importSuccessMsg && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
+                      <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                      <p className="text-[12.5px] font-bold text-emerald-800">{importSuccessMsg}</p>
+                    </div>
+                  )}
+
+                  {/* Import Error Message */}
+                  {importError && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
+                      <AlertTriangle size={18} className="text-red-600 shrink-0" />
+                      <div>
+                        <p className="text-[12.5px] font-bold text-red-800">Restore Error</p>
+                        <p className="text-[12px] text-red-700 mt-0.5">{importError}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 3: Google Drive & Cloud Webhook Integrations */}
+              <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+                <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold shrink-0">
+                      <CloudUpload size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-[15px] font-bold text-[#111827]">Cloud & Webhook Automation (Google Drive)</h3>
+                      <p className="text-[12px] text-slate-500">Automate offsite backups directly into your Google Drive via OAuth or n8n workflow</p>
+                    </div>
+                  </div>
+                  {gdriveConfigured ? (
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                      <CheckCircle size={12} /> OAuth Configured
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                      Webhook / OAuth Available
+                    </span>
+                  )}
+                </div>
+
+                <div className="p-6 space-y-6">
+                  {/* Google Drive OAuth direct sync */}
+                  <div className="p-4 border border-slate-200 rounded-2xl bg-slate-50/50">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                      <div>
+                        <h4 className="text-[13.5px] font-bold text-slate-900 flex items-center gap-2">
+                          <CloudUpload size={16} className="text-blue-600" />
+                          Direct Google Drive OAuth Upload
+                        </h4>
+                        <p className="text-[12px] text-slate-500 mt-0.5">
+                          1-Click instant upload of complete database spreadsheet to your Google Drive account.
+                        </p>
+                      </div>
+                      {gdriveConfigured ? (
+                        <button
+                          onClick={backupToDrive}
+                          disabled={driveStatus === 'connecting' || driveStatus === 'uploading'}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                        >
+                          {driveStatus === 'connecting' ? (
+                            <>
+                              <Loader2 size={13} className="animate-spin" />
+                              Connecting to Google…
+                            </>
+                          ) : driveStatus === 'uploading' ? (
+                            <>
+                              <Loader2 size={13} className="animate-spin" />
+                              Uploading Spreadsheet…
+                            </>
+                          ) : (
+                            <>
+                              <CloudUpload size={13} />
+                              Backup to Google Drive Now
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="text-[11px] font-semibold text-slate-500 bg-white border border-slate-200 px-3 py-1.5 rounded-lg">
+                          Requires VITE_GOOGLE_CLIENT_ID
+                        </span>
+                      )}
+                    </div>
+
+                    {driveStatus === 'done' && (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={15} className="text-emerald-600" />
+                          <span className="text-[12px] text-emerald-800 font-semibold">Spreadsheet uploaded successfully to Google Drive!</span>
+                        </div>
+                        {driveLink && (
+                          <a
+                            href={driveLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11.5px] font-bold text-emerald-700 underline hover:text-emerald-800"
+                          >
+                            Open in Google Drive <ExternalLink size={11} />
+                          </a>
+                        )}
+                      </div>
+                    )}
+
+                    {driveStatus === 'error' && (
+                      <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2">
+                        <AlertTriangle size={15} className="text-red-600" />
+                        <span className="text-[12px] text-red-700">{driveError}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* n8n / Webhook Integration */}
+                  <div className="p-4 border border-slate-200 rounded-2xl bg-white space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h4 className="text-[13.5px] font-bold text-slate-900 flex items-center gap-2">
+                          <Globe size={16} className="text-amber-600" />
+                          Automated n8n / Webhook Pipeline
+                        </h4>
+                        <p className="text-[12px] text-slate-500 mt-0.5">
+                          Webhook endpoint for automated end-of-day job sheets and scheduled cloud archiving.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {webhookSaveSuccess && (
+                          <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                            <Check size={13} /> Saved!
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[11.5px] font-bold text-slate-700 uppercase tracking-wide">
+                        n8n or Cloud Webhook URL
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          placeholder="https://n8n.yourdomain.com/webhook/safaeewala-backup"
+                          value={driveWebhookUrl}
+                          onChange={e => setDriveWebhookUrlState(e.target.value)}
+                          className="flex-1 text-[12.5px] px-3.5 py-2.5 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-amber-500 font-mono text-slate-800"
+                        />
+                        <button
+                          onClick={handleSaveWebhook}
+                          className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-bold transition-all shrink-0 cursor-pointer"
+                        >
+                          Save URL
+                        </button>
+                        <button
+                          onClick={handleTestWebhook}
+                          disabled={webhookTesting}
+                          className="px-4 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 text-[12px] font-bold transition-all shrink-0 cursor-pointer disabled:opacity-50"
+                        >
+                          {webhookTesting ? <Loader2 size={13} className="animate-spin" /> : 'Test Ping'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {webhookTestResult && (
+                      <div className={cn(
+                        'rounded-xl p-3 text-[12px] flex items-center gap-2',
+                        webhookTestResult.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'
+                      )}>
+                        {webhookTestResult.success ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
+                        <span>{webhookTestResult.message}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 4: VPS Server Storage & Disaster Recovery Architecture */}
+              <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+                <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold shrink-0">
+                      <Server size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-[15px] font-bold text-[#111827]">Server Storage & Disaster Recovery Architecture</h3>
+                      <p className="text-[12px] text-slate-500">Persistent VPS backup directory & database recovery protocol</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* VPS Storage Directory */}
+                    <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[12px] font-bold text-slate-900 flex items-center gap-1.5">
+                          <HardDrive size={14} className="text-emerald-600" />
+                          VPS Persistent Storage Volume
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                          Active
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-slate-600 mb-2 leading-relaxed">
+                        Backups sent via API endpoint are automatically stored on the VPS host directory at:
+                      </p>
+                      <div className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-[11px] text-slate-800">
+                        <span>/var/www/safaeewala/data/backups/</span>
+                        <button
+                          onClick={() => handleCopySnippet('/var/www/safaeewala/data/backups/', 'vps_path')}
+                          className="text-slate-400 hover:text-slate-700 transition-colors ml-2 cursor-pointer"
+                          title="Copy path"
+                        >
+                          {copiedSnippet === 'vps_path' ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Supabase Point-in-Time Recovery */}
+                    <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/60">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[12px] font-bold text-slate-900 flex items-center gap-1.5">
+                          <Database size={14} className="text-blue-600" />
+                          Supabase Managed PITR & Snapshots
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                          Cloud
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-slate-600 mb-2 leading-relaxed">
+                        Supabase maintains continuous Write-Ahead Logs (WAL) and automated cloud snapshots.
+                      </p>
+                      <a
+                        href="https://supabase.com/dashboard/project/_/settings/database"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11.5px] font-bold text-blue-600 hover:text-blue-800 underline"
+                      >
+                        Open Supabase Database Backups Tab <ExternalLink size={11} />
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Technical Disaster Recovery CLI snippet */}
+                  <div className="p-4 rounded-xl bg-slate-900 text-slate-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11.5px] font-mono text-slate-400 uppercase tracking-wider">
+                        Technical Disaster Recovery Command (VPS Docker)
+                      </span>
+                      <button
+                        onClick={() => handleCopySnippet('docker exec -it safaeewala-app ls -lah /data/backups/', 'cli_cmd')}
+                        className="flex items-center gap-1 text-[11px] font-sans text-slate-400 hover:text-white transition-colors cursor-pointer"
+                      >
+                        {copiedSnippet === 'cli_cmd' ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                        <span>{copiedSnippet === 'cli_cmd' ? 'Copied!' : 'Copy Command'}</span>
+                      </button>
+                    </div>
+                    <code className="text-[11.5px] font-mono text-emerald-400 block break-all">
+                      docker exec -it safaeewala-app ls -lah /data/backups/
+                    </code>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Right sidebar ── */}
@@ -1535,109 +2166,61 @@ export function Settings() {
             </div>
           </div>
 
-          {/* Backup Status — honest version */}
-          <div className="bg-slate-50 border border-[#E4E8EC] rounded-[22px] p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <HardDrive size={16} className="text-slate-500" />
-              <h3 className="text-[14px] font-bold text-slate-700">Data Backup</h3>
-            </div>
-            <div className="space-y-1.5 mb-3">
-              <p className="text-[12px] font-semibold text-slate-600 mb-2">Manual backup options:</p>
-              {[
-                'Supabase Dashboard → Settings → Database → Backups',
-                'Download CSV from each table via Table Editor',
-                'Use pg_dump via Supabase connection string',
-              ].map((tip, i) => (
-                <div key={i} className="flex gap-2 text-[11.5px] text-slate-600">
-                  <span className="text-slate-400 shrink-0">→</span>
-                  <span>{tip}</span>
+          {/* Centralized Backup Quick Status Card */}
+          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                  <HardDrive size={16} />
                 </div>
-              ))}
+                <div>
+                  <h3 className="text-[14px] font-bold text-[#111827]">Data & Backup</h3>
+                  <p className="text-[11px] text-slate-500">
+                    {totalRecords} records across 7 tables
+                  </p>
+                </div>
+              </div>
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" title="Supabase Connected" />
             </div>
-            <button
-              onClick={downloadExcel}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 transition-colors mb-2"
-            >
-              <FileSpreadsheet size={13} /> Download as Excel (.xlsx)
-            </button>
-            <button
-              onClick={downloadBackup}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-700 text-white text-[12px] font-semibold hover:bg-slate-800 transition-colors mb-2"
-            >
-              <Download size={13} /> Download JSON Backup
-            </button>
 
-            {/* Import */}
-            <input
-              ref={importRef}
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={e => {
-                const file = e.target.files?.[0]
-                if (file) importBackup(file)
-                e.target.value = ''
-              }}
-            />
-            <button
-              onClick={() => importRef.current?.click()}
-              disabled={importStatus === 'loading'}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-300 text-[12px] font-semibold text-slate-700 hover:bg-slate-50 transition-colors mb-2 disabled:opacity-60"
-            >
-              <Upload size={13} /> {importStatus === 'loading' ? 'Importing…' : 'Import JSON Backup'}
-            </button>
-            {importStatus === 'done' && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-2">
-                <p className="text-[11px] text-emerald-700 font-semibold">Backup imported successfully</p>
-              </div>
-            )}
-            {importStatus === 'error' && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-2">
-                <p className="text-[11px] text-red-700">{importError}</p>
-              </div>
-            )}
-
-            {/* Google Drive */}
-            {gdriveConfigured ? (
-              <>
-                <button
-                  onClick={backupToDrive}
-                  disabled={driveStatus === 'connecting' || driveStatus === 'uploading'}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 text-white text-[12px] font-semibold hover:bg-blue-700 transition-colors mb-2 disabled:opacity-60"
-                >
-                  <CloudUpload size={13} />
-                  {driveStatus === 'connecting' ? 'Connecting to Google…' : driveStatus === 'uploading' ? 'Uploading…' : 'Backup to Google Drive'}
-                </button>
-                {driveStatus === 'done' && (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mb-2 flex items-center justify-between">
-                    <span className="text-[11px] text-emerald-700 font-semibold">Uploaded to Drive</span>
-                    <a href={driveLink} target="_blank" rel="noopener noreferrer" className="text-[11px] text-emerald-600 underline">Open</a>
-                  </div>
-                )}
-                {driveStatus === 'error' && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-2">
-                    <p className="text-[11px] text-red-700">{driveError}</p>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-2">
-                <p className="text-[11.5px] font-semibold text-blue-800 mb-1">Enable Google Drive Backup</p>
-                <p className="text-[11px] text-blue-700 mb-1">Add <code className="bg-blue-100 px-1 rounded">VITE_GOOGLE_CLIENT_ID</code> to your VPS environment variables.</p>
-                <p className="text-[10.5px] text-blue-600">Google Cloud Console → APIs → OAuth 2.0 Client (Web) → copy Client ID → VPS .env file → redeploy.</p>
-              </div>
-            )}
-
-            <p className="text-[10.5px] text-slate-400 text-center mb-3">
-              {bookings.length + clients.length + employees.length + invoices.length + inventory.length + dailyJobs.length} records across all tables
+            <p className="text-[11.5px] text-slate-600 mb-3 leading-relaxed">
+              Unified database protection with Excel/JSON export, safe restore, and Google Drive sync.
             </p>
+
+            <button
+              onClick={() => {
+                setActiveTab('backup')
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-900 text-white text-[12px] font-bold hover:bg-slate-800 transition-all mb-2.5 shadow-sm cursor-pointer"
+            >
+              <HardDrive size={13} /> Open Backup Center →
+            </button>
+
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                onClick={downloadExcel}
+                className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11.5px] font-bold hover:bg-emerald-100 transition-colors cursor-pointer"
+                title="Download full database as Excel spreadsheet"
+              >
+                <FileSpreadsheet size={13} /> Excel (.xlsx)
+              </button>
+              <button
+                onClick={downloadBackup}
+                className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-[11.5px] font-bold hover:bg-slate-200 transition-colors cursor-pointer"
+                title="Download raw database JSON dump"
+              >
+                <Download size={13} /> JSON (.json)
+              </button>
+            </div>
+
             <a
               href="https://supabase.com/dashboard"
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full block text-center py-2 rounded-xl bg-slate-800 text-white text-[12px] font-semibold hover:bg-slate-700 transition-colors"
+              className="w-full flex items-center justify-center gap-1.5 text-center py-2 rounded-xl border border-slate-200 text-slate-600 text-[11.5px] font-semibold hover:bg-slate-50 transition-colors"
             >
-              Open Supabase Dashboard
+              <ExternalLink size={12} /> Supabase Cloud Console
             </a>
           </div>
 
@@ -1729,6 +2312,167 @@ export function Settings() {
         {connectingIntegration && (
           <IntegrationModal info={connectingIntegration} onClose={() => setConnectingIntegration(null)} />
         )}
+      </Modal>
+
+      {/* ── How-To & Backup Help Guide Modal ── */}
+      <Modal
+        open={showBackupHelpModal}
+        onClose={() => setShowBackupHelpModal(false)}
+        title={
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+              <HelpCircle size={18} />
+            </div>
+            <div>
+              <h3 className="text-[15px] font-bold text-[#111827]">How Backup & Recovery Works</h3>
+              <p className="text-[11.5px] text-slate-500 font-normal">Data storage locations, backup procedures & disaster recovery steps</p>
+            </div>
+          </div>
+        }
+        size="lg"
+      >
+        <div className="space-y-4 text-slate-700 max-h-[75vh] overflow-y-auto pr-1">
+          {/* Section 1 */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <h4 className="text-[13.5px] font-bold text-slate-900 flex items-center gap-2 mb-2">
+              <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] flex items-center justify-center font-bold">1</span>
+              Aap Ka Data Kahan Kahan Mehfooz Hota Hai? (Storage Locations)
+            </h4>
+            <div className="space-y-2.5 text-[12px] text-slate-600 mt-2">
+              <div className="flex items-start gap-2">
+                <span className="font-bold text-slate-800 min-w-[130px] shrink-0">⚡ Supabase Cloud DB:</span>
+                <span>Asal database cloud (PostgreSQL) par chal rahi hai. Har booking, client, aur daily shift foran live sync hoti hai.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="font-bold text-slate-800 min-w-[130px] shrink-0">🖥️ VPS Host Storage:</span>
+                <span>Server directory <code className="bg-slate-200 px-1 py-0.5 rounded font-mono text-[11px]">/var/www/safaeewala/data/backups/</code> par persistent volume hai jahan daily archives store hotay hain.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="font-bold text-slate-800 min-w-[130px] shrink-0">📁 Google Drive:</span>
+                <span>Direct OAuth ya n8n webhook kay zariye offsite spreadsheets aap kay company Google Drive folder mein save ho jatay hain.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="font-bold text-slate-800 min-w-[130px] shrink-0">💻 Local Computer:</span>
+                <span>Jab aap "Download Excel" ya "Download JSON" click kartay hain to file seedha aap kay laptop/PC kay <strong>Downloads</strong> folder mein chali jati hai.</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2 */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <h4 className="text-[13.5px] font-bold text-slate-900 flex items-center gap-2 mb-2">
+              <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] flex items-center justify-center font-bold">2</span>
+              Backup Lenay Ka Tareeqa (How to Create Backups)
+            </h4>
+            <div className="space-y-2 text-[12px] text-slate-600 mt-2">
+              <p>• <strong>Excel Spreadsheet (.xlsx):</strong> Monthly accounting aur client audit kay liye "Download Full Excel" click karein. Is mein Bookings, Clients, Employees, Invoices, Inventory, Daily Jobs, aur Expenses ki 7 separate sheets hoti hain.</p>
+              <p>• <strong>Full Technical JSON (.json):</strong> System ka mukammal clone download karnay kay liye "Download JSON Backup" click karein. Yeh file system restore kay liye use hoti hai.</p>
+              <p>• <strong>Google Drive Cloud Sync:</strong> "Backup to Google Drive" click karnay say latest spreadsheet seedha Google Drive par upload ho jati hai.</p>
+              <p>• <strong>Automated Daily Sync (n8n):</strong> Agar aap n8n webhook URL configure kartay hain, to Daily Job Sheet har sham automatically drive mein save ho jati hai.</p>
+            </div>
+          </div>
+
+          {/* Section 3 */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <h4 className="text-[13.5px] font-bold text-slate-900 flex items-center gap-2 mb-2">
+              <span className="w-5 h-5 rounded-full bg-purple-600 text-white text-[11px] flex items-center justify-center font-bold">3</span>
+              Data Wapis Restore Karnay Ka Tareeqa (Recovery Guide)
+            </h4>
+            <div className="space-y-2 text-[12px] text-slate-600 mt-2">
+              <p>1. Backup Tab mein <strong>Safe Database Recovery & Restore Engine</strong> par jayein.</p>
+              <p>2. <strong>"Browse & Import JSON Backup"</strong> button par click karein aur apni pehlay say download shuda <code className="bg-slate-200 px-1 py-0.5 rounded font-mono text-[11px]">safaeewala-backup-*.json</code> file select karein.</p>
+              <p>3. System file validate karay ga aur confirm modal mein records ki tadaad show karay ga.</p>
+              <p>4. <strong>"Confirm & Restore"</strong> par click karein. System تمام tables ko live database mein safely upsert kar day ga.</p>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 mt-2 text-[11.5px] text-blue-900">
+                <strong>🔒 Safe Non-Destructive Rule:</strong> Restore process existing records ko unki ID say update karta hai aur missing records add karta hai. Kisi doosray table ya record ko delete nahi karta.
+              </div>
+            </div>
+          </div>
+
+          {/* Section 4 */}
+          <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-4">
+            <h4 className="text-[13.5px] font-bold text-emerald-950 flex items-center gap-2 mb-1.5">
+              💡 Recommended Best Practices
+            </h4>
+            <ul className="list-disc pl-5 text-[12px] text-emerald-900 space-y-1">
+              <li>Har haftay aik dafa <strong>Download Full Excel</strong> aur <strong>Download JSON</strong> kar kay apnay computer mein save rakhein.</li>
+              <li>Daily Job Sheet kay aakhri waqt (EOD) Google Drive backup run kar lein.</li>
+              <li>Kisi bhi baray system upgrade say pehlay fresh JSON backup download zaroor karein.</li>
+            </ul>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button onClick={() => setShowBackupHelpModal(false)}>
+              Samajh Aa Gaya / Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Confirm Restore Modal ── */}
+      <Modal
+        open={backupRestoreConfirmOpen}
+        onClose={() => {
+          if (importStatus !== 'loading') {
+            setBackupRestoreConfirmOpen(false)
+            setStagedBackupFile(null)
+          }
+        }}
+        title="Confirm Database Restore"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-[13px] text-slate-600 leading-relaxed">
+            You are about to restore data from <strong className="font-semibold text-slate-900">{stagedBackupFile?.name}</strong>.
+            The following records were found in this backup:
+          </p>
+
+          {stagedBackupSummary && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1.5 text-[12px]">
+              {stagedBackupSummary.tables.map(t => (
+                <div key={t.name} className="flex justify-between py-1 border-b border-slate-200/60 last:border-0">
+                  <span className="font-medium text-slate-700">{t.name}</span>
+                  <span className="font-bold text-slate-900">{t.count} records</span>
+                </div>
+              ))}
+              <div className="flex justify-between pt-2 border-t border-slate-300 font-bold text-[13px]">
+                <span className="text-slate-800">Total Records</span>
+                <span className="text-blue-600">{stagedBackupSummary.total} records</span>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[12px] text-amber-800">
+            <strong>Note:</strong> Records with matching IDs will be updated with data from the backup, and new records will be inserted. Unaffected existing records will remain safe.
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="secondary"
+              disabled={importStatus === 'loading'}
+              onClick={() => {
+                setBackupRestoreConfirmOpen(false)
+                setStagedBackupFile(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={importStatus === 'loading'}
+              onClick={executeRestore}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {importStatus === 'loading' ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  Restoring Records…
+                </>
+              ) : (
+                'Confirm & Restore Data'
+              )}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   )

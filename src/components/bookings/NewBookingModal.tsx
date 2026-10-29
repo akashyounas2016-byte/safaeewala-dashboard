@@ -787,7 +787,7 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
                   setScheduledDate(e.target.value)
                   if (errors.date) setErrors(prev => ({ ...prev, date: undefined }))
                 }}
-                className={`w-full text-[12px] px-3 py-2 bg-white border rounded-xl focus:outline-none font-bold text-slate-800 shadow-2xs ${
+                className={`w-full text-[12px] px-3 py-2 bg-white border rounded-xl focus:outline-none font-medium text-slate-600 shadow-2xs ${
                   errors.date ? 'border-red-400 bg-red-50/20' : 'border-emerald-200/80 focus:border-emerald-600'
                 }`}
               />
@@ -805,7 +805,7 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
                   required
                   value={startTime}
                   onChange={e => handleStartTimeChange(e.target.value)}
-                  className="w-full text-[12px] px-2.5 py-2 bg-white border border-emerald-200/80 rounded-xl focus:outline-none focus:border-emerald-600 font-bold text-slate-800 shadow-2xs"
+                  className="w-full text-[12px] px-2.5 py-2 bg-white border border-emerald-200/80 rounded-xl focus:outline-none focus:border-emerald-600 font-medium text-slate-600 shadow-2xs"
                 />
               </div>
 
@@ -817,7 +817,7 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
                   type="time"
                   value={endTime}
                   onChange={e => handleEndTimeChange(e.target.value)}
-                  className="w-full text-[12px] px-2.5 py-2 bg-white border border-emerald-200/80 rounded-xl focus:outline-none focus:border-emerald-600 font-bold text-slate-800 shadow-2xs"
+                  className="w-full text-[12px] px-2.5 py-2 bg-white border border-emerald-200/80 rounded-xl focus:outline-none focus:border-emerald-600 font-medium text-slate-600 shadow-2xs"
                 />
               </div>
             </div>

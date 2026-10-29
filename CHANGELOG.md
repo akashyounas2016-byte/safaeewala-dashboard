@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(settings): Added centralized 'Backup' tab to Settings (`Settings.tsx`) consolidating all database protection features — Instant Multi-Sheet Excel export (7 sheets), technical JSON dump, safe non-destructive JSON restore/import engine with record counts validation and progress feedback, direct Google Drive OAuth upload, and automated n8n/Webhook pipeline configuration with test ping. Includes comprehensive "How-To & Backup Help Guide" modal detailing storage locations (Supabase Cloud, VPS `/data/backups/`, Google Drive, Local PC) and recovery steps, plus a streamlined Data & Storage quick widget in the right sidebar.
+- feat(bookings): Softened font weight and lightened text color for Scheduled Date, Start Time, and End Time fields in Schedule & Timing section of Add New Booking popup (`NewBookingModal.tsx`) from heavy bold to balanced medium (`font-medium text-slate-600`) for enhanced visual hierarchy and clarity.
 - feat(bookings): Added 'Cleaning Material' option next to Duty Duration in Schedule & Timing section of Add New Booking popup (NewBookingModal) and Booking Details modal, seamlessly syncing to DailyJob material field (Yes/No)
 
 - feat(daily-job-sheet): Removed trapped inner vertical scrollbar from data table and A-Z rail; displayed page entries naturally using responsive flow and View All pagination (UX-27)
