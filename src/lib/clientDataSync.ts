@@ -126,10 +126,11 @@ export function isMonthlyJob(job: DailyJob): boolean {
 }
 
 /**
- * Helper to calculate overtime hours for a job:
+ * Helper to calculate overtime hours for a job (R-OT-01):
  * 1. Explicit ot_hours from job record
  * 2. If is_overtime flag is set, duty_hours or elapsed time
- * 3. Hours extending past 20:00 (8:00 PM)
+ * 3. calcOTHours applying Scenario 1 (post-8:00 PM) + Scenario 2 (pre-8:00 PM exceeding 8h)
+ * 4. Fallback if start/end times missing but duty_hours > 8
  */
 export function calcJobOTHours(job: DailyJob): number {
   if (job.ot_hours && Number(job.ot_hours) > 0) {
@@ -139,7 +140,14 @@ export function calcJobOTHours(job: DailyJob): number {
     const duty = Number(job.duty_hours) || 0
     if (duty > 0) return duty
   }
-  return calcOTHours(job.start_time, job.end_time)
+  const fromTimes = calcOTHours(job.start_time, job.end_time)
+  if (fromTimes > 0) return fromTimes
+  // Fallback: if times are missing/invalid, check if duty_hours exceeds 8 basic hours (Scenario 2)
+  const duty = Number(job.duty_hours) || 0
+  if (duty > 8) {
+    return Math.round((duty - 8) * 10) / 10
+  }
+  return 0
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

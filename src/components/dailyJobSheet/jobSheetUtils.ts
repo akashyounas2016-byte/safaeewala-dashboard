@@ -75,6 +75,12 @@ export function calcHours(start: string, end: string): number {
   return diff > 0 ? Math.round(diff / 60 * 10) / 10 : 0
 }
 
+/**
+ * R-OT-01: Two-scenario Overtime (OT) Calculation
+ * Scenario 1: Work performed after 8:00 PM (20:00) is always OT regardless of basic hours.
+ * Scenario 2: Work performed before 8:00 PM exceeding standard basic duty hours (8 hours / 480 mins) is also OT.
+ * Combined: Excess pre-8 PM hours + post-8 PM hours = Total OT.
+ */
 export function calcOTHours(start: string, end: string): number {
   const s = formatTimeOnly(start)
   const e = formatTimeOnly(end)
@@ -86,11 +92,25 @@ export function calcOTHours(start: string, end: string): number {
   let endMins     = eh * 60 + em
   // Shift crossing midnight (e.g. 19:00 → 01:00) ends on the next day
   if (endMins < startMins) endMins += 24 * 60
-  const OT_CUTOFF = 20 * 60 // 8 PM
-  if (endMins <= OT_CUTOFF) return 0
-  const otStartMins = Math.max(startMins, OT_CUTOFF)
-  const otMins = endMins - otStartMins
-  return otMins > 0 ? Math.round(otMins / 60 * 10) / 10 : 0
+
+  const OT_CUTOFF = 20 * 60 // 8:00 PM (1200 mins)
+  const BASIC_LIMIT_MINS = 8 * 60 // 8 basic hours (480 mins)
+
+  // Scenario 1: Hours worked after 8:00 PM are unconditionally Overtime
+  const post8PmMins = endMins > OT_CUTOFF
+    ? endMins - Math.max(startMins, OT_CUTOFF)
+    : 0
+
+  // Scenario 2: Hours worked before 8:00 PM exceeding basic 8 hours
+  const pre8PmEnd = Math.min(endMins, OT_CUTOFF)
+  const pre8PmStart = Math.min(startMins, OT_CUTOFF)
+  const pre8PmMins = Math.max(0, pre8PmEnd - pre8PmStart)
+  const pre8PmExcessMins = pre8PmMins > BASIC_LIMIT_MINS
+    ? pre8PmMins - BASIC_LIMIT_MINS
+    : 0
+
+  const totalOtMins = post8PmMins + pre8PmExcessMins
+  return totalOtMins > 0 ? Math.round((totalOtMins / 60) * 10) / 10 : 0
 }
 
 export function fmtDate(d: string) {

@@ -12,6 +12,15 @@
 > - Affects:  rule IDs, files
 > ```
 
+## DEC-013 — Two-scenario Overtime (OT) Policy: Post-8 PM & Excess Basic Hours (2026-10-30)
+- **Context:** Owner clarification on OT rules: "Rules document mein Overtime (OT) ka rule add karen. Do scenarios shamil karen: pehlay yeh ke 8:00 PM kay baad ki janay wali duty har soorat may OT mein consider hogi, basic hours kuch bhee hon. Doosra yeh kay agar koi employee 8:00 PM say pehle apne basic duty hours (8 ghantay) say zayada duty kar lay, to woh extra hours bhee OT mein shamil hon."
+- **Decision:** Two-scenario OT logic:
+  1. Any duty hours past 8:00 PM (20:00) count unconditionally as Overtime.
+  2. Any duty hours before 8:00 PM exceeding the 8-hour basic duty limit count as Overtime.
+  3. Combined shifts add both components together. Explicit job `ot_hours` or `is_overtime` override automated calculation.
+- **Why:** Protects cleaner compensation for prolonged daytime hours and evening work, maintaining operational fairness and ledger clarity.
+- **Affects:** R-OT-01, `src/components/dailyJobSheet/jobSheetUtils.ts`, `src/lib/clientDataSync.ts`.
+
 ## DEC-012 — Dubai time for business dates; Delete All stays (2026-10-29)
 - **Decision:** All business dates ("today", months, imports) use Asia/Dubai, because the company works in Dubai even when the dashboard is opened from Pakistan. "Delete All Data" on the Daily Job Sheet stays: the owner uses it to clear test entries at the end of testing (AUD-45 won't fix).
 - **Decided by:** owner · **Rules:** R-DATA-06

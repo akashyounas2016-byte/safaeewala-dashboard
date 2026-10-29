@@ -7,6 +7,11 @@
 ## Unreleased (in `main`, not yet confirmed deployed)
 
 ## 2026-10-30 (Deploy to Production VPS)
+- **Overtime Policy (R-OT-01, DEC-013):** Documented and implemented two-scenario Overtime policy:
+  - Scenario 1: Work performed after 8:00 PM (20:00) is strictly Overtime, regardless of basic hours worked.
+  - Scenario 2: Work performed before 8:00 PM exceeding standard 8 basic hours counts as Overtime.
+  - Updated `rules.md`, `AGENTS.md`, `docs/decisions.md`, `src/components/dailyJobSheet/jobSheetUtils.ts` (`calcOTHours`), and `src/lib/clientDataSync.ts` (`calcJobOTHours`).
+
 
 - fix(bookings, clients): Fixed client redirection from Booking Details popup (`BookingDetailModal`) — clicking Client ID or Client Name now redirects directly to that specific client's profile (`/clients/:id`), eliminating fallback to the generic clients table (`/clients`). Enhanced `ClientProfile.tsx` resolution to match client by ID, code, name, phone, or dynamically synthesize client history from Bookings/DailyJobs.
 - feat(bookings): Added synchronized 'Invoice' and 'Payment' quick action buttons to every booking card across Card Grid, Table View, Kanban Board, and Booking Details popup.

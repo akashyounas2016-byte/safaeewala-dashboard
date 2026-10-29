@@ -51,3 +51,14 @@ It is the short form — the full, ID-numbered rules live in [rules.md](rules.md
 - **Bookings store employee IDs, the Daily Job Sheet stores names** — convert with `crewToStaffName` / `staffNameToCrew` (R-SYNC-02).
 - **No dummy data** in filters, pickers or assign lists (R-DATA-03).
 - Shared calculations belong in `src/lib/` and are reused, not copied into pages.
+
+---
+
+## 5. Overtime Calculation Policy (R-OT-01)
+> **Rule Definition:**  
+> **"Overtime (OT) do scenarios mein calculate hoga: (1) Shaam 8:00 PM kay baad ki janay wali duty har soorat mein OT shumar hogi, chahe us waqt tak basic hours kuch bhi hon. (2) Agar koi employee 8:00 PM say pehle apne basic duty hours (8 ghantay) say zayada duty kar lay, to woh extra hours bhi OT mein shamil hon gay."**
+
+- **Scenario 1 (Post-8:00 PM):** Any duty after 20:00 is unconditionally OT, even if total duty is under 8h.
+- **Scenario 2 (Excess >8h Pre-8 PM):** If duty before 20:00 exceeds standard 8 basic hours, extra hours are OT.
+- **Combined:** Excess pre-8 PM hours + post-8 PM hours = Total OT. Explicit manual OT / `is_overtime` flags take highest priority.
+
