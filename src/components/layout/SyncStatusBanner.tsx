@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { CloudOff, RotateCcw, X } from 'lucide-react'
 import { SYNC_STATUS_EVENT, getSyncStatus, flushOutbox } from '@/lib/syncQueue'
 import { CLOUD_STATE_EVENT, getCloudStateStatus, retryCloudState } from '@/lib/cloudState'
+import { STORAGE_PROBLEM_EVENT, getStorageProblem } from '@/lib/storageUtils'
 
 /** Tells the user when changes have not reached Supabase yet (AUD-20) */
 export function SyncStatusBanner() {
   const read = () => {
     const db = getSyncStatus()
     const cloud = getCloudStateStatus()
-    return { pending: db.pending + cloud.unsynced, error: db.lastError || cloud.lastError }
+    return { pending: db.pending + cloud.unsynced, error: db.lastError || cloud.lastError, storage: getStorageProblem() }
   }
   const [status, setStatus] = useState(read)
   const [dismissed, setDismissed] = useState(false)
@@ -17,12 +18,26 @@ export function SyncStatusBanner() {
     const update = () => setStatus(read())
     window.addEventListener(SYNC_STATUS_EVENT, update)
     window.addEventListener(CLOUD_STATE_EVENT, update)
+    window.addEventListener(STORAGE_PROBLEM_EVENT, update)
     return () => {
+      window.removeEventListener(STORAGE_PROBLEM_EVENT, update)
       window.removeEventListener(SYNC_STATUS_EVENT, update)
       window.removeEventListener(CLOUD_STATE_EVENT, update)
     }
   }, [])
 
+  // TA-21: storage full is shown in red and cannot be dismissed
+  if (status.storage) {
+    return (
+      <div className="mb-4 flex items-start gap-3 px-4 py-3 rounded-2xl border border-rose-300 bg-rose-50 text-rose-900 text-[12.5px] shadow-2xs">
+        <CloudOff size={16} className="mt-0.5 shrink-0 text-rose-600" />
+        <div className="flex-1 min-w-0">
+          <p className="font-bold">{status.storage}</p>
+          <p className="mt-0.5">Changes still go to the cloud when online. Download a backup (Settings → Backup), then clear old browser data for this site or use another browser.</p>
+        </div>
+      </div>
+    )
+  }
   if (dismissed || (status.pending === 0 && !status.error)) return null
 
   return (

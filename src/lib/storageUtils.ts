@@ -4,6 +4,17 @@
  */
 
 import { onLocalWrite } from '@/lib/cloudState'
+import { reportError } from '@/lib/errorReport'
+
+/** TA-21: a failed browser save is shown to the user, not only logged */
+export const STORAGE_PROBLEM_EVENT = 'safaeewala:storage-problem'
+let storageProblem: string | null = null
+export const getStorageProblem = () => storageProblem
+function flagStorageProblem(key: string, err: unknown) {
+  storageProblem = `This browser's storage is full — the latest change to "${key.replace('safaeewala_', '')}" could not be kept on this device.`
+  window.dispatchEvent(new Event(STORAGE_PROBLEM_EVENT))
+  reportError(err instanceof Error ? err : new Error(String(err)), `localStorage ${key}`)
+}
 
 export function safeLocalStorageSet(key: string, value: any): boolean {
   try {
@@ -34,11 +45,13 @@ export function safeLocalStorageSet(key: string, value: any): boolean {
         const serialized = typeof value === 'string' ? value : JSON.stringify(value)
         localStorage.setItem(key, serialized)
         return true
-      } catch {
-        // Fallback: If still full, do not crash the app
+      } catch (again) {
+        // Still full: keep the app running but tell the user (TA-21)
+        flagStorageProblem(key, again)
         return false
       }
     }
+    flagStorageProblem(key, err)
     return false
   }
 }
