@@ -17,7 +17,7 @@ import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
 import { useData } from '@/store/DataContext'
 import type { DailyJob, PaymentMode, MaterialType } from '@/types'
 import {
-  calcHours, calcOTHours, formatTimeOnly, formatTime12h, formatTime24h, cleanNum, fmtDate, addDaysToYMD
+  calcHours, calcOTHours, formatTimeOnly, formatTime12h, formatTime24h, cleanNum, fmtDate, addDaysToYMD, ROW_COLOR_PRESETS
 } from '@/components/dailyJobSheet/jobSheetUtils'
 import {
   authorizeGoogleDrive,
@@ -3395,10 +3395,24 @@ export function JobSheetSpreadsheet() {
                 const blockTopBorder = isFirstInBlock ? '2px solid #0f172a' : '1px solid #cbd5e1'
                 const blockBottomBorder = isLastInBlock ? '2px solid #0f172a' : '1px solid #cbd5e1'
 
-                // Row background: Monthly gets soft green tint (row 11 in Excel); otherwise clean neutral
-                const rowBg = isMonthlyRow
-                  ? '#c6efce'
-                  : (palette.isLight ? '#ffffff' : palette.solidBg)
+                // ── Row & Block Color Logic (Full Row/Block Implementation across all columns) ──
+                // Check if user explicitly set a color for this cleaner block or row
+                const customCleanerKey = cleanerColors[staffKey]
+                const hasCustomBlockColor = !!customCleanerKey && !!BLOCK_PALETTES[customCleanerKey]
+                const customRowPreset = row.row_color ? ROW_COLOR_PRESETS.find(p => p.id === row.row_color) : null
+
+                // Monthly clients and regular rows default to clean white (#ffffff) unless user changes color
+                let rowBg = '#ffffff'
+                let isDarkRow = false
+
+                if (customRowPreset) {
+                  rowBg = customRowPreset.circleColor
+                  isDarkRow = false
+                } else if (hasCustomBlockColor) {
+                  const chosenPalette = BLOCK_PALETTES[customCleanerKey]
+                  rowBg = chosenPalette.solidBg
+                  isDarkRow = !chosenPalette.isLight
+                }
 
                 return (
                   <tr
@@ -3430,11 +3444,11 @@ export function JobSheetSpreadsheet() {
                             onContextMenu={e => handleContextMenu(e, targetIdx, row)}
                             style={{
                               width: col.width,
-                              backgroundColor: palette.isLight ? '#f8fafc' : palette.solidBg,
-                              borderLeft: `5px solid ${palette.solidBorder}`,
-                              borderTop: `2.5px solid ${palette.solidBorder}`,
-                              borderBottom: `2.5px solid ${palette.solidBorder}`,
-                              borderRight: palette.isLight ? '1.5px solid #cbd5e1' : '1px solid rgba(255, 255, 255, 0.2)',
+                              backgroundColor: rowBg,
+                              borderLeft: `4px solid ${hasCustomBlockColor ? palette.solidBorder : '#0f172a'}`,
+                              borderTop: blockTopBorder,
+                              borderBottom: blockBottomBorder,
+                              borderRight: '1px solid #cbd5e1',
                             }}
                             className={`align-middle text-center select-none cursor-cell transition-all relative group/staff px-2 py-2 ${
                               isStaffCellActive ? 'ring-2 ring-emerald-500 bg-white z-10' : ''
@@ -3454,7 +3468,7 @@ export function JobSheetSpreadsheet() {
                               />
                             ) : (
                               <div className="flex items-center justify-center h-full min-h-[60px] px-2 text-center">
-                                <span className="font-bold text-[13px] text-slate-900 tracking-tight select-text">
+                                <span className={`font-bold text-[13px] tracking-tight select-text ${isDarkRow ? 'text-white' : 'text-slate-900'}`}>
                                   {blockInfo?.staffName || '—'}
                                 </span>
                               </div>
@@ -3544,14 +3558,10 @@ export function JobSheetSpreadsheet() {
                               isPendingDue
                                 ? 'text-white font-black text-[12px]'
                                 : col.id === 'pending' && displayVal === 'Nil'
-                                  ? 'text-slate-800 font-bold'
-                                  : col.id === 'charges'
-                                    ? 'text-slate-900 font-bold'
-                                    : col.id === 'received'
-                                      ? 'text-slate-900 font-bold'
-                                      : col.id === 'address' && isMonthlyRow
-                                        ? 'text-emerald-950 font-bold'
-                                        : 'text-slate-800 font-medium'
+                                  ? (isDarkRow ? 'text-slate-200 font-bold' : 'text-slate-800 font-bold')
+                                  : col.id === 'charges' || col.id === 'received'
+                                    ? (isDarkRow ? 'text-amber-300 font-black drop-shadow-xs' : 'text-slate-900 font-bold')
+                                    : (isDarkRow ? 'text-white font-medium' : 'text-slate-800 font-medium')
                             }>
                               {col.id === 'address' ? cleanAddressDisplay(displayVal) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
                             </span>
@@ -3564,7 +3574,7 @@ export function JobSheetSpreadsheet() {
                     <td
                       style={{
                         backgroundColor: rowBg,
-                        borderRight: `5px solid ${palette.solidBorder}`,
+                        borderRight: `4px solid ${hasCustomBlockColor ? palette.solidBorder : '#0f172a'}`,
                         borderTop: blockTopBorder,
                         borderBottom: blockBottomBorder,
                       }}
