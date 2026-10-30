@@ -95,6 +95,117 @@ function checkTimesOverlap(startA?: string, endA?: string, startB?: string, endB
   return sA < eB && sB < eA
 }
 
+/**
+ * 12-Hour AM/PM Time Input with interactive AM/PM toggle button and quick suggestions
+ */
+function Time12hPicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (val12h: string) => void
+}) {
+  const mins = parseToMinutes(value) ?? (label.toLowerCase().includes('start') ? 9 * 60 : 13 * 60)
+  const h24 = Math.floor(mins / 60)
+  const m = String(mins % 60).padStart(2, '0')
+  const meridiem: 'AM' | 'PM' = h24 >= 12 ? 'PM' : 'AM'
+  const h12 = h24 % 12 || 12
+  const formattedHHMM = `${String(h12).padStart(2, '0')}:${m}`
+
+  const [timeVal, setTimeVal] = useState(formattedHHMM)
+
+  useEffect(() => {
+    setTimeVal(formattedHHMM)
+  }, [formattedHHMM])
+
+  const commitTime = (hhmm: string, mer: 'AM' | 'PM') => {
+    const clean = hhmm.trim().replace(/[^\d:]/g, '')
+    const parts = clean.split(':')
+    let h = parseInt(parts[0] || '9', 10)
+    let min = parseInt(parts[1] || '0', 10)
+    if (isNaN(h) || h < 1) h = 12
+    if (h > 12) h = 12
+    if (isNaN(min) || min < 0) min = 0
+    if (min > 59) min = 59
+    const normH = String(h).padStart(2, '0')
+    const normM = String(min).padStart(2, '0')
+    onChange(`${normH}:${normM} ${mer}`)
+  }
+
+  const handleToggleMeridiem = (newMer: 'AM' | 'PM') => {
+    if (newMer === meridiem) return
+    commitTime(timeVal, newMer)
+  }
+
+  const timeOptions = [
+    '07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
+    '11:00', '11:30', '12:00', '12:30', '01:00', '01:30', '02:00', '02:30',
+    '03:00', '03:30', '04:00', '04:30', '05:00', '05:30', '06:00', '06:30',
+    '07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00'
+  ]
+
+  const listId = `suggestions-${label.toLowerCase().replace(/[^a-z0-9]/g, '-')}`
+
+  return (
+    <div>
+      <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
+        <span>{label}</span>
+        <span className="text-blue-600 font-bold normal-case text-[11px]">{timeVal} {meridiem}</span>
+      </label>
+      <div className="flex items-center gap-1.5">
+        <div className="relative flex-1">
+          <input
+            type="text"
+            list={listId}
+            value={timeVal}
+            onChange={e => setTimeVal(e.target.value)}
+            onBlur={() => commitTime(timeVal, meridiem)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commitTime(timeVal, meridiem)
+              }
+            }}
+            placeholder="09:00"
+            className="w-full text-[13px] px-2.5 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-slate-800"
+          />
+          <datalist id={listId}>
+            {timeOptions.map(t => (
+              <option key={t} value={t}>{t} {meridiem}</option>
+            ))}
+          </datalist>
+        </div>
+        <div className="flex rounded-xl border border-slate-200 bg-slate-100 p-0.5 min-h-[42px] items-center shrink-0">
+          <button
+            type="button"
+            onClick={() => handleToggleMeridiem('AM')}
+            className={`px-2.5 py-1.5 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer ${
+              meridiem === 'AM'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            AM
+          </button>
+          <button
+            type="button"
+            onClick={() => handleToggleMeridiem('PM')}
+            className={`px-2.5 py-1.5 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer ${
+              meridiem === 'PM'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            PM
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function AddJobForm({
   employees,
   onSave,
@@ -164,39 +275,40 @@ export function AddJobForm({
   const areaRef = useRef<HTMLDivElement>(null)
   const areaSearchInputRef = useRef<HTMLInputElement>(null)
 
-  // ── Timing & Duration ──
-  const [startTime, setStartTime] = useState(initial?.start_time || '09:00')
-  const [endTime, setEndTime]     = useState(initial?.end_time || '13:00')
+  // ── Timing & Duration (12-Hour AM/PM Format) ──
+  const [startTime, setStartTime] = useState(() => formatTime12h(initial?.start_time || '09:00 AM'))
+  const [endTime, setEndTime]     = useState(() => formatTime12h(initial?.end_time || '01:00 PM'))
   const [dutyHours, setDutyHours] = useState<number>(() => {
     if (initial?.duty_hours) return Number(initial.duty_hours)
-    return calcHours(initial?.start_time || '09:00', initial?.end_time || '13:00') || 4
+    return calcHours(initial?.start_time || '09:00 AM', initial?.end_time || '01:00 PM') || 4
   })
   const [otHours, setOtHours]     = useState<number | string>(() => {
     if (initial?.ot_hours !== undefined) return initial.ot_hours
-    return calcOTHours(initial?.start_time || '09:00', initial?.end_time || '13:00')
+    return calcOTHours(initial?.start_time || '09:00 AM', initial?.end_time || '01:00 PM')
   })
   const [isOvertime, setIsOvertime] = useState(Boolean(initial?.is_overtime || Number(otHours) > 0))
 
-  const handleStartTimeChange = (newStart: string) => {
-    setStartTime(newStart)
-    if (newStart && dutyHours > 0) {
-      const calculatedEnd = addHoursToTime(newStart, dutyHours)
-      setEndTime(calculatedEnd)
-      const calculatedOT = calcOTHours(newStart, calculatedEnd)
+  const handleStartTimeChange = (newStart12h: string) => {
+    setStartTime(newStart12h)
+    if (newStart12h && dutyHours > 0) {
+      const calculatedEnd24 = addHoursToTime(newStart12h, dutyHours)
+      const calculatedEnd12h = formatTime12h(calculatedEnd24)
+      setEndTime(calculatedEnd12h)
+      const calculatedOT = calcOTHours(newStart12h, calculatedEnd12h)
       setOtHours(calculatedOT)
-      if (calculatedOT > 0) setIsOvertime(true)
+      setIsOvertime(calculatedOT > 0)
     }
   }
 
-  const handleEndTimeChange = (newEnd: string) => {
-    setEndTime(newEnd)
-    if (startTime && newEnd) {
-      const duration = calcDurationFromTimes(startTime, newEnd)
+  const handleEndTimeChange = (newEnd12h: string) => {
+    setEndTime(newEnd12h)
+    if (startTime && newEnd12h) {
+      const duration = calcDurationFromTimes(startTime, newEnd12h)
       if (duration > 0) {
         setDutyHours(duration)
-        const calculatedOT = calcOTHours(startTime, newEnd)
+        const calculatedOT = calcOTHours(startTime, newEnd12h)
         setOtHours(calculatedOT)
-        if (calculatedOT > 0) setIsOvertime(true)
+        setIsOvertime(calculatedOT > 0)
       }
     }
   }
@@ -204,11 +316,12 @@ export function AddJobForm({
   const handleDutyHoursChange = (newDuty: number) => {
     setDutyHours(newDuty)
     if (startTime && newDuty > 0) {
-      const calculatedEnd = addHoursToTime(startTime, newDuty)
-      setEndTime(calculatedEnd)
-      const calculatedOT = calcOTHours(startTime, calculatedEnd)
+      const calculatedEnd24 = addHoursToTime(startTime, newDuty)
+      const calculatedEnd12h = formatTime12h(calculatedEnd24)
+      setEndTime(calculatedEnd12h)
+      const calculatedOT = calcOTHours(startTime, calculatedEnd12h)
       setOtHours(calculatedOT)
-      if (calculatedOT > 0) setIsOvertime(true)
+      setIsOvertime(calculatedOT > 0)
     }
   }
 
@@ -445,8 +558,16 @@ export function AddJobForm({
     })
   }
 
-  // Presets to display (show 10 initially = 2 rows, or all 18 when expanded)
-  const displayedColorPresets = showAllColors ? ROW_COLOR_PRESETS : ROW_COLOR_PRESETS.slice(0, 10)
+  // Presets to display (show strictly 1 row = 4 presets initially, or all 18 when expanded)
+  const displayedColorPresets = useMemo(() => {
+    if (showAllColors) return ROW_COLOR_PRESETS
+    const initial = ROW_COLOR_PRESETS.slice(0, 4)
+    if (rowColor && !initial.some(p => p.id === rowColor)) {
+      const selectedPreset = ROW_COLOR_PRESETS.find(p => p.id === rowColor)
+      if (selectedPreset) return [...initial.slice(0, 3), selectedPreset]
+    }
+    return initial
+  }, [showAllColors, rowColor])
 
   return (
     <form id="add-job-entry-form" onSubmit={handleSubmit} className="text-slate-800">
@@ -459,10 +580,7 @@ export function AddJobForm({
                 <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
                   <Users size={15} />
                 </div>
-                <div>
-                  <h4 className="text-[13px] font-bold text-slate-900">Staff & Schedule</h4>
-                  <p className="text-[11px] text-slate-500">Assign cleaner(s) and duty date</p>
-                </div>
+                <h4 className="text-[13px] font-bold text-slate-900">Staff & Schedule</h4>
               </div>
               {selectedStaff.length >= 2 && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -539,10 +657,7 @@ export function AddJobForm({
               <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
                 <MapPin size={15} />
               </div>
-              <div>
-                <h4 className="text-[13px] font-bold text-slate-900">Address & Location</h4>
-                <p className="text-[11px] text-slate-500">Center-aligned building selector and community area</p>
-              </div>
+              <h4 className="text-[13px] font-bold text-slate-900">Address & Location</h4>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
@@ -773,17 +888,14 @@ export function AddJobForm({
             </div>
           </div>
 
-        {/* CARD 3: Timing & Responsive Hours (50% Width) */}
+        {/* CARD 3: Timing & Responsive Hours (12-Hour AM/PM Format & Auto Overtime) */}
           <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 h-full flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
                   <Clock size={15} />
                 </div>
-                <div>
-                  <h4 className="text-[13px] font-bold text-slate-900">Timing & Duty Hours</h4>
-                  <p className="text-[11px] text-slate-500">Auto-synchronized shift duration and overtime</p>
-                </div>
+                <h4 className="text-[13px] font-bold text-slate-900">Timing & Duty Hours</h4>
               </div>
               {Number(otHours) > 0 && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-100 text-amber-800 border border-amber-300">
@@ -792,33 +904,19 @@ export function AddJobForm({
               )}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-end">
+              <Time12hPicker
+                label="Start Time"
+                value={startTime}
+                onChange={handleStartTimeChange}
+              />
+              <Time12hPicker
+                label="End Time"
+                value={endTime}
+                onChange={handleEndTimeChange}
+              />
               <div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1 flex items-center justify-between">
-                  <span>Start</span>
-                  <span className="text-blue-600 font-bold normal-case">{formatTime12h(startTime)}</span>
-                </label>
-                <input
-                  type="time"
-                  value={formatTime24h(startTime)}
-                  onChange={e => handleStartTimeChange(e.target.value)}
-                  className="w-full text-[13px] px-2.5 py-2 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-semibold text-slate-800"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1 flex items-center justify-between">
-                  <span>End</span>
-                  <span className="text-blue-600 font-bold normal-case">{formatTime12h(endTime)}</span>
-                </label>
-                <input
-                  type="time"
-                  value={formatTime24h(endTime)}
-                  onChange={e => handleEndTimeChange(e.target.value)}
-                  className="w-full text-[13px] px-2.5 py-2 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-semibold text-slate-800"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1">
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
                   Duty Hrs
                 </label>
                 <input
@@ -827,13 +925,13 @@ export function AddJobForm({
                   step="0.5"
                   value={dutyHours}
                   onChange={e => handleDutyHoursChange(Number(e.target.value) || 0)}
-                  className="w-full text-[13px] px-2.5 py-2 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-slate-800"
+                  className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-slate-800"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1 flex items-center justify-between">
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
                   <span>OT Hrs</span>
-                  <span className="text-[9.5px] text-slate-400">R-OT-01</span>
+                  <span className="text-[10px] text-amber-600 font-bold normal-case">Auto</span>
                 </label>
                 <input
                   type="number"
@@ -846,23 +944,9 @@ export function AddJobForm({
                     setIsOvertime(Number(val) > 0)
                   }}
                   placeholder="0.0"
-                  className="w-full text-[13px] px-2.5 py-2 border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-amber-500 focus:bg-white transition-all font-bold text-amber-900"
+                  className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-amber-500 focus:bg-white transition-all font-bold text-amber-900"
                 />
               </div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-0.5 text-[11.5px] text-slate-600">
-              <input
-                type="checkbox"
-                id="add_job_modal_is_overtime"
-                checked={isOvertime}
-                onChange={e => setIsOvertime(e.target.checked)}
-                className="w-4 h-4 rounded accent-amber-600 cursor-pointer"
-              />
-              <label htmlFor="add_job_modal_is_overtime" className="font-semibold cursor-pointer text-slate-700">
-                Mark Shift as Overtime (OT)
-              </label>
-              <span className="text-slate-400">· Shifts &gt;8h or post-8 PM auto-count as OT</span>
             </div>
           </div>
 
@@ -872,10 +956,7 @@ export function AddJobForm({
               <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
                 <CreditCard size={15} />
               </div>
-              <div>
-                <h4 className="text-[13px] font-bold text-slate-900">Charges & Collection</h4>
-                <p className="text-[11px] text-slate-500">Service billing and payment status</p>
-              </div>
+              <h4 className="text-[13px] font-bold text-slate-900">Charges & Collection</h4>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -932,10 +1013,7 @@ export function AddJobForm({
           <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
             <Palette size={15} />
           </div>
-          <div>
-            <h4 className="text-[13px] font-bold text-slate-900">Customization & Supplies</h4>
-            <p className="text-[11px] text-slate-500">Row highlight colors, cleaning supplies and shift remarks</p>
-          </div>
+          <h4 className="text-[13px] font-bold text-slate-900">Customization & Supplies</h4>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start pt-1">
@@ -1092,8 +1170,8 @@ export function AddJobForm({
                 </button>
               </div>
 
-              {/* Color badges grid */}
-              <div className="flex items-center gap-2 flex-wrap">
+              {/* Color badges grid (Strictly 1 single row initially, or full wrap when View All clicked) */}
+              <div className={`flex items-center gap-1.5 ${showAllColors ? 'flex-wrap' : 'flex-nowrap overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'}`}>
                 {displayedColorPresets.map(preset => {
                   const isSelected = rowColor === preset.id
                   return (
@@ -1102,7 +1180,7 @@ export function AddJobForm({
                       key={preset.id}
                       onClick={() => setRowColor(preset.id)}
                       title={preset.label}
-                      className={`group relative flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-all cursor-pointer text-[11.5px] font-semibold ${
+                      className={`group relative flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-all cursor-pointer text-[11.5px] font-semibold shrink-0 whitespace-nowrap ${
                         isSelected
                           ? 'border-emerald-500 bg-emerald-50/70 text-emerald-950 shadow-xs ring-2 ring-emerald-500/20'
                           : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'

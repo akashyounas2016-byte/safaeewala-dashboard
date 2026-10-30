@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
-import { Check, ChevronDown, Search, X, Users } from 'lucide-react'
+import { Check, ChevronDown, Search, X, Users, Building2 } from 'lucide-react'
+import { useData } from '@/store/DataContext'
+import { isThirdPartyEmployee } from '@/lib/utils'
 
 export interface CleanerOption {
   id?: string
@@ -36,6 +38,23 @@ export function CleanerMultiSelect({
   const [search, setSearch] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  const { employees: allEmps = [], agencies: allAgencies = [] } = useData()
+
+  // Agency lookup map for third-party / agency staff tags
+  const cleanerAgencyMap = useMemo(() => {
+    const map = new Map<string, string>()
+    allEmps.forEach(emp => {
+      if (isThirdPartyEmployee(emp)) {
+        const agency = allAgencies.find(a => a.id === emp.agency_id)
+        const aName = emp.agency_name || agency?.name
+        if (aName && !aName.toLowerCase().includes('safaeewala') && !aName.toLowerCase().includes('parent company')) {
+          map.set(emp.full_name.trim().toLowerCase(), aName.trim())
+        }
+      }
+    })
+    return map
+  }, [allEmps, allAgencies])
 
   // Normalize cleaners into unique string list
   const cleanerList = useMemo(() => {
@@ -122,11 +141,11 @@ export function CleanerMultiSelect({
         />
       )}
 
-      {/* Trigger Button */}
+      {/* Trigger Button (Single-line Fixed Height with Horizontal Scroll for Multiple Cleaners) */}
       <div
         onClick={() => !disabled && setIsOpen(prev => !prev)}
         className={`w-full flex items-center justify-between border rounded-xl transition-all cursor-pointer ${
-          compact ? 'px-2.5 py-1 text-[12px] min-h-[32px]' : 'px-3.5 py-2 text-[13px] min-h-[42px]'
+          compact ? 'px-2.5 py-1 text-[12px] h-[34px] min-h-[34px] max-h-[34px]' : 'px-3 py-1.5 text-[13px] h-[42px] min-h-[42px] max-h-[42px]'
         } ${
           disabled
             ? 'bg-slate-100/60 border-slate-200/60 text-slate-400 cursor-not-allowed'
@@ -137,7 +156,7 @@ export function CleanerMultiSelect({
                 : 'bg-[#f8fafc] border-[#E4E8EC] text-slate-400 hover:border-slate-300'
         }`}
       >
-        <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0 pr-1">
+        <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden flex-nowrap flex-1 min-w-0 pr-1 py-0.5">
           {selected.length === 0 ? (
             <span className="text-slate-400 truncate">{placeholder}</span>
           ) : compact ? (
@@ -145,33 +164,36 @@ export function CleanerMultiSelect({
               {selected.length === 1 ? selected[0] : `${selected[0]} +${selected.length - 1}`}
             </span>
           ) : (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {selected.slice(0, 3).map(name => (
-                <span
-                  key={name}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold bg-white text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-lg shadow-2xs"
-                >
-                  <span className="truncate max-w-[120px]">{name}</span>
-                  <button
-                    type="button"
-                    onClick={e => handleRemoveOne(e, name)}
-                    className="p-0.5 rounded hover:bg-emerald-100 text-emerald-700 cursor-pointer"
-                    title={`Remove ${name}`}
+            <div className="flex items-center gap-1.5 flex-nowrap">
+              {selected.map(name => {
+                const agencyTag = cleanerAgencyMap.get(name.trim().toLowerCase())
+                return (
+                  <span
+                    key={name}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold bg-white text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-lg shadow-2xs shrink-0 whitespace-nowrap"
                   >
-                    <X size={10} />
-                  </button>
-                </span>
-              ))}
-              {selected.length > 3 && (
-                <span className="text-[10.5px] font-extrabold text-emerald-800 bg-emerald-100/80 px-1.5 py-0.5 rounded-md border border-emerald-200">
-                  +{selected.length - 3} more
-                </span>
-              )}
+                    <span>{name}</span>
+                    {agencyTag && (
+                      <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 shrink-0 uppercase tracking-tight">
+                        {agencyTag}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={e => handleRemoveOne(e, name)}
+                      className="p-0.5 rounded hover:bg-emerald-100 text-emerald-700 cursor-pointer ml-0.5"
+                      title={`Remove ${name}`}
+                    >
+                      <X size={10} />
+                    </button>
+                  </span>
+                )
+              })}
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-1 shrink-0 text-slate-400">
+        <div className="flex items-center gap-1 shrink-0 text-slate-400 ml-1">
           {selected.length > 0 && !disabled && (
             <button
               type="button"
@@ -274,6 +296,11 @@ export function CleanerMultiSelect({
                       </div>
 
                       <span className="truncate">{cleanerName}</span>
+                      {cleanerAgencyMap.get(cleanerName.trim().toLowerCase()) && (
+                        <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 shrink-0 uppercase tracking-tight">
+                          {cleanerAgencyMap.get(cleanerName.trim().toLowerCase())}
+                        </span>
+                      )}
                     </div>
 
                     {isChecked && (
