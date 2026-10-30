@@ -8,6 +8,7 @@ import {
   Clock, DollarSign, Wallet, Search, Filter, X, Pencil, MoreVertical, ChevronDown,
   Receipt, CreditCard, Eye, Settings, Check, Info, GripVertical, ChevronUp, RotateCcw,
   ExternalLink, Sparkles, ArrowDownToLine, RefreshCw, CheckCircle2, Palette,
+  Layers, Table, Building2, MapPin,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -34,6 +35,7 @@ import {
   COMMON_SERVICES,
   cleanNum,
   formatTimeOnly,
+  formatTime12h,
   calcHours,
   calcOTHours,
   fmtDate,
@@ -258,7 +260,8 @@ export function DailyJobSheet() {
   // Search & Payment Category Filters
   const [isSearchExpanded, setIsSearchExpanded] = useState(false)
   const [searchQuery, setSearchQuery]           = useState('')
-  const [paymentFilter, setPaymentFilter]       = useState<'ALL' | 'Monthly' | 'Cash' | 'Online' | 'Pending' | 'Checks'>('ALL')
+  const [paymentFilter, setPaymentFilter]       = useState<'ALL' | 'Project' | 'Monthly' | 'Cash' | 'Online' | 'Pending' | 'Checks'>('ALL')
+  const [projectBoardView, setProjectBoardView] = useState<'board' | 'table'>('board')
   const searchInputRef                          = useRef<HTMLInputElement>(null)
   const searchContainerRef                      = useRef<HTMLDivElement>(null)
 
@@ -359,6 +362,7 @@ export function DailyJobSheet() {
   // Per user instruction: adjusting these colors changes the matching table rows' background color
   const DEFAULT_CATEGORY_ROW_COLORS: Record<string, string> = {
     ALL: '#ffffff',       // Pure Clean White default
+    Project: '#f5f3ff',   // Soft Violet Tint (Project Teams)
     Monthly: '#d1fae5',   // Soft Emerald Tint (Monthly rows)
     Cash: '#ffffff',      // Pure Clean White
     Online: '#f0f9ff',    // Soft Sky Tint
@@ -668,7 +672,7 @@ export function DailyJobSheet() {
   }
 
   // Map multi-cleaner jobs to consistent Team references (e.g. Team A, Team B, or custom team_name)
-  const multiCleanerJobs = todayJobs.filter(j => splitStaffNames(j.staff_name).length > 1)
+  const multiCleanerJobs = todayJobs.filter(j => splitStaffNames(j.staff_name).length > 1 || Boolean(j.team_name))
   const jobTeamMap = new Map<string, string>()
   multiCleanerJobs.forEach((job, idx) => {
     if (job.team_name && job.team_name.trim()) {
@@ -678,6 +682,57 @@ export function DailyJobSheet() {
       jobTeamMap.set(job.id, `Team ${letters[idx % letters.length]}`)
     }
   })
+
+  // ── Project Teams Data Structure (for Team-wise Columnar Display) ──
+  const projectTeamsData = useMemo(() => {
+    const teamJobs = todayJobs.filter(j => splitStaffNames(j.staff_name).length > 1 || Boolean(j.team_name))
+    const teamsMap = new Map<string, {
+      teamName: string
+      cleaners: string[]
+      leadCleaner: string
+      jobs: DailyJob[]
+      totalCharges: number
+      totalReceived: number
+      totalHours: number
+    }>()
+
+    teamJobs.forEach((job, idx) => {
+      const cleaners = splitStaffNames(job.staff_name)
+      const teamRef = job.team_name?.trim() || jobTeamMap.get(job.id) || `Team ${String.fromCharCode(65 + (idx % 26))}`
+      
+      if (!teamsMap.has(teamRef)) {
+        teamsMap.set(teamRef, {
+          teamName: teamRef,
+          cleaners: [],
+          leadCleaner: cleaners[0] || 'Lead Cleaner',
+          jobs: [],
+          totalCharges: 0,
+          totalReceived: 0,
+          totalHours: 0,
+        })
+      }
+
+      const tObj = teamsMap.get(teamRef)!
+      cleaners.forEach(c => {
+        const trimmed = c.trim()
+        if (trimmed && !tObj.cleaners.includes(trimmed)) {
+          tObj.cleaners.push(trimmed)
+        }
+      })
+      if (!tObj.leadCleaner && cleaners[0]) {
+        tObj.leadCleaner = cleaners[0]
+      }
+
+      if (!tObj.jobs.some(j => j.id === job.id)) {
+        tObj.jobs.push(job)
+        tObj.totalCharges += cleanNum(job.charges)
+        tObj.totalReceived += cleanNum(job.received)
+        tObj.totalHours += cleanNum(job.duty_hours) || calcHours(job.start_time, job.end_time)
+      }
+    })
+
+    return Array.from(teamsMap.values()).sort((a, b) => a.teamName.localeCompare(b.teamName))
+  }, [todayJobs, jobTeamMap])
 
   // Group active jobs by staff member so multiple shifts for an employee display sequentially adjacent
   // Multi-cleaner assignment (e.g. 3 cleaners) creates individual rows for each cleaner grouped by employee
@@ -819,9 +874,11 @@ export function DailyJobSheet() {
       list = list.filter(j => j.staff_name.trim().toUpperCase().startsWith(selectedLetter))
     }
 
-    // 2. Filter by payment category (Monthly, Cash, Online, Pending)
+    // 2. Filter by payment category (Project, Monthly, Cash, Online, Pending, Checks)
     if (paymentFilter !== 'ALL') {
-      if (paymentFilter === 'Monthly') {
+      if (paymentFilter === 'Project') {
+        list = list.filter(j => (j as any)._isSplitShift || (j as any)._isSecondaryCleaner || (j as any)._isPrimaryCleaner || splitStaffNames(j.staff_name).length > 1 || Boolean(j.team_name))
+      } else if (paymentFilter === 'Monthly') {
         list = list.filter(j => j.payment_mode === 'Monthly')
       } else if (paymentFilter === 'Cash') {
         list = list.filter(j => j.payment_mode === 'Cash')
@@ -2843,21 +2900,23 @@ export function DailyJobSheet() {
               )}
             </div>
 
-            {/* Payment Category Filters (Monthly, Cash, Online, Pending, Checks) + Three-Dot Color Customizer */}
+            {/* Payment Category Filters (Project, Monthly, Cash, Online, Pending, Checks) + Three-Dot Color Customizer */}
             <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-[#E4E8EC] text-[11.5px] font-bold">
-              {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending', 'Checks'] as const).map(mode => {
+              {(['ALL', 'Project', 'Monthly', 'Cash', 'Online', 'Pending', 'Checks'] as const).map(mode => {
                 const isSelected = paymentFilter === mode
                 const count = mode === 'ALL'
                   ? todayJobs.length
-                  : mode === 'Monthly'
-                    ? todayJobs.filter(j => j.payment_mode === 'Monthly').length
-                    : mode === 'Cash'
-                      ? todayJobs.filter(j => j.payment_mode === 'Cash').length
-                      : mode === 'Online'
-                        ? todayJobs.filter(j => j.payment_mode === 'Online').length
-                        : mode === 'Pending'
-                          ? todayJobs.filter(j => jobPending(j) > 0).length
-                          : rowChecks.size
+                  : mode === 'Project'
+                    ? projectTeamsData.length
+                    : mode === 'Monthly'
+                      ? todayJobs.filter(j => j.payment_mode === 'Monthly').length
+                      : mode === 'Cash'
+                        ? todayJobs.filter(j => j.payment_mode === 'Cash').length
+                        : mode === 'Online'
+                          ? todayJobs.filter(j => j.payment_mode === 'Online').length
+                          : mode === 'Pending'
+                            ? todayJobs.filter(j => jobPending(j) > 0).length
+                            : rowChecks.size
 
                 return (
                   <button
@@ -2911,7 +2970,7 @@ export function DailyJobSheet() {
                       </div>
                       <p className="text-[11px] text-slate-500 mb-2.5">Set row background colors for each category:</p>
                       <div className="space-y-2">
-                        {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending', 'Checks'] as const).map(mode => (
+                        {(['ALL', 'Project', 'Monthly', 'Cash', 'Online', 'Pending', 'Checks'] as const).map(mode => (
                           <div key={mode} className="flex items-center justify-between text-[11.5px]">
                             <span className="font-semibold text-slate-700">{mode === 'ALL' ? 'All Rows' : mode}</span>
                             <div className="flex items-center gap-1.5">
@@ -2933,6 +2992,38 @@ export function DailyJobSheet() {
                 )}
               </div>
             </div>
+
+            {/* When Project filter is selected: Toggle between Team-Wise Column Board and Standard Table */}
+            {paymentFilter === 'Project' && (
+              <div className="flex items-center bg-indigo-50/90 p-0.5 rounded-xl border border-indigo-200 text-[11px] font-bold text-indigo-950 animate-in fade-in zoom-in-95">
+                <button
+                  type="button"
+                  onClick={() => setProjectBoardView('board')}
+                  className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                    projectBoardView === 'board'
+                      ? 'bg-indigo-600 text-white shadow-xs font-black'
+                      : 'text-indigo-700 hover:bg-indigo-100 font-semibold'
+                  }`}
+                  title="Team-Wise Columnar Board View"
+                >
+                  <Layers size={13} />
+                  <span>Team Columns ({projectTeamsData.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProjectBoardView('table')}
+                  className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                    projectBoardView === 'table'
+                      ? 'bg-indigo-600 text-white shadow-xs font-black'
+                      : 'text-indigo-700 hover:bg-indigo-100 font-semibold'
+                  }`}
+                  title="Standard Table View"
+                >
+                  <Table size={13} />
+                  <span>Table View</span>
+                </button>
+              </div>
+            )}
 
             {/* Customize Columns Dropdown */}
             {/* Customize Columns Button with Eye Icon (Green circle icon removed per user instruction) */}
@@ -3148,7 +3239,184 @@ export function DailyJobSheet() {
           </div>
         </div>
 
-        {/* ── Table Container with Vertical A-Z Rail (Matching red line in user image) ── */}
+        {/* ── Table Container / Project Teams Columnar Board ── */}
+        {paymentFilter === 'Project' && projectBoardView === 'board' ? (
+          <div className="p-4 sm:p-6 bg-slate-50/70 min-h-[420px]">
+            {/* Header info */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-3 border-b border-indigo-200/70">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-800 flex items-center justify-center font-bold shadow-xs">
+                  <Layers size={18} />
+                </div>
+                <div>
+                  <h3 className="text-[15px] font-black text-slate-900 flex items-center gap-2">
+                    <span>Active Project Teams ({projectTeamsData.length})</span>
+                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-200">
+                      Team-Wise Column View
+                    </span>
+                  </h3>
+                  <p className="text-[11.5px] text-slate-500">
+                    Column-wise operational breakdown of all teams and multi-cleaner project assignments for {fmtDate(selectedDate)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 bg-white px-3 py-1.5 rounded-xl border border-indigo-100 shadow-2xs">
+                <span className="text-[11.5px] font-semibold text-slate-600">
+                  Total Project Shifts: <b className="text-indigo-900">{projectTeamsData.reduce((s, t) => s + t.jobs.length, 0)}</b>
+                </span>
+                <span className="text-slate-300">·</span>
+                <span className="text-[11.5px] font-semibold text-slate-600">
+                  Total Hours: <b className="text-indigo-900">{Math.round(projectTeamsData.reduce((s, t) => s + t.totalHours, 0) * 10) / 10}h</b>
+                </span>
+                <span className="text-slate-300">·</span>
+                <span className="text-[11.5px] font-semibold text-slate-600">
+                  Total Charges: <b className="text-emerald-700">AED {projectTeamsData.reduce((s, t) => s + t.totalCharges, 0).toLocaleString()}</b>
+                </span>
+              </div>
+            </div>
+
+            {projectTeamsData.length === 0 ? (
+              <div className="py-16 text-center bg-white rounded-2xl border border-slate-200 shadow-xs">
+                <Layers size={36} className="mx-auto text-slate-300 mb-3" />
+                <h4 className="text-[14px] font-bold text-slate-700">No Project Teams Found</h4>
+                <p className="text-[12px] text-slate-400 mt-1 max-w-md mx-auto">
+                  No multi-cleaner shifts or teams assigned on {fmtDate(selectedDate)}. Any shift with 2 or more cleaners automatically forms a project team here.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-start">
+                {projectTeamsData.map((team) => {
+                  return (
+                    <div
+                      key={team.teamName}
+                      className="bg-white rounded-2xl border border-indigo-200/90 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col"
+                    >
+                      {/* Team Card Header */}
+                      <div className="p-3.5 bg-gradient-to-r from-indigo-50/90 via-purple-50/50 to-white border-b border-indigo-100">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-black text-[12px] shadow-xs">
+                            <Users size={12} />
+                            {team.teamName}
+                          </span>
+                          <span className="text-[11px] font-extrabold text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200">
+                            {team.jobs.length} Shift{team.jobs.length === 1 ? '' : 's'}
+                          </span>
+                        </div>
+
+                        {/* Cleaners list */}
+                        <div className="mt-2 space-y-1">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Team Cleaners:</div>
+                          <div className="flex flex-wrap gap-1">
+                            {team.cleaners.map((c, cIdx) => (
+                              <span
+                                key={c}
+                                className={`text-[11px] px-2 py-0.5 rounded-md font-bold flex items-center gap-1 ${
+                                  cIdx === 0
+                                    ? 'bg-indigo-100 text-indigo-900 border border-indigo-300'
+                                    : 'bg-slate-100 text-slate-700 border border-slate-200'
+                                }`}
+                              >
+                                {c}
+                                {cIdx === 0 && <span className="text-[9px] font-black text-indigo-600">(Lead)</span>}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Team summary metrics */}
+                        <div className="grid grid-cols-3 gap-1.5 mt-3 pt-2 border-t border-indigo-100/70 text-center">
+                          <div className="bg-white/90 rounded-lg p-1 border border-indigo-100">
+                            <div className="text-[9.5px] font-bold text-slate-400 uppercase">Hours</div>
+                            <div className="text-[11.5px] font-black text-slate-800">{Math.round(team.totalHours * 10) / 10}h</div>
+                          </div>
+                          <div className="bg-white/90 rounded-lg p-1 border border-indigo-100">
+                            <div className="text-[9.5px] font-bold text-slate-400 uppercase">Charges</div>
+                            <div className="text-[11.5px] font-black text-slate-900">AED {team.totalCharges}</div>
+                          </div>
+                          <div className="bg-white/90 rounded-lg p-1 border border-indigo-100">
+                            <div className="text-[9.5px] font-bold text-emerald-600 uppercase">Received</div>
+                            <div className="text-[11.5px] font-black text-emerald-700">AED {team.totalReceived}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Team Shift Cards (Column Data) */}
+                      <div className="p-3 space-y-2.5 bg-slate-50/40 divide-y divide-slate-100">
+                        {team.jobs.map(j => {
+                          const jHours = cleanNum(j.duty_hours) || calcHours(j.start_time, j.end_time)
+                          const jPending = jobPending(j)
+                          return (
+                            <div
+                              key={j.id}
+                              className="pt-2.5 first:pt-0 bg-white p-3 rounded-xl border border-slate-200 hover:border-indigo-300 transition-colors shadow-2xs group"
+                            >
+                              <div className="flex items-center justify-between text-[11px] mb-1.5">
+                                <span className="font-bold text-indigo-900 flex items-center gap-1 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                  <Clock size={11} className="text-indigo-600" />
+                                  {formatTime12h(j.start_time)} – {formatTime12h(j.end_time)}
+                                </span>
+                                <span className="text-[10px] font-bold text-slate-500">
+                                  {jHours} hrs
+                                </span>
+                              </div>
+
+                              <div className="text-[12.5px] font-bold text-slate-900 flex items-center gap-1.5 truncate">
+                                <Building2 size={13} className="text-slate-400 shrink-0" />
+                                <span className="truncate">{j.address || 'No Address'}</span>
+                              </div>
+                              {j.area && (
+                                <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5 truncate pl-4">
+                                  <MapPin size={11} className="text-slate-400 shrink-0" />
+                                  <span className="truncate">{j.area}</span>
+                                </div>
+                              )}
+
+                              <div className="flex items-center justify-between text-[11px] mt-2 pt-2 border-t border-slate-100">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-extrabold text-slate-800">AED {cleanNum(j.charges)}</span>
+                                  <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded border ${
+                                    j.payment_mode === 'Cash'
+                                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                      : j.payment_mode === 'Online'
+                                      ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                      : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  }`}>
+                                    {j.payment_mode}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  {jPending > 0 && (
+                                    <span className="text-[10px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
+                                      Due {jPending}
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditJob(j)}
+                                    className="p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded transition-colors cursor-pointer"
+                                    title="Edit Shift"
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {j.material && String(j.material).toLowerCase() !== 'no' && (
+                                <div className="mt-1.5 text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded truncate">
+                                  Material: {j.material}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="flex">
           {/* Vertical A-Z Rail */}
           <div className="w-[34px] sm:w-[38px] flex-shrink-0 bg-[#f8fafc] border-r border-[#E4E8EC] py-2 flex flex-col items-center gap-0.5 select-none text-[10px]">
@@ -3240,10 +3508,13 @@ export function DailyJobSheet() {
                   const isPendingRow = jobPending(job) > 0 || job.payment_mode === 'Pending'
                   const isCashRow = job.payment_mode === 'Cash'
                   const isOnlineRow = job.payment_mode === 'Online'
+                  const isProjectRow = (job as any)._isSplitShift || (job as any)._isSecondaryCleaner || (job as any)._isPrimaryCleaner || splitStaffNames(job.staff_name).length > 1 || Boolean(job.team_name)
 
                   let dynamicRowBg = '#ffffff'
                   if (customColorPreset && customColorPreset.circleColor) {
                     dynamicRowBg = customColorPreset.circleColor
+                  } else if (isProjectRow && filterColors.Project && filterColors.Project !== DEFAULT_CATEGORY_ROW_COLORS.Project) {
+                    dynamicRowBg = filterColors.Project
                   } else if (isCheckedRow && filterColors.Checks && filterColors.Checks !== DEFAULT_CATEGORY_ROW_COLORS.Checks) {
                     dynamicRowBg = filterColors.Checks
                   } else if (isPendingRow && filterColors.Pending && filterColors.Pending !== DEFAULT_CATEGORY_ROW_COLORS.Pending) {
@@ -3254,6 +3525,8 @@ export function DailyJobSheet() {
                     dynamicRowBg = filterColors.Cash
                   } else if (isOnlineRow && filterColors.Online && filterColors.Online !== DEFAULT_CATEGORY_ROW_COLORS.Online) {
                     dynamicRowBg = filterColors.Online
+                  } else if (isProjectRow && filterColors.Project) {
+                    dynamicRowBg = filterColors.Project
                   } else if (isCheckedRow && filterColors.Checks) {
                     dynamicRowBg = filterColors.Checks
                   } else if (isPendingRow && filterColors.Pending) {
@@ -3368,6 +3641,7 @@ export function DailyJobSheet() {
             )}
           </div>
         </div>
+        )}
 
         {/* ── Pagination / View All Bar ── */}
         <div className="px-5 py-3.5 bg-slate-50 border-t border-[#E4E8EC] flex items-center justify-between flex-wrap gap-3 text-[12px]">

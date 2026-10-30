@@ -1520,13 +1520,22 @@ export function JobSheetSpreadsheet() {
     return safeGet('safaeewala_excel_color_tab', 'light')
   })
 
+  // ── Column Background Colors (Granular column color customization) ──
+  const [columnColors, setColumnColors] = useState<Record<string, string>>(() => {
+    return safeGet('safaeewala_excel_column_colors', {})
+  })
+
   // ── Right-Click Context Menu State ──
   const [contextMenu, setContextMenu] = useState<{
     x: number
     y: number
     rowIdx: number
     job: DailyJob
+    colId: string
   } | null>(null)
+
+  // Granular color target for non-staff cells: 'row' (only this row) vs 'col' (only this column)
+  const [colorTargetScope, setColorTargetScope] = useState<'row' | 'col'>('row')
 
   // Palette picker open for specific cleaner
   const [colorPickerCleaner, setColorPickerCleaner] = useState<string | null>(null)
@@ -2492,6 +2501,53 @@ export function JobSheetSpreadsheet() {
     showToast(`Default color restored for ${targetJob.staff_name?.trim() || 'Staff Block'}`)
   }
 
+  // ── Set Single Row Color (Granular: Only this specific single row, NOT the whole block) ──
+  const handleSetSingleRowColor = (rowIdx: number, paletteKey: string) => {
+    const updated = [...gridRows]
+    if (updated[rowIdx]) {
+      updated[rowIdx] = { ...updated[rowIdx], row_color: paletteKey }
+      pushState(updated)
+    }
+    setContextMenu(null)
+    showToast(`✓ Color applied to Row #${rowIdx + 1} (${BLOCK_PALETTES[paletteKey]?.name || paletteKey})`)
+  }
+
+  const handleResetSingleRowColor = (rowIdx: number) => {
+    const updated = [...gridRows]
+    if (updated[rowIdx]) {
+      const next = { ...updated[rowIdx] }
+      delete next.row_color
+      updated[rowIdx] = next
+      pushState(updated)
+    }
+    setContextMenu(null)
+    showToast(`✓ Reset color on Row #${rowIdx + 1}`)
+  }
+
+  // ── Set Column Color (Granular: Only this specific column across the sheet) ──
+  const handleSetColumnColor = (colId: string, paletteKey: string) => {
+    setColumnColors(prev => {
+      const next = { ...prev, [colId]: paletteKey }
+      safeSet('safaeewala_excel_column_colors', next)
+      return next
+    })
+    setContextMenu(null)
+    const colDef = columns.find(c => c.id === colId)
+    showToast(`✓ Color applied to Column "${colDef?.label || colId}" (${BLOCK_PALETTES[paletteKey]?.name || paletteKey})`)
+  }
+
+  const handleResetColumnColor = (colId: string) => {
+    setColumnColors(prev => {
+      const next = { ...prev }
+      delete next[colId]
+      safeSet('safaeewala_excel_column_colors', next)
+      return next
+    })
+    setContextMenu(null)
+    const colDef = columns.find(c => c.id === colId)
+    showToast(`✓ Reset color on Column "${colDef?.label || colId}"`)
+  }
+
   // ── Change Cleaner Block Color (Persisted & Forces Immediate Grid Re-render) ──
   const setCleanerColor = (cleanerName: string, paletteKey: string) => {
     const cleanStaff = (cleanerName || 'Unassigned Staff').trim()
@@ -2523,8 +2579,8 @@ export function JobSheetSpreadsheet() {
     return BLOCK_PALETTES[paletteKey]
   }
 
-  // Right-Click Context Menu Trigger
-  const handleContextMenu = (e: React.MouseEvent, rowIdx: number, job: DailyJob) => {
+  // Right-Click Context Menu Trigger (Carries specific colId for granular customization)
+  const handleContextMenu = (e: React.MouseEvent, rowIdx: number, job: DailyJob, colId: string = 'staff_name') => {
     e.preventDefault()
     e.stopPropagation()
     const clickX = e.clientX
@@ -2535,12 +2591,14 @@ export function JobSheetSpreadsheet() {
     const posX = clickX + menuWidth > window.innerWidth ? Math.max(10, window.innerWidth - menuWidth - 15) : clickX
     const posY = clickY + menuHeight > window.innerHeight ? Math.max(10, window.innerHeight - menuHeight - 15) : clickY
 
-    setActiveCell({ rowIdx, colId: 'staff_name' })
+    setActiveCell({ rowIdx, colId })
+    setColorTargetScope('row')
     setContextMenu({
       x: posX,
       y: posY,
       rowIdx,
-      job
+      job,
+      colId,
     })
   }
 
@@ -3630,7 +3688,7 @@ export function JobSheetSpreadsheet() {
                   onDragEnd={() => { setDraggedColId(null); setDragOverColId(null) }}
                   style={{ width: col.width }}
                   className={`px-2.5 py-1.5 border-r border-slate-300 text-left whitespace-nowrap cursor-grab active:cursor-grabbing select-none transition-colors ${
-                    col.id === 'pending' ? 'bg-red-600 text-white font-black text-center' : dragOverColId === col.id ? 'bg-emerald-100 border-l-4 border-l-emerald-600' : ''
+                    dragOverColId === col.id ? 'bg-emerald-100 border-l-4 border-l-emerald-600' : ''
                   } ${draggedColId === col.id ? 'opacity-40' : ''}`}
                   title="Drag column to reorder sequence"
                 >
@@ -3654,7 +3712,10 @@ export function JobSheetSpreadsheet() {
                 return (
                   <React.Fragment key={group.cleanerName}>
                     {/* ── Cleaner Block Section Header Banner ── */}
-                    <tr className={`${palette.headerBg} ${palette.headerText} border-t-2 border-b border-black/20 select-none shadow-xs`}>
+                    <tr
+                      onContextMenu={e => handleContextMenu(e, group.jobs[0]?.globalIndex ?? 0, group.jobs[0]?.row, 'staff_name')}
+                      className={`${palette.headerBg} ${palette.headerText} border-t-2 border-b border-black/20 select-none shadow-xs cursor-context-menu`}
+                    >
                       <td colSpan={columns.length + 1} className="px-3 py-2">
                         <div className="flex items-center justify-between flex-wrap gap-2 font-sans">
                           {/* Left: Cleaner Info & Badges */}
@@ -3846,13 +3907,19 @@ export function JobSheetSpreadsheet() {
                               displayVal = isBlankShift ? '' : cleanNum(displayVal)
                             }
 
+                            const colColorKey = columnColors[col.id]
+                            const colPalette = colColorKey && BLOCK_PALETTES[colColorKey] ? BLOCK_PALETTES[colColorKey] : null
+
                             return (
                               <td
                                 key={col.id}
                                 onClick={() => handleCellClick(globalIndex, col.id)}
                                 onDoubleClick={() => handleCellDoubleClick(globalIndex, col.id)}
-                                onContextMenu={e => handleContextMenu(e, globalIndex, row)}
-                                style={{ width: col.width }}
+                                onContextMenu={e => handleContextMenu(e, globalIndex, row, col.id)}
+                                style={{
+                                  width: col.width,
+                                  backgroundColor: colPalette ? colPalette.solidBg : undefined,
+                                }}
                                 className={`h-7 px-2 border-r border-slate-200 ${isCellEditing ? 'overflow-visible z-30' : 'overflow-hidden'} text-ellipsis whitespace-nowrap cursor-cell transition-all relative ${
                                   isCellActive
                                     ? 'ring-2 ring-[#107c41] bg-white z-10 font-semibold'
@@ -4087,16 +4154,20 @@ export function JobSheetSpreadsheet() {
                         displayVal = isBlankShift ? '' : (cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : ''))
                       }
 
+                      const colColorKey = columnColors[col.id]
+                      const colPalette = colColorKey && BLOCK_PALETTES[colColorKey] ? BLOCK_PALETTES[colColorKey] : null
+                      const cellBg = colPalette ? colPalette.solidBg : rowBg
+                      const isDarkCell = colPalette ? !colPalette.isLight : isDarkRow
+
                       return (
                         <td
                           key={col.id}
                           onClick={() => handleCellClick(targetIdx, col.id)}
                           onDoubleClick={() => handleCellDoubleClick(targetIdx, col.id)}
-                          onContextMenu={e => handleContextMenu(e, targetIdx, row)}
+                          onContextMenu={e => handleContextMenu(e, targetIdx, row, col.id)}
                           style={{
                             width: col.width,
-                            backgroundColor: isPendingDue ? '#dc2626' : (isCellActive ? (palette.isLight ? '#ffffff' : '#090d16') : rowBg),
-                            color: isPendingDue ? '#ffffff' : undefined,
+                            backgroundColor: isCellActive ? (palette.isLight ? '#ffffff' : '#090d16') : cellBg,
                             borderTop: blockTopBorder,
                             borderBottom: blockBottomBorder,
                             borderRight: palette.isLight ? '1px solid #cbd5e1' : '1px solid rgba(255, 255, 255, 0.12)',
@@ -4124,18 +4195,18 @@ export function JobSheetSpreadsheet() {
                               }
                               className={
                                 mcInfo?.isSecondary && (col.id === 'charges' || col.id === 'received')
-                                  ? (isDarkRow ? 'text-indigo-300 italic font-semibold text-[11.5px]' : 'text-indigo-700 italic font-semibold text-[11.5px]')
+                                  ? (isDarkCell ? 'text-indigo-300 italic font-semibold text-[11.5px]' : 'text-indigo-700 italic font-semibold text-[11.5px]')
                                   : mcInfo?.isSecondary && col.id === 'payment_mode'
-                                    ? (isDarkRow ? 'text-indigo-200 font-bold text-[11px]' : 'text-indigo-800 font-bold text-[11px]')
+                                    ? (isDarkCell ? 'text-indigo-200 font-bold text-[11px]' : 'text-indigo-800 font-bold text-[11px]')
                                     : isPendingDue
-                                      ? 'text-white font-black text-[12px]'
+                                      ? (isDarkCell ? 'text-rose-300 font-black drop-shadow-xs' : 'text-rose-600 font-black')
                                       : col.id === 'pending' && displayVal === 'Nil'
-                                        ? (isDarkRow ? 'text-slate-200 font-bold' : 'text-slate-800 font-bold')
+                                        ? (isDarkCell ? 'text-slate-200 font-bold' : 'text-slate-800 font-bold')
                                         : col.id === 'charges' || col.id === 'received'
-                                          ? (isDarkRow ? 'text-amber-300 font-black drop-shadow-xs' : 'text-slate-900 font-bold')
+                                          ? (isDarkCell ? 'text-amber-300 font-black drop-shadow-xs' : 'text-slate-900 font-bold')
                                           : col.id === 'team_name' && displayVal
-                                            ? (isDarkRow ? 'font-bold text-indigo-300 bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-500/40 text-[11px]' : 'font-bold text-indigo-800 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 text-[11px]')
-                                            : (isDarkRow ? 'text-white font-medium' : 'text-slate-800 font-medium')
+                                            ? (isDarkCell ? 'font-bold text-indigo-300 bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-500/40 text-[11px]' : 'font-bold text-indigo-800 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 text-[11px]')
+                                            : (isDarkCell ? 'text-white font-medium' : 'text-slate-800 font-medium')
                               }
                             >
                               {col.id === 'address' ? cleanAddressDisplay(displayVal) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
@@ -4227,225 +4298,361 @@ export function JobSheetSpreadsheet() {
           onClick={e => e.stopPropagation()}
           className="fixed z-[200] w-80 max-h-[92vh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-slate-300 py-2 text-[12px] font-sans animate-in fade-in zoom-in-95 select-none"
         >
-          {/* Header */}
-          <div className="px-3 py-1.5 border-b border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-bold">
-            <span>ROW #{contextMenu.rowIdx + 1}</span>
-            <span className="font-semibold text-slate-700 truncate max-w-[120px]">{contextMenu.job.staff_name}</span>
-          </div>
+          {(() => {
+            const isStaffSection = (contextMenu.colId || 'staff_name') === 'staff_name'
+            const currentColDef = columns.find(c => c.id === contextMenu.colId)
 
-          {/* Staff Block Actions: Expand Block, Add Empty Block Above/Below */}
-          <div className="py-1">
-            <button
-              type="button"
-              onClick={() => {
-                const sName = contextMenu.job.staff_name || ''
-                const bInfo = staffBlockInfoMap.get(contextMenu.job.id)
-                handleAddRowToStaff(sName, bInfo?.lastRowIdx ?? contextMenu.rowIdx)
-                setContextMenu(null)
-              }}
-              className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
-            >
-              <Plus size={15} className="text-emerald-700" />
-              <span>Add Row to {contextMenu.job.staff_name || 'Staff'} (Expand Block)</span>
-            </button>
+            return (
+              <>
+                {/* Header */}
+                <div className="px-3 py-1.5 border-b border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-bold">
+                  <span>ROW #{contextMenu.rowIdx + 1} {currentColDef && !isStaffSection ? `· ${currentColDef.label}` : ''}</span>
+                  <span className="font-semibold text-slate-700 truncate max-w-[120px]">{contextMenu.job.staff_name || 'Unassigned'}</span>
+                </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                handleAddEmptyBlockAbove(contextMenu.job, contextMenu.rowIdx)
-                setContextMenu(null)
-              }}
-              className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
-              title="Add a new 3-row empty cleaner block above this staff block"
-            >
-              <ArrowUpCircle size={15} className="text-emerald-700" />
-              <span>Add New Empty Block Above</span>
-            </button>
+                {/* Staff Block Level Actions: Only available when right-clicking on Staff Name section */}
+                {isStaffSection && (
+                  <div className="py-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const sName = contextMenu.job.staff_name || ''
+                        const bInfo = staffBlockInfoMap.get(contextMenu.job.id)
+                        handleAddRowToStaff(sName, bInfo?.lastRowIdx ?? contextMenu.rowIdx)
+                        setContextMenu(null)
+                      }}
+                      className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
+                    >
+                      <Plus size={15} className="text-emerald-700" />
+                      <span>Add Row to {contextMenu.job.staff_name || 'Staff'} (Expand Block)</span>
+                    </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                handleAddEmptyBlockBelow(contextMenu.job, contextMenu.rowIdx)
-                setContextMenu(null)
-              }}
-              className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
-              title="Add a new 3-row empty cleaner block below this staff block"
-            >
-              <ArrowDownCircle size={15} className="text-emerald-700" />
-              <span>Add New Empty Block Below</span>
-            </button>
-          </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleAddEmptyBlockAbove(contextMenu.job, contextMenu.rowIdx)
+                        setContextMenu(null)
+                      }}
+                      className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
+                      title="Add a new 3-row empty cleaner block above this staff block"
+                    >
+                      <ArrowUpCircle size={15} className="text-emerald-700" />
+                      <span>Add New Empty Block Above</span>
+                    </button>
 
-          <div className="h-px bg-slate-100 my-1" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleAddEmptyBlockBelow(contextMenu.job, contextMenu.rowIdx)
+                        setContextMenu(null)
+                      }}
+                      className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
+                      title="Add a new 3-row empty cleaner block below this staff block"
+                    >
+                      <ArrowDownCircle size={15} className="text-emerald-700" />
+                      <span>Add New Empty Block Below</span>
+                    </button>
+                    <div className="h-px bg-slate-100 my-1" />
+                  </div>
+                )}
 
-          {/* Secondary Actions */}
-          <div className="py-0.5">
-            <button
-              type="button"
-              onClick={() => handleDuplicateRow(contextMenu.rowIdx)}
-              className="w-full px-3.5 py-1.5 text-left hover:bg-slate-100 text-slate-700 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
-            >
-              <Copy size={14} className="text-blue-600" />
-              <span>Duplicate Row</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleClearRow(contextMenu.rowIdx)}
-              className="w-full px-3.5 py-1.5 text-left hover:bg-slate-100 text-slate-700 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
-            >
-              <RotateCcw size={14} className="text-amber-600" />
-              <span>Clear Row Contents</span>
-            </button>
-          </div>
-
-          <div className="h-px bg-slate-100 my-1" />
-
-          {/* Color Selection Panel (Clean Light Theme & Circles Only) */}
-          <div className="px-3 py-2.5 bg-white text-slate-800 rounded-2xl mx-1.5 border border-slate-200/90 shadow-md">
-            {/* Header: Clean Light Colors header with [Light] and [Solid] tabs */}
-            <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-100">
-              <div className="flex items-center gap-1.5 font-bold text-slate-900 text-[11.5px]">
-                <Palette size={13} className="text-teal-600" />
-                <span>Colors</span>
-              </div>
-              
-              {/* Toggle Buttons: Light & Solid */}
-              <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                <button
-                  type="button"
-                  onMouseDown={e => e.stopPropagation()}
-                  onClick={e => {
-                    e.stopPropagation()
-                    setColorPaletteTab('light')
-                    safeSet('safaeewala_excel_color_tab', 'light')
-                  }}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                    colorPaletteTab === 'light'
-                      ? 'bg-teal-600 text-white shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                  title="Show 20 Light Colors"
-                >
-                  Light
-                </button>
-                <button
-                  type="button"
-                  onMouseDown={e => e.stopPropagation()}
-                  onClick={e => {
-                    e.stopPropagation()
-                    setColorPaletteTab('solid')
-                    safeSet('safaeewala_excel_color_tab', 'solid')
-                  }}
-                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                    colorPaletteTab === 'solid'
-                      ? 'bg-teal-600 text-white shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                  title="Show 20 Solid Colors"
-                >
-                  Solid
-                </button>
-              </div>
-            </div>
-
-            {/* Target Cleaner Info */}
-            <div className="flex items-center justify-between text-[11px] mb-2 px-0.5">
-              <span className="text-slate-500 font-medium">Cleaner:</span>
-              <span className="text-teal-900 font-bold truncate max-w-[150px] bg-teal-50 px-2 py-0.5 rounded border border-teal-200 text-[10.5px]">
-                {contextMenu.job.staff_name || 'Staff'}
-              </span>
-            </div>
-
-            {/* Grid of Clean Colored Circles (No text names, purely circles) */}
-            <div className="grid grid-cols-5 gap-2 py-1 place-items-center">
-              {(colorPaletteTab === 'light' ? LIGHT_PALETTE_KEYS : SOLID_PALETTE_KEYS).map(pk => {
-                const p = BLOCK_PALETTES[pk]
-                const currentPalette = getCleanerPalette(contextMenu.job.staff_name, 0, contextMenu.job.row_color)
-                const isSelected = contextMenu.job.row_color === p.id || (!contextMenu.job.row_color && currentPalette.id === p.id)
-                return (
+                {/* Row-Level Actions (Duplicate / Clear) */}
+                <div className="py-0.5">
                   <button
-                    key={p.id}
                     type="button"
-                    onMouseDown={e => e.stopPropagation()}
-                    onClick={e => {
-                      e.stopPropagation()
-                      setBlockColor(contextMenu.job, contextMenu.rowIdx, p.id)
-                    }}
-                    style={{ backgroundColor: p.solidBg, borderColor: p.solidBorder }}
-                    className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-110 relative ${
-                      isSelected
-                        ? 'ring-2 ring-teal-500 ring-offset-2 scale-110 shadow-sm'
-                        : 'hover:border-slate-400'
-                    }`}
-                    title={`${p.name} (${colorPaletteTab === 'light' ? 'Light' : 'Solid'})`}
+                    onClick={() => handleDuplicateRow(contextMenu.rowIdx)}
+                    className="w-full px-3.5 py-1.5 text-left hover:bg-slate-100 text-slate-700 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
                   >
-                    {isSelected && (
-                      <Check
-                        size={11}
-                        className={p.isLight ? 'text-slate-900 stroke-[3]' : 'text-white stroke-[3]'}
-                      />
-                    )}
+                    <Copy size={14} className="text-blue-600" />
+                    <span>Duplicate Row #{contextMenu.rowIdx + 1}</span>
                   </button>
-                )
-              })}
-            </div>
 
-            {/* Footer */}
-            <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-              <span>{colorPaletteTab === 'light' ? '20 Light Colors' : '20 Solid Colors'}</span>
-              <button
-                type="button"
-                onMouseDown={e => e.stopPropagation()}
-                onClick={e => {
-                  e.stopPropagation()
-                  resetBlockColor(contextMenu.job, contextMenu.rowIdx)
-                }}
-                className="text-teal-700 hover:text-teal-900 underline font-semibold cursor-pointer"
-              >
-                Reset
-              </button>
-            </div>
-          </div>
+                  <button
+                    type="button"
+                    onClick={() => handleClearRow(contextMenu.rowIdx)}
+                    className="w-full px-3.5 py-1.5 text-left hover:bg-slate-100 text-slate-700 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
+                  >
+                    <RotateCcw size={14} className="text-amber-600" />
+                    <span>Clear Row Contents</span>
+                  </button>
+                </div>
 
-          <div className="h-px bg-slate-100 my-1" />
+                <div className="h-px bg-slate-100 my-1" />
 
-          {/* Row history (UX-40) */}
-          <div className="py-0.5">
-            <button
-              type="button"
-              onClick={() => openRowHistory(contextMenu.job)}
-              className="w-full px-3.5 py-1.5 text-left hover:bg-slate-50 text-slate-700 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
-            >
-              <History size={14} />
-              <span>Row history</span>
-            </button>
-          </div>
+                {/* ── COLOR CUSTOMIZATION PANEL ── */}
+                {isStaffSection ? (
+                  /* 1. Whole Staff Block Color (Only when right-clicking on Staff Name) */
+                  <div className="px-3 py-2.5 bg-white text-slate-800 rounded-2xl mx-1.5 border border-slate-200/90 shadow-md">
+                    <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-100">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-900 text-[11.5px]">
+                        <Palette size={13} className="text-teal-600" />
+                        <span>Staff Block Color</span>
+                      </div>
+                      <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                        <button
+                          type="button"
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => {
+                            e.stopPropagation()
+                            setColorPaletteTab('light')
+                            safeSet('safaeewala_excel_color_tab', 'light')
+                          }}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                            colorPaletteTab === 'light' ? 'bg-teal-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          Light
+                        </button>
+                        <button
+                          type="button"
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => {
+                            e.stopPropagation()
+                            setColorPaletteTab('solid')
+                            safeSet('safaeewala_excel_color_tab', 'solid')
+                          }}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                            colorPaletteTab === 'solid' ? 'bg-teal-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          Solid
+                        </button>
+                      </div>
+                    </div>
 
-          {/* Delete Block & Delete Row */}
-          <div className="py-0.5 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={() => handleDeleteStaffBlock(contextMenu.job)}
-              className="w-full px-3.5 py-2 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2.5 font-bold transition-colors cursor-pointer"
-              title={`Delete entire staff block for ${contextMenu.job.staff_name || 'this cleaner'}`}
-            >
-              <Trash2 size={14} className="text-rose-600 shrink-0" />
-              <span>Delete Block ({contextMenu.job.staff_name || 'Staff Block'})</span>
-            </button>
+                    <div className="flex items-center justify-between text-[11px] mb-1 px-0.5">
+                      <span className="text-slate-500 font-medium">Whole Staff Block:</span>
+                      <span className="text-teal-900 font-bold truncate max-w-[150px] bg-teal-50 px-2 py-0.5 rounded border border-teal-200 text-[10.5px]">
+                        {contextMenu.job.staff_name || 'Staff Block'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mb-2 leading-tight">
+                      Applies color to this cleaner&apos;s complete block.
+                    </p>
 
-            <button
-              type="button"
-              onClick={() => {
-                handleDeleteRow(contextMenu.rowIdx)
-                setContextMenu(null)
-              }}
-              className="w-full px-3.5 py-1.5 text-left hover:bg-slate-100 text-slate-600 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
-            >
-              <Trash2 size={14} className="text-slate-400 shrink-0" />
-              <span>Delete Row</span>
-            </button>
-          </div>
+                    <div className="grid grid-cols-5 gap-2 py-1 place-items-center">
+                      {(colorPaletteTab === 'light' ? LIGHT_PALETTE_KEYS : SOLID_PALETTE_KEYS).map(pk => {
+                        const p = BLOCK_PALETTES[pk]
+                        const currentPalette = getCleanerPalette(contextMenu.job.staff_name, 0, contextMenu.job.row_color)
+                        const isSelected = contextMenu.job.row_color === p.id || (!contextMenu.job.row_color && currentPalette.id === p.id)
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onMouseDown={e => e.stopPropagation()}
+                            onClick={e => {
+                              e.stopPropagation()
+                              setBlockColor(contextMenu.job, contextMenu.rowIdx, p.id)
+                            }}
+                            style={{ backgroundColor: p.solidBg, borderColor: p.solidBorder }}
+                            className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-110 relative ${
+                              isSelected ? 'ring-2 ring-teal-500 ring-offset-2 scale-110 shadow-sm' : 'hover:border-slate-400'
+                            }`}
+                            title={`${p.name} (${colorPaletteTab === 'light' ? 'Light' : 'Solid'})`}
+                          >
+                            {isSelected && (
+                              <Check
+                                size={11}
+                                className={p.isLight ? 'text-slate-900 stroke-[3]' : 'text-white stroke-[3]'}
+                              />
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
+                      <span>{colorPaletteTab === 'light' ? '20 Light Colors' : '20 Solid Colors'}</span>
+                      <button
+                        type="button"
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => {
+                          e.stopPropagation()
+                          resetBlockColor(contextMenu.job, contextMenu.rowIdx)
+                        }}
+                        className="text-teal-700 hover:text-teal-900 underline font-semibold cursor-pointer"
+                      >
+                        Reset Block
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* 2. Granular Color Customizer (Specific Row or Column ONLY — Never touches whole block) */
+                  <div className="px-3 py-2.5 bg-white text-slate-800 rounded-2xl mx-1.5 border border-slate-200/90 shadow-md">
+                    <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-100">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-900 text-[11.5px]">
+                        <Palette size={13} className="text-teal-600" />
+                        <span>Granular Color</span>
+                      </div>
+                      <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                        <button
+                          type="button"
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => {
+                            e.stopPropagation()
+                            setColorPaletteTab('light')
+                            safeSet('safaeewala_excel_color_tab', 'light')
+                          }}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                            colorPaletteTab === 'light' ? 'bg-teal-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          Light
+                        </button>
+                        <button
+                          type="button"
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => {
+                            e.stopPropagation()
+                            setColorPaletteTab('solid')
+                            safeSet('safaeewala_excel_color_tab', 'solid')
+                          }}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                            colorPaletteTab === 'solid' ? 'bg-teal-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          Solid
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Scope Selector: Row Only vs Column */}
+                    <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 mb-2">
+                      <button
+                        type="button"
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => {
+                          e.stopPropagation()
+                          setColorTargetScope('row')
+                        }}
+                        className={`flex-1 py-1 px-1.5 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer ${
+                          colorTargetScope === 'row' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Row #{contextMenu.rowIdx + 1} Only
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => {
+                          e.stopPropagation()
+                          setColorTargetScope('col')
+                        }}
+                        className={`flex-1 py-1 px-1.5 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer ${
+                          colorTargetScope === 'col' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Column: {currentColDef?.label || contextMenu.colId}
+                      </button>
+                    </div>
+
+                    <p className="text-[10px] text-slate-400 mb-2 leading-tight">
+                      {colorTargetScope === 'row'
+                        ? `Changes background for ONLY Row #${contextMenu.rowIdx + 1} (not the block).`
+                        : `Changes background for ONLY the "${currentColDef?.label || contextMenu.colId}" column.`}
+                    </p>
+
+                    <div className="grid grid-cols-5 gap-2 py-1 place-items-center">
+                      {(colorPaletteTab === 'light' ? LIGHT_PALETTE_KEYS : SOLID_PALETTE_KEYS).map(pk => {
+                        const p = BLOCK_PALETTES[pk]
+                        const isRowMatch = contextMenu.job.row_color === p.id
+                        const isColMatch = columnColors[contextMenu.colId] === p.id
+                        const isSelected = colorTargetScope === 'row' ? isRowMatch : isColMatch
+
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onMouseDown={e => e.stopPropagation()}
+                            onClick={e => {
+                              e.stopPropagation()
+                              if (colorTargetScope === 'row') {
+                                handleSetSingleRowColor(contextMenu.rowIdx, p.id)
+                              } else {
+                                handleSetColumnColor(contextMenu.colId, p.id)
+                              }
+                            }}
+                            style={{ backgroundColor: p.solidBg, borderColor: p.solidBorder }}
+                            className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-110 relative ${
+                              isSelected ? 'ring-2 ring-teal-500 ring-offset-2 scale-110 shadow-sm' : 'hover:border-slate-400'
+                            }`}
+                            title={`${p.name} (${colorPaletteTab === 'light' ? 'Light' : 'Solid'})`}
+                          >
+                            {isSelected && (
+                              <Check
+                                size={11}
+                                className={p.isLight ? 'text-slate-900 stroke-[3]' : 'text-white stroke-[3]'}
+                              />
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
+                      <span>{colorPaletteTab === 'light' ? '20 Light Colors' : '20 Solid Colors'}</span>
+                      <button
+                        type="button"
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => {
+                          e.stopPropagation()
+                          if (colorTargetScope === 'row') {
+                            handleResetSingleRowColor(contextMenu.rowIdx)
+                          } else {
+                            handleResetColumnColor(contextMenu.colId)
+                          }
+                        }}
+                        className="text-teal-700 hover:text-teal-900 underline font-semibold cursor-pointer"
+                      >
+                        Reset {colorTargetScope === 'row' ? 'Row' : 'Column'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="h-px bg-slate-100 my-1" />
+
+                {/* Row history (UX-40) */}
+                <div className="py-0.5">
+                  <button
+                    type="button"
+                    onClick={() => openRowHistory(contextMenu.job)}
+                    className="w-full px-3.5 py-1.5 text-left hover:bg-slate-50 text-slate-700 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
+                  >
+                    <History size={14} />
+                    <span>Row history</span>
+                  </button>
+                </div>
+
+                {/* Delete Block (Only under Staff) & Delete Row */}
+                <div className="py-0.5 border-t border-slate-100">
+                  {isStaffSection && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStaffBlock(contextMenu.job)}
+                      className="w-full px-3.5 py-2 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2.5 font-bold transition-colors cursor-pointer"
+                      title={`Delete entire staff block for ${contextMenu.job.staff_name || 'this cleaner'}`}
+                    >
+                      <Trash2 size={14} className="text-rose-600 shrink-0" />
+                      <span>Delete Block ({contextMenu.job.staff_name || 'Staff Block'})</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDeleteRow(contextMenu.rowIdx)
+                      setContextMenu(null)
+                    }}
+                    className="w-full px-3.5 py-1.5 text-left hover:bg-slate-100 text-slate-600 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
+                  >
+                    <Trash2 size={14} className="text-slate-400 shrink-0" />
+                    <span>Delete Row #{contextMenu.rowIdx + 1}</span>
+                  </button>
+                </div>
+              </>
+            )
+          })()}
         </div>
       )}
 
