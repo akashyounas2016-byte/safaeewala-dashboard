@@ -811,7 +811,7 @@ export function DailyJobSheet() {
     const seen = new Set<string>()
     const list: string[] = []
     activeJobRows.forEach(j => {
-      const s = j.staff_name.trim()
+      const s = (j.staff_name || '').trim()
       if (s && !seen.has(s.toLowerCase())) {
         seen.add(s.toLowerCase())
         list.push(s)
@@ -848,7 +848,7 @@ export function DailyJobSheet() {
     const counts: Record<string, number> = {}
     const seen = new Set<string>()
     activeJobRows.forEach(j => {
-      const s = j.staff_name.trim()
+      const s = (j.staff_name || '').trim()
       if (s && !seen.has(s.toLowerCase())) {
         seen.add(s.toLowerCase())
         const ch = s[0]?.toUpperCase()
@@ -871,7 +871,7 @@ export function DailyJobSheet() {
 
     // 1. Filter by letter
     if (selectedLetter !== 'ALL') {
-      list = list.filter(j => j.staff_name.trim().toUpperCase().startsWith(selectedLetter))
+      list = list.filter(j => (j.staff_name || '').trim().toUpperCase().startsWith(selectedLetter))
     }
 
     // 2. Filter by payment category (Project, Monthly, Cash, Online, Pending, Checks)
@@ -916,7 +916,7 @@ export function DailyJobSheet() {
 
     let list = nilRows
     if (selectedLetter !== 'ALL') {
-      list = list.filter(n => n.staff_name.trim().toUpperCase().startsWith(selectedLetter))
+      list = list.filter(n => (n.staff_name || '').trim().toUpperCase().startsWith(selectedLetter))
     }
     const q = searchQuery.trim().toLowerCase()
     if (q) {
@@ -1512,7 +1512,7 @@ export function DailyJobSheet() {
         <td key={id} className="px-3 py-3 font-semibold whitespace-nowrap">
           <div className="flex items-center gap-2">
             <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black bg-sky-500 text-white shadow-xs">
-              {row.staff_name.trim()[0]?.toUpperCase()}
+              {(row.staff_name || 'U').trim()[0]?.toUpperCase() || 'U'}
             </span>
             <span className="text-slate-800 font-bold">{row.staff_name}</span>
           </div>
@@ -1614,7 +1614,7 @@ export function DailyJobSheet() {
                   <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black shadow-sm ${
                     isMonthly ? 'bg-emerald-600 text-white' : palette.avatarBg
                   }`}>
-                    {job.staff_name.trim()[0]?.toUpperCase()}
+                    {(job.staff_name || 'U').trim()[0]?.toUpperCase() || 'U'}
                   </span>
                   <div>
                     <div className={`font-bold flex items-center gap-1.5 ${isMonthly ? 'text-emerald-950 font-extrabold' : palette.nameColor}`}>
@@ -3488,12 +3488,13 @@ export function DailyJobSheet() {
                   const otDisplay = cleanNum(job.ot_hours) || otHrs
 
                   // Cleaner unique color palette & custom row color preset
-                  const palette = staffColorMap.get(job.staff_name.trim().toLowerCase()) || STAFF_COLOR_PALETTES[0]
+                  const staffKey = (job.staff_name || '').trim().toLowerCase()
+                  const palette = staffColorMap.get(staffKey) || STAFF_COLOR_PALETTES[0]
                   const customColorPreset = job.row_color ? ROW_COLOR_PRESETS.find(p => p.id === job.row_color) : null
 
                   // Detect first shift of this staff in the visible list for clear separation
                   const prevRow = idx > 0 ? displayedRows[idx - 1] : null
-                  const isFirstShiftOfStaff = !prevRow || prevRow.staff_name?.trim().toLowerCase() !== job.staff_name.trim().toLowerCase()
+                  const isFirstShiftOfStaff = !prevRow || (prevRow.staff_name || '').trim().toLowerCase() !== staffKey
 
                   // Dynamic row background calculation from Category Row Colors (Requirement 1)
                   const isCheckedRow = rowChecks.has(job.id)

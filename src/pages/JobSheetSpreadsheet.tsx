@@ -919,7 +919,7 @@ export function getMultiCleanerPaymentInfo(row: DailyJob | undefined, allRows: D
   }
 
   // Distinct cleaner names at this address
-  const cleanerNames = Array.from(new Set(matchingRows.map(r => r.staff_name.trim()))).filter(Boolean)
+  const cleanerNames = Array.from(new Set(matchingRows.map(r => (r.staff_name || '').trim()))).filter(Boolean)
   if (cleanerNames.length <= 1) return null
 
   // Primary cleaner row: either has _isPrimaryCleaner, positive charges/received, or first row in sequence
@@ -3961,7 +3961,7 @@ export function JobSheetSpreadsheet() {
                           {/* Left: Cleaner Info & Badges */}
                           <div className="flex items-center gap-3">
                             <span className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs ${palette.avatarBg} shadow-xs`}>
-                              {group.cleanerName.trim()[0]?.toUpperCase() || 'C'}
+                              {(group.cleanerName || 'C').trim()[0]?.toUpperCase() || 'C'}
                             </span>
                             <div className="flex items-center gap-2">
                               <span className="font-extrabold text-[14px] tracking-tight">{group.cleanerName}</span>

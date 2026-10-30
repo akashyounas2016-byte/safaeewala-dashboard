@@ -306,8 +306,8 @@ export function DriverStaffModal({
 
   if (!staff) return null
 
-  const activeStaffName = staff.name.trim()
-  const staffJobs = todayJobs.filter(j => j.staff_name.trim().toLowerCase() === activeStaffName.toLowerCase())
+  const activeStaffName = (staff.name || '').trim()
+  const staffJobs = todayJobs.filter(j => (j.staff_name || '').trim().toLowerCase() === activeStaffName.toLowerCase())
   const activeStaffCollected = driverSummary[activeStaffName] ?? staff.currentAmount
 
   return (

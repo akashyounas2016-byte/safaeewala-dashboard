@@ -67,6 +67,28 @@ function enqueue(entry: Omit<OutboxEntry, 'key' | 'at' | 'tries'>, error: string
   console.error(`[sync] ${entry.op} ${entry.table}/${entry.rowId} not saved to Supabase: ${error}`)
 }
 
+/** Known column whitelist for tables that do not have custom UI fields in Supabase */
+const DAILY_JOBS_COLUMNS = new Set([
+  'id', 'created_at', 'date', 'staff_name', 'start_time', 'end_time',
+  'duty_hours', 'ot_hours', 'address', 'area', 'material', 'charges',
+  'received', 'payment_mode', 'is_overtime', 'remarks', 'service',
+  'booking_id', 'status'
+])
+
+function sanitizeOutboxPayload(table: string, payload?: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!payload || typeof payload !== 'object') return payload
+  if (table === 'daily_jobs') {
+    const clean: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(payload)) {
+      if (DAILY_JOBS_COLUMNS.has(k)) {
+        clean[k] = v
+      }
+    }
+    return clean
+  }
+  return payload
+}
+
 /** Drop a stale entry for a row once a newer write for it succeeded */
 function settle(table: string, rowId: string) {
   const list = readOutbox()
@@ -76,10 +98,11 @@ function settle(table: string, rowId: string) {
 
 async function run(e: Pick<OutboxEntry, 'table' | 'op' | 'rowId' | 'payload'>): Promise<string | null> {
   try {
+    const cleanPayload = sanitizeOutboxPayload(e.table, e.payload)
     const q = supabase.from(e.table)
     const { error } =
-      e.op === 'upsert' ? await q.upsert(e.payload as never) :
-      e.op === 'update' ? await q.update(e.payload as never).eq('id', e.rowId) :
+      e.op === 'upsert' ? await q.upsert(cleanPayload as never) :
+      e.op === 'update' ? await q.update(cleanPayload as never).eq('id', e.rowId) :
                           await q.delete().eq('id', e.rowId)
     return error ? (error.message || String(error)) : null
   } catch (err) {
