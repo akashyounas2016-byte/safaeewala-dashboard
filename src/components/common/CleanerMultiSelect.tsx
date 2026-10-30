@@ -245,7 +245,7 @@ export function CleanerMultiSelect({
 
       {/* Floating Dropdown */}
       {isOpen && (
-        <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-[0_12px_36px_rgba(15,23,42,0.16)] p-2.5 text-slate-800 animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute z-50 left-0 w-full min-w-[340px] sm:min-w-[420px] max-w-lg mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-[0_12px_36px_rgba(15,23,42,0.16)] p-2.5 text-slate-800 animate-in fade-in zoom-in-95 duration-100">
           {/* Search box & Actions */}
           <div className="space-y-2 mb-2 pb-2 border-b border-slate-100">
             <div className="relative">
@@ -339,11 +339,11 @@ export function CleanerMultiSelect({
 
                       <span className="truncate flex-1 min-w-0 font-medium">{cleanerName}</span>
 
-                      {/* Compact Third-Party Agency Tag (truncated, hover for full title) */}
+                      {/* Compact Third-Party Agency Tag (hover for full title) */}
                       {agencyTag && (
                         <span
                           title={`Agency: ${agencyTag}`}
-                          className="text-[8.5px] font-black px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300/80 shrink-0 uppercase tracking-tight max-w-[70px] truncate cursor-help"
+                          className="text-[8.5px] font-black px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300/80 shrink-0 uppercase tracking-tight max-w-[120px] truncate cursor-help"
                         >
                           {agencyTag}
                         </span>

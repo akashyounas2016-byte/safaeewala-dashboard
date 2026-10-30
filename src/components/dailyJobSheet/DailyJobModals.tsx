@@ -3,7 +3,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import {
-  AlertCircle, CheckCircle, Pencil, AlertTriangle, Trash2,
+  AlertCircle, CheckCircle, Pencil, AlertTriangle, Trash2, Users, MapPin, Link2,
 } from 'lucide-react'
 import { useData } from '@/store/DataContext'
 import type {
@@ -284,22 +284,25 @@ export function DriverStaffModal({
 }) {
   const availableDrivers = useMemo(() => {
     const map = new Map<string, number>()
-    // Include entries from driverSummary
-    Object.entries(driverSummary).forEach(([name, amt]) => {
-      if (name.trim()) map.set(name.trim(), amt)
-    })
-    // Include staff from todayJobs
-    todayJobs.forEach(j => {
-      const s = (j.staff_name || '').trim()
-      if (s && !map.has(s)) map.set(s, 0)
-    })
-    // Include all active employees
+    // 1. Include only actual drivers from employees roster
     employees.forEach(e => {
-      const n = (e.full_name || '').trim()
-      if (n && !map.has(n)) map.set(n, 0)
+      const r = (e.role || '').toLowerCase()
+      const d = (e.designation || '').toLowerCase()
+      const n = (e.full_name || '').toLowerCase()
+      if (r.includes('driver') || d.includes('driver') || n.includes('driver')) {
+        const name = (e.full_name || '').trim()
+        if (name) map.set(name, driverSummary[name] || 0)
+      }
+    })
+    // 2. Also retain any drivers recorded in driverSummary
+    Object.entries(driverSummary).forEach(([name, amt]) => {
+      const trimmed = name.trim()
+      if (trimmed && !map.has(trimmed)) {
+        map.set(trimmed, amt)
+      }
     })
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-  }, [driverSummary, todayJobs, employees])
+  }, [driverSummary, employees])
 
   if (!staff) return null
 
@@ -318,7 +321,7 @@ export function DriverStaffModal({
         {/* Driver Selector Dropdown */}
         <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
           <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-            Select Driver / Staff Member:
+            Select Driver:
           </label>
           <select
             value={activeStaffName}
@@ -331,11 +334,15 @@ export function DriverStaffModal({
             }}
             className="w-full text-[12.5px] font-bold text-slate-800 bg-white border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-2xs"
           >
-            {availableDrivers.map(([dName, amt]) => (
-              <option key={dName} value={dName}>
-                {dName} {amt > 0 ? `· AED ${amt.toLocaleString()} collected` : '· (0 AED)'}
-              </option>
-            ))}
+            {availableDrivers.length === 0 ? (
+              <option value="">No drivers found</option>
+            ) : (
+              availableDrivers.map(([dName, amt]) => (
+                <option key={dName} value={dName}>
+                  {dName} {amt > 0 ? `· AED ${amt.toLocaleString()} collected` : '· (0 AED)'}
+                </option>
+              ))
+            )}
           </select>
         </div>
 
@@ -352,12 +359,20 @@ export function DriverStaffModal({
           </div>
         </div>
 
-        {/* Assigned Jobs & Received List */}
-        <div>
-          <h5 className="text-[12px] font-bold text-slate-700 uppercase tracking-wider mb-2">Assigned Jobs & Received Amounts</h5>
+        {/* Assign Job and Received Amount Section */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h5 className="text-[12px] font-bold text-slate-700 uppercase tracking-wider">
+              Assign Job and Received Amount
+            </h5>
+            <span className="text-[11px] text-slate-400 font-medium">
+              Linked Cleaner &amp; Job References
+            </span>
+          </div>
+
           {staffJobs.length === 0 ? (
             <p className="text-[12px] text-slate-400 py-4 text-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-              No shifts or payments recorded for {activeStaffName} on this date.
+              No shifts or payments recorded under {activeStaffName} on this date.
             </p>
           ) : (
             <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
@@ -368,8 +383,20 @@ export function DriverStaffModal({
                     <p className="text-[11px] text-slate-400 mt-0.5">
                       {formatTimeOnly(job.start_time)} – {formatTimeOnly(job.end_time)} · Mode: <strong className="text-slate-600">{job.payment_mode}</strong> · Charges: AED {cleanNum(job.charges)}
                     </p>
+                    {/* Reference Fields: Linked Cleaner & Address */}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10.5px]">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold border border-indigo-200/80">
+                        <Users size={10} /> Cleaner Ref: {job.staff_name}
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-semibold border border-purple-200/80 truncate max-w-[180px]">
+                        <MapPin size={10} /> {job.address || 'No Address'}
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium border border-slate-200">
+                        Ref #{job.id ? job.id.slice(0, 6) : 'Direct'}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2.5 shrink-0">
                     <div className="text-right">
                       <span className="text-[10px] text-slate-400 block font-medium">Received</span>
                       <span className="font-bold text-emerald-700">AED {cleanNum(job.received)}</span>
@@ -378,7 +405,7 @@ export function DriverStaffModal({
                       type="button"
                       onClick={() => onEditJob(job)}
                       className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
-                      title="Edit this job"
+                      title="Edit this job reference"
                     >
                       <Pencil size={12} />
                     </button>
@@ -387,6 +414,32 @@ export function DriverStaffModal({
               ))}
             </div>
           )}
+
+          {/* Reference Link Field: Allows linking or editing cleaner & address reference from today's shifts */}
+          <div className="pt-2">
+            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
+              <Link2 size={12} className="text-emerald-600" />
+              Link Payment to Cleaner / Job Reference:
+            </label>
+            <select
+              onChange={e => {
+                const jobId = e.target.value
+                const targetJob = todayJobs.find(j => j.id === jobId)
+                if (targetJob) {
+                  onEditJob(targetJob)
+                }
+              }}
+              defaultValue=""
+              className="w-full text-[12px] bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-700 focus:outline-none focus:border-emerald-500 font-medium cursor-pointer"
+            >
+              <option value="" disabled>Select shift to link or edit payment reference…</option>
+              {todayJobs.map(j => (
+                <option key={j.id} value={j.id}>
+                  Cleaner: {j.staff_name} · {j.address || 'No Address'} · Received: AED {cleanNum(j.received)}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="flex justify-end pt-2">

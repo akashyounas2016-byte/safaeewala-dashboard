@@ -1518,6 +1518,7 @@ export function JobSheetSpreadsheet() {
   const [editingCell, setEditingCell] = useState<{ rowIdx: number; colId: string; tempValue: string } | null>(null)
   const [formulaBarValue, setFormulaBarValue] = useState<string>('')
   const [filterSearch, setFilterSearch] = useState('')
+  const [excelCustomMaterial, setExcelCustomMaterial] = useState('')
 
   // Filtered Client & Building list for Address dropdown matching Add Job Entry selector
   const filteredClientBuildings = useMemo(() => {
@@ -2103,10 +2104,10 @@ export function JobSheetSpreadsheet() {
   const renderCellEditor = (col: ColumnDef, targetIdx: number, isLightBg: boolean = true) => {
     if (!editingCell || editingCell.rowIdx !== targetIdx || editingCell.colId !== col.id) return null
 
-    // 1. Address Column Dropdown (Styled matching Add Job Entry building selector)
+    // 1. Address Column Dropdown (Standardized matching Add Job Entry selector to prevent fluctuation)
     if (col.id === 'address') {
       return (
-        <div className="relative w-full h-full">
+        <div className="relative w-full h-7 flex items-center">
           <input
             ref={inputRef}
             type="text"
@@ -2116,45 +2117,45 @@ export function JobSheetSpreadsheet() {
               if (e.key === 'Escape') setEditingCell(null)
               else if (e.key === 'Enter') commitCellEdit()
             }}
-            placeholder="Search building..."
-            className={`w-full h-full text-[12px] font-semibold border-0 outline-none p-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+            placeholder="Type or search building..."
+            className={`w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
           />
           <div
             onMouseDown={e => e.stopPropagation()}
-            className="absolute z-[100] left-0 top-full mt-1 w-80 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-2xl p-2 text-slate-800 text-[12px] animate-in fade-in"
+            className="absolute z-[100] left-0 top-full mt-1 w-84 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl p-2.5 text-slate-800 text-[12px] animate-in fade-in select-none"
           >
             {editingCell.tempValue.trim() && (
               <div
                 onMouseDown={() => commitAddressSelect(targetIdx, editingCell.tempValue.trim())}
-                className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[11.5px] font-bold flex items-center gap-2 cursor-pointer mb-1 shrink-0"
+                className="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[11.5px] font-bold flex items-center gap-2 cursor-pointer mb-2 shrink-0 transition-colors"
               >
                 <Plus size={13} className="text-emerald-700 stroke-[3]" />
-                <span>Use custom: &ldquo;{editingCell.tempValue.trim()}&rdquo;</span>
+                <span>Use custom address: &ldquo;{editingCell.tempValue.trim()}&rdquo;</span>
               </div>
             )}
             <div className="space-y-0.5 divide-y divide-slate-100">
-              {filteredClientBuildings.slice(0, 30).map(item => (
+              {filteredClientBuildings.slice(0, 35).map(item => (
                 <div
                   key={item.key}
                   onMouseDown={() => commitAddressSelect(targetIdx, item.building, item.area, item.isMonthly ? 'Monthly' : undefined)}
-                  className="px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer text-left flex items-center justify-between"
+                  className="px-3 py-1.5 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer text-left flex items-center justify-between"
                 >
                   <div className="min-w-0 pr-2">
-                    <div className="text-[12.5px] font-bold text-slate-900 flex items-center gap-1.5 truncate">
+                    <div className="text-[12px] font-bold text-slate-900 flex items-center gap-1.5 truncate">
                       <Building2 size={13} className="text-slate-400 shrink-0" />
                       <span className="truncate">{item.building}</span>
                     </div>
                     {item.name !== item.building && (
-                      <p className="text-[10.5px] text-slate-500 truncate">{item.name}</p>
+                      <p className="text-[10.5px] text-slate-500 truncate mt-0.5">{item.name}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {item.area && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                      <span className="px-2 py-0.5 rounded-full text-[9.5px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
                         {item.area}
                       </span>
                     )}
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    <span className={`px-2 py-0.5 rounded-full text-[9.5px] font-bold ${
                       item.isMonthly ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-slate-100 text-slate-600'
                     }`}>
                       {item.isMonthly ? 'Monthly' : 'Regular'}
@@ -2168,10 +2169,13 @@ export function JobSheetSpreadsheet() {
       )
     }
 
-    // 2. Material Column Dropdown with increased width, typing & Plus icon
+    // 2. Material Column Dropdown (Standardized matching Add Job Entry pop-up with custom entry & tick/cross)
     if (col.id === 'material') {
+      const standardMaterials = [
+        'No', 'Yes', 'Chemicals Only', 'Machines Only', 'Sofa Kit', 'Ladder', 'Steam Cleaner', 'Deep Clean Kit'
+      ]
       return (
-        <div className="relative w-full h-full flex items-center">
+        <div className="relative w-full h-7 flex items-center">
           <input
             ref={inputRef}
             type="text"
@@ -2182,42 +2186,69 @@ export function JobSheetSpreadsheet() {
               else if (e.key === 'Escape') setEditingCell(null)
             }}
             placeholder="Material..."
-            className={`w-full h-full text-[12px] font-semibold border-0 outline-none pr-6 p-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+            className={`w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
           />
-          {editingCell.tempValue.trim() && (
-            <button
-              type="button"
-              onMouseDown={e => {
-                e.preventDefault()
-                e.stopPropagation()
-                commitMaterialSelect(targetIdx, editingCell.tempValue.trim())
-              }}
-              className="absolute right-0 top-1/2 -translate-y-1/2 p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded cursor-pointer transition-colors"
-              title={`Add "${editingCell.tempValue.trim()}" as custom material`}
-            >
-              <Plus size={13} className="stroke-[3]" />
-            </button>
-          )}
           <div
             onMouseDown={e => e.stopPropagation()}
-            className="absolute z-[100] left-0 top-full mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 text-slate-800 text-[12px] animate-in fade-in"
+            className="absolute z-[100] left-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 text-slate-800 text-[12px] animate-in fade-in select-none"
           >
-            <div className="px-2 py-1 text-[10px] font-black uppercase text-slate-400">Select or Type</div>
-            <div className="space-y-0.5">
-              {['No', 'Yes', 'Sofa', 'Ladder', 'Steam Cleaner', 'Deep Clean Kit'].map(mat => (
-                <div
-                  key={mat}
-                  onMouseDown={() => commitMaterialSelect(targetIdx, mat)}
-                  className={`px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer text-left font-semibold flex items-center justify-between text-[11.5px] ${
-                    editingCell.tempValue.toLowerCase() === mat.toLowerCase() ? 'bg-emerald-50 text-emerald-900 font-bold' : 'text-slate-700'
-                  }`}
+            <div className="px-2.5 py-1 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 mb-1">
+              Select Material
+            </div>
+            <div className="space-y-0.5 max-h-48 overflow-y-auto pr-0.5">
+              {standardMaterials.map(mat => {
+                const isSelected = editingCell.tempValue.toLowerCase() === mat.toLowerCase()
+                return (
+                  <div
+                    key={mat}
+                    onMouseDown={() => commitMaterialSelect(targetIdx, mat)}
+                    className={`px-2.5 py-1.5 rounded-xl hover:bg-amber-50/60 transition-colors cursor-pointer text-left font-medium flex items-center justify-between text-[11.5px] ${
+                      isSelected ? 'bg-amber-50 text-amber-950 font-bold' : 'text-slate-700'
+                    }`}
+                  >
+                    <span>{mat === 'No' ? 'No Material' : mat}</span>
+                    {isSelected && (
+                      <Check size={13} className="text-amber-700 stroke-[3]" />
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Custom Material Input with Save Check and Cancel button (matching AddJobModal) */}
+            <div className="pt-2 mt-1.5 border-t border-slate-100 shrink-0">
+              <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                <input
+                  type="text"
+                  placeholder="Type custom material…"
+                  value={excelCustomMaterial}
+                  onChange={e => setExcelCustomMaterial(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      if (excelCustomMaterial.trim()) {
+                        commitMaterialSelect(targetIdx, excelCustomMaterial.trim())
+                        setExcelCustomMaterial('')
+                      }
+                    }
+                  }}
+                  className="flex-1 text-[11.5px] px-2 py-1 bg-white border border-emerald-400 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold text-slate-900"
+                />
+                <button
+                  type="button"
+                  onMouseDown={e => {
+                    e.preventDefault()
+                    if (excelCustomMaterial.trim()) {
+                      commitMaterialSelect(targetIdx, excelCustomMaterial.trim())
+                      setExcelCustomMaterial('')
+                    }
+                  }}
+                  className="w-6 h-6 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-colors shadow-2xs cursor-pointer shrink-0"
+                  title="Save Custom Material"
                 >
-                  <span>{mat === 'No' ? 'No Material' : mat}</span>
-                  {editingCell.tempValue.toLowerCase() === mat.toLowerCase() && (
-                    <Check size={12} className="text-emerald-600 stroke-[3]" />
-                  )}
-                </div>
-              ))}
+                  <Check size={12} className="stroke-[3]" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3352,11 +3383,12 @@ export function JobSheetSpreadsheet() {
         </div>
       )}
 
-      {/* ── Green Gradient Header (Project Theme & Spacious Layout) ── */}
-      <header className="gradient-card text-white px-5 sm:px-6 py-5 min-h-[86px] flex items-center justify-between shadow-lg shrink-0 relative z-30">
-        {/* Glow effect matching rest of project */}
+      {/* ── Professional Executive Gradient Header (Sleek Slate & Deep Emerald Luxury) ── */}
+      <header className="bg-gradient-to-r from-slate-950 via-[#072d1f] to-slate-950 border-b border-emerald-500/30 text-white px-5 sm:px-6 py-5 min-h-[86px] flex items-center justify-between shadow-xl shrink-0 relative z-30">
+        {/* Sophisticated Glow effect matching executive dashboard */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute right-10 -top-10 w-96 h-96 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute left-1/3 -top-20 w-80 h-80 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
         </div>
 
         <div className="relative z-10 flex items-center gap-3">

@@ -96,7 +96,8 @@ function checkTimesOverlap(startA?: string, endA?: string, startB?: string, endB
 }
 
 /**
- * 12-Hour AM/PM Time Input with interactive AM/PM toggle button and quick suggestions
+ * 12-Hour AM/PM Time Picker matching the CleanerMultiSelect and Address popover design
+ * with custom time support and soft blue/green active AM/PM styling.
  */
 function Time12hPicker({
   label,
@@ -113,18 +114,36 @@ function Time12hPicker({
   const meridiem: 'AM' | 'PM' = h24 >= 12 ? 'PM' : 'AM'
   const h12 = h24 % 12 || 12
   const formattedHHMM = `${String(h12).padStart(2, '0')}:${m}`
+  const full12h = `${formattedHHMM} ${meridiem}`
 
-  const [timeVal, setTimeVal] = useState(formattedHHMM)
+  const [isOpen, setIsOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const containerRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    setTimeVal(formattedHHMM)
-  }, [formattedHHMM])
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
-  const commitTime = (raw: string, currentMer: 'AM' | 'PM') => {
-    let mer = currentMer
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => searchInputRef.current?.focus(), 50)
+    } else {
+      setSearch('')
+    }
+  }, [isOpen])
+
+  const commitTime = (raw: string, mer: 'AM' | 'PM') => {
+    let targetMer = mer
     const lower = raw.toLowerCase()
-    if (lower.includes('pm')) mer = 'PM'
-    else if (lower.includes('am')) mer = 'AM'
+    if (lower.includes('pm')) targetMer = 'PM'
+    else if (lower.includes('am')) targetMer = 'AM'
 
     const clean = raw.trim().replace(/[^\d:]/g, '')
     const parts = clean.split(':')
@@ -136,64 +155,78 @@ function Time12hPicker({
     if (min > 59) min = 59
     const normH = String(h).padStart(2, '0')
     const normM = String(min).padStart(2, '0')
-    onChange(`${normH}:${normM} ${mer}`)
+    onChange(`${normH}:${normM} ${targetMer}`)
+    setIsOpen(false)
   }
 
   const handleToggleMeridiem = (newMer: 'AM' | 'PM') => {
     if (newMer === meridiem) return
-    commitTime(timeVal, newMer)
+    commitTime(formattedHHMM, newMer)
   }
 
-  const timeOptions = [
-    '07:00 AM', '07:30 AM', '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM',
-    '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM', '02:30 PM',
-    '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM', '05:00 PM', '05:30 PM', '06:00 PM', '06:30 PM',
-    '07:00 PM', '07:30 PM', '08:00 PM', '08:30 PM', '09:00 PM', '09:30 PM', '10:00 PM'
-  ]
+  const timeSuggestions = useMemo(() => {
+    return [
+      '07:00 AM', '07:30 AM', '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM',
+      '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM', '02:30 PM',
+      '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM', '05:00 PM', '05:30 PM', '06:00 PM', '06:30 PM',
+      '07:00 PM', '07:30 PM', '08:00 PM', '08:30 PM', '09:00 PM', '09:30 PM', '10:00 PM'
+    ]
+  }, [])
 
-  const listId = `suggestions-${label.toLowerCase().replace(/[^a-z0-9]/g, '-')}`
+  const filteredSuggestions = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return timeSuggestions
+    return timeSuggestions.filter(t => t.toLowerCase().includes(q))
+  }, [search, timeSuggestions])
+
+  const customCandidate = useMemo(() => {
+    const q = search.trim().replace(/[^\d:]/g, '')
+    if (!q) return null
+    const parts = q.split(':')
+    const h = parseInt(parts[0], 10)
+    if (isNaN(h) || h < 1 || h > 12) return null
+    const minVal = parts[1] !== undefined ? parseInt(parts[1] || '0', 10) : 0
+    if (isNaN(minVal) || minVal < 0 || minVal > 59) return null
+    const normH = String(h).padStart(2, '0')
+    const normM = String(minVal).padStart(2, '0')
+    const candidate = `${normH}:${normM} ${meridiem}`
+    if (timeSuggestions.includes(candidate)) return null
+    return candidate
+  }, [search, meridiem, timeSuggestions])
 
   return (
-    <div>
+    <div className="relative" ref={containerRef}>
       <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
         {label}
       </label>
       <div className="flex items-center gap-1.5">
-        <div className="relative flex-1">
-          <input
-            type="text"
-            list={listId}
-            value={timeVal}
-            onChange={e => {
-              const val = e.target.value
-              setTimeVal(val)
-              if (val.toLowerCase().includes('am') || val.toLowerCase().includes('pm')) {
-                commitTime(val, meridiem)
-              }
-            }}
-            onBlur={() => commitTime(timeVal, meridiem)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                commitTime(timeVal, meridiem)
-              }
-            }}
-            placeholder="09:00"
-            className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-slate-800"
+        {/* Dropdown Trigger Box (matching Address and Cleaner MultiSelect) */}
+        <div
+          onClick={() => setIsOpen(prev => !prev)}
+          className={`flex-1 flex items-center justify-between border rounded-xl px-3 py-2 text-[13px] min-h-[42px] cursor-pointer transition-all ${
+            isOpen
+              ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/15'
+              : 'bg-[#f8fafc] border-[#E4E8EC] hover:border-slate-300'
+          }`}
+        >
+          <div className="flex items-center gap-2 truncate">
+            <Clock size={15} className="text-emerald-600 shrink-0" />
+            <span className="font-bold text-slate-900 tracking-wide">{full12h}</span>
+          </div>
+          <ChevronDown
+            size={14}
+            className={`text-slate-400 transition-transform duration-200 shrink-0 ${isOpen ? 'rotate-180 text-emerald-600' : ''}`}
           />
-          <datalist id={listId}>
-            {timeOptions.map(t => (
-              <option key={t} value={t} />
-            ))}
-          </datalist>
         </div>
+
+        {/* AM / PM Toggle with Soft Blue/Green Active Color */}
         <div className="flex rounded-xl border border-slate-200 bg-slate-100 p-0.5 min-h-[42px] items-center shrink-0">
           <button
             type="button"
             onClick={() => handleToggleMeridiem('AM')}
             className={`px-2.5 py-1.5 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer ${
               meridiem === 'AM'
-                ? 'bg-blue-600 text-white shadow-xs'
+                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -204,7 +237,7 @@ function Time12hPicker({
             onClick={() => handleToggleMeridiem('PM')}
             className={`px-2.5 py-1.5 text-[11px] font-extrabold rounded-lg transition-all cursor-pointer ${
               meridiem === 'PM'
-                ? 'bg-blue-600 text-white shadow-xs'
+                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -212,6 +245,75 @@ function Time12hPicker({
           </button>
         </div>
       </div>
+
+      {/* Floating Dropdown Popover */}
+      {isOpen && (
+        <div className="absolute z-50 left-0 w-full min-w-[240px] sm:min-w-[280px] mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl p-2.5 animate-in fade-in zoom-in-95 duration-100 flex flex-col">
+          {/* Search / Custom Time Input */}
+          <div className="relative mb-2 shrink-0">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  if (customCandidate) {
+                    commitTime(customCandidate, meridiem)
+                  } else if (filteredSuggestions.length > 0) {
+                    commitTime(filteredSuggestions[0], meridiem)
+                  }
+                }
+              }}
+              placeholder="Search or type time (e.g. 09:15, 10:45)..."
+              className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:bg-white text-slate-800 placeholder-slate-400 font-medium"
+            />
+          </div>
+
+          {/* Custom Time Add Option if user types a custom time */}
+          {customCandidate && (
+            <div
+              onClick={() => commitTime(customCandidate, meridiem)}
+              className="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[12px] font-bold flex items-center gap-2 cursor-pointer mb-1 shrink-0 transition-colors"
+            >
+              <Plus size={13} className="text-emerald-700 stroke-[3]" />
+              <span>Use custom time: &ldquo;{customCandidate}&rdquo;</span>
+            </div>
+          )}
+
+          {/* Time Suggestions List */}
+          <div className="max-h-48 overflow-y-auto space-y-0.5 divide-y divide-slate-100 pr-0.5">
+            {filteredSuggestions.length === 0 && !customCandidate ? (
+              <div className="py-4 text-center text-[12px] text-slate-400">
+                No times found. Type custom time above.
+              </div>
+            ) : (
+              filteredSuggestions.map(timeStr => {
+                const isSelected = full12h === timeStr
+                return (
+                  <div
+                    key={timeStr}
+                    onClick={() => commitTime(timeStr, meridiem)}
+                    className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between text-[12.5px] ${
+                      isSelected
+                        ? 'bg-emerald-50 text-emerald-950 font-bold'
+                        : 'hover:bg-slate-50 text-slate-700 font-medium'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Clock size={12} className={isSelected ? 'text-emerald-600' : 'text-slate-400'} />
+                      <span>{timeStr}</span>
+                    </div>
+                    {isSelected && <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -633,7 +735,7 @@ export function AddJobForm({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
               <div>
                 <CleanerMultiSelect
-                  label="Staff Name / Cleaners"
+                  label="Staff Name"
                   name="staff_name"
                   cleaners={employees}
                   selected={selectedStaff}
@@ -705,9 +807,8 @@ export function AddJobForm({
 
               {/* Address Dropdown */}
               <div className="relative" ref={buildingRef}>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
-                  <span>Address <span className="text-red-500">*</span></span>
-                  <span className="text-slate-400 text-[10px] normal-case">Clients / Custom</span>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
+                  Address <span className="text-red-500">*</span>
                 </label>
 
                 {/* Address Trigger Box */}
@@ -821,9 +922,8 @@ export function AddJobForm({
 
               {/* Area Dropdown with Suggestions & Custom Entry */}
               <div className="relative" ref={areaRef}>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
-                  <span>Location / Area</span>
-                  <span className="text-slate-400 text-[10px] normal-case">Dubai Zone</span>
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
+                  Location / Area
                 </label>
 
                 {/* Area Trigger Box */}
@@ -1019,13 +1119,13 @@ export function AddJobForm({
       </div>
 
       
-      {/* ── CARD 5: CUSTOMIZATION & SUPPLIES (HORIZONTAL ROW ACROSS FULL WIDTH) ── */}
+      {/* ── CARD 5: CLEANING MATERIALS (HORIZONTAL ROW ACROSS FULL WIDTH) ── */}
       <div className="mt-4 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3">
         <div className="flex items-center gap-2 pb-2.5 border-b border-slate-100">
           <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
-            <Palette size={15} />
+            <Package size={15} />
           </div>
-          <h4 className="text-[13px] font-bold text-slate-900">Customization & Supplies</h4>
+          <h4 className="text-[13px] font-bold text-slate-900">Cleaning Materials</h4>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start pt-1">
@@ -1164,26 +1264,26 @@ export function AddJobForm({
 
           {/* 3. Row Color Theme */}
           <div className="space-y-1">
-            {/* Row Highlight Color Picker (18 presets, initially 2 rows, with "View All" toggle) */}
-            <div className="pt-2 border-t border-slate-100">
-              <div className="flex items-center justify-between mb-2">
+            {/* Row Highlight Color Picker (with "View All" toggle, bottom-aligned with Material & Remarks) */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5 min-h-[18px]">
                 <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] flex items-center gap-1.5">
                   <Palette size={12} className="text-slate-400" />
-                  Row Color Theme ({ROW_COLOR_PRESETS.length} Options)
+                  Row Color Theme
                 </label>
                 {/* View All / Show Less Toggle Button */}
                 <button
                   type="button"
                   onClick={() => setShowAllColors(prev => !prev)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10.5px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer"
                 >
-                  <span>{showAllColors ? 'Show Less' : `View All (${ROW_COLOR_PRESETS.length})`}</span>
-                  <ChevronDown size={12} className={`transition-transform duration-200 ${showAllColors ? 'rotate-180' : ''}`} />
+                  <span>{showAllColors ? 'Show Less' : 'View All'}</span>
+                  <ChevronDown size={11} className={`transition-transform duration-200 ${showAllColors ? 'rotate-180' : ''}`} />
                 </button>
               </div>
 
               {/* Color badges grid (Strictly 1 single row initially, or full wrap when View All clicked) */}
-              <div className={`flex items-center gap-1.5 ${showAllColors ? 'flex-wrap' : 'flex-nowrap overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'}`}>
+              <div className={`min-h-[42px] flex items-center gap-1.5 ${showAllColors ? 'flex-wrap' : 'flex-nowrap overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'}`}>
                 {displayedColorPresets.map(preset => {
                   const isSelected = rowColor === preset.id
                   return (
