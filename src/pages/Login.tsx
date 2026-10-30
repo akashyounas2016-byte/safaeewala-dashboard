@@ -163,8 +163,6 @@ export function Login() {
               </div>
             </div>
 
-            <p className="text-[11.5px] text-slate-500">Password bhool gaye? Admin se naya password lein — yahan sign-up nahi hota.</p>
-
             {/* Submit Button */}
             <button
               type="submit"
