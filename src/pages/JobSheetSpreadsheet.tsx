@@ -1365,6 +1365,7 @@ export function JobSheetSpreadsheet() {
       setContextMenu(null)
       setActiveMenu(null)
       setColorPickerCleaner(null)
+      setShowThreeDotMenu(false)
     }
     window.addEventListener('click', handleGlobalClick)
     return () => window.removeEventListener('click', handleGlobalClick)
@@ -2173,9 +2174,15 @@ export function JobSheetSpreadsheet() {
         </div>
       )}
 
-      {/* ── Excel Green Title Ribbon Header (Spacious Height & Clean Layout) ── */}
-      <header className="bg-[#107c41] text-white px-5 py-3.5 min-h-[58px] flex items-center justify-between shadow-md shrink-0">
-        <div className="flex items-center gap-3">
+      {/* ── Green Gradient Header (Project Theme & Spacious Layout) ── */}
+      <header className="gradient-card text-white px-5 sm:px-6 py-4 min-h-[70px] flex items-center justify-between shadow-lg shrink-0 relative z-30">
+        {/* Glow effect matching rest of project */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
+        </div>
+
+        <div className="relative z-10 flex items-center gap-3">
+          {/* Back Icon Button (Text removed as requested) */}
           <button
             type="button"
             onClick={() => {
@@ -2187,24 +2194,24 @@ export function JobSheetSpreadsheet() {
               }
               navigate(`/daily-job-sheet?date=${selectedDate}`)
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-[12px] transition-colors cursor-pointer border border-white/20 shadow-xs"
+            className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer border border-white/15 shadow-xs"
             title="Back to Daily Job Sheet (or close tab)"
           >
-            <ArrowLeft size={14} />
-            <span>Back</span>
+            <ArrowLeft size={18} />
           </button>
 
-          <div className="h-5 w-px bg-white/20" />
+          <div className="h-6 w-px bg-white/20" />
 
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-white text-[#107c41] flex items-center justify-center font-black text-sm shadow-xs">
-              <FileSpreadsheet size={18} />
+          {/* Title & Badge */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-white text-emerald-800 flex items-center justify-center font-black text-sm shadow-sm">
+              <FileSpreadsheet size={20} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-extrabold text-[15.5px] tracking-tight">Excel Job Sheet Studio</span>
+                <span className="font-extrabold text-[16px] tracking-tight">Excel Job Sheet</span>
                 {hasUnsavedChanges && (
-                  <span className="text-[9.5px] font-black px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 animate-pulse">
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 animate-pulse">
                     ● {pendingChanges.count} unsaved change{pendingChanges.count === 1 ? '' : 's'}
                   </span>
                 )}
@@ -2214,7 +2221,7 @@ export function JobSheetSpreadsheet() {
         </div>
 
         {/* Dynamic Date Filters & Action Controls */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="relative z-10 flex items-center gap-2.5 flex-wrap">
           {/* Quick Undo & Redo buttons */}
           <div className="flex items-center bg-black/20 rounded-xl p-0.5 border border-white/20">
             <button
@@ -2223,7 +2230,7 @@ export function JobSheetSpreadsheet() {
               className={`p-1.5 rounded-lg transition-colors ${history.length > 0 ? 'text-white hover:bg-white/20 cursor-pointer' : 'text-white/40 cursor-not-allowed'}`}
               title="Undo (Ctrl+Z)"
             >
-              <Undo2 size={14} />
+              <Undo2 size={15} />
             </button>
             <button
               onClick={handleRedo}
@@ -2231,7 +2238,7 @@ export function JobSheetSpreadsheet() {
               className={`p-1.5 rounded-lg transition-colors ${future.length > 0 ? 'text-white hover:bg-white/20 cursor-pointer' : 'text-white/40 cursor-not-allowed'}`}
               title="Redo (Ctrl+Y)"
             >
-              <Redo2 size={14} />
+              <Redo2 size={15} />
             </button>
           </div>
 
@@ -2246,7 +2253,7 @@ export function JobSheetSpreadsheet() {
                   setSelectedDate(today)
                   setSearchParams({ date: today }, { replace: true })
                 }}
-                className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${
                   dateFilterMode === 'today' ? 'bg-white text-emerald-900 shadow-xs' : 'text-white/80 hover:text-white hover:bg-white/10'
                 }`}
                 title="View Today's Jobs"
@@ -2261,7 +2268,7 @@ export function JobSheetSpreadsheet() {
                   setSelectedDate(yest)
                   setSearchParams({ date: yest }, { replace: true })
                 }}
-                className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${
                   dateFilterMode === 'yesterday' ? 'bg-white text-emerald-900 shadow-xs' : 'text-white/80 hover:text-white hover:bg-white/10'
                 }`}
                 title="View Yesterday's Jobs"
@@ -2271,7 +2278,7 @@ export function JobSheetSpreadsheet() {
               <button
                 type="button"
                 onClick={() => setDateFilterMode('single')}
-                className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${
                   dateFilterMode === 'single' ? 'bg-white text-emerald-900 shadow-xs' : 'text-white/80 hover:text-white hover:bg-white/10'
                 }`}
                 title="Single Date Picker"
@@ -2281,7 +2288,7 @@ export function JobSheetSpreadsheet() {
               <button
                 type="button"
                 onClick={() => setDateFilterMode('range')}
-                className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${
                   dateFilterMode === 'range' ? 'bg-white text-emerald-900 shadow-xs' : 'text-white/80 hover:text-white hover:bg-white/10'
                 }`}
                 title="Date Range Filter"
@@ -2291,7 +2298,7 @@ export function JobSheetSpreadsheet() {
               <button
                 type="button"
                 onClick={() => setDateFilterMode('all')}
-                className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${
                   dateFilterMode === 'all' ? 'bg-white text-emerald-900 shadow-xs' : 'text-white/80 hover:text-white hover:bg-white/10'
                 }`}
                 title="View All Dates"
@@ -2351,31 +2358,24 @@ export function JobSheetSpreadsheet() {
             )}
           </div>
 
-          {/* ── Quick Filter Tabs (Monthly, Cash, Online, Pending) ── */}
-          <div className="flex items-center bg-black/25 rounded-xl p-0.5 border border-white/20 text-white text-[11px] font-bold">
-            {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending'] as const).map(tab => {
-              const count = tab === 'ALL' ? filterCounts.all : filterCounts[tab.toLowerCase() as keyof typeof filterCounts]
-              const isActive = paymentModeFilter === tab
-              return (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setPaymentModeFilter(tab)}
-                  className={`px-2 py-1 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                    isActive
-                      ? 'bg-white text-emerald-950 shadow-xs'
-                      : 'text-white/80 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  <span>{tab}</span>
-                  <span className={`px-1.5 py-0.2 rounded-full text-[9.5px] font-black ${
-                    isActive ? 'bg-emerald-100 text-emerald-900' : 'bg-white/20 text-white'
-                  }`}>
-                    {count}
-                  </span>
-                </button>
-              )
-            })}
+          {/* ── Reset & Eye Icons in Header (As Requested) ── */}
+          <div className="flex items-center bg-black/20 rounded-xl p-0.5 border border-white/20">
+            <button
+              type="button"
+              onClick={resetColumnOrder}
+              className="p-1.5 rounded-lg text-white/90 hover:text-white hover:bg-white/20 transition-colors cursor-pointer"
+              title="Reset Column Sequence to Default"
+            >
+              <RotateCcw size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowColumnsModal(true)}
+              className="p-1.5 rounded-lg text-white/90 hover:text-white hover:bg-white/20 transition-colors cursor-pointer"
+              title="Customize Columns (Show/Hide & Sequence)"
+            >
+              <Eye size={15} />
+            </button>
           </div>
 
           {/* ── Dedicated Add Job Button ── */}
@@ -2389,13 +2389,16 @@ export function JobSheetSpreadsheet() {
             <span>Add Job</span>
           </button>
 
-          {/* ── Three-Dot Menu (Save to Google Drive & Monthly Schedules Sync) ── */}
+          {/* ── Three-Dot Menu (Sync, Backup, File, Edit, Formulas & View Options) ── */}
           <div className="relative">
             <button
               type="button"
-              onClick={() => setShowThreeDotMenu(!showThreeDotMenu)}
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowThreeDotMenu(!showThreeDotMenu)
+              }}
               className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-[12px] border border-white/25 transition-all cursor-pointer shadow-xs"
-              title="More Options (Google Drive Backup, Monthly Sync)"
+              title="More Options"
             >
               <MoreVertical size={16} />
             </button>
@@ -2403,63 +2406,209 @@ export function JobSheetSpreadsheet() {
             {showThreeDotMenu && (
               <div
                 onClick={e => e.stopPropagation()}
-                className="absolute right-0 top-full mt-1.5 w-60 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-slate-800 text-[12px]"
+                className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-slate-200 py-2 z-50 text-slate-800 text-[12px] max-h-[82vh] overflow-y-auto divide-y divide-slate-100 animate-in fade-in zoom-in-95"
               >
-                {/* Monthly Sync */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowThreeDotMenu(false)
-                    setShowMonthlySyncModal(true)
-                  }}
-                  className="w-full px-3.5 py-2 hover:bg-slate-50 flex items-center justify-between gap-2 text-left cursor-pointer transition-colors"
-                >
-                  <span className="flex items-center gap-2 font-semibold">
-                    <Sparkles size={14} className="text-amber-600" />
-                    <span>Monthly Sync</span>
-                  </span>
-                  {monthlySyncStatus.pendingSyncCount > 0 ? (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
-                      {monthlySyncStatus.pendingSyncCount} pending
+                {/* Section 1: Sync & Cloud */}
+                <div className="py-1">
+                  <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">Sync & Cloud</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowThreeDotMenu(false)
+                      setShowMonthlySyncModal(true)
+                    }}
+                    className="w-full px-3.5 py-2 hover:bg-slate-50 flex items-center justify-between gap-2 text-left cursor-pointer transition-colors"
+                  >
+                    <span className="flex items-center gap-2.5 font-semibold text-slate-700">
+                      <Sparkles size={14} className="text-amber-600" />
+                      <span>Monthly Sync</span>
                     </span>
-                  ) : (
-                    <span className="text-[10px] text-slate-400 font-semibold">
-                      {monthlySyncStatus.totalScheduled} synced
-                    </span>
+                    {monthlySyncStatus.pendingSyncCount > 0 ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                        {monthlySyncStatus.pendingSyncCount} pending
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 font-semibold">
+                        {monthlySyncStatus.totalScheduled} synced
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowThreeDotMenu(false)
+                      handleBackupToDrive()
+                    }}
+                    disabled={isBackingUp}
+                    className="w-full px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 text-left cursor-pointer transition-colors disabled:opacity-50 text-slate-700"
+                  >
+                    <CloudUpload size={14} className="text-emerald-600" />
+                    <span className="font-semibold">{isBackingUp ? 'Backing up…' : 'Save to Google Drive'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowThreeDotMenu(false)
+                      setShowDriveModal(true)
+                    }}
+                    className="w-full px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2.5 text-left cursor-pointer transition-colors text-slate-600"
+                  >
+                    <SlidersHorizontal size={13} className="text-slate-400" />
+                    <span>Drive Webhook Settings</span>
+                  </button>
+                </div>
+
+                {/* Section 2: File & Export */}
+                <div className="py-1">
+                  <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">File & Export</div>
+                  <button
+                    onClick={() => { handleSaveAll(); setShowThreeDotMenu(false) }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center justify-between font-medium text-slate-700 cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2.5"><Save size={14} className="text-emerald-700" /> Save to CRM</span>
+                    <kbd className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-400 font-mono">Ctrl+S</kbd>
+                  </button>
+                  <button
+                    onClick={() => { handleExportXLSX(); setShowThreeDotMenu(false) }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <Download size={14} className="text-emerald-700" /> Export Excel (.xlsx)
+                  </button>
+                  <button
+                    onClick={() => { handleExportCSV(); setShowThreeDotMenu(false) }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <Download size={14} className="text-blue-600" /> Export CSV (.csv)
+                  </button>
+                  <button
+                    onClick={() => { window.print(); setShowThreeDotMenu(false) }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center justify-between font-medium text-slate-700 cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2.5"><Printer size={14} className="text-slate-600" /> Print Sheet</span>
+                    <kbd className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-400 font-mono">Ctrl+P</kbd>
+                  </button>
+                  <button
+                    onClick={() => {
+                      const jobsForDay = dailyJobs.filter(j => j.date === selectedDate)
+                      pushState(JSON.parse(JSON.stringify(jobsForDay)))
+                      setShowThreeDotMenu(false)
+                      showToast('Reset to saved CRM state')
+                    }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <RotateCcw size={14} className="text-amber-600" /> Revert to Saved
+                  </button>
+                </div>
+
+                {/* Section 3: Edit Rows */}
+                <div className="py-1">
+                  <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">Edit Rows</div>
+                  <button
+                    onClick={() => {
+                      const idx = activeCell ? activeCell.rowIdx : 0
+                      insertRowAt(idx, 'above')
+                      setShowThreeDotMenu(false)
+                    }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <ArrowUp size={14} className="text-emerald-700" /> Insert Empty Row (Top)
+                  </button>
+                  <button
+                    onClick={() => {
+                      const idx = activeCell ? activeCell.rowIdx : gridRows.length - 1
+                      insertRowAt(idx, 'below')
+                      setShowThreeDotMenu(false)
+                    }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <ArrowDown size={14} className="text-emerald-700" /> Insert Empty Row (Bottom)
+                  </button>
+                  {activeCell && (
+                    <button
+                      onClick={() => {
+                        handleDuplicateRow(activeCell.rowIdx)
+                        setShowThreeDotMenu(false)
+                      }}
+                      className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer"
+                    >
+                      <Copy size={14} className="text-blue-600" /> Duplicate Active Row
+                    </button>
                   )}
-                </button>
+                  {activeCell && (
+                    <button
+                      onClick={() => {
+                        handleDeleteRow(activeCell.rowIdx)
+                        setShowThreeDotMenu(false)
+                      }}
+                      className="w-full px-3.5 py-2 text-left hover:bg-red-50 text-red-600 flex items-center gap-2.5 font-medium cursor-pointer"
+                    >
+                      <Trash2 size={14} /> Delete Active Row
+                    </button>
+                  )}
+                </div>
 
-                {/* Save to Google Drive */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowThreeDotMenu(false)
-                    handleBackupToDrive()
-                  }}
-                  disabled={isBackingUp}
-                  className="w-full px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-left cursor-pointer transition-colors disabled:opacity-50"
-                >
-                  <CloudUpload size={14} className="text-emerald-600" />
-                  <span className="font-semibold">{isBackingUp ? 'Backing up…' : 'Save to Google Drive'}</span>
-                </button>
+                {/* Section 4: Formulas & Calculations */}
+                <div className="py-1">
+                  <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">Formulas & Tools</div>
+                  <button
+                    onClick={() => { handleRecalculateHours(); setShowThreeDotMenu(false) }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-emerald-800 cursor-pointer"
+                  >
+                    <Sparkles size={14} className="text-emerald-600" /> Recalculate Duty & OT Hours
+                  </button>
+                  <button
+                    onClick={() => { handleFormulaBarChange('=SUM(I)'); setShowThreeDotMenu(false) }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center justify-between font-medium text-slate-700 cursor-pointer"
+                  >
+                    <span>AutoSum Charges</span>
+                    <span className="font-mono text-[10px] text-emerald-700 font-bold">∑ =SUM(I)</span>
+                  </button>
+                  <button
+                    onClick={() => { handleFormulaBarChange('=SUM(J)'); setShowThreeDotMenu(false) }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center justify-between font-medium text-slate-700 cursor-pointer"
+                  >
+                    <span>AutoSum Received</span>
+                    <span className="font-mono text-[10px] text-emerald-700 font-bold">∑ =SUM(J)</span>
+                  </button>
+                </div>
 
-                {/* Google Drive / Webhook Config */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowThreeDotMenu(false)
-                    setShowDriveModal(true)
-                  }}
-                  className="w-full px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2 text-left cursor-pointer transition-colors text-slate-500 border-t border-slate-100 mt-1 pt-2"
-                >
-                  <SlidersHorizontal size={13} />
-                  <span>Drive Webhook Settings</span>
-                </button>
+                {/* Section 5: View & Zoom */}
+                <div className="py-1">
+                  <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">View Settings</div>
+                  <button
+                    onClick={() => { resetColumnOrder(); setShowThreeDotMenu(false) }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <RotateCcw size={14} className="text-slate-500" /> Reset Column Order
+                  </button>
+                  <button
+                    onClick={() => { setShowColumnsModal(true); setShowThreeDotMenu(false) }}
+                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer"
+                  >
+                    <Eye size={14} className="text-slate-500" /> Customize Columns (Show/Hide)
+                  </button>
+                  <div className="px-3.5 py-2 flex items-center justify-between text-[11px] text-slate-500 font-bold">
+                    <span>Zoom Scale</span>
+                    <div className="flex items-center gap-1">
+                      {[90, 100, 110].map(z => (
+                        <button
+                          key={z}
+                          onClick={() => setZoomLevel(z)}
+                          className={`px-2 py-0.5 rounded text-[10.5px] font-bold cursor-pointer ${zoomLevel === z ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                        >
+                          {z}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
 
-          {/* Save All Button */}
+          {/* ── Save All Button ── */}
           <button
             type="button"
             onClick={handleSaveAll}
@@ -2486,405 +2635,100 @@ export function JobSheetSpreadsheet() {
         </div>
       </header>
 
-      {/* ── Excel Menu Bar (File, Edit, View, Formulas) ── */}
-      <nav className="bg-[#f8fafc] border-b border-slate-300 px-4 py-1 flex items-center justify-between text-[12px] select-none shrink-0 relative z-30">
-        <div className="flex items-center gap-1">
-          {/* File Menu */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={e => {
-                e.stopPropagation()
-                setActiveMenu(activeMenu === 'file' ? null : 'file')
-              }}
-              className={`px-3 py-1 rounded font-semibold transition-colors flex items-center gap-1 ${activeMenu === 'file' ? 'bg-[#107c41] text-white' : 'hover:bg-slate-200 text-slate-700'}`}
-            >
-              <span>File</span>
-              <ChevronDown size={11} />
-            </button>
-            {activeMenu === 'file' && (
-              <div
-                onClick={e => e.stopPropagation()}
-                className="absolute top-full left-0 mt-1 w-56 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-50 text-[12px] animate-in fade-in zoom-in-95"
-              >
-                <button
-                  onClick={() => { handleSaveAll(); setActiveMenu(null) }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center justify-between font-medium text-slate-700"
-                >
-                  <span className="flex items-center gap-2"><Save size={14} className="text-emerald-700" /> Save to CRM</span>
-                  <kbd className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-400">Ctrl+S</kbd>
-                </button>
-                <button
-                  onClick={() => { handleExportXLSX(); setActiveMenu(null) }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center gap-2 font-medium text-slate-700"
-                >
-                  <Download size={14} className="text-emerald-700" /> Export Excel (.xlsx)
-                </button>
-                <button
-                  onClick={() => { handleExportCSV(); setActiveMenu(null) }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center gap-2 font-medium text-slate-700"
-                >
-                  <Download size={14} className="text-blue-600" /> Export CSV (.csv)
-                </button>
-                <button
-                  onClick={() => { window.print(); setActiveMenu(null) }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center justify-between font-medium text-slate-700"
-                >
-                  <span className="flex items-center gap-2"><Printer size={14} className="text-slate-600" /> Print Sheet</span>
-                  <kbd className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-400">Ctrl+P</kbd>
-                </button>
-                <div className="h-px bg-slate-100 my-1" />
-                <button
-                  onClick={() => {
-                    const jobsForDay = dailyJobs.filter(j => j.date === selectedDate)
-                    pushState(JSON.parse(JSON.stringify(jobsForDay)))
-                    setActiveMenu(null)
-                    showToast('Reset to saved CRM state')
-                  }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center gap-2 font-medium text-slate-700"
-                >
-                  <RotateCcw size={14} className="text-amber-600" /> Revert to Saved
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Edit Menu */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={e => {
-                e.stopPropagation()
-                setActiveMenu(activeMenu === 'edit' ? null : 'edit')
-              }}
-              className={`px-3 py-1 rounded font-semibold transition-colors flex items-center gap-1 ${activeMenu === 'edit' ? 'bg-[#107c41] text-white' : 'hover:bg-slate-200 text-slate-700'}`}
-            >
-              <span>Edit</span>
-              <ChevronDown size={11} />
-            </button>
-            {activeMenu === 'edit' && (
-              <div
-                onClick={e => e.stopPropagation()}
-                className="absolute top-full left-0 mt-1 w-60 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-50 text-[12px] animate-in fade-in zoom-in-95"
-              >
-                <button
-                  onClick={() => { handleUndo(); setActiveMenu(null) }}
-                  disabled={history.length === 0}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 disabled:opacity-40 flex items-center justify-between font-medium text-slate-700"
-                >
-                  <span className="flex items-center gap-2"><Undo2 size={14} /> Undo</span>
-                  <kbd className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-400">Ctrl+Z</kbd>
-                </button>
-                <button
-                  onClick={() => { handleRedo(); setActiveMenu(null) }}
-                  disabled={future.length === 0}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 disabled:opacity-40 flex items-center justify-between font-medium text-slate-700"
-                >
-                  <span className="flex items-center gap-2"><Redo2 size={14} /> Redo</span>
-                  <kbd className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-400">Ctrl+Y</kbd>
-                </button>
-                <div className="h-px bg-slate-100 my-1" />
-                <button
-                  onClick={() => {
-                    const idx = activeCell ? activeCell.rowIdx : 0
-                    insertRowAt(idx, 'above')
-                    setActiveMenu(null)
-                  }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center gap-2 font-medium text-slate-700"
-                >
-                  <ArrowUp size={14} className="text-emerald-700" /> Insert Row at Top (Above)
-                </button>
-                <button
-                  onClick={() => {
-                    const idx = activeCell ? activeCell.rowIdx : gridRows.length - 1
-                    insertRowAt(idx, 'below')
-                    setActiveMenu(null)
-                  }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center gap-2 font-medium text-slate-700"
-                >
-                  <ArrowDown size={14} className="text-emerald-700" /> Insert Row at Bottom (Below)
-                </button>
-                {activeCell && (
-                  <button
-                    onClick={() => {
-                      handleDuplicateRow(activeCell.rowIdx)
-                      setActiveMenu(null)
-                    }}
-                    className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center gap-2 font-medium text-slate-700"
-                  >
-                    <Copy size={14} className="text-blue-600" /> Duplicate Active Row
-                  </button>
-                )}
-                {activeCell && (
-                  <button
-                    onClick={() => {
-                      handleDeleteRow(activeCell.rowIdx)
-                      setActiveMenu(null)
-                    }}
-                    className="w-full px-3.5 py-2 text-left hover:bg-red-50 text-red-600 flex items-center gap-2 font-medium"
-                  >
-                    <Trash2 size={14} /> Delete Active Row
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* View Menu */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={e => {
-                e.stopPropagation()
-                setActiveMenu(activeMenu === 'view' ? null : 'view')
-              }}
-              className={`px-3 py-1 rounded font-semibold transition-colors flex items-center gap-1 ${activeMenu === 'view' ? 'bg-[#107c41] text-white' : 'hover:bg-slate-200 text-slate-700'}`}
-            >
-              <span>View</span>
-              <ChevronDown size={11} />
-            </button>
-            {activeMenu === 'view' && (
-              <div
-                onClick={e => e.stopPropagation()}
-                className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-50 text-[12px] animate-in fade-in zoom-in-95"
-              >
-                <button
-                  onClick={() => { setViewMode(viewMode === 'blocks' ? 'flat' : 'blocks'); setActiveMenu(null) }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center justify-between font-medium text-slate-700"
-                >
-                  <span className="flex items-center gap-2"><Layers size={14} className="text-indigo-600" /> Group by Cleaner (Blocks)</span>
-                  <input type="checkbox" checked={viewMode === 'blocks'} readOnly className="rounded accent-emerald-600" />
-                </button>
-                <button
-                  onClick={() => { setShowFormulaBar(!showFormulaBar); setActiveMenu(null) }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center justify-between font-medium text-slate-700"
-                >
-                  <span className="flex items-center gap-2"><Calculator size={14} className="text-slate-600" /> Formula Bar (fx)</span>
-                  <input type="checkbox" checked={showFormulaBar} readOnly className="rounded accent-emerald-600" />
-                </button>
-                <button
-                  onClick={() => { resetColumnOrder(); setActiveMenu(null) }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center justify-between font-medium text-slate-700"
-                >
-                  <span className="flex items-center gap-2"><RotateCcw size={14} className="text-slate-600" /> Reset Column Order</span>
-                </button>
-                <div className="h-px bg-slate-100 my-1" />
-                <div className="px-3.5 py-1.5 flex items-center justify-between text-[11px] text-slate-500 font-bold">
-                  <span>Zoom Scale</span>
-                  <div className="flex items-center gap-1">
-                    {[90, 100, 110].map(z => (
-                      <button
-                        key={z}
-                        onClick={() => setZoomLevel(z)}
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${zoomLevel === z ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
-                      >
-                        {z}%
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Formulas Menu */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={e => {
-                e.stopPropagation()
-                setActiveMenu(activeMenu === 'formulas' ? null : 'formulas')
-              }}
-              className={`px-3 py-1 rounded font-semibold transition-colors flex items-center gap-1 ${activeMenu === 'formulas' ? 'bg-[#107c41] text-white' : 'hover:bg-slate-200 text-slate-700'}`}
-            >
-              <span>Formulas</span>
-              <ChevronDown size={11} />
-            </button>
-            {activeMenu === 'formulas' && (
-              <div
-                onClick={e => e.stopPropagation()}
-                className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-50 text-[12px] animate-in fade-in zoom-in-95"
-              >
-                <button
-                  onClick={() => { handleFormulaBarChange('=SUM(I)'); setActiveMenu(null) }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center justify-between font-medium text-slate-700"
-                >
-                  <span>AutoSum Charges (=SUM(I))</span>
-                  <span className="font-mono text-[10px] text-emerald-700 font-bold">∑</span>
-                </button>
-                <button
-                  onClick={() => { handleFormulaBarChange('=SUM(J)'); setActiveMenu(null) }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center justify-between font-medium text-slate-700"
-                >
-                  <span>AutoSum Received (=SUM(J))</span>
-                  <span className="font-mono text-[10px] text-emerald-700 font-bold">∑</span>
-                </button>
-                <button
-                  onClick={() => { handleFormulaBarChange('=AVERAGE(I)'); setActiveMenu(null) }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 font-medium text-slate-700"
-                >
-                  Average Charges (=AVERAGE(I))
-                </button>
-                <button
-                  onClick={() => { handleFormulaBarChange('=COUNT(B)'); setActiveMenu(null) }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 font-medium text-slate-700"
-                >
-                  Count Staff Cleaners (=COUNT(B))
-                </button>
-                <div className="h-px bg-slate-100 my-1" />
-                <button
-                  onClick={() => { handleRecalculateHours(); setActiveMenu(null) }}
-                  className="w-full px-3.5 py-2 text-left hover:bg-slate-100 flex items-center gap-2 font-medium text-emerald-800"
-                >
-                  <Sparkles size={14} className="text-emerald-600" /> Recalculate Duty & OT Hours
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* View Mode Switcher (Blocks vs Flat Grid) & Search */}
-        <div className="flex items-center gap-3">
-          {/* Mode Switcher: Flat Grid Mode first, Cleaner Blocks Mode second */}
-          <div className="flex items-center bg-slate-200/80 p-0.5 rounded-lg text-[11px] font-bold text-slate-700">
-            <button
-              onClick={() => {
-                setViewMode('flat')
-                safeSet('safaeewala_excel_view_mode', 'flat')
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-all cursor-pointer ${
-                viewMode === 'flat' ? 'bg-white text-emerald-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-              title="Standard flat continuous Excel grid with cleaner blocks"
-            >
-              <Table size={13} className={viewMode === 'flat' ? 'text-emerald-700' : 'text-slate-500'} />
-              <span>Flat Grid Mode</span>
-            </button>
-            <button
-              onClick={() => {
-                setViewMode('blocks')
-                safeSet('safaeewala_excel_view_mode', 'blocks')
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-all cursor-pointer ${
-                viewMode === 'blocks' ? 'bg-white text-emerald-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-              title="Group jobs into colored blocks per cleaner (Daily Job Sheet style)"
-            >
-              <Layers size={13} className={viewMode === 'blocks' ? 'text-emerald-700' : 'text-slate-500'} />
-              <span>Cleaner Blocks Mode</span>
-            </button>
-          </div>
-
-          {/* Search Input */}
-          <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-2 text-slate-400" />
-            <input
-              type="text"
-              value={filterSearch}
-              onChange={e => setFilterSearch(e.target.value)}
-              placeholder="Search staff, location, mode..."
-              title="Filter rows · Excel keys: arrows / Tab move, Enter or F2 edit, Delete clears, Ctrl+D fill down, Ctrl+V pastes a block"
-              className="w-48 h-7 pl-8 pr-2.5 text-[11px] bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-600 focus:w-60 transition-all"
-            />
-            {filterSearch && (
-              <button onClick={() => setFilterSearch('')} className="absolute right-2 top-2 text-slate-400 hover:text-slate-700">
-                <X size={12} />
-              </button>
-            )}
-          </div>
-        </div>
-      </nav>
-
       {/* ── Autocomplete sources (UX-35): live employees and clients only (R-DATA-03) ── */}
       <datalist id="xl-staff">{staffOptions.map(n => <option key={n} value={n} />)}</datalist>
       <datalist id="xl-address">{addressOptions.map(n => <option key={n} value={n} />)}</datalist>
       <datalist id="xl-area">{areaOptions.map(n => <option key={n} value={n} />)}</datalist>
       <datalist id="xl-service">{serviceOptions.map(n => <option key={n} value={n} />)}</datalist>
 
-      {/* ── Column presets (UX-39) ── */}
-      <div className="mx-3 mt-2 flex items-center gap-2 text-[11.5px] text-slate-600 flex-wrap">
-        <span className="font-bold">Columns:</span>
-        {Object.keys(COLUMN_PRESETS).map(name => (
-          <button key={name} type="button" onClick={() => applyColumnPreset(name)}
-            className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-emerald-50 hover:border-emerald-400 font-semibold cursor-pointer">
-            {name}
-          </button>
-        ))}
-        <span className="ml-auto text-slate-400 hidden md:inline">Arrows/Tab move · Enter/F2 edit · Delete clears · Ctrl+D fill down · Ctrl+V paste block</span>
-      </div>
+      {/* ── Sub-Bar: Filter Displays ('Monthly', 'Cash', 'Online', 'Pending' replacing column presets) + Mode Icons & Search ── */}
+      <div className="bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between gap-3 text-[12px] shrink-0 shadow-2xs">
+        {/* Displays: ALL, Monthly, Cash, Online, Pending */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">Filter:</span>
+          {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending'] as const).map(tab => {
+            const count = tab === 'ALL' ? filterCounts.all : filterCounts[tab.toLowerCase() as keyof typeof filterCounts]
+            const isActive = paymentModeFilter === tab
+            const themeClass = {
+              ALL: isActive ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-100',
+              Monthly: isActive ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-indigo-50/50 text-indigo-800 border-indigo-200 hover:border-indigo-300 hover:bg-indigo-50',
+              Cash: isActive ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-emerald-50/50 text-emerald-800 border-emerald-200 hover:border-emerald-300 hover:bg-emerald-50',
+              Online: isActive ? 'bg-sky-600 text-white border-sky-600 shadow-sm' : 'bg-sky-50/50 text-sky-800 border-sky-200 hover:border-sky-300 hover:bg-sky-50',
+              Pending: isActive ? 'bg-rose-600 text-white border-rose-600 shadow-sm' : 'bg-rose-50/50 text-rose-800 border-rose-200 hover:border-rose-300 hover:bg-rose-50',
+            }[tab]
 
-      {/* ── Draft restore / remote change notices (AUD-48, UX-34) ── */}
-      {draftOffer && (
-        <div className="mx-3 mt-2 flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-xl border border-sky-200 bg-sky-50 text-[12.5px] text-sky-900">
-          <span>You have unsaved edits for this date from {new Date(draftOffer.savedAt).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', dateStyle: 'medium', timeStyle: 'short' })} (Dubai time).</span>
-          <span className="flex gap-2">
-            <button type="button" onClick={() => { pushState(draftOffer.rows); setDraftOffer(null); showToast('Draft restored — click Save to keep it') }}
-              className="px-3 py-1 rounded-lg bg-sky-600 text-white font-bold hover:bg-sky-700 cursor-pointer">Restore edits</button>
-            <button type="button" onClick={() => { setDraftOffer(null); try { localStorage.removeItem(DRAFT_PREFIX + periodKey) } catch { /* ignore */ } }}
-              className="px-3 py-1 rounded-lg bg-white border border-sky-300 font-bold text-sky-800 hover:bg-sky-100 cursor-pointer">Discard</button>
-          </span>
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setPaymentModeFilter(tab)}
+                className={`px-3 py-1.5 rounded-xl border font-bold text-[11.5px] transition-all cursor-pointer flex items-center gap-1.5 ${themeClass}`}
+              >
+                <span>{tab}</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  isActive ? 'bg-white/25 text-white' : 'bg-white text-slate-800 shadow-2xs'
+                }`}>
+                  {count}
+                </span>
+              </button>
+            )
+          })}
         </div>
-      )}
-      {remoteConflict && (
-        <div className="mx-3 mt-2 flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-[12.5px] text-amber-900">
-          <span>Some rows you edited were also changed on another screen. Your edits are kept — Save asks before overwriting.</span>
-          <button type="button" onClick={reloadFromSaved}
-            className="px-3 py-1 rounded-lg bg-white border border-amber-300 font-bold text-amber-800 hover:bg-amber-100 cursor-pointer">Load latest instead</button>
-        </div>
-      )}
 
-      {/* ── Excel Formula Bar (fx) ── */}
-      {showFormulaBar && (
-        <div className="bg-white border-b border-slate-300 px-4 py-1.5 flex items-center gap-2 text-[12.5px] shrink-0 shadow-2xs">
-          {/* Active Cell Coordinates (e.g. B4) */}
-          <div className="w-16 h-7 px-2 font-mono font-bold text-slate-700 bg-slate-100 border border-slate-300 rounded flex items-center justify-center text-[12px] shrink-0">
-            {activeCellCoord}
-          </div>
-
-          {/* Fx Symbol */}
-          <div className="w-7 h-7 flex items-center justify-center font-serif italic font-black text-slate-500 text-sm select-none shrink-0">
-            fx
-          </div>
-
-          {/* Formula Input */}
-          <div className="flex-1 relative">
-            <input
-              ref={formulaInputRef}
-              type="text"
-              value={formulaBarValue}
-              onChange={e => handleFormulaBarChange(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  formulaInputRef.current?.blur()
-                }
+        {/* Right side: 'Flat Grid' & 'Cleaner Block' mode icons + Search */}
+        <div className="flex items-center gap-2.5">
+          {/* Mode Switcher: Icons only (Replaces text as requested) */}
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode('flat')
+                safeSet('safaeewala_excel_view_mode', 'flat')
               }}
-              placeholder="Type value or formula e.g. =SUM(I) or =I-J or =AVERAGE(I)... Right-click any row for Top/Bottom insertion"
-              className="w-full h-7 px-2.5 font-mono text-[12px] bg-slate-50 border border-slate-300 rounded focus:bg-white focus:outline-none focus:border-[#107c41] focus:ring-1 focus:ring-[#107c41]"
-            />
+              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                viewMode === 'flat'
+                  ? 'bg-emerald-700 text-white shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/60'
+              }`}
+              title="Flat Grid View"
+            >
+              <Table size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode('blocks')
+                safeSet('safaeewala_excel_view_mode', 'blocks')
+              }}
+              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                viewMode === 'blocks'
+                  ? 'bg-emerald-700 text-white shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/60'
+              }`}
+              title="Cleaner Blocks View"
+            >
+              <Layers size={15} />
+            </button>
           </div>
 
-          {/* Quick Formula Helpers & Column Customization */}
-          <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
-
-            <button
-              type="button"
-              onClick={resetColumnOrder}
-              className="px-2 py-0.5 rounded text-[10.5px] font-bold bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-600 transition-colors cursor-pointer ml-1"
-              title="Reset column sequence to Daily Job Sheet default"
-            >
-              Reset Columns
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowColumnsModal(true)}
-              className="w-6 h-6 rounded flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 transition-colors cursor-pointer ml-1 shadow-2xs font-bold"
-              title="Customize Columns: Reorder sequence & show/hide (Eye icon)"
-            >
-              <Eye size={13} className="stroke-[2.5]" />
-            </button>
+          {/* Search Input */}
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              value={filterSearch}
+              onChange={e => setFilterSearch(e.target.value)}
+              placeholder="Search staff, location, mode..."
+              className="w-44 h-8 pl-8 pr-2.5 text-[11px] bg-slate-50 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-600 focus:w-56 transition-all font-medium shadow-2xs"
+            />
+            {filterSearch && (
+              <button onClick={() => setFilterSearch('')} className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 cursor-pointer">
+                <X size={12} />
+              </button>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
       {/* ── Main Spreadsheet Grid Container (Full Width Edge-to-Edge) ── */}
       <div className="flex-1 overflow-auto bg-white relative w-full">
