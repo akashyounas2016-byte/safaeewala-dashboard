@@ -72,6 +72,29 @@ const POPULAR_AREAS = [
   'Arabian Ranches',
 ]
 
+
+function parseToMinutes(t?: string): number | null {
+  if (!t) return null
+  const clean = t.trim().toUpperCase()
+  const m = clean.match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i)
+  if (!m) return null
+  let h = parseInt(m[1], 10)
+  const min = parseInt(m[2], 10)
+  const mer = m[3]
+  if (mer === 'PM' && h < 12) h += 12
+  if (mer === 'AM' && h === 12) h = 0
+  return h * 60 + min
+}
+
+function checkTimesOverlap(startA?: string, endA?: string, startB?: string, endB?: string): boolean {
+  const sA = parseToMinutes(startA)
+  const eA = parseToMinutes(endA)
+  const sB = parseToMinutes(startB)
+  const eB = parseToMinutes(endB)
+  if (sA === null || eA === null || sB === null || eB === null) return false
+  return sA < eB && sB < eA
+}
+
 export function AddJobForm({
   employees,
   onSave,
@@ -382,6 +405,25 @@ export function AddJobForm({
       return
     }
 
+    
+    // Cleaner shift overlap / clash error check
+    if (existingJobsForDate && existingJobsForDate.length > 0 && startTime && endTime) {
+      for (const cleaner of selectedStaff) {
+        const cLower = cleaner.toLowerCase().trim()
+        const clash = existingJobsForDate.find(j => {
+          if (!j.staff_name) return false
+          const parts = j.staff_name.toLowerCase().split(/[,\+]/).map(s => s.trim())
+          const matchCleaner = parts.includes(cLower) || j.staff_name.toLowerCase().trim() === cLower
+          if (!matchCleaner) return false
+          return checkTimesOverlap(startTime, endTime, j.start_time, j.end_time)
+        })
+        if (clash) {
+          notify.error(`⚠️ Cleaner Clash Error: ${cleaner} is already engaged from ${formatTime12h(clash.start_time)} to ${formatTime12h(clash.end_time)} on this date!`)
+          return
+        }
+      }
+    }
+
     onSave({
       date,
       staff_name:   finalStaff,
@@ -408,14 +450,10 @@ export function AddJobForm({
 
   return (
     <form id="add-job-entry-form" onSubmit={handleSubmit} className="text-slate-800">
-      {/* ── EXPANSIVE HORIZONTAL 2-COLUMN LAYOUT (MINIMAL SCROLL) ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-
-        {/* ══════════ LEFT COLUMN: STAFF, SCHEDULE & LOCATION ══════════ */}
-        <div className="space-y-4">
-
-          {/* CARD 1: Staff, Team & Date */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5">
+      {/* ── TOP 4 CARDS: 2x2 EQUAL BALANCED GRID ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+        {/* CARD 1: Staff, Team & Date */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 h-full flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
@@ -495,8 +533,8 @@ export function AddJobForm({
             )}
           </div>
 
-          {/* CARD 2: Address & Location (Improved Building & Area Dropdowns matching Staff Name style) */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5">
+        {/* CARD 2: Address & Location (Improved Building & Area Dropdowns matching Staff Name style) */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 h-full flex flex-col justify-between">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
                 <MapPin size={15} />
@@ -733,15 +771,9 @@ export function AddJobForm({
               </div>
 
             </div>
-          </div>
 
-        </div>
-
-        {/* ══════════ RIGHT COLUMN: TIMING, FINANCIALS & CUSTOMIZATION ══════════ */}
-        <div className="space-y-4">
-
-          {/* CARD 3: Timing & Responsive Hours */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5">
+        {/* CARD 3: Timing & Responsive Hours */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 h-full flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
@@ -833,8 +865,8 @@ export function AddJobForm({
             </div>
           </div>
 
-          {/* CARD 4: Charges & Payment Mode */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5">
+        {/* CARD 4: Charges & Payment Mode */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 h-full flex flex-col justify-between">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
                 <CreditCard size={15} />
@@ -890,19 +922,24 @@ export function AddJobForm({
               </div>
             </div>
           </div>
+      </div>
 
-          {/* CARD 5: Customization & Supplies (Cleaning Material + 18 Colors with View All) */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
-                <Palette size={15} />
-              </div>
-              <div>
-                <h4 className="text-[13px] font-bold text-slate-900">Customization & Supplies</h4>
-                <p className="text-[11px] text-slate-500">Row highlight colors and supplies specification</p>
-              </div>
-            </div>
+      
+      {/* ── CARD 5: CUSTOMIZATION & SUPPLIES (HORIZONTAL ROW ACROSS FULL WIDTH) ── */}
+      <div className="mt-4 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3">
+        <div className="flex items-center gap-2 pb-2.5 border-b border-slate-100">
+          <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
+            <Palette size={15} />
+          </div>
+          <div>
+            <h4 className="text-[13px] font-bold text-slate-900">Customization & Supplies</h4>
+            <p className="text-[11px] text-slate-500">Row highlight colors, cleaning supplies and shift remarks</p>
+          </div>
+        </div>
 
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start pt-1">
+          {/* 1. Material Dropdown */}
+          <div className="space-y-1">
             {/* Cleaning Material Dropdown — Styled identical to CleanerMultiSelect with Tick/Cross for Custom Save */}
             <div className="relative" ref={materialRef}>
               <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center gap-1.5">
@@ -1014,7 +1051,10 @@ export function AddJobForm({
                 </div>
               )}
             </div>
+          </div>
 
+          {/* 2. Shift Remarks */}
+          <div className="space-y-1">
             {/* Shift Remarks */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center gap-1.5">
@@ -1029,7 +1069,10 @@ export function AddJobForm({
                 className="w-full text-[13px] px-3.5 py-2 min-h-[40px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-500 focus:bg-white transition-all text-slate-800 font-medium"
               />
             </div>
+          </div>
 
+          {/* 3. Row Color Theme */}
+          <div className="space-y-1">
             {/* Row Highlight Color Picker (18 presets, initially 2 rows, with "View All" toggle) */}
             <div className="pt-2 border-t border-slate-100">
               <div className="flex items-center justify-between mb-2">
@@ -1075,15 +1118,13 @@ export function AddJobForm({
                   )
                 })}
               </div>
-            </div>
-
           </div>
-
+          </div>
         </div>
-
       </div>
+    </div>
 
-      {/* ── Quick Client Registration Modal ── */}
+{/* ── Quick Client Registration Modal ── */}
       <QuickNewClientModal
         open={showQuickClientModal}
         onClose={() => {

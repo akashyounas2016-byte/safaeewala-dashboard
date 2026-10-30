@@ -24,6 +24,7 @@ interface PageHeroProps {
   title: string
   subtitle: string
   statusChip?: string
+  liveTag?: string
   actionLabel?: string
   onAction?: () => void
   showSearch?: boolean
@@ -43,6 +44,7 @@ export function PageHero({
   title,
   subtitle,
   statusChip,
+  liveTag,
   actionLabel = 'New Booking',
   onAction,
   showSearch = true,
@@ -96,6 +98,18 @@ export function PageHero({
               <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
+
+          {liveTag && (
+            <div className="mb-2 inline-flex items-center">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-white text-emerald-900 font-extrabold text-[10.5px] rounded-full shadow-md border border-white/90 shrink-0">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600" />
+                </span>
+                <span>{liveTag}</span>
+              </span>
+            </div>
+          )}
 
           <h2 className="text-3xl font-bold mb-2 tracking-tight">{title}</h2>
 

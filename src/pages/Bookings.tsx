@@ -956,6 +956,7 @@ export function Bookings() {
       {/* ── Hero ── */}
       <PageHero
         title="Bookings"
+        liveTag="LIVE Booking"
         subtitle={`${activeDateRange.label} · ${counts.total} jobs · ${counts.in_progress} live now · ${counts.pending} need confirmation`}
         statusChip={datePreset === 'all' ? `${counts.in_progress} Active` : activeDateRange.label}
         actionLabel="New Booking"

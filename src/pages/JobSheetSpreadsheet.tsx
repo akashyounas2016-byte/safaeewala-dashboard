@@ -54,20 +54,55 @@ export interface ColumnDef {
   formulaHint?: string
 }
 
+
+/** Checks whether two time ranges overlap (supports 12h and 24h formats) */
+export function checkTimesOverlap(startA: string, endA: string, startB: string, endB: string): boolean {
+  if (!startA || !endA || !startB || !endB || startA === '—' || endA === '—' || startB === '—' || endB === '—') return false
+  const parseMin = (t: string): number | null => {
+    const clean = t.trim().toUpperCase()
+    const m = clean.match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i)
+    if (!m) return null
+    let h = parseInt(m[1], 10)
+    const min = parseInt(m[2], 10)
+    const mer = m[3]
+    if (mer === 'PM' && h < 12) h += 12
+    if (mer === 'AM' && h === 12) h = 0
+    return h * 60 + min
+  }
+  const sA = parseMin(startA)
+  const eA = parseMin(endA)
+  const sB = parseMin(startB)
+  const eB = parseMin(endB)
+  if (sA === null || eA === null || sB === null || eB === null) return false
+  return sA < eB && sB < eA
+}
+
+/** Cleans duplicate '(Monthly)' occurrences in address display */
+export function cleanAddressDisplay(val: unknown): string {
+  if (!val) return '—'
+  const str = String(val).trim()
+  if (!str) return '—'
+  return str
+    .replace(/(\s*\(Monthly\)\s*)+/gi, ' (Monthly)')
+    .replace(/\bMonthly\s*\(Monthly\)/gi, '(Monthly)')
+    .replace(/\bMonthly\s+Monthly\b/gi, 'Monthly')
+    .trim()
+}
+
 export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
-  { id: 'staff_name',   label: 'Staff',            width: '160px', type: 'text',   formulaHint: 'Cleaner/Driver name' },
-  { id: 'start_time',   label: 'Start Time',       width: '105px', type: 'time',   formulaHint: 'e.g. 08:00 AM' },
-  { id: 'end_time',     label: 'End Time',         width: '105px', type: 'time',   formulaHint: 'e.g. 04:00 PM' },
-  { id: 'duty_hours',   label: 'Duty Hrs',         width: '90px',  type: 'number', formulaHint: '=calcHours(...)' },
-  { id: 'ot_hours',     label: 'OT Hrs',           width: '90px',  type: 'number', formulaHint: '=calcOT(...)' },
-  { id: 'address',      label: 'Client',           width: '230px', type: 'text',   formulaHint: 'Client name & location' },
-  { id: 'area',         label: 'Area',             width: '135px', type: 'text',   formulaHint: 'Dubai area/suburb' },
-  { id: 'material',     label: 'Material',         width: '95px',  type: 'select', options: ['No', 'Yes', 'Sofa', 'Ladder'] },
-  { id: 'charges',      label: 'Charges',          width: '115px', type: 'number', formulaHint: 'Gross charges' },
-  { id: 'received',     label: 'Received',         width: '115px', type: 'number', formulaHint: 'Cash/Online collected' },
-  { id: 'pending',      label: 'Pending',          width: '110px', type: 'formula', formulaHint: 'Charges minus Received' },
-  { id: 'payment_mode', label: 'Mode',             width: '120px', type: 'select', options: ['Cash', 'Online', 'Monthly', 'Pending'] },
-  { id: 'remarks',      label: 'Notes',            width: '170px', type: 'text',   formulaHint: 'Notes' },
+  { id: 'staff_name',   label: 'Staff',      width: '140px', type: 'text',   formulaHint: 'Staff member name' },
+  { id: 'start_time',   label: 'Start time', width: '100px', type: 'time',   formulaHint: 'e.g. 10:00 AM' },
+  { id: 'end_time',     label: 'End time',   width: '100px', type: 'time',   formulaHint: 'e.g. 03:00 PM' },
+  { id: 'address',      label: 'Address',    width: '230px', type: 'text',   formulaHint: 'Client name & address' },
+  { id: 'area',         label: 'Location',   width: '125px', type: 'text',   formulaHint: 'Area or location' },
+  { id: 'charges',      label: 'Charges',    width: '95px',  type: 'number', formulaHint: 'Gross charges' },
+  { id: 'received',     label: 'Received',   width: '95px',  type: 'number', formulaHint: 'Amount received' },
+  { id: 'pending',      label: 'Pending',    width: '95px',  type: 'formula', formulaHint: 'Pending amount' },
+  { id: 'duty_hours',   label: 'Duty Hrs',   width: '85px',  type: 'number', formulaHint: 'Duty hours' },
+  { id: 'ot_hours',     label: 'OT',         width: '80px',  type: 'number', formulaHint: 'Overtime hours' },
+  { id: 'material',     label: 'Material',   width: '90px',  type: 'select', options: ['NO', 'YES', 'No', 'Yes', 'Sofa', 'Ladder'] },
+  { id: 'payment_mode', label: 'Mode',       width: '95px',  type: 'select', options: ['Cash', 'Online', 'Monthly', 'Pending'] },
+  { id: 'remarks',      label: 'Remarks',    width: '160px', type: 'text',   formulaHint: 'Remarks & notes' },
 ]
 
 export function buildColumnsWithLetters(order: string[], hiddenIds: string[] = []): ColumnDef[] {
@@ -821,6 +856,7 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
       received: 0,
       payment_mode: 'Cash',
       remarks: '',
+      is_overtime: false,
       created_at: new Date().toISOString(),
     }))
   }
@@ -858,7 +894,8 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
         received: 0,
         payment_mode: 'Cash',
         remarks: '',
-        created_at: new Date().toISOString(),
+      is_overtime: false,
+      created_at: new Date().toISOString(),
       }
       list.push(blankRow)
       result.push(blankRow)
@@ -1078,7 +1115,7 @@ export function JobSheetSpreadsheet() {
   // ── Drag & Drop Column Sequence (Persisted in localStorage) ──
   const [columnOrder, setColumnOrder] = useState<string[]>(() => {
     const defaultList = DEFAULT_COLUMN_DEFS.map(c => c.id)
-    const saved = safeLocalStorageGet<string[]>('safaeewala_excel_columns_order', [])
+    const saved = safeLocalStorageGet<string[]>('safaeewala_excel_columns_order_v3', [])
     if (!Array.isArray(saved) || saved.length === 0) return defaultList
     const valid = saved.filter(id => defaultList.includes(id as any))
     defaultList.forEach(id => {
@@ -1151,7 +1188,7 @@ export function JobSheetSpreadsheet() {
       const item = next[fromIdx]
       next.splice(fromIdx, 1)
       next.splice(toIdx, 0, item)
-      safeLocalStorageSet('safaeewala_excel_columns_order', next)
+      safeLocalStorageSet('safaeewala_excel_columns_order_v3', next)
       return next
     })
   }
@@ -1183,7 +1220,7 @@ export function JobSheetSpreadsheet() {
       if (fromIdx < 0 || toIdx < 0) return prev
       next.splice(fromIdx, 1)
       next.splice(toIdx, 0, sourceId)
-      safeLocalStorageSet('safaeewala_excel_columns_order', next)
+      safeLocalStorageSet('safaeewala_excel_columns_order_v3', next)
       return next
     })
     setModalDragId(null)
@@ -1223,7 +1260,7 @@ export function JobSheetSpreadsheet() {
       if (fromIdx < 0 || toIdx < 0) return prev
       next.splice(fromIdx, 1)
       next.splice(toIdx, 0, sourceId)
-      safeLocalStorageSet('safaeewala_excel_columns_order', next)
+      safeLocalStorageSet('safaeewala_excel_columns_order_v3', next)
       return next
     })
     setDraggedColId(null)
@@ -1235,7 +1272,7 @@ export function JobSheetSpreadsheet() {
     const def = DEFAULT_COLUMN_DEFS.map(c => c.id)
     setColumnOrder(def)
     setHiddenColIds([])
-    safeLocalStorageSet('safaeewala_excel_columns_order', def)
+    safeLocalStorageSet('safaeewala_excel_columns_order_v3', def)
     safeLocalStorageSet('safaeewala_excel_hidden_columns', [])
     showToast('Columns reset to Daily Job Sheet default sequence and all made visible')
   }
@@ -1567,7 +1604,7 @@ export function JobSheetSpreadsheet() {
     staff_name: '',
     start_time: '', end_time: '', duty_hours: 0, ot_hours: 0, address: '', area: '',
     charges: 0, received: 0, payment_mode: 'Cash', is_overtime: false, material: 'No', remarks: '',
-    created_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
   })
 
   /** Paste a block copied from Excel / Google Sheets at the active cell; adds rows as needed (UX-32) */
@@ -1662,6 +1699,23 @@ export function JobSheetSpreadsheet() {
       }
     } else {
       ;(row as any)[colId] = trimmed
+    }
+
+    // ── Conflict / Overlap Error Handling: Detect if cleaner is already assigned/engaged at this time ──
+    const targetStaff = colId === 'staff_name' ? trimmed : (row.staff_name || '')
+    const targetStart = colId === 'start_time' ? (row.start_time || '') : (row.start_time || '')
+    const targetEnd = colId === 'end_time' ? (row.end_time || '') : (row.end_time || '')
+    if (targetStaff && targetStart && targetEnd && targetStart !== '—' && targetEnd !== '—') {
+      const staffKey = targetStaff.trim().toLowerCase()
+      const clashingJob = updated.find((other, oIdx) => {
+        if (oIdx === rowIdx) return false
+        if ((other.staff_name || '').trim().toLowerCase() !== staffKey) return false
+        if (!other.start_time || !other.end_time || other.start_time === '—' || other.end_time === '—') return false
+        return checkTimesOverlap(targetStart, targetEnd, other.start_time, other.end_time)
+      })
+      if (clashingJob) {
+        showToast(`⚠️ Cleaner Clash Error: ${targetStaff} is already engaged from ${clashingJob.start_time} to ${clashingJob.end_time}!`)
+      }
     }
 
     // If editing staff_name, synchronize all rows in this staff member's block so they stay together
@@ -1811,6 +1865,7 @@ export function JobSheetSpreadsheet() {
       received: 0,
       payment_mode: 'Cash',
       remarks: '',
+      is_overtime: false,
       created_at: new Date().toISOString()
     }
     const updated = [...gridRows]
@@ -1837,6 +1892,7 @@ export function JobSheetSpreadsheet() {
       received: 0,
       payment_mode: 'Cash',
       remarks: '',
+      is_overtime: false,
       created_at: new Date().toISOString()
     }))
     const updated = [...gridRows, ...newJobs]
@@ -2595,25 +2651,7 @@ export function JobSheetSpreadsheet() {
             )}
           </div>
 
-          {/* ── Reset & Eye Icons in Header (As Requested) ── */}
-          <div className="flex items-center bg-black/20 rounded-xl p-0.5 border border-white/20">
-            <button
-              type="button"
-              onClick={resetColumnOrder}
-              className="p-1.5 rounded-lg text-white/90 hover:text-white hover:bg-white/20 transition-colors cursor-pointer"
-              title="Reset Column Sequence to Default"
-            >
-              <RotateCcw size={15} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowColumnsModal(true)}
-              className="p-1.5 rounded-lg text-white/90 hover:text-white hover:bg-white/20 transition-colors cursor-pointer"
-              title="Customize Columns (Show/Hide & Sequence)"
-            >
-              <Eye size={15} />
-            </button>
-          </div>
+
 
           {/* ── Dedicated Add Job Button ── */}
           <button
@@ -2880,43 +2918,65 @@ export function JobSheetSpreadsheet() {
       <datalist id="xl-area">{areaOptions.map(n => <option key={n} value={n} />)}</datalist>
       <datalist id="xl-service">{serviceOptions.map(n => <option key={n} value={n} />)}</datalist>
 
-      {/* ── Sub-Bar: Filter Displays ('Monthly', 'Cash', 'Online', 'Pending' replacing column presets) + Mode Icons & Search ── */}
+      {/* ── Sub-Bar: Search on Left + Flat Borderless Filter Tabs + Action Controls & Mode Icons at Right ── */}
       <div className="bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between gap-3 text-[12px] shrink-0 shadow-2xs">
-        {/* Displays: ALL, Monthly, Cash, Online, Pending */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">Filter:</span>
-          {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending'] as const).map(tab => {
-            const count = tab === 'ALL' ? filterCounts.all : filterCounts[tab.toLowerCase() as keyof typeof filterCounts]
-            const isActive = paymentModeFilter === tab
-            const themeClass = {
-              ALL: isActive ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-100',
-              Monthly: isActive ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-indigo-50/50 text-indigo-800 border-indigo-200 hover:border-indigo-300 hover:bg-indigo-50',
-              Cash: isActive ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' : 'bg-emerald-50/50 text-emerald-800 border-emerald-200 hover:border-emerald-300 hover:bg-emerald-50',
-              Online: isActive ? 'bg-sky-600 text-white border-sky-600 shadow-sm' : 'bg-sky-50/50 text-sky-800 border-sky-200 hover:border-sky-300 hover:bg-sky-50',
-              Pending: isActive ? 'bg-rose-600 text-white border-rose-600 shadow-sm' : 'bg-rose-50/50 text-rose-800 border-rose-200 hover:border-rose-300 hover:bg-rose-50',
-            }[tab]
-
-            return (
+        {/* Left: Search input first, then flat borderless filter buttons */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* 1. Search Input First on Far Left */}
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search staff, location, client..."
+              value={filterSearch}
+              onChange={e => setFilterSearch(e.target.value)}
+              className="pl-8 pr-7 py-1.5 text-[12px] border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:border-emerald-600 w-44 sm:w-56 font-medium text-slate-800 placeholder:text-slate-400 transition-all shadow-2xs"
+            />
+            {filterSearch && (
               <button
-                key={tab}
-                type="button"
-                onClick={() => setPaymentModeFilter(tab)}
-                className={`px-3 py-1.5 rounded-xl border font-bold text-[11.5px] transition-all cursor-pointer flex items-center gap-1.5 ${themeClass}`}
+                onClick={() => setFilterSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
               >
-                <span>{tab}</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                  isActive ? 'bg-white/25 text-white' : 'bg-white text-slate-800 shadow-2xs'
-                }`}>
-                  {count}
-                </span>
+                <X size={12} />
               </button>
-            )
-          })}
+            )}
+          </div>
+
+          {/* 2. Flat Borderless Filter Buttons: ALL, Monthly, Cash, Online, Pending */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending'] as const).map(tab => {
+              const count = tab === 'ALL' ? filterCounts.all : filterCounts[tab.toLowerCase() as keyof typeof filterCounts]
+              const isActive = paymentModeFilter === tab
+              const flatStyle = {
+                ALL: isActive ? 'bg-slate-900 text-white' : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700',
+                Monthly: isActive ? 'bg-indigo-600 text-white' : 'bg-indigo-50/70 hover:bg-indigo-100/80 text-indigo-900',
+                Cash: isActive ? 'bg-emerald-600 text-white' : 'bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-900',
+                Online: isActive ? 'bg-sky-600 text-white' : 'bg-sky-50/70 hover:bg-sky-100/80 text-sky-900',
+                Pending: isActive ? 'bg-rose-600 text-white' : 'bg-rose-50/70 hover:bg-rose-100/80 text-rose-900',
+              }[tab]
+
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setPaymentModeFilter(tab)}
+                  className={`px-3 py-1.5 rounded-xl border-0 font-bold text-[11.5px] transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs ${flatStyle}`}
+                >
+                  <span>{tab}</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                    isActive ? 'bg-white/25 text-white' : 'bg-white/90 text-slate-800 shadow-2xs'
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
 
-        {/* Right side: 'Add New Empty Row' button + Mode Switcher + Search */}
+        {/* Right side: 'Add New Empty Row' + Reset & Eye icons + View Mode Switcher at End */}
         <div className="flex items-center gap-2.5">
-          {/* ── Add New Empty Row Button (Dedicated Toolbar Action) ── */}
+          {/* Add New Empty Row Button */}
           <button
             type="button"
             onClick={handleAddBlankCleanerBlock}
@@ -2927,7 +2987,27 @@ export function JobSheetSpreadsheet() {
             <span>Add New Empty Row</span>
           </button>
 
-          {/* Mode Switcher: Icons only (Replaces text as requested) */}
+          {/* Reset Column Sequence & Customize Columns (Eye) Adjusted from Header */}
+          <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 shadow-2xs">
+            <button
+              type="button"
+              onClick={resetColumnOrder}
+              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white transition-colors cursor-pointer"
+              title="Reset Column Sequence to Default"
+            >
+              <RotateCcw size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowColumnsModal(true)}
+              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white transition-colors cursor-pointer"
+              title="Customize Columns (Show/Hide & Sequence)"
+            >
+              <Eye size={14} />
+            </button>
+          </div>
+
+          {/* Mode Switcher: Icons only at the very right end */}
           <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-2xs">
             <button
               type="button"
@@ -2959,23 +3039,6 @@ export function JobSheetSpreadsheet() {
             >
               <Layers size={15} />
             </button>
-          </div>
-
-          {/* Search Input */}
-          <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
-            <input
-              type="text"
-              value={filterSearch}
-              onChange={e => setFilterSearch(e.target.value)}
-              placeholder="Search staff, location, mode..."
-              className="w-44 h-8 pl-8 pr-2.5 text-[11px] bg-slate-50 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-600 focus:w-56 transition-all font-medium shadow-2xs"
-            />
-            {filterSearch && (
-              <button onClick={() => setFilterSearch('')} className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 cursor-pointer">
-                <X size={12} />
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -3014,7 +3077,7 @@ export function JobSheetSpreadsheet() {
                   onDragEnd={() => { setDraggedColId(null); setDragOverColId(null) }}
                   style={{ width: col.width }}
                   className={`px-2.5 py-1.5 border-r border-slate-300 text-left whitespace-nowrap cursor-grab active:cursor-grabbing select-none transition-colors ${
-                    dragOverColId === col.id ? 'bg-emerald-100 border-l-4 border-l-emerald-600' : ''
+                    col.id === 'pending' ? 'bg-red-600 text-white font-black text-center' : dragOverColId === col.id ? 'bg-emerald-100 border-l-4 border-l-emerald-600' : ''
                   } ${draggedColId === col.id ? 'opacity-40' : ''}`}
                   title="Drag column to reorder sequence"
                 >
@@ -3250,33 +3313,31 @@ export function JobSheetSpreadsheet() {
                                             ? 'font-black text-white tracking-wide'
                                             : 'text-slate-100 font-medium'
                                   }>
-                                    {displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '—'}
+                                    {col.id === 'address' ? cleanAddressDisplay(displayVal) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '—')}
                                   </span>
                                 )}
                               </td>
                             )
                           })}
 
-                          {/* Action Column: Edit + Delete (Black Buttons) */}
-                          <td className="w-28 border-r border-slate-200 text-center px-1">
+                          {/* Action Column: Solid Black Icon Buttons Only */}
+                          <td className="w-20 border-r border-slate-200 text-center px-1">
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditModal(row, globalIndex)}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-black hover:bg-slate-800 text-white font-bold text-[10.5px] shadow-xs cursor-pointer transition-colors"
+                                className="p-1.5 rounded-lg bg-black hover:bg-slate-800 text-white shadow-xs cursor-pointer transition-colors"
                                 title="Edit entry"
                               >
-                                <Pencil size={11} className="text-white" />
-                                <span>Edit</span>
+                                <Pencil size={12} className="text-white" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteRow(globalIndex)}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-black hover:bg-rose-950 text-white font-bold text-[10.5px] shadow-xs cursor-pointer transition-colors"
+                                className="p-1.5 rounded-lg bg-black hover:bg-rose-950 text-white shadow-xs cursor-pointer transition-colors"
                                 title="Delete row"
                               >
-                                <Trash2 size={11} className="text-white" />
-                                <span>Delete</span>
+                                <Trash2 size={12} className="text-white" />
                               </button>
                             </div>
                           </td>
@@ -3306,12 +3367,12 @@ export function JobSheetSpreadsheet() {
                 const isMonthlyRow = row.payment_mode === 'Monthly'
 
                 // ── Block Perimeter Borders: 2.5px solid boundary between cleaners ──
-                const blockTopBorder = isFirstInBlock ? `2.5px solid ${palette.solidBorder}` : '1px solid #e2e8f0'
-                const blockBottomBorder = isLastInBlock ? `2.5px solid ${palette.solidBorder}` : '1px solid #e2e8f0'
+                const blockTopBorder = isFirstInBlock ? '2px solid #0f172a' : '1px solid #cbd5e1'
+                const blockBottomBorder = isLastInBlock ? '2px solid #0f172a' : '1px solid #cbd5e1'
 
                 // Row background: Monthly gets soft green tint (row 11 in Excel); otherwise clean neutral
                 const rowBg = isMonthlyRow
-                  ? (palette.isLight ? '#ecfdf5' : 'rgba(6, 78, 59, 0.4)')
+                  ? '#c6efce'
                   : (palette.isLight ? '#ffffff' : palette.solidBg)
 
                 return (
@@ -3367,32 +3428,23 @@ export function JobSheetSpreadsheet() {
                                 autoFocus
                               />
                             ) : (
-                              <div className="flex flex-col items-center justify-center h-full gap-2 min-h-[75px]">
-                                <div className="flex items-center gap-1.5 justify-center flex-wrap">
-                                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10.5px] font-black shadow-2xs ${
-                                    palette.isLight ? 'bg-emerald-600 text-white' : palette.badgeBg + ' ' + palette.badgeText
-                                  }`}>
-                                    {(blockInfo?.staffName || '?').trim()[0]?.toUpperCase() || '?'}
-                                  </span>
-                                  <span className={`font-black text-[13px] tracking-tight ${
-                                    palette.isLight ? 'text-slate-900' : 'text-white'
-                                  }`}>
-                                    {blockInfo?.staffName || 'Select Staff'}
-                                  </span>
-                                </div>
+                              <div className="flex flex-col items-center justify-center h-full min-h-[68px] relative group/staff">
+                                <span className="font-bold text-[13px] text-slate-900 tracking-tight select-text">
+                                  {blockInfo?.staffName || '—'}
+                                </span>
 
-                                {/* Dedicated '+ Row' button to expand this cleaner's block */}
+                                {/* Subtle hover '+ Row' button to expand this cleaner's block */}
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     handleAddRowToStaff(blockInfo?.staffName || '', blockInfo?.lastRowIdx ?? targetIdx)
                                   }}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-600 hover:bg-emerald-500 text-white shadow-2xs transition-all cursor-pointer opacity-85 group-hover/staff:opacity-100 active:scale-95"
-                                  title={`Add new row to expand ${blockInfo?.staffName || 'this cleaner'}'s block`}
+                                  className="opacity-0 group-hover/staff:opacity-100 transition-opacity absolute bottom-0.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-slate-800 hover:bg-slate-900 text-white shadow-2xs cursor-pointer"
+                                  title={`Add row to ${blockInfo?.staffName || 'this cleaner'}`}
                                 >
-                                  <Plus size={10} className="stroke-[3]" />
-                                  <span>Add Row</span>
+                                  <Plus size={9} className="stroke-[3]" />
+                                  <span>Row</span>
                                 </button>
                               </div>
                             )}
@@ -3406,13 +3458,30 @@ export function JobSheetSpreadsheet() {
 
                       let rawVal = row[col.id as keyof DailyJob]
                       let displayVal: any = rawVal
+                      const isBlankShift = !row.address && !row.start_time && !row.end_time && cleanNum(row.charges) === 0 && cleanNum(row.received) === 0
+                      const pendVal = rowPending(row)
+                      const isPendingDue = col.id === 'pending' && pendVal > 0
 
                       if (col.id === 'pending') {
-                        displayVal = rowPending(row)
+                        if (isBlankShift) {
+                          displayVal = ''
+                        } else if (pendVal > 0) {
+                          displayVal = pendVal
+                        } else {
+                          displayVal = 'Nil'
+                        }
+                      } else if (col.id === 'ot_hours') {
+                        const ot = cleanNum(rawVal)
+                        displayVal = isBlankShift ? '' : (ot > 0 ? ot.toFixed(2) : '0.00')
+                      } else if (col.id === 'duty_hours') {
+                        const d = cleanNum(rawVal)
+                        displayVal = d > 0 ? d.toFixed(2) : ''
                       } else if (col.id === 'start_time' || col.id === 'end_time') {
-                        displayVal = rawVal ? formatTime12h(rawVal) : '—'
+                        displayVal = rawVal ? formatTime12h(rawVal) : ''
+                      } else if (col.id === 'material') {
+                        displayVal = rawVal ? (String(rawVal).toUpperCase() === 'NO' ? 'NO' : String(rawVal).toUpperCase() === 'YES' ? 'YES' : String(rawVal)) : ''
                       } else if (col.type === 'number') {
-                        displayVal = cleanNum(displayVal)
+                        displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 && !isBlankShift ? 0 : '')
                       }
 
                       return (
@@ -3423,7 +3492,8 @@ export function JobSheetSpreadsheet() {
                           onContextMenu={e => handleContextMenu(e, targetIdx, row)}
                           style={{
                             width: col.width,
-                            backgroundColor: isCellActive ? (palette.isLight ? '#ffffff' : '#090d16') : rowBg,
+                            backgroundColor: isPendingDue ? '#dc2626' : (isCellActive ? (palette.isLight ? '#ffffff' : '#090d16') : rowBg),
+                            color: isPendingDue ? '#ffffff' : undefined,
                             borderTop: blockTopBorder,
                             borderBottom: blockBottomBorder,
                             borderRight: palette.isLight ? '1px solid #cbd5e1' : '1px solid rgba(255, 255, 255, 0.12)',
@@ -3460,51 +3530,51 @@ export function JobSheetSpreadsheet() {
                             )
                           ) : (
                             <span className={
-                              col.id === 'charges'
-                                ? (palette.isLight ? 'text-indigo-950 font-black' : 'text-amber-300 font-black drop-shadow-xs')
-                                : col.id === 'received'
-                                  ? (palette.isLight ? 'text-emerald-950 font-black' : 'text-emerald-300 font-black drop-shadow-xs')
-                                  : col.id === 'pending' && cleanNum(displayVal) > 0
-                                    ? 'text-white font-black bg-red-600 px-2 py-0.5 rounded text-[11px] shadow-2xs'
-                                    : col.id === 'address' && isMonthlyRow
-                                      ? 'text-emerald-900 font-bold'
-                                      : (palette.isLight ? 'text-slate-800 font-medium' : 'text-slate-100 font-medium')
+                              isPendingDue
+                                ? 'text-white font-black text-[12px]'
+                                : col.id === 'pending' && displayVal === 'Nil'
+                                  ? 'text-slate-800 font-bold'
+                                  : col.id === 'charges'
+                                    ? 'text-slate-900 font-bold'
+                                    : col.id === 'received'
+                                      ? 'text-slate-900 font-bold'
+                                      : col.id === 'address' && isMonthlyRow
+                                        ? 'text-emerald-950 font-bold'
+                                        : 'text-slate-800 font-medium'
                             }>
-                              {displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '—'}
+                              {col.id === 'address' ? cleanAddressDisplay(displayVal) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
                             </span>
                           )}
                         </td>
                       )
                     })}
 
-                    {/* Action Column: Edit + Delete (Black Buttons) */}
+                    {/* Action Column: Solid Black Icon Buttons Only */}
                     <td
                       style={{
-                        backgroundColor: palette.solidBg,
+                        backgroundColor: rowBg,
                         borderRight: `5px solid ${palette.solidBorder}`,
                         borderTop: blockTopBorder,
                         borderBottom: blockBottomBorder,
                       }}
-                      className="w-28 text-center px-1"
+                      className="w-20 text-center px-1"
                     >
                       <div className="flex items-center justify-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => handleOpenEditModal(row, targetIdx)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-black hover:bg-slate-800 text-white font-bold text-[10.5px] shadow-xs cursor-pointer transition-colors"
+                          className="p-1.5 rounded-lg bg-black hover:bg-slate-800 text-white shadow-xs cursor-pointer transition-colors"
                           title="Edit entry"
                         >
-                          <Pencil size={11} className="text-white" />
-                          <span>Edit</span>
+                          <Pencil size={12} className="text-white" />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteRow(targetIdx)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-black hover:bg-rose-950 text-white font-bold text-[10.5px] shadow-xs cursor-pointer transition-colors"
+                          className="p-1.5 rounded-lg bg-black hover:bg-rose-950 text-white shadow-xs cursor-pointer transition-colors"
                           title="Delete row"
                         >
-                          <Trash2 size={11} className="text-white" />
-                          <span>Delete</span>
+                          <Trash2 size={12} className="text-white" />
                         </button>
                       </div>
                     </td>
@@ -4040,10 +4110,30 @@ export function JobSheetSpreadsheet() {
         <Modal
           open={showAddJobModal}
           onClose={() => setShowAddJobModal(false)}
-          title="Add New Daily Job Entry"
-          size="lg"
+          title="Add Job Entry"
+          size="2xl"
+          className="max-w-6xl w-full"
+          headerActions={
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddJobModal(false)}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-[12px] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="add-job-entry-form"
+                className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[12.5px] shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <Plus size={15} className="stroke-[3]" />
+                <span>Save</span>
+              </button>
+            </div>
+          }
         >
-          <div className="p-4 max-h-[85vh] overflow-y-auto">
+          <div className="p-2">
             <AddJobForm
               employees={employees}
               clients={clients}

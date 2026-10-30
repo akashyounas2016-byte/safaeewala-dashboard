@@ -1292,22 +1292,30 @@ export function getScheduledMonthlyShiftsForDate(
 
     const { cleanerName, startTime, endTime, durationHours } = getClientShiftDetailsForDay(client, dayName)
 
-    // Format address with building and client name
+    // Format address with building and client name (ensuring '(Monthly)' appears at most once)
     const bldg = (client.building_name || '').trim()
     const apt = (client.apartment || '').trim()
     const bldgApt = [bldg, apt ? `Apt ${apt}` : ''].filter(Boolean).join(' ')
     const clientName = (client.full_name || 'Monthly Client').trim()
 
-    let formattedAddr = ''
+    let baseAddr = ''
     if (bldgApt && clientName && !bldgApt.toLowerCase().includes(clientName.toLowerCase())) {
-      formattedAddr = `${bldgApt} - ${clientName} (Monthly)`
+      baseAddr = `${bldgApt} - ${clientName}`
     } else if (bldgApt) {
-      formattedAddr = `${bldgApt} (Monthly)`
+      baseAddr = bldgApt
     } else if ((client as any).address) {
-      formattedAddr = `${(client as any).address} - ${clientName} (Monthly)`
+      baseAddr = `${(client as any).address} - ${clientName}`
     } else {
-      formattedAddr = `${clientName} (Monthly)`
+      baseAddr = clientName
     }
+
+    const cleanBase = baseAddr
+      .replace(/\s*\((?:Monthly|monthly)\)/gi, '')
+      .replace(/\bMonthly\b/gi, '')
+      .replace(/\s*-\s*$/, '')
+      .trim()
+
+    const formattedAddr = cleanBase ? `${cleanBase} (Monthly)` : `${clientName} (Monthly)`
 
     const area = client.area || 'Dubai'
 

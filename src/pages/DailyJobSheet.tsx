@@ -3398,18 +3398,28 @@ CREATE TABLE daily_expenses (
         size="2xl"
         className="max-w-6xl w-full"
         headerActions={
-          <button
-            type="submit"
-            form="add-job-entry-form"
-            className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[12.5px] shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <Plus size={15} className="stroke-[3]" />
-            <span>Add Job</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAddJob(false)}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-[12px] transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="add-job-entry-form"
+              className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[12.5px] shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <Plus size={15} className="stroke-[3]" />
+              <span>Add Job</span>
+            </button>
+          </div>
         }
       >
         <AddJobForm
           employees={availableEmps}
+          clients={clients}
           onClose={() => setShowAddJob(false)}
           onSave={j => { addDailyJob({ ...j, date: selectedDate }); setShowAddJob(false) }}
           key={addJobStaff || 'new'}
