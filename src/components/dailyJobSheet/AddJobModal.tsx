@@ -572,9 +572,9 @@ export function AddJobForm({
   return (
     <form id="add-job-entry-form" onSubmit={handleSubmit} className="text-slate-800">
       {/* ── TOP 4 CARDS: 2x2 EQUAL BALANCED 50/50 GRID ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         {/* CARD 1: Staff, Team & Date (50% Width) */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 h-full flex flex-col justify-between">
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3 flex flex-col justify-start">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
@@ -616,21 +616,24 @@ export function AddJobForm({
               </div>
             </div>
 
-            {/* Conditional Multi-Cleaner Team Field */}
+            {/* Conditional Multi-Cleaner Team Field (Horizontal & Compact) */}
             {selectedStaff.length >= 2 && (
               <div className="pt-2 border-t border-slate-100 animate-in fade-in slide-in-from-top-1 duration-200">
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between mb-1">
                   <label className="text-[11px] font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
                     <Users size={12} className="text-indigo-600" />
-                    Team Reference <span className="text-slate-400 font-normal lowercase">(auto-generated)</span>
+                    Team Reference <span className="text-slate-400 font-normal lowercase">(auto)</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setTeamName(defaultTeamName)}
-                    className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
-                  >
-                    Reset
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-slate-500">Lead: <span className="text-indigo-700">{selectedStaff[0]}</span></span>
+                    <button
+                      type="button"
+                      onClick={() => setTeamName(defaultTeamName)}
+                      className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  </div>
                 </div>
                 <div className="relative">
                   <input
@@ -638,21 +641,18 @@ export function AddJobForm({
                     value={teamName}
                     onChange={e => setTeamName(e.target.value)}
                     placeholder="e.g. Team A, Team Alpha…"
-                    className="w-full text-[13px] px-3.5 py-2 min-h-[40px] border border-indigo-200 rounded-xl bg-indigo-50/40 text-indigo-950 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-2xs"
+                    className="w-full text-[12.5px] px-3 py-1.5 min-h-[38px] border border-indigo-200 rounded-xl bg-indigo-50/40 text-indigo-950 font-bold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-2xs"
                   />
-                  <span className="absolute right-2.5 top-2 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
-                    Lead: {selectedStaff[0]}
-                  </span>
                 </div>
-                <p className="text-[10.5px] text-slate-500 mt-1">
-                  Received payment recorded under <b>{selectedStaff[0]}</b>; others display reference <b>{teamName || defaultTeamName}</b>.
+                <p className="text-[10px] text-slate-500 mt-1 leading-tight">
+                  Payment recorded under <b>{selectedStaff[0]}</b>; other cleaner rows display reference <b>{teamName || defaultTeamName}</b>.
                 </p>
               </div>
             )}
           </div>
 
-        {/* CARD 2: Address & Location (Improved Building & Area Dropdowns matching Staff Name style) */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 h-full flex flex-col justify-between">
+        {/* CARD 2: Address & Location (Clean Dropdown matching Existing Clients & Custom Entry) */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3 flex flex-col justify-start">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
                 <MapPin size={15} />
@@ -662,14 +662,14 @@ export function AddJobForm({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
 
-              {/* Building Dropdown — Styled identical to CleanerMultiSelect */}
+              {/* Address Dropdown */}
               <div className="relative" ref={buildingRef}>
                 <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
-                  <span>Building / Client</span>
-                  <span className="text-red-500">*</span>
+                  <span>Address <span className="text-red-500">*</span></span>
+                  <span className="text-slate-400 text-[10px] normal-case">Clients / Custom</span>
                 </label>
 
-                {/* Building Trigger Box */}
+                {/* Address Trigger Box */}
                 <div
                   onClick={() => setBuildingDropdownOpen(prev => !prev)}
                   className={`w-full flex items-center justify-between border rounded-xl transition-all cursor-pointer px-3.5 py-2 text-[13px] min-h-[42px] ${
@@ -685,7 +685,7 @@ export function AddJobForm({
                     {address ? (
                       <span className="font-bold text-slate-900 truncate">{address}</span>
                     ) : (
-                      <span className="text-slate-400 truncate">Select or enter building…</span>
+                      <span className="text-slate-400 truncate">Select or enter address…</span>
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -710,7 +710,7 @@ export function AddJobForm({
                   </div>
                 </div>
 
-                {/* Building Dropdown Popover */}
+                {/* Address Dropdown Popover */}
                 {buildingDropdownOpen && (
                   <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl p-2 animate-in fade-in slide-in-from-top-1 duration-150 max-h-64 flex flex-col">
                     {/* Search Bar */}
@@ -721,31 +721,24 @@ export function AddJobForm({
                         type="text"
                         value={buildingSearch}
                         onChange={e => setBuildingSearch(e.target.value)}
-                        placeholder="Search building or client…"
+                        placeholder="Search address or client…"
                         className="w-full text-[12.5px] pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-medium"
                       />
                     </div>
 
-                    {/* Custom Value Option if typing custom building / new client */}
+                    {/* Custom Value Option if typing custom address */}
                     {buildingSearch.trim() && (
                       <div
                         onClick={() => {
                           const val = buildingSearch.trim()
                           setAddress(val)
+                          setHasConfirmedUnregistered(true)
                           setBuildingDropdownOpen(false)
-                          const isReg = clients.some(c =>
-                            c.full_name?.toLowerCase().trim() === val.toLowerCase() ||
-                            c.building_name?.toLowerCase().trim() === val.toLowerCase()
-                          )
-                          if (!isReg) {
-                            setUnregisteredClientName(val)
-                            setShowQuickClientModal(true)
-                          }
                         }}
                         className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[12px] font-bold flex items-center gap-2 cursor-pointer mb-1 shrink-0"
                       >
-                        <Plus size={13} className="text-emerald-700" />
-                        <span>Use custom / register client: &ldquo;{buildingSearch.trim()}&rdquo;</span>
+                        <Plus size={13} className="text-emerald-700 stroke-[3]" />
+                        <span>Use custom address: &ldquo;{buildingSearch.trim()}&rdquo;</span>
                       </div>
                     )}
 
@@ -753,7 +746,7 @@ export function AddJobForm({
                     <div className="overflow-y-auto flex-1 space-y-0.5 divide-y divide-slate-100">
                       {filteredBuildings.length === 0 && !buildingSearch.trim() ? (
                         <div className="py-4 text-center text-[12px] text-slate-400">
-                          No clients or buildings found
+                          No registered clients found
                         </div>
                       ) : (
                         filteredBuildings.map(item => {
@@ -785,7 +778,7 @@ export function AddJobForm({
                 )}
               </div>
 
-              {/* Area Dropdown with Suggestions & Custom Entry — Styled identical to CleanerMultiSelect */}
+              {/* Area Dropdown with Suggestions & Custom Entry */}
               <div className="relative" ref={areaRef}>
                 <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
                   <span>Location / Area</span>
@@ -889,19 +882,12 @@ export function AddJobForm({
           </div>
 
         {/* CARD 3: Timing & Responsive Hours (12-Hour AM/PM Format & Auto Overtime) */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 h-full flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
-                  <Clock size={15} />
-                </div>
-                <h4 className="text-[13px] font-bold text-slate-900">Timing & Duty Hours</h4>
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 flex flex-col justify-start">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
+                <Clock size={15} />
               </div>
-              {Number(otHours) > 0 && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-100 text-amber-800 border border-amber-300">
-                  +{otHours}h OT
-                </span>
-              )}
+              <h4 className="text-[13px] font-bold text-slate-900">Timing & Duty Hours</h4>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-end">
@@ -951,7 +937,7 @@ export function AddJobForm({
           </div>
 
         {/* CARD 4: Charges & Payment Mode */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 h-full flex flex-col justify-between">
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 flex flex-col justify-start">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
                 <CreditCard size={15} />

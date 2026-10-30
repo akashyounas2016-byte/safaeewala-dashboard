@@ -35,6 +35,7 @@ import {
   buildPendingCalcContext,
   calcJobCollectable,
   getAssignableClients,
+  splitStaffNames,
   type ScheduledShiftPlan,
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
@@ -91,6 +92,7 @@ export function cleanAddressDisplay(val: unknown): string {
 
 export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
   { id: 'staff_name',   label: 'Staff',      width: '140px', type: 'text',   formulaHint: 'Staff member name' },
+  { id: 'team_name',    label: 'Team',       width: '95px',  type: 'text',   formulaHint: 'Team reference (e.g. Team A)' },
   { id: 'start_time',   label: 'Start time', width: '100px', type: 'time',   formulaHint: 'e.g. 10:00 AM' },
   { id: 'end_time',     label: 'End time',   width: '100px', type: 'time',   formulaHint: 'e.g. 03:00 PM' },
   { id: 'address',      label: 'Address',    width: '230px', type: 'text',   formulaHint: 'Client name & address' },
@@ -838,6 +840,84 @@ const isBlankNewRow = (r: DailyJob) =>
   !String(r.address || '').trim() && !String(r.area || '').trim() && cleanNum(r.charges) === 0 &&
   cleanNum(r.received) === 0 && !String(r.remarks || '').trim()
 
+export interface MultiCleanerPaymentInfo {
+  isMultiCleaner: boolean
+  isPrimary: boolean
+  isSecondary: boolean
+  primaryCleaner: string
+  teamRef: string
+  allCleaners: string[]
+}
+
+/**
+ * Multi-Cleaner Payment Referencing Helper:
+ * If multiple cleaners are assigned to the same address on that date:
+ * - Primary cleaner row holds full charges & received payment.
+ * - Secondary cleaner rows show reference to primary cleaner & team (e.g. "Included (Team A)", "Team A (Ref: Adnan)").
+ */
+export function getMultiCleanerPaymentInfo(row: DailyJob | undefined, allRows: DailyJob[]): MultiCleanerPaymentInfo | null {
+  if (!row) return null
+
+  // 1. Explicitly flagged secondary cleaner split shift
+  if ((row as any)._isSecondaryCleaner) {
+    return {
+      isMultiCleaner: true,
+      isPrimary: false,
+      isSecondary: true,
+      primaryCleaner: (row as any)._primaryCleanerName || 'Primary Cleaner',
+      teamRef: (row as any)._teamReference || row.team_name || 'Team A',
+      allCleaners: (row as any)._allCleaners || [],
+    }
+  }
+
+  // 2. Identify shared address shifts on the same date
+  const addr = (row.address || '').trim().toLowerCase()
+  if (!addr || !row.start_time) return null
+
+  const rowDate = row.date || todayDubai()
+  const matchingRows = allRows.filter(r => {
+    const rAddr = (r.address || '').trim().toLowerCase()
+    const rDate = r.date || todayDubai()
+    return rAddr === addr && rDate === rowDate && (r.staff_name || '').trim() && r.start_time
+  })
+
+  if (matchingRows.length <= 1) {
+    if ((row as any)._isPrimaryCleaner) {
+      return {
+        isMultiCleaner: true,
+        isPrimary: true,
+        isSecondary: false,
+        primaryCleaner: row.staff_name,
+        teamRef: (row as any)._teamReference || row.team_name || 'Team A',
+        allCleaners: [row.staff_name],
+      }
+    }
+    return null
+  }
+
+  // Distinct cleaner names at this address
+  const cleanerNames = Array.from(new Set(matchingRows.map(r => r.staff_name.trim()))).filter(Boolean)
+  if (cleanerNames.length <= 1) return null
+
+  // Primary cleaner row: either has _isPrimaryCleaner, positive charges/received, or first row in sequence
+  const primaryRow =
+    matchingRows.find(r => (r as any)._isPrimaryCleaner) ||
+    matchingRows.find(r => cleanNum(r.charges) > 0 || cleanNum(r.received) > 0) ||
+    matchingRows[0]
+
+  const isPrimary = row.id === primaryRow.id
+  const teamRef = primaryRow.team_name || row.team_name || 'Team A'
+
+  return {
+    isMultiCleaner: true,
+    isPrimary,
+    isSecondary: !isPrimary,
+    primaryCleaner: primaryRow.staff_name || 'Primary Cleaner',
+    teamRef,
+    allCleaners: cleanerNames,
+  }
+}
+
 /** Ensures that every staff member present in the job list has at least 3 fixed rows (padded with blank shift rows) */
 export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): DailyJob[] {
   if (jobs.length === 0) {
@@ -845,6 +925,7 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
       id: newRowId('new_cleaner'),
       date: targetDate,
       staff_name: '',
+      team_name: '',
       start_time: '',
       end_time: '',
       duty_hours: 0,
@@ -861,10 +942,61 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
     }))
   }
 
+  // 1. Pre-assign Team References to jobs with multiple cleaners
+  const multiCleanerTeamMap = new Map<string, string>()
+  let teamCounter = 0
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  jobs.forEach(job => {
+    const cleaners = splitStaffNames(job.staff_name || '')
+    if (cleaners.length > 1) {
+      if (job.team_name && job.team_name.trim()) {
+        multiCleanerTeamMap.set(job.id, job.team_name.trim())
+      } else {
+        multiCleanerTeamMap.set(job.id, `Team ${letters[teamCounter % letters.length]}`)
+        teamCounter++
+      }
+    }
+  })
+
+  // 2. Expand multi-cleaner jobs into separate rows for each cleaner
+  // Primary cleaner holds the charges & received amount so figures are accurate and not duplicated.
+  // Secondary cleaners hold 0 charges/received and display team & primary cleaner references.
+  const expandedJobs: DailyJob[] = []
+  jobs.forEach(job => {
+    const cleaners = splitStaffNames(job.staff_name || '')
+    if (cleaners.length <= 1) {
+      expandedJobs.push(job)
+    } else {
+      const teamRef = multiCleanerTeamMap.get(job.id) || job.team_name || 'Team A'
+      const primaryCleaner = cleaners[0].trim()
+      cleaners.forEach((cleaner, cIdx) => {
+        const isPrimary = cIdx === 0
+        expandedJobs.push({
+          ...job,
+          id: isPrimary ? job.id : `${job.id}-cleaner-${cleaner.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+          staff_name: cleaner.trim(),
+          team_name: teamRef,
+          charges: isPrimary ? cleanNum(job.charges) : 0,
+          received: isPrimary ? cleanNum(job.received) : 0,
+          payment_mode: isPrimary ? job.payment_mode : ('Above' as any),
+          _isSplitShift: true,
+          _isPrimaryCleaner: isPrimary,
+          _isSecondaryCleaner: !isPrimary,
+          _primaryCleanerName: primaryCleaner,
+          _teamReference: teamRef,
+          _allCleaners: cleaners,
+          _cleanerIndex: cIdx + 1,
+          _originalJobId: job.id,
+        } as DailyJob)
+      })
+    }
+  })
+
+  // 3. Group expanded jobs by individual staff member
   const staffGroups = new Map<string, DailyJob[]>()
   const staffKeysOrder: string[] = []
 
-  jobs.forEach(job => {
+  expandedJobs.forEach(job => {
     const key = (job.staff_name || '').trim().toLowerCase()
     if (!staffGroups.has(key)) {
       staffGroups.set(key, [])
@@ -883,6 +1015,7 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
         id: newRowId(`blank_${key || 'unassigned'}`),
         date: targetDate,
         staff_name: repName,
+        team_name: '',
         start_time: '',
         end_time: '',
         duty_hours: 0,
@@ -894,8 +1027,8 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
         received: 0,
         payment_mode: '' as any,
         remarks: '',
-      is_overtime: false,
-      created_at: new Date().toISOString(),
+        is_overtime: false,
+        created_at: new Date().toISOString(),
       }
       list.push(blankRow)
       result.push(blankRow)
@@ -910,9 +1043,9 @@ const DRAFT_PREFIX = 'safaeewala_excel_draft:' // local only, never cloud-synced
 /** Column presets (UX-39) — the columns each preset shows */
 const COLUMN_PRESETS: Record<string, string[] | null> = {
   'All columns': null,
-  Cashier: ['staff_name', 'address', 'material', 'charges', 'received', 'pending', 'payment_mode', 'remarks'],
+  Cashier: ['staff_name', 'team_name', 'address', 'material', 'charges', 'received', 'pending', 'payment_mode', 'remarks'],
   Payroll: ['staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'remarks'],
-  Ops: ['staff_name', 'start_time', 'end_time', 'address', 'area', 'material', 'remarks'],
+  Ops: ['staff_name', 'team_name', 'start_time', 'end_time', 'address', 'area', 'material', 'remarks'],
 }
 /** Temporary id for a grid row that is not saved yet */
 const newRowId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -1140,7 +1273,7 @@ export function JobSheetSpreadsheet() {
   // ── Drag & Drop Column Sequence (Persisted in localStorage) ──
   const [columnOrder, setColumnOrder] = useState<string[]>(() => {
     const defaultList = DEFAULT_COLUMN_DEFS.map(c => c.id)
-    const saved = safeLocalStorageGet<string[]>('safaeewala_excel_columns_order_v5', [])
+    const saved = safeLocalStorageGet<string[]>('safaeewala_excel_columns_order_v6', [])
     if (!Array.isArray(saved) || saved.length === 0) return defaultList
     const valid = saved.filter(id => defaultList.includes(id as any) && id !== 'service')
     defaultList.forEach(id => {
@@ -1614,6 +1747,14 @@ export function JobSheetSpreadsheet() {
   const handleCellDoubleClick = (rowIdx: number, colId: string) => {
     if (READ_ONLY_COLS.has(colId)) { setActiveCell({ rowIdx, colId }); return }
     const row = gridRows[rowIdx]
+    if (row) {
+      const mcInfo = getMultiCleanerPaymentInfo(row, gridRows)
+      if (mcInfo?.isSecondary && (colId === 'charges' || colId === 'received' || colId === 'pending')) {
+        setActiveCell({ rowIdx, colId })
+        showToast(`ℹ️ Payment for this team shift is recorded under lead cleaner: ${mcInfo.primaryCleaner}`)
+        return
+      }
+    }
     const curVal = row?.[colId as keyof DailyJob]
     setActiveCell({ rowIdx, colId })
     setEditingCell({
@@ -2505,23 +2646,28 @@ export function JobSheetSpreadsheet() {
       if (!ok) return
     }
 
-    const payload = (row: DailyJob) => ({
-      date: row.date || selectedDate,
-      staff_name: row.staff_name,
-      start_time: row.start_time,
-      end_time: row.end_time,
-      duty_hours: cleanNum(row.duty_hours),
-      ot_hours: cleanNum(row.ot_hours),
-      address: row.address,
-      area: row.area,
-      charges: cleanNum(row.charges),
-      received: cleanNum(row.received),
-      payment_mode: row.payment_mode,
-      is_overtime: cleanNum(row.ot_hours) > 0,
-      material: row.material,
-      service: row.service,
-      remarks: row.remarks,
-    })
+    const payload = (row: DailyJob) => {
+      const mcInfo = getMultiCleanerPaymentInfo(row, gridRows)
+      const isSec = Boolean(mcInfo?.isSecondary)
+      return {
+        date: row.date || selectedDate,
+        staff_name: row.staff_name,
+        team_name: row.team_name || mcInfo?.teamRef || '',
+        start_time: row.start_time,
+        end_time: row.end_time,
+        duty_hours: cleanNum(row.duty_hours),
+        ot_hours: cleanNum(row.ot_hours),
+        address: row.address,
+        area: row.area,
+        charges: isSec ? 0 : cleanNum(row.charges),
+        received: isSec ? 0 : cleanNum(row.received),
+        payment_mode: isSec ? ('Above' as any) : row.payment_mode,
+        is_overtime: cleanNum(row.ot_hours) > 0,
+        material: row.material,
+        service: row.service,
+        remarks: row.remarks,
+      }
+    }
 
     reloadAfterSaveRef.current = true
     removed.forEach(r => { if (live.has(r.id)) deleteDailyJob(r.id) })
@@ -2625,9 +2771,22 @@ export function JobSheetSpreadsheet() {
   const handleExportXLSX = () => {
     const exportData = gridRows.map((r, i) => {
       const rowObj: Record<string, any> = { 'Row': i + 1 }
+      const mcInfo = getMultiCleanerPaymentInfo(r, gridRows)
       columns.forEach(col => {
         let val: any = r[col.id as keyof DailyJob]
-        if (col.id === 'pending') val = rowPending(r)
+        if (col.id === 'team_name') {
+          if (mcInfo?.isSecondary) val = mcInfo.teamRef
+          else if (mcInfo?.isPrimary && mcInfo.isMultiCleaner) val = `${mcInfo.teamRef} (Lead)`
+          else val = r.team_name || ''
+        } else if (col.id === 'charges') {
+          val = mcInfo?.isSecondary ? `Included (${mcInfo.teamRef})` : r.charges
+        } else if (col.id === 'received') {
+          val = mcInfo?.isSecondary ? `${mcInfo.teamRef} (Ref: ${mcInfo.primaryCleaner})` : r.received
+        } else if (col.id === 'pending') {
+          val = mcInfo?.isSecondary ? 'Nil' : rowPending(r)
+        } else if (col.id === 'payment_mode') {
+          val = mcInfo?.isSecondary ? 'Above' : r.payment_mode
+        }
         rowObj[col.label] = val !== undefined && val !== null ? val : ''
       })
       return rowObj
@@ -2644,9 +2803,22 @@ export function JobSheetSpreadsheet() {
   const handleExportCSV = () => {
     const exportData = gridRows.map((r, i) => {
       const rowObj: Record<string, any> = { 'Row': i + 1 }
+      const mcInfo = getMultiCleanerPaymentInfo(r, gridRows)
       columns.forEach(col => {
         let val: any = r[col.id as keyof DailyJob]
-        if (col.id === 'pending') val = rowPending(r)
+        if (col.id === 'team_name') {
+          if (mcInfo?.isSecondary) val = mcInfo.teamRef
+          else if (mcInfo?.isPrimary && mcInfo.isMultiCleaner) val = `${mcInfo.teamRef} (Lead)`
+          else val = r.team_name || ''
+        } else if (col.id === 'charges') {
+          val = mcInfo?.isSecondary ? `Included (${mcInfo.teamRef})` : r.charges
+        } else if (col.id === 'received') {
+          val = mcInfo?.isSecondary ? `${mcInfo.teamRef} (Ref: ${mcInfo.primaryCleaner})` : r.received
+        } else if (col.id === 'pending') {
+          val = mcInfo?.isSecondary ? 'Nil' : rowPending(r)
+        } else if (col.id === 'payment_mode') {
+          val = mcInfo?.isSecondary ? 'Above' : r.payment_mode
+        }
         rowObj[col.label] = val !== undefined && val !== null ? val : ''
       })
       return rowObj
@@ -3637,15 +3809,33 @@ export function JobSheetSpreadsheet() {
                             let rawVal = row[col.id as keyof DailyJob]
                             let displayVal: any = rawVal
                             const isBlankShift = !row.address && !row.start_time && !row.end_time && cleanNum(row.charges) === 0 && cleanNum(row.received) === 0
+                            const mcInfo = getMultiCleanerPaymentInfo(row, gridRows)
 
-                            if (col.id === 'pending') {
-                              displayVal = isBlankShift ? '' : rowPending(row)
+                            if (col.id === 'team_name') {
+                              if (isBlankShift) displayVal = ''
+                              else if (mcInfo?.isSecondary) displayVal = mcInfo.teamRef
+                              else if (mcInfo?.isPrimary && mcInfo.isMultiCleaner) displayVal = `${mcInfo.teamRef} (Lead)`
+                              else displayVal = rawVal || ''
+                            } else if (col.id === 'charges') {
+                              if (isBlankShift) displayVal = ''
+                              else if (mcInfo?.isSecondary) displayVal = `Included (${mcInfo.teamRef})`
+                              else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
+                            } else if (col.id === 'received') {
+                              if (isBlankShift) displayVal = ''
+                              else if (mcInfo?.isSecondary) displayVal = `${mcInfo.teamRef} (Ref: ${mcInfo.primaryCleaner})`
+                              else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
+                            } else if (col.id === 'pending') {
+                              if (isBlankShift) displayVal = ''
+                              else if (mcInfo?.isSecondary) displayVal = 'Nil'
+                              else displayVal = rowPending(row)
+                            } else if (col.id === 'payment_mode') {
+                              if (isBlankShift) displayVal = ''
+                              else if (mcInfo?.isSecondary) displayVal = 'Above'
+                              else displayVal = rawVal || ''
                             } else if (col.id === 'start_time' || col.id === 'end_time') {
                               displayVal = isBlankShift ? '' : (rawVal ? formatTime12h(rawVal) : '')
                             } else if (col.id === 'material') {
                               displayVal = isBlankShift ? '' : (rawVal ? (String(rawVal).toUpperCase() === 'NO' ? 'NO' : String(rawVal).toUpperCase() === 'YES' ? 'YES' : String(rawVal)) : '')
-                            } else if (col.id === 'payment_mode') {
-                              displayVal = isBlankShift ? '' : (rawVal || '')
                             } else if (col.id === 'duty_hours') {
                               const d = cleanNum(rawVal)
                               displayVal = isBlankShift ? '' : (d > 0 ? d.toFixed(2) : '')
@@ -3672,17 +3862,36 @@ export function JobSheetSpreadsheet() {
                                 {isCellEditing ? (
                                   renderCellEditor(col, globalIndex, true)
                                 ) : (
-                                  <span className={
-                                    col.id === 'charges'
-                                      ? 'text-amber-300 font-black drop-shadow-xs'
-                                      : col.id === 'received'
-                                        ? 'text-emerald-300 font-black drop-shadow-xs'
-                                        : col.id === 'pending' && cleanNum(displayVal) > 0
-                                          ? 'text-rose-200 font-black bg-rose-950/80 px-1.5 py-0.5 rounded border border-rose-500/40 text-[11px]'
-                                          : col.id === 'staff_name'
-                                            ? 'font-black text-white tracking-wide'
-                                            : 'text-slate-100 font-medium'
-                                  }>
+                                  <span
+                                    title={
+                                      mcInfo?.isSecondary
+                                        ? col.id === 'charges'
+                                          ? `Charges recorded under primary cleaner: ${mcInfo.primaryCleaner}`
+                                          : col.id === 'received'
+                                            ? `Payment received recorded under primary cleaner: ${mcInfo.primaryCleaner}`
+                                            : col.id === 'pending'
+                                              ? `Paid under primary cleaner: ${mcInfo.primaryCleaner}`
+                                              : undefined
+                                        : undefined
+                                    }
+                                    className={
+                                      mcInfo?.isSecondary && (col.id === 'charges' || col.id === 'received')
+                                        ? 'text-indigo-300 italic font-semibold text-[11px]'
+                                        : mcInfo?.isSecondary && col.id === 'payment_mode'
+                                          ? 'text-indigo-200 font-bold text-[11px]'
+                                          : col.id === 'charges'
+                                            ? 'text-amber-300 font-black drop-shadow-xs'
+                                            : col.id === 'received'
+                                              ? 'text-emerald-300 font-black drop-shadow-xs'
+                                              : col.id === 'pending' && cleanNum(displayVal) > 0
+                                                ? 'text-rose-200 font-black bg-rose-950/80 px-1.5 py-0.5 rounded border border-rose-500/40 text-[11px]'
+                                                : col.id === 'staff_name'
+                                                  ? 'font-black text-white tracking-wide'
+                                                  : col.id === 'team_name' && displayVal
+                                                    ? 'font-bold text-indigo-300 bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-500/40 text-[11px]'
+                                                    : 'text-slate-100 font-medium'
+                                    }
+                                  >
                                     {col.id === 'address' ? cleanAddressDisplay(displayVal) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
                                   </span>
                                 )}
@@ -3834,16 +4043,36 @@ export function JobSheetSpreadsheet() {
                       let displayVal: any = rawVal
                       const isBlankShift = !row.address && !row.start_time && !row.end_time && cleanNum(row.charges) === 0 && cleanNum(row.received) === 0
                       const pendVal = rowPending(row)
-                      const isPendingDue = col.id === 'pending' && pendVal > 0
+                      const mcInfo = getMultiCleanerPaymentInfo(row, gridRows)
+                      const isPendingDue = col.id === 'pending' && pendVal > 0 && !mcInfo?.isSecondary
 
-                      if (col.id === 'pending') {
+                      if (col.id === 'team_name') {
+                        if (isBlankShift) displayVal = ''
+                        else if (mcInfo?.isSecondary) displayVal = mcInfo.teamRef
+                        else if (mcInfo?.isPrimary && mcInfo.isMultiCleaner) displayVal = `${mcInfo.teamRef} (Lead)`
+                        else displayVal = rawVal || ''
+                      } else if (col.id === 'charges') {
+                        if (isBlankShift) displayVal = ''
+                        else if (mcInfo?.isSecondary) displayVal = `Included (${mcInfo.teamRef})`
+                        else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
+                      } else if (col.id === 'received') {
+                        if (isBlankShift) displayVal = ''
+                        else if (mcInfo?.isSecondary) displayVal = `${mcInfo.teamRef} (Ref: ${mcInfo.primaryCleaner})`
+                        else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
+                      } else if (col.id === 'pending') {
                         if (isBlankShift) {
                           displayVal = ''
+                        } else if (mcInfo?.isSecondary) {
+                          displayVal = 'Nil'
                         } else if (pendVal > 0) {
                           displayVal = pendVal
                         } else {
                           displayVal = 'Nil'
                         }
+                      } else if (col.id === 'payment_mode') {
+                        if (isBlankShift) displayVal = ''
+                        else if (mcInfo?.isSecondary) displayVal = 'Above'
+                        else displayVal = rawVal || ''
                       } else if (col.id === 'ot_hours') {
                         const ot = cleanNum(rawVal)
                         displayVal = isBlankShift ? '' : (ot > 0 ? ot.toFixed(2) : '0.00')
@@ -3854,8 +4083,6 @@ export function JobSheetSpreadsheet() {
                         displayVal = isBlankShift ? '' : (rawVal ? formatTime12h(rawVal) : '')
                       } else if (col.id === 'material') {
                         displayVal = isBlankShift ? '' : (rawVal ? (String(rawVal).toUpperCase() === 'NO' ? 'NO' : String(rawVal).toUpperCase() === 'YES' ? 'YES' : String(rawVal)) : '')
-                      } else if (col.id === 'payment_mode') {
-                        displayVal = isBlankShift ? '' : (rawVal || '')
                       } else if (col.type === 'number') {
                         displayVal = isBlankShift ? '' : (cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : ''))
                       }
@@ -3883,15 +4110,34 @@ export function JobSheetSpreadsheet() {
                           {isCellEditing ? (
                             renderCellEditor(col, targetIdx, palette.isLight)
                           ) : (
-                            <span className={
-                              isPendingDue
-                                ? 'text-white font-black text-[12px]'
-                                : col.id === 'pending' && displayVal === 'Nil'
-                                  ? (isDarkRow ? 'text-slate-200 font-bold' : 'text-slate-800 font-bold')
-                                  : col.id === 'charges' || col.id === 'received'
-                                    ? (isDarkRow ? 'text-amber-300 font-black drop-shadow-xs' : 'text-slate-900 font-bold')
-                                    : (isDarkRow ? 'text-white font-medium' : 'text-slate-800 font-medium')
-                            }>
+                            <span
+                              title={
+                                mcInfo?.isSecondary
+                                  ? col.id === 'charges'
+                                    ? `Charges recorded under primary cleaner: ${mcInfo.primaryCleaner}`
+                                    : col.id === 'received'
+                                      ? `Payment received recorded under primary cleaner: ${mcInfo.primaryCleaner}`
+                                      : col.id === 'pending'
+                                        ? `Paid under primary cleaner: ${mcInfo.primaryCleaner}`
+                                        : undefined
+                                  : undefined
+                              }
+                              className={
+                                mcInfo?.isSecondary && (col.id === 'charges' || col.id === 'received')
+                                  ? (isDarkRow ? 'text-indigo-300 italic font-semibold text-[11.5px]' : 'text-indigo-700 italic font-semibold text-[11.5px]')
+                                  : mcInfo?.isSecondary && col.id === 'payment_mode'
+                                    ? (isDarkRow ? 'text-indigo-200 font-bold text-[11px]' : 'text-indigo-800 font-bold text-[11px]')
+                                    : isPendingDue
+                                      ? 'text-white font-black text-[12px]'
+                                      : col.id === 'pending' && displayVal === 'Nil'
+                                        ? (isDarkRow ? 'text-slate-200 font-bold' : 'text-slate-800 font-bold')
+                                        : col.id === 'charges' || col.id === 'received'
+                                          ? (isDarkRow ? 'text-amber-300 font-black drop-shadow-xs' : 'text-slate-900 font-bold')
+                                          : col.id === 'team_name' && displayVal
+                                            ? (isDarkRow ? 'font-bold text-indigo-300 bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-500/40 text-[11px]' : 'font-bold text-indigo-800 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 text-[11px]')
+                                            : (isDarkRow ? 'text-white font-medium' : 'text-slate-800 font-medium')
+                              }
+                            >
                               {col.id === 'address' ? cleanAddressDisplay(displayVal) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
                             </span>
                           )}
