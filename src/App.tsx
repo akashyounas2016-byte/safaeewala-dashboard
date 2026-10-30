@@ -64,6 +64,8 @@ const DailyJobSheet          = lazyWithRetry(() => import('@/pages/DailyJobSheet
 const JobSheetSpreadsheet     = lazyWithRetry(() => import('@/pages/JobSheetSpreadsheet').then(m => ({ default: m.JobSheetSpreadsheet })))
 const PendingPayments        = lazyWithRetry(() => import('@/pages/PendingPayments').then(m => ({ default: m.PendingPayments })))
 const Attendance             = lazyWithRetry(() => import('@/pages/Attendance').then(m => ({ default: m.Attendance })))
+const Drivers                = lazyWithRetry(() => import('@/pages/Drivers').then(m => ({ default: m.Drivers })))
+const MyDuties               = lazyWithRetry(() => import('@/pages/MyDuties').then(m => ({ default: m.MyDuties })))
 
 function PageLoader() {
   return (
@@ -172,6 +174,8 @@ function AppRoutes() {
                 <Route path="reports"    element={<Reports />} />
                 <Route path="settings"   element={<Settings />} />
                 <Route path="attendance" element={<Attendance />} />
+                <Route path="drivers"    element={<Drivers />} />
+                <Route path="my-duties"  element={<MyDuties />} />
                 <Route path="daily-job-sheet" element={<DailyJobSheet />} />
                 <Route path="login" element={<Navigate to="/" replace />} />
                </Route>

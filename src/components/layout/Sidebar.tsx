@@ -5,7 +5,7 @@ import {
   LayoutDashboard, CalendarCheck, Users, UserCheck,
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
   CreditCard, TrendingUp, Globe, Clock, LogOut, ChevronLeft, Building2,
-  CalendarDays, Star, SlidersHorizontal, ArrowUp, ArrowDown, RotateCcw, Sparkles,
+  CalendarDays, Star, SlidersHorizontal, ArrowUp, ArrowDown, RotateCcw, Sparkles, Truck, Navigation,
 } from 'lucide-react'
 import { useAuth, useRolePerms } from '@/store/UserContext'
 import { canAccessModule, moduleForPath, ROLE_META } from '@/lib/permissions'
@@ -34,6 +34,8 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { to: '/monthly-clients',  label: 'Monthly Clients',   icon: TrendingUp,                          category: 'Workspace' },
   { to: '/employees',        label: 'Employees',         icon: UserCheck,                           category: 'Workspace' },
   { to: '/attendance',       label: 'Attendance System', icon: CalendarDays,                        category: 'Workspace' },
+  { to: '/drivers',          label: 'Drivers',           icon: Truck,                               category: 'Workspace' },
+  { to: '/my-duties',        label: 'My Duties',         icon: Navigation,                          category: 'Workspace' },
   { to: '/agencies',         label: 'Agencies',          icon: Building2,                           category: 'Workspace' },
 
   // ── Finance & Operations ──

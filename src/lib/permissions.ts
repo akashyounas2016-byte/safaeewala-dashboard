@@ -22,6 +22,8 @@ export const APP_MODULES = [
   { key: 'Monthly Clients', paths: ['/monthly-clients', '/subscriptions'] },
   { key: 'Employees',       paths: ['/employees'] },
   { key: 'Attendance',      paths: ['/attendance'] },
+  { key: 'Drivers',         paths: ['/drivers'] },
+  { key: 'My Duties',       paths: ['/my-duties'] },
   { key: 'Agencies',        paths: ['/agencies'] },
   { key: 'Invoices',        paths: ['/invoices', '/monthly-invoices'] },
   { key: 'Inventory',       paths: ['/inventory'] },
@@ -40,7 +42,7 @@ export const ALL_MODULE_KEYS = APP_MODULES.map(m => m.key) as ModuleKey[]
 export type RolePerms = Record<Exclude<AppRole, 'admin'>, ModuleKey[]>
 export const DEFAULT_ROLE_PERMS: RolePerms = {
   manager:  ALL_MODULE_KEYS.filter(k => k !== 'Settings'),
-  employee: ['Overview', 'Bookings', 'Attendance'],
+  employee: ['Overview', 'Bookings', 'Attendance', 'My Duties'],
 }
 
 /** Which screen a URL belongs to ("/clients/123" → Clients) */

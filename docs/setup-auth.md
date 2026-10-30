@@ -63,6 +63,12 @@ and the database refuses anyone who is not signed in.
    - a strong password is generated — click **Create**, then **Copy** and give it to the person.
 4. **Settings → Roles & Access** — tick which screens Manager and Employee may open → **Save**.
 
+## Step 5b — Drivers (live location)
+1. Supabase SQL Editor → run `supabase/migrations/2026-10-31_driver_locations.sql`.
+2. Settings → Users → Add user for each driver, **link the driver's employee record**, role **Employee**
+   (My Duties is allowed for Employee by default).
+3. The driver opens the dashboard on the phone → My Duties → **Start shift — share my location**.
+
 ## Step 6 — Check the data arrived
 1. On each device from Step 0, sign in once and leave the dashboard open for a minute — waiting
    changes upload by themselves.

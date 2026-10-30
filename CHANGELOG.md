@@ -5,6 +5,8 @@
 > Format: `- type(scope): summary (rule IDs) — commit`
 
 ## Unreleased (in `main`, not yet confirmed deployed)
+
+- feat(drivers): Drivers module — route plan from the Daily Job Sheet with colour-coded site cards (cleaners, drop / pick-up), manual or auto-assign by area, Google Maps route per driver; driver shifts and duty sheets without OT / Material sent by WhatsApp, print or Excel with "changed since sent"; My Duties phone view with live location sharing; Drivers → Live location (R-DRV-01…03). Migration `2026-10-31_driver_locations.sql`
 - feat(time): Standardized 12-hour AM/PM time format project-wide across Bookings, Daily Job Sheet, Excel Studio, Monthly Clients, Client Profiles, and Invoices. Implemented `parseTimeToMinutes`, `formatTime12h`, and `formatTime24h` with bulletproof handling for all time strings, dates, and fraction values, guaranteeing seamless calculation of duty hours and overtime (R-OT-01). Enhanced all pop-up modals (`NewBookingModal`, `AddJobModal`, `EditJobModal`, `AddMonthlyClientModalForm`, `SpreadsheetEditModal`) with formatted 12-hour time preview badges and 12-hour time options datalists.
 - feat(excel-studio): Redesigned Excel Job Sheet Studio (`JobSheetSpreadsheet.tsx`) header with a consolidated 3-dot dropdown menu containing 'Save to Google Drive' and 'Monthly Sync', added a dedicated 'Add Job' button to easily insert jobs, and integrated quick filter chips ('ALL', 'Monthly', 'Cash', 'Online', 'Pending') with real-time count badges.
 - feat(excel-studio): Removed auto-sum/formula lines from Cashier columns, formula bar quick buttons, and table footer. Updated 'Add Row' functionality (`insertRowAt`) so top/bottom row insertion adds completely empty rows without copying client names, start times, or end times.

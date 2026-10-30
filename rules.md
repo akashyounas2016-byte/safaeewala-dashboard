@@ -168,6 +168,25 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ---
 
+## DRV — Drivers
+
+### R-DRV-01 — Route plan comes from the Daily Job Sheet
+- **Rule:** The day's jobs are grouped into **sites** (same cleaned address + area). Each site is one colour-coded card with its cleaners, drop time (earliest start) and pick-up time (latest end), ordered by drop time. Sites are assigned to drivers (employees with the Driver role) by hand or "Auto-assign by area" (same area → same driver, balanced load). The plan is per date in the cloud-synced key `safaeewala_driver_plans`; it never changes the job sheet.
+- **Code:** `src/lib/driverRoutes.ts` (`buildRouteSites`), `src/lib/driverPlans.ts`, `src/pages/Drivers.tsx`.
+- **Status:** Active · Since: 2026-10-31
+
+### R-DRV-02 — Driver duty sheets have no OT and no Material
+- **Rule:** A driver's sheet lists drop, pick-up, site, area, cleaners, service, payment (cash to collect) and remarks only — never OT or Material. Sent by WhatsApp, printed or exported to Excel; when the job sheet changes after sending, the driver row shows "Changed — send again". Drivers see the same sheet on **My Duties**.
+- **Code:** `driverRoutes.ts → SHEET_COLUMNS, driverSheetRows, driverSheetText, sheetSignature`, `components/drivers/DriverSheetActions.tsx`, `src/pages/MyDuties.tsx`.
+- **Status:** Active · Since: 2026-10-31
+
+### R-DRV-03 — Live location only while the driver shares it
+- **Rule:** Location is sent only after the driver presses "Start shift — share my location" on My Duties and while that page is open (at most every 20 s); "Stop sharing" marks it off. A driver can write only the row of the employee linked to their own login; office users can read. Shown as Live (< 5 min), No signal, or Stopped.
+- **Code:** `src/lib/driverLocation.ts`, migration `2026-10-31_driver_locations.sql`, Drivers → Live location.
+- **Status:** In code · needs the login setup (docs/setup-auth.md) and the driver_locations migration · Since: 2026-10-31
+
+---
+
 ## EMP — Employees
 
 ### R-EMP-01 — Roles
