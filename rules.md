@@ -156,6 +156,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/closedDays.ts`, `DailyJobSheet.tsx → blockIfClosed`, `src/lib/jobChecks.ts`.
 - **Status:** Active · Since: 2026-10-29 (UX-26, UX-27). Excel mode does not check the lock yet.
 
+### R-DATA-09 — One person, one record
+- **Rule:** An employee's Emirates ID or passport number cannot be on two employee records (refused); the same phone asks first. A client with the same phone, or the same name + building, asks before a second record is created. Phones are compared in one UAE form (`9715XXXXXXXX`); a non-UAE number asks first. Emirates ID must be 15 digits starting with 784 and is stored as `784-YYYY-NNNNNNN-N`.
+- **Code:** `src/lib/validation.ts`, client and employee forms; listed in Settings → Data health (`src/lib/dataHealth.ts`).
+- **Status:** Active · Since: 2026-10-30 (VAL-01…04, AUD-67)
+
+### R-DATA-10 — A copy is kept before anything big is deleted
+- **Rule:** Before "Delete All Data", deleting or re-importing a day, and deleting an agency with its staff, a copy is saved (newest 10 in this browser; Delete All also downloads a file). Settings → Backup → Before-delete copies can restore them; records that still exist are not duplicated.
+- **Code:** `src/lib/snapshots.ts`, `DataContext → restoreRecords`, `components/settings/BeforeDeleteCopies.tsx`.
+- **Status:** Active · Since: 2026-10-30 (BAK-5)
+
 ---
 
 ## EMP — Employees

@@ -6,6 +6,8 @@ import { loadCompanyInfo } from '@/lib/companyInfo'
 import { useIsAdmin, useCurrentUser } from '@/store/UserContext'
 import { UsersAdminPanel, RolePermissionsPanel } from '@/components/settings/UserManagement'
 import { BeforeDeleteCopies } from '@/components/settings/BeforeDeleteCopies'
+import { DataHealthPanel } from '@/components/settings/DataHealthPanel'
+import { HeartPulse } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured, getDriveWebhookUrl, setDriveWebhookUrl, testDriveWebhook } from '@/lib/googleDrive'
 import { Button } from '@/components/ui/Button'
@@ -25,6 +27,7 @@ const allTabs = [
   { id: 'roles',         label: 'Roles & Access', icon: Shield,     adminOnly: false },
   { id: 'billing',       label: 'Billing',        icon: CreditCard, adminOnly: false },
   { id: 'backup',        label: 'Backup',         icon: HardDrive,  adminOnly: false },
+  { id: 'health',        label: 'Data health',    icon: HeartPulse, adminOnly: false },
   { id: 'activity',      label: 'Activity Log',   icon: Clock,      adminOnly: true  },
   { id: 'integrations',  label: 'Integrations',   icon: Globe,     adminOnly: false },
 ]
@@ -1330,6 +1333,9 @@ export function Settings() {
 
           {/* ── Activity Log ── */}
           {activeTab === 'activity' && <ActivityLogPanel />}
+
+          {/* ── Data health (AUD-67) ── */}
+          {activeTab === 'health' && <DataHealthPanel />}
 
           {/* ── Backup & Disaster Recovery ── */}
           {activeTab === 'backup' && (

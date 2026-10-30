@@ -11,6 +11,9 @@
 - feat(excel-studio): Cleaned and reorganized spreadsheet columns: removed 'Row' (#) and 'Date' columns, renamed 'Client & Address' to 'Client', 'Location/Area' to 'Area', 'Payment Mode' to 'Mode', removed '(AED)' from financial columns, removed 'Service' column, repositioned 'Material' immediately before 'Charges', and added a dedicated 'Notes' column.
 - feat(excel-studio): Added 'Edit' button alongside 'Delete' in every row's Action column, opening a professional `SpreadsheetEditModal` with dynamic dropdowns for Client (with search and auto-fill), Address/Area, and Staff Name, plus 12-hour AM/PM time selection and responsive duty/overtime calculation.
 
+- fix(security): /api calls carry the signed-in user's token; the VPS refuses unsigned requests once user management is configured, the Fluent Forms webhook takes FLUENT_WEBHOOK_SECRET, CORS only for the dashboard addresses (SEC-04); print windows escape user text (SEC-07)
+- feat(data): duplicate client / employee checks, UAE phone and Emirates ID format (R-DATA-09, VAL-01…04); before-delete copies with restore (R-DATA-10, BAK-5); Settings → Data health (AUD-67); Analytics recurring revenue and collected fixed (AUD-64)
+
 - feat(security): real accounts — Supabase Auth login with Login IDs (SW-0001 …), no sign-up, admin creates users / resets passwords / disables accounts (server endpoint holds the service key), roles Admin / Manager / Employee with per-screen permissions and a "No access" guard; row-level security so the database only answers signed-in users; old browser-only login and the password inside the JavaScript removed; backup endpoint path traversal fixed (R-SEC-01, R-SEC-03, SEC-01/02/03/05, DEC-014). New migration `2026-10-30_initial_schema_and_auth.sql` creates every table — the live project had none (AUD-69). Setup: `docs/setup-auth.md`
 
 ## 2026-10-30 (Deploy to Production VPS)
