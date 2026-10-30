@@ -8,7 +8,7 @@ import {
   Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table,
   Printer, MoreVertical, ChevronDown, ExternalLink, CornerDownLeft,
   ChevronUp, Eye, EyeOff, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle,
-  CloudUpload, Calendar, GripVertical, Info, History, Pencil, Edit2
+  CloudUpload, Calendar, GripVertical, Info, History, Pencil, Edit2, Building2
 } from 'lucide-react'
 import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
 import { SpreadsheetEditModal } from '@/components/dailyJobSheet/SpreadsheetEditModal'
@@ -95,7 +95,7 @@ export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
   { id: 'end_time',     label: 'End time',   width: '100px', type: 'time',   formulaHint: 'e.g. 03:00 PM' },
   { id: 'address',      label: 'Address',    width: '230px', type: 'text',   formulaHint: 'Client name & address' },
   { id: 'area',         label: 'Location',   width: '125px', type: 'text',   formulaHint: 'Area or location' },
-  { id: 'material',     label: 'Material',   width: '90px',  type: 'select', options: ['NO', 'YES', 'No', 'Yes', 'Sofa', 'Ladder'] },
+  { id: 'material',     label: 'Material',   width: '120px', type: 'select', options: ['No', 'Yes', 'Sofa', 'Ladder', 'Steam Cleaner', 'Deep Clean Kit'] },
   { id: 'charges',      label: 'Charges',    width: '95px',  type: 'number', formulaHint: 'Gross charges' },
   { id: 'received',     label: 'Received',   width: '95px',  type: 'number', formulaHint: 'Amount received' },
   { id: 'pending',      label: 'Pending',    width: '95px',  type: 'formula', formulaHint: 'Pending amount' },
@@ -851,10 +851,10 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
       ot_hours: 0,
       address: '',
       area: '',
-      material: 'No',
+      material: '' as any,
       charges: 0,
       received: 0,
-      payment_mode: 'Cash',
+      payment_mode: '' as any,
       remarks: '',
       is_overtime: false,
       created_at: new Date().toISOString(),
@@ -889,10 +889,10 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
         ot_hours: 0,
         address: '',
         area: '',
-        material: 'No',
+        material: '' as any,
         charges: 0,
         received: 0,
-        payment_mode: 'Cash',
+        payment_mode: '' as any,
         remarks: '',
       is_overtime: false,
       created_at: new Date().toISOString(),
@@ -918,8 +918,33 @@ const COLUMN_PRESETS: Record<string, string[] | null> = {
 const newRowId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 /** Columns that are calculated, never typed into */
 const READ_ONLY_COLS = new Set(['pending'])
+/** Time suggestions formatted with explicit AM and PM */
+export const TIME_SUGGESTIONS = [
+  '07:00 AM', '07:30 AM',
+  '08:00 AM', '08:30 AM',
+  '09:00 AM', '09:30 AM',
+  '10:00 AM', '10:30 AM',
+  '11:00 AM', '11:30 AM',
+  '12:00 PM', '12:30 PM',
+  '01:00 PM', '01:30 PM',
+  '02:00 PM', '02:30 PM',
+  '03:00 PM', '03:30 PM',
+  '04:00 PM', '04:30 PM',
+  '05:00 PM', '05:30 PM',
+  '06:00 PM', '06:30 PM',
+  '07:00 PM', '07:30 PM',
+  '08:00 PM', '08:30 PM',
+  '09:00 PM', '09:30 PM',
+  '10:00 PM'
+]
 /** Cell editor → datalist id (UX-35) */
-const AUTOCOMPLETE_LIST: Record<string, string> = { staff_name: 'xl-staff', address: 'xl-address', area: 'xl-area' }
+const AUTOCOMPLETE_LIST: Record<string, string> = {
+  staff_name: 'xl-staff',
+  address: 'xl-address',
+  area: 'xl-area',
+  start_time: 'xl-time-suggestions',
+  end_time: 'xl-time-suggestions'
+}
 /** Rows drawn at once in long periods (AUD-56, UX-38) */
 const RENDER_PAGE = 300
 
@@ -1166,6 +1191,27 @@ export function JobSheetSpreadsheet() {
   const areaOptions = useMemo(() => Array.from(new Set(dailyJobs.map(j => (j.area || '').trim()).filter(a => a && a !== '—'))).sort().slice(0, 300), [dailyJobs])
   const serviceOptions = useMemo(() => Array.from(new Set(dailyJobs.map(j => (j.service || '').trim()).filter(a => a && a !== '—'))).sort().slice(0, 200), [dailyJobs])
 
+  // Dynamic client & building options formatted identical to Add Job Entry selector
+  const clientBuildingList = useMemo(() => {
+    const list: { key: string; building: string; name: string; area: string; isMonthly: boolean; client: any }[] = []
+    const seen = new Set<string>()
+    clients.forEach(c => {
+      const bldg = (c.building_name || c.full_name || '').trim()
+      if (bldg && !seen.has(bldg.toLowerCase())) {
+        seen.add(bldg.toLowerCase())
+        list.push({
+          key: c.id || bldg,
+          building: bldg,
+          name: c.full_name || bldg,
+          area: c.area || '',
+          isMonthly: !!(c.service_days && c.service_days.length > 0) || (c as any).contract_type === 'Monthly' || (c as any).client_type === 'Monthly',
+          client: c
+        })
+      }
+    })
+    return list
+  }, [clients])
+
   const toggleColumnVisibility = (colId: string) => {
     setHiddenColIds(prev => {
       const next = prev.includes(colId) ? prev.filter(id => id !== colId) : [...prev, colId]
@@ -1299,6 +1345,18 @@ export function JobSheetSpreadsheet() {
   const [editingCell, setEditingCell] = useState<{ rowIdx: number; colId: string; tempValue: string } | null>(null)
   const [formulaBarValue, setFormulaBarValue] = useState<string>('')
   const [filterSearch, setFilterSearch] = useState('')
+
+  // Filtered Client & Building list for Address dropdown matching Add Job Entry selector
+  const filteredClientBuildings = useMemo(() => {
+    if (!editingCell || editingCell.colId !== 'address') return clientBuildingList
+    const q = editingCell.tempValue.toLowerCase().trim()
+    if (!q) return clientBuildingList
+    return clientBuildingList.filter(item =>
+      item.building.toLowerCase().includes(q) ||
+      item.name.toLowerCase().includes(q) ||
+      item.area.toLowerCase().includes(q)
+    )
+  }, [clientBuildingList, editingCell])
   // What the grid was loaded from — Save All writes only the differences (AUD-49)
   const [loadedSnapshot, setLoadedSnapshot] = useState<Map<string, DailyJob>>(() => new Map())
   const [remoteConflict, setRemoteConflict] = useState(false)
@@ -1761,6 +1819,231 @@ export function JobSheetSpreadsheet() {
     return updated
   }
 
+  // Quick Commit for Address / Building Dropdown Selection
+  const commitAddressSelect = (rowIdx: number, building: string, area?: string, mode?: string) => {
+    const updated = [...gridRows]
+    const row = { ...updated[rowIdx] }
+    row.address = building
+    if (area && !row.area) row.area = area
+    if (mode === 'Monthly') row.payment_mode = 'Monthly'
+    updated[rowIdx] = row
+    pushState(updated)
+    setEditingCell(null)
+  }
+
+  // Quick Commit for Material Selection or Custom Material Addition
+  const commitMaterialSelect = (rowIdx: number, val: string) => {
+    const updated = [...gridRows]
+    const row = { ...updated[rowIdx] }
+    row.material = val as any
+    updated[rowIdx] = row
+    pushState(updated)
+    setEditingCell(null)
+    showToast(`✓ Material set to "${val}"`)
+  }
+
+  // Unified Interactive Cell Editor matching all UX requirements
+  const renderCellEditor = (col: ColumnDef, targetIdx: number, isLightBg: boolean = true) => {
+    if (!editingCell || editingCell.rowIdx !== targetIdx || editingCell.colId !== col.id) return null
+
+    // 1. Address Column Dropdown (Styled matching Add Job Entry building selector)
+    if (col.id === 'address') {
+      return (
+        <div className="relative w-full h-full">
+          <input
+            ref={inputRef}
+            type="text"
+            value={editingCell.tempValue}
+            onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+            onKeyDown={e => {
+              if (e.key === 'Escape') setEditingCell(null)
+              else if (e.key === 'Enter') commitCellEdit()
+            }}
+            placeholder="Search building..."
+            className={`w-full h-full text-[12px] font-semibold border-0 outline-none p-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+          />
+          <div
+            onMouseDown={e => e.stopPropagation()}
+            className="absolute z-[100] left-0 top-full mt-1 w-80 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-2xl p-2 text-slate-800 text-[12px] animate-in fade-in"
+          >
+            {editingCell.tempValue.trim() && (
+              <div
+                onMouseDown={() => commitAddressSelect(targetIdx, editingCell.tempValue.trim())}
+                className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[11.5px] font-bold flex items-center gap-2 cursor-pointer mb-1 shrink-0"
+              >
+                <Plus size={13} className="text-emerald-700 stroke-[3]" />
+                <span>Use custom: &ldquo;{editingCell.tempValue.trim()}&rdquo;</span>
+              </div>
+            )}
+            <div className="space-y-0.5 divide-y divide-slate-100">
+              {filteredClientBuildings.slice(0, 30).map(item => (
+                <div
+                  key={item.key}
+                  onMouseDown={() => commitAddressSelect(targetIdx, item.building, item.area, item.isMonthly ? 'Monthly' : undefined)}
+                  className="px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer text-left flex items-center justify-between"
+                >
+                  <div className="min-w-0 pr-2">
+                    <div className="text-[12.5px] font-bold text-slate-900 flex items-center gap-1.5 truncate">
+                      <Building2 size={13} className="text-slate-400 shrink-0" />
+                      <span className="truncate">{item.building}</span>
+                    </div>
+                    {item.name !== item.building && (
+                      <p className="text-[10.5px] text-slate-500 truncate">{item.name}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {item.area && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                        {item.area}
+                      </span>
+                    )}
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      item.isMonthly ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {item.isMonthly ? 'Monthly' : 'Regular'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // 2. Material Column Dropdown with increased width, typing & Plus icon
+    if (col.id === 'material') {
+      return (
+        <div className="relative w-full h-full flex items-center">
+          <input
+            ref={inputRef}
+            type="text"
+            value={editingCell.tempValue}
+            onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+            onKeyDown={e => {
+              if (e.key === 'Enter') commitCellEdit()
+              else if (e.key === 'Escape') setEditingCell(null)
+            }}
+            placeholder="Material..."
+            className={`w-full h-full text-[12px] font-semibold border-0 outline-none pr-6 p-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+          />
+          {editingCell.tempValue.trim() && (
+            <button
+              type="button"
+              onMouseDown={e => {
+                e.preventDefault()
+                e.stopPropagation()
+                commitMaterialSelect(targetIdx, editingCell.tempValue.trim())
+              }}
+              className="absolute right-0 top-1/2 -translate-y-1/2 p-1 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded cursor-pointer transition-colors"
+              title={`Add "${editingCell.tempValue.trim()}" as custom material`}
+            >
+              <Plus size={13} className="stroke-[3]" />
+            </button>
+          )}
+          <div
+            onMouseDown={e => e.stopPropagation()}
+            className="absolute z-[100] left-0 top-full mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-xl p-1.5 text-slate-800 text-[12px] animate-in fade-in"
+          >
+            <div className="px-2 py-1 text-[10px] font-black uppercase text-slate-400">Select or Type</div>
+            <div className="space-y-0.5">
+              {['No', 'Yes', 'Sofa', 'Ladder', 'Steam Cleaner', 'Deep Clean Kit'].map(mat => (
+                <div
+                  key={mat}
+                  onMouseDown={() => commitMaterialSelect(targetIdx, mat)}
+                  className={`px-2.5 py-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer text-left font-semibold flex items-center justify-between text-[11.5px] ${
+                    editingCell.tempValue.toLowerCase() === mat.toLowerCase() ? 'bg-emerald-50 text-emerald-900 font-bold' : 'text-slate-700'
+                  }`}
+                >
+                  <span>{mat === 'No' ? 'No Material' : mat}</span>
+                  {editingCell.tempValue.toLowerCase() === mat.toLowerCase() && (
+                    <Check size={12} className="text-emerald-600 stroke-[3]" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // 3. Start Time & End Time with typing and clear AM / PM suggestions
+    if (col.id === 'start_time' || col.id === 'end_time') {
+      return (
+        <div className="relative w-full h-full">
+          <input
+            ref={inputRef}
+            type="text"
+            list="xl-time-suggestions"
+            value={editingCell.tempValue}
+            onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+            onKeyDown={handleEditorKeyDown}
+            onBlur={commitCellEdit}
+            placeholder="e.g. 10:00 AM"
+            className={`w-full h-full text-[12px] font-mono border-0 outline-none p-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+          />
+          <div
+            onMouseDown={e => e.stopPropagation()}
+            className="absolute z-[100] left-0 top-full mt-1 w-36 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl p-1 text-slate-800 text-[11.5px] animate-in fade-in"
+          >
+            <div className="px-2 py-0.5 text-[9.5px] font-black uppercase text-slate-400">AM / PM Times</div>
+            <div className="space-y-0.5">
+              {TIME_SUGGESTIONS.map(timeStr => (
+                <div
+                  key={timeStr}
+                  onMouseDown={() => {
+                    const updated = [...gridRows]
+                    const r = { ...updated[targetIdx] }
+                    ;(r as any)[col.id] = timeStr
+                    if (r.start_time && r.end_time && r.start_time !== '—' && r.end_time !== '—') {
+                      r.duty_hours = Math.round(calcHours(r.start_time, r.end_time) * 10) / 10
+                      r.ot_hours = Math.round(calcOTHours(r.start_time, r.end_time) * 10) / 10
+                    }
+                    updated[targetIdx] = r
+                    pushState(updated)
+                    setEditingCell(null)
+                  }}
+                  className="px-2 py-1 rounded hover:bg-emerald-50 hover:text-emerald-900 transition-colors cursor-pointer font-mono font-semibold"
+                >
+                  {timeStr}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // 4. Default Select or Input
+    if (col.type === 'select' && col.options) {
+      return (
+        <select
+          ref={inputRef as any}
+          value={editingCell.tempValue}
+          onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+          onBlur={commitCellEdit}
+          onKeyDown={handleEditorKeyDown}
+          className={`w-full h-full text-[12px] font-mono border-0 outline-none p-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+        >
+          {col.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+      )
+    }
+
+    return (
+      <input
+        ref={inputRef}
+        type={col.type === 'date' ? 'date' : 'text'}
+        list={AUTOCOMPLETE_LIST[col.id as string]}
+        value={editingCell.tempValue}
+        onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+        onBlur={commitCellEdit}
+        onKeyDown={handleEditorKeyDown}
+        className={`w-full h-full text-[12px] font-mono border-0 outline-none p-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+      />
+    )
+  }
+
   // Formula Bar change
   const handleFormulaBarChange = (newVal: string) => {
     setFormulaBarValue(newVal)
@@ -1810,9 +2093,9 @@ export function JobSheetSpreadsheet() {
       area: '',
       charges: 0,
       received: 0,
-      payment_mode: 'Cash',
+      payment_mode: '' as any,
       is_overtime: false,
-      material: 'No',
+      material: '' as any,
       remarks: '',
       created_at: new Date().toISOString()
     }
@@ -1860,10 +2143,10 @@ export function JobSheetSpreadsheet() {
       ot_hours: 0,
       address: '',
       area: '',
-      material: 'No',
+      material: '' as any,
       charges: 0,
       received: 0,
-      payment_mode: 'Cash',
+      payment_mode: '' as any,
       remarks: '',
       is_overtime: false,
       created_at: new Date().toISOString()
@@ -1888,10 +2171,10 @@ export function JobSheetSpreadsheet() {
       ot_hours: 0,
       address: '',
       area: '',
-      material: 'No',
+      material: '' as any,
       charges: 0,
       received: 0,
-      payment_mode: 'Cash' as PaymentMode,
+      payment_mode: '' as any,
       remarks: '',
       is_overtime: false,
       created_at: new Date(blockTs + idx * 10).toISOString()
@@ -3300,13 +3583,24 @@ export function JobSheetSpreadsheet() {
 
                             let rawVal = row[col.id as keyof DailyJob]
                             let displayVal: any = rawVal
+                            const isBlankShift = !row.address && !row.start_time && !row.end_time && cleanNum(row.charges) === 0 && cleanNum(row.received) === 0
 
                             if (col.id === 'pending') {
-                              displayVal = rowPending(row)
+                              displayVal = isBlankShift ? '' : rowPending(row)
                             } else if (col.id === 'start_time' || col.id === 'end_time') {
-                              displayVal = rawVal ? formatTime12h(rawVal) : '—'
+                              displayVal = isBlankShift ? '' : (rawVal ? formatTime12h(rawVal) : '')
+                            } else if (col.id === 'material') {
+                              displayVal = isBlankShift ? '' : (rawVal ? (String(rawVal).toUpperCase() === 'NO' ? 'NO' : String(rawVal).toUpperCase() === 'YES' ? 'YES' : String(rawVal)) : '')
+                            } else if (col.id === 'payment_mode') {
+                              displayVal = isBlankShift ? '' : (rawVal || '')
+                            } else if (col.id === 'duty_hours') {
+                              const d = cleanNum(rawVal)
+                              displayVal = isBlankShift ? '' : (d > 0 ? d.toFixed(2) : '')
+                            } else if (col.id === 'ot_hours') {
+                              const ot = cleanNum(rawVal)
+                              displayVal = isBlankShift ? '' : (ot > 0 ? ot.toFixed(2) : '')
                             } else if (col.type === 'number') {
-                              displayVal = cleanNum(displayVal)
+                              displayVal = isBlankShift ? '' : cleanNum(displayVal)
                             }
 
                             return (
@@ -3316,36 +3610,14 @@ export function JobSheetSpreadsheet() {
                                 onDoubleClick={() => handleCellDoubleClick(globalIndex, col.id)}
                                 onContextMenu={e => handleContextMenu(e, globalIndex, row)}
                                 style={{ width: col.width }}
-                                className={`h-7 px-2 border-r border-slate-200 overflow-hidden text-ellipsis whitespace-nowrap cursor-cell transition-all relative ${
+                                className={`h-7 px-2 border-r border-slate-200 ${isCellEditing ? 'overflow-visible z-30' : 'overflow-hidden'} text-ellipsis whitespace-nowrap cursor-cell transition-all relative ${
                                   isCellActive
                                     ? 'ring-2 ring-[#107c41] bg-white z-10 font-semibold'
                                     : ''
                                 } ${col.type === 'number' || col.id === 'pending' ? 'text-right font-mono' : 'text-left'}`}
                               >
                                 {isCellEditing ? (
-                                  col.type === 'select' && col.options ? (
-                                    <select
-                                      ref={inputRef as any}
-                                      value={editingCell.tempValue}
-                                      onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
-                                      onBlur={commitCellEdit}
-                                      onKeyDown={handleEditorKeyDown}
-                                      className="w-full h-full bg-white text-[12px] font-mono border-0 outline-none p-0"
-                                    >
-                                      {col.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                    </select>
-                                  ) : (
-                                    <input
-                                      ref={inputRef}
-                                      type={col.type === 'date' ? 'date' : 'text'}
-                                      list={AUTOCOMPLETE_LIST[col.id as string]}
-                                      value={editingCell.tempValue}
-                                      onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
-                                      onBlur={commitCellEdit}
-                                      onKeyDown={handleEditorKeyDown}
-                                      className="w-full h-full bg-white text-[12px] font-mono border-0 outline-none p-0 focus:ring-0"
-                                    />
-                                  )
+                                  renderCellEditor(col, globalIndex, true)
                                 ) : (
                                   <span className={
                                     col.id === 'charges'
@@ -3358,7 +3630,7 @@ export function JobSheetSpreadsheet() {
                                             ? 'font-black text-white tracking-wide'
                                             : 'text-slate-100 font-medium'
                                   }>
-                                    {col.id === 'address' ? cleanAddressDisplay(displayVal) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '—')}
+                                    {col.id === 'address' ? cleanAddressDisplay(displayVal) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
                                   </span>
                                 )}
                               </td>
@@ -3522,11 +3794,13 @@ export function JobSheetSpreadsheet() {
                         const d = cleanNum(rawVal)
                         displayVal = d > 0 ? d.toFixed(2) : ''
                       } else if (col.id === 'start_time' || col.id === 'end_time') {
-                        displayVal = rawVal ? formatTime12h(rawVal) : ''
+                        displayVal = isBlankShift ? '' : (rawVal ? formatTime12h(rawVal) : '')
                       } else if (col.id === 'material') {
-                        displayVal = rawVal ? (String(rawVal).toUpperCase() === 'NO' ? 'NO' : String(rawVal).toUpperCase() === 'YES' ? 'YES' : String(rawVal)) : ''
+                        displayVal = isBlankShift ? '' : (rawVal ? (String(rawVal).toUpperCase() === 'NO' ? 'NO' : String(rawVal).toUpperCase() === 'YES' ? 'YES' : String(rawVal)) : '')
+                      } else if (col.id === 'payment_mode') {
+                        displayVal = isBlankShift ? '' : (rawVal || '')
                       } else if (col.type === 'number') {
-                        displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 && !isBlankShift ? 0 : '')
+                        displayVal = isBlankShift ? '' : (cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : ''))
                       }
 
                       return (
@@ -3543,36 +3817,14 @@ export function JobSheetSpreadsheet() {
                             borderBottom: blockBottomBorder,
                             borderRight: palette.isLight ? '1px solid #cbd5e1' : '1px solid rgba(255, 255, 255, 0.12)',
                           }}
-                          className={`h-7.5 px-2 overflow-hidden text-ellipsis whitespace-nowrap cursor-cell transition-all relative ${
+                          className={`h-7.5 px-2 ${isCellEditing ? 'overflow-visible z-30' : 'overflow-hidden'} text-ellipsis whitespace-nowrap cursor-cell transition-all relative ${
                             isCellActive
                               ? (palette.isLight ? 'ring-2 ring-emerald-600 bg-white z-10 font-bold text-slate-900 shadow-md' : 'ring-2 ring-emerald-400 bg-slate-950 z-10 font-bold text-white shadow-md')
                               : ''
                           } ${col.type === 'number' || col.id === 'pending' ? 'text-right font-mono' : 'text-left'}`}
                         >
                           {isCellEditing ? (
-                            col.type === 'select' && col.options ? (
-                              <select
-                                ref={inputRef as any}
-                                value={editingCell.tempValue}
-                                onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
-                                onBlur={commitCellEdit}
-                                onKeyDown={handleEditorKeyDown}
-                                className={`w-full h-full text-[12px] font-mono border-0 outline-none p-0 ${palette.isLight ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
-                              >
-                                {col.options.map(opt => <option key={opt} value={opt} className={palette.isLight ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}>{opt}</option>)}
-                              </select>
-                            ) : (
-                              <input
-                                ref={inputRef}
-                                type={col.type === 'date' ? 'date' : 'text'}
-                                list={AUTOCOMPLETE_LIST[col.id as string]}
-                                value={editingCell.tempValue}
-                                onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
-                                onBlur={commitCellEdit}
-                                onKeyDown={handleEditorKeyDown}
-                                className={`w-full h-full text-[12px] font-mono border-0 outline-none p-0 focus:ring-0 ${palette.isLight ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
-                              />
-                            )
+                            renderCellEditor(col, targetIdx, palette.isLight)
                           ) : (
                             <span className={
                               isPendingDue

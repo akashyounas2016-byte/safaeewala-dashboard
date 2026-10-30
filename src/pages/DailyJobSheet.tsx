@@ -7,7 +7,7 @@ import {
   Upload, CheckCircle, FileSpreadsheet, SlidersHorizontal,
   Clock, DollarSign, Wallet, Search, Filter, X, Pencil, MoreVertical, ChevronDown,
   Receipt, CreditCard, Eye, Settings, Check, Info, GripVertical, ChevronUp, RotateCcw,
-  ExternalLink, Sparkles, ArrowDownToLine, RefreshCw, CheckCircle2,
+  ExternalLink, Sparkles, ArrowDownToLine, RefreshCw, CheckCircle2, Palette,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -353,6 +353,39 @@ export function DailyJobSheet() {
     if (!dateStr) return false
     if (!isDateRange) return dateStr === selectedDate
     return dateStr >= effectiveStartDate && dateStr <= effectiveEndDate
+  }
+
+  // Filter Category Color Customization State (persisted in localStorage)
+  const DEFAULT_FILTER_COLORS: Record<string, string> = {
+    ALL: '#0f172a',      // Slate 900
+    Monthly: '#047857',  // Emerald 700
+    Cash: '#059669',     // Emerald 600
+    Online: '#2563eb',   // Blue 600
+    Pending: '#dc2626',  // Red 600
+    Checks: '#d97706',   // Amber 600
+  }
+  const [filterColors, setFilterColors] = useState<Record<string, string>>(() => {
+    try {
+      const saved = localStorage.getItem('safaeewala_filter_custom_colors')
+      if (saved) return { ...DEFAULT_FILTER_COLORS, ...JSON.parse(saved) }
+    } catch {}
+    return DEFAULT_FILTER_COLORS
+  })
+  const [showFilterColorMenu, setShowFilterColorMenu] = useState(false)
+
+  const updateFilterColor = (mode: string, color: string) => {
+    const updated = { ...filterColors, [mode]: color }
+    setFilterColors(updated)
+    try {
+      localStorage.setItem('safaeewala_filter_custom_colors', JSON.stringify(updated))
+    } catch {}
+  }
+
+  const resetFilterColors = () => {
+    setFilterColors(DEFAULT_FILTER_COLORS)
+    try {
+      localStorage.removeItem('safaeewala_filter_custom_colors')
+    } catch {}
   }
 
   // Column visibility & sequence customization state (persisted in localStorage)
@@ -2259,6 +2292,26 @@ export function DailyJobSheet() {
                       </div>
                     </button>
 
+                    {/* Custom Date Selection inside Today / Date Presets dropdown */}
+                    <div className="px-3 pt-2 pb-1 border-t border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Custom Date Selection</p>
+                    </div>
+                    <div className="px-3 py-1.5 space-y-1">
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={e => {
+                          if (e.target.value) {
+                            setSelectedDate(e.target.value)
+                            setDateRangePreset('today')
+                            setShowRangeMenu(false)
+                          }
+                        }}
+                        className="w-full text-[12px] px-2.5 py-1.5 border border-slate-200 rounded-lg bg-slate-50 font-bold text-slate-800 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                        title="Pick Custom Date"
+                      />
+                    </div>
+
                     <div className="px-3 pt-2 pb-1 border-t border-slate-100">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Recent Days</p>
                     </div>
@@ -2789,7 +2842,7 @@ export function DailyJobSheet() {
               )}
             </div>
 
-            {/* Payment Category Filters (Monthly, Cash, Online, Pending) */}
+            {/* Payment Category Filters (Monthly, Cash, Online, Pending, Checks) + Three-Dot Color Customizer */}
             <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-[#E4E8EC] text-[11.5px] font-bold">
               {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending', 'Checks'] as const).map(mode => {
                 const isSelected = paymentFilter === mode
@@ -2804,26 +2857,18 @@ export function DailyJobSheet() {
                         : mode === 'Pending'
                           ? todayJobs.filter(j => jobPending(j) > 0).length
                           : rowChecks.size
+                const customColor = filterColors[mode] || DEFAULT_FILTER_COLORS[mode]
 
                 return (
                   <button
                     key={mode}
                     type="button"
                     onClick={() => setPaymentFilter(mode)}
+                    style={isSelected ? { backgroundColor: customColor, color: '#ffffff' } : {}}
                     className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                       isSelected
-                        ? mode === 'Monthly'
-                          ? 'bg-emerald-700 text-white shadow-xs'
-                          : mode === 'Cash'
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : mode === 'Online'
-                              ? 'bg-blue-600 text-white shadow-xs'
-                              : mode === 'Pending'
-                                ? 'bg-red-600 text-white shadow-xs'
-                                : mode === 'Checks'
-                                  ? 'bg-amber-500 text-white shadow-xs'
-                                  : 'bg-white text-slate-800 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                        ? 'shadow-xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold'
                     }`}
                   >
                     <span>{mode === 'ALL' ? 'All' : mode}</span>
@@ -2835,9 +2880,63 @@ export function DailyJobSheet() {
                   </button>
                 )
               })}
+
+              {/* Three-Dot Menu for Filter Color Customization */}
+              <div className="relative pl-0.5 pr-1">
+                <button
+                  type="button"
+                  onClick={() => setShowFilterColorMenu(p => !p)}
+                  className="p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-white/80 transition-colors cursor-pointer"
+                  title="Customize Filter Colors"
+                  aria-label="Customize Filter Colors"
+                >
+                  <MoreVertical size={14} />
+                </button>
+
+                {showFilterColorMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowFilterColorMenu(false)} />
+                    <div className="absolute left-0 sm:right-0 sm:left-auto top-full mt-2 w-72 bg-white border border-[#E4E8EC] rounded-2xl shadow-2xl z-50 p-3.5 animate-in fade-in zoom-in-95 text-slate-800">
+                      <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#E4E8EC]">
+                        <div className="flex items-center gap-1.5 font-bold text-[12px] text-slate-900">
+                          <Palette size={14} className="text-emerald-700" />
+                          <span>Customize Filter Colors</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={resetFilterColors}
+                          className="text-[10.5px] font-bold text-slate-400 hover:text-slate-700 underline cursor-pointer"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mb-2.5">Set custom highlight colors for each filter category:</p>
+                      <div className="space-y-2">
+                        {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending', 'Checks'] as const).map(mode => (
+                          <div key={mode} className="flex items-center justify-between text-[11.5px]">
+                            <span className="font-semibold text-slate-700">{mode === 'ALL' ? 'All' : mode}</span>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="color"
+                                value={filterColors[mode] || DEFAULT_FILTER_COLORS[mode]}
+                                onChange={e => updateFilterColor(mode, e.target.value)}
+                                className="w-6 h-6 rounded-md border border-slate-200 cursor-pointer p-0 bg-transparent"
+                              />
+                              <span className="text-[10px] font-mono text-slate-400 uppercase w-14 text-right">
+                                {filterColors[mode] || DEFAULT_FILTER_COLORS[mode]}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
+
             {/* Customize Columns Dropdown */}
-            {/* Customize Columns Button with 'i' Icon */}
+            {/* Customize Columns Button with Eye Icon (Green circle icon removed per user instruction) */}
             <div className="relative">
               <button
                 type="button"
@@ -2850,9 +2949,7 @@ export function DailyJobSheet() {
                 title="Customize Columns (Drag & Drop Sequence, Hide/Show Checkboxes)"
                 aria-label="Customize Columns"
               >
-                <div className="w-5 h-5 rounded-full bg-emerald-100/80 group-hover:bg-emerald-200/90 text-emerald-800 flex items-center justify-center font-serif italic font-black text-[12px] shadow-2xs">
-                  i
-                </div>
+                <Eye size={15} className="text-slate-600 group-hover:text-emerald-800" />
                 <span className="hidden sm:inline text-[12px] font-bold text-slate-700 group-hover:text-emerald-800">Columns</span>
                 {(activeColumns.length < ALL_COLUMNS.length || isOrderCustomized) && (
                   <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white animate-pulse" title="Custom columns active" />
@@ -3023,7 +3120,7 @@ export function DailyJobSheet() {
               )}
             </div>
 
-            {/* Excel Sheet Mode Button (Opens in New Window Full Width, No Sidebar) */}
+            {/* Excel Sheet Button (Opens in New Window Full Width, No Sidebar) */}
             <button
               type="button"
               onClick={() => window.open(`/daily-job-sheet/spreadsheet?date=${selectedDate}`, '_blank', 'noopener,noreferrer')}
@@ -3031,7 +3128,7 @@ export function DailyJobSheet() {
               title="Open Full Interactive Excel Sheet in a New Window (Full Width, No Sidebar)"
             >
               <FileSpreadsheet size={15} className="text-emerald-700 group-hover:scale-110 transition-transform" />
-              <span className="hidden sm:inline">Excel Sheet Mode</span>
+              <span className="hidden sm:inline">Excel Sheet</span>
               <ExternalLink size={12} className="text-emerald-600 opacity-70 group-hover:opacity-100" />
             </button>
 
