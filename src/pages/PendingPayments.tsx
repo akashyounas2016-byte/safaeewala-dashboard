@@ -24,6 +24,7 @@ import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, splitStaffNames, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
 import * as XLSX from 'xlsx'
 import { todayDubai } from '@/lib/dubaiTime'
+import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
 
 export type PendingDatePreset =
   | 'today'
@@ -52,16 +53,6 @@ function formatDisplayDate(dateStr: string): string {
   } catch {
     return dateStr
   }
-}
-
-function cleanNum(val: any): number {
-  if (val === null || val === undefined || val === '') return 0
-  if (typeof val === 'number') return isNaN(val) ? 0 : val
-  const str = String(val).trim()
-  if (!str || str === '—' || str === '-' || str.toLowerCase() === 'nil' || str.toLowerCase() === 'n/a') return 0
-  const cleaned = str.replace(/[^0-9.-]/g, '').trim()
-  const num = parseFloat(cleaned)
-  return isNaN(num) ? 0 : num
 }
 
 export interface UnifiedPendingRecord {

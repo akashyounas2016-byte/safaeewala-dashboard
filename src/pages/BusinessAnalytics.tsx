@@ -12,13 +12,7 @@ import { useData } from '@/store/DataContext'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { todayDubai, monthDubai } from '@/lib/dubaiTime'
 import { isBogusJob, cleanClientNameFromAddress, jobCollected } from '@/lib/clientDataSync'
-
-function cleanNum(v: any): number {
-  if (typeof v === 'number') return isNaN(v) ? 0 : v
-  if (!v) return 0
-  const parsed = parseFloat(String(v).replace(/[^0-9.-]/g, ''))
-  return isNaN(parsed) ? 0 : parsed
-}
+import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
 
 export function BusinessAnalytics() {
   const { dailyJobs, dailyExpenses, clients, employees, invoices, bookings } = useData()

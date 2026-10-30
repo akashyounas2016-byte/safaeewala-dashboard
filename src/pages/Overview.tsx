@@ -21,16 +21,7 @@ import { invoicedJobIds } from '@/lib/receivables'
 import { cleanClientNameFromAddress, isBogusJob, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, jobCollected } from '@/lib/clientDataSync'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
-
-function cleanNum(val: any): number {
-  if (val === null || val === undefined || val === '') return 0
-  if (typeof val === 'number') return isNaN(val) ? 0 : val
-  const str = String(val).trim()
-  if (!str || str === '—' || str === '-' || str.toLowerCase() === 'nil' || str.toLowerCase() === 'pending' || str.toLowerCase() === 'monthly' || str.toLowerCase() === 'n/a') return 0
-  const cleaned = str.replace(/[^0-9.-]/g, '').trim()
-  const num = parseFloat(cleaned)
-  return isNaN(num) ? 0 : num
-}
+import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
 
 
 /** Bookings without a Daily Job Sheet row — a booking with a row is already counted through that row (AUD-01) */
