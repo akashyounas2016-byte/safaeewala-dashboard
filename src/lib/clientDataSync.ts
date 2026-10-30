@@ -1315,7 +1315,7 @@ export function getScheduledMonthlyShiftsForDate(
       .replace(/\s*-\s*$/, '')
       .trim()
 
-    const formattedAddr = cleanBase ? `${cleanBase} (Monthly)` : `${clientName} (Monthly)`
+    const formattedAddr = cleanBase ? cleanBase : clientName
 
     const area = client.area || 'Dubai'
 

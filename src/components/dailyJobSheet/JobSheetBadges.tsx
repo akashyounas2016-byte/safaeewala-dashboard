@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 import type { PaymentMode } from '@/types'
 
 export function PaymentBadge({ mode }: { mode: PaymentMode }) {
@@ -16,18 +16,42 @@ export function PaymentBadge({ mode }: { mode: PaymentMode }) {
   )
 }
 
+export function cleanAddressDisplay(val: unknown): string {
+  if (!val) return '—'
+  const str = String(val).trim()
+  if (!str) return '—'
+  return str
+    .replace(/\s*\(Monthly\)/gi, '')
+    .replace(/\s*\[Monthly\]/gi, '')
+    .replace(/\s+Monthly\s*$/i, '')
+    .trim() || '—'
+}
+
+export function isAddressMonthly(val: unknown): boolean {
+  if (!val) return false
+  return /\(Monthly\)|\[Monthly\]|Monthly Client/i.test(String(val))
+}
+
 export function AddressCell({ address, isDark }: { address: string; area?: string; isDark?: boolean }) {
   if (!address || address === '—' || address === '-') {
     return <span className={isDark ? "text-emerald-700 font-medium" : "text-slate-400"}>—</span>
   }
 
+  const isMonthly = isAddressMonthly(address)
+  const cleanAddr = cleanAddressDisplay(address)
+
   return (
-    <div className="relative inline-block max-w-[220px] select-none">
-      <div className={`truncate font-medium flex items-center gap-1 ${
+    <div className="relative inline-flex items-center gap-1.5 max-w-[280px] select-none flex-wrap">
+      <span className={`truncate font-medium ${
         isDark ? 'text-emerald-950 font-semibold' : 'text-slate-800'
       }`}>
-        <span className="truncate">{address}</span>
-      </div>
+        {cleanAddr}
+      </span>
+      {isMonthly && (
+        <span className="px-1.5 py-0.2 rounded text-[9.5px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+          Monthly Client
+        </span>
+      )}
     </div>
   )
 }

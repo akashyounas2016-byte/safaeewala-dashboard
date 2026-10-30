@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import {
   AlertCircle, CheckCircle, Pencil, AlertTriangle, Trash2, Users, MapPin, Link2,
+  Wallet, Plus, Clock, FileText, Check, ChevronDown
 } from 'lucide-react'
+import type { TodayPendingEntry } from './ReconciliationWidgets'
 import { useData } from '@/store/DataContext'
 import type {
   DailyJob,
@@ -262,26 +264,55 @@ export function DeleteAllConfirmModal({
   )
 }
 
-/* ── Driver / Staff Detail Modal ── */
+/* ── Driver / Staff Detail Modal with Live Advance & Pending Sync ── */
 export function DriverStaffModal({
   staff,
   selectedDate,
   todayJobs,
   employees = [],
   driverSummary = {},
+  todayAdvanceItems = [],
+  todayPendingRcvdItems = [],
+  todayPendingEntries = [],
   onClose,
   onEditJob,
   onSelectStaff,
+  onAddAdvance,
+  onAddPendingRcvd,
+  onDeleteAdvance,
+  onDeletePendingRcvd,
 }: {
   staff: { name: string; currentAmount: number } | null
   selectedDate: string
   todayJobs: DailyJob[]
   employees?: Employee[]
   driverSummary?: Record<string, number>
+  todayAdvanceItems?: DailyAdvanceItem[]
+  todayPendingRcvdItems?: DailyPendingReceivedItem[]
+  todayPendingEntries?: TodayPendingEntry[]
   onClose: () => void
   onEditJob: (job: DailyJob) => void
   onSelectStaff?: (staff: { name: string; currentAmount: number }) => void
+  onAddAdvance?: (item: DailyAdvanceItem) => void
+  onAddPendingRcvd?: (item: DailyPendingReceivedItem) => void
+  onDeleteAdvance?: (id: string) => void
+  onDeletePendingRcvd?: (id: string) => void
 }) {
+  const [activeTab, setActiveTab] = useState<'jobs' | 'advance' | 'pending'>('jobs')
+
+  // Advance Form State
+  const [showAdvanceForm, setShowAdvanceForm] = useState(false)
+  const [advClient, setAdvClient] = useState('')
+  const [advAmount, setAdvAmount] = useState('')
+  const [advNotes, setAdvNotes] = useState('')
+
+  // Pending Form State
+  const [showPendingForm, setShowPendingForm] = useState(false)
+  const [pendClient, setPendClient] = useState('')
+  const [pendCash, setPendCash] = useState('')
+  const [pendOnline, setPendOnline] = useState('')
+  const [pendRemarks, setPendRemarks] = useState('')
+
   const availableDrivers = useMemo(() => {
     const map = new Map<string, number>()
     // 1. Include only actual drivers from employees roster
@@ -307,21 +338,91 @@ export function DriverStaffModal({
   if (!staff) return null
 
   const activeStaffName = (staff.name || '').trim()
+
+  // Filter shifts for this cleaner / driver
   const staffJobs = todayJobs.filter(j => (j.staff_name || '').trim().toLowerCase() === activeStaffName.toLowerCase())
-  const activeStaffCollected = driverSummary[activeStaffName] ?? staff.currentAmount
+
+  // Filter advances for this cleaner / driver
+  const staffAdvances = todayAdvanceItems.filter(a => {
+    const cRef = ((a as any).cleaner || (a as any).driver || (a as any).staff || a.notes || '').toLowerCase()
+    return cRef.includes(activeStaffName.toLowerCase())
+  })
+
+  // Filter pending payments collected for this cleaner / driver
+  const staffPendingRcvd = todayPendingRcvdItems.filter(p => {
+    const pRef = ((p as any).driver || (p as any).staff || p.remarks || p.notes || '').toLowerCase()
+    return pRef.includes(activeStaffName.toLowerCase())
+  })
+
+  // Filter pending dues for this cleaner
+  const staffPendingDues = todayPendingEntries.filter(p => (p.staff || '').toLowerCase().includes(activeStaffName.toLowerCase()))
+
+  // Financial calculations
+  const jobsCollectedTotal = staffJobs.reduce((s, j) => {
+    if (j.payment_mode !== 'Monthly' && j.payment_mode !== 'Pending') {
+      return s + cleanNum(j.received)
+    }
+    return s
+  }, 0)
+  const advancesTotal = staffAdvances.reduce((s, a) => s + cleanNum(a.received), 0)
+  const pendingRcvdTotal = staffPendingRcvd.reduce((s, p) => s + cleanNum(p.cash) + cleanNum(p.online), 0)
+  const grandTotalInHand = jobsCollectedTotal + advancesTotal + pendingRcvdTotal
+  const pendingDuesTotal = staffPendingDues.reduce((s, p) => s + cleanNum(p.amount), 0)
+
+  const handleSaveAdvance = (e: React.FormEvent) => {
+    e.preventDefault()
+    const amt = cleanNum(advAmount)
+    const client = advClient.trim() || activeStaffName
+    if (amt <= 0 || !onAddAdvance) return
+    onAddAdvance({
+      id: newId('adv'),
+      date: selectedDate,
+      client,
+      received: amt,
+      advance: amt,
+      notes: `Driver/Staff: ${activeStaffName}${advNotes.trim() ? ` · ${advNotes.trim()}` : ''}`,
+      ...( { cleaner: activeStaffName, driver: activeStaffName } as any ),
+    })
+    setAdvClient('')
+    setAdvAmount('')
+    setAdvNotes('')
+    setShowAdvanceForm(false)
+  }
+
+  const handleSavePending = (e: React.FormEvent) => {
+    e.preventDefault()
+    const cash = cleanNum(pendCash)
+    const online = cleanNum(pendOnline)
+    const client = pendClient.trim()
+    if ((cash <= 0 && online <= 0) || !client || !onAddPendingRcvd) return
+    onAddPendingRcvd({
+      id: newId('prcvd'),
+      date: selectedDate,
+      client,
+      cash,
+      online,
+      remarks: `Driver/Staff: ${activeStaffName}${pendRemarks.trim() ? ` · ${pendRemarks.trim()}` : ''}`,
+      ...( { driver: activeStaffName, staff: activeStaffName } as any ),
+    })
+    setPendClient('')
+    setPendCash('')
+    setPendOnline('')
+    setPendRemarks('')
+    setShowPendingForm(false)
+  }
 
   return (
     <Modal
       open={!!staff}
       onClose={onClose}
-      title="Driver Payment Received"
-      size="md"
+      title="Driver Payment Received & Cleaner Reconciliation"
+      size="lg"
     >
       <div className="space-y-4 pt-1">
         {/* Driver Selector Dropdown */}
         <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
           <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-            Select Driver:
+            Select Driver / Cleaner:
           </label>
           <select
             value={activeStaffName}
@@ -346,101 +447,422 @@ export function DriverStaffModal({
           </select>
         </div>
 
-        {/* Selected Driver Summary Card */}
-        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-[12.5px]">
-          <div>
-            <span className="text-emerald-800 font-semibold">Active Record:</span>{' '}
-            <strong className="text-emerald-950 font-bold">{activeStaffName}</strong>
-            <span className="text-slate-500 ml-2">({staffJobs.length} shift{staffJobs.length !== 1 ? 's' : ''} on {fmtDate(selectedDate)})</span>
+        {/* Selected Driver Summary Card with Real-Time Breakdown */}
+        <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50/50 to-emerald-50 border border-emerald-200 rounded-2xl shadow-xs space-y-2.5">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <span className="text-emerald-800 font-semibold text-[12px]">Staff Record:</span>{' '}
+              <strong className="text-emerald-950 font-black text-[14px]">{activeStaffName}</strong>
+              <span className="text-slate-500 text-[11px] ml-2">({staffJobs.length} shift{staffJobs.length !== 1 ? 's' : ''} on {fmtDate(selectedDate)})</span>
+            </div>
+            <div className="text-right">
+              <span className="text-[11px] font-bold text-emerald-800 block">Total Accounted In-Hand:</span>
+              <span className="text-[18px] font-black text-emerald-900">AED {grandTotalInHand.toLocaleString()}</span>
+            </div>
           </div>
-          <div className="text-right">
-            <span className="text-[11px] text-emerald-700 font-medium">Total Received:</span>{' '}
-            <span className="text-[15px] font-black text-emerald-900">AED {activeStaffCollected.toLocaleString()}</span>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-emerald-200/80 text-[11px]">
+            <div className="bg-white/90 p-2 rounded-xl border border-emerald-200">
+              <span className="text-slate-500 block">Shift Collections</span>
+              <span className="font-extrabold text-slate-800 text-[12.5px]">AED {jobsCollectedTotal.toLocaleString()}</span>
+            </div>
+            <div className="bg-white/90 p-2 rounded-xl border border-amber-200">
+              <span className="text-amber-700 block">Advances Rcvd</span>
+              <span className="font-extrabold text-amber-800 text-[12.5px]">AED {advancesTotal.toLocaleString()}</span>
+            </div>
+            <div className="bg-white/90 p-2 rounded-xl border border-blue-200">
+              <span className="text-blue-700 block">Pending Collected</span>
+              <span className="font-extrabold text-blue-800 text-[12.5px]">AED {pendingRcvdTotal.toLocaleString()}</span>
+            </div>
+            <div className="bg-white/90 p-2 rounded-xl border border-rose-200">
+              <span className="text-rose-700 block">Uncollected Due</span>
+              <span className="font-extrabold text-rose-800 text-[12.5px]">AED {pendingDuesTotal.toLocaleString()}</span>
+            </div>
           </div>
         </div>
 
-        {/* Assign Job and Received Amount Section */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h5 className="text-[12px] font-bold text-slate-700 uppercase tracking-wider">
-              Assign Job and Received Amount
-            </h5>
-            <span className="text-[11px] text-slate-400 font-medium">
-              Linked Cleaner &amp; Job References
-            </span>
-          </div>
+        {/* ── Synchronized Tabs: Shifts & Jobs | Advance | Pending ── */}
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200 text-[12px] font-bold">
+          <button
+            type="button"
+            onClick={() => setActiveTab('jobs')}
+            className={`flex-1 py-1.5 px-3 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              activeTab === 'jobs'
+                ? 'bg-white text-emerald-900 shadow-2xs font-extrabold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <Clock size={13} />
+            <span>Job Shifts ({staffJobs.length})</span>
+          </button>
 
-          {staffJobs.length === 0 ? (
-            <p className="text-[12px] text-slate-400 py-4 text-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-              No shifts or payments recorded under {activeStaffName} on this date.
-            </p>
-          ) : (
-            <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
-              {staffJobs.map(job => (
-                <div key={job.id} className="p-3 flex items-center justify-between gap-3 text-[12px] hover:bg-slate-50 transition-colors">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-slate-800 truncate">{job.address || 'No address'}</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      {formatTimeOnly(job.start_time)} – {formatTimeOnly(job.end_time)} · Mode: <strong className="text-slate-600">{job.payment_mode}</strong> · Charges: AED {cleanNum(job.charges)}
-                    </p>
-                    {/* Reference Fields: Linked Cleaner & Address */}
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10.5px]">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold border border-indigo-200/80">
-                        <Users size={10} /> Cleaner Ref: {job.staff_name}
-                      </span>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-semibold border border-purple-200/80 truncate max-w-[180px]">
-                        <MapPin size={10} /> {job.address || 'No Address'}
-                      </span>
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium border border-slate-200">
-                        Ref #{job.id ? job.id.slice(0, 6) : 'Direct'}
-                      </span>
+          <button
+            type="button"
+            onClick={() => setActiveTab('advance')}
+            className={`flex-1 py-1.5 px-3 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              activeTab === 'advance'
+                ? 'bg-white text-amber-900 shadow-2xs font-extrabold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <Wallet size={13} />
+            <span>Advance ({staffAdvances.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('pending')}
+            className={`flex-1 py-1.5 px-3 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              activeTab === 'pending'
+                ? 'bg-white text-blue-900 shadow-2xs font-extrabold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <FileText size={13} />
+            <span>Pending ({staffPendingRcvd.length + staffPendingDues.length})</span>
+          </button>
+        </div>
+
+        {/* ── TAB 1: JOB SHIFTS & PAYMENTS ── */}
+        {activeTab === 'jobs' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h5 className="text-[12px] font-bold text-slate-700 uppercase tracking-wider">
+                Assign Job and Received Amount
+              </h5>
+              <span className="text-[11px] text-slate-400 font-medium">
+                Linked Cleaner &amp; Job References
+              </span>
+            </div>
+
+            {staffJobs.length === 0 ? (
+              <p className="text-[12px] text-slate-400 py-6 text-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                No shifts or payments recorded under {activeStaffName} on this date.
+              </p>
+            ) : (
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+                {staffJobs.map(job => (
+                  <div key={job.id} className="p-3 flex items-center justify-between gap-3 text-[12px] hover:bg-slate-50 transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-slate-800 truncate">{job.address || 'No address'}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        {formatTimeOnly(job.start_time)} – {formatTimeOnly(job.end_time)} · Mode: <strong className="text-slate-600">{job.payment_mode}</strong> · Charges: AED {cleanNum(job.charges)}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10.5px]">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold border border-indigo-200/80">
+                          <Users size={10} /> Cleaner Ref: {job.staff_name}
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-semibold border border-purple-200/80 truncate max-w-[180px]">
+                          <MapPin size={10} /> {job.address || 'No Address'}
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium border border-slate-200">
+                          Ref #{job.id ? job.id.slice(0, 6) : 'Direct'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-400 block font-medium">Received</span>
+                        <span className="font-bold text-emerald-700">AED {cleanNum(job.received)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onEditJob(job)}
+                        className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
+                        title="Edit this job reference"
+                      >
+                        <Pencil size={12} />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2.5 shrink-0">
-                    <div className="text-right">
-                      <span className="text-[10px] text-slate-400 block font-medium">Received</span>
-                      <span className="font-bold text-emerald-700">AED {cleanNum(job.received)}</span>
+                ))}
+              </div>
+            )}
+
+            {/* Reference Link Field */}
+            <div className="pt-1">
+              <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5 mb-1">
+                <Link2 size={12} className="text-emerald-600" />
+                Link Payment to Cleaner / Job Reference:
+              </label>
+              <select
+                onChange={e => {
+                  const jobId = e.target.value
+                  const targetJob = todayJobs.find(j => j.id === jobId)
+                  if (targetJob) onEditJob(targetJob)
+                }}
+                defaultValue=""
+                className="w-full text-[12px] bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-700 focus:outline-none focus:border-emerald-500 font-medium cursor-pointer"
+              >
+                <option value="" disabled>Select shift to link or edit payment reference…</option>
+                {todayJobs.map(j => (
+                  <option key={j.id} value={j.id}>
+                    Cleaner: {j.staff_name} · {j.address || 'No Address'} · Received: AED {cleanNum(j.received)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* ── TAB 2: ADVANCES (SYNCHRONIZED WITH ADVANCE TAB) ── */}
+        {activeTab === 'advance' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h5 className="text-[12px] font-bold text-amber-900 uppercase tracking-wider">
+                  Advance Payments Synchronized
+                </h5>
+                <p className="text-[10.5px] text-slate-500">Recorded for {activeStaffName} on {fmtDate(selectedDate)}</p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setShowAdvanceForm(prev => !prev)}
+                className="h-7 text-[11px] bg-amber-600 hover:bg-amber-700 text-white font-bold"
+              >
+                <Plus size={12} />
+                <span>{showAdvanceForm ? 'Cancel' : 'Add Advance'}</span>
+              </Button>
+            </div>
+
+            {/* Inline Quick Add Advance Form */}
+            {showAdvanceForm && (
+              <form onSubmit={handleSaveAdvance} className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2.5 animate-in fade-in">
+                <p className="text-[11px] font-bold text-amber-900">Record Advance Payment (Syncs with Daily Job Sheet)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Input
+                    label="Client / Destination Name"
+                    placeholder="Client name or reason"
+                    value={advClient}
+                    onChange={e => setAdvClient(e.target.value)}
+                    required
+                  />
+                  <Input
+                    type="number"
+                    label="Advance Amount (AED)"
+                    placeholder="e.g. 200"
+                    value={advAmount}
+                    onChange={e => setAdvAmount(e.target.value)}
+                    required
+                  />
+                </div>
+                <Input
+                  label="Remarks & Notes"
+                  placeholder="e.g. Advance cash handed by driver"
+                  value={advNotes}
+                  onChange={e => setAdvNotes(e.target.value)}
+                />
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setShowAdvanceForm(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" className="bg-amber-600 hover:bg-amber-700 text-white font-bold">
+                    Save Advance
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            {staffAdvances.length === 0 ? (
+              <p className="text-[12px] text-slate-400 py-6 text-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                No advance entries recorded for {activeStaffName} on this date.
+              </p>
+            ) : (
+              <div className="divide-y divide-amber-100 border border-amber-200/90 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
+                {staffAdvances.map(adv => (
+                  <div key={adv.id} className="p-3 flex items-center justify-between gap-3 text-[12px] bg-white hover:bg-amber-50/40 transition-colors">
+                    <div>
+                      <p className="font-bold text-slate-900">{adv.client}</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">{adv.notes || 'No remarks recorded'}</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => onEditJob(job)}
-                      className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
-                      title="Edit this job reference"
-                    >
-                      <Pencil size={12} />
-                    </button>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <span className="font-black text-amber-800 text-[13px]">AED {cleanNum(adv.received).toLocaleString()}</span>
+                      {onDeleteAdvance && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Delete advance of AED ${adv.received} for ${adv.client}?`)) {
+                              onDeleteAdvance(adv.id)
+                            }
+                          }}
+                          className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          title="Delete Advance"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── TAB 3: PENDING PAYMENTS (SYNCHRONIZED WITH PENDING TABS) ── */}
+        {activeTab === 'pending' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h5 className="text-[12px] font-bold text-blue-900 uppercase tracking-wider">
+                  Pending Collections &amp; Balances
+                </h5>
+                <p className="text-[10.5px] text-slate-500">Live sync with Today Pending &amp; Pending Received tabs</p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setShowPendingForm(prev => !prev)}
+                className="h-7 text-[11px] bg-blue-600 hover:bg-blue-700 text-white font-bold"
+              >
+                <Plus size={12} />
+                <span>{showPendingForm ? 'Cancel' : 'Record Pending Received'}</span>
+              </Button>
+            </div>
+
+            {/* Inline Quick Add Pending Received Form */}
+            {showPendingForm && (
+              <form onSubmit={handleSavePending} className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2.5 animate-in fade-in">
+                <p className="text-[11px] font-bold text-blue-900">Record Pending Payment Received (Syncs with Daily Job Sheet)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="sm:col-span-1">
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">Client Name *</label>
+                    <input
+                      type="text"
+                      list="driver-pending-clients"
+                      required
+                      placeholder="Client Name"
+                      value={pendClient}
+                      onChange={e => setPendClient(e.target.value)}
+                      className="w-full text-[12px] p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500"
+                    />
+                    <datalist id="driver-pending-clients">
+                      {staffPendingDues.map(d => <option key={d.id} value={d.client} />)}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">Cash (AED)</label>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={pendCash}
+                      onChange={e => setPendCash(e.target.value)}
+                      className="w-full text-[12px] p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-700 block mb-1">Online (AED)</label>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={pendOnline}
+                      onChange={e => setPendOnline(e.target.value)}
+                      className="w-full text-[12px] p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500 font-bold"
+                    />
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+                <Input
+                  label="Remarks & Notes"
+                  placeholder="e.g. Cleared at site in cash"
+                  value={pendRemarks}
+                  onChange={e => setPendRemarks(e.target.value)}
+                />
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setShowPendingForm(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" className="bg-blue-600 hover:bg-blue-700 text-white font-bold">
+                    Save Collection
+                  </Button>
+                </div>
+              </form>
+            )}
 
-          {/* Reference Link Field: Allows linking or editing cleaner & address reference from today's shifts */}
-          <div className="pt-2">
-            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
-              <Link2 size={12} className="text-emerald-600" />
-              Link Payment to Cleaner / Job Reference:
-            </label>
-            <select
-              onChange={e => {
-                const jobId = e.target.value
-                const targetJob = todayJobs.find(j => j.id === jobId)
-                if (targetJob) {
-                  onEditJob(targetJob)
-                }
-              }}
-              defaultValue=""
-              className="w-full text-[12px] bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-700 focus:outline-none focus:border-emerald-500 font-medium cursor-pointer"
-            >
-              <option value="" disabled>Select shift to link or edit payment reference…</option>
-              {todayJobs.map(j => (
-                <option key={j.id} value={j.id}>
-                  Cleaner: {j.staff_name} · {j.address || 'No Address'} · Received: AED {cleanNum(j.received)}
-                </option>
-              ))}
-            </select>
+            {/* 1. Collected Pending Payments Today */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block">
+                Collected Today ({staffPendingRcvd.length}):
+              </span>
+              {staffPendingRcvd.length === 0 ? (
+                <p className="text-[11.5px] text-slate-400 py-3 text-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                  No pending payments collected today by {activeStaffName}.
+                </p>
+              ) : (
+                <div className="divide-y divide-emerald-100 border border-emerald-200/80 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
+                  {staffPendingRcvd.map(item => (
+                    <div key={item.id} className="p-2.5 flex items-center justify-between gap-2 text-[12px] bg-white hover:bg-emerald-50/40">
+                      <div>
+                        <p className="font-bold text-slate-900">{item.client}</p>
+                        <p className="text-[10.5px] text-slate-500">
+                          Cash: AED {item.cash || 0} · Online: AED {item.online || 0} {item.remarks ? `· ${item.remarks}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-black text-emerald-800 text-[12.5px]">
+                          AED {(cleanNum(item.cash) + cleanNum(item.online)).toLocaleString()}
+                        </span>
+                        {onDeletePendingRcvd && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Delete collection for ${item.client}?`)) {
+                                onDeletePendingRcvd(item.id)
+                              }
+                            }}
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            title="Delete"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 2. Pending Dues Remaining */}
+            <div className="space-y-1.5 pt-1">
+              <span className="text-[11px] font-bold text-rose-800 uppercase tracking-wider block">
+                Client Pending Dues Remaining ({staffPendingDues.length}):
+              </span>
+              {staffPendingDues.length === 0 ? (
+                <p className="text-[11.5px] text-slate-400 py-3 text-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                  No outstanding client dues for {activeStaffName}'s shifts.
+                </p>
+              ) : (
+                <div className="divide-y divide-rose-100 border border-rose-200/80 rounded-xl overflow-hidden max-h-40 overflow-y-auto">
+                  {staffPendingDues.map(due => (
+                    <div key={due.id} className="p-2.5 flex items-center justify-between gap-2 text-[12px] bg-white hover:bg-rose-50/30">
+                      <div>
+                        <p className="font-bold text-slate-900">{due.client}</p>
+                        <p className="text-[10.5px] text-slate-500">{due.address} · {due.remarks || 'Pending balance'}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-black text-rose-700 text-[12.5px]">AED {cleanNum(due.amount).toLocaleString()}</span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => {
+                            setPendClient(due.client)
+                            setPendCash(String(due.amount))
+                            setShowPendingForm(true)
+                          }}
+                          className="h-6 px-2 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                          title="Collect this pending due"
+                        >
+                          Collect
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex justify-end pt-2">
           <Button type="button" variant="outline" onClick={onClose}>

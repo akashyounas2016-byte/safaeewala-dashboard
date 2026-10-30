@@ -241,7 +241,6 @@ export const ALL_COLUMNS: ColumnConfig[] = [
   { id: 'material',     label: 'Material' },
   { id: 'payment_mode', label: 'Payment Mode' },
   { id: 'remarks',      label: 'Remarks' },
-  { id: 'service',      label: 'Service' },
   { id: 'actions',      label: 'Actions' },
 ]
 
@@ -259,7 +258,6 @@ export const DEFAULT_VISIBLE_COLUMNS: Record<string, boolean> = {
   material:     true,
   payment_mode: true,
   remarks:      true,
-  service:      true,
   actions:      true,
 }
 

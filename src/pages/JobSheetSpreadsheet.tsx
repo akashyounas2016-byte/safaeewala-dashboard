@@ -79,16 +79,21 @@ export function checkTimesOverlap(startA: string, endA: string, startB: string, 
   return sA < eB && sB < eA
 }
 
-/** Cleans duplicate '(Monthly)' occurrences in address display */
+/** Strips '(Monthly)' from address display and provides clean text */
 export function cleanAddressDisplay(val: unknown): string {
   if (!val) return '—'
   const str = String(val).trim()
   if (!str) return '—'
   return str
-    .replace(/(\s*\(Monthly\)\s*)+/gi, ' (Monthly)')
-    .replace(/\bMonthly\s*\(Monthly\)/gi, '(Monthly)')
-    .replace(/\bMonthly\s+Monthly\b/gi, 'Monthly')
-    .trim()
+    .replace(/\s*\(Monthly\)/gi, '')
+    .replace(/\s*\[Monthly\]/gi, '')
+    .replace(/\s+Monthly\s*$/i, '')
+    .trim() || '—'
+}
+
+export function isAddressMonthly(val: unknown): boolean {
+  if (!val) return false
+  return /\(Monthly\)|\[Monthly\]|\bMonthly Client\b/i.test(String(val))
 }
 
 export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
@@ -4228,7 +4233,16 @@ export function JobSheetSpreadsheet() {
                                                 : 'text-slate-100 font-medium'
                                     }
                                   >
-                                    {col.id === 'address' ? cleanAddressDisplay(displayVal) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
+                                    {col.id === 'address' ? (
+                                        <span className="inline-flex items-center gap-1.5 flex-wrap">
+                                          <span>{cleanAddressDisplay(displayVal)}</span>
+                                          {isAddressMonthly(displayVal) && (
+                                            <span className="px-1.5 py-0.2 rounded text-[9.5px] font-extrabold bg-indigo-900/60 text-indigo-200 border border-indigo-500/40 shrink-0 not-italic">
+                                              Monthly Client
+                                            </span>
+                                          )}
+                                        </span>
+                                      ) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
                                   </span>
                                 )}
                               </td>
@@ -4502,7 +4516,16 @@ export function JobSheetSpreadsheet() {
                                             : (isDarkCell ? 'text-white font-medium' : 'text-slate-800 font-medium')
                               }
                             >
-                              {col.id === 'address' ? cleanAddressDisplay(displayVal) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
+                              {col.id === 'address' ? (
+                                        <span className="inline-flex items-center gap-1.5 flex-wrap">
+                                          <span>{cleanAddressDisplay(displayVal)}</span>
+                                          {isAddressMonthly(displayVal) && (
+                                            <span className="px-1.5 py-0.2 rounded text-[9.5px] font-extrabold bg-indigo-900/60 text-indigo-200 border border-indigo-500/40 shrink-0 not-italic">
+                                              Monthly Client
+                                            </span>
+                                          )}
+                                        </span>
+                                      ) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
                             </span>
                           )}
                         </td>

@@ -1017,13 +1017,39 @@ export function DailyJobSheet() {
   const staffOnDuty    = new Set(todayJobs.map(j => j.staff_name)).size
   const jobsCount      = todayJobs.length
 
-  // Driver summary — collected per staff (excluding Monthly + Pending)
-  const driverSummary = todayJobs.reduce((acc, job) => {
-    if (job.payment_mode !== 'Monthly' && job.payment_mode !== 'Pending') {
-      acc[job.staff_name] = (acc[job.staff_name] || 0) + jobCollected(job)
-    }
-    return acc
-  }, {} as Record<string, number>)
+  // Driver summary — collected per staff (Synchronized with Shifts, Advances, and Pending Received)
+  const driverSummary = useMemo(() => {
+    const summary: Record<string, number> = {}
+
+    // 1. Shift collections (Cash + Online, excluding Monthly & Pending)
+    todayJobs.forEach(job => {
+      if (job.payment_mode !== 'Monthly' && job.payment_mode !== 'Pending') {
+        const staff = (job.staff_name || '').trim()
+        if (staff) {
+          summary[staff] = (summary[staff] || 0) + jobCollected(job)
+        }
+      }
+    })
+
+    // 2. Pending Received collections (synced with driver/cleaner)
+    todayPendingRcvdItems.forEach(item => {
+      const staffRef = (item as any).staff || (item as any).driver || (item.remarks && employees.find(e => item.remarks?.toLowerCase().includes(e.full_name.toLowerCase()))?.full_name)
+      if (staffRef) {
+        const amt = cleanNum(item.cash) + cleanNum(item.online)
+        summary[staffRef] = (summary[staffRef] || 0) + amt
+      }
+    })
+
+    // 3. Advance collections (synced with driver/cleaner)
+    todayAdvanceItems.forEach(item => {
+      const staffRef = (item as any).staff || (item as any).cleaner || (item as any).driver || (item.notes && employees.find(e => item.notes?.toLowerCase().includes(e.full_name.toLowerCase()))?.full_name)
+      if (staffRef) {
+        summary[staffRef] = (summary[staffRef] || 0) + cleanNum(item.received)
+      }
+    })
+
+    return summary
+  }, [todayJobs, todayPendingRcvdItems, todayAdvanceItems, employees])
 
   // 3 items display logic for bottom widgets (Sirf Expense Log aur Driver Staff Summary widgets mein teen rows dikhayen)
   const displayedExpenses = viewAllExpenses ? todayExpenses : todayExpenses.slice(0, 3)
@@ -3450,17 +3476,12 @@ export function DailyJobSheet() {
           <div
             className="flex-1 overflow-x-auto min-w-0 relative table-scroll-container"
             onWheel={e => {
-              const el = e.currentTarget
-              if (!el) return
-              if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return // native horizontal gesture
-              const maxScroll = el.scrollWidth - el.clientWidth
-              if (maxScroll <= 0) return
-              const goingRight = e.deltaY > 0
-              const goingLeft = e.deltaY < 0
-              if ((goingRight && el.scrollLeft < maxScroll - 1) || (goingLeft && el.scrollLeft > 1)) {
-                el.scrollLeft += e.deltaY
-                e.preventDefault()
+              if (e.shiftKey) {
+                const el = e.currentTarget
+                if (el) el.scrollLeft += e.deltaY
               }
+              // Normal vertical wheel scroll bubbles naturally without e.preventDefault()
+              // so the entire page scrolls smoothly when cursor is over the table
             }}
           >
             <table
@@ -3904,16 +3925,23 @@ CREATE TABLE daily_expenses (
         }}
       />
 
-      {/* ── Edit Driver / Staff Summary Modal ── */}
+      {/* ── Edit Driver / Staff Summary Modal with Advance & Pending Sync ── */}
       <DriverStaffModal
         staff={editingDriverStaff}
         selectedDate={selectedDate}
         todayJobs={todayJobs}
         employees={employees}
         driverSummary={driverSummary}
+        todayAdvanceItems={todayAdvanceItems}
+        todayPendingRcvdItems={todayPendingRcvdItems}
+        todayPendingEntries={todayPendingEntries}
         onClose={() => setEditingDriverStaff(null)}
         onEditJob={job => { if (!blockIfClosed(job.date)) setEditJob(job) }}
         onSelectStaff={staff => setEditingDriverStaff(staff)}
+        onAddAdvance={item => setAdvanceList(prev => [item, ...prev])}
+        onAddPendingRcvd={item => setPendingRcvdList(prev => [item, ...prev])}
+        onDeleteAdvance={id => setAdvanceList(prev => prev.filter(x => x.id !== id))}
+        onDeletePendingRcvd={id => setPendingRcvdList(prev => prev.filter(x => x.id !== id))}
       />
 
       {/* ── Add Pending Item Modal ── */}
