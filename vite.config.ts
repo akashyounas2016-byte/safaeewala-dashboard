@@ -24,16 +24,19 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
-        manualChunks(id: string) {
-          if (id.includes('node_modules')) {
-            if (id.includes('xlsx')) return 'vendor-xlsx'
-            if (id.includes('recharts')) return 'vendor-charts'
-            if (id.includes('@supabase')) return 'vendor-supabase'
-            if (id.includes('lucide-react')) return 'vendor-lucide'
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
-              return 'vendor-react'
-            }
-          }
+        // TA-13: vendor chunks with priorities. With manualChunks the charts group also captured its
+        // dependencies — React itself — so every page downloaded ~380 KB of chart code. A higher
+        // priority keeps React (and other shared libraries) out of the charts chunk.
+        codeSplitting: {
+          groups: [
+            { name: 'vendor-react', test: /node_modules[\\/](react|react-dom|scheduler|react-router|react-router-dom|react-is|use-sync-external-store)[\\/]/, priority: 50 },
+            // small helpers shared by the app and the charts (clsx …) — own chunk, loaded at start
+            { name: 'vendor-utils', test: /node_modules[\\/](clsx|tailwind-merge|class-variance-authority|sonner)[\\/]/, priority: 45 },
+            { name: 'vendor-supabase', test: /node_modules[\\/]@supabase[\\/]/, priority: 40 },
+            { name: 'vendor-lucide', test: /node_modules[\\/]lucide-react[\\/]/, priority: 40 },
+            { name: 'vendor-xlsx', test: /node_modules[\\/]xlsx[\\/]/, priority: 30 },
+            { name: 'vendor-charts', test: /node_modules[\\/](recharts|victory-vendor|d3-[a-z-]+|internmap|decimal\.js-light|es-toolkit|eventemitter3|@reduxjs|immer|react-redux|reselect)[\\/]/, priority: 20 },
+          ],
         },
       },
     },

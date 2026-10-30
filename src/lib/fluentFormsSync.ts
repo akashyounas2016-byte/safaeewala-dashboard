@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { FluentFormLead, LeadStatus } from '@/types'
-import * as XLSX from 'xlsx'
 import { todayDubai } from '@/lib/dubaiTime'
 
 const STORAGE_KEY = 'safaeewala_fluent_form_leads'
@@ -411,7 +410,9 @@ export async function deleteFluentFormLeadRemote(id: string): Promise<void> {
 }
 
 /* ─── Export Leads to XLSX ─── */
-export function exportLeadsToXLSX(leads: FluentFormLead[]) {
+// xlsx (~400 KB) is loaded only when exporting, not with the app shell (TA-13)
+export async function exportLeadsToXLSX(leads: FluentFormLead[]) {
+  const XLSX = await import('xlsx')
   const rows = leads.map(l => ({
     'Lead ID': l.id,
     'Date & Time': new Date(l.created_at).toLocaleString(),
