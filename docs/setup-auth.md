@@ -47,6 +47,9 @@ and the database refuses anyone who is not signed in.
    SUPABASE_URL=https://<your-project>.supabase.co
    SUPABASE_SERVICE_ROLE_KEY=<the key from step 1>
    FLUENT_WEBHOOK_SECRET=<a long random text you choose>
+   # optional — only if you use the GoHighLevel API (TA-18)
+   GHL_API_KEY=<GHL private integration token>
+   GHL_LOCATION_ID=<GHL location id>
    ```
    This file stays only on the server. Never put this key in a `VITE_` variable, in git or in chat.
    (Antigravity or Claude can do this step with your permission — it touches the VPS.)

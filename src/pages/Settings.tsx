@@ -263,13 +263,9 @@ function GHLPanel() {
                 <span>{showApiKey ? 'Hide' : 'Show'}</span>
               </button>
             </label>
-            <input
-              type={showApiKey ? 'text' : 'password'}
-              value={config.apiKey}
-              onChange={e => setConfig(prev => ({ ...prev, apiKey: e.target.value.trim() }))}
-              placeholder="pit-..."
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[13px] text-slate-900 font-mono placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-            />
+            <p className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[12px] text-slate-600">
+              For security the API token is <b>not</b> stored in the browser. Put it on the server as <code>GHL_API_KEY</code> and <code>GHL_LOCATION_ID</code> (VPS <code>.env</code>), then press Test.
+            </p>
             <p className="text-[11px] text-slate-400 mt-1">GHL Settings → Developers → Private Integration Access Token</p>
           </div>
         </div>
@@ -525,7 +521,7 @@ const integrations: IntegrationInfo[] = [
       'Add the environment variables to your VPS .env file (see below)',
       'Contact your developer to wire up the sending logic in the backend',
     ],
-    envVars: ['VITE_WHATSAPP_PHONE_ID', 'VITE_WHATSAPP_TOKEN'],
+    envVars: ['WHATSAPP_PHONE_ID (server .env)', 'WHATSAPP_TOKEN (server .env — never VITE_)'],
   },
   {
     name: 'Resend',

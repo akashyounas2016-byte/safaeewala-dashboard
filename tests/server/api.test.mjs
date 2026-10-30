@@ -113,6 +113,11 @@ try {
   check(r.status === 201, 'signed-in user can report an error', r)
   r = await api('GET', '/api/logs/errors', 'admin-token')
   check(r.status === 200 && r.body[0]?.message === 'TEST crash' && r.body[0].stack.length <= 2000, 'error log lists newest first, long stacks cut', r.body?.[0])
+  // TA-18: GHL key lives on the server
+  r = await api('GET', '/api/ghl/status', 'emp-token')
+  check(r.status === 200 && r.body.configured === false, 'GHL status says not configured (no key in browser)', r)
+  r = await api('POST', '/api/ghl/test', null)
+  check(r.status === 401, 'GHL test without sign-in → 401', r)
   // SEC-05: path traversal in backup file name
   r = await api('POST', '/api/webhook/google-drive-backup', 'admin-token', { filename: '../../evil.xlsx', file_base64: Buffer.from('x').toString('base64') })
   const escaped = fs.existsSync(path.join(dataDir, '..', 'evil.xlsx')) || fs.existsSync(path.join(dataDir, 'evil.xlsx'))

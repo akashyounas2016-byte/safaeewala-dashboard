@@ -569,7 +569,41 @@ function readErrorLog(limit = 100) {
     .map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
 }
 
+// GoHighLevel proxy (TA-18): the API key stays on the server
+const GHL_API_KEY = process.env.GHL_API_KEY || '';
+const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID || '';
+async function ghlFetch(pathname, init = {}) {
+  const r = await fetch(`https://services.leadconnectorhq.com${pathname}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28', 'Content-Type': 'application/json', ...(init.headers || {}) },
+  });
+  const text = await r.text();
+  return { ok: r.ok, status: r.status, text };
+}
+
 function routeApi(req, res, parsedUrl, pathname) {
+  if (pathname === '/api/ghl/status' && req.method === 'GET') {
+    return sendJson(res, 200, { configured: Boolean(GHL_API_KEY), locationId: Boolean(GHL_LOCATION_ID) });
+  }
+  if (pathname === '/api/ghl/test' && req.method === 'POST') {
+    if (!GHL_API_KEY) return sendJson(res, 503, { success: false, message: 'GHL_API_KEY is not set on the server.' });
+    ghlFetch('/contacts/?limit=1').then(
+      r => sendJson(res, 200, r.ok ? { success: true, message: '✓ Connected to GoHighLevel API v2 (key on the server).' } : { success: false, message: `GHL API returned status ${r.status}. Check the token and Location ID.` }),
+      err => sendJson(res, 502, { success: false, message: err.message }));
+    return;
+  }
+  if (pathname === '/api/ghl/contacts/upsert' && req.method === 'POST') {
+    if (!GHL_API_KEY || !GHL_LOCATION_ID) return sendJson(res, 503, { success: false, message: 'GHL_API_KEY / GHL_LOCATION_ID are not set on the server.' });
+    readJson(req, 64 * 1024).then(b => {
+      const allowed = ['firstName', 'lastName', 'name', 'phone', 'email', 'address1', 'city', 'country', 'tags'];
+      const body = { locationId: GHL_LOCATION_ID };
+      allowed.forEach(k => { if (b[k] !== undefined) body[k] = b[k]; });
+      return ghlFetch('/contacts/upsert', { method: 'POST', body: JSON.stringify(body) })
+        .then(r => sendJson(res, r.ok ? 200 : 502, { success: r.ok, status: r.status }));
+    }).catch(err => sendJson(res, err.status || 502, { success: false, message: err.message }));
+    return;
+  }
+
   // App error reports (TA-24)
   if (pathname === '/api/logs/errors') {
     if (req.method === 'GET') return sendJson(res, 200, readErrorLog(100));

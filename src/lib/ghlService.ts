@@ -31,7 +31,9 @@ export function getGHLConfig(): GHLConfig {
     const raw = localStorage.getItem(GHL_STORAGE_KEY)
     if (!raw) return { ...DEFAULT_GHL_CONFIG }
     const parsed = JSON.parse(raw)
-    return { ...DEFAULT_GHL_CONFIG, ...parsed }
+    // TA-18: an API key saved by an older version is removed from the browser
+    if (parsed.apiKey) { delete parsed.apiKey; localStorage.setItem(GHL_STORAGE_KEY, JSON.stringify(parsed)) }
+    return { ...DEFAULT_GHL_CONFIG, ...parsed, apiKey: '' }
   } catch {
     return { ...DEFAULT_GHL_CONFIG }
   }
@@ -70,12 +72,7 @@ export interface BookingConfirmationPayload {
 export async function testGHLConnection(configOverride?: GHLConfig): Promise<{ success: boolean; message: string }> {
   const config = configOverride || getGHLConfig()
 
-  if (!config.webhookUrl && !config.apiKey) {
-    return {
-      success: false,
-      message: 'Please provide either a GHL Webhook Workflow URL or a GHL API Key to connect.',
-    }
-  }
+  // No webhook URL → test the API key held on the server (step 2 below, TA-18)
 
   // 1. If Webhook URL is provided, test by dispatching a test event
   if (config.webhookUrl) {
@@ -118,16 +115,12 @@ export async function testGHLConnection(configOverride?: GHLConfig): Promise<{ s
     }
   }
 
-  // 2. If API Key + Location ID provided
-  if (config.apiKey) {
+  // 2. API key on the server (GHL_API_KEY) — TA-18
+  {
     try {
-      const res = await fetch('https://services.leadconnectorhq.com/contacts/?limit=1', {
-        headers: {
-          'Authorization': `Bearer ${config.apiKey}`,
-          'Version': '2021-07-28',
-        },
-      })
-      if (res.ok) {
+      const res = await fetch('/api/ghl/test', { method: 'POST' })
+      const out = await res.json().catch(() => ({})) as { success?: boolean; message?: string }
+      if (res.ok && out.success) {
         const now = new Date().toISOString()
         saveGHLConfig({ ...config, lastConnectedAt: now, enabled: true })
         return {
@@ -163,9 +156,7 @@ export async function sendGHLBookingConfirmation(
     return { success: false, message: 'GHL integration is currently disabled in Settings.' }
   }
 
-  if (!config.webhookUrl && !config.apiKey) {
-    return { success: false, message: 'No GHL Webhook URL or API Key configured.' }
-  }
+  // The API key (if any) is on the server — the browser only knows the webhook URL (TA-18)
 
   const nameParts = (booking.client_name || '').trim().split(' ')
   const firstName = nameParts[0] || 'Guest'
@@ -221,17 +212,13 @@ export async function sendGHLBookingConfirmation(
     }
 
     // Upsert contact in GHL if API key & locationId are present
-    if (config.apiKey && config.locationId) {
+    {
       try {
-        await fetch('https://services.leadconnectorhq.com/contacts/upsert', {
+        // Upsert through our server, which adds the API key and location (TA-18)
+        await fetch('/api/ghl/contacts/upsert', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${config.apiKey}`,
-            'Version': '2021-07-28',
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            locationId: config.locationId,
             firstName,
             lastName,
             name: booking.client_name,

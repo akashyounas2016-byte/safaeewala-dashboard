@@ -17,6 +17,8 @@ services:
       - SUPABASE_URL=${SUPABASE_URL:-}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
       - FLUENT_WEBHOOK_SECRET=${FLUENT_WEBHOOK_SECRET:-}
+      - GHL_API_KEY=${GHL_API_KEY:-}
+      - GHL_LOCATION_ID=${GHL_LOCATION_ID:-}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.safaeewala-crm.rule=Host(`crm.srv1646539.hstgr.cloud`) || Host(`safaeewala.srv1646539.hstgr.cloud`)"
