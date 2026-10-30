@@ -55,7 +55,7 @@ export interface ColumnDef {
 }
 
 export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
-  { id: 'staff_name',   label: 'Staff Name',       width: '170px', type: 'text',   formulaHint: 'Cleaner/Driver name' },
+  { id: 'staff_name',   label: 'Staff',            width: '160px', type: 'text',   formulaHint: 'Cleaner/Driver name' },
   { id: 'start_time',   label: 'Start Time',       width: '105px', type: 'time',   formulaHint: 'e.g. 08:00 AM' },
   { id: 'end_time',     label: 'End Time',         width: '105px', type: 'time',   formulaHint: 'e.g. 04:00 PM' },
   { id: 'duty_hours',   label: 'Duty Hrs',         width: '90px',  type: 'number', formulaHint: '=calcHours(...)' },
@@ -802,6 +802,72 @@ const sameJobRow = (a: DailyJob, b: DailyJob) => SAVED_FIELDS.every(k => fieldVa
 const isBlankNewRow = (r: DailyJob) =>
   !String(r.address || '').trim() && !String(r.area || '').trim() && cleanNum(r.charges) === 0 &&
   cleanNum(r.received) === 0 && !String(r.remarks || '').trim()
+
+/** Ensures that every staff member present in the job list has at least 3 fixed rows (padded with blank shift rows) */
+export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): DailyJob[] {
+  if (jobs.length === 0) {
+    return [0, 1, 2].map(() => ({
+      id: newRowId('new_cleaner'),
+      date: targetDate,
+      staff_name: '',
+      start_time: '',
+      end_time: '',
+      duty_hours: 0,
+      ot_hours: 0,
+      address: '',
+      area: '',
+      material: 'No',
+      charges: 0,
+      received: 0,
+      payment_mode: 'Cash',
+      remarks: '',
+      created_at: new Date().toISOString(),
+    }))
+  }
+
+  const staffGroups = new Map<string, DailyJob[]>()
+  const staffKeysOrder: string[] = []
+
+  jobs.forEach(job => {
+    const key = (job.staff_name || '').trim().toLowerCase()
+    if (!staffGroups.has(key)) {
+      staffGroups.set(key, [])
+      staffKeysOrder.push(key)
+    }
+    staffGroups.get(key)!.push(job)
+  })
+
+  const result: DailyJob[] = []
+  staffKeysOrder.forEach(key => {
+    const list = staffGroups.get(key)!
+    const repName = list.find(j => (j.staff_name || '').trim())?.staff_name || ''
+    result.push(...list)
+    while (list.length < 3) {
+      const blankRow: DailyJob = {
+        id: newRowId(`blank_${key || 'unassigned'}`),
+        date: targetDate,
+        staff_name: repName,
+        start_time: '',
+        end_time: '',
+        duty_hours: 0,
+        ot_hours: 0,
+        address: '',
+        area: '',
+        material: 'No',
+        charges: 0,
+        received: 0,
+        payment_mode: 'Cash',
+        remarks: '',
+        created_at: new Date().toISOString(),
+      }
+      list.push(blankRow)
+      result.push(blankRow)
+    }
+  })
+
+  return result
+}
+
 const DRAFT_PREFIX = 'safaeewala_excel_draft:' // local only, never cloud-synced
 
 /** Column presets (UX-39) — the columns each preset shows */
@@ -1279,7 +1345,7 @@ export function JobSheetSpreadsheet() {
     if (periodChanged || !dirty || reloadAfterSaveRef.current) {
       reloadAfterSaveRef.current = false
       latest.current.periodKey = periodKey
-      const rows = clone(periodJobs)
+      const rows = ensureThreeRowsPerStaff(clone(periodJobs), effectiveTargetDate)
       setGridRows(rows)
       setLoadedSnapshot(new Map(rows.map(r => [r.id, r])))
       setHistory([])
@@ -1598,6 +1664,27 @@ export function JobSheetSpreadsheet() {
       ;(row as any)[colId] = trimmed
     }
 
+    // If editing staff_name, synchronize all rows in this staff member's block so they stay together
+    if (colId === 'staff_name') {
+      const oldStaff = (gridRows[rowIdx]?.staff_name || '').trim().toLowerCase()
+      if (oldStaff && trimmed.toLowerCase() !== oldStaff) {
+        updated.forEach(r => {
+          if ((r.staff_name || '').trim().toLowerCase() === oldStaff) {
+            r.staff_name = trimmed
+          }
+        })
+      } else {
+        // If it was a blank staff block, update all rows in this block
+        const targetBlock = staffBlockInfoMap.get(row.id)
+        if (targetBlock && !targetBlock.staffName) {
+          const startIndex = rowIdx - targetBlock.blockRowIdx
+          for (let i = 0; i < targetBlock.rowCount; i++) {
+            if (updated[startIndex + i]) updated[startIndex + i].staff_name = trimmed
+          }
+        }
+      }
+    }
+
     // Automatic check: If editing Client column and client is not in system, trigger Quick Registration modal
     if (colId === 'address' && trimmed.length > 1) {
       const isRegistered = clients.some(c =>
@@ -1707,15 +1794,100 @@ export function JobSheetSpreadsheet() {
     showToast(`Row #${idx + 1} duplicated`)
   }
 
-  // Delete Selected Row
+  // ── Add Row to specific Staff Block (Expands block from 3 to 4, 5, etc.) ──
+  const handleAddRowToStaff = (staffName: string, insertAfterIndex: number) => {
+    const newJob: DailyJob = {
+      id: newRowId('new_shift'),
+      date: effectiveTargetDate,
+      staff_name: staffName,
+      start_time: '',
+      end_time: '',
+      duty_hours: 0,
+      ot_hours: 0,
+      address: '',
+      area: '',
+      material: 'No',
+      charges: 0,
+      received: 0,
+      payment_mode: 'Cash',
+      remarks: '',
+      created_at: new Date().toISOString()
+    }
+    const updated = [...gridRows]
+    const insertPos = insertAfterIndex >= 0 ? insertAfterIndex + 1 : updated.length
+    updated.splice(insertPos, 0, newJob)
+    pushState(updated)
+    showToast(`✓ Row added to expand ${staffName || 'Staff'}'s block`)
+  }
+
+  // ── Add New Empty Row (Adds a brand new blank cleaner block of 3 rows) ──
+  const handleAddBlankCleanerBlock = () => {
+    const newJobs: DailyJob[] = [0, 1, 2].map(() => ({
+      id: newRowId('new_cleaner'),
+      date: effectiveTargetDate,
+      staff_name: '',
+      start_time: '',
+      end_time: '',
+      duty_hours: 0,
+      ot_hours: 0,
+      address: '',
+      area: '',
+      material: 'No',
+      charges: 0,
+      received: 0,
+      payment_mode: 'Cash',
+      remarks: '',
+      created_at: new Date().toISOString()
+    }))
+    const updated = [...gridRows, ...newJobs]
+    pushState(updated)
+    showToast('✓ New blank cleaner row (3 empty rows) added')
+  }
+
+  // ── Delete Entire Staff Block (Removes all rows for this cleaner) ──
+  const handleDeleteStaffBlock = (staffName: string) => {
+    const staffKey = (staffName || '').trim().toLowerCase()
+    const updated = gridRows.filter(r => (r.staff_name || '').trim().toLowerCase() !== staffKey)
+    pushState(updated.length > 0 ? updated : ensureThreeRowsPerStaff([], effectiveTargetDate))
+    setActiveCell(null)
+    setContextMenu(null)
+    showToast(`✓ Staff block for ${staffName || 'cleaner'} removed`)
+  }
+
+  // Delete Selected Row (Preserves 3 fixed rows per cleaner)
   const handleDeleteRow = (idx: number) => {
     const target = gridRows[idx]
     if (!target) return
-    const updated = gridRows.filter((_, i) => i !== idx)
-    pushState(updated)
-    if (activeCell?.rowIdx === idx) setActiveCell(null)
+    const staffKey = (target.staff_name || '').trim().toLowerCase()
+    const staffRows = gridRows.filter(r => (r.staff_name || '').trim().toLowerCase() === staffKey)
+
+    if (staffRows.length > 3) {
+      // If cleaner has more than 3 rows, remove this extra row to shrink block
+      const updated = gridRows.filter((_, i) => i !== idx)
+      pushState(updated)
+      if (activeCell?.rowIdx === idx) setActiveCell(null)
+      showToast(`✓ Extra row removed from ${target.staff_name || 'Staff'}`)
+    } else {
+      // If cleaner has 3 rows or fewer, clear this row's contents
+      const updated = [...gridRows]
+      updated[idx] = {
+        ...target,
+        start_time: '',
+        end_time: '',
+        duty_hours: 0,
+        ot_hours: 0,
+        address: '',
+        area: '',
+        material: 'No',
+        charges: 0,
+        received: 0,
+        payment_mode: 'Cash',
+        remarks: ''
+      }
+      pushState(updated)
+      showToast(`✓ Shift row cleared (maintains 3 fixed rows for ${target.staff_name || 'cleaner'})`)
+    }
     setContextMenu(null)
-    showToast(`Row #${idx + 1} deleted`)
   }
 
   // Clear Row Contents
@@ -2095,6 +2267,53 @@ export function JobSheetSpreadsheet() {
     const totalOT = Math.round(gridRows.reduce((s, r) => s + cleanNum(r.ot_hours), 0) * 10) / 10
     return { totalCharges, totalReceived, totalPending, totalDuty, totalOT }
   }, [gridRows, pendingCtx])
+
+  // ── Pre-calculate Staff Block Info (3 fixed rows, rowSpan & boundaries) ──
+  const staffBlockInfoMap = useMemo(() => {
+    const map = new Map<string, {
+      isFirst: boolean
+      isLast: boolean
+      rowCount: number
+      blockRowIdx: number
+      staffName: string
+      lastRowIdx: number
+    }>()
+
+    let currentStaffKey: string | null = null
+    let blockRows: { row: DailyJob; globalIdx: number }[] = []
+
+    const flush = () => {
+      if (blockRows.length === 0) return
+      const count = blockRows.length
+      const lastIdx = blockRows[blockRows.length - 1].globalIdx
+      const staffName = blockRows[0].row.staff_name || ''
+      blockRows.forEach((item, bIdx) => {
+        map.set(item.row.id, {
+          isFirst: bIdx === 0,
+          isLast: bIdx === count - 1,
+          rowCount: count,
+          blockRowIdx: bIdx,
+          staffName,
+          lastRowIdx: lastIdx
+        })
+      })
+    }
+
+    visibleGridRows.forEach((row) => {
+      const gIdx = gridRows.findIndex(r => r.id === row.id)
+      const staffKey = (row.staff_name || 'Unassigned Staff').trim().toLowerCase()
+      if (staffKey !== currentStaffKey) {
+        flush()
+        currentStaffKey = staffKey
+        blockRows = [{ row, globalIdx: gIdx >= 0 ? gIdx : 0 }]
+      } else {
+        blockRows.push({ row, globalIdx: gIdx >= 0 ? gIdx : 0 })
+      }
+    })
+    flush()
+
+    return map
+  }, [visibleGridRows, gridRows])
 
   // ── Group Rows by Cleaner for Block Mode ──
   const cleanerGroups = useMemo(() => {
@@ -2695,8 +2914,19 @@ export function JobSheetSpreadsheet() {
           })}
         </div>
 
-        {/* Right side: 'Flat Grid' & 'Cleaner Block' mode icons + Search */}
+        {/* Right side: 'Add New Empty Row' button + Mode Switcher + Search */}
         <div className="flex items-center gap-2.5">
+          {/* ── Add New Empty Row Button (Dedicated Toolbar Action) ── */}
+          <button
+            type="button"
+            onClick={handleAddBlankCleanerBlock}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-[11.5px] transition-all cursor-pointer shadow-xs active:scale-95"
+            title="Add a new blank cleaner block (3 empty rows)"
+          >
+            <Plus size={13} className="stroke-[2.5]" />
+            <span>Add New Empty Row</span>
+          </button>
+
           {/* Mode Switcher: Icons only (Replaces text as requested) */}
           <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-2xs">
             <button
@@ -3058,7 +3288,7 @@ export function JobSheetSpreadsheet() {
               })}
             </tbody>
           ) : (
-            /* 2. Flat Continuous Grid Mode (With Cleaner Block Perimeter Borders & Solid Block Background) */
+            /* 2. Flat Continuous Grid Mode (With 3-Row Staff Blocks, Merged Staff Cells & No Internal Grid Lines) */
             <tbody className="divide-y divide-slate-200">
               {visibleGridRows.map((row, rowIdx) => {
                 const globalIndex = gridRows.findIndex(r => r.id === row.id)
@@ -3068,30 +3298,109 @@ export function JobSheetSpreadsheet() {
                 const staffKey = rawStaff.toLowerCase()
                 const palette = getCleanerPalette(rawStaff, cleanerIndexMap.get(staffKey) ?? 0)
 
-                // ── Cleaner Block Boundary Detection ──
-                // Determine whether this row is the top or bottom boundary of a cleaner's block
-                const prevStaff = rowIdx > 0 ? (visibleGridRows[rowIdx - 1]?.staff_name || 'Unassigned Staff').trim().toLowerCase() : null
-                const nextStaff = rowIdx < visibleGridRows.length - 1 ? (visibleGridRows[rowIdx + 1]?.staff_name || 'Unassigned Staff').trim().toLowerCase() : null
-                const isFirstInBlock = prevStaff !== staffKey
-                const isLastInBlock = nextStaff !== staffKey
+                // ── Pre-calculated Staff Block Boundary & RowSpan Info ──
+                const blockInfo = staffBlockInfoMap.get(row.id)
+                const isFirstInBlock = blockInfo?.isFirst ?? true
+                const isLastInBlock = blockInfo?.isLast ?? true
+                const blockRowCount = blockInfo?.rowCount ?? 1
+                const isMonthlyRow = row.payment_mode === 'Monthly'
 
-                // ── Cleaner Block 4-Sided Perimeter Borders (Top & Bottom on block boundaries, Left & Right on extremities) ──
-                const blockTopBorder = isFirstInBlock ? `3.5px solid ${palette.solidBorder}` : '1px solid rgba(255, 255, 255, 0.12)'
-                const blockBottomBorder = isLastInBlock ? `3.5px solid ${palette.solidBorder}` : '1px solid rgba(255, 255, 255, 0.12)'
+                // ── Block Perimeter Borders: 2.5px solid boundary between cleaners ──
+                const blockTopBorder = isFirstInBlock ? `2.5px solid ${palette.solidBorder}` : '1px solid #e2e8f0'
+                const blockBottomBorder = isLastInBlock ? `2.5px solid ${palette.solidBorder}` : '1px solid #e2e8f0'
+
+                // Row background: Monthly gets soft green tint (row 11 in Excel); otherwise clean neutral
+                const rowBg = isMonthlyRow
+                  ? (palette.isLight ? '#ecfdf5' : 'rgba(6, 78, 59, 0.4)')
+                  : (palette.isLight ? '#ffffff' : palette.solidBg)
 
                 return (
                   <tr
                     key={row.id}
                     onContextMenu={e => handleContextMenu(e, targetIdx, row)}
-                    style={{ backgroundColor: palette.solidBg }}
-                    className={`transition-colors group hover:brightness-110 ${
-                      isSelectedRow ? 'ring-2 ring-inset ring-white font-semibold shadow-xs' : ''
+                    style={{ backgroundColor: rowBg }}
+                    className={`transition-colors group hover:brightness-[0.98] ${
+                      isSelectedRow ? 'ring-2 ring-inset ring-emerald-500 font-semibold shadow-xs' : ''
                     }`}
                   >
-
-
-                    {/* Columns (Solid Dark Background + Block Top/Bottom Perimeter Borders) */}
+                    {/* Columns */}
                     {columns.map((col, cIdx) => {
+                      // ── STAFF COLUMN: Merged cell spanning all rows of this cleaner with hidden internal grid lines ──
+                      if (col.id === 'staff_name') {
+                        if (!isFirstInBlock) {
+                          // Skip rendering: cell is spanned down from the first row of this block
+                          return null
+                        }
+
+                        const isStaffCellActive = activeCell?.rowIdx === targetIdx && activeCell?.colId === 'staff_name'
+                        const isStaffCellEditing = editingCell?.rowIdx === targetIdx && editingCell?.colId === 'staff_name'
+
+                        return (
+                          <td
+                            key={col.id}
+                            rowSpan={blockRowCount}
+                            onClick={() => handleCellClick(targetIdx, col.id)}
+                            onDoubleClick={() => handleCellDoubleClick(targetIdx, col.id)}
+                            onContextMenu={e => handleContextMenu(e, targetIdx, row)}
+                            style={{
+                              width: col.width,
+                              backgroundColor: palette.isLight ? '#f8fafc' : palette.solidBg,
+                              borderLeft: `5px solid ${palette.solidBorder}`,
+                              borderTop: `2.5px solid ${palette.solidBorder}`,
+                              borderBottom: `2.5px solid ${palette.solidBorder}`,
+                              borderRight: palette.isLight ? '1.5px solid #cbd5e1' : '1px solid rgba(255, 255, 255, 0.2)',
+                            }}
+                            className={`align-middle text-center select-none cursor-cell transition-all relative group/staff px-2 py-2 ${
+                              isStaffCellActive ? 'ring-2 ring-emerald-500 bg-white z-10' : ''
+                            }`}
+                            title="Staff Block (3 fixed rows) · Double-click to edit Staff Name | Click '+ Row' to expand"
+                          >
+                            {isStaffCellEditing ? (
+                              <input
+                                ref={inputRef}
+                                list="xl-staff"
+                                value={editingCell.tempValue}
+                                onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+                                onBlur={commitCellEdit}
+                                onKeyDown={handleEditorKeyDown}
+                                className="w-full text-center text-[12px] font-bold border border-emerald-500 rounded p-1 outline-none bg-white text-slate-900 shadow-inner"
+                                autoFocus
+                              />
+                            ) : (
+                              <div className="flex flex-col items-center justify-center h-full gap-2 min-h-[75px]">
+                                <div className="flex items-center gap-1.5 justify-center flex-wrap">
+                                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10.5px] font-black shadow-2xs ${
+                                    palette.isLight ? 'bg-emerald-600 text-white' : palette.badgeBg + ' ' + palette.badgeText
+                                  }`}>
+                                    {(blockInfo?.staffName || '?').trim()[0]?.toUpperCase() || '?'}
+                                  </span>
+                                  <span className={`font-black text-[13px] tracking-tight ${
+                                    palette.isLight ? 'text-slate-900' : 'text-white'
+                                  }`}>
+                                    {blockInfo?.staffName || 'Select Staff'}
+                                  </span>
+                                </div>
+
+                                {/* Dedicated '+ Row' button to expand this cleaner's block */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleAddRowToStaff(blockInfo?.staffName || '', blockInfo?.lastRowIdx ?? targetIdx)
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-600 hover:bg-emerald-500 text-white shadow-2xs transition-all cursor-pointer opacity-85 group-hover/staff:opacity-100 active:scale-95"
+                                  title={`Add new row to expand ${blockInfo?.staffName || 'this cleaner'}'s block`}
+                                >
+                                  <Plus size={10} className="stroke-[3]" />
+                                  <span>Add Row</span>
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        )
+                      }
+
+                      // ── ALL OTHER COLUMNS (Rendered row by row for each shift in the block) ──
                       const isCellActive = activeCell?.rowIdx === targetIdx && activeCell?.colId === col.id
                       const isCellEditing = editingCell?.rowIdx === targetIdx && editingCell?.colId === col.id
 
@@ -3114,8 +3423,7 @@ export function JobSheetSpreadsheet() {
                           onContextMenu={e => handleContextMenu(e, targetIdx, row)}
                           style={{
                             width: col.width,
-                            backgroundColor: isCellActive ? (palette.isLight ? '#ffffff' : '#090d16') : palette.solidBg,
-                            borderLeft: cIdx === 0 ? `5px solid ${palette.solidBorder}` : undefined,
+                            backgroundColor: isCellActive ? (palette.isLight ? '#ffffff' : '#090d16') : rowBg,
                             borderTop: blockTopBorder,
                             borderBottom: blockBottomBorder,
                             borderRight: palette.isLight ? '1px solid #cbd5e1' : '1px solid rgba(255, 255, 255, 0.12)',
@@ -3157,9 +3465,9 @@ export function JobSheetSpreadsheet() {
                                 : col.id === 'received'
                                   ? (palette.isLight ? 'text-emerald-950 font-black' : 'text-emerald-300 font-black drop-shadow-xs')
                                   : col.id === 'pending' && cleanNum(displayVal) > 0
-                                    ? (palette.isLight ? 'text-rose-700 font-black bg-rose-100/90 px-1.5 py-0.5 rounded border border-rose-300 text-[11px]' : 'text-rose-200 font-black bg-rose-950/80 px-1.5 py-0.5 rounded border border-rose-500/40 text-[11px]')
-                                    : col.id === 'staff_name'
-                                      ? (palette.isLight ? 'font-black text-slate-900 tracking-wide' : 'font-black text-white tracking-wide')
+                                    ? 'text-white font-black bg-red-600 px-2 py-0.5 rounded text-[11px] shadow-2xs'
+                                    : col.id === 'address' && isMonthlyRow
+                                      ? 'text-emerald-900 font-bold'
                                       : (palette.isLight ? 'text-slate-800 font-medium' : 'text-slate-100 font-medium')
                             }>
                               {displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '—'}
@@ -3209,6 +3517,19 @@ export function JobSheetSpreadsheet() {
 
         </table>
 
+        {/* ── Bottom Table Action: Add New Empty Row (Blank Cleaner Block) ── */}
+        <div className="p-3 bg-slate-100/80 border-t border-slate-300 flex items-center justify-center">
+          <button
+            type="button"
+            onClick={handleAddBlankCleanerBlock}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[12px] shadow-sm transition-all cursor-pointer active:scale-95"
+            title="Add a brand new blank cleaner block with 3 empty rows"
+          >
+            <Plus size={14} className="stroke-[2.5]" />
+            <span>+ Add New Empty Row (Blank Cleaner Block)</span>
+          </button>
+        </div>
+
         {/* Empty State */}
         {gridRows.length === 0 && (
           <div className="p-16 text-center text-slate-400">
@@ -3237,6 +3558,37 @@ export function JobSheetSpreadsheet() {
             <span>ROW #{contextMenu.rowIdx + 1}</span>
             <span className="font-semibold text-slate-700 truncate max-w-[120px]">{contextMenu.job.staff_name}</span>
           </div>
+
+          {/* Staff Block Actions: Add Row to this Staff & Add New Empty Row */}
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => {
+                const sName = contextMenu.job.staff_name || ''
+                const bInfo = staffBlockInfoMap.get(contextMenu.job.id)
+                handleAddRowToStaff(sName, bInfo?.lastRowIdx ?? contextMenu.rowIdx)
+                setContextMenu(null)
+              }}
+              className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
+            >
+              <Plus size={15} className="text-emerald-700" />
+              <span>Add Row to {contextMenu.job.staff_name || 'Staff'} (Expand Block)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                handleAddBlankCleanerBlock()
+                setContextMenu(null)
+              }}
+              className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
+            >
+              <Plus size={15} className="text-blue-700" />
+              <span>Add New Empty Row (Blank Cleaner Block)</span>
+            </button>
+          </div>
+
+          <div className="h-px bg-slate-100 my-1" />
 
           {/* Core User Requirements: Add Row at Top & Add Row at Bottom */}
           <div className="py-1">
