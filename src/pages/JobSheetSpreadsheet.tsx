@@ -95,12 +95,12 @@ export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
   { id: 'end_time',     label: 'End time',   width: '100px', type: 'time',   formulaHint: 'e.g. 03:00 PM' },
   { id: 'address',      label: 'Address',    width: '230px', type: 'text',   formulaHint: 'Client name & address' },
   { id: 'area',         label: 'Location',   width: '125px', type: 'text',   formulaHint: 'Area or location' },
+  { id: 'material',     label: 'Material',   width: '90px',  type: 'select', options: ['NO', 'YES', 'No', 'Yes', 'Sofa', 'Ladder'] },
   { id: 'charges',      label: 'Charges',    width: '95px',  type: 'number', formulaHint: 'Gross charges' },
   { id: 'received',     label: 'Received',   width: '95px',  type: 'number', formulaHint: 'Amount received' },
   { id: 'pending',      label: 'Pending',    width: '95px',  type: 'formula', formulaHint: 'Pending amount' },
   { id: 'duty_hours',   label: 'Duty Hrs',   width: '85px',  type: 'number', formulaHint: 'Duty hours' },
   { id: 'ot_hours',     label: 'OT',         width: '80px',  type: 'number', formulaHint: 'Overtime hours' },
-  { id: 'material',     label: 'Material',   width: '90px',  type: 'select', options: ['NO', 'YES', 'No', 'Yes', 'Sofa', 'Ladder'] },
   { id: 'payment_mode', label: 'Mode',       width: '95px',  type: 'select', options: ['Cash', 'Online', 'Monthly', 'Pending'] },
   { id: 'remarks',      label: 'Remarks',    width: '160px', type: 'text',   formulaHint: 'Remarks & notes' },
 ]
@@ -1115,7 +1115,7 @@ export function JobSheetSpreadsheet() {
   // ── Drag & Drop Column Sequence (Persisted in localStorage) ──
   const [columnOrder, setColumnOrder] = useState<string[]>(() => {
     const defaultList = DEFAULT_COLUMN_DEFS.map(c => c.id)
-    const saved = safeLocalStorageGet<string[]>('safaeewala_excel_columns_order_v3', [])
+    const saved = safeLocalStorageGet<string[]>('safaeewala_excel_columns_order_v4', [])
     if (!Array.isArray(saved) || saved.length === 0) return defaultList
     const valid = saved.filter(id => defaultList.includes(id as any))
     defaultList.forEach(id => {
@@ -1188,7 +1188,7 @@ export function JobSheetSpreadsheet() {
       const item = next[fromIdx]
       next.splice(fromIdx, 1)
       next.splice(toIdx, 0, item)
-      safeLocalStorageSet('safaeewala_excel_columns_order_v3', next)
+      safeLocalStorageSet('safaeewala_excel_columns_order_v4', next)
       return next
     })
   }
@@ -1220,7 +1220,7 @@ export function JobSheetSpreadsheet() {
       if (fromIdx < 0 || toIdx < 0) return prev
       next.splice(fromIdx, 1)
       next.splice(toIdx, 0, sourceId)
-      safeLocalStorageSet('safaeewala_excel_columns_order_v3', next)
+      safeLocalStorageSet('safaeewala_excel_columns_order_v4', next)
       return next
     })
     setModalDragId(null)
@@ -1260,7 +1260,7 @@ export function JobSheetSpreadsheet() {
       if (fromIdx < 0 || toIdx < 0) return prev
       next.splice(fromIdx, 1)
       next.splice(toIdx, 0, sourceId)
-      safeLocalStorageSet('safaeewala_excel_columns_order_v3', next)
+      safeLocalStorageSet('safaeewala_excel_columns_order_v4', next)
       return next
     })
     setDraggedColId(null)
@@ -1272,7 +1272,7 @@ export function JobSheetSpreadsheet() {
     const def = DEFAULT_COLUMN_DEFS.map(c => c.id)
     setColumnOrder(def)
     setHiddenColIds([])
-    safeLocalStorageSet('safaeewala_excel_columns_order_v3', def)
+    safeLocalStorageSet('safaeewala_excel_columns_order_v4', def)
     safeLocalStorageSet('safaeewala_excel_hidden_columns', [])
     showToast('Columns reset to Daily Job Sheet default sequence and all made visible')
   }
@@ -3414,7 +3414,7 @@ export function JobSheetSpreadsheet() {
                             className={`align-middle text-center select-none cursor-cell transition-all relative group/staff px-2 py-2 ${
                               isStaffCellActive ? 'ring-2 ring-emerald-500 bg-white z-10' : ''
                             }`}
-                            title="Staff Block (3 fixed rows) · Double-click to edit Staff Name | Click '+ Row' to expand"
+                            title="Staff Member · Double-click to edit Staff Name"
                           >
                             {isStaffCellEditing ? (
                               <input
@@ -3428,24 +3428,10 @@ export function JobSheetSpreadsheet() {
                                 autoFocus
                               />
                             ) : (
-                              <div className="flex flex-col items-center justify-center h-full min-h-[68px] relative group/staff">
+                              <div className="flex items-center justify-center h-full min-h-[60px] px-2 text-center">
                                 <span className="font-bold text-[13px] text-slate-900 tracking-tight select-text">
                                   {blockInfo?.staffName || '—'}
                                 </span>
-
-                                {/* Subtle hover '+ Row' button to expand this cleaner's block */}
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleAddRowToStaff(blockInfo?.staffName || '', blockInfo?.lastRowIdx ?? targetIdx)
-                                  }}
-                                  className="opacity-0 group-hover/staff:opacity-100 transition-opacity absolute bottom-0.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-slate-800 hover:bg-slate-900 text-white shadow-2xs cursor-pointer"
-                                  title={`Add row to ${blockInfo?.staffName || 'this cleaner'}`}
-                                >
-                                  <Plus size={9} className="stroke-[3]" />
-                                  <span>Row</span>
-                                </button>
                               </div>
                             )}
                           </td>
