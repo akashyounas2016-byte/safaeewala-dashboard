@@ -1875,10 +1875,11 @@ export function JobSheetSpreadsheet() {
     showToast(`✓ Row added to expand ${staffName || 'Staff'}'s block`)
   }
 
-  // ── Add New Empty Row (Adds a brand new blank cleaner block of 3 rows) ──
+  // ── Add New Empty Row (Strictly adds a brand new cleaner block of exactly 3 rows) ──
   const handleAddBlankCleanerBlock = () => {
-    const newJobs: DailyJob[] = [0, 1, 2].map(() => ({
-      id: newRowId('new_cleaner'),
+    const blockTs = Date.now()
+    const newJobs: DailyJob[] = [0, 1, 2].map((idx) => ({
+      id: newRowId(`blank_cleaner_${blockTs}_${idx}`),
       date: effectiveTargetDate,
       staff_name: '',
       start_time: '',
@@ -1893,21 +1894,41 @@ export function JobSheetSpreadsheet() {
       payment_mode: 'Cash',
       remarks: '',
       is_overtime: false,
-      created_at: new Date().toISOString()
+      created_at: new Date(blockTs + idx * 10).toISOString()
     }))
     const updated = [...gridRows, ...newJobs]
     pushState(updated)
-    showToast('✓ New blank cleaner row (3 empty rows) added')
+    showToast('✓ 3 new empty rows added (new cleaner block)')
   }
 
-  // ── Delete Entire Staff Block (Removes all rows for this cleaner) ──
-  const handleDeleteStaffBlock = (staffName: string) => {
-    const staffKey = (staffName || '').trim().toLowerCase()
-    const updated = gridRows.filter(r => (r.staff_name || '').trim().toLowerCase() !== staffKey)
+  // ── Delete Entire Staff Block (Removes all rows for this cleaner block) ──
+  const handleDeleteStaffBlock = (target: DailyJob | string) => {
+    const targetJob = typeof target === 'string' ? null : target
+    const rawName = (typeof target === 'string' ? target : (target?.staff_name || '')).trim()
+    let updated: DailyJob[]
+
+    if (rawName) {
+      const staffKey = rawName.toLowerCase()
+      updated = gridRows.filter(r => (r.staff_name || '').trim().toLowerCase() !== staffKey)
+      showToast(`✓ Staff block for "${rawName}" deleted`)
+    } else if (targetJob) {
+      const targetIdx = gridRows.findIndex(r => r.id === targetJob.id)
+      if (targetIdx >= 0) {
+        const bInfo = staffBlockInfoMap.get(targetJob.id)
+        const bStart = targetIdx - (bInfo?.blockRowIdx ?? 0)
+        const bCount = bInfo?.rowCount ?? 3
+        updated = gridRows.filter((_, i) => i < bStart || i >= bStart + bCount)
+      } else {
+        updated = gridRows.filter(r => r.id !== targetJob.id)
+      }
+      showToast('✓ Blank staff block (3 rows) deleted')
+    } else {
+      updated = gridRows
+    }
+
     pushState(updated.length > 0 ? updated : ensureThreeRowsPerStaff([], effectiveTargetDate))
     setActiveCell(null)
     setContextMenu(null)
-    showToast(`✓ Staff block for ${staffName || 'cleaner'} removed`)
   }
 
   // Delete Selected Row (Preserves 3 fixed rows per cleaner)
@@ -2357,8 +2378,12 @@ export function JobSheetSpreadsheet() {
 
     visibleGridRows.forEach((row) => {
       const gIdx = gridRows.findIndex(r => r.id === row.id)
-      const staffKey = (row.staff_name || 'Unassigned Staff').trim().toLowerCase()
-      if (staffKey !== currentStaffKey) {
+      const rawStaff = (row.staff_name || '').trim()
+      const isBlankStaff = !rawStaff
+      const staffKey = isBlankStaff ? 'unassigned_cleaner' : rawStaff.toLowerCase()
+
+      // When cleaner is unassigned/blank, strictly group every 3 rows as an independent block
+      if (staffKey !== currentStaffKey || (isBlankStaff && blockRows.length >= 3)) {
         flush()
         currentStaffKey = staffKey
         blockRows = [{ row, globalIdx: gIdx >= 0 ? gIdx : 0 }]
@@ -2980,10 +3005,10 @@ export function JobSheetSpreadsheet() {
           <button
             type="button"
             onClick={handleAddBlankCleanerBlock}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-[11.5px] transition-all cursor-pointer shadow-xs active:scale-95"
-            title="Add a new blank cleaner block (3 empty rows)"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-[11.5px] transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+            title="Add strictly 3 new empty rows (new cleaner block)"
           >
-            <Plus size={13} className="stroke-[2.5]" />
+            <Plus size={14} className="stroke-[2.5] shrink-0" />
             <span>Add New Empty Row</span>
           </button>
 
@@ -3578,11 +3603,11 @@ export function JobSheetSpreadsheet() {
           <button
             type="button"
             onClick={handleAddBlankCleanerBlock}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[12px] shadow-sm transition-all cursor-pointer active:scale-95"
-            title="Add a brand new blank cleaner block with 3 empty rows"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[12px] shadow-sm transition-all cursor-pointer active:scale-95"
+            title="Add strictly 3 new empty rows (new cleaner block)"
           >
-            <Plus size={14} className="stroke-[2.5]" />
-            <span>+ Add New Empty Row (Blank Cleaner Block)</span>
+            <Plus size={14} className="stroke-[2.5] shrink-0" />
+            <span>Add New Empty Row (3 Rows)</span>
           </button>
         </div>
 
@@ -3820,14 +3845,27 @@ export function JobSheetSpreadsheet() {
             </button>
           </div>
 
-          {/* Delete Row */}
-          <div className="py-0.5">
+          {/* Delete Block & Delete Row */}
+          <div className="py-0.5 border-t border-slate-100">
             <button
               type="button"
-              onClick={() => handleDeleteRow(contextMenu.rowIdx)}
-              className="w-full px-3.5 py-1.5 text-left hover:bg-red-50 text-red-600 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
+              onClick={() => handleDeleteStaffBlock(contextMenu.job)}
+              className="w-full px-3.5 py-2 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2.5 font-bold transition-colors cursor-pointer"
+              title={`Delete entire staff block for ${contextMenu.job.staff_name || 'this cleaner'}`}
             >
-              <Trash2 size={14} />
+              <Trash2 size={14} className="text-rose-600 shrink-0" />
+              <span>Delete Block ({contextMenu.job.staff_name || 'Staff Block'})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                handleDeleteRow(contextMenu.rowIdx)
+                setContextMenu(null)
+              }}
+              className="w-full px-3.5 py-1.5 text-left hover:bg-slate-100 text-slate-600 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
+            >
+              <Trash2 size={14} className="text-slate-400 shrink-0" />
               <span>Delete Row</span>
             </button>
           </div>
