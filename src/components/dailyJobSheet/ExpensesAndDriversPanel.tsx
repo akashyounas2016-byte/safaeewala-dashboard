@@ -17,6 +17,7 @@ export interface ExpensesAndDriversPanelProps {
   viewAllDrivers: boolean
   onToggleViewAllDrivers: () => void
   onEditDriverStaff: (staff: { name: string; currentAmount: number }) => void
+  onOpenDriverModal?: () => void
   grossCollected: number
 }
 
@@ -35,6 +36,7 @@ export const ExpensesAndDriversPanel: React.FC<ExpensesAndDriversPanelProps> = (
   viewAllDrivers,
   onToggleViewAllDrivers,
   onEditDriverStaff,
+  onOpenDriverModal,
   grossCollected,
 }) => {
   return (
@@ -123,14 +125,27 @@ export const ExpensesAndDriversPanel: React.FC<ExpensesAndDriversPanelProps> = (
         <div>
           <div className="px-5 py-4 border-b border-[#E4E8EC] flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h3 className="text-[15px] font-bold text-[#111827]">Driver / Staff Summary</h3>
+              <h3 className="text-[15px] font-bold text-[#111827]">Driver Payment Received</h3>
               {sortedDrivers.length > 3 && (
                 <span className="text-[10.5px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
                   {viewAllDrivers ? `Showing all ${sortedDrivers.length}` : `Showing 3 of ${sortedDrivers.length}`}
                 </span>
               )}
             </div>
-            <span className="text-[11px] text-slate-400">Cash + Online collected</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-400 hidden sm:inline">Cash + Online</span>
+              {onOpenDriverModal && (
+                <button
+                  type="button"
+                  onClick={onOpenDriverModal}
+                  className="w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 flex items-center justify-center border border-emerald-200 shadow-xs transition-colors cursor-pointer"
+                  title="Select Driver to View Payments"
+                  aria-label="Select Driver to View Payments"
+                >
+                  <Plus size={14} />
+                </button>
+              )}
+            </div>
           </div>
           <div className="divide-y divide-[#E4E8EC]">
             {sortedDrivers.length === 0 ? (

@@ -1140,9 +1140,9 @@ export function JobSheetSpreadsheet() {
   // ── Drag & Drop Column Sequence (Persisted in localStorage) ──
   const [columnOrder, setColumnOrder] = useState<string[]>(() => {
     const defaultList = DEFAULT_COLUMN_DEFS.map(c => c.id)
-    const saved = safeLocalStorageGet<string[]>('safaeewala_excel_columns_order_v4', [])
+    const saved = safeLocalStorageGet<string[]>('safaeewala_excel_columns_order_v5', [])
     if (!Array.isArray(saved) || saved.length === 0) return defaultList
-    const valid = saved.filter(id => defaultList.includes(id as any))
+    const valid = saved.filter(id => defaultList.includes(id as any) && id !== 'service')
     defaultList.forEach(id => {
       if (!valid.includes(id)) valid.push(id)
     })
@@ -1234,7 +1234,7 @@ export function JobSheetSpreadsheet() {
       const item = next[fromIdx]
       next.splice(fromIdx, 1)
       next.splice(toIdx, 0, item)
-      safeLocalStorageSet('safaeewala_excel_columns_order_v4', next)
+      safeLocalStorageSet('safaeewala_excel_columns_order_v5', next)
       return next
     })
   }
@@ -1266,7 +1266,7 @@ export function JobSheetSpreadsheet() {
       if (fromIdx < 0 || toIdx < 0) return prev
       next.splice(fromIdx, 1)
       next.splice(toIdx, 0, sourceId)
-      safeLocalStorageSet('safaeewala_excel_columns_order_v4', next)
+      safeLocalStorageSet('safaeewala_excel_columns_order_v5', next)
       return next
     })
     setModalDragId(null)
@@ -1306,7 +1306,7 @@ export function JobSheetSpreadsheet() {
       if (fromIdx < 0 || toIdx < 0) return prev
       next.splice(fromIdx, 1)
       next.splice(toIdx, 0, sourceId)
-      safeLocalStorageSet('safaeewala_excel_columns_order_v4', next)
+      safeLocalStorageSet('safaeewala_excel_columns_order_v5', next)
       return next
     })
     setDraggedColId(null)
@@ -1318,7 +1318,7 @@ export function JobSheetSpreadsheet() {
     const def = DEFAULT_COLUMN_DEFS.map(c => c.id)
     setColumnOrder(def)
     setHiddenColIds([])
-    safeLocalStorageSet('safaeewala_excel_columns_order_v4', def)
+    safeLocalStorageSet('safaeewala_excel_columns_order_v5', def)
     safeLocalStorageSet('safaeewala_excel_hidden_columns', [])
     showToast('Columns reset to Daily Job Sheet default sequence and all made visible')
   }
@@ -2301,6 +2301,56 @@ export function JobSheetSpreadsheet() {
     showToast(`Row #${idx + 1} cleared`)
   }
 
+  // ── Change Staff Block Color (Block-isolated: applies row_color directly across all rows of that block) ──
+  const setBlockColor = (targetJob: DailyJob, rowIdx: number, paletteKey: string) => {
+    const bInfo = staffBlockInfoMap.get(targetJob.id)
+    const blockStartIndex = Math.max(0, rowIdx - (bInfo?.blockRowIdx ?? 0))
+    const blockRowCount = bInfo?.rowCount ?? 3
+
+    const updated = [...gridRows]
+    for (let i = 0; i < blockRowCount; i++) {
+      const idx = blockStartIndex + i
+      if (updated[idx]) {
+        updated[idx] = { ...updated[idx], row_color: paletteKey }
+      }
+    }
+    pushState(updated)
+    setColorPickerCleaner(null)
+    setContextMenu(null)
+
+    const staffLabel = targetJob.staff_name?.trim() || 'Staff Block'
+    showToast(`✓ Block color for "${staffLabel}" set to ${BLOCK_PALETTES[paletteKey]?.name || paletteKey}`)
+  }
+
+  // ── Reset Block Color (Block-isolated: clears row_color on all rows of that block) ──
+  const resetBlockColor = (targetJob: DailyJob, rowIdx: number) => {
+    const bInfo = staffBlockInfoMap.get(targetJob.id)
+    const blockStartIndex = Math.max(0, rowIdx - (bInfo?.blockRowIdx ?? 0))
+    const blockRowCount = bInfo?.rowCount ?? 3
+
+    const updated = [...gridRows]
+    for (let i = 0; i < blockRowCount; i++) {
+      const idx = blockStartIndex + i
+      if (updated[idx]) {
+        const next = { ...updated[idx] }
+        delete next.row_color
+        updated[idx] = next
+      }
+    }
+    if (targetJob.staff_name?.trim()) {
+      const key = targetJob.staff_name.trim().toLowerCase()
+      if (cleanerColors[key]) {
+        const nextColors = { ...cleanerColors }
+        delete nextColors[key]
+        setCleanerColors(nextColors)
+        safeSet('safaeewala_excel_cleaner_colors', nextColors)
+      }
+    }
+    pushState(updated)
+    setContextMenu(null)
+    showToast(`Default color restored for ${targetJob.staff_name?.trim() || 'Staff Block'}`)
+  }
+
   // ── Change Cleaner Block Color (Persisted & Forces Immediate Grid Re-render) ──
   const setCleanerColor = (cleanerName: string, paletteKey: string) => {
     const cleanStaff = (cleanerName || 'Unassigned Staff').trim()
@@ -2317,7 +2367,10 @@ export function JobSheetSpreadsheet() {
   }
 
   // Get palette for a cleaner
-  const getCleanerPalette = (cleanerName: string, idx: number): BlockPalette => {
+  const getCleanerPalette = (cleanerName: string, idx: number, rowColor?: string): BlockPalette => {
+    if (rowColor && BLOCK_PALETTES[rowColor]) {
+      return BLOCK_PALETTES[rowColor]
+    }
     const key = (cleanerName || '').trim().toLowerCase()
     const customKey = cleanerColors[key]
     if (customKey && BLOCK_PALETTES[customKey]) {
@@ -2731,7 +2784,7 @@ export function JobSheetSpreadsheet() {
       const key = rawName.toLowerCase()
 
       if (!map.has(key)) {
-        const palette = getCleanerPalette(rawName, staffIdx++)
+        const palette = getCleanerPalette(rawName, staffIdx++, row.row_color)
         const newGroup = {
           cleanerName: rawName,
           palette,
@@ -3691,13 +3744,17 @@ export function JobSheetSpreadsheet() {
                 // Check if user explicitly set a color for this cleaner block or row
                 const customCleanerKey = cleanerColors[staffKey]
                 const hasCustomBlockColor = !!customCleanerKey && !!BLOCK_PALETTES[customCleanerKey]
+                const blockPalette = row.row_color && BLOCK_PALETTES[row.row_color] ? BLOCK_PALETTES[row.row_color] : null
                 const customRowPreset = row.row_color ? ROW_COLOR_PRESETS.find(p => p.id === row.row_color) : null
 
                 // Monthly clients and regular rows default to clean white (#ffffff) unless user changes color
                 let rowBg = '#ffffff'
                 let isDarkRow = false
 
-                if (customRowPreset) {
+                if (blockPalette) {
+                  rowBg = blockPalette.solidBg
+                  isDarkRow = !blockPalette.isLight
+                } else if (customRowPreset) {
                   rowBg = customRowPreset.circleColor
                   isDarkRow = false
                 } else if (hasCustomBlockColor) {
@@ -3975,29 +4032,6 @@ export function JobSheetSpreadsheet() {
 
           <div className="h-px bg-slate-100 my-1" />
 
-          {/* Core User Requirements: Add Row at Top & Add Row at Bottom */}
-          <div className="py-1">
-            <button
-              type="button"
-              onClick={() => insertRowAt(contextMenu.rowIdx, 'above', contextMenu.job.staff_name)}
-              className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
-            >
-              <ArrowUp size={15} className="text-emerald-700" />
-              <span>Add Row at Top (Above)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => insertRowAt(contextMenu.rowIdx, 'below', contextMenu.job.staff_name)}
-              className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
-            >
-              <ArrowDown size={15} className="text-emerald-700" />
-              <span>Add Row at Bottom (Below)</span>
-            </button>
-          </div>
-
-          <div className="h-px bg-slate-100 my-1" />
-
           {/* Secondary Actions */}
           <div className="py-0.5">
             <button
@@ -4081,8 +4115,8 @@ export function JobSheetSpreadsheet() {
             <div className="grid grid-cols-5 gap-2 py-1 place-items-center">
               {(colorPaletteTab === 'light' ? LIGHT_PALETTE_KEYS : SOLID_PALETTE_KEYS).map(pk => {
                 const p = BLOCK_PALETTES[pk]
-                const currentPalette = getCleanerPalette(contextMenu.job.staff_name, 0)
-                const isSelected = currentPalette.id === p.id
+                const currentPalette = getCleanerPalette(contextMenu.job.staff_name, 0, contextMenu.job.row_color)
+                const isSelected = contextMenu.job.row_color === p.id || (!contextMenu.job.row_color && currentPalette.id === p.id)
                 return (
                   <button
                     key={p.id}
@@ -4090,7 +4124,7 @@ export function JobSheetSpreadsheet() {
                     onMouseDown={e => e.stopPropagation()}
                     onClick={e => {
                       e.stopPropagation()
-                      setCleanerColor(contextMenu.job.staff_name, p.id)
+                      setBlockColor(contextMenu.job, contextMenu.rowIdx, p.id)
                     }}
                     style={{ backgroundColor: p.solidBg, borderColor: p.solidBorder }}
                     className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer shadow-2xs hover:scale-110 relative ${
@@ -4119,14 +4153,7 @@ export function JobSheetSpreadsheet() {
                 onMouseDown={e => e.stopPropagation()}
                 onClick={e => {
                   e.stopPropagation()
-                  const key = (contextMenu.job.staff_name || 'Unassigned Staff').trim().toLowerCase()
-                  const updated = { ...cleanerColors }
-                  delete updated[key]
-                  setCleanerColors(updated)
-                  safeSet('safaeewala_excel_cleaner_colors', updated)
-                  setContextMenu(null)
-                  setGridRows(prev => [...prev])
-                  showToast(`Default color restored for ${contextMenu.job.staff_name}`)
+                  resetBlockColor(contextMenu.job, contextMenu.rowIdx)
                 }}
                 className="text-teal-700 hover:text-teal-900 underline font-semibold cursor-pointer"
               >

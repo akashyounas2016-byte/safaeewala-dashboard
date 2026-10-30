@@ -355,21 +355,22 @@ export function DailyJobSheet() {
     return dateStr >= effectiveStartDate && dateStr <= effectiveEndDate
   }
 
-  // Filter Category Color Customization State (persisted in localStorage)
-  const DEFAULT_FILTER_COLORS: Record<string, string> = {
-    ALL: '#0f172a',      // Slate 900
-    Monthly: '#047857',  // Emerald 700
-    Cash: '#059669',     // Emerald 600
-    Online: '#2563eb',   // Blue 600
-    Pending: '#dc2626',  // Red 600
-    Checks: '#d97706',   // Amber 600
+  // Category Row Background Color Customization State (persisted in localStorage)
+  // Per user instruction: adjusting these colors changes the matching table rows' background color
+  const DEFAULT_CATEGORY_ROW_COLORS: Record<string, string> = {
+    ALL: '#ffffff',       // Pure Clean White default
+    Monthly: '#d1fae5',   // Soft Emerald Tint (Monthly rows)
+    Cash: '#ffffff',      // Pure Clean White
+    Online: '#f0f9ff',    // Soft Sky Tint
+    Pending: '#fee2e2',   // Soft Red Tint
+    Checks: '#fef3c7',    // Soft Amber Tint
   }
   const [filterColors, setFilterColors] = useState<Record<string, string>>(() => {
     try {
-      const saved = localStorage.getItem('safaeewala_filter_custom_colors')
-      if (saved) return { ...DEFAULT_FILTER_COLORS, ...JSON.parse(saved) }
+      const saved = localStorage.getItem('safaeewala_row_filter_colors_v2')
+      if (saved) return { ...DEFAULT_CATEGORY_ROW_COLORS, ...JSON.parse(saved) }
     } catch {}
-    return DEFAULT_FILTER_COLORS
+    return DEFAULT_CATEGORY_ROW_COLORS
   })
   const [showFilterColorMenu, setShowFilterColorMenu] = useState(false)
 
@@ -377,14 +378,14 @@ export function DailyJobSheet() {
     const updated = { ...filterColors, [mode]: color }
     setFilterColors(updated)
     try {
-      localStorage.setItem('safaeewala_filter_custom_colors', JSON.stringify(updated))
+      localStorage.setItem('safaeewala_row_filter_colors_v2', JSON.stringify(updated))
     } catch {}
   }
 
   const resetFilterColors = () => {
-    setFilterColors(DEFAULT_FILTER_COLORS)
+    setFilterColors(DEFAULT_CATEGORY_ROW_COLORS)
     try {
-      localStorage.removeItem('safaeewala_filter_custom_colors')
+      localStorage.removeItem('safaeewala_row_filter_colors_v2')
     } catch {}
   }
 
@@ -2857,17 +2858,15 @@ export function DailyJobSheet() {
                         : mode === 'Pending'
                           ? todayJobs.filter(j => jobPending(j) > 0).length
                           : rowChecks.size
-                const customColor = filterColors[mode] || DEFAULT_FILTER_COLORS[mode]
 
                 return (
                   <button
                     key={mode}
                     type="button"
                     onClick={() => setPaymentFilter(mode)}
-                    style={isSelected ? { backgroundColor: customColor, color: '#ffffff' } : {}}
                     className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                       isSelected
-                        ? 'shadow-xs font-bold'
+                        ? 'bg-slate-900 text-white shadow-xs font-bold'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold'
                     }`}
                   >
@@ -2881,14 +2880,14 @@ export function DailyJobSheet() {
                 )
               })}
 
-              {/* Three-Dot Menu for Filter Color Customization */}
+              {/* Three-Dot Menu for Category Row Color Customization */}
               <div className="relative pl-0.5 pr-1">
                 <button
                   type="button"
                   onClick={() => setShowFilterColorMenu(p => !p)}
                   className="p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-white/80 transition-colors cursor-pointer"
-                  title="Customize Filter Colors"
-                  aria-label="Customize Filter Colors"
+                  title="Customize Row Colors by Category"
+                  aria-label="Customize Row Colors by Category"
                 >
                   <MoreVertical size={14} />
                 </button>
@@ -2900,7 +2899,7 @@ export function DailyJobSheet() {
                       <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#E4E8EC]">
                         <div className="flex items-center gap-1.5 font-bold text-[12px] text-slate-900">
                           <Palette size={14} className="text-emerald-700" />
-                          <span>Customize Filter Colors</span>
+                          <span>Customize Row Colors</span>
                         </div>
                         <button
                           type="button"
@@ -2910,20 +2909,20 @@ export function DailyJobSheet() {
                           Reset
                         </button>
                       </div>
-                      <p className="text-[11px] text-slate-500 mb-2.5">Set custom highlight colors for each filter category:</p>
+                      <p className="text-[11px] text-slate-500 mb-2.5">Set row background colors for each category:</p>
                       <div className="space-y-2">
                         {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending', 'Checks'] as const).map(mode => (
                           <div key={mode} className="flex items-center justify-between text-[11.5px]">
-                            <span className="font-semibold text-slate-700">{mode === 'ALL' ? 'All' : mode}</span>
+                            <span className="font-semibold text-slate-700">{mode === 'ALL' ? 'All Rows' : mode}</span>
                             <div className="flex items-center gap-1.5">
                               <input
                                 type="color"
-                                value={filterColors[mode] || DEFAULT_FILTER_COLORS[mode]}
+                                value={filterColors[mode] || DEFAULT_CATEGORY_ROW_COLORS[mode]}
                                 onChange={e => updateFilterColor(mode, e.target.value)}
                                 className="w-6 h-6 rounded-md border border-slate-200 cursor-pointer p-0 bg-transparent"
                               />
                               <span className="text-[10px] font-mono text-slate-400 uppercase w-14 text-right">
-                                {filterColors[mode] || DEFAULT_FILTER_COLORS[mode]}
+                                {filterColors[mode] || DEFAULT_CATEGORY_ROW_COLORS[mode]}
                               </span>
                             </div>
                           </div>
@@ -3188,7 +3187,22 @@ export function DailyJobSheet() {
           </div>
 
           {/* Main Table Area */}
-          <div className="flex-1 overflow-x-auto min-w-0 relative table-scroll-container">
+          <div
+            className="flex-1 overflow-x-auto min-w-0 relative table-scroll-container"
+            onWheel={e => {
+              const el = e.currentTarget
+              if (!el) return
+              if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return // native horizontal gesture
+              const maxScroll = el.scrollWidth - el.clientWidth
+              if (maxScroll <= 0) return
+              const goingRight = e.deltaY > 0
+              const goingLeft = e.deltaY < 0
+              if ((goingRight && el.scrollLeft < maxScroll - 1) || (goingLeft && el.scrollLeft > 1)) {
+                el.scrollLeft += e.deltaY
+                e.preventDefault()
+              }
+            }}
+          >
             <table
               className="w-full text-[12px] border-collapse relative"
               style={{ minWidth: Math.max(500, activeColumns.length * 80) }}
@@ -3221,27 +3235,51 @@ export function DailyJobSheet() {
                   const prevRow = idx > 0 ? displayedRows[idx - 1] : null
                   const isFirstShiftOfStaff = !prevRow || prevRow.staff_name?.trim().toLowerCase() !== job.staff_name.trim().toLowerCase()
 
-                  // Row background & border left styling
-                  const rowClass = customColorPreset && customColorPreset.rowBg
-                    ? `transition-colors ${customColorPreset.rowBg} ${customColorPreset.borderLeft} ${
-                        isFirstShiftOfStaff
-                          ? 'border-t-2 border-t-slate-300 shadow-[inset_0_1px_0_rgba(0,0,0,0.03)]'
-                          : 'border-t border-t-slate-200/50'
-                      }`
+                  // Dynamic row background calculation from Category Row Colors (Requirement 1)
+                  const isCheckedRow = rowChecks.has(job.id)
+                  const isPendingRow = jobPending(job) > 0 || job.payment_mode === 'Pending'
+                  const isCashRow = job.payment_mode === 'Cash'
+                  const isOnlineRow = job.payment_mode === 'Online'
+
+                  let dynamicRowBg = '#ffffff'
+                  if (customColorPreset && customColorPreset.circleColor) {
+                    dynamicRowBg = customColorPreset.circleColor
+                  } else if (isCheckedRow && filterColors.Checks && filterColors.Checks !== DEFAULT_CATEGORY_ROW_COLORS.Checks) {
+                    dynamicRowBg = filterColors.Checks
+                  } else if (isPendingRow && filterColors.Pending && filterColors.Pending !== DEFAULT_CATEGORY_ROW_COLORS.Pending) {
+                    dynamicRowBg = filterColors.Pending
+                  } else if (isMonthly && filterColors.Monthly) {
+                    dynamicRowBg = filterColors.Monthly
+                  } else if (isCashRow && filterColors.Cash && filterColors.Cash !== DEFAULT_CATEGORY_ROW_COLORS.Cash) {
+                    dynamicRowBg = filterColors.Cash
+                  } else if (isOnlineRow && filterColors.Online && filterColors.Online !== DEFAULT_CATEGORY_ROW_COLORS.Online) {
+                    dynamicRowBg = filterColors.Online
+                  } else if (isCheckedRow && filterColors.Checks) {
+                    dynamicRowBg = filterColors.Checks
+                  } else if (isPendingRow && filterColors.Pending) {
+                    dynamicRowBg = filterColors.Pending
+                  } else if (filterColors.ALL && filterColors.ALL !== DEFAULT_CATEGORY_ROW_COLORS.ALL) {
+                    dynamicRowBg = filterColors.ALL
+                  } else if (isMonthly) {
+                    dynamicRowBg = filterColors.Monthly || '#d1fae5'
+                  }
+
+                  const borderClass = isFirstShiftOfStaff
+                    ? 'border-t-2 border-t-slate-300 shadow-[inset_0_1px_0_rgba(0,0,0,0.03)]'
+                    : 'border-t border-t-slate-200/50'
+
+                  const borderLeftClass = customColorPreset?.borderLeft
+                    ? customColorPreset.borderLeft
                     : isMonthly
-                    ? `transition-colors bg-emerald-100/90 hover:bg-emerald-200/90 text-emerald-950 border-l-[5px] border-l-emerald-600 ${
-                        isFirstShiftOfStaff
-                          ? 'border-t-2 border-t-emerald-300 shadow-[inset_0_1px_0_rgba(0,0,0,0.02)]'
-                          : 'border-t border-t-emerald-200/70'
-                      }`
-                    : `transition-colors ${palette.rowBg} ${palette.borderLeft} ${
-                        isFirstShiftOfStaff
-                          ? 'border-t-2 border-t-slate-300 shadow-[inset_0_1px_0_rgba(0,0,0,0.03)]'
-                          : 'border-t border-t-slate-200/50'
-                      }`
+                    ? 'border-l-[5px] border-l-emerald-600'
+                    : palette.borderLeft
 
                   return (
-                    <tr key={job.id} className={rowClass}>
+                    <tr
+                      key={job.id}
+                      style={{ backgroundColor: dynamicRowBg }}
+                      className={`transition-colors group hover:brightness-[0.98] ${borderClass} ${borderLeftClass}`}
+                    >
                       {activeColumns.map(col => renderJobCell(col.id, job, isMonthly, palette, isFirstShiftOfStaff, otDisplay))}
                     </tr>
                   )
@@ -3334,17 +3372,6 @@ export function DailyJobSheet() {
         {/* ── Pagination / View All Bar ── */}
         <div className="px-5 py-3.5 bg-slate-50 border-t border-[#E4E8EC] flex items-center justify-between flex-wrap gap-3 text-[12px]">
           <div className="flex items-center gap-3 text-slate-500 font-medium flex-wrap">
-            <button
-              type="button"
-              onClick={() => window.open(`/daily-job-sheet/spreadsheet?date=${selectedDate}`, '_blank', 'noopener,noreferrer')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[12px] shadow-sm shadow-emerald-700/20 transition-all cursor-pointer mr-1"
-              title="Open Full Excel-like Spreadsheet in New Window (Full Width, No Sidebar)"
-            >
-              <FileSpreadsheet size={14} />
-              <span>Open in Excel Sheet View</span>
-              <ExternalLink size={12} className="opacity-80" />
-            </button>
-
             <span>
               Showing <span className="font-semibold text-slate-700">{pageSize === 'all' ? (totalRows > 0 ? 1 : 0) : Math.min(((activePage - 1) * (pageSize as number)) + 1, totalRows)}</span> to{' '}
               <span className="font-semibold text-slate-700">{pageSize === 'all' ? totalRows : Math.min(activePage * (pageSize as number), totalRows)}</span> of{' '}
@@ -3408,6 +3435,13 @@ export function DailyJobSheet() {
         viewAllDrivers={viewAllDrivers}
         onToggleViewAllDrivers={() => setViewAllDrivers(v => !v)}
         onEditDriverStaff={staff => setEditingDriverStaff(staff)}
+        onOpenDriverModal={() => {
+          const first = sortedDrivers[0]
+          setEditingDriverStaff({
+            name: first ? first[0] : (employees[0]?.full_name || 'Staff'),
+            currentAmount: first ? first[1] : 0
+          })
+        }}
         grossCollected={grossCollected}
       />
 
@@ -3590,8 +3624,11 @@ CREATE TABLE daily_expenses (
         staff={editingDriverStaff}
         selectedDate={selectedDate}
         todayJobs={todayJobs}
+        employees={employees}
+        driverSummary={driverSummary}
         onClose={() => setEditingDriverStaff(null)}
         onEditJob={job => { if (!blockIfClosed(job.date)) setEditJob(job) }}
+        onSelectStaff={staff => setEditingDriverStaff(staff)}
       />
 
       {/* ── Add Pending Item Modal ── */}

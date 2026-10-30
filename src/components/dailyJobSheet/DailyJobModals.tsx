@@ -13,6 +13,7 @@ import type {
   DailyPendingReceivedItem,
   DailyAdvanceItem,
   Client,
+  Employee,
 } from '@/types'
 import { allocateClientCollection, calcClientPendingBalance, getAssignableClients } from '@/lib/clientDataSync'
 import { ClientPicker } from './ClientPicker'
@@ -266,42 +267,98 @@ export function DriverStaffModal({
   staff,
   selectedDate,
   todayJobs,
+  employees = [],
+  driverSummary = {},
   onClose,
   onEditJob,
+  onSelectStaff,
 }: {
   staff: { name: string; currentAmount: number } | null
   selectedDate: string
   todayJobs: DailyJob[]
+  employees?: Employee[]
+  driverSummary?: Record<string, number>
   onClose: () => void
   onEditJob: (job: DailyJob) => void
+  onSelectStaff?: (staff: { name: string; currentAmount: number }) => void
 }) {
+  const availableDrivers = useMemo(() => {
+    const map = new Map<string, number>()
+    // Include entries from driverSummary
+    Object.entries(driverSummary).forEach(([name, amt]) => {
+      if (name.trim()) map.set(name.trim(), amt)
+    })
+    // Include staff from todayJobs
+    todayJobs.forEach(j => {
+      const s = (j.staff_name || '').trim()
+      if (s && !map.has(s)) map.set(s, 0)
+    })
+    // Include all active employees
+    employees.forEach(e => {
+      const n = (e.full_name || '').trim()
+      if (n && !map.has(n)) map.set(n, 0)
+    })
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  }, [driverSummary, todayJobs, employees])
+
   if (!staff) return null
-  const staffJobs = todayJobs.filter(j => j.staff_name.trim().toLowerCase() === staff.name.trim().toLowerCase())
+
+  const activeStaffName = staff.name.trim()
+  const staffJobs = todayJobs.filter(j => j.staff_name.trim().toLowerCase() === activeStaffName.toLowerCase())
+  const activeStaffCollected = driverSummary[activeStaffName] ?? staff.currentAmount
 
   return (
     <Modal
       open={!!staff}
       onClose={onClose}
-      title={`Staff / Driver — ${staff.name}`}
+      title="Driver Payment Received"
       size="md"
     >
       <div className="space-y-4 pt-1">
+        {/* Driver Selector Dropdown */}
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+          <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+            Select Driver / Staff Member:
+          </label>
+          <select
+            value={activeStaffName}
+            onChange={e => {
+              const selectedName = e.target.value
+              const amt = driverSummary[selectedName] || 0
+              if (onSelectStaff) {
+                onSelectStaff({ name: selectedName, currentAmount: amt })
+              }
+            }}
+            className="w-full text-[12.5px] font-bold text-slate-800 bg-white border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-2xs"
+          >
+            {availableDrivers.map(([dName, amt]) => (
+              <option key={dName} value={dName}>
+                {dName} {amt > 0 ? `· AED ${amt.toLocaleString()} collected` : '· (0 AED)'}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Selected Driver Summary Card */}
         <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-[12.5px]">
           <div>
-            <span className="text-emerald-800 font-semibold">Staff Member:</span>{' '}
-            <strong className="text-emerald-950 font-bold">{staff.name}</strong>
-            <span className="text-slate-500 ml-2">({staffJobs.length} job{staffJobs.length !== 1 ? 's' : ''} on {fmtDate(selectedDate)})</span>
+            <span className="text-emerald-800 font-semibold">Active Record:</span>{' '}
+            <strong className="text-emerald-950 font-bold">{activeStaffName}</strong>
+            <span className="text-slate-500 ml-2">({staffJobs.length} shift{staffJobs.length !== 1 ? 's' : ''} on {fmtDate(selectedDate)})</span>
           </div>
           <div className="text-right">
-            <span className="text-[11px] text-emerald-700 font-medium">Total Collected:</span>{' '}
-            <span className="text-[14px] font-black text-emerald-900">AED {staff.currentAmount.toLocaleString()}</span>
+            <span className="text-[11px] text-emerald-700 font-medium">Total Received:</span>{' '}
+            <span className="text-[15px] font-black text-emerald-900">AED {activeStaffCollected.toLocaleString()}</span>
           </div>
         </div>
 
+        {/* Assigned Jobs & Received List */}
         <div>
           <h5 className="text-[12px] font-bold text-slate-700 uppercase tracking-wider mb-2">Assigned Jobs & Received Amounts</h5>
           {staffJobs.length === 0 ? (
-            <p className="text-[12px] text-slate-400 py-3 text-center">No active jobs found for {staff.name}</p>
+            <p className="text-[12px] text-slate-400 py-4 text-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+              No shifts or payments recorded for {activeStaffName} on this date.
+            </p>
           ) : (
             <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
               {staffJobs.map(job => (
@@ -342,7 +399,7 @@ export function DriverStaffModal({
   )
 }
 
-/* ── Add Pending Modal ── */
+/* ── Add Pending Modal (Matches Pending Received UX with searchable client list, pending amounts & custom entry) ── */
 export function AddPendingModal({
   open,
   selectedDate,
@@ -354,37 +411,144 @@ export function AddPendingModal({
   onClose: () => void
   onAdd: (item: DailyPendingItem) => void
 }) {
+  const { clients, dailyJobs } = useData()
+
+  const [clientSearch, setClientSearch] = useState('')
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null)
+  const [amount, setAmount] = useState('')
+  const [prevOpen, setPrevOpen] = useState(open)
+
+  // Reset when modal opens/closes
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    if (!open) {
+      setClientSearch('')
+      setSelectedClient(null)
+      setAmount('')
+    }
+  }
+
+  // Pre-fetch clients with outstanding pending balance
+  const clientsWithPending = useMemo(() => {
+    return clients
+      .map(c => {
+        const bal = calcClientPendingBalance(c, dailyJobs)
+        return { client: c, pendingBalance: bal }
+      })
+      .filter(x => x.pendingBalance > 0)
+      .sort((a, b) => b.pendingBalance - a.pendingBalance)
+  }, [clients, dailyJobs])
+
+  const handleSelectClient = (c: Client | null) => {
+    setSelectedClient(c)
+    if (c) {
+      const bal = calcClientPendingBalance(c, dailyJobs)
+      if (bal > 0) {
+        setAmount(String(bal))
+      }
+    }
+  }
+
+  const clientName = (selectedClient ? selectedClient.full_name : clientSearch).trim()
+  const amountNum = cleanNum(amount)
+  const canSave = amountNum > 0 && !!clientName
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSave) return
+
+    onAdd({
+      id: `p-${Date.now()}`,
+      date: selectedDate,
+      client: clientName,
+      amount: amountNum,
+    })
+    onClose()
+  }
+
   return (
-    <Modal open={open} onClose={onClose} title="Add Pending Item" size="sm">
-      <form
-        onSubmit={e => {
-          e.preventDefault()
-          const fd = new FormData(e.currentTarget)
-          const client = String(fd.get('client') || '').trim()
-          const amount = cleanNum(fd.get('amount'))
-          if (!client) return
-          onAdd({
-            id: `p-${Date.now()}`,
-            date: selectedDate,
-            client,
-            amount,
-          })
-          onClose()
-        }}
-        className="space-y-4 pt-2"
-      >
-        <Input name="client" label="Client Name / Description" placeholder="e.g. Villa 96C, Office 12..." required autoFocus />
-        <Input name="amount" label="Pending Amount (AED)" type="number" step="0.01" min="0" placeholder="0.00" required />
-        <div className="flex gap-2 pt-2">
-          <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-          <Button type="submit" className="flex-1 bg-red-600 hover:bg-red-700 text-white">Add Pending</Button>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add Pending Item"
+      size="md"
+      headerActions={
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onClose} className="h-8 px-3 text-[11.5px] font-semibold">
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="add-pending-form"
+            size="sm"
+            disabled={!canSave}
+            className="h-8 px-4 text-[11.5px] bg-red-600 hover:bg-red-700 text-white font-bold disabled:opacity-50"
+          >
+            Add Pending{amountNum > 0 ? ` · AED ${amountNum.toLocaleString()}` : ''}
+          </Button>
+        </div>
+      }
+    >
+      <form id="add-pending-form" onSubmit={handleSubmit} className="space-y-4 pt-1">
+        {/* Quick select clients with active pending dues */}
+        {clientsWithPending.length > 0 && !selectedClient && (
+          <div className="space-y-1.5 p-3 bg-red-50/60 border border-red-200/80 rounded-xl">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-red-900">Clients with Outstanding Pending:</span>
+              <span className="text-[10px] text-red-600 font-semibold">{clientsWithPending.length} clients</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-1">
+              {clientsWithPending.slice(0, 10).map(({ client, pendingBalance }) => (
+                <button
+                  key={client.id}
+                  type="button"
+                  onClick={() => handleSelectClient(client)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-red-200 hover:border-red-400 hover:bg-red-50 text-[11.5px] transition-all cursor-pointer shadow-2xs"
+                >
+                  <span className="font-semibold text-slate-800">{client.full_name}</span>
+                  <span className="font-black text-red-700">AED {pendingBalance.toLocaleString()}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <ClientPicker
+          selected={selectedClient}
+          onSelect={handleSelectClient}
+          search={clientSearch}
+          onSearch={setClientSearch}
+          label="Client Name *"
+        />
+
+        {/* Custom typed client not in registered list */}
+        {!selectedClient && clientSearch.trim() && (
+          <div className="p-2.5 bg-amber-50/70 border border-amber-200 rounded-xl text-[11.5px] text-amber-800">
+            <span className="font-bold">Custom Client:</span> &quot;{clientSearch.trim()}&quot; will be added with pending amount.
+          </div>
+        )}
+
+        {/* Pending Amount */}
+        <div>
+          <label className="block text-[12px] font-bold text-slate-700 mb-1">
+            Pending Amount (AED) *
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            required
+            className="w-full text-[13px] font-bold text-red-800 bg-slate-50 border border-[#E4E8EC] rounded-xl px-3 py-2 focus:outline-none focus:border-red-500"
+          />
         </div>
       </form>
     </Modal>
   )
 }
 
-/* ── Edit Pending Modal ── */
 export function EditPendingModal({
   item,
   onClose,
