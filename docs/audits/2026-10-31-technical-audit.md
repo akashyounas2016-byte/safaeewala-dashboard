@@ -4,6 +4,31 @@
 > not estimated. Earlier audits: data-sync, finance/ops, Daily Job Sheet, full CRM (SEC/VAL/BAK/CLR).
 > New IDs: **TA-01…TA-24**. 🔴 fix before going live · 🟠 soon · 🟡 later.
 
+## Status (2026-11-01, `claude/workspace`)
+
+| Item | Status |
+|---|---|
+| TA-06 hooks crash in the booking popup | ✅ fixed (wrapper + key) |
+| TA-07 lint gate | ✅ errors 614 → 0 (bug rules stay errors, clean-up rules are warnings); deploy stops on errors |
+| TA-08 tests in the repo | ✅ `npm test` — 15 files, 190+ checks; `npm run check` in the deploy |
+| TA-04 duplicated `cleanNum` | ✅ one shared function |
+| TA-05 / TA-22 dead services & missing endpoints | ✅ 7 unused files removed |
+| TA-13 bundle | ✅ first load ~1.4 MB → ~0.68 MB (xlsx and charts load on demand) |
+| TA-16 security headers | ✅ on the HTML too, HSTS, Permissions-Policy, CSP report-only (nginx config not syntax-checked locally — run `nginx -t` on deploy) |
+| TA-17 deploy host key | ✅ pinned with the `VPS_KNOWN_HOSTS` secret when set |
+| TA-18 browser secrets | ✅ GHL key moved to the server; WhatsApp help text fixed |
+| TA-19 shared validation | ✅ zod rules; import preview skips rows that break them |
+| TA-20 database rules | ✅ migration `2026-11-01_data_constraints.sql` (owner runs it) |
+| TA-21 silent failures | ✅ full browser storage shown in a red banner and reported |
+| TA-23 error boundaries | ✅ already per page (audit was wrong); crashes now reported |
+| TA-24 error monitoring | ✅ own error log on the VPS, shown in Settings → Data health |
+| TA-15 login live | ⏳ owner setup steps 2–5, then merge |
+| TA-02 / TA-03 one store, tables instead of JSON blobs | ⏳ needs the login setup first (data must reach Supabase), then a migration of payments / pending / advances / driver plans into tables |
+| TA-11 / TA-12 load window + SQL totals | ⏳ client balances and reports read the full history; needs SQL views first — a planned piece of work, not a quick fix |
+| TA-01 / TA-09 split the store and the 3,500-line pages | ⏳ large refactor of files Antigravity is editing — best done in a quiet window, one page at a time |
+| TA-10 colours | ⏳ CLR-01…08, same reason |
+| TA-14 | no action needed |
+
 ## 0. Scorecard
 
 | Area | Score /10 | One line |

@@ -28,7 +28,10 @@ Only when the owner says so.
 
 ## 3. Definition of done (every change)
 
-- [ ] `npx tsc -b` passes (and `npx eslint <changed files>` has no new errors)
+- [ ] `npm run check` passes — lint errors, type check and tests (`tests/unit`, `tests/server`). The deploy
+      workflow runs the same check and **stops the deploy** if it fails (TA-07, TA-08)
+- [ ] New logic in `src/lib` or the server → add or update a test in `tests/` (`npm test -- <name>` runs one file)
+- [ ] Lint warnings in files you touch → clean them while you are there
 - [ ] Checked on localhost with **test data only** (see [prod.md §5](../prod.md))
 - [ ] Commit message: `type(scope): summary` — types `feat`, `fix`, `refactor`, `docs`, `chore`; body explains *why*
 - [ ] [CHANGELOG.md](../CHANGELOG.md) entry under *Unreleased*

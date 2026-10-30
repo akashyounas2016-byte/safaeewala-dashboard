@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- chore(quality): technical-audit fixes — booking popup hooks crash (TA-06); tests in the repo + `npm run check`, deploy blocked on lint errors / type errors / failing tests (TA-07, TA-08); pinned VPS host key (TA-17); dead services removed (TA-05, TA-22); app error log on the VPS shown in Data health (TA-24); full-storage warning (TA-21); first load 1.4 → 0.68 MB (TA-13); security headers on the HTML + HSTS + CSP report-only (TA-16); GHL key on the server (TA-18); shared zod rules + import row checks (TA-19); database CHECK rules migration (TA-20); one `cleanNum` (TA-04)
+
 - docs(audit): technical audit — architecture, code quality, scalability, security, validation, error handling (TA-01…TA-24); includes a hooks crash in the booking detail popup (TA-06) and the recommendation to keep Drivers inside the CRM
 
 - feat(drivers): Drivers module — route plan from the Daily Job Sheet with colour-coded site cards (cleaners, drop / pick-up), manual or auto-assign by area, Google Maps route per driver; driver shifts and duty sheets without OT / Material sent by WhatsApp, print or Excel with "changed since sent"; My Duties phone view with live location sharing; Drivers → Live location (R-DRV-01…03). Migration `2026-10-31_driver_locations.sql`
