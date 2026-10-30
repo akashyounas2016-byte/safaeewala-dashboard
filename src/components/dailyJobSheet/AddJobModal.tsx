@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
+import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
 import { useData } from '@/store/DataContext'
 import type { DailyJob, MaterialType, PaymentMode, Client } from '@/types'
 import {
@@ -128,6 +129,11 @@ export function AddJobForm({
   const [buildingSearch, setBuildingSearch] = useState('')
   const buildingRef = useRef<HTMLDivElement>(null)
   const buildingSearchInputRef = useRef<HTMLInputElement>(null)
+
+  // ── Quick Client Registration State (Automatic Check for Unregistered Clients) ──
+  const [showQuickClientModal, setShowQuickClientModal] = useState(false)
+  const [unregisteredClientName, setUnregisteredClientName] = useState('')
+  const [hasConfirmedUnregistered, setHasConfirmedUnregistered] = useState(false)
 
   // ── Area Dropdown State ──
   const [areaDropdownOpen, setAreaDropdownOpen] = useState(false)
@@ -362,6 +368,20 @@ export function AddJobForm({
       return
     }
 
+    // Automatic check: Does this client exist in the system?
+    const trimmedAddr = address.trim()
+    const isRegistered = clients.some(c =>
+      c.full_name?.toLowerCase().trim() === trimmedAddr.toLowerCase() ||
+      c.building_name?.toLowerCase().trim() === trimmedAddr.toLowerCase() ||
+      `${c.full_name} (${c.building_name || c.area})`.toLowerCase().trim() === trimmedAddr.toLowerCase()
+    )
+
+    if (!isRegistered && !hasConfirmedUnregistered) {
+      setUnregisteredClientName(trimmedAddr)
+      setShowQuickClientModal(true)
+      return
+    }
+
     onSave({
       date,
       staff_name:   finalStaff,
@@ -553,17 +573,26 @@ export function AddJobForm({
                       />
                     </div>
 
-                    {/* Custom Value Option if typing custom building */}
+                    {/* Custom Value Option if typing custom building / new client */}
                     {buildingSearch.trim() && (
                       <div
                         onClick={() => {
-                          setAddress(buildingSearch.trim())
+                          const val = buildingSearch.trim()
+                          setAddress(val)
                           setBuildingDropdownOpen(false)
+                          const isReg = clients.some(c =>
+                            c.full_name?.toLowerCase().trim() === val.toLowerCase() ||
+                            c.building_name?.toLowerCase().trim() === val.toLowerCase()
+                          )
+                          if (!isReg) {
+                            setUnregisteredClientName(val)
+                            setShowQuickClientModal(true)
+                          }
                         }}
                         className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[12px] font-bold flex items-center gap-2 cursor-pointer mb-1 shrink-0"
                       >
                         <Plus size={13} className="text-emerald-700" />
-                        <span>Use custom building: &ldquo;{buildingSearch.trim()}&rdquo;</span>
+                        <span>Use custom / register client: &ldquo;{buildingSearch.trim()}&rdquo;</span>
                       </div>
                     )}
 
@@ -1053,6 +1082,23 @@ export function AddJobForm({
         </div>
 
       </div>
+
+      {/* ── Quick Client Registration Modal ── */}
+      <QuickNewClientModal
+        open={showQuickClientModal}
+        onClose={() => {
+          setShowQuickClientModal(false)
+          setHasConfirmedUnregistered(true)
+        }}
+        initialName={unregisteredClientName}
+        initialBuilding={unregisteredClientName}
+        initialArea={area}
+        onClientRegistered={(newClient) => {
+          setAddress(newClient.building_name || newClient.full_name)
+          if (newClient.area) setArea(newClient.area)
+          setHasConfirmedUnregistered(true)
+        }}
+      />
     </form>
   )
 }

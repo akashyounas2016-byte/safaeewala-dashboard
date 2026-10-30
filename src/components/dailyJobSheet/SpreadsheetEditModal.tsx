@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
 import type { DailyJob, MaterialType, PaymentMode, Client } from '@/types'
 import {
   cleanNum,
@@ -61,6 +62,8 @@ export function SpreadsheetEditModal({
   const [received, setReceived] = useState<number | string>(0)
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('Cash')
   const [remarks, setRemarks] = useState('')
+  const [showQuickClientModal, setShowQuickClientModal] = useState(false)
+  const [hasConfirmedUnregistered, setHasConfirmedUnregistered] = useState(false)
 
   // Populate state when row opens
   useEffect(() => {
@@ -138,6 +141,18 @@ export function SpreadsheetEditModal({
     e.preventDefault()
     if (!row) return
 
+    const trimmedAddr = address.trim()
+    const isRegistered = clients.some(c =>
+      c.full_name?.toLowerCase().trim() === trimmedAddr.toLowerCase() ||
+      c.building_name?.toLowerCase().trim() === trimmedAddr.toLowerCase() ||
+      `${c.full_name} (${c.building_name || c.area})`.toLowerCase().trim() === trimmedAddr.toLowerCase()
+    )
+
+    if (!isRegistered && !hasConfirmedUnregistered && trimmedAddr.length > 1) {
+      setShowQuickClientModal(true)
+      return
+    }
+
     const finalMaterial = (material === 'Other' && customMaterial.trim()
       ? customMaterial.trim()
       : material) as MaterialType
@@ -145,7 +160,7 @@ export function SpreadsheetEditModal({
     const updatedRow: DailyJob = {
       ...row,
       staff_name: staffName.trim(),
-      address: address.trim(),
+      address: trimmedAddr,
       area: area.trim(),
       start_time: startTime,
       end_time: endTime,
@@ -505,6 +520,25 @@ export function SpreadsheetEditModal({
           <option value="22:00">10:00 PM</option>
         </datalist>
       </form>
+
+      {/* ── Quick New Client Registration Modal ── */}
+      {showQuickClientModal && (
+        <QuickNewClientModal
+          open={showQuickClientModal}
+          initialName={address.trim()}
+          initialArea={area.trim()}
+          onClose={() => {
+            setShowQuickClientModal(false)
+            setHasConfirmedUnregistered(true)
+          }}
+          onClientRegistered={(newClient) => {
+            setAddress(newClient.full_name || newClient.building_name || address)
+            if (newClient.area) setArea(newClient.area)
+            setShowQuickClientModal(false)
+            setHasConfirmedUnregistered(true)
+          }}
+        />
+      )}
     </Modal>
   )
 }

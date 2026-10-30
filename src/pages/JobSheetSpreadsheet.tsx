@@ -13,6 +13,7 @@ import {
 import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
 import { SpreadsheetEditModal } from '@/components/dailyJobSheet/SpreadsheetEditModal'
 import { Modal } from '@/components/ui/Modal'
+import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
 import { useData } from '@/store/DataContext'
 import type { DailyJob, PaymentMode, MaterialType } from '@/types'
 import {
@@ -1203,6 +1204,7 @@ export function JobSheetSpreadsheet() {
   const [showThreeDotMenu, setShowThreeDotMenu] = useState(false)
   const [showAddJobModal, setShowAddJobModal] = useState(false)
   const [editingRowState, setEditingRowState] = useState<{ row: DailyJob; index: number } | null>(null)
+  const [quickClientState, setQuickClientState] = useState<{ open: boolean; rowIdx: number | null; name: string }>({ open: false, rowIdx: null, name: '' })
   const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'Monthly' | 'Cash' | 'Online' | 'Pending'>('ALL')
 
   // ── UI View Options (Default: flat grid first as requested) ──
@@ -1594,6 +1596,22 @@ export function JobSheetSpreadsheet() {
       }
     } else {
       ;(row as any)[colId] = trimmed
+    }
+
+    // Automatic check: If editing Client column and client is not in system, trigger Quick Registration modal
+    if (colId === 'address' && trimmed.length > 1) {
+      const isRegistered = clients.some(c =>
+        c.full_name?.toLowerCase().trim() === trimmed.toLowerCase() ||
+        c.building_name?.toLowerCase().trim() === trimmed.toLowerCase() ||
+        `${c.full_name} (${c.building_name || c.area})`.toLowerCase().trim() === trimmed.toLowerCase()
+      )
+      if (!isRegistered) {
+        setQuickClientState({
+          open: true,
+          rowIdx,
+          name: trimmed,
+        })
+      }
     }
 
     updated[rowIdx] = row
@@ -2389,6 +2407,21 @@ export function JobSheetSpreadsheet() {
             <span>Add Job</span>
           </button>
 
+          {/* ── Save All Button ── */}
+          <button
+            type="button"
+            onClick={handleSaveAll}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-black text-[12.5px] transition-all cursor-pointer shadow-md ${
+              hasUnsavedChanges
+                ? 'bg-amber-400 hover:bg-amber-300 text-amber-950 shadow-amber-900/40 ring-2 ring-white/80 animate-pulse'
+                : 'bg-emerald-300 hover:bg-white text-[#0b5a2f]'
+            }`}
+            title="Save and synchronize back to main Daily Job Sheet (Ctrl+S)"
+          >
+            <Save size={14} />
+            <span>{hasUnsavedChanges ? `Save ${pendingChanges.count} change${pendingChanges.count === 1 ? '' : 's'}` : 'Saved'}</span>
+          </button>
+
           {/* ── Three-Dot Menu (Sync, Backup, File, Edit, Formulas & View Options) ── */}
           <div className="relative">
             <button
@@ -2608,20 +2641,7 @@ export function JobSheetSpreadsheet() {
             )}
           </div>
 
-          {/* ── Save All Button ── */}
-          <button
-            type="button"
-            onClick={handleSaveAll}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-black text-[12.5px] transition-all cursor-pointer shadow-md ${
-              hasUnsavedChanges
-                ? 'bg-amber-400 hover:bg-amber-300 text-amber-950 shadow-amber-900/40 ring-2 ring-white/80 animate-pulse'
-                : 'bg-emerald-300 hover:bg-white text-[#0b5a2f]'
-            }`}
-            title="Save and synchronize back to main Daily Job Sheet (Ctrl+S)"
-          >
-            <Save size={14} />
-            <span>{hasUnsavedChanges ? `Save ${pendingChanges.count} change${pendingChanges.count === 1 ? '' : 's'}` : 'Saved'}</span>
-          </button>
+
 
           {/* Fullscreen Toggle */}
           <button
@@ -2749,7 +2769,7 @@ export function JobSheetSpreadsheet() {
                   {col.col}
                 </th>
               ))}
-              <th className="w-20 border-r border-slate-300 bg-[#e5e7eb] text-[10px] font-bold text-center">Action</th>
+              <th className="w-28 border-r border-slate-300 bg-[#e5e7eb] text-[10px] font-bold text-center">Action</th>
             </tr>
 
             {/* Column Label / Name Row with Drag & Drop */}
@@ -2774,7 +2794,7 @@ export function JobSheetSpreadsheet() {
                   </div>
                 </th>
               ))}
-              <th className="w-20 border-r border-slate-300 text-center text-[10.5px] font-bold">Action</th>
+              <th className="w-28 border-r border-slate-300 text-center text-[10.5px] font-bold">Action</th>
             </tr>
           </thead>
 
@@ -2933,16 +2953,7 @@ export function JobSheetSpreadsheet() {
                               : ''
                           }`}
                         >
-                          {/* Row Number Column (Sticky Left) */}
-                          <td
-                            onContextMenu={e => handleContextMenu(e, globalIndex, row)}
-                            className={`w-12 h-7 border-r border-slate-300 text-center font-mono text-[11px] select-none sticky left-0 z-10 cursor-context-menu ${
-                              isSelectedRow ? 'bg-emerald-600 text-white font-black' : 'bg-[#f3f4f6] text-slate-600'
-                            }`}
-                            title="Right-click to Add Row at Top / Bottom"
-                          >
-                            {globalIndex + 1}
-                          </td>
+
 
                           {/* Render Cells */}
                           {columns.map(col => {
@@ -3016,24 +3027,26 @@ export function JobSheetSpreadsheet() {
                             )
                           })}
 
-                          {/* Action Column: Edit + Delete */}
-                          <td className="w-20 border-r border-slate-200 text-center px-1">
-                            <div className="flex items-center justify-center gap-1">
+                          {/* Action Column: Edit + Delete (Black Buttons) */}
+                          <td className="w-28 border-r border-slate-200 text-center px-1">
+                            <div className="flex items-center justify-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditModal(row, globalIndex)}
-                                className="text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 p-1 rounded transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-black hover:bg-slate-800 text-white font-bold text-[10.5px] shadow-xs cursor-pointer transition-colors"
                                 title="Edit entry"
                               >
-                                <Pencil size={13} />
+                                <Pencil size={11} className="text-white" />
+                                <span>Edit</span>
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteRow(globalIndex)}
-                                className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded bg-black hover:bg-rose-950 text-white font-bold text-[10.5px] shadow-xs cursor-pointer transition-colors"
                                 title="Delete row"
                               >
-                                <Trash2 size={13} />
+                                <Trash2 size={11} className="text-white" />
+                                <span>Delete</span>
                               </button>
                             </div>
                           </td>
@@ -3075,31 +3088,10 @@ export function JobSheetSpreadsheet() {
                       isSelectedRow ? 'ring-2 ring-inset ring-white font-semibold shadow-xs' : ''
                     }`}
                   >
-                    {/* Row Number (Block Left Perimeter Border: 5px solid matching cleaner color) */}
-                    <td
-                      onClick={e => handleContextMenu(e as any, targetIdx, row)}
-                      onContextMenu={e => handleContextMenu(e, targetIdx, row)}
-                      style={{
-                        backgroundColor: isSelectedRow ? (palette.isLight ? '#059669' : '#047857') : palette.solidBg,
-                        borderLeft: `5px solid ${palette.solidBorder}`,
-                        borderTop: blockTopBorder,
-                        borderBottom: blockBottomBorder,
-                        borderRight: palette.isLight ? '1px solid #cbd5e1' : '1px solid rgba(255, 255, 255, 0.2)',
-                      }}
-                      className={`w-12 h-7.5 text-center font-mono text-[11px] select-none sticky left-0 z-10 cursor-pointer ${
-                        isSelectedRow
-                          ? 'text-white font-black'
-                          : palette.isLight
-                            ? 'text-slate-800 font-bold bg-slate-200/50'
-                            : 'text-slate-200 font-bold'
-                      }`}
-                      title="Click or right-click to open Colors panel"
-                    >
-                      {rowIdx + 1}
-                    </td>
+
 
                     {/* Columns (Solid Dark Background + Block Top/Bottom Perimeter Borders) */}
-                    {columns.map(col => {
+                    {columns.map((col, cIdx) => {
                       const isCellActive = activeCell?.rowIdx === targetIdx && activeCell?.colId === col.id
                       const isCellEditing = editingCell?.rowIdx === targetIdx && editingCell?.colId === col.id
 
@@ -3108,8 +3100,9 @@ export function JobSheetSpreadsheet() {
 
                       if (col.id === 'pending') {
                         displayVal = rowPending(row)
-                      }
-                      if (col.type === 'number') {
+                      } else if (col.id === 'start_time' || col.id === 'end_time') {
+                        displayVal = rawVal ? formatTime12h(rawVal) : '—'
+                      } else if (col.type === 'number') {
                         displayVal = cleanNum(displayVal)
                       }
 
@@ -3122,6 +3115,7 @@ export function JobSheetSpreadsheet() {
                           style={{
                             width: col.width,
                             backgroundColor: isCellActive ? (palette.isLight ? '#ffffff' : '#090d16') : palette.solidBg,
+                            borderLeft: cIdx === 0 ? `5px solid ${palette.solidBorder}` : undefined,
                             borderTop: blockTopBorder,
                             borderBottom: blockBottomBorder,
                             borderRight: palette.isLight ? '1px solid #cbd5e1' : '1px solid rgba(255, 255, 255, 0.12)',
@@ -3175,7 +3169,7 @@ export function JobSheetSpreadsheet() {
                       )
                     })}
 
-                    {/* Action Column: Edit + Delete */}
+                    {/* Action Column: Edit + Delete (Black Buttons) */}
                     <td
                       style={{
                         backgroundColor: palette.solidBg,
@@ -3183,24 +3177,26 @@ export function JobSheetSpreadsheet() {
                         borderTop: blockTopBorder,
                         borderBottom: blockBottomBorder,
                       }}
-                      className="w-20 text-center px-1"
+                      className="w-28 text-center px-1"
                     >
-                      <div className="flex items-center justify-center gap-1">
+                      <div className="flex items-center justify-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => handleOpenEditModal(row, targetIdx)}
-                          className="text-white/80 hover:text-white p-1 rounded hover:bg-white/20 transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-black hover:bg-slate-800 text-white font-bold text-[10.5px] shadow-xs cursor-pointer transition-colors"
                           title="Edit entry"
                         >
-                          <Pencil size={13} />
+                          <Pencil size={11} className="text-white" />
+                          <span>Edit</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteRow(targetIdx)}
-                          className="text-white/60 hover:text-red-300 p-1 rounded hover:bg-red-500/30 transition-colors cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-black hover:bg-rose-950 text-white font-bold text-[10.5px] shadow-xs cursor-pointer transition-colors"
                           title="Delete row"
                         >
-                          <Trash2 size={13} />
+                          <Trash2 size={11} className="text-white" />
+                          <span>Delete</span>
                         </button>
                       </div>
                     </td>
@@ -3663,6 +3659,27 @@ export function JobSheetSpreadsheet() {
           employees={employees}
           clients={clients}
           areaOptions={areaOptions}
+        />
+      )}
+
+      {/* ── Quick New Client Modal (When Unregistered Client Entered) ── */}
+      {quickClientState.open && (
+        <QuickNewClientModal
+          open={quickClientState.open}
+          initialName={quickClientState.name}
+          onClose={() => setQuickClientState({ open: false, rowIdx: null, name: '' })}
+          onClientRegistered={(newClient) => {
+            if (quickClientState.rowIdx !== null && quickClientState.rowIdx < gridRows.length) {
+              const updated = [...gridRows]
+              const row = { ...updated[quickClientState.rowIdx] }
+              row.address = newClient.full_name || newClient.building_name || quickClientState.name
+              if (newClient.area) row.area = newClient.area
+              updated[quickClientState.rowIdx] = row
+              pushState(updated)
+            }
+            setQuickClientState({ open: false, rowIdx: null, name: '' })
+            showToast(`✓ Client "${newClient.full_name}" registered & assigned`)
+          }}
         />
       )}
 
