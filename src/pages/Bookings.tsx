@@ -2884,18 +2884,7 @@ function waLink(phone: string, msg: string) {
 }
 
 /* ─── Redesigned Professional Booking Detail Modal ─── */
-function BookingDetailModal({
-  booking,
-  open,
-  onClose,
-  onUpdate,
-  onDelete,
-  invoices,
-  onUpdateInvoice,
-  employees,
-  onOpenInvoice,
-  onOpenPayment,
-}: {
+type BookingDetailModalProps = {
   booking: Booking | null
   open: boolean
   onClose: () => void
@@ -2906,8 +2895,27 @@ function BookingDetailModal({
   employees: Employee[]
   onOpenInvoice?: (b: Booking) => void
   onOpenPayment?: (b: Booking) => void
-}) {
-  if (!booking) return null
+}
+
+// TA-06: hooks must never run after an early return — the wrapper decides, the content always
+// calls the same hooks. The key also resets the form when another booking is opened.
+function BookingDetailModal(props: BookingDetailModalProps) {
+  if (!props.booking) return null
+  return <BookingDetailModalContent key={props.booking.id} {...props} booking={props.booking} />
+}
+
+function BookingDetailModalContent({
+  booking,
+  open,
+  onClose,
+  onUpdate,
+  onDelete,
+  invoices,
+  onUpdateInvoice,
+  employees,
+  onOpenInvoice,
+  onOpenPayment,
+}: BookingDetailModalProps & { booking: Booking }) {
 
   const { clients, pushBookingToDailyJob } = useData()
   const matchedClient = useMemo(() => {

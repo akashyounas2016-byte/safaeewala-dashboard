@@ -3286,13 +3286,13 @@ export function JobSheetSpreadsheet() {
     const isBlankRow = (r: DailyJob) => !String(r.staff_name || '').trim() && !String(r.address || '').trim()
 
     if (paymentModeFilter === 'Monthly') {
-      list = list.filter(r => r.payment_mode === 'Monthly' || (isBlankRow(r) && (!r.payment_mode || r.payment_mode === 'Monthly')))
+      list = list.filter(r => r.payment_mode === 'Monthly' || (isBlankRow(r) && !r.payment_mode))
     } else if (paymentModeFilter === 'Cash') {
-      list = list.filter(r => r.payment_mode === 'Cash' || (isBlankRow(r) && (!r.payment_mode || r.payment_mode === 'Cash')))
+      list = list.filter(r => r.payment_mode === 'Cash' || (isBlankRow(r) && !r.payment_mode))
     } else if (paymentModeFilter === 'Online') {
-      list = list.filter(r => r.payment_mode === 'Online' || (isBlankRow(r) && (!r.payment_mode || r.payment_mode === 'Online')))
+      list = list.filter(r => r.payment_mode === 'Online' || (isBlankRow(r) && !r.payment_mode))
     } else if (paymentModeFilter === 'Pending') {
-      list = list.filter(r => r.payment_mode === 'Pending' || rowPending(r) > 0 || (isBlankRow(r) && (!r.payment_mode || r.payment_mode === 'Pending')))
+      list = list.filter(r => r.payment_mode === 'Pending' || rowPending(r) > 0 || (isBlankRow(r) && !r.payment_mode))
     } else if (paymentModeFilter === 'Project') {
       // Filter only jobs that belong to a project / team, or blank rows created in Project view
       const projectRows = list.filter(r => {
