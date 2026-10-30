@@ -6,6 +6,7 @@ import { runDataHealth } from '@/lib/dataHealth'
 import { getSyncStatus, SYNC_STATUS_EVENT, type SyncStatus } from '@/lib/syncQueue'
 import { listSnapshots } from '@/lib/snapshots'
 import { todayDubai } from '@/lib/dubaiTime'
+import { fetchErrorReports, type AppErrorReport } from '@/lib/errorReport'
 
 const SEVERITY = {
   high:   { dot: 'bg-rose-500',  text: 'text-rose-700',  label: 'Fix first' },
@@ -19,6 +20,13 @@ export function DataHealthPanel() {
   const { clients, employees, dailyJobs, invoices } = useData()
   const [sync, setSync] = useState<SyncStatus>(() => getSyncStatus())
   const [open, setOpen] = useState<string | null>(null)
+  const [errors, setErrors] = useState<AppErrorReport[] | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    void fetchErrorReports().then(list => { if (alive) setErrors(list) })
+    return () => { alive = false }
+  }, [])
 
   useEffect(() => {
     const onSync = (e: Event) => setSync((e as CustomEvent<SyncStatus>).detail)
@@ -86,6 +94,24 @@ export function DataHealthPanel() {
             <span className="text-slate-400"> · full backups: Settings → Backup</span>
           </span>
         </div>
+      </div>
+
+      {/* App errors reported by browsers (TA-24) */}
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-slate-100">
+          <h4 className="text-[13px] font-bold text-slate-800">Recent app errors</h4>
+          <p className="text-[11.5px] text-slate-500">Screens that crashed or failed on anyone's device (newest first, last 100 kept on the server).</p>
+        </div>
+        {errors === null ? <p className="px-5 py-6 text-center text-[12px] text-slate-400">Loading…</p>
+          : errors.length === 0 ? <p className="px-5 py-6 text-center text-[12px] text-emerald-700 font-semibold">No errors reported.</p>
+          : <ul className="divide-y divide-slate-100 max-h-[320px] overflow-y-auto">
+              {errors.slice(0, 30).map((e, i) => (
+                <li key={i} className="px-5 py-2.5 text-[12px]">
+                  <p className="font-semibold text-rose-700 break-words">{e.message}</p>
+                  <p className="text-slate-500">{new Date(e.at).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', dateStyle: 'medium', timeStyle: 'short' })} · {e.where || e.url}</p>
+                </li>
+              ))}
+            </ul>}
       </div>
     </div>
   )

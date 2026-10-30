@@ -551,7 +551,38 @@ const server = http.createServer((req, res) => {
   }, () => sendJson(res, 500, { error: 'Server error' }));
 });
 
+// App error log (TA-24): one JSON line per report in /data/logs/errors.jsonl, file kept under 2 MB
+const ERROR_LOG = path.join(DATA_DIR, 'logs', 'errors.jsonl');
+function appendErrorLog(entry) {
+  fs.mkdirSync(path.dirname(ERROR_LOG), { recursive: true });
+  try {
+    if (fs.existsSync(ERROR_LOG) && fs.statSync(ERROR_LOG).size > 2 * 1024 * 1024) {
+      const keep = fs.readFileSync(ERROR_LOG, 'utf8').trim().split('\n').slice(-2000).join('\n');
+      fs.writeFileSync(ERROR_LOG, keep + '\n', 'utf8');
+    }
+  } catch { /* rotation is best effort */ }
+  fs.appendFileSync(ERROR_LOG, JSON.stringify(entry) + '\n', 'utf8');
+}
+function readErrorLog(limit = 100) {
+  if (!fs.existsSync(ERROR_LOG)) return [];
+  return fs.readFileSync(ERROR_LOG, 'utf8').trim().split('\n').filter(Boolean).slice(-limit).reverse()
+    .map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+}
+
 function routeApi(req, res, parsedUrl, pathname) {
+  // App error reports (TA-24)
+  if (pathname === '/api/logs/errors') {
+    if (req.method === 'GET') return sendJson(res, 200, readErrorLog(100));
+    if (req.method === 'POST') {
+      readJson(req, 64 * 1024).then(b => {
+        const s = (v, n) => String(v == null ? '' : v).slice(0, n);
+        appendErrorLog({ at: new Date().toISOString(), message: s(b.message, 500), stack: s(b.stack, 2000), where: s(b.where, 100), url: s(b.url, 300), userAgent: s(b.userAgent, 200) });
+        sendJson(res, 201, { ok: true });
+      }, err => sendJson(res, err.status || 400, { error: err.message }));
+      return;
+    }
+  }
+
   // 1. GET /api/webhook/fluent-forms -> list leads
   if (req.method === 'GET' && pathname === '/api/webhook/fluent-forms') {
     const leads = readLeads();

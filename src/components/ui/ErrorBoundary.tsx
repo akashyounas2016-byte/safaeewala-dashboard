@@ -1,6 +1,7 @@
 import React, { Component, type ReactNode } from 'react'
 import { AlertCircle, RotateCcw, Home } from 'lucide-react'
 import { Button } from './Button'
+import { reportError } from '@/lib/errorReport'
 
 interface Props {
   children: ReactNode
@@ -24,6 +25,8 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('ErrorBoundary caught an unhandled React error:', error, errorInfo)
+    // TA-24: the office sees crashes in Settings → Data health
+    reportError(error, `screen ${window.location.pathname}${errorInfo.componentStack ? ` · ${errorInfo.componentStack.trim().split('\n')[0]}` : ''}`)
   }
 
   componentDidUpdate(prevProps: Props) {

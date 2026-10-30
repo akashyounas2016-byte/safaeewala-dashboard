@@ -106,6 +106,13 @@ try {
   check(!h.headers.get('access-control-allow-origin'), 'unknown origin gets no CORS header', h.headers.get('access-control-allow-origin'))
   h = await fetch('http://127.0.0.1:3001/api/webhook/fluent-forms', { method: 'OPTIONS', headers: { Origin: 'https://crm.srv1646539.hstgr.cloud' } })
   check(h.headers.get('access-control-allow-origin') === 'https://crm.srv1646539.hstgr.cloud', 'dashboard origin allowed', h.headers.get('access-control-allow-origin'))
+  // TA-24: app error log
+  r = await api('POST', '/api/logs/errors', null, { message: 'TEST crash' })
+  check(r.status === 401, 'error report without sign-in → 401', r)
+  r = await api('POST', '/api/logs/errors', 'emp-token', { message: 'TEST crash', where: 'screen /bookings', stack: 'x'.repeat(5000) })
+  check(r.status === 201, 'signed-in user can report an error', r)
+  r = await api('GET', '/api/logs/errors', 'admin-token')
+  check(r.status === 200 && r.body[0]?.message === 'TEST crash' && r.body[0].stack.length <= 2000, 'error log lists newest first, long stacks cut', r.body?.[0])
   // SEC-05: path traversal in backup file name
   r = await api('POST', '/api/webhook/google-drive-backup', 'admin-token', { filename: '../../evil.xlsx', file_base64: Buffer.from('x').toString('base64') })
   const escaped = fs.existsSync(path.join(dataDir, '..', 'evil.xlsx')) || fs.existsSync(path.join(dataDir, 'evil.xlsx'))
