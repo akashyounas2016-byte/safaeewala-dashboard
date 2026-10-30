@@ -27,6 +27,8 @@ export interface ReconciliationWidgetsProps {
   todayPendingTotalAmt: number
   onAddPending: () => void
   onSelectPendingDetails: (item: TodayPendingEntry) => void
+  onEditPendingEntry?: (item: TodayPendingEntry) => void
+  onDeletePendingEntry?: (item: TodayPendingEntry) => void
 
   // Pending Received
   todayPendingRcvdItems: DailyPendingReceivedItem[]
@@ -52,6 +54,8 @@ export const ReconciliationWidgets: React.FC<ReconciliationWidgetsProps> = ({
   todayPendingTotalAmt,
   onAddPending,
   onSelectPendingDetails,
+  onEditPendingEntry,
+  onDeletePendingEntry,
   todayPendingRcvdItems,
   pendingRcvdGrandTotal,
   pendingRcvdTotalCash,
@@ -101,8 +105,8 @@ export const ReconciliationWidgets: React.FC<ReconciliationWidgetsProps> = ({
               <thead>
                 <tr className="bg-red-100/50 border-b border-red-200/80 text-red-900 font-bold text-[10.5px] uppercase tracking-wider">
                   <th className="text-left px-4 py-2.5">Client Name</th>
-                  <th className="text-right px-3 py-2.5">Amount Pending</th>
-                  <th className="text-right px-4 py-2.5">Staff</th>
+                  <th className="text-right px-3 py-2.5">Amount</th>
+                  <th className="text-right px-4 py-2.5">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-red-200/60">
@@ -126,8 +130,25 @@ export const ReconciliationWidgets: React.FC<ReconciliationWidgetsProps> = ({
                       <td className="px-3 py-2.5 text-right font-bold text-red-700 whitespace-nowrap">
                         AED {cleanNum(item.amount).toLocaleString()}
                       </td>
-                      <td className="px-4 py-2.5 text-right font-medium text-slate-600 whitespace-nowrap group-hover:text-slate-900">
-                        {item.staff}
+                      <td className="px-4 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => onEditPendingEntry ? onEditPendingEntry(item) : onSelectPendingDetails(item)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                            title="Edit Pending Entry"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDeletePendingEntry && onDeletePendingEntry(item)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            title="Delete Pending Entry"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

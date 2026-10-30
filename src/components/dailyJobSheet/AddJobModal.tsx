@@ -419,14 +419,14 @@ export function AddJobForm({
 
   // ── Timing & Duration (12-Hour AM/PM Format) ──
   const [startTime, setStartTime] = useState(() => formatTime12h(initial?.start_time || '09:00 AM'))
-  const [endTime, setEndTime]     = useState(() => formatTime12h(initial?.end_time || '01:00 PM'))
+  const [endTime, setEndTime]     = useState(() => formatTime12h(initial?.end_time || '09:00 AM'))
   const [dutyHours, setDutyHours] = useState<number>(() => {
     if (initial?.duty_hours) return Number(initial.duty_hours)
-    return calcHours(initial?.start_time || '09:00 AM', initial?.end_time || '01:00 PM') || 4
+    return calcHours(initial?.start_time || '09:00 AM', initial?.end_time || '09:00 AM') || 0
   })
   const [otHours, setOtHours]     = useState<number | string>(() => {
     if (initial?.ot_hours !== undefined) return initial.ot_hours
-    return calcOTHours(initial?.start_time || '09:00 AM', initial?.end_time || '01:00 PM')
+    return calcOTHours(initial?.start_time || '09:00 AM', initial?.end_time || '09:00 AM')
   })
   const [isOvertime, setIsOvertime] = useState(Boolean(initial?.is_overtime || Number(otHours) > 0))
 
@@ -545,6 +545,7 @@ export function AddJobForm({
       clientName: string
       area: string
       apartment: string
+      isMonthly?: boolean
       client: Client
     }[] = []
     const seen = new Set<string>()
@@ -553,6 +554,13 @@ export function AddJobForm({
       const bName = c.building_name?.trim() || ''
       const name = c.full_name?.trim() || ''
       const key = `${bName}___${name}`
+      const isMonthly = Boolean(
+        (c as any).frequency === 'monthly' ||
+        (c as any).is_monthly ||
+        (c as any).client_type === 'monthly' ||
+        (c.service_days && c.service_days.length > 0) ||
+        (c.day_cleaner_assignments && Object.keys(c.day_cleaner_assignments).length > 0)
+      )
       if (!seen.has(key)) {
         seen.add(key)
         list.push({
@@ -561,6 +569,7 @@ export function AddJobForm({
           clientName: name,
           area: c.area || '',
           apartment: c.apartment || '',
+          isMonthly,
           client: c,
         })
       }
@@ -852,9 +861,9 @@ export function AddJobForm({
                   </div>
                 </div>
 
-                {/* Address Dropdown Popover */}
+                {/* Address Dropdown Popover (Wider container so long addresses don't truncate) */}
                 {buildingDropdownOpen && (
-                  <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl p-2 animate-in fade-in slide-in-from-top-1 duration-150 max-h-64 flex flex-col">
+                  <div className="absolute z-50 left-0 w-full min-w-[380px] sm:min-w-[460px] max-w-xl mt-1.5 bg-white border border-slate-200 rounded-xl shadow-2xl p-2 animate-in fade-in slide-in-from-top-1 duration-150 max-h-72 flex flex-col">
                     {/* Search Bar */}
                     <div className="relative mb-2 shrink-0">
                       <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
@@ -902,9 +911,14 @@ export function AddJobForm({
                               }`}
                             >
                               <div className="min-w-0 pr-2">
-                                <div className="text-[12.5px] font-bold text-slate-900 flex items-center gap-1.5 truncate">
+                                <div className="text-[12.5px] font-bold text-slate-900 flex items-center gap-1.5 flex-wrap truncate">
                                   <Building2 size={13} className="text-slate-400 shrink-0" />
                                   <span className="truncate">{item.building}</span>
+                                  {item.isMonthly && (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                                      Monthly Client
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-[11px] text-slate-500 truncate mt-0.5">
                                   {item.clientName} {item.apartment ? `· Apt ${item.apartment}` : ''} {item.area ? `· ${item.area}` : ''}
@@ -1163,9 +1177,9 @@ export function AddJobForm({
                 />
               </div>
 
-              {/* Material Dropdown Popover */}
+              {/* Material Dropdown Popover (Drop-Up Mode: Opens Upwards) */}
               {materialDropdownOpen && (
-                <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl p-2 animate-in fade-in slide-in-from-top-1 duration-150 max-h-64 flex flex-col">
+                <div className="absolute z-50 left-0 right-0 bottom-full mb-1.5 bg-white border border-slate-200 rounded-xl shadow-2xl p-2 animate-in fade-in slide-in-from-bottom-1 duration-150 max-h-64 flex flex-col">
                   {/* Preset & Custom Materials List */}
                   <div className="overflow-y-auto flex-1 space-y-0.5 divide-y divide-slate-100">
                     {materialsList.map(m => {

@@ -3719,6 +3719,24 @@ export function DailyJobSheet() {
         todayPendingTotalAmt={todayPendingTotalAmt}
         onAddPending={() => setShowAddPending(true)}
         onSelectPendingDetails={item => setSelectedPendingDetails(item)}
+        onEditPendingEntry={item => {
+          if (item.isJob && item.job) {
+            if (!blockIfClosed(item.job.date)) setEditJob(item.job)
+          } else {
+            const raw = pendingList.find(p => p.id === item.id)
+            if (raw) setEditingPending(raw)
+            else setSelectedPendingDetails(item)
+          }
+        }}
+        onDeletePendingEntry={item => {
+          if (window.confirm(`Are you sure you want to remove pending entry for "${item.client}"?`)) {
+            if (item.isJob && item.job) {
+              if (!blockIfClosed(item.job.date)) deleteDailyJob(item.job.id)
+            } else {
+              setPendingList(prev => prev.filter(x => x.id !== item.id))
+            }
+          }
+        }}
         todayPendingRcvdItems={todayPendingRcvdItems}
         pendingRcvdGrandTotal={pendingRcvdGrandTotal}
         pendingRcvdTotalCash={pendingRcvdTotalCash}

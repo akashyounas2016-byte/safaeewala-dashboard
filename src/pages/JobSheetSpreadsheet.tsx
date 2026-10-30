@@ -3097,9 +3097,9 @@ export function JobSheetSpreadsheet() {
           else if (mcInfo?.isPrimary && mcInfo.isMultiCleaner) val = `${mcInfo.teamRef} (Lead)`
           else val = r.team_name || ''
         } else if (col.id === 'charges') {
-          val = mcInfo?.isSecondary ? `Included (${mcInfo.teamRef})` : r.charges
+          val = mcInfo?.isSecondary ? `Added ${mcInfo.teamRef || 'Team'}` : r.charges
         } else if (col.id === 'received') {
-          val = mcInfo?.isSecondary ? `${mcInfo.teamRef} (Ref: ${mcInfo.primaryCleaner})` : r.received
+          val = mcInfo?.isSecondary ? `Reference ${mcInfo.primaryCleaner || 'Lead'}` : r.received
         } else if (col.id === 'pending') {
           val = mcInfo?.isSecondary ? 'Nil' : rowPending(r)
         } else if (col.id === 'payment_mode') {
@@ -3129,9 +3129,9 @@ export function JobSheetSpreadsheet() {
           else if (mcInfo?.isPrimary && mcInfo.isMultiCleaner) val = `${mcInfo.teamRef} (Lead)`
           else val = r.team_name || ''
         } else if (col.id === 'charges') {
-          val = mcInfo?.isSecondary ? `Included (${mcInfo.teamRef})` : r.charges
+          val = mcInfo?.isSecondary ? `Added ${mcInfo.teamRef || 'Team'}` : r.charges
         } else if (col.id === 'received') {
-          val = mcInfo?.isSecondary ? `${mcInfo.teamRef} (Ref: ${mcInfo.primaryCleaner})` : r.received
+          val = mcInfo?.isSecondary ? `Reference ${mcInfo.primaryCleaner || 'Lead'}` : r.received
         } else if (col.id === 'pending') {
           val = mcInfo?.isSecondary ? 'Nil' : rowPending(r)
         } else if (col.id === 'payment_mode') {
@@ -4119,11 +4119,11 @@ export function JobSheetSpreadsheet() {
                               else displayVal = rawVal || ''
                             } else if (col.id === 'charges') {
                               if (isBlankShift) displayVal = ''
-                              else if (mcInfo?.isSecondary) displayVal = `Included (${mcInfo.teamRef})`
+                              else if (mcInfo?.isSecondary) displayVal = `Added ${mcInfo.teamRef || 'Team'}`
                               else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                             } else if (col.id === 'received') {
                               if (isBlankShift) displayVal = ''
-                              else if (mcInfo?.isSecondary) displayVal = `${mcInfo.teamRef} (Ref: ${mcInfo.primaryCleaner})`
+                              else if (mcInfo?.isSecondary) displayVal = `Reference ${mcInfo.primaryCleaner || 'Lead'}`
                               else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                             } else if (col.id === 'pending') {
                               if (isBlankShift) displayVal = ''
@@ -4410,11 +4410,11 @@ export function JobSheetSpreadsheet() {
                         else displayVal = rawVal || ''
                       } else if (col.id === 'charges') {
                         if (isBlankShift) displayVal = ''
-                        else if (mcInfo?.isSecondary) displayVal = `Included (${mcInfo.teamRef})`
+                        else if (mcInfo?.isSecondary) displayVal = `Added ${mcInfo.teamRef || 'Team'}`
                         else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                       } else if (col.id === 'received') {
                         if (isBlankShift) displayVal = ''
-                        else if (mcInfo?.isSecondary) displayVal = `${mcInfo.teamRef} (Ref: ${mcInfo.primaryCleaner})`
+                        else if (mcInfo?.isSecondary) displayVal = `Reference ${mcInfo.primaryCleaner || 'Lead'}`
                         else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                       } else if (col.id === 'pending') {
                         if (isBlankShift) {

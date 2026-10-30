@@ -429,8 +429,8 @@ export function Employees() {
 
   // Check today's active work status (checks Daily Jobs Sheet as well as Bookings)
   const getTodayStatus = (emp: Employee) => {
-    if (emp.status === 'on_leave') return { code: 'leave', label: 'On Leave', bg: 'bg-indigo-50 text-indigo-700 border-indigo-200' }
-    if (emp.status === 'inactive') return { code: 'inactive', label: 'Inactive', bg: 'bg-slate-100 text-slate-500 border-slate-200' }
+    if (emp.status === 'on_leave') return { code: 'leave', label: 'On Leave', bg: 'bg-indigo-50 text-indigo-700 border-indigo-200', badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200' }
+    if (emp.status === 'inactive') return { code: 'inactive', label: 'Inactive', bg: 'bg-slate-100 text-slate-500 border-slate-200', badgeBg: 'bg-slate-100 text-slate-500 border-slate-200' }
 
     const todayStr = todayDubai()
     const st = staffJobStats.get(emp.id)
@@ -1033,9 +1033,14 @@ export function Employees() {
 
                   {isColVisible('status') && (
                     <td className="py-3 px-3">
-                      <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full border ${todaySt.badgeBg}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${todaySt.code === 'working' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-                        {todaySt.label}
+                      <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full border whitespace-nowrap flex-nowrap ${todaySt.badgeBg || todaySt.bg}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                          todaySt.code === 'working' ? 'bg-emerald-500 animate-pulse' :
+                          todaySt.code === 'leave' ? 'bg-indigo-500' :
+                          todaySt.code === 'scheduled' ? 'bg-teal-500' :
+                          'bg-slate-400'
+                        }`} />
+                        <span className="whitespace-nowrap">{todaySt.label}</span>
                       </span>
                     </td>
                   )}

@@ -1668,6 +1668,25 @@ export function Bookings() {
                         <Eye size={12} className="text-teal-700" />
                         <span>Details</span>
                       </button>
+
+                      {b.status !== 'completed' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (b.id.startsWith('dj-')) {
+                              updateDailyJob(b.id.replace('dj-', ''), { status: 'completed' as any })
+                            } else {
+                              updateBooking(b.id, { status: 'completed' as BookingStatus })
+                            }
+                            notify.success(`Booking for ${b.client_name} marked as complete`)
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11.5px] font-bold transition-all cursor-pointer shadow-2xs"
+                          title="Mark this booking as Completed"
+                        >
+                          <CheckCircle size={12} />
+                          <span>Complete</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3045,7 +3064,50 @@ function BookingDetailModal({
         </div>
       }
       headerActions={
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Top Operation Actions: Shift, Start Job, Cancel */}
+          {!isEditing && (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="px-3 py-1.5 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-900 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                title="Shift or reschedule booking timing"
+              >
+                <CalendarIcon size={12} className="text-teal-700" />
+                <span>Shift</span>
+              </button>
+
+              {status !== 'in_progress' && status !== 'completed' && status !== 'cancelled' && (
+                <button
+                  type="button"
+                  onClick={() => handleApplyStatus('in_progress')}
+                  className="px-3 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                  title="Start Job (Set In Progress)"
+                >
+                  <Clock size={12} />
+                  <span>Start Job</span>
+                </button>
+              )}
+
+              {status !== 'cancelled' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('Are you sure you want to cancel this booking?')) {
+                      handleApplyStatus('cancelled')
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                  title="Cancel Booking"
+                >
+                  <X size={12} />
+                  <span>Cancel</span>
+                </button>
+              )}
+            </>
+          )}
+
           {isEditing ? (
             <>
               <button
@@ -3065,47 +3127,13 @@ function BookingDetailModal({
               </button>
             </>
           ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => setIsEditing(true)}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-              >
-                <Pencil size={12} className="text-slate-500" />
-                <span>Edit</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSave()}
-                className="px-3.5 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-[12px] shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Check size={13} strokeWidth={2.5} />
-                <span>Save</span>
-              </button>
-            </>
-          )}
-
-          {onOpenInvoice && (
             <button
               type="button"
-              onClick={() => onOpenInvoice(booking)}
-              className="px-3 py-1.5 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-              title="View or Create Invoice for this booking"
+              onClick={() => handleSave()}
+              className="px-3.5 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-[12px] shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
             >
-              <FileText size={12} className="text-purple-600" />
-              <span>Invoice</span>
-            </button>
-          )}
-
-          {onOpenPayment && (
-            <button
-              type="button"
-              onClick={() => onOpenPayment(booking)}
-              className="px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-              title="Record Payment for this booking"
-            >
-              <Wallet size={12} className="text-emerald-700" />
-              <span>Payment</span>
+              <Check size={13} strokeWidth={2.5} />
+              <span>Save</span>
             </button>
           )}
 
@@ -3567,50 +3595,61 @@ function BookingDetailModal({
             </div>
           )}
 
-          {/* 6. Workflow Status Action Buttons (NO Edit and NO Delete buttons here!) */}
-          <div className="pt-2 border-t border-slate-200 flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
-              Status:
-            </span>
-            {status === 'pending' && (
-              <button
-                type="button"
-                onClick={() => handleApplyStatus('confirmed')}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[12px] shadow-xs cursor-pointer flex-1 flex items-center justify-center gap-1.5 transition-all"
-              >
-                <Check size={14} strokeWidth={2.5} />
-                <span>Confirm Booking</span>
-              </button>
-            )}
-            {status === 'confirmed' && (
-              <button
-                type="button"
-                onClick={() => handleApplyStatus('in_progress')}
-                className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-[12px] shadow-xs cursor-pointer flex-1 flex items-center justify-center gap-1.5 transition-all"
-              >
-                <Clock size={14} />
-                <span>Start Job</span>
-              </button>
-            )}
-            {status === 'in_progress' && (
-              <button
-                type="button"
-                onClick={() => handleApplyStatus('completed')}
-                className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-[12px] shadow-xs cursor-pointer flex-1 flex items-center justify-center gap-1.5 transition-all"
-              >
-                <CheckCircle size={14} />
-                <span>Mark Complete</span>
-              </button>
-            )}
-            {status !== 'cancelled' && status !== 'completed' && (
-              <button
-                type="button"
-                onClick={() => handleApplyStatus('cancelled')}
-                className="px-3 py-2 rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 text-rose-700 font-bold text-[12px] cursor-pointer transition-colors"
-              >
-                Cancel Shift
-              </button>
-            )}
+          {/* 6. Bottom Financial & Status Actions: Invoice and Payment moved to bottom */}
+          <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              {onOpenInvoice && (
+                <button
+                  type="button"
+                  onClick={() => onOpenInvoice(booking)}
+                  className="px-3.5 py-2 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-900 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                  title="View or Create Invoice for this booking"
+                >
+                  <FileText size={13} className="text-purple-600" />
+                  <span>Invoice</span>
+                </button>
+              )}
+
+              {onOpenPayment && (
+                <button
+                  type="button"
+                  onClick={() => onOpenPayment(booking)}
+                  className="px-3.5 py-2 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                  title="Record Payment for this booking"
+                >
+                  <Wallet size={13} className="text-emerald-700" />
+                  <span>Payment</span>
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {status === 'pending' && (
+                <button
+                  type="button"
+                  onClick={() => handleApplyStatus('confirmed')}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[12px] shadow-xs cursor-pointer flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <Check size={14} strokeWidth={2.5} />
+                  <span>Confirm Booking</span>
+                </button>
+              )}
+              {status === 'in_progress' && (
+                <button
+                  type="button"
+                  onClick={() => handleApplyStatus('completed')}
+                  className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-[12px] shadow-xs cursor-pointer flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <CheckCircle size={14} />
+                  <span>Mark Complete</span>
+                </button>
+              )}
+              {status === 'completed' && (
+                <span className="inline-flex items-center gap-1.5 text-emerald-800 bg-emerald-100/80 border border-emerald-300 font-extrabold text-[12px] px-3 py-1.5 rounded-xl">
+                  <Check size={13} strokeWidth={3} /> Completed
+                </span>
+              )}
+            </div>
           </div>
         </div>
       )}

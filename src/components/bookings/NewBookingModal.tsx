@@ -2,8 +2,9 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   X, Check, Clock, Calendar, User, Phone, MapPin,
   Search, Briefcase, Users, FileText, Plus, Edit2, Trash2,
-  ChevronDown, CheckCircle2, Sparkles, Settings2, RefreshCw
+  ChevronDown, CheckCircle2, Sparkles, Settings2, RefreshCw, Palette
 } from 'lucide-react'
+import { ROW_COLOR_PRESETS } from '@/components/dailyJobSheet/jobSheetUtils'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useData } from '@/store/DataContext'
@@ -60,7 +61,7 @@ const POPULAR_DUBAI_AREAS = [
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) {
-  const { clients, employees } = useData()
+  const { clients, employees, dailyJobs, bookings } = useData()
   const formRef = useRef<HTMLFormElement>(null)
 
   // Booking Status (Confirmed vs Pending)
@@ -106,6 +107,37 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
   const [showCrewDropdown, setShowCrewDropdown] = useState(false)
   const crewDropdownRef = useRef<HTMLDivElement>(null)
   const [notes, setNotes] = useState('')
+
+  // Row Highlight Color Theme (18 options with View All)
+  const [rowColor, setRowColor] = useState<string>('default')
+  const [showAllColors, setShowAllColors] = useState(false)
+  const displayedColorPresets = useMemo(() => {
+    if (showAllColors) return ROW_COLOR_PRESETS
+    const initial = ROW_COLOR_PRESETS.slice(0, 4)
+    if (rowColor && !initial.some(p => p.id === rowColor)) {
+      const selectedPreset = ROW_COLOR_PRESETS.find(p => p.id === rowColor)
+      if (selectedPreset) return [...initial.slice(0, 3), selectedPreset]
+    }
+    return initial
+  }, [showAllColors, rowColor])
+
+  // Track busy cleaners on the selected scheduled date
+  const busyEmployeeIds = useMemo(() => {
+    if (!scheduledDate) return new Set<string>()
+    const busy = new Set<string>()
+    ;(dailyJobs || []).forEach(j => {
+      if (j.date === scheduledDate && j.staff_name) {
+        const emp = employees.find(e => e.full_name.toLowerCase().trim() === j.staff_name.toLowerCase().trim())
+        if (emp) busy.add(emp.id)
+      }
+    })
+    ;(bookings || []).forEach(b => {
+      if (b.scheduled_date === scheduledDate && b.status !== 'cancelled' && Array.isArray(b.assigned_crew)) {
+        b.assigned_crew.forEach(id => busy.add(id))
+      }
+    })
+    return busy
+  }, [scheduledDate, dailyJobs, bookings, employees])
 
   // Form Validation & Error state
   const [errors, setErrors] = useState<{ client?: string; date?: string; time?: string; service?: string }>({})
@@ -385,7 +417,8 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
       assigned_crew: selectedCrew,
       notes: notes.trim(),
       recurring_days: frequency === 'monthly' ? selectedDays : undefined,
-    })
+      ...(rowColor !== 'default' ? { row_color: rowColor } : {}),
+    } as any)
 
     onClose()
   }
@@ -929,10 +962,10 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
                 <Users size={13} className="absolute right-2.5 top-2.5 text-amber-500 pointer-events-none" />
               </div>
 
-              {/* Crew Picker Dropdown */}
+              {/* Crew Picker Dropdown (Drop-Up Mode: Opens Upwards with Busy Tag) */}
               {showCrewDropdown && (
-                <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-amber-200 rounded-xl shadow-xl max-h-52 overflow-y-auto divide-y divide-amber-50 animate-in fade-in zoom-in-95 duration-100">
-                  <div className="px-3 py-1.5 bg-amber-50 text-[10px] font-bold text-amber-900 uppercase tracking-wider flex items-center justify-between">
+                <div className="absolute z-50 left-0 right-0 bottom-full mb-1.5 bg-white border border-amber-200 rounded-xl shadow-2xl max-h-56 overflow-y-auto divide-y divide-amber-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-3 py-1.5 bg-amber-50 text-[10px] font-bold text-amber-900 uppercase tracking-wider flex items-center justify-between sticky top-0 z-10">
                     <span>Available Cleaners ({filteredEmployees.length})</span>
                     <button
                       type="button"
@@ -947,6 +980,7 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
                   ) : (
                     filteredEmployees.map(emp => {
                       const isAssigned = selectedCrew.includes(emp.id)
+                      const isBusy = busyEmployeeIds.has(emp.id)
                       return (
                         <button
                           type="button"
@@ -967,11 +1001,18 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
                               <p className="text-[10px] text-slate-400">{emp.role === 'crew_lead' ? 'Crew Lead' : 'Cleaner'}</p>
                             </div>
                           </div>
-                          {emp.agency_id && (
-                            <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-semibold shrink-0">
-                              Agency
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {isBusy && (
+                              <span className="text-[9.5px] bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded font-extrabold shrink-0">
+                                Busy
+                              </span>
+                            )}
+                            {emp.agency_id && (
+                              <span className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-semibold shrink-0">
+                                Agency
+                              </span>
+                            )}
+                          </div>
                         </button>
                       )
                     })
@@ -983,9 +1024,10 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
             {/* Selected Crew Chips */}
             <div className="min-h-[42px] p-2 rounded-xl bg-white border border-amber-200/80 flex flex-wrap gap-1.5 items-center">
               {selectedEmployees.length === 0 ? (
-                <span className="text-[11px] text-slate-400 italic px-1">
-                  No cleaner assigned yet (can be assigned later on Job Sheet)
-                </span>
+                <div className="flex items-center gap-2 px-1 text-slate-400">
+                  <Users size={14} className="text-amber-400/80" />
+                  <span className="text-[11px] font-medium">Select one or more cleaners from search above</span>
+                </div>
               ) : (
                 selectedEmployees.map(emp => (
                   <span
@@ -1052,6 +1094,48 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
                   +{tag}
                 </button>
               ))}
+            </div>
+
+            {/* Row Highlight Color Picker */}
+            <div className="pt-2.5 border-t border-slate-200/90">
+              <div className="flex items-center justify-between mb-1.5 min-h-[18px]">
+                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                  <Palette size={12} className="text-slate-400" />
+                  Row Color Theme
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowAllColors(prev => !prev)}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10.5px] font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors cursor-pointer"
+                >
+                  <span>{showAllColors ? 'Show Less' : 'View All'}</span>
+                  <ChevronDown size={11} className={`transition-transform duration-200 ${showAllColors ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
+
+              <div className={`min-h-[40px] flex items-center gap-1.5 ${showAllColors ? 'flex-wrap' : 'flex-nowrap overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'}`}>
+                {displayedColorPresets.map(preset => {
+                  const isSelected = rowColor === preset.id
+                  return (
+                    <button
+                      type="button"
+                      key={preset.id}
+                      onClick={() => setRowColor(preset.id)}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer shrink-0 bg-white ${
+                        isSelected
+                          ? 'ring-2 ring-teal-500 ring-offset-1 border-teal-400 font-black shadow-xs text-teal-950'
+                          : 'border-slate-200 hover:border-slate-300 opacity-90 hover:opacity-100 text-slate-700'
+                      }`}
+                    >
+                      <span
+                        className="w-2.5 h-2.5 rounded-full border border-black/10 shrink-0"
+                        style={{ backgroundColor: preset.circleColor || '#cbd5e1' }}
+                      />
+                      <span>{preset.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </div>
