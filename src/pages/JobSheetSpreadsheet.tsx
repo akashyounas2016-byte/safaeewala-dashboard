@@ -128,6 +128,29 @@ export function buildColumnsWithLetters(order: string[], hiddenIds: string[] = [
 
 export const COLUMNS: ColumnDef[] = buildColumnsWithLetters(DEFAULT_COLUMN_DEFS.map(c => c.id))
 
+export type ExcelDatePresetKey =
+  | 'today'
+  | 'yesterday'
+  | 'last_month'
+  | 'last_3_months'
+  | 'last_6_months'
+  | 'last_year'
+  | 'two_years'
+  | 'custom'
+  | 'all'
+
+export const EXCEL_DATE_PRESETS: { id: ExcelDatePresetKey; label: string; desc?: string }[] = [
+  { id: 'today',         label: 'Today',         desc: 'Dubai current date' },
+  { id: 'yesterday',     label: 'Yesterday',     desc: 'Previous day' },
+  { id: 'last_month',    label: 'Last Month',    desc: 'Full previous calendar month' },
+  { id: 'last_3_months', label: 'Last 3 Months', desc: 'Past 90 days to today' },
+  { id: 'last_6_months', label: 'Last 6 Months', desc: 'Past 180 days to today' },
+  { id: 'last_year',     label: 'Last Year',     desc: 'Past 365 days to today' },
+  { id: 'two_years',     label: '2 Years',       desc: 'Past 2 years to today' },
+  { id: 'custom',        label: 'Custom Range',  desc: 'Pick custom start & end date' },
+  { id: 'all',           label: 'All',           desc: 'All available records' },
+]
+
 
 /* ─── Cleaner Color Block Palettes (Rich Solid Background & Distinct Perimeter Borders) ─── */
 export interface BlockPalette {
@@ -1195,15 +1218,31 @@ export function JobSheetSpreadsheet() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { dailyJobs, clients, employees, invoices, addDailyJob, updateDailyJob, deleteDailyJob } = useData()
 
-  // ── Target Date Selection & Dynamic Filters ──
+  // ── Target Date Selection & Dynamic Date Presets ──
   const qDate = searchParams.get('date')
   const initialDate = qDate && /^\d{4}-\d{2}-\d{2}$/.test(qDate)
     ? qDate
     : todayDubai()
   const [selectedDate, setSelectedDate] = useState(initialDate)
-  const [dateFilterMode, setDateFilterMode] = useState<'single' | 'today' | 'yesterday' | 'range' | 'all'>('single')
+  // Default display is Date Range function as requested
+  const [dateFilterMode, setDateFilterMode] = useState<'single' | 'today' | 'yesterday' | 'range' | 'all'>('range')
   const [rangeStart, setRangeStart] = useState<string>(initialDate)
   const [rangeEnd, setRangeEnd] = useState<string>(initialDate)
+  const [activeDatePreset, setActiveDatePreset] = useState<
+    'today' | 'yesterday' | 'last_month' | 'last_3_months' | 'last_6_months' | 'last_year' | 'two_years' | 'custom' | 'all'
+  >('today')
+  const [showDatePresetDropdown, setShowDatePresetDropdown] = useState(false)
+  const datePresetRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (datePresetRef.current && !datePresetRef.current.contains(e.target as Node)) {
+        setShowDatePresetDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // ── Weekly Schedule ↔ Daily Job Sheet Synchronization State ──
   const [showMonthlySyncModal, setShowMonthlySyncModal] = useState(false)
@@ -1215,8 +1254,9 @@ export function JobSheetSpreadsheet() {
   const effectiveTargetDate = useMemo(() => {
     if (dateFilterMode === 'today') return todayDubai()
     if (dateFilterMode === 'yesterday') return addDaysToYMD(todayDubai(), -1)
+    if (rangeStart) return rangeStart
     return selectedDate
-  }, [selectedDate, dateFilterMode])
+  }, [selectedDate, dateFilterMode, rangeStart])
 
   const monthlySyncStatus = useMemo(() => {
     if (dateFilterMode !== 'single' && dateFilterMode !== 'today' && dateFilterMode !== 'yesterday') {
@@ -1499,7 +1539,7 @@ export function JobSheetSpreadsheet() {
   const [showAddJobModal, setShowAddJobModal] = useState(false)
   const [editingRowState, setEditingRowState] = useState<{ row: DailyJob; index: number } | null>(null)
   const [quickClientState, setQuickClientState] = useState<{ open: boolean; rowIdx: number | null; name: string }>({ open: false, rowIdx: null, name: '' })
-  const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'Monthly' | 'Cash' | 'Online' | 'Pending'>('ALL')
+  const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'Monthly' | 'Cash' | 'Online' | 'Pending' | 'Project'>('ALL')
 
   // ── UI View Options (Default: flat grid first as requested) ──
   const [viewMode, setViewMode] = useState<'blocks' | 'flat'>(() => {
@@ -1523,6 +1563,11 @@ export function JobSheetSpreadsheet() {
   // ── Column Background Colors (Granular column color customization) ──
   const [columnColors, setColumnColors] = useState<Record<string, string>>(() => {
     return safeGet('safaeewala_excel_column_colors', {})
+  })
+
+  // ── Cell Background Colors (Granular single-cell color customization) ──
+  const [cellColors, setCellColors] = useState<Record<string, string>>(() => {
+    return safeGet('safaeewala_excel_cell_colors', {})
   })
 
   // ── Change Log History Modal ──
@@ -1587,8 +1632,8 @@ export function JobSheetSpreadsheet() {
     colId: string
   } | null>(null)
 
-  // Granular color target for non-staff cells: 'row' (only this row) vs 'col' (only this column)
-  const [colorTargetScope, setColorTargetScope] = useState<'row' | 'col'>('row')
+  // Granular color target for non-staff cells: 'cell' (only this specific cell) vs 'row' (only this row)
+  const [colorTargetScope, setColorTargetScope] = useState<'cell' | 'row'>('cell')
 
   // Palette picker open for specific cleaner
   const [colorPickerCleaner, setColorPickerCleaner] = useState<string | null>(null)
@@ -1598,14 +1643,23 @@ export function JobSheetSpreadsheet() {
   const spreadsheetRef = useRef<HTMLDivElement>(null)
 
   // Jobs of the period shown in the grid
-  const periodKey = `${dateFilterMode}|${selectedDate}|${rangeStart}|${rangeEnd}`
+  const periodKey = `${dateFilterMode}|${selectedDate}|${rangeStart}|${rangeEnd}|${activeDatePreset}`
   const periodJobs = useMemo(() => {
+    if (dateFilterMode === 'all') return [...dailyJobs]
+    if (dateFilterMode === 'range') {
+      if (rangeStart && rangeEnd) {
+        return dailyJobs.filter(j => j.date >= rangeStart && j.date <= rangeEnd)
+      } else if (rangeStart) {
+        return dailyJobs.filter(j => j.date >= rangeStart)
+      } else if (rangeEnd) {
+        return dailyJobs.filter(j => j.date <= rangeEnd)
+      }
+      return [...dailyJobs]
+    }
     if (dateFilterMode === 'today') { const t = todayDubai(); return dailyJobs.filter(j => j.date === t) }
     if (dateFilterMode === 'yesterday') { const y = addDaysToYMD(todayDubai(), -1); return dailyJobs.filter(j => j.date === y) }
-    if (dateFilterMode === 'range') return dailyJobs.filter(j => j.date >= rangeStart && j.date <= rangeEnd)
-    if (dateFilterMode === 'all') return [...dailyJobs]
     return dailyJobs.filter(j => j.date === selectedDate)
-  }, [dailyJobs, dateFilterMode, selectedDate, rangeStart, rangeEnd])
+  }, [dailyJobs, dateFilterMode, selectedDate, rangeStart, rangeEnd, activeDatePreset])
 
   /** Rows added, edited and removed in the grid compared with what was loaded (UX-33) */
   const pendingChanges = useMemo(() => {
@@ -2577,6 +2631,128 @@ export function JobSheetSpreadsheet() {
     showToast(`✓ Reset color on Row #${rowIdx + 1}`)
   }
 
+  // ── Set Single Cell Color (Granular: Only this specific cell, NOT the row or block) ──
+  const handleSetCellColor = (rowId: string, colId: string, paletteKey: string) => {
+    const cellKey = `${rowId}_${colId}`
+    setCellColors(prev => {
+      const next = { ...prev, [cellKey]: paletteKey }
+      safeSet('safaeewala_excel_cell_colors', next)
+      return next
+    })
+    setContextMenu(null)
+    const colDef = columns.find(c => c.id === colId)
+    showToast(`✓ Color applied to this cell only (${colDef?.label || colId})`)
+  }
+
+  const handleResetCellColor = (rowId: string, colId: string) => {
+    const cellKey = `${rowId}_${colId}`
+    setCellColors(prev => {
+      const next = { ...prev }
+      delete next[cellKey]
+      safeSet('safaeewala_excel_cell_colors', next)
+      return next
+    })
+    setContextMenu(null)
+    showToast(`✓ Reset color on this cell`)
+  }
+
+  // ── Column Header Context Menu (Click / Right-click on column header after Staff changes whole row color) ──
+  const handleColumnHeaderContextMenu = (e: React.MouseEvent, colId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const targetIdx = activeCell ? activeCell.rowIdx : 0
+    const targetJob = gridRows[targetIdx] || gridRows[0]
+    if (!targetJob) return
+
+    if (colId === 'staff_name') {
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        rowIdx: targetIdx,
+        job: targetJob,
+        colId: 'staff_name',
+      })
+    } else {
+      // Rule: Clicking / right-clicking on column header after Staff applies color to the WHOLE ROW
+      setColorTargetScope('row')
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        rowIdx: targetIdx,
+        job: targetJob,
+        colId,
+      })
+    }
+  }
+
+  // ── Date Preset Selection Handler ──
+  const handleSelectDatePreset = (presetKey: ExcelDatePresetKey) => {
+    setActiveDatePreset(presetKey)
+    setShowDatePresetDropdown(false)
+
+    const today = todayDubai()
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = now.getMonth()
+
+    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+    if (presetKey === 'all') {
+      setDateFilterMode('all')
+      setRangeStart('')
+      setRangeEnd('')
+      showToast('Viewing All Records')
+      return
+    }
+
+    setDateFilterMode('range')
+
+    if (presetKey === 'today') {
+      setRangeStart(today)
+      setRangeEnd(today)
+      setSelectedDate(today)
+      setSearchParams({ date: today }, { replace: true })
+      showToast('Date set to Today')
+    } else if (presetKey === 'yesterday') {
+      const yest = addDaysToYMD(today, -1)
+      setRangeStart(yest)
+      setRangeEnd(yest)
+      setSelectedDate(yest)
+      setSearchParams({ date: yest }, { replace: true })
+      showToast('Date set to Yesterday')
+    } else if (presetKey === 'last_month') {
+      const start = iso(new Date(y, m - 1, 1))
+      const end = iso(new Date(y, m, 0))
+      setRangeStart(start)
+      setRangeEnd(end)
+      showToast('Date range set to Last Month')
+    } else if (presetKey === 'last_3_months') {
+      const start = iso(new Date(y, m - 2, 1))
+      setRangeStart(start)
+      setRangeEnd(today)
+      showToast('Date range set to Last 3 Months')
+    } else if (presetKey === 'last_6_months') {
+      const start = iso(new Date(y, m - 5, 1))
+      setRangeStart(start)
+      setRangeEnd(today)
+      showToast('Date range set to Last 6 Months')
+    } else if (presetKey === 'last_year') {
+      const start = iso(new Date(y - 1, m, now.getDate()))
+      setRangeStart(start)
+      setRangeEnd(today)
+      showToast('Date range set to Last Year')
+    } else if (presetKey === 'two_years') {
+      const start = iso(new Date(y - 2, m, now.getDate()))
+      setRangeStart(start)
+      setRangeEnd(today)
+      showToast('Date range set to 2 Years')
+    } else if (presetKey === 'custom') {
+      if (!rangeStart) setRangeStart(today)
+      if (!rangeEnd) setRangeEnd(today)
+      showToast('Custom Range selected')
+    }
+  }
+
   // ── Set Column Color (Granular: Only this specific column across the sheet) ──
   const handleSetColumnColor = (colId: string, paletteKey: string) => {
     setColumnColors(prev => {
@@ -2645,7 +2821,7 @@ export function JobSheetSpreadsheet() {
     const posY = clickY + menuHeight > window.innerHeight ? Math.max(10, window.innerHeight - menuHeight - 15) : clickY
 
     setActiveCell({ rowIdx, colId })
-    setColorTargetScope('row')
+    setColorTargetScope(colId === 'staff_name' ? 'row' : 'cell')
     setContextMenu({
       x: posX,
       y: posY,
@@ -2947,14 +3123,17 @@ export function JobSheetSpreadsheet() {
 
   // Filter Counts for Header Quick Filter Tabs
   const filterCounts = useMemo(() => {
-    let monthly = 0, cash = 0, online = 0, pending = 0
+    let monthly = 0, cash = 0, online = 0, pending = 0, project = 0
     for (const r of gridRows) {
       if (r.payment_mode === 'Monthly') monthly++
       else if (r.payment_mode === 'Cash') cash++
       else if (r.payment_mode === 'Online') online++
       if (r.payment_mode === 'Pending' || rowPending(r) > 0) pending++
+
+      const mc = getMultiCleanerPaymentInfo(r, gridRows)
+      if (r.team_name || mc?.isMultiCleaner || mc?.teamRef) project++
     }
-    return { all: gridRows.length, monthly, cash, online, pending }
+    return { all: gridRows.length, monthly, cash, online, pending, project }
   }, [gridRows, pendingCtx])
 
   // Filtered rows for search and payment mode tabs
@@ -2969,6 +3148,39 @@ export function JobSheetSpreadsheet() {
       list = list.filter(r => r.payment_mode === 'Online')
     } else if (paymentModeFilter === 'Pending') {
       list = list.filter(r => r.payment_mode === 'Pending' || rowPending(r) > 0)
+    } else if (paymentModeFilter === 'Project') {
+      // Filter only jobs that belong to a project / team
+      const projectRows = list.filter(r => {
+        const mc = getMultiCleanerPaymentInfo(r, gridRows)
+        return Boolean(r.team_name || mc?.isMultiCleaner || mc?.teamRef)
+      })
+
+      // Group team-wise: Leader on top, other team members listed directly below
+      const teamMap = new Map<string, { leaders: DailyJob[]; members: DailyJob[] }>()
+      projectRows.forEach(r => {
+        const mc = getMultiCleanerPaymentInfo(r, gridRows)
+        const teamKey = (mc?.teamRef || r.team_name || 'Project Team').trim()
+        if (!teamMap.has(teamKey)) {
+          teamMap.set(teamKey, { leaders: [], members: [] })
+        }
+        const group = teamMap.get(teamKey)!
+        if (mc?.isPrimary) {
+          group.leaders.push(r)
+        } else {
+          group.members.push(r)
+        }
+      })
+
+      const organized: DailyJob[] = []
+      teamMap.forEach(group => {
+        // Leader top par
+        if (group.leaders.length > 0) {
+          organized.push(...group.leaders)
+        }
+        // Baki team members uskay neeche
+        organized.push(...group.members)
+      })
+      list = organized
     }
     if (!filterSearch.trim()) return list
     const q = filterSearch.toLowerCase()
@@ -3208,118 +3420,82 @@ export function JobSheetSpreadsheet() {
             </button>
           </div>
 
-          {/* ── Dynamic Date Filters Pill Bar ── */}
-          <div className="flex items-center gap-1 bg-black/25 rounded-xl p-1 border border-white/20 text-white text-[11px]">
-            <div className="flex items-center gap-0.5 bg-black/20 rounded-lg p-0.5">
-              <button
-                type="button"
-                onClick={() => {
-                  const today = todayDubai()
-                  setDateFilterMode('today')
-                  setSelectedDate(today)
-                  setSearchParams({ date: today }, { replace: true })
-                }}
-                className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${
-                  dateFilterMode === 'today' ? 'bg-white text-emerald-900 shadow-xs' : 'text-white/80 hover:text-white hover:bg-white/10'
-                }`}
-                title="View Today's Jobs"
-              >
-                Today
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const yest = addDaysToYMD(todayDubai(), -1)
-                  setDateFilterMode('yesterday')
-                  setSelectedDate(yest)
-                  setSearchParams({ date: yest }, { replace: true })
-                }}
-                className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${
-                  dateFilterMode === 'yesterday' ? 'bg-white text-emerald-900 shadow-xs' : 'text-white/80 hover:text-white hover:bg-white/10'
-                }`}
-                title="View Yesterday's Jobs"
-              >
-                Yesterday
-              </button>
-              <button
-                type="button"
-                onClick={() => setDateFilterMode('single')}
-                className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${
-                  dateFilterMode === 'single' ? 'bg-white text-emerald-900 shadow-xs' : 'text-white/80 hover:text-white hover:bg-white/10'
-                }`}
-                title="Single Date Picker"
-              >
-                Date
-              </button>
-              <button
-                type="button"
-                onClick={() => setDateFilterMode('range')}
-                className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${
-                  dateFilterMode === 'range' ? 'bg-white text-emerald-900 shadow-xs' : 'text-white/80 hover:text-white hover:bg-white/10'
-                }`}
-                title="Date Range Filter"
-              >
-                Range
-              </button>
-              <button
-                type="button"
-                onClick={() => setDateFilterMode('all')}
-                className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${
-                  dateFilterMode === 'all' ? 'bg-white text-emerald-900 shadow-xs' : 'text-white/80 hover:text-white hover:bg-white/10'
-                }`}
-                title="View All Dates"
-              >
-                All
-              </button>
+          {/* ── Date Range Function Display (Default) & Preset Dropdown Menu ── */}
+          <div className="relative flex items-center gap-1.5 bg-black/25 rounded-xl p-1 border border-white/20 text-white text-[11px]" ref={datePresetRef}>
+            {/* Inline Date Range Picker: From Date to To Date */}
+            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-black/20 rounded-lg">
+              <Calendar size={13} className="text-white/70 shrink-0" />
+              {dateFilterMode === 'all' ? (
+                <span className="font-extrabold text-[11.5px] text-white px-2 py-0.5">All Dates</span>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="date"
+                    value={rangeStart || selectedDate}
+                    onChange={e => {
+                      setRangeStart(e.target.value)
+                      setDateFilterMode('range')
+                      setActiveDatePreset('custom')
+                    }}
+                    className="bg-transparent px-1 py-0.5 font-bold focus:outline-none cursor-pointer [color-scheme:dark] text-[11.5px]"
+                    title="From Date"
+                  />
+                  <span className="text-white/60 font-medium text-[10.5px]">to</span>
+                  <input
+                    type="date"
+                    value={rangeEnd || selectedDate}
+                    onChange={e => {
+                      setRangeEnd(e.target.value)
+                      setDateFilterMode('range')
+                      setActiveDatePreset('custom')
+                    }}
+                    className="bg-transparent px-1 py-0.5 font-bold focus:outline-none cursor-pointer [color-scheme:dark] text-[11.5px]"
+                    title="To Date"
+                  />
+                </div>
+              )}
             </div>
 
-            {/* Date Picker (Single Day Mode) */}
-            {dateFilterMode === 'single' && (
-              <div className="flex items-center">
-                <button
-                  onClick={prevDay}
-                  className="p-1 hover:bg-white/20 rounded-md transition-colors cursor-pointer"
-                  title="Previous Day"
-                >
-                  <ChevronLeft size={15} />
-                </button>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={e => {
-                    setSelectedDate(e.target.value)
-                    setSearchParams({ date: e.target.value }, { replace: true })
-                  }}
-                  className="bg-transparent px-1.5 py-0.5 font-bold text-center focus:outline-none cursor-pointer [color-scheme:dark] text-[11.5px]"
-                />
-                <button
-                  onClick={nextDay}
-                  className="p-1 hover:bg-white/20 rounded-md transition-colors cursor-pointer"
-                  title="Next Day"
-                >
-                  <ChevronRight size={15} />
-                </button>
-              </div>
-            )}
+            {/* Dropdown Menu Trigger Button */}
+            <button
+              type="button"
+              onClick={() => setShowDatePresetDropdown(prev => !prev)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white font-extrabold text-[11px] transition-all cursor-pointer border border-white/15 shadow-2xs"
+              title="Select Date Range Preset"
+            >
+              <span>
+                {EXCEL_DATE_PRESETS.find(p => p.id === activeDatePreset)?.label || 'Date Range'}
+              </span>
+              <ChevronDown size={12} className={`transition-transform duration-200 ${showDatePresetDropdown ? 'rotate-180' : ''}`} />
+            </button>
 
-            {/* Date Range Inputs */}
-            {dateFilterMode === 'range' && (
-              <div className="flex items-center gap-1 px-1">
-                <input
-                  type="date"
-                  value={rangeStart}
-                  onChange={e => setRangeStart(e.target.value)}
-                  className="bg-transparent px-1 py-0.5 font-bold focus:outline-none cursor-pointer [color-scheme:dark] text-[11px]"
-                  title="From Date"
-                />
-                <span className="text-white/60">to</span>
-                <input
-                  type="date"
-                  value={rangeEnd}
-                  onChange={e => setRangeEnd(e.target.value)}
-                  className="bg-transparent px-1 py-0.5 font-bold focus:outline-none cursor-pointer [color-scheme:dark] text-[11px]"
-                  title="To Date"
-                />
+            {/* Dropdown Menu Popover */}
+            {showDatePresetDropdown && (
+              <div className="absolute left-0 top-full mt-2 z-50 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 p-1.5 text-slate-800 text-[12px] animate-in fade-in zoom-in-95 select-none font-sans">
+                <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1">
+                  Date Range Presets
+                </div>
+                <div className="space-y-0.5 max-h-72 overflow-y-auto">
+                  {EXCEL_DATE_PRESETS.map(preset => {
+                    const isSelected = activeDatePreset === preset.id
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => handleSelectDatePreset(preset.id)}
+                        className={`w-full px-2.5 py-1.5 rounded-lg text-left flex items-center justify-between font-medium transition-colors cursor-pointer ${
+                          isSelected ? 'bg-emerald-50 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        <div>
+                          <div className="text-[12px]">{preset.label}</div>
+                          {preset.desc && <div className="text-[10px] text-slate-400 font-normal">{preset.desc}</div>}
+                        </div>
+                        {isSelected && <Check size={14} className="text-emerald-700 stroke-[3] shrink-0" />}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -3583,9 +3759,9 @@ export function JobSheetSpreadsheet() {
             )}
           </div>
 
-          {/* 2. Flat Borderless Filter Buttons: ALL, Monthly, Cash, Online, Pending */}
+          {/* 2. Flat Borderless Filter Buttons: ALL, Monthly, Cash, Online, Pending, Project */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending'] as const).map(tab => {
+            {(['ALL', 'Monthly', 'Cash', 'Online', 'Pending', 'Project'] as const).map(tab => {
               const count = tab === 'ALL' ? filterCounts.all : filterCounts[tab.toLowerCase() as keyof typeof filterCounts]
               const isActive = paymentModeFilter === tab
               const flatStyle = {
@@ -3594,6 +3770,7 @@ export function JobSheetSpreadsheet() {
                 Cash: isActive ? 'bg-emerald-600 text-white' : 'bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-900',
                 Online: isActive ? 'bg-sky-600 text-white' : 'bg-sky-50/70 hover:bg-sky-100/80 text-sky-900',
                 Pending: isActive ? 'bg-rose-600 text-white' : 'bg-rose-50/70 hover:bg-rose-100/80 text-rose-900',
+                Project: isActive ? 'bg-purple-700 text-white shadow-xs' : 'bg-purple-50/70 hover:bg-purple-100/80 text-purple-900',
               }[tab]
 
               return (
@@ -3707,11 +3884,15 @@ export function JobSheetSpreadsheet() {
                   onDragOver={e => handleDragOver(e, col.id)}
                   onDrop={e => handleDrop(e, col.id)}
                   onDragEnd={() => { setDraggedColId(null); setDragOverColId(null) }}
+                  onContextMenu={e => handleColumnHeaderContextMenu(e, col.id)}
                   style={{ width: `${getColWidth(col)}px`, minWidth: `${getColWidth(col)}px` }}
                   className={`relative px-2.5 py-1.5 border-r border-slate-300 text-left whitespace-nowrap cursor-grab active:cursor-grabbing select-none transition-colors group/colhdr ${
                     dragOverColId === col.id ? 'bg-emerald-100 border-l-4 border-l-emerald-600' : ''
                   } ${draggedColId === col.id ? 'opacity-40' : ''}`}
-                  title="Drag column to reorder sequence · Drag right edge to resize column width"
+                  title={col.id === 'staff_name'
+                    ? "Drag column to reorder · Right-click for Staff Block color · Drag edge to resize"
+                    : "Drag column to reorder · Right-click header to color whole row · Drag edge to resize"
+                  }
                 >
                   <div className="flex items-center gap-1.5 pr-2">
                     <GripVertical size={11} className="text-slate-400 shrink-0" />
@@ -3934,8 +4115,23 @@ export function JobSheetSpreadsheet() {
                               displayVal = isBlankShift ? '' : cleanNum(displayVal)
                             }
 
+                            const cellColorKey = cellColors[`${row.id}_${col.id}`]
+                            const cellPalette = cellColorKey && BLOCK_PALETTES[cellColorKey] ? BLOCK_PALETTES[cellColorKey] : null
                             const colColorKey = columnColors[col.id]
                             const colPalette = colColorKey && BLOCK_PALETTES[colColorKey] ? BLOCK_PALETTES[colColorKey] : null
+                            const customRowPreset = row.row_color && ROW_COLOR_PRESETS.find(p => p.id === row.row_color)
+                            const rowPalette = row.row_color && BLOCK_PALETTES[row.row_color] ? BLOCK_PALETTES[row.row_color] : null
+
+                            let cellBg: string | undefined = undefined
+                            if (cellPalette) {
+                              cellBg = cellPalette.solidBg
+                            } else if (rowPalette) {
+                              cellBg = rowPalette.solidBg
+                            } else if (customRowPreset) {
+                              cellBg = customRowPreset.circleColor
+                            } else if (colPalette) {
+                              cellBg = colPalette.solidBg
+                            }
 
                             return (
                               <td
@@ -3946,7 +4142,7 @@ export function JobSheetSpreadsheet() {
                                 style={{
                                   width: `${getColWidth(col)}px`,
                                   minWidth: `${getColWidth(col)}px`,
-                                  backgroundColor: colPalette ? colPalette.solidBg : undefined,
+                                  backgroundColor: cellBg,
                                 }}
                                 className={`h-7 px-2 border-r border-slate-200 ${isCellEditing ? 'overflow-visible z-30' : 'overflow-hidden'} text-ellipsis whitespace-nowrap cursor-cell transition-all relative ${
                                   isCellActive
@@ -4216,10 +4412,12 @@ export function JobSheetSpreadsheet() {
                         displayVal = isBlankShift ? '' : (cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : ''))
                       }
 
+                      const cellColorKey = cellColors[`${row.id}_${col.id}`]
+                      const cellPalette = cellColorKey && BLOCK_PALETTES[cellColorKey] ? BLOCK_PALETTES[cellColorKey] : null
                       const colColorKey = columnColors[col.id]
                       const colPalette = colColorKey && BLOCK_PALETTES[colColorKey] ? BLOCK_PALETTES[colColorKey] : null
-                      const cellBg = colPalette ? colPalette.solidBg : rowBg
-                      const isDarkCell = colPalette ? !colPalette.isLight : isDarkRow
+                      const cellBg = cellPalette ? cellPalette.solidBg : (colPalette ? colPalette.solidBg : rowBg)
+                      const isDarkCell = cellPalette ? !cellPalette.isLight : (colPalette ? !colPalette.isLight : isDarkRow)
 
                       return (
                         <td
@@ -4540,12 +4738,12 @@ export function JobSheetSpreadsheet() {
                     </div>
                   </div>
                 ) : (
-                  /* 2. Granular Color Customizer (Specific Row or Column ONLY — Never touches whole block) */
+                  /* 2. Granular Color Customizer (Specific Cell Only vs Whole Row) */
                   <div className="px-3 py-2.5 bg-white text-slate-800 rounded-2xl mx-1.5 border border-slate-200/90 shadow-md">
                     <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-100">
                       <div className="flex items-center gap-1.5 font-bold text-slate-900 text-[11.5px]">
                         <Palette size={13} className="text-teal-600" />
-                        <span>Granular Color</span>
+                        <span>{colorTargetScope === 'cell' ? 'Cell Color' : 'Whole Row Color'}</span>
                       </div>
                       <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                         <button
@@ -4579,8 +4777,22 @@ export function JobSheetSpreadsheet() {
                       </div>
                     </div>
 
-                    {/* Scope Selector: Row Only vs Column */}
+                    {/* Scope Selector: Specific Cell Only vs Whole Row */}
                     <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 mb-2">
+                      <button
+                        type="button"
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => {
+                          e.stopPropagation()
+                          setColorTargetScope('cell')
+                        }}
+                        className={`flex-1 py-1 px-1.5 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer truncate ${
+                          colorTargetScope === 'cell' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                        title="Change color of ONLY this specific cell"
+                      >
+                        This Cell ({currentColDef?.label || contextMenu.colId})
+                      </button>
                       <button
                         type="button"
                         onMouseDown={e => e.stopPropagation()}
@@ -4588,39 +4800,27 @@ export function JobSheetSpreadsheet() {
                           e.stopPropagation()
                           setColorTargetScope('row')
                         }}
-                        className={`flex-1 py-1 px-1.5 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer ${
+                        className={`flex-1 py-1 px-1.5 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer truncate ${
                           colorTargetScope === 'row' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
                         }`}
+                        title="Change color of the entire row"
                       >
-                        Row #{contextMenu.rowIdx + 1} Only
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={e => e.stopPropagation()}
-                        onClick={e => {
-                          e.stopPropagation()
-                          setColorTargetScope('col')
-                        }}
-                        className={`flex-1 py-1 px-1.5 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer ${
-                          colorTargetScope === 'col' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                      >
-                        Column: {currentColDef?.label || contextMenu.colId}
+                        Whole Row #{contextMenu.rowIdx + 1}
                       </button>
                     </div>
 
                     <p className="text-[10px] text-slate-400 mb-2 leading-tight">
-                      {colorTargetScope === 'row'
-                        ? `Changes background for ONLY Row #${contextMenu.rowIdx + 1} (not the block).`
-                        : `Changes background for ONLY the "${currentColDef?.label || contextMenu.colId}" column.`}
+                      {colorTargetScope === 'cell'
+                        ? `Changes background for ONLY this single "${currentColDef?.label || contextMenu.colId}" cell.`
+                        : `Changes background for the entire Row #${contextMenu.rowIdx + 1} across all columns.`}
                     </p>
 
                     <div className="grid grid-cols-5 gap-2 py-1 place-items-center">
                       {(colorPaletteTab === 'light' ? LIGHT_PALETTE_KEYS : SOLID_PALETTE_KEYS).map(pk => {
                         const p = BLOCK_PALETTES[pk]
+                        const isCellMatch = cellColors[`${contextMenu.job.id}_${contextMenu.colId}`] === p.id
                         const isRowMatch = contextMenu.job.row_color === p.id
-                        const isColMatch = columnColors[contextMenu.colId] === p.id
-                        const isSelected = colorTargetScope === 'row' ? isRowMatch : isColMatch
+                        const isSelected = colorTargetScope === 'cell' ? isCellMatch : isRowMatch
 
                         return (
                           <button
@@ -4629,10 +4829,10 @@ export function JobSheetSpreadsheet() {
                             onMouseDown={e => e.stopPropagation()}
                             onClick={e => {
                               e.stopPropagation()
-                              if (colorTargetScope === 'row') {
-                                handleSetSingleRowColor(contextMenu.rowIdx, p.id)
+                              if (colorTargetScope === 'cell') {
+                                handleSetCellColor(contextMenu.job.id, contextMenu.colId, p.id)
                               } else {
-                                handleSetColumnColor(contextMenu.colId, p.id)
+                                handleSetSingleRowColor(contextMenu.rowIdx, p.id)
                               }
                             }}
                             style={{ backgroundColor: p.solidBg, borderColor: p.solidBorder }}
@@ -4659,15 +4859,15 @@ export function JobSheetSpreadsheet() {
                         onMouseDown={e => e.stopPropagation()}
                         onClick={e => {
                           e.stopPropagation()
-                          if (colorTargetScope === 'row') {
-                            handleResetSingleRowColor(contextMenu.rowIdx)
+                          if (colorTargetScope === 'cell') {
+                            handleResetCellColor(contextMenu.job.id, contextMenu.colId)
                           } else {
-                            handleResetColumnColor(contextMenu.colId)
+                            handleResetSingleRowColor(contextMenu.rowIdx)
                           }
                         }}
                         className="text-teal-700 hover:text-teal-900 underline font-semibold cursor-pointer"
                       >
-                        Reset {colorTargetScope === 'row' ? 'Row' : 'Column'}
+                        Reset {colorTargetScope === 'cell' ? 'Cell Color' : 'Row Color'}
                       </button>
                     </div>
                   </div>
