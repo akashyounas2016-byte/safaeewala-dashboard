@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, FileSpreadsheet } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { fmtDate } from '@/components/dailyJobSheet/jobSheetUtils'
+import { dailyJobSchema, problemsOf } from '@/lib/schemas'
 import type { DailyAdvanceItem, DailyExpense, DailyJob, DailyPendingItem, DailyPendingReceivedItem } from '@/types'
 
 /** Everything parsed from an Excel day sheet — nothing is saved until the user confirms (UX-28) */
@@ -45,7 +46,19 @@ export function ImportPreviewModal({ plan, existingJobs, existingExpenses, onCan
     return dup
   }, [plan])
 
+  // Rows that break the data rules (unknown payment mode, negative money, > 24 h, bad time)
+  const invalid = useMemo(() => {
+    const map = new Map<number, string[]>()
+    plan?.jobs.forEach((j, i) => {
+      const p = problemsOf(dailyJobSchema, { ...j, date: plan.date })
+      if (p.length) map.set(i, p)
+    })
+    return map
+  }, [plan])
+  const [includeInvalid, setIncludeInvalid] = useState(false)
+
   if (!plan) return null
+  const jobsToImport = plan.jobs.filter((_, i) => includeInvalid || !invalid.has(i))
   const replacingJobs = existingJobs(date)
   const replacingExpenses = existingExpenses(date)
   const charges = plan.jobs.reduce((s, j) => s + (Number(j.charges) || 0), 0)
@@ -62,12 +75,12 @@ export function ImportPreviewModal({ plan, existingJobs, existingExpenses, onCan
           <button type="button" onClick={onCancel} className="px-3 py-1.5 rounded-xl border border-slate-200 text-[12.5px] font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">Cancel</button>
           <button
             type="button"
-            disabled={plan.jobs.length + plan.expenses.length === 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date)}
-            onClick={() => onConfirm({ ...plan, date, jobs: plan.jobs.map(j => ({ ...j, date })), expenses: plan.expenses.map(e => ({ ...e, date })),
+            disabled={jobsToImport.length + plan.expenses.length === 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date)}
+            onClick={() => onConfirm({ ...plan, date, jobs: jobsToImport.map(j => ({ ...j, date })), expenses: plan.expenses.map(e => ({ ...e, date })),
               pending: plan.pending.map(p => ({ ...p, date })), pendingRcvd: plan.pendingRcvd.map(p => ({ ...p, date })), advances: plan.advances.map(a => ({ ...a, date })) })}
             className="px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white text-[12.5px] font-black hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
           >
-            Import {plan.jobs.length} job{plan.jobs.length === 1 ? '' : 's'}
+            Import {jobsToImport.length} job{jobsToImport.length === 1 ? '' : 's'}
           </button>
         </div>
       }
@@ -99,6 +112,17 @@ export function ImportPreviewModal({ plan, existingJobs, existingExpenses, onCan
             <span>{fmtDate(date)} already has <b>{replacingJobs.length} job{replacingJobs.length === 1 ? '' : 's'}</b> and <b>{replacingExpenses.length} expense{replacingExpenses.length === 1 ? '' : 's'}</b>. Importing replaces them with the rows below.</span>
           </div>
         )}
+        {invalid.size > 0 && (
+          <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-900">
+            <AlertTriangle size={15} className="text-amber-600 mt-0.5 shrink-0" />
+            <span className="flex-1">
+              <b>{invalid.size} row{invalid.size === 1 ? '' : 's'}</b> break the data rules (hover a yellow row to see why) and {includeInvalid ? 'will be imported anyway' : 'will be skipped'}.
+              <label className="ml-2 inline-flex items-center gap-1.5 font-semibold cursor-pointer">
+                <input type="checkbox" checked={includeInvalid} onChange={e => setIncludeInvalid(e.target.checked)} /> Import them anyway
+              </label>
+            </span>
+          </div>
+        )}
         {duplicates.size > 0 && (
           <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-900">
             <AlertTriangle size={15} className="text-rose-600 mt-0.5 shrink-0" />
@@ -122,7 +146,7 @@ export function ImportPreviewModal({ plan, existingJobs, existingExpenses, onCan
             </thead>
             <tbody className="divide-y divide-slate-100">
               {plan.jobs.map((j, i) => (
-                <tr key={i} className={duplicates.has(i) ? 'bg-rose-50' : ''}>
+                <tr key={i} className={invalid.has(i) ? 'bg-amber-50' : duplicates.has(i) ? 'bg-rose-50' : ''} title={invalid.get(i)?.join('\n')}>
                   <td className="px-2 py-1.5 text-slate-400">{i + 1}</td>
                   <td className="px-2 py-1.5 font-semibold text-slate-800">{j.staff_name}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{j.start_time} – {j.end_time}</td>
