@@ -145,19 +145,18 @@ function Time12hPicker({
   }
 
   const timeOptions = [
-    '07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
-    '11:00', '11:30', '12:00', '12:30', '01:00', '01:30', '02:00', '02:30',
-    '03:00', '03:30', '04:00', '04:30', '05:00', '05:30', '06:00', '06:30',
-    '07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00'
+    '07:00 AM', '07:30 AM', '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM',
+    '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM', '02:30 PM',
+    '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM', '05:00 PM', '05:30 PM', '06:00 PM', '06:30 PM',
+    '07:00 PM', '07:30 PM', '08:00 PM', '08:30 PM', '09:00 PM', '09:30 PM', '10:00 PM'
   ]
 
   const listId = `suggestions-${label.toLowerCase().replace(/[^a-z0-9]/g, '-')}`
 
   return (
     <div>
-      <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
-        <span>{label}</span>
-        <span className="text-blue-600 font-bold normal-case text-[11px]">{timeVal} {meridiem}</span>
+      <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
+        {label}
       </label>
       <div className="flex items-center gap-1.5">
         <div className="relative flex-1">
@@ -165,7 +164,13 @@ function Time12hPicker({
             type="text"
             list={listId}
             value={timeVal}
-            onChange={e => setTimeVal(e.target.value)}
+            onChange={e => {
+              const val = e.target.value
+              setTimeVal(val)
+              if (val.toLowerCase().includes('am') || val.toLowerCase().includes('pm')) {
+                commitTime(val, meridiem)
+              }
+            }}
             onBlur={() => commitTime(timeVal, meridiem)}
             onKeyDown={e => {
               if (e.key === 'Enter') {
@@ -174,11 +179,11 @@ function Time12hPicker({
               }
             }}
             placeholder="09:00"
-            className="w-full text-[13px] px-2.5 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-slate-800"
+            className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-slate-800"
           />
           <datalist id={listId}>
             {timeOptions.map(t => (
-              <option key={t} value={t}>{t} {meridiem}</option>
+              <option key={t} value={t} />
             ))}
           </datalist>
         </div>

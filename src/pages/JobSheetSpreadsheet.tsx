@@ -43,6 +43,7 @@ import { todayDubai } from '@/lib/dubaiTime'
 import { confirmAsync } from '@/lib/notify'
 import { invoicedJobIds } from '@/lib/receivables'
 import { fetchRecordHistory, type AuditEntry } from '@/lib/auditLog'
+import { ChangeLogHistoryModal } from '@/components/dailyJobSheet/ChangeLogHistoryModal'
 
 /* ─── Column Schema for the Excel Grid (Daily Job Sheet Exact Sequence) ─── */
 export interface ColumnDef {
@@ -91,8 +92,7 @@ export function cleanAddressDisplay(val: unknown): string {
 }
 
 export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
-  { id: 'staff_name',   label: 'Staff',      width: '140px', type: 'text',   formulaHint: 'Staff member name' },
-  { id: 'team_name',    label: 'Team',       width: '95px',  type: 'text',   formulaHint: 'Team reference (e.g. Team A)' },
+  { id: 'staff_name',   label: 'Staff',      width: '150px', type: 'text',   formulaHint: 'Staff member name & team' },
   { id: 'start_time',   label: 'Start time', width: '100px', type: 'time',   formulaHint: 'e.g. 10:00 AM' },
   { id: 'end_time',     label: 'End time',   width: '100px', type: 'time',   formulaHint: 'e.g. 03:00 PM' },
   { id: 'address',      label: 'Address',    width: '230px', type: 'text',   formulaHint: 'Client name & address' },
@@ -109,7 +109,7 @@ export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
 
 export function buildColumnsWithLetters(order: string[], hiddenIds: string[] = []): ColumnDef[] {
   const map = new Map<string, Omit<ColumnDef, 'col'>>(DEFAULT_COLUMN_DEFS.map(c => [c.id, c]))
-  const validIds = order.filter(id => map.has(id) && id !== 'date' && id !== 'service')
+  const validIds = order.filter(id => map.has(id) && id !== 'date' && id !== 'service' && id !== 'team_name')
   DEFAULT_COLUMN_DEFS.forEach(c => {
     if (!validIds.includes(c.id)) validIds.push(c.id)
   })
@@ -1524,6 +1524,59 @@ export function JobSheetSpreadsheet() {
   const [columnColors, setColumnColors] = useState<Record<string, string>>(() => {
     return safeGet('safaeewala_excel_column_colors', {})
   })
+
+  // ── Change Log History Modal ──
+  const [showChangeLogModal, setShowChangeLogModal] = useState(false)
+
+  // ── Column Widths (Interactive Drag Resizing) ──
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    return safeGet('safaeewala_excel_column_widths', {})
+  })
+  const [resizingCol, setResizingCol] = useState<{ id: string; startX: number; startWidth: number } | null>(null)
+
+  const handleStartResize = (e: React.MouseEvent, colId: string, currentWidthPx: number) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setResizingCol({
+      id: colId,
+      startX: e.clientX,
+      startWidth: currentWidthPx,
+    })
+  }
+
+  useEffect(() => {
+    if (!resizingCol) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - resizingCol.startX
+      const newWidth = Math.max(55, resizingCol.startWidth + deltaX)
+      setColWidths(prev => ({
+        ...prev,
+        [resizingCol.id]: newWidth,
+      }))
+    }
+
+    const handleMouseUp = () => {
+      setColWidths(prev => {
+        safeSet('safaeewala_excel_column_widths', prev)
+        return prev
+      })
+      setResizingCol(null)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [resizingCol])
+
+  const getColWidth = (col: ColumnDef): number => {
+    if (colWidths[col.id]) return colWidths[col.id]
+    const parsed = parseInt(col.width || '100', 10)
+    return isNaN(parsed) ? 100 : parsed
+  }
 
   // ── Right-Click Context Menu State ──
   const [contextMenu, setContextMenu] = useState<{
@@ -3277,7 +3330,7 @@ export function JobSheetSpreadsheet() {
           <button
             type="button"
             onClick={() => setShowAddJobModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-black text-[12px] shadow-sm transition-all cursor-pointer active:scale-95"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-black text-[12px] border border-white/30 shadow-xs transition-all cursor-pointer active:scale-95"
             title="Add a new job entry for this date"
           >
             <Plus size={14} className="stroke-[3]" />
@@ -3288,18 +3341,18 @@ export function JobSheetSpreadsheet() {
           <button
             type="button"
             onClick={handleSaveAll}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-black text-[12.5px] transition-all cursor-pointer shadow-md ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-black text-[12.5px] transition-all cursor-pointer shadow-sm ${
               hasUnsavedChanges
-                ? 'bg-amber-400 hover:bg-amber-300 text-amber-950 shadow-amber-900/40 ring-2 ring-white/80 animate-pulse'
-                : 'bg-emerald-300 hover:bg-white text-[#0b5a2f]'
+                ? 'bg-amber-400 hover:bg-amber-300 text-amber-950 shadow-amber-900/40 ring-2 ring-white/90 animate-pulse'
+                : 'bg-white text-emerald-950 hover:bg-emerald-50 border border-white/80'
             }`}
             title="Save and synchronize back to main Daily Job Sheet (Ctrl+S)"
           >
-            <Save size={14} />
+            <Save size={14} className={hasUnsavedChanges ? 'text-amber-950' : 'text-emerald-800'} />
             <span>{hasUnsavedChanges ? `Save ${pendingChanges.count} change${pendingChanges.count === 1 ? '' : 's'}` : 'Saved'}</span>
           </button>
 
-          {/* ── Three-Dot Menu (Sync, Backup, File, Edit, Formulas & View Options) ── */}
+          {/* ── Three-Dot Menu (Sync, Backup, File, Audit History & Tools) ── */}
           <div className="relative">
             <button
               type="button"
@@ -3412,30 +3465,31 @@ export function JobSheetSpreadsheet() {
                   </button>
                 </div>
 
-                {/* Section 3: Edit Rows */}
+                {/* Section 3: Audit & Change Log History */}
                 <div className="py-1">
-                  <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">Edit Rows</div>
+                  <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">Audit & Change History</div>
                   <button
+                    type="button"
                     onClick={() => {
-                      const idx = activeCell ? activeCell.rowIdx : 0
-                      insertRowAt(idx, 'above')
                       setShowThreeDotMenu(false)
+                      setShowChangeLogModal(true)
                     }}
-                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer"
+                    className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 flex items-center justify-between font-medium text-slate-700 cursor-pointer transition-colors"
                   >
-                    <ArrowUp size={14} className="text-emerald-700" /> Insert Empty Row (Top)
+                    <span className="flex items-center gap-2.5">
+                      <History size={14} className="text-emerald-700" />
+                      <span className="font-bold text-slate-900">Change Log History</span>
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-extrabold border border-emerald-200">
+                      Audit
+                    </span>
                   </button>
-                  <button
-                    onClick={() => {
-                      const idx = activeCell ? activeCell.rowIdx : gridRows.length - 1
-                      insertRowAt(idx, 'below')
-                      setShowThreeDotMenu(false)
-                    }}
-                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer"
-                  >
-                    <ArrowDown size={14} className="text-emerald-700" /> Insert Empty Row (Bottom)
-                  </button>
-                  {activeCell && (
+                </div>
+
+                {/* Section 4: Row Actions (when active cell selected) */}
+                {activeCell && (
+                  <div className="py-1">
+                    <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">Row Actions</div>
                     <button
                       onClick={() => {
                         handleDuplicateRow(activeCell.rowIdx)
@@ -3445,8 +3499,6 @@ export function JobSheetSpreadsheet() {
                     >
                       <Copy size={14} className="text-blue-600" /> Duplicate Active Row
                     </button>
-                  )}
-                  {activeCell && (
                     <button
                       onClick={() => {
                         handleDeleteRow(activeCell.rowIdx)
@@ -3456,48 +3508,17 @@ export function JobSheetSpreadsheet() {
                     >
                       <Trash2 size={14} /> Delete Active Row
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                {/* Section 4: Formulas & Calculations */}
+                {/* Section 5: Tools & Zoom */}
                 <div className="py-1">
-                  <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">Formulas & Tools</div>
+                  <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">Tools & Zoom</div>
                   <button
                     onClick={() => { handleRecalculateHours(); setShowThreeDotMenu(false) }}
                     className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-emerald-800 cursor-pointer"
                   >
                     <Sparkles size={14} className="text-emerald-600" /> Recalculate Duty & OT Hours
-                  </button>
-                  <button
-                    onClick={() => { handleFormulaBarChange('=SUM(I)'); setShowThreeDotMenu(false) }}
-                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center justify-between font-medium text-slate-700 cursor-pointer"
-                  >
-                    <span>AutoSum Charges</span>
-                    <span className="font-mono text-[10px] text-emerald-700 font-bold">∑ =SUM(I)</span>
-                  </button>
-                  <button
-                    onClick={() => { handleFormulaBarChange('=SUM(J)'); setShowThreeDotMenu(false) }}
-                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center justify-between font-medium text-slate-700 cursor-pointer"
-                  >
-                    <span>AutoSum Received</span>
-                    <span className="font-mono text-[10px] text-emerald-700 font-bold">∑ =SUM(J)</span>
-                  </button>
-                </div>
-
-                {/* Section 5: View & Zoom */}
-                <div className="py-1">
-                  <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">View Settings</div>
-                  <button
-                    onClick={() => { resetColumnOrder(); setShowThreeDotMenu(false) }}
-                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer"
-                  >
-                    <RotateCcw size={14} className="text-slate-500" /> Reset Column Order
-                  </button>
-                  <button
-                    onClick={() => { setShowColumnsModal(true); setShowThreeDotMenu(false) }}
-                    className="w-full px-3.5 py-2 text-left hover:bg-slate-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer"
-                  >
-                    <Eye size={14} className="text-slate-500" /> Customize Columns (Show/Hide)
                   </button>
                   <div className="px-3.5 py-2 flex items-center justify-between text-[11px] text-slate-500 font-bold">
                     <span>Zoom Scale</span>
@@ -3663,7 +3684,7 @@ export function JobSheetSpreadsheet() {
               {columns.map(col => (
                 <th
                   key={col.col}
-                  style={{ width: col.width }}
+                  style={{ width: `${getColWidth(col)}px`, minWidth: `${getColWidth(col)}px` }}
                   className={`h-6 border-r border-slate-300 text-center font-bold text-[11px] select-none ${
                     activeCell && columns.find(c => c.id === activeCell.colId)?.col === col.col
                       ? 'bg-emerald-200 text-emerald-950 font-black'
@@ -3676,7 +3697,7 @@ export function JobSheetSpreadsheet() {
               <th className="w-28 border-r border-slate-300 bg-[#e5e7eb] text-[10px] font-bold text-center">Action</th>
             </tr>
 
-            {/* Column Label / Name Row with Drag & Drop */}
+            {/* Column Label / Name Row with Drag & Drop and Resizing Handles */}
             <tr className="border-b-2 border-slate-400 bg-slate-100 text-slate-800 font-sans font-bold text-[11.5px]">
               {columns.map(col => (
                 <th
@@ -3686,16 +3707,22 @@ export function JobSheetSpreadsheet() {
                   onDragOver={e => handleDragOver(e, col.id)}
                   onDrop={e => handleDrop(e, col.id)}
                   onDragEnd={() => { setDraggedColId(null); setDragOverColId(null) }}
-                  style={{ width: col.width }}
-                  className={`px-2.5 py-1.5 border-r border-slate-300 text-left whitespace-nowrap cursor-grab active:cursor-grabbing select-none transition-colors ${
+                  style={{ width: `${getColWidth(col)}px`, minWidth: `${getColWidth(col)}px` }}
+                  className={`relative px-2.5 py-1.5 border-r border-slate-300 text-left whitespace-nowrap cursor-grab active:cursor-grabbing select-none transition-colors group/colhdr ${
                     dragOverColId === col.id ? 'bg-emerald-100 border-l-4 border-l-emerald-600' : ''
                   } ${draggedColId === col.id ? 'opacity-40' : ''}`}
-                  title="Drag column to reorder sequence"
+                  title="Drag column to reorder sequence · Drag right edge to resize column width"
                 >
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 pr-2">
                     <GripVertical size={11} className="text-slate-400 shrink-0" />
                     <span>{col.label}</span>
                   </div>
+                  {/* Edge drag handle for resizing column width */}
+                  <div
+                    onMouseDown={e => handleStartResize(e, col.id, getColWidth(col))}
+                    className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize hover:bg-emerald-500/60 transition-colors z-20"
+                    title="Drag to resize column width"
+                  />
                 </th>
               ))}
               <th className="w-28 border-r border-slate-300 text-center text-[10.5px] font-bold">Action</th>
@@ -3917,7 +3944,8 @@ export function JobSheetSpreadsheet() {
                                 onDoubleClick={() => handleCellDoubleClick(globalIndex, col.id)}
                                 onContextMenu={e => handleContextMenu(e, globalIndex, row, col.id)}
                                 style={{
-                                  width: col.width,
+                                  width: `${getColWidth(col)}px`,
+                                  minWidth: `${getColWidth(col)}px`,
                                   backgroundColor: colPalette ? colPalette.solidBg : undefined,
                                 }}
                                 className={`h-7 px-2 border-r border-slate-200 ${isCellEditing ? 'overflow-visible z-30' : 'overflow-hidden'} text-ellipsis whitespace-nowrap cursor-cell transition-all relative ${
@@ -3928,6 +3956,23 @@ export function JobSheetSpreadsheet() {
                               >
                                 {isCellEditing ? (
                                   renderCellEditor(col, globalIndex, true)
+                                ) : col.id === 'staff_name' ? (
+                                  <div className="flex flex-col items-start leading-tight py-0.5">
+                                    <span className="font-black text-white tracking-wide truncate">{displayVal}</span>
+                                    {mcInfo?.teamRef && !isBlankShift && (
+                                      <span className={`inline-flex items-center gap-0.5 text-[9.5px] font-black px-1.5 py-0.2 rounded-md mt-0.5 border shadow-2xs ${
+                                        mcInfo.isPrimary ? 'bg-indigo-100 text-indigo-900 border-indigo-300' : 'bg-indigo-950/80 text-indigo-200 border-indigo-500/40'
+                                      }`}>
+                                        <span>{mcInfo.teamRef}</span>
+                                        {mcInfo.isPrimary && <span className="text-[8.5px] text-indigo-400 font-extrabold">(Lead)</span>}
+                                      </span>
+                                    )}
+                                    {!mcInfo?.teamRef && row.team_name && !isBlankShift && (
+                                      <span className="inline-flex items-center text-[9.5px] font-black px-1.5 py-0.2 rounded-md mt-0.5 bg-indigo-950/80 text-indigo-200 border border-indigo-500/40">
+                                        {row.team_name}
+                                      </span>
+                                    )}
+                                  </div>
                                 ) : (
                                   <span
                                     title={
@@ -3952,11 +3997,7 @@ export function JobSheetSpreadsheet() {
                                               ? 'text-emerald-300 font-black drop-shadow-xs'
                                               : col.id === 'pending' && cleanNum(displayVal) > 0
                                                 ? 'text-rose-200 font-black bg-rose-950/80 px-1.5 py-0.5 rounded border border-rose-500/40 text-[11px]'
-                                                : col.id === 'staff_name'
-                                                  ? 'font-black text-white tracking-wide'
-                                                  : col.id === 'team_name' && displayVal
-                                                    ? 'font-bold text-indigo-300 bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-500/40 text-[11px]'
-                                                    : 'text-slate-100 font-medium'
+                                                : 'text-slate-100 font-medium'
                                     }
                                   >
                                     {col.id === 'address' ? cleanAddressDisplay(displayVal) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
@@ -4060,6 +4101,16 @@ export function JobSheetSpreadsheet() {
                         const isStaffCellActive = activeCell?.rowIdx === targetIdx && activeCell?.colId === 'staff_name'
                         const isStaffCellEditing = editingCell?.rowIdx === targetIdx && editingCell?.colId === 'staff_name'
 
+                        const blockTeams = Array.from(new Set(
+                          gridRows
+                            .filter(j => (j.staff_name || '').trim().toLowerCase() === staffKey)
+                            .map(j => {
+                              const mi = getMultiCleanerPaymentInfo(j, gridRows)
+                              return mi?.teamRef || j.team_name
+                            })
+                            .filter(Boolean)
+                        ))
+
                         return (
                           <td
                             key={col.id}
@@ -4068,7 +4119,8 @@ export function JobSheetSpreadsheet() {
                             onDoubleClick={() => handleCellDoubleClick(targetIdx, col.id)}
                             onContextMenu={e => handleContextMenu(e, targetIdx, row)}
                             style={{
-                              width: col.width,
+                              width: `${getColWidth(col)}px`,
+                              minWidth: `${getColWidth(col)}px`,
                               backgroundColor: rowBg,
                               borderLeft: `4px solid ${hasCustomBlockColor ? palette.solidBorder : '#0f172a'}`,
                               borderTop: blockTopBorder,
@@ -4092,10 +4144,20 @@ export function JobSheetSpreadsheet() {
                                 autoFocus
                               />
                             ) : (
-                              <div className="flex items-center justify-center h-full min-h-[60px] px-2 text-center">
+                              <div className="flex flex-col items-center justify-center h-full min-h-[60px] px-2 text-center gap-1">
                                 <span className={`font-bold text-[13px] tracking-tight select-text ${isDarkRow ? 'text-white' : 'text-slate-900'}`}>
                                   {blockInfo?.staffName || '—'}
                                 </span>
+                                {blockTeams.map(tName => (
+                                  <span
+                                    key={tName}
+                                    className={`inline-flex items-center text-[9.5px] font-black px-1.5 py-0.2 rounded-md border shadow-2xs ${
+                                      isDarkRow ? 'bg-indigo-950/80 text-indigo-200 border-indigo-500/40' : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                    }`}
+                                  >
+                                    {tName}
+                                  </span>
+                                ))}
                               </div>
                             )}
                           </td>
@@ -4166,7 +4228,8 @@ export function JobSheetSpreadsheet() {
                           onDoubleClick={() => handleCellDoubleClick(targetIdx, col.id)}
                           onContextMenu={e => handleContextMenu(e, targetIdx, row, col.id)}
                           style={{
-                            width: col.width,
+                            width: `${getColWidth(col)}px`,
+                            minWidth: `${getColWidth(col)}px`,
                             backgroundColor: isCellActive ? (palette.isLight ? '#ffffff' : '#090d16') : cellBg,
                             borderTop: blockTopBorder,
                             borderBottom: blockBottomBorder,
@@ -4962,6 +5025,15 @@ export function JobSheetSpreadsheet() {
             />
           </div>
         </Modal>
+      )}
+
+      {/* ── Change Log History Audit Modal ── */}
+      {showChangeLogModal && (
+        <ChangeLogHistoryModal
+          open={showChangeLogModal}
+          onClose={() => setShowChangeLogModal(false)}
+          selectedDate={effectiveTargetDate}
+        />
       )}
     </div>
   )

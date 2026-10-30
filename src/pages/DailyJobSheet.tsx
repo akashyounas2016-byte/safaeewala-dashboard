@@ -2252,7 +2252,7 @@ export function DailyJobSheet() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 text-white/80 text-[13px]">
-              <span>Operations & Scheduling · {isDateRange ? getPresetDisplayName(dateRangePreset) : fmtDate(selectedDate)}</span>
+              <span>{isDateRange ? getPresetDisplayName(dateRangePreset) : fmtDate(selectedDate)}</span>
               <span className="text-white/40 hidden sm:inline">·</span>
               <span className="text-emerald-300 font-semibold">{jobsCount} Active Jobs</span>
               <span className="text-white/40 hidden sm:inline">·</span>
@@ -2772,29 +2772,19 @@ export function DailyJobSheet() {
 
       {/* ── Jobs Table ── */}
       <div id="jobs-table-section" className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden scroll-mt-6">
-        <div className="px-5 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h3 className="text-[15px] font-bold text-[#111827]">
-              Jobs —{' '}
-              <span className="text-slate-400 font-normal">
-                {isDateRange ? getPresetDisplayName(dateRangePreset) : fmtDate(selectedDate)}
-              </span>
+        <div className="gradient-card px-5 py-3.5 border-b border-emerald-800/40 text-white flex items-center justify-between flex-wrap gap-3 relative z-30 shadow-xs">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h3 className="text-[16px] font-black tracking-tight text-white flex items-center gap-2">
+              <Briefcase size={16} className="text-emerald-300" />
+              <span>Jobs</span>
             </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
-              {todayJobs.length === 0 ? (
-                <span>No jobs recorded for this date</span>
-              ) : (
-                <span>
-                  {filteredActiveJobRows.length} active {filteredActiveJobRows.length === 1 ? 'job' : 'jobs'}
-                  {filteredNilRows.length > 0 && ` · ${filteredNilRows.length} available (no job)`}
-                </span>
-              )}
+            <div className="flex items-center gap-1.5 flex-wrap">
               {paymentFilter !== 'ALL' && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10.5px]">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/20 text-white font-bold text-[11px] border border-white/20">
                   Mode: {paymentFilter}
                   <button
                     onClick={() => setPaymentFilter('ALL')}
-                    className="hover:text-red-600 transition-colors cursor-pointer text-[10px] font-black"
+                    className="hover:text-red-300 transition-colors cursor-pointer text-[10px] font-black ml-0.5"
                     title="Clear mode filter"
                   >
                     ✕
@@ -2802,11 +2792,11 @@ export function DailyJobSheet() {
                 </span>
               )}
               {searchQuery && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold text-[10.5px]">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/20 text-white font-bold text-[11px] border border-white/20">
                   Search: "{searchQuery}"
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="hover:text-red-600 transition-colors cursor-pointer text-[10px] font-black"
+                    className="hover:text-red-300 transition-colors cursor-pointer text-[10px] font-black ml-0.5"
                     title="Clear search"
                   >
                     ✕
@@ -2814,18 +2804,18 @@ export function DailyJobSheet() {
                 </span>
               )}
               {selectedLetter !== 'ALL' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10.5px]">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 text-white font-bold text-[11px] border border-white/20">
                   Letter: "{selectedLetter}"
                   <button
                     onClick={() => setSelectedLetter('ALL')}
-                    className="hover:text-red-600 transition-colors cursor-pointer text-[11px] font-black"
+                    className="hover:text-red-300 transition-colors cursor-pointer text-[11px] font-black ml-0.5"
                     title="Reset letter filter"
                   >
                     ✕
                   </button>
                 </span>
               )}
-            </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">
@@ -2834,8 +2824,8 @@ export function DailyJobSheet() {
               ref={searchContainerRef}
               className={`relative flex items-center transition-all duration-300 ease-in-out h-8.5 rounded-xl border overflow-hidden ${
                 isSearchExpanded || searchQuery
-                  ? 'w-52 sm:w-64 md:w-72 bg-white border-emerald-500 ring-2 ring-emerald-500/10 shadow-xs'
-                  : 'w-9 bg-slate-50 border-[#E4E8EC] hover:bg-slate-100 hover:border-slate-300 cursor-pointer'
+                  ? 'w-52 sm:w-64 md:w-72 bg-white border-white ring-2 ring-white/40 shadow-md text-slate-900'
+                  : 'w-9 bg-white/15 border-white/20 hover:bg-white/25 hover:border-white/40 cursor-pointer text-white'
               }`}
               onClick={() => {
                 if (!isSearchExpanded) {
@@ -2856,12 +2846,14 @@ export function DailyJobSheet() {
                     setIsSearchExpanded(false)
                   }
                 }}
-                className="h-full px-2.5 flex items-center justify-center shrink-0 cursor-pointer text-slate-500 hover:text-emerald-600 transition-colors"
+                className={`h-full px-2.5 flex items-center justify-center shrink-0 cursor-pointer transition-colors ${
+                  isSearchExpanded || searchQuery ? 'text-slate-500 hover:text-emerald-700' : 'text-white/80 hover:text-white'
+                }`}
                 aria-label="Search"
               >
                 <Search
                   size={14}
-                  className={isSearchExpanded || searchQuery ? 'text-emerald-600' : 'text-slate-500'}
+                  className={isSearchExpanded || searchQuery ? 'text-emerald-700' : 'text-white'}
                 />
               </button>
 
@@ -2878,7 +2870,7 @@ export function DailyJobSheet() {
                   }
                 }}
                 placeholder="Search staff, address, mode..."
-                className={`w-full h-full text-[12px] bg-transparent text-slate-800 placeholder-slate-400 focus:outline-none transition-opacity duration-200 ${
+                className={`w-full h-full text-[12px] bg-transparent text-slate-900 placeholder-slate-400 focus:outline-none transition-opacity duration-200 ${
                   isSearchExpanded || searchQuery ? 'opacity-100 pr-7' : 'opacity-0 pointer-events-none w-0'
                 }`}
               />
@@ -2901,7 +2893,7 @@ export function DailyJobSheet() {
             </div>
 
             {/* Payment Category Filters (Project, Monthly, Cash, Online, Pending, Checks) + Three-Dot Color Customizer */}
-            <div className="flex items-center bg-slate-100/90 p-0.5 rounded-xl border border-[#E4E8EC] text-[11.5px] font-bold">
+            <div className="flex items-center bg-black/25 p-0.5 rounded-xl border border-white/20 text-[11.5px] font-bold backdrop-blur-sm">
               {(['ALL', 'Project', 'Monthly', 'Cash', 'Online', 'Pending', 'Checks'] as const).map(mode => {
                 const isSelected = paymentFilter === mode
                 const count = mode === 'ALL'
@@ -2925,13 +2917,13 @@ export function DailyJobSheet() {
                     onClick={() => setPaymentFilter(mode)}
                     className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                       isSelected
-                        ? 'bg-slate-900 text-white shadow-xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-semibold'
+                        ? 'bg-white text-emerald-950 shadow-sm font-black'
+                        : 'text-white/80 hover:text-white hover:bg-white/10 font-bold'
                     }`}
                   >
                     <span>{mode === 'ALL' ? 'All' : mode}</span>
                     <span className={`text-[10px] px-1 rounded-full ${
-                      isSelected ? 'bg-black/25 text-white' : 'bg-slate-200/90 text-slate-600'
+                      isSelected ? 'bg-emerald-100 text-emerald-950 font-black' : 'bg-white/20 text-white'
                     }`}>
                       {count}
                     </span>
@@ -2944,7 +2936,7 @@ export function DailyJobSheet() {
                 <button
                   type="button"
                   onClick={() => setShowFilterColorMenu(p => !p)}
-                  className="p-1 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-white/80 transition-colors cursor-pointer"
+                  className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
                   title="Customize Row Colors by Category"
                   aria-label="Customize Row Colors by Category"
                 >
@@ -2995,14 +2987,14 @@ export function DailyJobSheet() {
 
             {/* When Project filter is selected: Toggle between Team-Wise Column Board and Standard Table */}
             {paymentFilter === 'Project' && (
-              <div className="flex items-center bg-indigo-50/90 p-0.5 rounded-xl border border-indigo-200 text-[11px] font-bold text-indigo-950 animate-in fade-in zoom-in-95">
+              <div className="flex items-center bg-white/20 p-0.5 rounded-xl border border-white/30 text-[11px] font-bold text-white animate-in fade-in zoom-in-95">
                 <button
                   type="button"
                   onClick={() => setProjectBoardView('board')}
                   className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                     projectBoardView === 'board'
-                      ? 'bg-indigo-600 text-white shadow-xs font-black'
-                      : 'text-indigo-700 hover:bg-indigo-100 font-semibold'
+                      ? 'bg-white text-emerald-950 shadow-xs font-black'
+                      : 'text-white/80 hover:bg-white/10 font-semibold'
                   }`}
                   title="Team-Wise Columnar Board View"
                 >
@@ -3014,8 +3006,8 @@ export function DailyJobSheet() {
                   onClick={() => setProjectBoardView('table')}
                   className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                     projectBoardView === 'table'
-                      ? 'bg-indigo-600 text-white shadow-xs font-black'
-                      : 'text-indigo-700 hover:bg-indigo-100 font-semibold'
+                      ? 'bg-white text-emerald-950 shadow-xs font-black'
+                      : 'text-white/80 hover:bg-white/10 font-semibold'
                   }`}
                   title="Standard Table View"
                 >
@@ -3031,18 +3023,18 @@ export function DailyJobSheet() {
               <button
                 type="button"
                 onClick={() => setShowColMenu(p => !p)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer relative shadow-xs group ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all cursor-pointer relative shadow-xs group ${
                   showColMenu
-                    ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-200'
-                    : 'border-[#E4E8EC] bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+                    ? 'border-white bg-white text-emerald-950 ring-2 ring-white/50'
+                    : 'border-white/20 bg-white/15 text-white hover:bg-white/25 hover:border-white/30'
                 }`}
                 title="Customize Columns (Drag & Drop Sequence, Hide/Show Checkboxes)"
                 aria-label="Customize Columns"
               >
-                <Eye size={15} className="text-slate-600 group-hover:text-emerald-800" />
-                <span className="hidden sm:inline text-[12px] font-bold text-slate-700 group-hover:text-emerald-800">Columns</span>
+                <Eye size={14} className={showColMenu ? 'text-emerald-900' : 'text-white/80 group-hover:text-white'} />
+                <span className="hidden sm:inline text-[12px] font-bold">Columns</span>
                 {(activeColumns.length < ALL_COLUMNS.length || isOrderCustomized) && (
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white animate-pulse" title="Custom columns active" />
+                  <span className="w-2 h-2 rounded-full bg-emerald-300 ring-2 ring-emerald-900 animate-pulse" title="Custom columns active" />
                 )}
               </button>
 
@@ -3210,16 +3202,16 @@ export function DailyJobSheet() {
               )}
             </div>
 
-            {/* Excel Sheet Button (Opens in New Window Full Width, No Sidebar) */}
+            {/* Excel Sheet Button */}
             <button
               type="button"
               onClick={() => window.open(`/daily-job-sheet/spreadsheet?date=${selectedDate}`, '_blank', 'noopener,noreferrer')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[12px] shadow-xs hover:shadow transition-all cursor-pointer group shrink-0"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white text-emerald-900 hover:bg-emerald-50 font-black text-[12px] shadow-sm hover:shadow transition-all cursor-pointer group shrink-0 border border-white/80 active:scale-95"
               title="Open Full Interactive Excel Sheet in a New Window (Full Width, No Sidebar)"
             >
-              <FileSpreadsheet size={15} className="text-emerald-700 group-hover:scale-110 transition-transform" />
+              <FileSpreadsheet size={14} className="text-emerald-800 group-hover:scale-110 transition-transform" />
               <span className="hidden sm:inline">Excel Sheet</span>
-              <ExternalLink size={12} className="text-emerald-600 opacity-70 group-hover:opacity-100" />
+              <ExternalLink size={12} className="text-emerald-700 opacity-70 group-hover:opacity-100" />
             </button>
 
             {/* View All / Page size selector */}
@@ -3227,7 +3219,7 @@ export function DailyJobSheet() {
               <select
                 value={pageSize}
                 onChange={e => setPageSize(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                className="text-[12px] font-semibold text-slate-700 bg-slate-50 border border-[#E4E8EC] rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-emerald-400 cursor-pointer"
+                className="text-[12px] font-bold text-slate-800 bg-white border border-white/40 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-white/40 cursor-pointer shadow-xs"
                 title="Rows Per Page"
               >
                 <option value={10}>10 Rows Per Page</option>
