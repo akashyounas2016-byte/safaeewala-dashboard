@@ -131,7 +131,7 @@ function printInvoice(invoice: Invoice) {
       </div>
     </div>
     ${invoice.notes ? `<div style="margin-top:24px;padding:12px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;color:#92400e;font-size:12px">${invoice.notes}</div>` : ''}
-    <script>window.onload=()=>{window.print()}<\/script>
+    <script>window.onload=()=>{window.print()}</script>
   </body></html>`)
   win.document.close()
 }

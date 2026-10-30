@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node scripts/run-tests.mjs",
+    "typecheck": "tsc -b",
+    "lint:ci": "eslint . --quiet",
+    "check": "npm run lint:ci && npm run typecheck && npm test"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

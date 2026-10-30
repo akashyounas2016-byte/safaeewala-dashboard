@@ -15,21 +15,37 @@ jobs:
         with:
           node-version: '22'
       
+      - name: Install
+        run: npm install
+
+      # TA-07 / TA-08: nothing is deployed when the app has lint errors, type errors or failing tests
+      - name: Check (lint errors, types, tests)
+        run: npm run check
+
       - name: Build
         env:
           VITE_SUPABASE_URL: https://razvvxpaiqvykeatlvjl.supabase.co
           VITE_SUPABASE_ANON_KEY: sb_publishable_dJSk7jhr01Da-rBfVlRF_w_D_sqc4Vh
-        run: npm install && npm run build
-      
+        run: npm run build
+
       - name: Deploy to VPS
         env:
           SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY_B64" | base64 -d > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          scp -o StrictHostKeyChecking=no -r dist/ Dockerfile nginx.conf docker-compose.yml webhookServer.cjs entrypoint.sh "$VPS_USER@$VPS_HOST:/var/www/safaeewala/"
-          ssh -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" "cd /var/www/safaeewala && docker compose up -d --build && docker ps --filter name=safaeewala-booking-crm"
+          # TA-17: with the VPS_KNOWN_HOSTS secret the server's key is pinned; without it, trust on first use
+          if [ -n "$VPS_KNOWN_HOSTS" ]; then
+            echo "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+            SSH_OPTS="-o StrictHostKeyChecking=yes"
+          else
+            echo "::warning::VPS_KNOWN_HOSTS secret is not set — the VPS host key is not pinned (TA-17)"
+            ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+            SSH_OPTS="-o StrictHostKeyChecking=accept-new"
+          fi
+          scp $SSH_OPTS -r dist/ Dockerfile nginx.conf docker-compose.yml webhookServer.cjs entrypoint.sh "$VPS_USER@$VPS_HOST:/var/www/safaeewala/"
+          ssh $SSH_OPTS "$VPS_USER@$VPS_HOST" "cd /var/www/safaeewala && docker compose up -d --build && docker ps --filter name=safaeewala-booking-crm"

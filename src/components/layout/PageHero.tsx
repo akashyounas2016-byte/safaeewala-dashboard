@@ -288,7 +288,7 @@ export function PageHero({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                n.onDelete ? n.onDelete() : onDeleteNotification?.(n.id)
+                                if (n.onDelete) n.onDelete(); else onDeleteNotification?.(n.id)
                               }}
                               className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                               title="Delete notification"

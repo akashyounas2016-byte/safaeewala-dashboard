@@ -165,7 +165,7 @@ export async function sendDailySheetBackupViaWebhook(params: BackupPayloadParams
       }
     } catch (err: any) {
       console.warn('n8n Webhook post failed:', err.message)
-      throw new Error(`n8n Webhook error: ${err.message}`)
+      throw new Error(`n8n Webhook error: ${err.message}`, { cause: err })
     }
   }
 

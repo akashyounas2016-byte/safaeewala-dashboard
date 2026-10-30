@@ -1360,7 +1360,7 @@ export function DailyJobSheet() {
           </table>
         </div>
       </div>
-      <script>window.onload=()=>{window.print()}<\/script>
+      <script>window.onload=()=>{window.print()}</script>
     </body></html>`)
     win.document.close()
   }
