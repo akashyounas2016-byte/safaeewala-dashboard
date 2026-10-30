@@ -450,10 +450,10 @@ export function AddJobForm({
 
   return (
     <form id="add-job-entry-form" onSubmit={handleSubmit} className="text-slate-800">
-      {/* ── TOP 4 CARDS: 2x2 EQUAL BALANCED GRID ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-        {/* CARD 1: Staff, Team & Date */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 h-full flex flex-col justify-between">
+      {/* ── TOP 4 CARDS: 2x2 EQUAL BALANCED 50/50 GRID ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+        {/* CARD 1: Staff, Team & Date (50% Width) */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 h-full flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
@@ -771,8 +771,9 @@ export function AddJobForm({
               </div>
 
             </div>
+          </div>
 
-        {/* CARD 3: Timing & Responsive Hours */}
+        {/* CARD 3: Timing & Responsive Hours (50% Width) */}
           <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 h-full flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1118,13 +1119,12 @@ export function AddJobForm({
                   )
                 })}
               </div>
-          </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-{/* ── Quick Client Registration Modal ── */}
+      {/* ── Quick Client Registration Modal ── */}
       <QuickNewClientModal
         open={showQuickClientModal}
         onClose={() => {

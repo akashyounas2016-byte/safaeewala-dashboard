@@ -7,7 +7,7 @@ import {
   Search, Check, X, Sparkles, Filter, Copy, HelpCircle,
   Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table,
   Printer, MoreVertical, ChevronDown, ExternalLink, CornerDownLeft,
-  ChevronUp, Eye, EyeOff, SlidersHorizontal, ArrowUp, ArrowDown,
+  ChevronUp, Eye, EyeOff, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle,
   CloudUpload, Calendar, GripVertical, Info, History, Pencil, Edit2
 } from 'lucide-react'
 import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
@@ -1875,10 +1875,10 @@ export function JobSheetSpreadsheet() {
     showToast(`✓ Row added to expand ${staffName || 'Staff'}'s block`)
   }
 
-  // ── Add New Empty Row (Strictly adds a brand new cleaner block of exactly 3 rows) ──
-  const handleAddBlankCleanerBlock = () => {
+  // ── Helper: Strictly generates 3 blank rows for a new cleaner block ──
+  const createThreeBlankRows = () => {
     const blockTs = Date.now()
-    const newJobs: DailyJob[] = [0, 1, 2].map((idx) => ({
+    return [0, 1, 2].map((idx) => ({
       id: newRowId(`blank_cleaner_${blockTs}_${idx}`),
       date: effectiveTargetDate,
       staff_name: '',
@@ -1891,11 +1891,40 @@ export function JobSheetSpreadsheet() {
       material: 'No',
       charges: 0,
       received: 0,
-      payment_mode: 'Cash',
+      payment_mode: 'Cash' as PaymentMode,
       remarks: '',
       is_overtime: false,
       created_at: new Date(blockTs + idx * 10).toISOString()
     }))
+  }
+
+  // ── Add New Empty Block Above Selected Staff Block ──
+  const handleAddEmptyBlockAbove = (targetJob: DailyJob, rowIdx: number) => {
+    const bInfo = staffBlockInfoMap.get(targetJob.id)
+    const blockStartIndex = Math.max(0, rowIdx - (bInfo?.blockRowIdx ?? 0))
+    const newBlock = createThreeBlankRows()
+    const updated = [...gridRows]
+    updated.splice(blockStartIndex, 0, ...newBlock)
+    pushState(updated)
+    showToast('✓ Added new empty block (3 rows) above')
+  }
+
+  // ── Add New Empty Block Below Selected Staff Block ──
+  const handleAddEmptyBlockBelow = (targetJob: DailyJob, rowIdx: number) => {
+    const bInfo = staffBlockInfoMap.get(targetJob.id)
+    const blockStartIndex = Math.max(0, rowIdx - (bInfo?.blockRowIdx ?? 0))
+    const blockRowCount = bInfo?.rowCount ?? 3
+    const insertAt = blockStartIndex + blockRowCount
+    const newBlock = createThreeBlankRows()
+    const updated = [...gridRows]
+    updated.splice(insertAt, 0, ...newBlock)
+    pushState(updated)
+    showToast('✓ Added new empty block (3 rows) below')
+  }
+
+  // ── Add New Empty Row (Strictly adds a brand new cleaner block of exactly 3 rows) ──
+  const handleAddBlankCleanerBlock = () => {
+    const newJobs = createThreeBlankRows()
     const updated = [...gridRows, ...newJobs]
     pushState(updated)
     showToast('✓ 3 new empty rows added (new cleaner block)')
@@ -2493,7 +2522,7 @@ export function JobSheetSpreadsheet() {
       )}
 
       {/* ── Green Gradient Header (Project Theme & Spacious Layout) ── */}
-      <header className="gradient-card text-white px-5 sm:px-6 py-4 min-h-[70px] flex items-center justify-between shadow-lg shrink-0 relative z-30">
+      <header className="gradient-card text-white px-5 sm:px-6 py-5 min-h-[86px] flex items-center justify-between shadow-lg shrink-0 relative z-30">
         {/* Glow effect matching rest of project */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
@@ -2973,7 +3002,7 @@ export function JobSheetSpreadsheet() {
               const count = tab === 'ALL' ? filterCounts.all : filterCounts[tab.toLowerCase() as keyof typeof filterCounts]
               const isActive = paymentModeFilter === tab
               const flatStyle = {
-                ALL: isActive ? 'bg-slate-900 text-white' : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700',
+                ALL: isActive ? 'bg-emerald-700 text-white shadow-xs' : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700',
                 Monthly: isActive ? 'bg-indigo-600 text-white' : 'bg-indigo-50/70 hover:bg-indigo-100/80 text-indigo-900',
                 Cash: isActive ? 'bg-emerald-600 text-white' : 'bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-900',
                 Online: isActive ? 'bg-sky-600 text-white' : 'bg-sky-50/70 hover:bg-sky-100/80 text-sky-900',
@@ -2999,38 +3028,29 @@ export function JobSheetSpreadsheet() {
           </div>
         </div>
 
-        {/* Right side: 'Add New Empty Row' + Reset & Eye icons + View Mode Switcher at End */}
-        <div className="flex items-center gap-2.5">
-          {/* Add New Empty Row Button */}
+        {/* Right side: 'Columns' & 'Reset Column' buttons + View Mode Switcher at End */}
+        <div className="flex items-center gap-2">
+          {/* Columns Button with 'Columns' Text Label */}
           <button
             type="button"
-            onClick={handleAddBlankCleanerBlock}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-[11.5px] transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
-            title="Add strictly 3 new empty rows (new cleaner block)"
+            onClick={() => setShowColumnsModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 hover:text-slate-900 font-bold text-[11.5px] border border-slate-200/80 transition-all cursor-pointer shadow-2xs active:scale-95"
+            title="Customize Columns (Show/Hide & Order)"
           >
-            <Plus size={14} className="stroke-[2.5] shrink-0" />
-            <span>Add New Empty Row</span>
+            <Eye size={13} className="text-slate-600" />
+            <span>Columns</span>
           </button>
 
-          {/* Reset Column Sequence & Customize Columns (Eye) Adjusted from Header */}
-          <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 shadow-2xs">
-            <button
-              type="button"
-              onClick={resetColumnOrder}
-              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white transition-colors cursor-pointer"
-              title="Reset Column Sequence to Default"
-            >
-              <RotateCcw size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowColumnsModal(true)}
-              className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white transition-colors cursor-pointer"
-              title="Customize Columns (Show/Hide & Sequence)"
-            >
-              <Eye size={14} />
-            </button>
-          </div>
+          {/* Reset Column Button with 'Reset Column' Text Label */}
+          <button
+            type="button"
+            onClick={resetColumnOrder}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 hover:text-slate-900 font-bold text-[11.5px] border border-slate-200/80 transition-all cursor-pointer shadow-2xs active:scale-95"
+            title="Reset Column Sequence to Default"
+          >
+            <RotateCcw size={13} className="text-slate-600" />
+            <span>Reset Column</span>
+          </button>
 
           {/* Mode Switcher: Icons only at the very right end */}
           <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-2xs">
@@ -3570,7 +3590,7 @@ export function JobSheetSpreadsheet() {
                       )
                     })}
 
-                    {/* Action Column: Solid Black Icon Buttons Only */}
+                    {/* Action Column: Visible Color Scheme Icons (Solid Black Background Removed) */}
                     <td
                       style={{
                         backgroundColor: rowBg,
@@ -3584,18 +3604,26 @@ export function JobSheetSpreadsheet() {
                         <button
                           type="button"
                           onClick={() => handleOpenEditModal(row, targetIdx)}
-                          className="p-1.5 rounded-lg bg-black hover:bg-slate-800 text-white shadow-xs cursor-pointer transition-colors"
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer shadow-2xs ${
+                            isDarkRow
+                              ? 'border-white/25 bg-white/10 hover:bg-emerald-500/25 text-white hover:text-emerald-300'
+                              : 'border-slate-300 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-500 text-slate-700 hover:text-emerald-800'
+                          }`}
                           title="Edit entry"
                         >
-                          <Pencil size={12} className="text-white" />
+                          <Pencil size={12} className={isDarkRow ? 'text-white' : 'text-slate-700'} />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteRow(targetIdx)}
-                          className="p-1.5 rounded-lg bg-black hover:bg-rose-950 text-white shadow-xs cursor-pointer transition-colors"
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer shadow-2xs ${
+                            isDarkRow
+                              ? 'border-white/25 bg-white/10 hover:bg-rose-500/25 text-rose-300 hover:text-rose-200'
+                              : 'border-slate-300 bg-slate-50 hover:bg-rose-50 hover:border-rose-500 text-slate-700 hover:text-rose-600'
+                          }`}
                           title="Delete row"
                         >
-                          <Trash2 size={12} className="text-white" />
+                          <Trash2 size={12} className={isDarkRow ? 'text-rose-300' : 'text-slate-700'} />
                         </button>
                       </div>
                     </td>
@@ -3650,7 +3678,7 @@ export function JobSheetSpreadsheet() {
             <span className="font-semibold text-slate-700 truncate max-w-[120px]">{contextMenu.job.staff_name}</span>
           </div>
 
-          {/* Staff Block Actions: Add Row to this Staff & Add New Empty Row */}
+          {/* Staff Block Actions: Expand Block, Add Empty Block Above/Below */}
           <div className="py-1">
             <button
               type="button"
@@ -3669,13 +3697,27 @@ export function JobSheetSpreadsheet() {
             <button
               type="button"
               onClick={() => {
-                handleAddBlankCleanerBlock()
+                handleAddEmptyBlockAbove(contextMenu.job, contextMenu.rowIdx)
                 setContextMenu(null)
               }}
               className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
+              title="Add a new 3-row empty cleaner block above this staff block"
             >
-              <Plus size={15} className="text-blue-700" />
-              <span>Add New Empty Row (Blank Cleaner Block)</span>
+              <ArrowUpCircle size={15} className="text-emerald-700" />
+              <span>Add New Empty Block Above</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                handleAddEmptyBlockBelow(contextMenu.job, contextMenu.rowIdx)
+                setContextMenu(null)
+              }}
+              className="w-full px-3.5 py-2 text-left hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
+              title="Add a new 3-row empty cleaner block below this staff block"
+            >
+              <ArrowDownCircle size={15} className="text-emerald-700" />
+              <span>Add New Empty Block Below</span>
             </button>
           </div>
 
