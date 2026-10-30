@@ -20,6 +20,7 @@ export interface CleanerMultiSelectProps {
   disabled?: boolean
   compact?: boolean
   className?: string
+  busyCleaners?: Map<string, { shiftCount?: number; info?: string }> | Set<string> | string[]
 }
 
 export function CleanerMultiSelect({
@@ -33,8 +34,10 @@ export function CleanerMultiSelect({
   disabled = false,
   compact = false,
   className = '',
+  busyCleaners,
 }: CleanerMultiSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [isHovered, setIsHovered] = useState(false)
   const [search, setSearch] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -144,6 +147,9 @@ export function CleanerMultiSelect({
       {/* Trigger Button (Single-line Fixed Height with Horizontal Scroll for Multiple Cleaners) */}
       <div
         onClick={() => !disabled && setIsOpen(prev => !prev)}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        title={selected.length > 0 ? `Selected cleaners:\n${selected.join('\n')}` : undefined}
         className={`w-full flex items-center justify-between border rounded-xl transition-all cursor-pointer ${
           compact ? 'px-2.5 py-1 text-[12px] h-[34px] min-h-[34px] max-h-[34px]' : 'px-3 py-1.5 text-[13px] h-[42px] min-h-[42px] max-h-[42px]'
         } ${
@@ -166,18 +172,12 @@ export function CleanerMultiSelect({
           ) : (
             <div className="flex items-center gap-1.5 flex-nowrap">
               {selected.map(name => {
-                const agencyTag = cleanerAgencyMap.get(name.trim().toLowerCase())
                 return (
                   <span
                     key={name}
                     className="inline-flex items-center gap-1 text-[11px] font-bold bg-white text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-lg shadow-2xs shrink-0 whitespace-nowrap"
                   >
                     <span>{name}</span>
-                    {agencyTag && (
-                      <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 shrink-0 uppercase tracking-tight">
-                        {agencyTag}
-                      </span>
-                    )}
                     <button
                       type="button"
                       onClick={e => handleRemoveOne(e, name)}
@@ -210,6 +210,38 @@ export function CleanerMultiSelect({
           />
         </div>
       </div>
+
+      {/* Hover Info Box showing all selected cleaner names */}
+      {isHovered && selected.length > 0 && !isOpen && (
+        <div className="absolute left-0 top-full mt-1.5 z-40 bg-slate-900/95 text-white backdrop-blur-sm rounded-xl p-3 shadow-xl border border-slate-700 text-[11.5px] min-w-[240px] max-w-sm pointer-events-none animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-700/80 text-[11px] font-bold text-slate-300">
+            <span className="flex items-center gap-1.5 uppercase tracking-wider text-emerald-400">
+              <Users size={13} />
+              Selected Cleaners
+            </span>
+            <span className="bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded-full font-extrabold text-[10px]">
+              {selected.length}
+            </span>
+          </div>
+          <div className="space-y-1">
+            {selected.map((name, idx) => {
+              const agency = cleanerAgencyMap.get(name.trim().toLowerCase())
+              return (
+                <div key={name} className="flex items-center justify-between gap-2 py-0.5">
+                  <span className="font-semibold text-slate-100 truncate">
+                    {idx + 1}. {name}
+                  </span>
+                  {agency && (
+                    <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                      {agency}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Floating Dropdown */}
       {isOpen && (
@@ -270,6 +302,16 @@ export function CleanerMultiSelect({
             ) : (
               filtered.map(cleanerName => {
                 const isChecked = selected.includes(cleanerName)
+                const nameLower = cleanerName.trim().toLowerCase()
+                const agencyTag = cleanerAgencyMap.get(nameLower)
+                const busyItem = busyCleaners instanceof Map
+                  ? busyCleaners.get(nameLower)
+                  : busyCleaners instanceof Set
+                    ? (busyCleaners.has(nameLower) ? { info: 'Assigned to another shift on this date' } : null)
+                    : Array.isArray(busyCleaners) && busyCleaners.map(s => s.trim().toLowerCase()).includes(nameLower)
+                      ? { info: 'Assigned to another shift on this date' }
+                      : null
+
                 return (
                   <label
                     key={cleanerName}
@@ -280,7 +322,7 @@ export function CleanerMultiSelect({
                         : 'hover:bg-slate-50 text-slate-700'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
                       <div
                         className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
                           isChecked
@@ -295,10 +337,25 @@ export function CleanerMultiSelect({
                         {cleanerName.charAt(0).toUpperCase()}
                       </div>
 
-                      <span className="truncate">{cleanerName}</span>
-                      {cleanerAgencyMap.get(cleanerName.trim().toLowerCase()) && (
-                        <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300 shrink-0 uppercase tracking-tight">
-                          {cleanerAgencyMap.get(cleanerName.trim().toLowerCase())}
+                      <span className="truncate flex-1 min-w-0 font-medium">{cleanerName}</span>
+
+                      {/* Compact Third-Party Agency Tag (truncated, hover for full title) */}
+                      {agencyTag && (
+                        <span
+                          title={`Agency: ${agencyTag}`}
+                          className="text-[8.5px] font-black px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300/80 shrink-0 uppercase tracking-tight max-w-[70px] truncate cursor-help"
+                        >
+                          {agencyTag}
+                        </span>
+                      )}
+
+                      {/* Compact Busy / Working Tag */}
+                      {busyItem && (
+                        <span
+                          title={`Busy / Working: ${busyItem.info || 'Assigned to another shift on this date'}`}
+                          className="text-[8.5px] font-black px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 shrink-0 uppercase tracking-tight cursor-help"
+                        >
+                          Busy
                         </span>
                       )}
                     </div>

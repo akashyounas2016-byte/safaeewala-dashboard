@@ -120,8 +120,13 @@ function Time12hPicker({
     setTimeVal(formattedHHMM)
   }, [formattedHHMM])
 
-  const commitTime = (hhmm: string, mer: 'AM' | 'PM') => {
-    const clean = hhmm.trim().replace(/[^\d:]/g, '')
+  const commitTime = (raw: string, currentMer: 'AM' | 'PM') => {
+    let mer = currentMer
+    const lower = raw.toLowerCase()
+    if (lower.includes('pm')) mer = 'PM'
+    else if (lower.includes('am')) mer = 'AM'
+
+    const clean = raw.trim().replace(/[^\d:]/g, '')
     const parts = clean.split(':')
     let h = parseInt(parts[0] || '9', 10)
     let min = parseInt(parts[1] || '0', 10)
@@ -213,7 +218,7 @@ export function AddJobForm({
   initial,
   existingJobsForDate = [],
 }: AddJobFormProps) {
-  const { clients } = useData()
+  const { clients, dailyJobs = [] } = useData()
 
   // ── Staff & Team State ──
   const [selectedStaff, setSelectedStaff] = useState<string[]>(() => {
@@ -223,6 +228,36 @@ export function AddJobForm({
 
   // ── Date ──
   const [date, setDate] = useState(() => initial?.date || todayDubai())
+
+  // ── Busy / Working Cleaners on this Date (for dropdown tag & tooltip) ──
+  const busyCleanersMap = useMemo(() => {
+    const map = new Map<string, { shiftCount: number; info: string }>()
+    const targetDateJobs = existingJobsForDate.length > 0
+      ? existingJobsForDate
+      : dailyJobs.filter(j => j.date === date)
+
+    targetDateJobs.forEach(j => {
+      if (!j.staff_name) return
+      const names = j.staff_name.split(/[,+/&]|\band\b/i).map(s => s.trim().toLowerCase()).filter(Boolean)
+      const timeStr = j.start_time && j.end_time ? `${formatTime12h(j.start_time)} - ${formatTime12h(j.end_time)}` : ''
+      const addrStr = j.address ? ` (${j.address})` : ''
+      names.forEach(name => {
+        if (!map.has(name)) {
+          map.set(name, {
+            shiftCount: 1,
+            info: timeStr ? `${timeStr}${addrStr}` : `Active on ${date}`
+          })
+        } else {
+          const prev = map.get(name)!
+          prev.shiftCount += 1
+          if (timeStr && !prev.info.includes(timeStr)) {
+            prev.info += `, ${timeStr}`
+          }
+        }
+      })
+    })
+    return map
+  }, [existingJobsForDate, dailyJobs, date])
 
   // Auto-generate team name when multiple cleaners selected
   const defaultTeamName = useMemo(() => {
@@ -600,6 +635,7 @@ export function AddJobForm({
                   onChange={setSelectedStaff}
                   placeholder="Select cleaner(s)…"
                   required
+                  busyCleaners={busyCleanersMap}
                 />
               </div>
               <div>
@@ -890,19 +926,23 @@ export function AddJobForm({
               <h4 className="text-[13px] font-bold text-slate-900">Timing & Duty Hours</h4>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-end">
-              <Time12hPicker
-                label="Start Time"
-                value={startTime}
-                onChange={handleStartTimeChange}
-              />
-              <Time12hPicker
-                label="End Time"
-                value={endTime}
-                onChange={handleEndTimeChange}
-              />
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+              <div className="sm:col-span-5">
+                <Time12hPicker
+                  label="Start Time"
+                  value={startTime}
+                  onChange={handleStartTimeChange}
+                />
+              </div>
+              <div className="sm:col-span-5">
+                <Time12hPicker
+                  label="End Time"
+                  value={endTime}
+                  onChange={handleEndTimeChange}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 whitespace-nowrap text-center">
                   Duty Hrs
                 </label>
                 <input
@@ -911,26 +951,7 @@ export function AddJobForm({
                   step="0.5"
                   value={dutyHours}
                   onChange={e => handleDutyHoursChange(Number(e.target.value) || 0)}
-                  className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-slate-800"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
-                  <span>OT Hrs</span>
-                  <span className="text-[10px] text-amber-600 font-bold normal-case">Auto</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  value={otHours}
-                  onChange={e => {
-                    const val = e.target.value
-                    setOtHours(val)
-                    setIsOvertime(Number(val) > 0)
-                  }}
-                  placeholder="0.0"
-                  className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-amber-500 focus:bg-white transition-all font-bold text-amber-900"
+                  className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-blue-500 focus:bg-white transition-all font-bold text-slate-800 text-center"
                 />
               </div>
             </div>
