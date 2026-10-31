@@ -45,6 +45,7 @@ import { confirmAsync } from '@/lib/notify'
 import { invoicedJobIds } from '@/lib/receivables'
 import { fetchRecordHistory, type AuditEntry } from '@/lib/auditLog'
 import { ChangeLogHistoryModal } from '@/components/dailyJobSheet/ChangeLogHistoryModal'
+import { cleanAddressDisplay } from '@/lib/utils'
 
 /* ─── Column Schema for the Excel Grid (Daily Job Sheet Exact Sequence) ─── */
 export interface ColumnDef {
@@ -78,18 +79,6 @@ export function checkTimesOverlap(startA: string, endA: string, startB: string, 
   const eB = parseMin(endB)
   if (sA === null || eA === null || sB === null || eB === null) return false
   return sA < eB && sB < eA
-}
-
-/** Strips '(Monthly)' from address display and provides clean text */
-export function cleanAddressDisplay(val: unknown): string {
-  if (!val) return '—'
-  const str = String(val).trim()
-  if (!str) return '—'
-  return str
-    .replace(/\s*\(Monthly\)/gi, '')
-    .replace(/\s*\[Monthly\]/gi, '')
-    .replace(/\s+Monthly\s*$/i, '')
-    .trim() || '—'
 }
 
 /** Normalizes an address string for comparison by removing punctuation, extra spaces, and monthly client markers */

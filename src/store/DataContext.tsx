@@ -237,29 +237,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    /**
-     * Cloud backfill (one time per device and table): rows that exist only in this browser's copy —
-     * created before the cloud tables existed, or whose upload was lost — are uploaded through the
-     * outbox and kept on screen, instead of being replaced by the server list. Skipped when the
-     * table could not be read, so a network error never pushes an old copy over the cloud.
-     */
-    const BACKFILL_KEY = 'safaeewala_cloud_backfill_v1'
-    const backfilled = safeLocalStorageGet<Record<string, string>>(BACKFILL_KEY, {})
     const fromServer = <T extends { id: string }>(table: string, cacheKey: string, server: T[]): T[] => {
       const saved = safeLocalStorageGet<T[]>(cacheKey, [])
       if (readFailed.has(table)) return server.length > 0 ? withPending(table, server) : saved
-      const serverIds = new Set(server.map(r => r.id))
-      const localOnly = saved.filter(r => r && r.id && !serverIds.has(r.id))
-      if (!backfilled[table] && localOnly.length > 0) {
-        localOnly.forEach(r => dbInsert(table, r))
-        console.info(`[cloud] uploading ${localOnly.length} ${table} row(s) that were only in this browser`)
-      }
-      if (!backfilled[table]) {
-        backfilled[table] = new Date().toISOString()
-        safeLocalStorageSet(BACKFILL_KEY, backfilled)
-        return [...withPending(table, server), ...localOnly]
-      }
-      return server.length > 0 ? withPending(table, server) : saved
+      // Server rows overlayed with local pending outbox changes (AUD-03)
+      if (server.length > 0) return withPending(table, server)
+      return saved.length > 0 ? withPending(table, saved) : []
     }
     // Server rows + local changes still waiting in the outbox (AUD-03)
     const withPending = <T extends { id: string }>(table: string, rows: T[]) =>

@@ -16,16 +16,8 @@ export function PaymentBadge({ mode }: { mode: PaymentMode }) {
   )
 }
 
-export function cleanAddressDisplay(val: unknown): string {
-  if (!val) return '—'
-  const str = String(val).trim()
-  if (!str) return '—'
-  return str
-    .replace(/\s*\(Monthly\)/gi, '')
-    .replace(/\s*\[Monthly\]/gi, '')
-    .replace(/\s+Monthly\s*$/i, '')
-    .trim() || '—'
-}
+import { cleanAddressDisplay } from '@/lib/utils'
+export { cleanAddressDisplay }
 
 export function isAddressMonthly(val: unknown): boolean {
   if (!val) return false

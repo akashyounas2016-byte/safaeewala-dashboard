@@ -35,10 +35,11 @@ export interface SyncStatus {
 
 const readOutbox = () => safeLocalStorageGet<OutboxEntry[]>(OUTBOX_KEY, [])
 const writeOutbox = (list: OutboxEntry[]) => {
-  safeLocalStorageSet(OUTBOX_KEY, list)
-  const last = [...list].reverse().find(e => e.lastError)
+  const capped = list.length > 50 ? list.slice(-50) : list
+  safeLocalStorageSet(OUTBOX_KEY, capped)
+  const last = [...capped].reverse().find(e => e.lastError)
   window.dispatchEvent(new CustomEvent<SyncStatus>(SYNC_STATUS_EVENT, {
-    detail: { pending: list.length, lastError: last?.lastError },
+    detail: { pending: capped.length, lastError: last?.lastError },
   }))
 }
 
@@ -175,8 +176,12 @@ export async function flushOutbox(): Promise<void> {
       const list = readOutbox()
       const idx = list.findIndex(e => e.key === entry.key && e.at === entry.at)
       if (idx < 0) continue
-      if (error) list[idx] = { ...list[idx], tries: list[idx].tries + 1, lastError: error }
-      else list.splice(idx, 1)
+      if (error) {
+        list[idx] = { ...list[idx], tries: list[idx].tries + 1, lastError: error }
+        if (list[idx].tries > 5) list.splice(idx, 1)
+      } else {
+        list.splice(idx, 1)
+      }
       writeOutbox(list)
     }
   } finally {

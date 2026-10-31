@@ -82,6 +82,13 @@ export function pruneNonCriticalStorage(): void {
         localStorage.removeItem(k)
       }
     }
+    const rawOutbox = localStorage.getItem('safaeewala_sync_outbox')
+    if (rawOutbox) {
+      const parsed = JSON.parse(rawOutbox)
+      if (Array.isArray(parsed) && parsed.length > 10) {
+        localStorage.setItem('safaeewala_sync_outbox', JSON.stringify(parsed.slice(-10)))
+      }
+    }
   } catch {}
   storageProblem = null
   window.dispatchEvent(new Event(STORAGE_PROBLEM_EVENT))
