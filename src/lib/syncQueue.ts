@@ -75,12 +75,29 @@ const DAILY_JOBS_COLUMNS = new Set([
   'booking_id', 'status'
 ])
 
+const BOOKINGS_COLUMNS = new Set([
+  'id', 'created_at', 'client_id', 'client_name', 'client_phone',
+  'service_address', 'service_type', 'status', 'frequency', 'scheduled_date',
+  'scheduled_time', 'end_time', 'duration_hours', 'material', 'assigned_crew',
+  'notes', 'total_amount', 'source', 'is_sheet_synced', 'received_amount',
+  'pending_due', 'is_partially_paid', 'job_sheet_id'
+])
+
 function sanitizeOutboxPayload(table: string, payload?: Record<string, unknown>): Record<string, unknown> | undefined {
   if (!payload || typeof payload !== 'object') return payload
   if (table === 'daily_jobs') {
     const clean: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(payload)) {
       if (DAILY_JOBS_COLUMNS.has(k)) {
+        clean[k] = v
+      }
+    }
+    return clean
+  }
+  if (table === 'bookings') {
+    const clean: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(payload)) {
+      if (BOOKINGS_COLUMNS.has(k)) {
         clean[k] = v
       }
     }

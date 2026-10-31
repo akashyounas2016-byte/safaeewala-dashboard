@@ -41,6 +41,7 @@ alter table public.bookings add column if not exists received_amount numeric;
 alter table public.bookings add column if not exists pending_due numeric;
 alter table public.bookings add column if not exists is_partially_paid boolean;
 alter table public.bookings add column if not exists job_sheet_id text;
+alter table public.bookings add column if not exists row_color text;
 
 -- clients (Client)
 create table if not exists public.clients (
@@ -241,6 +242,7 @@ alter table public.daily_jobs add column if not exists remarks text;
 alter table public.daily_jobs add column if not exists service text;
 alter table public.daily_jobs add column if not exists booking_id text;
 alter table public.daily_jobs add column if not exists status text;
+alter table public.daily_jobs add column if not exists row_color text;
 
 -- daily_expenses (DailyExpense)
 create table if not exists public.daily_expenses (

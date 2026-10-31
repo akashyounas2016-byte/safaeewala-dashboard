@@ -1057,13 +1057,13 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
       expandedJobs.push(job)
     } else {
       const teamRef = multiCleanerTeamMap.get(job.id) || job.team_name || 'Team A'
-      const primaryCleaner = cleaners[0].trim()
+      const primaryCleaner = (cleaners[0] || '').trim()
       cleaners.forEach((cleaner, cIdx) => {
         const isPrimary = cIdx === 0
         expandedJobs.push({
           ...job,
-          id: isPrimary ? job.id : `${job.id}-cleaner-${cleaner.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-          staff_name: cleaner.trim(),
+          id: isPrimary ? job.id : `${job.id}-cleaner-${(cleaner || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+          staff_name: (cleaner || '').trim(),
           team_name: teamRef,
           charges: isPrimary ? cleanNum(job.charges) : 0,
           received: isPrimary ? cleanNum(job.received) : 0,
@@ -3319,7 +3319,7 @@ export function JobSheetSpreadsheet() {
       const teamMap = new Map<string, { leaders: DailyJob[]; members: DailyJob[] }>()
       projectRows.forEach(r => {
         const mc = getMultiCleanerPaymentInfo(r, gridRows)
-        const teamKey = (mc?.teamRef || r.team_name || 'Project Team').trim()
+        const teamKey = String(mc?.teamRef || r.team_name || 'Project Team').trim()
         if (!teamMap.has(teamKey)) {
           teamMap.set(teamKey, { leaders: [], members: [] })
         }
