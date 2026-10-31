@@ -61,6 +61,37 @@ export function safeLocalStorageSet(key: string, value: any): boolean {
   }
 }
 
+export function pruneNonCriticalStorage(): void {
+  const nonCriticalKeys = [
+    'safaeewala_fluent_form_leads_backup',
+    'safaeewala_cached_reports',
+    'safaeewala_temp_excel_cache',
+    'safaeewala_audit_log',
+    'safaeewala_app_error_reports',
+    'safaeewala_bookings_read_notifs',
+    'safaeewala_bookings_deleted_notifs',
+    'safaeewala_snapshots',
+  ]
+  nonCriticalKeys.forEach(k => {
+    try { localStorage.removeItem(k) } catch {}
+  })
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i)
+      if (k && (k.includes('_cache') || k.includes('_backup') || k.includes('_log') || k.includes('_debug'))) {
+        localStorage.removeItem(k)
+      }
+    }
+  } catch {}
+  storageProblem = null
+  window.dispatchEvent(new Event(STORAGE_PROBLEM_EVENT))
+}
+
+export function clearStorageProblem(): void {
+  storageProblem = null
+  window.dispatchEvent(new Event(STORAGE_PROBLEM_EVENT))
+}
+
 export function safeLocalStorageGet<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key)

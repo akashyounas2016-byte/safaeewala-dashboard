@@ -80,3 +80,4 @@ eq(mcSame1 !== null, true, 'genuine team formed at same address and time')
 eq(mcSame1?.isPrimary, true, 'first cleaner is primary')
 eq(mcSame2?.isSecondary, true, 'second cleaner is secondary')
 eq(mcSame1?.teamRef, mcSame2?.teamRef, 'both cleaners share the same teamRef')
+

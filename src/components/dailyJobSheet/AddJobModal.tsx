@@ -859,9 +859,14 @@ export function AddJobForm({
                   </div>
                 </div>
 
-                {/* Address Dropdown Popover (Wider container so long addresses don't truncate) */}
+                {/* Address Dropdown Popover (Wider container so long addresses don't truncate, flicker-free) */}
                 {buildingDropdownOpen && (
-                  <div className="absolute z-50 left-0 w-full min-w-[380px] sm:min-w-[460px] max-w-xl mt-1.5 bg-white border border-slate-200 rounded-xl shadow-2xl p-2 animate-in fade-in slide-in-from-top-1 duration-150 max-h-72 flex flex-col">
+                  <div
+                    onMouseDown={e => e.stopPropagation()}
+                    onMouseMove={e => e.stopPropagation()}
+                    style={{ isolation: 'isolate' }}
+                    className="absolute z-50 left-0 w-full min-w-[380px] sm:min-w-[460px] max-w-xl mt-1.5 bg-white border border-slate-200 rounded-xl shadow-2xl p-2 max-h-64 flex flex-col transition-none"
+                  >
                     {/* Search Bar */}
                     <div className="relative mb-2 shrink-0">
                       <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
@@ -912,11 +917,6 @@ export function AddJobForm({
                                 <div className="text-[12.5px] font-bold text-slate-900 flex items-center gap-1.5 flex-wrap truncate">
                                   <Building2 size={13} className="text-slate-400 shrink-0" />
                                   <span className="truncate">{item.building}</span>
-                                  {item.isMonthly && (
-                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
-                                      Monthly Client
-                                    </span>
-                                  )}
                                 </div>
                                 <div className="text-[11px] text-slate-500 truncate mt-0.5">
                                   {item.clientName} {item.apartment ? `· Apt ${item.apartment}` : ''} {item.area ? `· ${item.area}` : ''}
@@ -979,9 +979,14 @@ export function AddJobForm({
                   </div>
                 </div>
 
-                {/* Area Dropdown Popover */}
+                {/* Area Dropdown Popover (flicker-free) */}
                 {areaDropdownOpen && (
-                  <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl p-2 animate-in fade-in slide-in-from-top-1 duration-150 max-h-60 flex flex-col">
+                  <div
+                    onMouseDown={e => e.stopPropagation()}
+                    onMouseMove={e => e.stopPropagation()}
+                    style={{ isolation: 'isolate' }}
+                    className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl p-2 max-h-56 flex flex-col transition-none"
+                  >
                     <div className="relative mb-2 shrink-0">
                       <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
                       <input

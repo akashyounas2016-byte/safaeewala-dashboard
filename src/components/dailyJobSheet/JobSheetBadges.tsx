@@ -37,7 +37,6 @@ export function AddressCell({ address, isDark }: { address: string; area?: strin
     return <span className={isDark ? "text-emerald-700 font-medium" : "text-slate-400"}>—</span>
   }
 
-  const isMonthly = isAddressMonthly(address)
   const cleanAddr = cleanAddressDisplay(address)
 
   return (
@@ -47,11 +46,6 @@ export function AddressCell({ address, isDark }: { address: string; area?: strin
       }`}>
         {cleanAddr}
       </span>
-      {isMonthly && (
-        <span className="px-1.5 py-0.2 rounded text-[9.5px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
-          Monthly Client
-        </span>
-      )}
     </div>
   )
 }

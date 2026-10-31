@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { CloudOff, RotateCcw, X } from 'lucide-react'
 import { SYNC_STATUS_EVENT, getSyncStatus, flushOutbox } from '@/lib/syncQueue'
 import { CLOUD_STATE_EVENT, getCloudStateStatus, retryCloudState } from '@/lib/cloudState'
-import { STORAGE_PROBLEM_EVENT, getStorageProblem } from '@/lib/storageUtils'
+import { STORAGE_PROBLEM_EVENT, getStorageProblem, pruneNonCriticalStorage, clearStorageProblem } from '@/lib/storageUtils'
 
 /** Tells the user when changes have not reached Supabase yet (AUD-20) */
 export function SyncStatusBanner() {
@@ -26,14 +26,31 @@ export function SyncStatusBanner() {
     }
   }, [])
 
-  // TA-21: storage full is shown in red and cannot be dismissed
+  // TA-21: storage full is shown in red with instant 1-click cleanup
   if (status.storage) {
     return (
       <div className="mb-4 flex items-start gap-3 px-4 py-3 rounded-2xl border border-rose-300 bg-rose-50 text-rose-900 text-[12.5px] shadow-2xs">
         <CloudOff size={16} className="mt-0.5 shrink-0 text-rose-600" />
         <div className="flex-1 min-w-0">
           <p className="font-bold">{status.storage}</p>
-          <p className="mt-0.5">Changes still go to the cloud when online. Download a backup (Settings → Backup), then clear old browser data for this site or use another browser.</p>
+          <p className="mt-0.5">Changes still go to the cloud when online. You can clear temporary browser cache to free up space immediately.</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => pruneNonCriticalStorage()}
+            className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-white border border-rose-300 font-bold text-rose-800 hover:bg-rose-100 cursor-pointer shadow-2xs text-[11.5px]"
+          >
+            Clear Old Cache
+          </button>
+          <button
+            type="button"
+            onClick={() => clearStorageProblem()}
+            className="p-1 rounded-lg hover:bg-rose-100 text-rose-600 cursor-pointer"
+            title="Dismiss"
+          >
+            <X size={15} />
+          </button>
         </div>
       </div>
     )

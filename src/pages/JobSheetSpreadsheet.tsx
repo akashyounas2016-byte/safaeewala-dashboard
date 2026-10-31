@@ -8,7 +8,8 @@ import {
   Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table,
   Printer, MoreVertical, ChevronDown, ExternalLink, CornerDownLeft,
   ChevronUp, Eye, EyeOff, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle,
-  CloudUpload, Calendar, GripVertical, Info, History, Pencil, Edit2, Building2, Star
+  CloudUpload, Calendar, GripVertical, Info, History, Pencil, Edit2, Building2, Star,
+  Package, MapPin, Clock, CreditCard, UserPlus
 } from 'lucide-react'
 import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
 import { SpreadsheetEditModal } from '@/components/dailyJobSheet/SpreadsheetEditModal'
@@ -1229,6 +1230,28 @@ export const TIME_SUGGESTIONS = [
   '09:00 PM', '09:30 PM',
   '10:00 PM'
 ]
+/** Standard Dubai Areas for location selection */
+export const DUBAI_AREAS = [
+  'Downtown Dubai',
+  'Dubai Marina',
+  'Business Bay',
+  'Jumeirah Village Circle (JVC)',
+  'Jumeirah Lake Towers (JLT)',
+  'Palm Jumeirah',
+  'The Greens',
+  'Discovery Gardens',
+  'Al Barsha',
+  'Dubai Hills Estate',
+  'Mirdif',
+  'Dubai Silicon Oasis',
+  'Motor City',
+  'JBR',
+  'Damac Hills',
+  'Deira',
+  'Bur Dubai',
+  'Al Furjan',
+  'Arabian Ranches'
+]
 /** Cell editor → datalist id (UX-35) */
 const AUTOCOMPLETE_LIST: Record<string, string> = {
   staff_name: 'xl-staff',
@@ -2270,14 +2293,63 @@ export function JobSheetSpreadsheet() {
     showToast(`✓ Material set to "${val}"`)
   }
 
+  // Quick Commit for Location / Area Dropdown Selection
+  const commitAreaSelect = (rowIdx: number, area: string) => {
+    const updated = [...gridRows]
+    const row = { ...updated[rowIdx] }
+    row.area = area
+    updated[rowIdx] = row
+    pushState(updated)
+    setEditingCell(null)
+    showToast(`✓ Location set to "${area}"`)
+  }
+
+  // Quick Commit for Shift Time Selection
+  const commitTimeSelect = (rowIdx: number, colId: 'start_time' | 'end_time', timeStr: string) => {
+    const updated = [...gridRows]
+    const r = { ...updated[rowIdx] }
+    r[colId] = timeStr
+    if (r.start_time && r.end_time && r.start_time !== '—' && r.end_time !== '—') {
+      r.duty_hours = Math.round(calcHours(r.start_time, r.end_time) * 10) / 10
+      r.ot_hours = Math.round(calcOTHours(r.start_time, r.end_time) * 10) / 10
+    }
+    updated[rowIdx] = r
+    pushState(updated)
+    setEditingCell(null)
+    showToast(`✓ ${colId === 'start_time' ? 'Start Time' : 'End Time'} set to "${timeStr}"`)
+  }
+
+  // Quick Commit for Payment Mode Dropdown Selection
+  const commitPaymentModeSelect = (rowIdx: number, mode: PaymentMode) => {
+    const updated = [...gridRows]
+    const row = { ...updated[rowIdx] }
+    row.payment_mode = mode
+    updated[rowIdx] = row
+    pushState(updated)
+    setEditingCell(null)
+    showToast(`✓ Payment Mode set to "${mode}"`)
+  }
+
   // Unified Interactive Cell Editor matching all UX requirements (Stabilized against flickering & fluctuations)
   const renderCellEditor = (col: ColumnDef, targetIdx: number, isLightBg: boolean = true) => {
     if (!editingCell || editingCell.rowIdx !== targetIdx || editingCell.colId !== col.id) return null
-    const isNearBottom = targetIdx >= Math.max(0, visibleGridRows.length - 5)
+    const isNearBottom = targetIdx >= Math.max(0, visibleGridRows.length - 6)
 
-    // 1. Address Column Dropdown (Clean, high-visibility popover matching Add Job Entry reference image)
+    // Standard flicker-free popover wrapper props
+    const popoverProps = {
+      onMouseDown: (e: React.MouseEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+      },
+      onMouseEnter: (e: React.MouseEvent) => e.stopPropagation(),
+      onMouseMove: (e: React.MouseEvent) => e.stopPropagation(),
+      style: { isolation: 'isolate' as const }
+    }
+
+    // 1. Address Column Dropdown (Clean, high-visibility popover matching Add Job Entry selector)
     if (col.id === 'address') {
       const isSelectedVal = (bldg: string) => editingCell.tempValue.trim().toLowerCase() === bldg.toLowerCase()
+      const isKnownAddress = filteredClientBuildings.some(item => item.building.trim().toLowerCase() === editingCell.tempValue.trim().toLowerCase())
 
       return (
         <div className="relative w-full h-7 flex items-center">
@@ -2288,20 +2360,38 @@ export function JobSheetSpreadsheet() {
             onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
             onKeyDown={e => {
               if (e.key === 'Escape') setEditingCell(null)
-              else if (e.key === 'Enter') commitCellEdit()
+              else if (e.key === 'Enter') {
+                e.preventDefault()
+                const typed = editingCell.tempValue.trim()
+                if (!typed) {
+                  commitCellEdit()
+                  return
+                }
+                const matched = filteredClientBuildings.find(item => item.building.trim().toLowerCase() === typed.toLowerCase())
+                if (matched) {
+                  commitAddressSelect(targetIdx, matched.building, matched.area, matched.isMonthly ? 'Monthly' : undefined)
+                } else {
+                  // New address typed: open Add Client popup so user can record WhatsApp & client info
+                  setQuickClientState({ open: true, rowIdx: targetIdx, name: typed })
+                  setEditingCell(null)
+                }
+              }
             }}
             placeholder="Search address..."
             className={`w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
           />
           <div
-            onMouseDown={e => {
-              e.preventDefault()
-              e.stopPropagation()
-            }}
-            className={`absolute z-[200] left-0 ${
+            {...popoverProps}
+            className={`absolute z-[9999] left-0 ${
               isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-            } w-[390px] sm:w-[440px] max-w-xl bg-white border border-slate-200 rounded-xl shadow-2xl p-2.5 text-slate-800 text-[12px] animate-in fade-in select-none flex flex-col max-h-72`}
+            } w-[390px] sm:w-[440px] max-w-xl bg-white border border-slate-200 rounded-xl shadow-2xl p-2.5 text-slate-800 text-[12px] select-none flex flex-col max-h-72 pointer-events-auto transition-none`}
           >
+            {/* Header */}
+            <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-2 flex items-center justify-between">
+              <span>Address & Client Directory</span>
+              <Building2 size={12} className="text-slate-400" />
+            </div>
+
             {/* Search Bar matching Add Job Entry */}
             <div className="relative mb-2 shrink-0">
               <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
@@ -2311,7 +2401,6 @@ export function JobSheetSpreadsheet() {
                 onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
                 placeholder="Search address or client…"
                 className="w-full text-[12.5px] pl-8 pr-7 py-1.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-medium"
-                autoFocus
               />
               {editingCell.tempValue && (
                 <button
@@ -2329,22 +2418,29 @@ export function JobSheetSpreadsheet() {
               )}
             </div>
 
-            {/* Custom Value Option banner matching Add Job Entry */}
-            {editingCell.tempValue.trim() && (
+            {/* Custom Value Option banner - Opens Add Client modal for new address */}
+            {editingCell.tempValue.trim() && !isKnownAddress && (
               <div
                 onMouseDown={e => {
                   e.preventDefault()
                   e.stopPropagation()
-                  commitAddressSelect(targetIdx, editingCell.tempValue.trim())
+                  const typed = editingCell.tempValue.trim()
+                  setQuickClientState({ open: true, rowIdx: targetIdx, name: typed })
+                  setEditingCell(null)
                 }}
-                className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[12px] font-bold flex items-center gap-2 cursor-pointer mb-1.5 shrink-0 transition-colors"
+                className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-[12px] font-bold flex items-center justify-between cursor-pointer mb-2 shrink-0 border border-emerald-200 transition-colors shadow-2xs"
               >
-                <Plus size={13} className="text-emerald-700 stroke-[3]" />
-                <span>Use custom address: &ldquo;{editingCell.tempValue.trim()}&rdquo;</span>
+                <div className="flex items-center gap-2 truncate">
+                  <UserPlus size={14} className="text-emerald-700 stroke-[2.5] shrink-0" />
+                  <span className="truncate">+ Register &ldquo;{editingCell.tempValue.trim()}&rdquo; as New Client (WhatsApp/Details)</span>
+                </div>
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-600 text-white shrink-0 ml-2">
+                  Add Client
+                </span>
               </div>
             )}
 
-            {/* Filtered Building & Client List matching reference image */}
+            {/* Filtered Building & Client List (Without Monthly Client badge) */}
             <div className="overflow-y-auto flex-1 space-y-0.5 divide-y divide-slate-100 pr-0.5">
               {filteredClientBuildings.length === 0 && !editingCell.tempValue.trim() ? (
                 <div className="py-4 text-center text-[12px] text-slate-400">
@@ -2359,7 +2455,7 @@ export function JobSheetSpreadsheet() {
                       onMouseDown={e => {
                         e.preventDefault()
                         e.stopPropagation()
-                        commitAddressSelect(targetIdx, item.building, item.area, item.isMonthly ? 'Monthly' : undefined)
+                        commitAddressSelect(targetIdx, cleanAddressDisplay(item.building), item.area, item.isMonthly ? 'Monthly' : undefined)
                       }}
                       className={`px-3 py-2 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between ${
                         isSelected ? 'bg-emerald-50/80 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
@@ -2368,12 +2464,7 @@ export function JobSheetSpreadsheet() {
                       <div className="min-w-0 pr-2">
                         <div className="text-[12.5px] font-bold text-slate-900 flex items-center gap-1.5 flex-wrap truncate">
                           <Building2 size={13} className="text-slate-400 shrink-0" />
-                          <span className="truncate">{item.building}</span>
-                          {item.isMonthly && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
-                              Monthly Client
-                            </span>
-                          )}
+                          <span className="truncate">{cleanAddressDisplay(item.building)}</span>
                         </div>
                         <div className="text-[11px] text-slate-500 truncate mt-0.5">
                           {item.name} {item.client?.apartment ? `· Apt ${item.client.apartment}` : ''} {item.area ? `· ${item.area}` : ''}
@@ -2390,12 +2481,141 @@ export function JobSheetSpreadsheet() {
       )
     }
 
-    // 2. Material Column Dropdown (Clean, Stable Popover matching Add Job Entry)
+    // 2. Location / Area Column Dropdown (Clean, standardized matching Address dropdown)
+    if (col.id === 'area') {
+      const q = editingCell.tempValue.toLowerCase().trim()
+      const allUniqueAreas = Array.from(new Set([
+        ...areaOptions,
+        ...DUBAI_AREAS,
+        ...clients.map(c => (c.area || '').trim()).filter(Boolean),
+        ...gridRows.map(r => (r.area || '').trim()).filter(Boolean)
+      ])).filter(a => a && a !== '—').sort()
+
+      const filteredAreas = q
+        ? allUniqueAreas.filter(a => a.toLowerCase().includes(q))
+        : allUniqueAreas
+
+      const isCustom = q && !allUniqueAreas.some(a => a.toLowerCase() === q)
+
+      return (
+        <div className="relative w-full h-7 flex items-center">
+          <input
+            ref={inputRef}
+            type="text"
+            value={editingCell.tempValue}
+            onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+            onKeyDown={e => {
+              if (e.key === 'Escape') setEditingCell(null)
+              else if (e.key === 'Enter') {
+                if (editingCell.tempValue.trim()) {
+                  commitAreaSelect(targetIdx, editingCell.tempValue.trim())
+                } else {
+                  commitCellEdit()
+                }
+              }
+            }}
+            placeholder="Search location/area..."
+            className={`w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+          />
+          <div
+            {...popoverProps}
+            className={`absolute z-[9999] left-0 ${
+              isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+            } w-[340px] sm:w-[380px] bg-white border border-slate-200 rounded-xl shadow-2xl p-2.5 text-slate-800 text-[12px] select-none flex flex-col max-h-72 pointer-events-auto transition-none`}
+          >
+            {/* Header */}
+            <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-2 flex items-center justify-between">
+              <span>Location / Area</span>
+              <MapPin size={12} className="text-slate-400" />
+            </div>
+
+            {/* Search Bar */}
+            <div className="relative mb-2 shrink-0">
+              <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                value={editingCell.tempValue}
+                onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+                placeholder="Search area (e.g. Marina, Downtown)…"
+                className="w-full text-[12.5px] pl-8 pr-7 py-1.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-medium"
+              />
+              {editingCell.tempValue && (
+                <button
+                  type="button"
+                  onMouseDown={e => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setEditingCell({ ...editingCell, tempValue: '' })
+                  }}
+                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 p-0.5 text-[11px] cursor-pointer"
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Custom Value Option banner */}
+            {isCustom && (
+              <div
+                onMouseDown={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  commitAreaSelect(targetIdx, editingCell.tempValue.trim())
+                }}
+                className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[12px] font-bold flex items-center gap-2 cursor-pointer mb-1.5 shrink-0 transition-colors border border-emerald-200"
+              >
+                <Plus size={13} className="text-emerald-700 stroke-[3]" />
+                <span>Use custom area: &ldquo;{editingCell.tempValue.trim()}&rdquo;</span>
+              </div>
+            )}
+
+            {/* Filtered Area List */}
+            <div className="overflow-y-auto flex-1 space-y-0.5 divide-y divide-slate-100 pr-0.5">
+              {filteredAreas.length === 0 ? (
+                <div className="py-4 text-center text-[12px] text-slate-400">
+                  No matching areas found
+                </div>
+              ) : (
+                filteredAreas.map(ar => {
+                  const isSelected = editingCell.tempValue.trim().toLowerCase() === ar.toLowerCase()
+                  return (
+                    <div
+                      key={ar}
+                      onMouseDown={e => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        commitAreaSelect(targetIdx, ar)
+                      }}
+                      className={`px-3 py-2 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between ${
+                        isSelected ? 'bg-emerald-50 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <MapPin size={13} className={isSelected ? 'text-emerald-600' : 'text-slate-400'} />
+                        <span className="truncate">{ar}</span>
+                      </div>
+                      {isSelected && <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // 3. Material Column Dropdown (Clean, standardized matching Add Job Entry)
     if (col.id === 'material') {
       const standardMaterials = [
         'No Material', 'Yes', 'Chemicals Only', 'Machines Only', 'Sofa Kit', 'Ladder', 'Steam Cleaner', 'Deep Clean Kit'
       ]
       const curMat = editingCell.tempValue || 'No'
+      const q = editingCell.tempValue.toLowerCase().trim()
+      const filteredMaterials = q
+        ? standardMaterials.filter(m => m.toLowerCase().includes(q) || (m === 'No Material' && 'client supplies'.includes(q)))
+        : standardMaterials
 
       return (
         <div className="relative w-full h-7 flex items-center">
@@ -2412,20 +2632,30 @@ export function JobSheetSpreadsheet() {
             className={`w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
           />
           <div
-            onMouseDown={e => {
-              e.preventDefault()
-              e.stopPropagation()
-            }}
-            className={`absolute z-[200] left-0 ${
+            {...popoverProps}
+            className={`absolute z-[9999] left-0 ${
               isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-            } w-72 bg-white border border-slate-200 rounded-xl shadow-2xl p-2 text-slate-800 text-[12px] animate-in fade-in select-none flex flex-col`}
+            } w-72 sm:w-80 bg-white border border-slate-200 rounded-xl shadow-2xl p-2.5 text-slate-800 text-[12px] select-none flex flex-col pointer-events-auto transition-none`}
           >
-            <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1 flex items-center justify-between">
+            <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1.5 flex items-center justify-between">
               <span>Cleaning Materials / Supplies</span>
               <Package size={12} className="text-slate-400" />
             </div>
+
+            {/* Search input */}
+            <div className="relative mb-2 shrink-0">
+              <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                value={editingCell.tempValue}
+                onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+                placeholder="Search material…"
+                className="w-full text-[12px] pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:border-emerald-500 focus:bg-white font-medium"
+              />
+            </div>
+
             <div className="space-y-0.5 max-h-52 overflow-y-auto pr-0.5 divide-y divide-slate-100">
-              {standardMaterials.map(mat => {
+              {filteredMaterials.map(mat => {
                 const isNo = mat === 'No Material'
                 const isSelected = isNo
                   ? (!curMat || curMat === 'No' || curMat === 'No Material')
@@ -2494,12 +2724,16 @@ export function JobSheetSpreadsheet() {
       )
     }
 
-    // 3. Start Time & End Time with clear AM / PM suggestions & categorized slots
+    // 4 & 5. Start Time & End Time with standardized dropdown (Search + AM/PM Pills + Categorized suggestions)
     if (col.id === 'start_time' || col.id === 'end_time') {
-      const curTime = editingCell.tempValue
+      const curTime = (editingCell.tempValue || '').trim()
+      const q = curTime.toLowerCase()
+      const filteredTimes = q
+        ? TIME_SUGGESTIONS.filter(t => t.toLowerCase().includes(q))
+        : TIME_SUGGESTIONS
 
       return (
-        <div className="relative w-full h-full">
+        <div className="relative w-full h-full flex items-center">
           <input
             ref={inputRef}
             type="text"
@@ -2510,20 +2744,78 @@ export function JobSheetSpreadsheet() {
             className={`w-full h-full text-[12px] font-mono border-0 outline-none p-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
           />
           <div
-            onMouseDown={e => {
-              e.preventDefault()
-              e.stopPropagation()
-            }}
-            className={`absolute z-[200] left-0 ${
+            {...popoverProps}
+            className={`absolute z-[9999] left-0 ${
               isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-            } w-52 max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-2xl p-2 text-slate-800 text-[11.5px] animate-in fade-in select-none flex flex-col`}
+            } w-[280px] sm:w-[320px] bg-white border border-slate-200 rounded-xl shadow-2xl p-2.5 text-slate-800 text-[11.5px] select-none flex flex-col pointer-events-auto transition-none`}
           >
-            <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1 flex items-center justify-between">
-              <span>Select Time</span>
+            {/* Header */}
+            <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-2 flex items-center justify-between">
+              <span>{col.id === 'start_time' ? 'Shift Start Time' : 'Shift End Time'}</span>
               <Clock size={12} className="text-slate-400" />
             </div>
-            <div className="space-y-0.5 overflow-y-auto flex-1 pr-0.5 divide-y divide-slate-100">
-              {TIME_SUGGESTIONS.map(timeStr => {
+
+            {/* Quick AM / PM Pills */}
+            <div className="flex items-center gap-1 mb-2 shrink-0">
+              <button
+                type="button"
+                onMouseDown={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setEditingCell({ ...editingCell, tempValue: '' })
+                }}
+                className={`flex-1 py-1 rounded-lg text-[10.5px] font-bold border transition-colors ${
+                  !q.includes('am') && !q.includes('pm') ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onMouseDown={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setEditingCell({ ...editingCell, tempValue: 'AM' })
+                }}
+                className={`flex-1 py-1 rounded-lg text-[10.5px] font-bold border transition-colors ${
+                  q === 'am' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                }`}
+              >
+                AM (Morning)
+              </button>
+              <button
+                type="button"
+                onMouseDown={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setEditingCell({ ...editingCell, tempValue: 'PM' })
+                }}
+                className={`flex-1 py-1 rounded-lg text-[10.5px] font-bold border transition-colors ${
+                  q === 'pm' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100'
+                }`}
+              >
+                PM (Evening)
+              </button>
+            </div>
+
+            {/* Custom Time Prompt if user typed something specific */}
+            {q && !TIME_SUGGESTIONS.some(t => t.toLowerCase() === q) && (
+              <div
+                onMouseDown={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  commitTimeSelect(targetIdx, col.id as any, editingCell.tempValue.trim())
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[11.5px] font-bold flex items-center gap-1.5 cursor-pointer mb-2 shrink-0 border border-emerald-200"
+              >
+                <Plus size={12} className="text-emerald-700 stroke-[3]" />
+                <span>Use time: &ldquo;{editingCell.tempValue.trim()}&rdquo;</span>
+              </div>
+            )}
+
+            {/* Time List */}
+            <div className="space-y-0.5 overflow-y-auto max-h-52 pr-0.5 divide-y divide-slate-100">
+              {filteredTimes.map(timeStr => {
                 const isSelected = curTime.toUpperCase() === timeStr.toUpperCase()
                 return (
                   <div
@@ -2531,16 +2823,7 @@ export function JobSheetSpreadsheet() {
                     onMouseDown={e => {
                       e.preventDefault()
                       e.stopPropagation()
-                      const updated = [...gridRows]
-                      const r = { ...updated[targetIdx] }
-                      ;(r as any)[col.id] = timeStr
-                      if (r.start_time && r.end_time && r.start_time !== '—' && r.end_time !== '—') {
-                        r.duty_hours = Math.round(calcHours(r.start_time, r.end_time) * 10) / 10
-                        r.ot_hours = Math.round(calcOTHours(r.start_time, r.end_time) * 10) / 10
-                      }
-                      updated[targetIdx] = r
-                      pushState(updated)
-                      setEditingCell(null)
+                      commitTimeSelect(targetIdx, col.id as any, timeStr)
                     }}
                     className={`px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer font-mono font-semibold flex items-center justify-between ${
                       isSelected ? 'bg-emerald-50 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
@@ -2557,27 +2840,83 @@ export function JobSheetSpreadsheet() {
       )
     }
 
-    // 4. Default Select or Input
-    if (col.type === 'select' && col.options) {
+    // 6. Payment Mode Column Dropdown (Clean, standardized matching Address dropdown)
+    if (col.id === 'payment_mode') {
+      const curMode = editingCell.tempValue
+      const modes: { id: PaymentMode; name: string; badge: string; color: string; desc: string }[] = [
+        { id: 'Cash', name: 'Cash', badge: 'Cash Payment', color: 'bg-emerald-50 text-emerald-800 border-emerald-200', desc: 'Direct cash collection on-site' },
+        { id: 'Online', name: 'Online', badge: 'Online Transfer', color: 'bg-indigo-50 text-indigo-800 border-indigo-200', desc: 'Card, bank transfer, or payment link' },
+        { id: 'Monthly', name: 'Monthly', badge: 'Monthly Contract', color: 'bg-blue-50 text-blue-800 border-blue-200', desc: 'Monthly recurring contract invoice' },
+        { id: 'Pending', name: 'Pending', badge: 'Pending Due', color: 'bg-amber-50 text-amber-800 border-amber-200', desc: 'Payment uncollected / Due later' },
+      ]
+
       return (
-        <select
-          ref={inputRef as any}
-          value={editingCell.tempValue}
-          onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
-          onBlur={commitCellEdit}
-          onKeyDown={handleEditorKeyDown}
-          className={`w-full h-full text-[12px] font-mono border-0 outline-none p-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
-        >
-          {col.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-        </select>
+        <div className="relative w-full h-7 flex items-center">
+          <input
+            ref={inputRef}
+            type="text"
+            value={editingCell.tempValue}
+            onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+            onKeyDown={handleEditorKeyDown}
+            placeholder="Mode..."
+            className={`w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+          />
+          <div
+            {...popoverProps}
+            className={`absolute z-[9999] left-0 ${
+              isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+            } w-[290px] sm:w-[320px] bg-white border border-slate-200 rounded-xl shadow-2xl p-2.5 text-slate-800 text-[12px] select-none flex flex-col pointer-events-auto transition-none`}
+          >
+            {/* Header */}
+            <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-2 flex items-center justify-between">
+              <span>Payment Mode</span>
+              <CreditCard size={12} className="text-slate-400" />
+            </div>
+
+            {/* Mode items */}
+            <div className="space-y-1.5">
+              {modes.map(m => {
+                const isSelected = curMode.toLowerCase() === m.id.toLowerCase()
+                return (
+                  <div
+                    key={m.id}
+                    onMouseDown={e => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      commitPaymentModeSelect(targetIdx, m.id)
+                    }}
+                    className={`px-3 py-2 rounded-xl transition-colors cursor-pointer text-left flex items-center justify-between border ${
+                      isSelected ? 'bg-slate-900 text-white border-slate-900 shadow-xs' : 'hover:bg-slate-50 border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded border ${m.color}`}>
+                          {m.name}
+                        </span>
+                        <span className={`text-[12px] font-bold ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+                          {m.badge}
+                        </span>
+                      </div>
+                      <div className={`text-[10.5px] mt-0.5 ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
+                        {m.desc}
+                      </div>
+                    </div>
+                    {isSelected && <Check size={14} className="text-emerald-400 stroke-[3] shrink-0" />}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
       )
     }
 
+    // 7. Fallback input for text / numbers
     return (
       <input
         ref={inputRef}
         type={col.type === 'date' ? 'date' : 'text'}
-        list={AUTOCOMPLETE_LIST[col.id as string]}
         value={editingCell.tempValue}
         onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
         onBlur={commitCellEdit}
@@ -4527,15 +4866,8 @@ export function JobSheetSpreadsheet() {
                                     }
                                   >
                                     {col.id === 'address' ? (
-                                        <span className="inline-flex items-center gap-1.5 flex-wrap">
-                                          <span>{cleanAddressDisplay(displayVal)}</span>
-                                          {isAddressMonthly(displayVal) && (
-                                            <span className="px-1.5 py-0.2 rounded text-[9.5px] font-extrabold bg-indigo-900/60 text-indigo-200 border border-indigo-500/40 shrink-0 not-italic">
-                                              Monthly Client
-                                            </span>
-                                          )}
-                                        </span>
-                                      ) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
+                                      <span>{cleanAddressDisplay(displayVal)}</span>
+                                    ) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
                                   </span>
                                 )}
                               </td>
@@ -4817,15 +5149,8 @@ export function JobSheetSpreadsheet() {
                               }
                             >
                               {col.id === 'address' ? (
-                                        <span className="inline-flex items-center gap-1.5 flex-wrap">
-                                          <span>{cleanAddressDisplay(displayVal)}</span>
-                                          {isAddressMonthly(displayVal) && (
-                                            <span className="px-1.5 py-0.2 rounded text-[9.5px] font-extrabold bg-indigo-900/60 text-indigo-200 border border-indigo-500/40 shrink-0 not-italic">
-                                              Monthly Client
-                                            </span>
-                                          )}
-                                        </span>
-                                      ) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
+                                <span>{cleanAddressDisplay(displayVal)}</span>
+                              ) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
                             </span>
                           )}
                         </td>
@@ -5810,19 +6135,33 @@ export function JobSheetSpreadsheet() {
       {quickClientState.open && (
         <QuickNewClientModal
           open={quickClientState.open}
-          initialName={quickClientState.name}
-          onClose={() => setQuickClientState({ open: false, rowIdx: null, name: '' })}
+          initialBuilding={quickClientState.name}
+          initialName=""
+          initialArea={gridRows[quickClientState.rowIdx ?? 0]?.area || ''}
+          onClose={() => {
+            // Keep typed address if user cancelled
+            if (quickClientState.rowIdx !== null && quickClientState.rowIdx < gridRows.length && quickClientState.name) {
+              const updated = [...gridRows]
+              const row = { ...updated[quickClientState.rowIdx] }
+              if (!row.address) {
+                row.address = quickClientState.name
+                updated[quickClientState.rowIdx] = row
+                pushState(updated)
+              }
+            }
+            setQuickClientState({ open: false, rowIdx: null, name: '' })
+          }}
           onClientRegistered={(newClient) => {
             if (quickClientState.rowIdx !== null && quickClientState.rowIdx < gridRows.length) {
               const updated = [...gridRows]
               const row = { ...updated[quickClientState.rowIdx] }
-              row.address = newClient.full_name || newClient.building_name || quickClientState.name
+              row.address = newClient.building_name || newClient.full_name || quickClientState.name
               if (newClient.area) row.area = newClient.area
               updated[quickClientState.rowIdx] = row
               pushState(updated)
             }
             setQuickClientState({ open: false, rowIdx: null, name: '' })
-            showToast(`✓ Client "${newClient.full_name}" registered & assigned`)
+            showToast(`✓ Client "${newClient.full_name}" registered & address saved!`)
           }}
         />
       )}
