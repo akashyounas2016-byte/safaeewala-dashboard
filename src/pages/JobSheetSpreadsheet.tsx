@@ -8,7 +8,7 @@ import {
   Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table,
   Printer, MoreVertical, ChevronDown, ExternalLink, CornerDownLeft,
   ChevronUp, Eye, EyeOff, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle,
-  CloudUpload, Calendar, GripVertical, Info, History, Pencil, Edit2, Building2
+  CloudUpload, Calendar, GripVertical, Info, History, Pencil, Edit2, Building2, Star
 } from 'lucide-react'
 import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
 import { SpreadsheetEditModal } from '@/components/dailyJobSheet/SpreadsheetEditModal'
@@ -177,6 +177,23 @@ export interface BlockPalette {
 }
 
 export const BLOCK_PALETTES: Record<string, BlockPalette> = {
+  white: {
+    id: 'white',
+    name: 'Pure White',
+    headerBg: 'bg-white',
+    headerText: 'text-slate-900',
+    badgeBg: 'bg-slate-100',
+    badgeText: 'text-slate-800',
+    rowBg: 'bg-white',
+    rowBorder: 'border-slate-200',
+    borderLeft: 'border-l-[5px] border-l-slate-300',
+    avatarBg: 'bg-slate-100 text-slate-800 border border-slate-200',
+    hex: '#ffffff',
+    solidBg: '#ffffff',
+    solidBorder: '#cbd5e1',
+    hoverBg: '#f8fafc',
+    isLight: true,
+  },
   emerald: {
     id: 'emerald',
     name: 'Emerald Forest',
@@ -852,6 +869,50 @@ export const LIGHT_PALETTE_KEYS = [
 ]
 
 const PALETTE_KEYS = Object.keys(BLOCK_PALETTES)
+
+export function isDarkHex(hex: string): boolean {
+  if (!hex || !hex.startsWith('#')) return false
+  const c = hex.substring(1)
+  const rgb = parseInt(c.length === 3 ? c.split('').map(x => x + x).join('') : c, 16)
+  if (isNaN(rgb)) return false
+  const r = (rgb >> 16) & 0xff
+  const g = (rgb >> 8) & 0xff
+  const b = (rgb >> 0) & 0xff
+  const luma = 0.299 * r + 0.587 * g + 0.114 * b
+  return luma < 140
+}
+
+export function hslToHex(h: number, s: number, l: number): string {
+  l /= 100
+  const a = (s * Math.min(l, 1 - l)) / 100
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1)
+    return Math.round(255 * color).toString(16).padStart(2, '0')
+  }
+  return `#${f(0)}${f(8)}${f(4)}`
+}
+
+export function makeHexPalette(hex: string): BlockPalette {
+  const isDark = isDarkHex(hex)
+  return {
+    id: hex,
+    name: `Custom (${hex.toUpperCase()})`,
+    headerBg: isDark ? 'bg-slate-900' : 'bg-white',
+    headerText: isDark ? 'text-white' : 'text-slate-900',
+    badgeBg: isDark ? 'bg-slate-800' : 'bg-slate-100',
+    badgeText: isDark ? 'text-slate-200' : 'text-slate-800',
+    rowBg: hex,
+    rowBorder: isDark ? 'border-slate-700' : 'border-slate-300',
+    borderLeft: `border-l-[5px] border-l-[${hex}]`,
+    avatarBg: isDark ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-800',
+    hex,
+    solidBg: hex,
+    solidBorder: isDark ? '#334155' : '#cbd5e1',
+    hoverBg: hex,
+    isLight: !isDark,
+  }
+}
 
 // ── Safe save helpers (AUD-49, UX-33, UX-34) ──
 const SAVED_FIELDS = [
@@ -1546,6 +1607,39 @@ export function JobSheetSpreadsheet() {
   const [editingRowState, setEditingRowState] = useState<{ row: DailyJob; index: number } | null>(null)
   const [quickClientState, setQuickClientState] = useState<{ open: boolean; rowIdx: number | null; name: string }>({ open: false, rowIdx: null, name: '' })
   const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'Monthly' | 'Cash' | 'Online' | 'Pending' | 'Project'>('ALL')
+
+  // ── Custom Color Slider & Favorites (Hue & Brightness) ──
+  const [customHue, setCustomHue] = useState(180)
+  const [customLightness, setCustomLightness] = useState(82)
+  const [favoriteColors, setFavoriteColors] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem('safaeewala_favorite_colors')
+      if (raw) return JSON.parse(raw)
+    } catch {}
+    return ['#ffffff', '#fef3c7', '#dcfce7', '#e0f2fe', '#ede9fe', '#ffe4e6', '#ccfbf1', '#fed7aa']
+  })
+  const currentCustomHex = useMemo(() => {
+    return hslToHex(customHue, 80, customLightness)
+  }, [customHue, customLightness])
+
+  const handleSaveFavoriteColor = (hex: string) => {
+    const normalized = hex.toLowerCase()
+    if (favoriteColors.map(c => c.toLowerCase()).includes(normalized)) {
+      showToast('Color is already in favorites')
+      return
+    }
+    const updated = [hex, ...favoriteColors.slice(0, 9)]
+    setFavoriteColors(updated)
+    safeSet('safaeewala_favorite_colors', JSON.stringify(updated))
+    showToast(`✓ Color ${hex.toUpperCase()} saved to favorites`)
+  }
+
+  const handleRemoveFavoriteColor = (hex: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const updated = favoriteColors.filter(c => c.toLowerCase() !== hex.toLowerCase())
+    setFavoriteColors(updated)
+    safeSet('safaeewala_favorite_colors', JSON.stringify(updated))
+  }
 
   // ── UI View Options (Default: flat grid first as requested) ──
   const [viewMode, setViewMode] = useState<'blocks' | 'flat'>(() => {
@@ -2452,8 +2546,17 @@ export function JobSheetSpreadsheet() {
   }
 
   // ── Helper: Strictly generates 3 blank rows for a new cleaner block ──
-  const createThreeBlankRows = () => {
+  const createThreeBlankRows = (mode?: string) => {
     const blockTs = Date.now()
+    const targetMode = mode !== undefined ? mode : (paymentModeFilter !== 'ALL' ? paymentModeFilter : '')
+    const isProject = targetMode === 'Project'
+    let assignedPaymentMode: PaymentMode | '' = ''
+    if (targetMode === 'Monthly') assignedPaymentMode = 'Monthly'
+    else if (targetMode === 'Cash') assignedPaymentMode = 'Cash'
+    else if (targetMode === 'Online') assignedPaymentMode = 'Online'
+    else if (targetMode === 'Pending') assignedPaymentMode = 'Pending'
+    else if (isProject) assignedPaymentMode = 'Cash'
+
     return [0, 1, 2].map((idx) => ({
       id: newRowId(`blank_cleaner_${blockTs}_${idx}`),
       date: effectiveTargetDate,
@@ -2467,7 +2570,8 @@ export function JobSheetSpreadsheet() {
       material: '' as any,
       charges: 0,
       received: 0,
-      payment_mode: '' as any,
+      payment_mode: assignedPaymentMode as any,
+      team_name: isProject ? 'Project Team' : undefined,
       remarks: '',
       is_overtime: false,
       created_at: new Date(blockTs + idx * 10).toISOString()
@@ -2478,7 +2582,7 @@ export function JobSheetSpreadsheet() {
   const handleAddEmptyBlockAbove = (targetJob: DailyJob, rowIdx: number) => {
     const bInfo = staffBlockInfoMap.get(targetJob.id)
     const blockStartIndex = Math.max(0, rowIdx - (bInfo?.blockRowIdx ?? 0))
-    const newBlock = createThreeBlankRows()
+    const newBlock = createThreeBlankRows(targetJob.payment_mode || undefined)
     const updated = [...gridRows]
     updated.splice(blockStartIndex, 0, ...newBlock)
     pushState(updated)
@@ -2491,7 +2595,7 @@ export function JobSheetSpreadsheet() {
     const blockStartIndex = Math.max(0, rowIdx - (bInfo?.blockRowIdx ?? 0))
     const blockRowCount = bInfo?.rowCount ?? 3
     const insertAt = blockStartIndex + blockRowCount
-    const newBlock = createThreeBlankRows()
+    const newBlock = createThreeBlankRows(targetJob.payment_mode || undefined)
     const updated = [...gridRows]
     updated.splice(insertAt, 0, ...newBlock)
     pushState(updated)
@@ -2503,7 +2607,8 @@ export function JobSheetSpreadsheet() {
     const newJobs = createThreeBlankRows()
     const updated = [...gridRows, ...newJobs]
     pushState(updated)
-    showToast('✓ 3 new empty rows added (new cleaner block)')
+    const label = paymentModeFilter !== 'ALL' ? ` (${paymentModeFilter} View)` : ''
+    showToast(`✓ 3 new empty rows added${label}`)
   }
 
   // ── Delete Entire Staff Block (Removes all rows for this cleaner block) ──
@@ -2830,18 +2935,20 @@ export function JobSheetSpreadsheet() {
 
   // Get palette for a cleaner
   const getCleanerPalette = (cleanerName: string, idx: number, rowColor?: string): BlockPalette => {
-    if (rowColor && BLOCK_PALETTES[rowColor]) {
-      return BLOCK_PALETTES[rowColor]
+    if (rowColor) {
+      if (BLOCK_PALETTES[rowColor]) return BLOCK_PALETTES[rowColor]
+      if (rowColor.startsWith('#')) return makeHexPalette(rowColor)
     }
     const key = (cleanerName || '').trim().toLowerCase()
     const customKey = cleanerColors[key]
-    if (customKey && BLOCK_PALETTES[customKey]) {
-      return BLOCK_PALETTES[customKey]
+    if (customKey) {
+      if (BLOCK_PALETTES[customKey]) return BLOCK_PALETTES[customKey]
+      if (customKey.startsWith('#')) return makeHexPalette(customKey)
     }
     // Default deterministic assignment: Flat Grid Mode defaults to light colors
     const keyPool = viewMode === 'flat' ? LIGHT_PALETTE_KEYS : PALETTE_KEYS
     const paletteKey = keyPool[idx % keyPool.length]
-    return BLOCK_PALETTES[paletteKey]
+    return BLOCK_PALETTES[paletteKey] || BLOCK_PALETTES.emerald
   }
 
   // Right-Click Context Menu Trigger (Carries specific colId for granular customization)
@@ -3176,19 +3283,21 @@ export function JobSheetSpreadsheet() {
   const [renderLimit, setRenderLimit] = useState(RENDER_PAGE)
   const filteredGridRows = useMemo(() => {
     let list = gridRows
+    const isBlankRow = (r: DailyJob) => !String(r.staff_name || '').trim() && !String(r.address || '').trim()
+
     if (paymentModeFilter === 'Monthly') {
-      list = list.filter(r => r.payment_mode === 'Monthly')
+      list = list.filter(r => r.payment_mode === 'Monthly' || (isBlankRow(r) && (!r.payment_mode || r.payment_mode === 'Monthly')))
     } else if (paymentModeFilter === 'Cash') {
-      list = list.filter(r => r.payment_mode === 'Cash')
+      list = list.filter(r => r.payment_mode === 'Cash' || (isBlankRow(r) && (!r.payment_mode || r.payment_mode === 'Cash')))
     } else if (paymentModeFilter === 'Online') {
-      list = list.filter(r => r.payment_mode === 'Online')
+      list = list.filter(r => r.payment_mode === 'Online' || (isBlankRow(r) && (!r.payment_mode || r.payment_mode === 'Online')))
     } else if (paymentModeFilter === 'Pending') {
-      list = list.filter(r => r.payment_mode === 'Pending' || rowPending(r) > 0)
+      list = list.filter(r => r.payment_mode === 'Pending' || rowPending(r) > 0 || (isBlankRow(r) && (!r.payment_mode || r.payment_mode === 'Pending')))
     } else if (paymentModeFilter === 'Project') {
-      // Filter only jobs that belong to a project / team
+      // Filter only jobs that belong to a project / team, or blank rows created in Project view
       const projectRows = list.filter(r => {
         const mc = getMultiCleanerPaymentInfo(r, gridRows)
-        return Boolean(r.team_name || mc?.isMultiCleaner || mc?.teamRef)
+        return Boolean(r.team_name || mc?.isMultiCleaner || mc?.teamRef || (isBlankRow(r) && r.team_name))
       })
 
       // Group team-wise: Leader on top, other team members listed directly below
@@ -4153,11 +4262,11 @@ export function JobSheetSpreadsheet() {
                             }
 
                             const cellColorKey = cellColors[`${row.id}_${col.id}`]
-                            const cellPalette = cellColorKey && BLOCK_PALETTES[cellColorKey] ? BLOCK_PALETTES[cellColorKey] : null
+                            const cellPalette = cellColorKey && (BLOCK_PALETTES[cellColorKey] || (cellColorKey.startsWith('#') ? makeHexPalette(cellColorKey) : null))
                             const colColorKey = columnColors[col.id]
-                            const colPalette = colColorKey && BLOCK_PALETTES[colColorKey] ? BLOCK_PALETTES[colColorKey] : null
+                            const colPalette = colColorKey && (BLOCK_PALETTES[colColorKey] || (colColorKey.startsWith('#') ? makeHexPalette(colColorKey) : null))
                             const customRowPreset = row.row_color && ROW_COLOR_PRESETS.find(p => p.id === row.row_color)
-                            const rowPalette = row.row_color && BLOCK_PALETTES[row.row_color] ? BLOCK_PALETTES[row.row_color] : null
+                            const rowPalette = row.row_color && (BLOCK_PALETTES[row.row_color] || (row.row_color.startsWith('#') ? makeHexPalette(row.row_color) : null))
 
                             let cellBg: string | undefined = undefined
                             if (cellPalette) {
@@ -4303,7 +4412,7 @@ export function JobSheetSpreadsheet() {
                 // Check if user explicitly set a color for this cleaner block or row
                 const customCleanerKey = cleanerColors[staffKey]
                 const hasCustomBlockColor = !!customCleanerKey && !!BLOCK_PALETTES[customCleanerKey]
-                const blockPalette = row.row_color && BLOCK_PALETTES[row.row_color] ? BLOCK_PALETTES[row.row_color] : null
+                const blockPalette = row.row_color && (BLOCK_PALETTES[row.row_color] || (row.row_color.startsWith('#') ? makeHexPalette(row.row_color) : null))
                 const customRowPreset = row.row_color ? ROW_COLOR_PRESETS.find(p => p.id === row.row_color) : null
 
                 // Monthly clients and regular rows default to clean white (#ffffff) unless user changes color
@@ -4317,9 +4426,11 @@ export function JobSheetSpreadsheet() {
                   rowBg = customRowPreset.circleColor
                   isDarkRow = false
                 } else if (hasCustomBlockColor) {
-                  const chosenPalette = BLOCK_PALETTES[customCleanerKey]
-                  rowBg = chosenPalette.solidBg
-                  isDarkRow = !chosenPalette.isLight
+                  const chosenPalette = BLOCK_PALETTES[customCleanerKey] || (customCleanerKey.startsWith('#') ? makeHexPalette(customCleanerKey) : null)
+                  if (chosenPalette) {
+                    rowBg = chosenPalette.solidBg
+                    isDarkRow = !chosenPalette.isLight
+                  }
                 }
 
                 return (
@@ -4459,9 +4570,9 @@ export function JobSheetSpreadsheet() {
                       }
 
                       const cellColorKey = cellColors[`${row.id}_${col.id}`]
-                      const cellPalette = cellColorKey && BLOCK_PALETTES[cellColorKey] ? BLOCK_PALETTES[cellColorKey] : null
+                      const cellPalette = cellColorKey && (BLOCK_PALETTES[cellColorKey] || (cellColorKey.startsWith('#') ? makeHexPalette(cellColorKey) : null))
                       const colColorKey = columnColors[col.id]
-                      const colPalette = colColorKey && BLOCK_PALETTES[colColorKey] ? BLOCK_PALETTES[colColorKey] : null
+                      const colPalette = colColorKey && (BLOCK_PALETTES[colColorKey] || (colColorKey.startsWith('#') ? makeHexPalette(colColorKey) : null))
                       const cellBg = cellPalette ? cellPalette.solidBg : (colPalette ? colPalette.solidBg : rowBg)
                       const isDarkCell = cellPalette ? !cellPalette.isLight : (colPalette ? !colPalette.isLight : isDarkRow)
 
@@ -4672,7 +4783,7 @@ export function JobSheetSpreadsheet() {
                   </div>
                 )}
 
-                {/* Row-Level Actions (Duplicate / Clear) */}
+                {/* Row-Level Actions (Duplicate / Delete Block / Clear) */}
                 <div className="py-0.5">
                   <button
                     type="button"
@@ -4681,6 +4792,17 @@ export function JobSheetSpreadsheet() {
                   >
                     <Copy size={14} className="text-blue-600" />
                     <span>Duplicate Row #{contextMenu.rowIdx + 1}</span>
+                  </button>
+
+                  {/* Delete Block (Directly below Duplicate button per instruction) */}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteStaffBlock(contextMenu.job)}
+                    className="w-full px-3.5 py-1.5 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
+                    title={`Delete entire staff block for ${contextMenu.job.staff_name || 'this cleaner'}`}
+                  >
+                    <Trash2 size={14} className="text-rose-600 shrink-0" />
+                    <span>Delete Block ({contextMenu.job.staff_name || 'Staff Block'})</span>
                   </button>
 
                   <button
@@ -4698,8 +4820,8 @@ export function JobSheetSpreadsheet() {
                 {/* ── COLOR CUSTOMIZATION PANEL ── */}
                 {isStaffSection ? (
                   /* 1. Whole Staff Block Color (Only when right-clicking on Staff Name) */
-                  <div className="px-3 py-2.5 bg-white text-slate-800 rounded-2xl mx-1.5 border border-slate-200/90 shadow-md">
-                    <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-100">
+                  <div className="px-3 py-2 bg-white text-slate-800 rounded-2xl mx-1.5 border border-slate-200/90 shadow-md">
+                    <div className="flex items-center justify-between gap-2 mb-1.5 pb-1 border-b border-slate-100">
                       <div className="flex items-center gap-1.5 font-bold text-slate-900 text-[11.5px]">
                         <Palette size={13} className="text-teal-600" />
                         <span>Staff Block Color</span>
@@ -4742,10 +4864,147 @@ export function JobSheetSpreadsheet() {
                         {contextMenu.job.staff_name || 'Staff Block'}
                       </span>
                     </div>
-                    <p className="text-[10px] text-slate-400 mb-2 leading-tight">
-                      Applies color to this cleaner&apos;s complete block.
-                    </p>
 
+                    {/* White Color Option at Top of Palette */}
+                    <div className="mb-1.5">
+                      <button
+                        type="button"
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => {
+                          e.stopPropagation()
+                          setBlockColor(contextMenu.job, contextMenu.rowIdx, 'white')
+                        }}
+                        className={`w-full py-1.5 px-2.5 rounded-xl border flex items-center justify-between text-[11px] font-bold transition-all cursor-pointer ${
+                          contextMenu.job.row_color === 'white'
+                            ? 'bg-slate-100 border-teal-500 ring-2 ring-teal-500/25 text-slate-900 shadow-2xs'
+                            : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-2xs'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="w-4 h-4 rounded-full bg-white border border-slate-300 shadow-2xs flex items-center justify-center">
+                            {contextMenu.job.row_color === 'white' && <Check size={10} className="text-slate-900 stroke-[3]" />}
+                          </span>
+                          <span>Pure White (Default / Clean)</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400">#FFFFFF</span>
+                      </button>
+                    </div>
+
+                    {/* Compact Custom Color Slider & Brightness Bar */}
+                    <div className="bg-slate-50/90 p-2 rounded-xl border border-slate-200 mb-2 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+                          <SlidersHorizontal size={11} className="text-teal-600" />
+                          Custom Hue & Brightness
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="w-3.5 h-3.5 rounded-full border border-black/15 shadow-2xs shrink-0"
+                            style={{ backgroundColor: currentCustomHex }}
+                          />
+                          <span className="font-mono text-[10px] font-bold text-slate-700 uppercase">
+                            {currentCustomHex}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Hue Slider */}
+                      <div className="space-y-0.5">
+                        <div className="flex justify-between text-[9px] text-slate-400 font-semibold leading-none">
+                          <span>Color Hue</span>
+                          <span>{customHue}°</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="360"
+                          value={customHue}
+                          onMouseDown={e => e.stopPropagation()}
+                          onChange={e => setCustomHue(Number(e.target.value))}
+                          className="w-full h-1.5 rounded-md appearance-none cursor-pointer outline-none block"
+                          style={{ background: 'linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)' }}
+                        />
+                      </div>
+
+                      {/* Brightness / Lightness Slider */}
+                      <div className="space-y-0.5">
+                        <div className="flex justify-between text-[9px] text-slate-400 font-semibold leading-none">
+                          <span>Brightness</span>
+                          <span>{customLightness}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="15"
+                          max="95"
+                          value={customLightness}
+                          onMouseDown={e => e.stopPropagation()}
+                          onChange={e => setCustomLightness(Number(e.target.value))}
+                          className="w-full h-1.5 rounded-md appearance-none cursor-pointer outline-none block"
+                          style={{ background: `linear-gradient(to right, hsl(${customHue}, 80%, 15%) 0%, hsl(${customHue}, 80%, 50%) 50%, hsl(${customHue}, 80%, 95%) 100%)` }}
+                        />
+                      </div>
+
+                      {/* Apply & Save Buttons */}
+                      <div className="flex items-center gap-1.5 pt-0.5">
+                        <button
+                          type="button"
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => {
+                            e.stopPropagation()
+                            setBlockColor(contextMenu.job, contextMenu.rowIdx, currentCustomHex)
+                          }}
+                          className="flex-1 py-1 px-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-[10.5px] transition-colors cursor-pointer text-center shadow-2xs"
+                        >
+                          Apply Custom Color
+                        </button>
+                        <button
+                          type="button"
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => {
+                            e.stopPropagation()
+                            handleSaveFavoriteColor(currentCustomHex)
+                          }}
+                          className="py-1 px-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold text-[10.5px] transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                          title="Save to favorites"
+                        >
+                          <Star size={11} className="text-amber-600 fill-amber-500" />
+                          <span>Save</span>
+                        </button>
+                      </div>
+
+                      {/* Saved Favorites Row */}
+                      {favoriteColors.length > 0 && (
+                        <div className="pt-1 border-t border-slate-200/80 flex items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+                          <span className="text-[9px] font-bold text-slate-400 shrink-0">Saved:</span>
+                          {favoriteColors.map(hex => (
+                            <div key={hex} className="group relative shrink-0">
+                              <button
+                                type="button"
+                                onMouseDown={e => e.stopPropagation()}
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  setBlockColor(contextMenu.job, contextMenu.rowIdx, hex)
+                                }}
+                                style={{ backgroundColor: hex }}
+                                className="w-4 h-4 rounded-full border border-black/15 shadow-2xs hover:scale-115 transition-transform cursor-pointer"
+                                title={`Apply saved color ${hex}`}
+                              />
+                              <button
+                                type="button"
+                                onMouseDown={e => e.stopPropagation()}
+                                onClick={e => handleRemoveFavoriteColor(hex, e)}
+                                className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-slate-800 text-white text-[8px] hidden group-hover:flex items-center justify-center cursor-pointer"
+                                title="Remove"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Presets Grid */}
                     <div className="grid grid-cols-5 gap-2 py-1 place-items-center">
                       {(colorPaletteTab === 'light' ? LIGHT_PALETTE_KEYS : SOLID_PALETTE_KEYS).map(pk => {
                         const p = BLOCK_PALETTES[pk]
@@ -4794,8 +5053,8 @@ export function JobSheetSpreadsheet() {
                   </div>
                 ) : (
                   /* 2. Granular Color Customizer (Specific Cell Only vs Whole Row) */
-                  <div className="px-3 py-2.5 bg-white text-slate-800 rounded-2xl mx-1.5 border border-slate-200/90 shadow-md">
-                    <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-100">
+                  <div className="px-3 py-2 bg-white text-slate-800 rounded-2xl mx-1.5 border border-slate-200/90 shadow-md">
+                    <div className="flex items-center justify-between gap-2 mb-1.5 pb-1 border-b border-slate-100">
                       <div className="flex items-center gap-1.5 font-bold text-slate-900 text-[11.5px]">
                         <Palette size={13} className="text-teal-600" />
                         <span>{colorTargetScope === 'cell' ? 'Cell Color' : 'Whole Row Color'}</span>
@@ -4833,7 +5092,7 @@ export function JobSheetSpreadsheet() {
                     </div>
 
                     {/* Scope Selector: Specific Cell Only vs Whole Row */}
-                    <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 mb-2">
+                    <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 mb-1.5">
                       <button
                         type="button"
                         onMouseDown={e => e.stopPropagation()}
@@ -4864,12 +5123,160 @@ export function JobSheetSpreadsheet() {
                       </button>
                     </div>
 
-                    <p className="text-[10px] text-slate-400 mb-2 leading-tight">
-                      {colorTargetScope === 'cell'
-                        ? `Changes background for ONLY this single "${currentColDef?.label || contextMenu.colId}" cell.`
-                        : `Changes background for the entire Row #${contextMenu.rowIdx + 1} across all columns.`}
-                    </p>
+                    {/* White Color Option at Top of Palette */}
+                    <div className="mb-1.5">
+                      <button
+                        type="button"
+                        onMouseDown={e => e.stopPropagation()}
+                        onClick={e => {
+                          e.stopPropagation()
+                          if (colorTargetScope === 'cell') {
+                            handleSetCellColor(contextMenu.job.id, contextMenu.colId, 'white')
+                          } else {
+                            handleSetSingleRowColor(contextMenu.rowIdx, 'white')
+                          }
+                        }}
+                        className={`w-full py-1.5 px-2.5 rounded-xl border flex items-center justify-between text-[11px] font-bold transition-all cursor-pointer ${
+                          (colorTargetScope === 'cell' ? cellColors[`${contextMenu.job.id}_${contextMenu.colId}`] === 'white' : contextMenu.job.row_color === 'white')
+                            ? 'bg-slate-100 border-teal-500 ring-2 ring-teal-500/25 text-slate-900 shadow-2xs'
+                            : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-2xs'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="w-4 h-4 rounded-full bg-white border border-slate-300 shadow-2xs flex items-center justify-center">
+                            {(colorTargetScope === 'cell' ? cellColors[`${contextMenu.job.id}_${contextMenu.colId}`] === 'white' : contextMenu.job.row_color === 'white') && (
+                              <Check size={10} className="text-slate-900 stroke-[3]" />
+                            )}
+                          </span>
+                          <span>Pure White (Default / Clean)</span>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400">#FFFFFF</span>
+                      </button>
+                    </div>
 
+                    {/* Compact Custom Color Slider & Brightness Bar */}
+                    <div className="bg-slate-50/90 p-2 rounded-xl border border-slate-200 mb-2 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+                          <SlidersHorizontal size={11} className="text-teal-600" />
+                          Custom Hue & Brightness
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="w-3.5 h-3.5 rounded-full border border-black/15 shadow-2xs shrink-0"
+                            style={{ backgroundColor: currentCustomHex }}
+                          />
+                          <span className="font-mono text-[10px] font-bold text-slate-700 uppercase">
+                            {currentCustomHex}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Hue Slider */}
+                      <div className="space-y-0.5">
+                        <div className="flex justify-between text-[9px] text-slate-400 font-semibold leading-none">
+                          <span>Color Hue</span>
+                          <span>{customHue}°</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="360"
+                          value={customHue}
+                          onMouseDown={e => e.stopPropagation()}
+                          onChange={e => setCustomHue(Number(e.target.value))}
+                          className="w-full h-1.5 rounded-md appearance-none cursor-pointer outline-none block"
+                          style={{ background: 'linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)' }}
+                        />
+                      </div>
+
+                      {/* Brightness / Lightness Slider */}
+                      <div className="space-y-0.5">
+                        <div className="flex justify-between text-[9px] text-slate-400 font-semibold leading-none">
+                          <span>Brightness</span>
+                          <span>{customLightness}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="15"
+                          max="95"
+                          value={customLightness}
+                          onMouseDown={e => e.stopPropagation()}
+                          onChange={e => setCustomLightness(Number(e.target.value))}
+                          className="w-full h-1.5 rounded-md appearance-none cursor-pointer outline-none block"
+                          style={{ background: `linear-gradient(to right, hsl(${customHue}, 80%, 15%) 0%, hsl(${customHue}, 80%, 50%) 50%, hsl(${customHue}, 80%, 95%) 100%)` }}
+                        />
+                      </div>
+
+                      {/* Apply & Save Buttons */}
+                      <div className="flex items-center gap-1.5 pt-0.5">
+                        <button
+                          type="button"
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => {
+                            e.stopPropagation()
+                            if (colorTargetScope === 'cell') {
+                              handleSetCellColor(contextMenu.job.id, contextMenu.colId, currentCustomHex)
+                            } else {
+                              handleSetSingleRowColor(contextMenu.rowIdx, currentCustomHex)
+                            }
+                          }}
+                          className="flex-1 py-1 px-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold text-[10.5px] transition-colors cursor-pointer text-center shadow-2xs"
+                        >
+                          Apply Custom Color
+                        </button>
+                        <button
+                          type="button"
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={e => {
+                            e.stopPropagation()
+                            handleSaveFavoriteColor(currentCustomHex)
+                          }}
+                          className="py-1 px-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold text-[10.5px] transition-colors cursor-pointer flex items-center gap-1 shrink-0"
+                          title="Save to favorites"
+                        >
+                          <Star size={11} className="text-amber-600 fill-amber-500" />
+                          <span>Save</span>
+                        </button>
+                      </div>
+
+                      {/* Saved Favorites Row */}
+                      {favoriteColors.length > 0 && (
+                        <div className="pt-1 border-t border-slate-200/80 flex items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+                          <span className="text-[9px] font-bold text-slate-400 shrink-0">Saved:</span>
+                          {favoriteColors.map(hex => (
+                            <div key={hex} className="group relative shrink-0">
+                              <button
+                                type="button"
+                                onMouseDown={e => e.stopPropagation()}
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  if (colorTargetScope === 'cell') {
+                                    handleSetCellColor(contextMenu.job.id, contextMenu.colId, hex)
+                                  } else {
+                                    handleSetSingleRowColor(contextMenu.rowIdx, hex)
+                                  }
+                                }}
+                                style={{ backgroundColor: hex }}
+                                className="w-4 h-4 rounded-full border border-black/15 shadow-2xs hover:scale-115 transition-transform cursor-pointer"
+                                title={`Apply favorite ${hex}`}
+                              />
+                              <button
+                                type="button"
+                                onMouseDown={e => e.stopPropagation()}
+                                onClick={e => handleRemoveFavoriteColor(hex, e)}
+                                className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-slate-800 text-white text-[8px] hidden group-hover:flex items-center justify-center cursor-pointer"
+                                title="Remove"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Presets Grid */}
                     <div className="grid grid-cols-5 gap-2 py-1 place-items-center">
                       {(colorPaletteTab === 'light' ? LIGHT_PALETTE_KEYS : SOLID_PALETTE_KEYS).map(pk => {
                         const p = BLOCK_PALETTES[pk]
