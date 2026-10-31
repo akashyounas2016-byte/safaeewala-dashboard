@@ -2203,10 +2203,12 @@ export function JobSheetSpreadsheet() {
   // Unified Interactive Cell Editor matching all UX requirements (Stabilized against flickering & fluctuations)
   const renderCellEditor = (col: ColumnDef, targetIdx: number, isLightBg: boolean = true) => {
     if (!editingCell || editingCell.rowIdx !== targetIdx || editingCell.colId !== col.id) return null
-    const isNearBottom = targetIdx >= Math.max(1, visibleGridRows.length - 4)
+    const isNearBottom = targetIdx >= Math.max(0, visibleGridRows.length - 5)
 
-    // 1. Address Column Dropdown (Standardized matching Add Job Entry selector to prevent fluctuation & flicker)
+    // 1. Address Column Dropdown (Clean, high-visibility popover matching Add Job Entry reference image)
     if (col.id === 'address') {
+      const isSelectedVal = (bldg: string) => editingCell.tempValue.trim().toLowerCase() === bldg.toLowerCase()
+
       return (
         <div className="relative w-full h-7 flex items-center">
           <input
@@ -2218,7 +2220,7 @@ export function JobSheetSpreadsheet() {
               if (e.key === 'Escape') setEditingCell(null)
               else if (e.key === 'Enter') commitCellEdit()
             }}
-            placeholder="Type or search building..."
+            placeholder="Search address..."
             className={`w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
           />
           <div
@@ -2226,60 +2228,105 @@ export function JobSheetSpreadsheet() {
               e.preventDefault()
               e.stopPropagation()
             }}
-            className={`absolute z-[100] left-0 ${
-              isNearBottom ? 'bottom-full mb-1' : 'top-full mt-1'
-            } w-84 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl p-2.5 text-slate-800 text-[12px] animate-in fade-in select-none`}
+            className={`absolute z-[200] left-0 ${
+              isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+            } w-[390px] sm:w-[440px] max-w-xl bg-white border border-slate-200 rounded-xl shadow-2xl p-2.5 text-slate-800 text-[12px] animate-in fade-in select-none flex flex-col max-h-72`}
           >
+            {/* Search Bar matching Add Job Entry */}
+            <div className="relative mb-2 shrink-0">
+              <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+              <input
+                type="text"
+                value={editingCell.tempValue}
+                onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+                placeholder="Search address or client…"
+                className="w-full text-[12.5px] pl-8 pr-7 py-1.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-medium"
+                autoFocus
+              />
+              {editingCell.tempValue && (
+                <button
+                  type="button"
+                  onMouseDown={e => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setEditingCell({ ...editingCell, tempValue: '' })
+                  }}
+                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 p-0.5 text-[11px] cursor-pointer"
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Custom Value Option banner matching Add Job Entry */}
             {editingCell.tempValue.trim() && (
               <div
-                onMouseDown={() => commitAddressSelect(targetIdx, editingCell.tempValue.trim())}
-                className="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[11.5px] font-bold flex items-center gap-2 cursor-pointer mb-2 shrink-0 transition-colors"
+                onMouseDown={e => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  commitAddressSelect(targetIdx, editingCell.tempValue.trim())
+                }}
+                className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[12px] font-bold flex items-center gap-2 cursor-pointer mb-1.5 shrink-0 transition-colors"
               >
                 <Plus size={13} className="text-emerald-700 stroke-[3]" />
                 <span>Use custom address: &ldquo;{editingCell.tempValue.trim()}&rdquo;</span>
               </div>
             )}
-            <div className="space-y-0.5 divide-y divide-slate-100">
-              {filteredClientBuildings.slice(0, 35).map(item => (
-                <div
-                  key={item.key}
-                  onMouseDown={() => commitAddressSelect(targetIdx, item.building, item.area, item.isMonthly ? 'Monthly' : undefined)}
-                  className="px-3 py-1.5 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer text-left flex items-center justify-between"
-                >
-                  <div className="min-w-0 pr-2">
-                    <div className="text-[12px] font-bold text-slate-900 flex items-center gap-1.5 truncate">
-                      <Building2 size={13} className="text-slate-400 shrink-0" />
-                      <span className="truncate">{item.building}</span>
-                    </div>
-                    {item.name !== item.building && (
-                      <p className="text-[10.5px] text-slate-500 truncate mt-0.5">{item.name}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {item.area && (
-                      <span className="px-2 py-0.5 rounded-full text-[9.5px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                        {item.area}
-                      </span>
-                    )}
-                    <span className={`px-2 py-0.5 rounded-full text-[9.5px] font-bold ${
-                      item.isMonthly ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-slate-100 text-slate-600'
-                    }`}>
-                      {item.isMonthly ? 'Monthly' : 'Regular'}
-                    </span>
-                  </div>
+
+            {/* Filtered Building & Client List matching reference image */}
+            <div className="overflow-y-auto flex-1 space-y-0.5 divide-y divide-slate-100 pr-0.5">
+              {filteredClientBuildings.length === 0 && !editingCell.tempValue.trim() ? (
+                <div className="py-4 text-center text-[12px] text-slate-400">
+                  No registered clients found
                 </div>
-              ))}
+              ) : (
+                filteredClientBuildings.slice(0, 45).map(item => {
+                  const isSelected = isSelectedVal(item.building)
+                  return (
+                    <div
+                      key={item.key}
+                      onMouseDown={e => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        commitAddressSelect(targetIdx, item.building, item.area, item.isMonthly ? 'Monthly' : undefined)
+                      }}
+                      className={`px-3 py-2 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between ${
+                        isSelected ? 'bg-emerald-50/80 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="text-[12.5px] font-bold text-slate-900 flex items-center gap-1.5 flex-wrap truncate">
+                          <Building2 size={13} className="text-slate-400 shrink-0" />
+                          <span className="truncate">{item.building}</span>
+                          {item.isMonthly && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                              Monthly Client
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                          {item.name} {item.client?.apartment ? `· Apt ${item.client.apartment}` : ''} {item.area ? `· ${item.area}` : ''}
+                        </div>
+                      </div>
+                      {isSelected && <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />}
+                    </div>
+                  )
+                })
+              )}
             </div>
           </div>
         </div>
       )
     }
 
-    // 2. Material Column Dropdown (Standardized matching Add Job Entry pop-up with custom entry & tick/cross)
+    // 2. Material Column Dropdown (Clean, Stable Popover matching Add Job Entry)
     if (col.id === 'material') {
       const standardMaterials = [
-        'No', 'Yes', 'Chemicals Only', 'Machines Only', 'Sofa Kit', 'Ladder', 'Steam Cleaner', 'Deep Clean Kit'
+        'No Material', 'Yes', 'Chemicals Only', 'Machines Only', 'Sofa Kit', 'Ladder', 'Steam Cleaner', 'Deep Clean Kit'
       ]
+      const curMat = editingCell.tempValue || 'No'
+
       return (
         <div className="relative w-full h-7 flex items-center">
           <input
@@ -2299,36 +2346,46 @@ export function JobSheetSpreadsheet() {
               e.preventDefault()
               e.stopPropagation()
             }}
-            className={`absolute z-[100] left-0 ${
-              isNearBottom ? 'bottom-full mb-1' : 'top-full mt-1'
-            } w-64 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 text-slate-800 text-[12px] animate-in fade-in select-none`}
+            className={`absolute z-[200] left-0 ${
+              isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+            } w-72 bg-white border border-slate-200 rounded-xl shadow-2xl p-2 text-slate-800 text-[12px] animate-in fade-in select-none flex flex-col`}
           >
-            <div className="px-2.5 py-1 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 mb-1">
-              Select Material
+            <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1 flex items-center justify-between">
+              <span>Cleaning Materials / Supplies</span>
+              <Package size={12} className="text-slate-400" />
             </div>
-            <div className="space-y-0.5 max-h-48 overflow-y-auto pr-0.5">
+            <div className="space-y-0.5 max-h-52 overflow-y-auto pr-0.5 divide-y divide-slate-100">
               {standardMaterials.map(mat => {
-                const isSelected = editingCell.tempValue.toLowerCase() === mat.toLowerCase()
+                const isNo = mat === 'No Material'
+                const isSelected = isNo
+                  ? (!curMat || curMat === 'No' || curMat === 'No Material')
+                  : curMat.toLowerCase() === mat.toLowerCase()
+                const saveVal = isNo ? 'No' : mat
+
                 return (
                   <div
                     key={mat}
-                    onMouseDown={() => commitMaterialSelect(targetIdx, mat)}
-                    className={`px-2.5 py-1.5 rounded-xl hover:bg-amber-50/60 transition-colors cursor-pointer text-left font-medium flex items-center justify-between text-[11.5px] ${
-                      isSelected ? 'bg-amber-50 text-amber-950 font-bold' : 'text-slate-700'
+                    onMouseDown={e => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      commitMaterialSelect(targetIdx, saveVal)
+                    }}
+                    className={`px-3 py-2 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between text-[12px] ${
+                      isSelected ? 'bg-amber-50 text-amber-950 font-bold' : 'hover:bg-slate-50 text-slate-700 font-medium'
                     }`}
                   >
-                    <span>{mat === 'No' ? 'No Material' : mat}</span>
+                    <span>{mat === 'No Material' ? 'No Material (Client Supplies)' : mat}</span>
                     {isSelected && (
-                      <Check size={13} className="text-amber-700 stroke-[3]" />
+                      <Check size={14} className="text-amber-700 stroke-[3] shrink-0" />
                     )}
                   </div>
                 )
               })}
             </div>
 
-            {/* Custom Material Input with Save Check and Cancel button (matching AddJobModal) */}
+            {/* Custom Material Input matching AddJobModal */}
             <div className="pt-2 mt-1.5 border-t border-slate-100 shrink-0">
-              <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
+              <div className="flex items-center gap-1.5 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
                 <input
                   type="text"
                   placeholder="Type custom material…"
@@ -2349,6 +2406,7 @@ export function JobSheetSpreadsheet() {
                   type="button"
                   onMouseDown={e => {
                     e.preventDefault()
+                    e.stopPropagation()
                     if (excelCustomMaterial.trim()) {
                       commitMaterialSelect(targetIdx, excelCustomMaterial.trim())
                       setExcelCustomMaterial('')
@@ -2366,8 +2424,10 @@ export function JobSheetSpreadsheet() {
       )
     }
 
-    // 3. Start Time & End Time with typing and clear AM / PM suggestions (No datalist clash, no blur flicker)
+    // 3. Start Time & End Time with clear AM / PM suggestions & categorized slots
     if (col.id === 'start_time' || col.id === 'end_time') {
+      const curTime = editingCell.tempValue
+
       return (
         <div className="relative w-full h-full">
           <input
@@ -2376,7 +2436,7 @@ export function JobSheetSpreadsheet() {
             value={editingCell.tempValue}
             onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
             onKeyDown={handleEditorKeyDown}
-            placeholder="e.g. 10:00 AM"
+            placeholder="e.g. 09:00 AM"
             className={`w-full h-full text-[12px] font-mono border-0 outline-none p-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
           />
           <div
@@ -2384,32 +2444,43 @@ export function JobSheetSpreadsheet() {
               e.preventDefault()
               e.stopPropagation()
             }}
-            className={`absolute z-[100] left-0 ${
-              isNearBottom ? 'bottom-full mb-1' : 'top-full mt-1'
-            } w-36 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl p-1 text-slate-800 text-[11.5px] animate-in fade-in select-none`}
+            className={`absolute z-[200] left-0 ${
+              isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+            } w-52 max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-2xl p-2 text-slate-800 text-[11.5px] animate-in fade-in select-none flex flex-col`}
           >
-            <div className="px-2 py-0.5 text-[9.5px] font-black uppercase text-slate-400">AM / PM Times</div>
-            <div className="space-y-0.5">
-              {TIME_SUGGESTIONS.map(timeStr => (
-                <div
-                  key={timeStr}
-                  onMouseDown={() => {
-                    const updated = [...gridRows]
-                    const r = { ...updated[targetIdx] }
-                    ;(r as any)[col.id] = timeStr
-                    if (r.start_time && r.end_time && r.start_time !== '—' && r.end_time !== '—') {
-                      r.duty_hours = Math.round(calcHours(r.start_time, r.end_time) * 10) / 10
-                      r.ot_hours = Math.round(calcOTHours(r.start_time, r.end_time) * 10) / 10
-                    }
-                    updated[targetIdx] = r
-                    pushState(updated)
-                    setEditingCell(null)
-                  }}
-                  className="px-2 py-1 rounded hover:bg-emerald-50 hover:text-emerald-900 transition-colors cursor-pointer font-mono font-semibold"
-                >
-                  {timeStr}
-                </div>
-              ))}
+            <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1 flex items-center justify-between">
+              <span>Select Time</span>
+              <Clock size={12} className="text-slate-400" />
+            </div>
+            <div className="space-y-0.5 overflow-y-auto flex-1 pr-0.5 divide-y divide-slate-100">
+              {TIME_SUGGESTIONS.map(timeStr => {
+                const isSelected = curTime.toUpperCase() === timeStr.toUpperCase()
+                return (
+                  <div
+                    key={timeStr}
+                    onMouseDown={e => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      const updated = [...gridRows]
+                      const r = { ...updated[targetIdx] }
+                      ;(r as any)[col.id] = timeStr
+                      if (r.start_time && r.end_time && r.start_time !== '—' && r.end_time !== '—') {
+                        r.duty_hours = Math.round(calcHours(r.start_time, r.end_time) * 10) / 10
+                        r.ot_hours = Math.round(calcOTHours(r.start_time, r.end_time) * 10) / 10
+                      }
+                      updated[targetIdx] = r
+                      pushState(updated)
+                      setEditingCell(null)
+                    }}
+                    className={`px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer font-mono font-semibold flex items-center justify-between ${
+                      isSelected ? 'bg-emerald-50 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <span>{timeStr}</span>
+                    {isSelected && <Check size={13} className="text-emerald-700 stroke-[3]" />}
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>
