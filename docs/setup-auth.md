@@ -34,8 +34,8 @@ and the database refuses anyone who is not signed in.
 3. SQL Editor → New query → paste and Run:
    ```sql
    insert into public.profiles (id, login_id, email, full_name, role, status)
-   select id, 'admin', email, 'Akash Younas', 'admin', 'active'
-   from auth.users where email = 'crm-admin@safaeewala.com'
+   select id, email, email, 'Akash Younas', 'admin', 'active'
+   from auth.users where email = 'akashyounas2016@gmail.com'
    on conflict (id) do update set role = 'admin', status = 'active';
    ```
 
