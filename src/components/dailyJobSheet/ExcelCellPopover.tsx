@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type ElementType, type ReactNode, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ElementType, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, Search } from 'lucide-react'
 
@@ -86,7 +86,7 @@ export function ExcelCellPopover({ anchorRef, width = 400, title, icon: Icon, se
         </div>
       )}
       {banner}
-      <div className="overflow-y-auto flex-1 divide-y divide-slate-100 pr-0.5" style={{ maxHeight: listMaxHeight }}>
+      <div className="relative overflow-y-auto flex-1 divide-y divide-slate-100 pr-0.5" style={{ maxHeight: listMaxHeight }}>
         {children}
       </div>
       {footer}
@@ -104,8 +104,15 @@ export function ExcelPopoverItem({ selected, onPick, icon: Icon, label, sub, mon
   sub?: ReactNode
   mono?: boolean
 }) {
+  // The current value is scrolled into view when the full list opens
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = ref.current, list = el?.parentElement
+    if (selected && el && list) list.scrollTop = Math.max(0, el.offsetTop - list.clientHeight / 2 + el.offsetHeight / 2)
+  }, [selected])
   return (
     <div
+      ref={ref}
       onMouseDown={e => { e.preventDefault(); onPick() }}
       className={`px-3 py-2 rounded-lg cursor-pointer text-left flex items-center justify-between ${
         selected ? 'bg-emerald-50/80 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'

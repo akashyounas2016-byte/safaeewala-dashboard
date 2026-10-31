@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(excel-studio): Save — a job with several cleaners is saved as one job again: editing the lead cleaner's row no longer removes the other cleaners, editing another cleaner's row no longer adds a duplicate job each save, and no false "changed on another screen" prompt (R-SYNC-08); the button returns to "Saved" when nothing is left to write
+- fix(excel-studio): Address dropdown opens with every client (current address highlighted and scrolled to) like Add Job Entry, filters when typing; a new address opens Add New Client and, once registered, the row keeps the client's address and area (they were overwritten when the popup closed); picking a client sets its area. Area, Material and Time lists also open in full. Time list 9:00 AM – 11:00 PM (UX-35)
 - feat(bookings, daily-job-sheet, settings): Multi-screen UX refinement batch:
   - Bookings: Replaced 'Complete' with dynamic 'Mark as Completed' button (light green -> solid green 'Completed'), removed 'AED' from card charges, replaced Details button with direct card interactions, added Delete action in header, standardized Add New Booking layout with Daily Job Sheet, added Row Color Theme option, and integrated 12h AM/PM time dropdowns.
   - Daily Job Sheet: Professional header theme on Jobs widget, proactive cleaner time-overlap error prevention, removed '(AED)' bracket labels from charges and received fields, unified Add Job & Edit Job modals, and recent jobs display order.

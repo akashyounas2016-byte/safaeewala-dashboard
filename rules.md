@@ -127,6 +127,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `syncQueue.ts`, `cloudState.ts`, `DataContext → fromServer`, `fluentFormsSync.ts`, `webhookServer.cjs → saveLeadToCloud`.
 - **Status:** Active · Since: 2026-11-01
 
+### R-SYNC-08 — Excel Job Sheet saves one job per job
+- **Rule:** A job with several cleaners shows one grid row per cleaner, but Save writes it back as **one** job: cleaners joined in `staff_name`, shared fields (time, address, area, material, notes) from the row that was changed, money from the lead row. Removing every cleaner row deletes the job. Save never creates a job for a per-cleaner row and never cuts cleaners off a job.
+- **Code:** `JobSheetSpreadsheet.tsx → handleSaveAll` (`splitJobPayload`), rows built by `ensureThreeRowsPerStaff`.
+- **Status:** Active · Since: 2026-10-31
+
 ### R-SYNC-04 — Staff are matched by whole words
 - **Rule:** An employee matches a job's `staff_name` by normalised full name or whole-word match — "Rupa" must not match "Rupak".
 - **Code:** `clientDataSync.ts → employeeMatchesStaff`.

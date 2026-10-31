@@ -1202,9 +1202,7 @@ const newRowId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().to
 /** Columns that are calculated, never typed into */
 const READ_ONLY_COLS = new Set(['pending'])
 /** Time suggestions formatted with explicit AM and PM */
-export const TIME_SUGGESTIONS = [
-  '07:00 AM', '07:30 AM',
-  '08:00 AM', '08:30 AM',
+export const TIME_SUGGESTIONS = [ // working day 9:00 AM – 11:00 PM
   '09:00 AM', '09:30 AM',
   '10:00 AM', '10:30 AM',
   '11:00 AM', '11:30 AM',
@@ -1218,7 +1216,8 @@ export const TIME_SUGGESTIONS = [
   '07:00 PM', '07:30 PM',
   '08:00 PM', '08:30 PM',
   '09:00 PM', '09:30 PM',
-  '10:00 PM'
+  '10:00 PM', '10:30 PM',
+  '11:00 PM'
 ]
 /** Standard Dubai Areas for location selection */
 export const DUBAI_AREAS = [
@@ -1673,6 +1672,8 @@ export function JobSheetSpreadsheet() {
   // Filtered Client & Building list for Address dropdown matching Add Job Entry selector
   const filteredClientBuildings = useMemo(() => {
     if (!editingCell || editingCell.colId !== 'address') return clientBuildingList
+    // Opening the cell shows every client (current address highlighted); typing filters the list
+    if (editingCell.tempValue === String(gridRows[editingCell.rowIdx]?.address ?? '')) return clientBuildingList
     const q = editingCell.tempValue.toLowerCase().trim()
     if (!q) return clientBuildingList
     return clientBuildingList.filter(item =>
@@ -1680,7 +1681,7 @@ export function JobSheetSpreadsheet() {
       item.name.toLowerCase().includes(q) ||
       item.area.toLowerCase().includes(q)
     )
-  }, [clientBuildingList, editingCell])
+  }, [clientBuildingList, editingCell, gridRows])
   // What the grid was loaded from — Save All writes only the differences (AUD-49)
   const [loadedSnapshot, setLoadedSnapshot] = useState<Map<string, DailyJob>>(() => new Map())
   const [remoteConflict, setRemoteConflict] = useState(false)
@@ -1690,6 +1691,7 @@ export function JobSheetSpreadsheet() {
   const [showAddJobModal, setShowAddJobModal] = useState(false)
   const [editingRowState, setEditingRowState] = useState<{ row: DailyJob; index: number } | null>(null)
   const [quickClientState, setQuickClientState] = useState<{ open: boolean; rowIdx: number | null; name: string }>({ open: false, rowIdx: null, name: '' })
+  const quickClientRegisteredRef = useRef(false)
   const [paymentModeFilter, setPaymentModeFilter] = useState<'ALL' | 'Monthly' | 'Cash' | 'Online' | 'Pending' | 'Project'>('ALL')
 
   // ── Custom Color Slider & Favorites (Hue & Brightness) ──
@@ -2267,7 +2269,7 @@ export function JobSheetSpreadsheet() {
     const updated = [...gridRows]
     const row = { ...updated[rowIdx] }
     row.address = building
-    if (area && !row.area) row.area = area
+    if (area) row.area = area
     if (mode === 'Monthly') row.payment_mode = 'Monthly'
     updated[rowIdx] = row
     pushState(updated)
@@ -2327,6 +2329,8 @@ export function JobSheetSpreadsheet() {
   const renderCellEditor = (col: ColumnDef, targetIdx: number, isLightBg: boolean = true) => {
     if (!editingCell || editingCell.rowIdx !== targetIdx || editingCell.colId !== col.id) return null
     const setTemp = (v: string) => setEditingCell({ ...editingCell, tempValue: v })
+    // Value still as it was in the cell: show the whole list with it highlighted, filter once typing starts
+    const untouched = editingCell.tempValue === String((gridRows[targetIdx] as any)?.[col.id] ?? '')
     const cellInputClass = `w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`
 
     // 1. Address Column Dropdown (the reference design)
@@ -2380,7 +2384,7 @@ export function JobSheetSpreadsheet() {
             {filteredClientBuildings.length === 0 && !typed ? (
               <ExcelPopoverEmpty>No registered clients found</ExcelPopoverEmpty>
             ) : (
-              filteredClientBuildings.slice(0, 45).map(item => (
+              filteredClientBuildings.map(item => (
                 <ExcelPopoverItem
                   key={item.key}
                   selected={typed.toLowerCase() === item.building.toLowerCase()}
@@ -2399,7 +2403,7 @@ export function JobSheetSpreadsheet() {
     // 2. Location / Area Column Dropdown
     if (col.id === 'area') {
       const typed = editingCell.tempValue.trim()
-      const q = typed.toLowerCase()
+      const q = untouched ? '' : typed.toLowerCase()
       const allUniqueAreas = Array.from(new Set([
         ...areaOptions,
         ...DUBAI_AREAS,
@@ -2451,7 +2455,7 @@ export function JobSheetSpreadsheet() {
               filteredAreas.map(ar => (
                 <ExcelPopoverItem
                   key={ar}
-                  selected={q === ar.toLowerCase()}
+                  selected={typed.toLowerCase() === ar.toLowerCase()}
                   onPick={() => commitAreaSelect(targetIdx, ar)}
                   icon={MapPin}
                   label={ar}
@@ -2469,7 +2473,7 @@ export function JobSheetSpreadsheet() {
         'No Material', 'Yes', 'Chemicals Only', 'Machines Only', 'Sofa Kit', 'Ladder', 'Steam Cleaner', 'Deep Clean Kit'
       ]
       const curMat = editingCell.tempValue || 'No'
-      const q = editingCell.tempValue.toLowerCase().trim()
+      const q = untouched ? '' : editingCell.tempValue.toLowerCase().trim()
       const filteredMaterials = q
         ? standardMaterials.filter(m => m.toLowerCase().includes(q) || (m === 'No Material' && 'client supplies'.includes(q)))
         : standardMaterials
@@ -2554,7 +2558,7 @@ export function JobSheetSpreadsheet() {
     // 4 & 5. Start Time & End Time (AM / PM pills + suggestions)
     if (col.id === 'start_time' || col.id === 'end_time') {
       const typed = (editingCell.tempValue || '').trim()
-      const q = typed.toLowerCase()
+      const q = untouched ? '' : typed.toLowerCase()
       const filteredTimes = q
         ? TIME_SUGGESTIONS.filter(t => t.toLowerCase().includes(q))
         : TIME_SUGGESTIONS
@@ -3305,14 +3309,30 @@ export function JobSheetSpreadsheet() {
     const added = rows.filter(r => !loadedSnapshot.has(r.id) && !isBlankNewRow(r))
     const edited = rows.filter(r => { const o = loadedSnapshot.get(r.id); return o && !sameJobRow(o, r) })
     const removed = Array.from(loadedSnapshot.values()).filter(o => !gridIds.has(o.id))
-    if (added.length + edited.length + removed.length === 0) { showToast('Nothing to save'); return }
+    if (added.length + edited.length + removed.length === 0) {
+      setLoadedSnapshot(new Map(rows.map(r => [r.id, r]))) // nothing left to save — the button shows "Saved"
+      showToast('Nothing to save')
+      return
+    }
+
+    // A job with several cleaners is shown as one grid row per cleaner (ensureThreeRowsPerStaff).
+    // Those rows are not jobs of their own: saving them one by one cut the other cleaners off the job
+    // (lead row) or created a duplicate job on every save (other rows). They are folded back into their job.
+    const splitOrigin = (r: DailyJob) => ((r as any)._isSplitShift ? String((r as any)._originalJobId || '') : '')
+    const splitJobIds = new Set([...edited, ...removed].map(splitOrigin).filter(Boolean))
+    const inTouchedSplit = (r: DailyJob) => splitJobIds.has(splitOrigin(r))
+    const plainEdited = edited.filter(r => !inTouchedSplit(r))
+    const plainRemoved = removed.filter(r => !inTouchedSplit(r))
 
     const live = new Map(dailyJobs.map(j => [j.id, j]))
-    const changedElsewhere = [...edited, ...removed].filter(r => {
-      const now = live.get(r.id)
-      const was = loadedSnapshot.get(r.id)
-      return !now || (was && !sameJobRow(was, now))
-    })
+    const changedElsewhere = [
+      ...[...plainEdited, ...plainRemoved].filter(r => {
+        const now = live.get(r.id)
+        const was = loadedSnapshot.get(r.id)
+        return !now || (was && !sameJobRow(was, now))
+      }),
+      ...Array.from(splitJobIds).filter(id => !live.has(id)).map(id => ({ id })),
+    ]
     if (changedElsewhere.length > 0) {
       const ok = await confirmAsync({
         title: 'Changed on another screen',
@@ -3324,7 +3344,7 @@ export function JobSheetSpreadsheet() {
     }
 
     const payload = (row: DailyJob) => {
-      const mcInfo = getMultiCleanerPaymentInfo(row, gridRows)
+      const mcInfo = getMultiCleanerPaymentInfo(row, rows)
       const isSec = Boolean(mcInfo?.isSecondary)
       let savedTeam = ''
       if (mcInfo?.isMultiCleaner && mcInfo.teamRef) {
@@ -3353,13 +3373,57 @@ export function JobSheetSpreadsheet() {
       }
     }
 
+    /** One saved job from its per-cleaner rows: cleaners joined, shared fields from the row that changed */
+    const splitJobPayload = (jobId: string) => {
+      const now = rows.filter(r => splitOrigin(r) === jobId)
+      if (now.length === 0) return null
+      const before = Array.from(loadedSnapshot.values()).filter(r => splitOrigin(r) === jobId)
+      const lead = now.find(r => (r as any)._isPrimaryCleaner) || before.find(r => (r as any)._isPrimaryCleaner) || now[0]
+      const shared = ['start_time', 'end_time', 'duty_hours', 'ot_hours', 'address', 'area', 'material', 'remarks', 'service'] as const
+      const value = <K extends (typeof shared)[number]>(k: K): DailyJob[K] => {
+        const changed = now.find(r => { const b = before.find(x => x.id === r.id); return b && String(b[k] ?? '') !== String(r[k] ?? '') })
+        return (changed ?? now.find(r => (r as any)._isPrimaryCleaner) ?? now[0])[k]
+      }
+      const names = now.map(r => (r.staff_name || '').trim()).filter(Boolean)
+      return {
+        date: lead.date || selectedDate,
+        staff_name: names.join(', '),
+        team_name: names.length > 1 ? String((lead as any)._teamReference || lead.team_name || '') : '',
+        start_time: value('start_time'),
+        end_time: value('end_time'),
+        duty_hours: cleanNum(value('duty_hours')),
+        ot_hours: cleanNum(value('ot_hours')),
+        address: value('address'),
+        area: value('area'),
+        material: value('material'),
+        remarks: value('remarks'),
+        service: value('service'),
+        charges: cleanNum(lead.charges), // the lead row holds the money of the whole team
+        received: cleanNum(lead.received),
+        payment_mode: lead.payment_mode,
+        is_overtime: cleanNum(value('ot_hours')) > 0,
+      }
+    }
+
     reloadAfterSaveRef.current = true
-    removed.forEach(r => { if (live.has(r.id)) deleteDailyJob(r.id) })
-    edited.forEach(r => {
+    plainRemoved.forEach(r => { if (live.has(r.id)) deleteDailyJob(r.id) })
+    plainEdited.forEach(r => {
       if (live.has(r.id)) updateDailyJob(r.id, payload(r))
       else addDailyJob(payload(r)) // deleted elsewhere — the user chose to keep their version
     })
+    splitJobIds.forEach(jobId => {
+      const p = splitJobPayload(jobId)
+      if (!p) { if (live.has(jobId)) deleteDailyJob(jobId); return } // every cleaner row removed
+      if (live.has(jobId)) updateDailyJob(jobId, p)
+      else addDailyJob(p)
+    })
     added.forEach(r => addDailyJob(payload(r)))
+    // Only rows that were already gone were "saved": no job changes, so no reload comes — settle here
+    const wroteSomething = added.length + plainEdited.length + splitJobIds.size + plainRemoved.filter(r => live.has(r.id)).length > 0
+    if (!wroteSomething) {
+      reloadAfterSaveRef.current = false
+      setLoadedSnapshot(new Map(rows.map(r => [r.id, r])))
+    }
 
     try { localStorage.removeItem(DRAFT_PREFIX + periodKey) } catch { /* ignore */ }
     setDraftOffer(null)
@@ -5907,11 +5971,13 @@ export function JobSheetSpreadsheet() {
           initialName=""
           initialArea={gridRows[quickClientState.rowIdx ?? 0]?.area || ''}
           onClose={() => {
-            // Keep typed address if user cancelled
+            // Registered: onClientRegistered already wrote the row (this close comes right after it)
+            if (quickClientRegisteredRef.current) { quickClientRegisteredRef.current = false; return }
+            // Cancelled: keep the typed address on the row, as typed
             if (quickClientState.rowIdx !== null && quickClientState.rowIdx < gridRows.length && quickClientState.name) {
               const updated = [...gridRows]
               const row = { ...updated[quickClientState.rowIdx] }
-              if (!row.address) {
+              if (row.address !== quickClientState.name) {
                 row.address = quickClientState.name
                 updated[quickClientState.rowIdx] = row
                 pushState(updated)
@@ -5920,6 +5986,7 @@ export function JobSheetSpreadsheet() {
             setQuickClientState({ open: false, rowIdx: null, name: '' })
           }}
           onClientRegistered={(newClient) => {
+            quickClientRegisteredRef.current = true
             if (quickClientState.rowIdx !== null && quickClientState.rowIdx < gridRows.length) {
               const updated = [...gridRows]
               const row = { ...updated[quickClientState.rowIdx] }
