@@ -12,6 +12,7 @@ import {
   Package, MapPin, Clock, CreditCard, UserPlus
 } from 'lucide-react'
 import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
+import { ExcelCellPopover, ExcelPopoverItem, ExcelPopoverCustom, ExcelPopoverEmpty } from '@/components/dailyJobSheet/ExcelCellPopover'
 import { SpreadsheetEditModal } from '@/components/dailyJobSheet/SpreadsheetEditModal'
 import { Modal } from '@/components/ui/Modal'
 import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
@@ -1822,6 +1823,7 @@ export function JobSheetSpreadsheet() {
   const [colorPickerCleaner, setColorPickerCleaner] = useState<string | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
+  const editorAnchorRef = useRef<HTMLDivElement>(null) // cell the dropdown opens next to (ExcelCellPopover)
   const formulaInputRef = useRef<HTMLInputElement>(null)
   const spreadsheetRef = useRef<HTMLDivElement>(null)
 
@@ -2319,39 +2321,33 @@ export function JobSheetSpreadsheet() {
     showToast(`✓ Payment Mode set to "${mode}"`)
   }
 
-  // Unified Interactive Cell Editor matching all UX requirements (Stabilized against flickering & fluctuations)
+  // Unified Interactive Cell Editor — every dropdown uses the Address design and opens in a portal
+  // (ExcelCellPopover) so the rows under it can no longer paint over it while the mouse moves (UX-35)
   const renderCellEditor = (col: ColumnDef, targetIdx: number, isLightBg: boolean = true) => {
     if (!editingCell || editingCell.rowIdx !== targetIdx || editingCell.colId !== col.id) return null
-    const isNearBottom = targetIdx >= Math.max(0, visibleGridRows.length - 6)
+    const setTemp = (v: string) => setEditingCell({ ...editingCell, tempValue: v })
+    const cellInputClass = `w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`
 
-    // Standard flicker-free popover wrapper props
-    const popoverProps = {
-      onMouseDown: (e: React.MouseEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-      },
-      onMouseEnter: (e: React.MouseEvent) => e.stopPropagation(),
-      onMouseMove: (e: React.MouseEvent) => e.stopPropagation(),
-      style: { isolation: 'isolate' as const }
-    }
-
-    // 1. Address Column Dropdown (Clean, high-visibility popover matching Add Job Entry selector)
+    // 1. Address Column Dropdown (the reference design)
     if (col.id === 'address') {
-      const isSelectedVal = (bldg: string) => editingCell.tempValue.trim().toLowerCase() === bldg.toLowerCase()
-      const isKnownAddress = filteredClientBuildings.some(item => item.building.trim().toLowerCase() === editingCell.tempValue.trim().toLowerCase())
+      const typed = editingCell.tempValue.trim()
+      const isKnownAddress = filteredClientBuildings.some(item => item.building.trim().toLowerCase() === typed.toLowerCase())
+      const registerNew = () => {
+        setQuickClientState({ open: true, rowIdx: targetIdx, name: typed })
+        setEditingCell(null)
+      }
 
       return (
-        <div className="relative w-full h-7 flex items-center">
+        <div ref={editorAnchorRef} className="relative w-full h-7 flex items-center">
           <input
             ref={inputRef}
             type="text"
             value={editingCell.tempValue}
-            onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+            onChange={e => setTemp(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Escape') setEditingCell(null)
               else if (e.key === 'Enter') {
                 e.preventDefault()
-                const typed = editingCell.tempValue.trim()
                 if (!typed) {
                   commitCellEdit()
                   return
@@ -2361,118 +2357,48 @@ export function JobSheetSpreadsheet() {
                   commitAddressSelect(targetIdx, matched.building, matched.area, matched.isMonthly ? 'Monthly' : undefined)
                 } else {
                   // New address typed: open Add Client popup so user can record WhatsApp & client info
-                  setQuickClientState({ open: true, rowIdx: targetIdx, name: typed })
-                  setEditingCell(null)
+                  registerNew()
                 }
               }
             }}
             placeholder="Search address..."
-            className={`w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+            className={cellInputClass}
           />
-          <div
-            {...popoverProps}
-            className={`absolute z-[9999] left-0 ${
-              isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-            } w-[390px] sm:w-[440px] max-w-xl bg-white border border-slate-200 rounded-xl shadow-2xl p-2.5 text-slate-800 text-[12px] select-none flex flex-col max-h-72 pointer-events-auto transition-none`}
-          >
-            {/* Header */}
-            <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-2 flex items-center justify-between">
-              <span>Address & Client Directory</span>
-              <Building2 size={12} className="text-slate-400" />
-            </div>
-
-            {/* Search Bar matching Add Job Entry */}
-            <div className="relative mb-2 shrink-0">
-              <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                value={editingCell.tempValue}
-                onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
-                placeholder="Search address or client…"
-                className="w-full text-[12.5px] pl-8 pr-7 py-1.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-medium"
-              />
-              {editingCell.tempValue && (
-                <button
-                  type="button"
-                  onMouseDown={e => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setEditingCell({ ...editingCell, tempValue: '' })
-                  }}
-                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 p-0.5 text-[11px] cursor-pointer"
-                  title="Clear search"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Custom Value Option banner - Opens Add Client modal for new address */}
-            {editingCell.tempValue.trim() && !isKnownAddress && (
-              <div
-                onMouseDown={e => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  const typed = editingCell.tempValue.trim()
-                  setQuickClientState({ open: true, rowIdx: targetIdx, name: typed })
-                  setEditingCell(null)
-                }}
-                className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-[12px] font-bold flex items-center justify-between cursor-pointer mb-2 shrink-0 border border-emerald-200 transition-colors shadow-2xs"
-              >
-                <div className="flex items-center gap-2 truncate">
-                  <UserPlus size={14} className="text-emerald-700 stroke-[2.5] shrink-0" />
-                  <span className="truncate">+ Register &ldquo;{editingCell.tempValue.trim()}&rdquo; as New Client (WhatsApp/Details)</span>
-                </div>
-                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-600 text-white shrink-0 ml-2">
-                  Add Client
-                </span>
-              </div>
+          <ExcelCellPopover
+            anchorRef={editorAnchorRef}
+            width={440}
+            title="Address & Client Directory"
+            icon={Building2}
+            search={{ value: editingCell.tempValue, onChange: setTemp, placeholder: 'Search address or client…' }}
+            banner={typed && !isKnownAddress && (
+              <ExcelPopoverCustom onPick={registerNew} icon={UserPlus} badge="Add Client">
+                + Register &ldquo;{typed}&rdquo; as New Client (WhatsApp/Details)
+              </ExcelPopoverCustom>
             )}
-
-            {/* Filtered Building & Client List (Without Monthly Client badge) */}
-            <div className="overflow-y-auto flex-1 space-y-0.5 divide-y divide-slate-100 pr-0.5">
-              {filteredClientBuildings.length === 0 && !editingCell.tempValue.trim() ? (
-                <div className="py-4 text-center text-[12px] text-slate-400">
-                  No registered clients found
-                </div>
-              ) : (
-                filteredClientBuildings.slice(0, 45).map(item => {
-                  const isSelected = isSelectedVal(item.building)
-                  return (
-                    <div
-                      key={item.key}
-                      onMouseDown={e => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        commitAddressSelect(targetIdx, cleanAddressDisplay(item.building), item.area, item.isMonthly ? 'Monthly' : undefined)
-                      }}
-                      className={`px-3 py-2 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between ${
-                        isSelected ? 'bg-emerald-50/80 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <div className="min-w-0 pr-2">
-                        <div className="text-[12.5px] font-bold text-slate-900 flex items-center gap-1.5 flex-wrap truncate">
-                          <Building2 size={13} className="text-slate-400 shrink-0" />
-                          <span className="truncate">{cleanAddressDisplay(item.building)}</span>
-                        </div>
-                        <div className="text-[11px] text-slate-500 truncate mt-0.5">
-                          {item.name} {item.client?.apartment ? `· Apt ${item.client.apartment}` : ''} {item.area ? `· ${item.area}` : ''}
-                        </div>
-                      </div>
-                      {isSelected && <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />}
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </div>
+          >
+            {filteredClientBuildings.length === 0 && !typed ? (
+              <ExcelPopoverEmpty>No registered clients found</ExcelPopoverEmpty>
+            ) : (
+              filteredClientBuildings.slice(0, 45).map(item => (
+                <ExcelPopoverItem
+                  key={item.key}
+                  selected={typed.toLowerCase() === item.building.toLowerCase()}
+                  onPick={() => commitAddressSelect(targetIdx, cleanAddressDisplay(item.building), item.area, item.isMonthly ? 'Monthly' : undefined)}
+                  icon={Building2}
+                  label={cleanAddressDisplay(item.building)}
+                  sub={`${item.name} ${item.client?.apartment ? `· Apt ${item.client.apartment}` : ''} ${item.area ? `· ${item.area}` : ''}`}
+                />
+              ))
+            )}
+          </ExcelCellPopover>
         </div>
       )
     }
 
-    // 2. Location / Area Column Dropdown (Clean, standardized matching Address dropdown)
+    // 2. Location / Area Column Dropdown
     if (col.id === 'area') {
-      const q = editingCell.tempValue.toLowerCase().trim()
+      const typed = editingCell.tempValue.trim()
+      const q = typed.toLowerCase()
       const allUniqueAreas = Array.from(new Set([
         ...areaOptions,
         ...DUBAI_AREAS,
@@ -2487,115 +2413,56 @@ export function JobSheetSpreadsheet() {
       const isCustom = q && !allUniqueAreas.some(a => a.toLowerCase() === q)
 
       return (
-        <div className="relative w-full h-7 flex items-center">
+        <div ref={editorAnchorRef} className="relative w-full h-7 flex items-center">
           <input
             ref={inputRef}
             type="text"
             value={editingCell.tempValue}
-            onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+            onChange={e => setTemp(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Escape') setEditingCell(null)
               else if (e.key === 'Enter') {
-                if (editingCell.tempValue.trim()) {
-                  commitAreaSelect(targetIdx, editingCell.tempValue.trim())
+                if (typed) {
+                  commitAreaSelect(targetIdx, typed)
                 } else {
                   commitCellEdit()
                 }
               }
             }}
             placeholder="Search location/area..."
-            className={`w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+            className={cellInputClass}
           />
-          <div
-            {...popoverProps}
-            className={`absolute z-[9999] left-0 ${
-              isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-            } w-[340px] sm:w-[380px] bg-white border border-slate-200 rounded-xl shadow-2xl p-2.5 text-slate-800 text-[12px] select-none flex flex-col max-h-72 pointer-events-auto transition-none`}
-          >
-            {/* Header */}
-            <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-2 flex items-center justify-between">
-              <span>Location / Area</span>
-              <MapPin size={12} className="text-slate-400" />
-            </div>
-
-            {/* Search Bar */}
-            <div className="relative mb-2 shrink-0">
-              <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                value={editingCell.tempValue}
-                onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
-                placeholder="Search area (e.g. Marina, Downtown)…"
-                className="w-full text-[12.5px] pl-8 pr-7 py-1.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-medium"
-              />
-              {editingCell.tempValue && (
-                <button
-                  type="button"
-                  onMouseDown={e => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    setEditingCell({ ...editingCell, tempValue: '' })
-                  }}
-                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-600 p-0.5 text-[11px] cursor-pointer"
-                  title="Clear search"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Custom Value Option banner */}
-            {isCustom && (
-              <div
-                onMouseDown={e => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  commitAreaSelect(targetIdx, editingCell.tempValue.trim())
-                }}
-                className="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[12px] font-bold flex items-center gap-2 cursor-pointer mb-1.5 shrink-0 transition-colors border border-emerald-200"
-              >
-                <Plus size={13} className="text-emerald-700 stroke-[3]" />
-                <span>Use custom area: &ldquo;{editingCell.tempValue.trim()}&rdquo;</span>
-              </div>
+          <ExcelCellPopover
+            anchorRef={editorAnchorRef}
+            width={380}
+            title="Location / Area"
+            icon={MapPin}
+            search={{ value: editingCell.tempValue, onChange: setTemp, placeholder: 'Search area (e.g. Marina, Downtown)…' }}
+            banner={isCustom && (
+              <ExcelPopoverCustom onPick={() => commitAreaSelect(targetIdx, typed)} icon={Plus} badge="Custom">
+                Use area &ldquo;{typed}&rdquo;
+              </ExcelPopoverCustom>
             )}
-
-            {/* Filtered Area List */}
-            <div className="overflow-y-auto flex-1 space-y-0.5 divide-y divide-slate-100 pr-0.5">
-              {filteredAreas.length === 0 ? (
-                <div className="py-4 text-center text-[12px] text-slate-400">
-                  No matching areas found
-                </div>
-              ) : (
-                filteredAreas.map(ar => {
-                  const isSelected = editingCell.tempValue.trim().toLowerCase() === ar.toLowerCase()
-                  return (
-                    <div
-                      key={ar}
-                      onMouseDown={e => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        commitAreaSelect(targetIdx, ar)
-                      }}
-                      className={`px-3 py-2 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between ${
-                        isSelected ? 'bg-emerald-50 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        <MapPin size={13} className={isSelected ? 'text-emerald-600' : 'text-slate-400'} />
-                        <span className="truncate">{ar}</span>
-                      </div>
-                      {isSelected && <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />}
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </div>
+          >
+            {filteredAreas.length === 0 ? (
+              <ExcelPopoverEmpty>No matching areas found</ExcelPopoverEmpty>
+            ) : (
+              filteredAreas.map(ar => (
+                <ExcelPopoverItem
+                  key={ar}
+                  selected={q === ar.toLowerCase()}
+                  onPick={() => commitAreaSelect(targetIdx, ar)}
+                  icon={MapPin}
+                  label={ar}
+                />
+              ))
+            )}
+          </ExcelCellPopover>
         </div>
       )
     }
 
-    // 3. Material Column Dropdown (Clean, standardized matching Add Job Entry)
+    // 3. Material Column Dropdown
     if (col.id === 'material') {
       const standardMaterials = [
         'No Material', 'Yes', 'Chemicals Only', 'Machines Only', 'Sofa Kit', 'Ladder', 'Steam Cleaner', 'Deep Clean Kit'
@@ -2605,298 +2472,192 @@ export function JobSheetSpreadsheet() {
       const filteredMaterials = q
         ? standardMaterials.filter(m => m.toLowerCase().includes(q) || (m === 'No Material' && 'client supplies'.includes(q)))
         : standardMaterials
+      const saveCustom = () => {
+        if (excelCustomMaterial.trim()) {
+          commitMaterialSelect(targetIdx, excelCustomMaterial.trim())
+          setExcelCustomMaterial('')
+        }
+      }
 
       return (
-        <div className="relative w-full h-7 flex items-center">
+        <div ref={editorAnchorRef} className="relative w-full h-7 flex items-center">
           <input
             ref={inputRef}
             type="text"
             value={editingCell.tempValue}
-            onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+            onChange={e => setTemp(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter') commitCellEdit()
               else if (e.key === 'Escape') setEditingCell(null)
             }}
             placeholder="Material..."
-            className={`w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+            className={cellInputClass}
           />
-          <div
-            {...popoverProps}
-            className={`absolute z-[9999] left-0 ${
-              isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-            } w-72 sm:w-80 bg-white border border-slate-200 rounded-xl shadow-2xl p-2.5 text-slate-800 text-[12px] select-none flex flex-col pointer-events-auto transition-none`}
-          >
-            <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1.5 flex items-center justify-between">
-              <span>Cleaning Materials / Supplies</span>
-              <Package size={12} className="text-slate-400" />
-            </div>
-
-            {/* Search input */}
-            <div className="relative mb-2 shrink-0">
-              <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
-              <input
-                type="text"
-                value={editingCell.tempValue}
-                onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
-                placeholder="Search material…"
-                className="w-full text-[12px] pl-7 pr-6 py-1.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:border-emerald-500 focus:bg-white font-medium"
-              />
-            </div>
-
-            <div className="space-y-0.5 max-h-52 overflow-y-auto pr-0.5 divide-y divide-slate-100">
-              {filteredMaterials.map(mat => {
-                const isNo = mat === 'No Material'
-                const isSelected = isNo
-                  ? (!curMat || curMat === 'No' || curMat === 'No Material')
-                  : curMat.toLowerCase() === mat.toLowerCase()
-                const saveVal = isNo ? 'No' : mat
-
-                return (
-                  <div
-                    key={mat}
-                    onMouseDown={e => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      commitMaterialSelect(targetIdx, saveVal)
-                    }}
-                    className={`px-3 py-2 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between text-[12px] ${
-                      isSelected ? 'bg-amber-50 text-amber-950 font-bold' : 'hover:bg-slate-50 text-slate-700 font-medium'
-                    }`}
-                  >
-                    <span>{mat === 'No Material' ? 'No Material (Client Supplies)' : mat}</span>
-                    {isSelected && (
-                      <Check size={14} className="text-amber-700 stroke-[3] shrink-0" />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Custom Material Input matching AddJobModal */}
-            <div className="pt-2 mt-1.5 border-t border-slate-100 shrink-0">
-              <div className="flex items-center gap-1.5 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
-                <input
-                  type="text"
-                  placeholder="Type custom material…"
-                  value={excelCustomMaterial}
-                  onChange={e => setExcelCustomMaterial(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      if (excelCustomMaterial.trim()) {
-                        commitMaterialSelect(targetIdx, excelCustomMaterial.trim())
-                        setExcelCustomMaterial('')
+          <ExcelCellPopover
+            anchorRef={editorAnchorRef}
+            width={340}
+            title="Cleaning Materials / Supplies"
+            icon={Package}
+            search={{ value: editingCell.tempValue, onChange: setTemp, placeholder: 'Search material…' }}
+            listMaxHeight={220}
+            footer={
+              <div className="pt-2 mt-2 border-t border-slate-100 shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="Type custom material…"
+                    value={excelCustomMaterial}
+                    onChange={e => setExcelCustomMaterial(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        saveCustom()
                       }
-                    }
-                  }}
-                  className="flex-1 text-[11.5px] px-2 py-1 bg-white border border-emerald-400 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold text-slate-900"
-                />
-                <button
-                  type="button"
-                  onMouseDown={e => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    if (excelCustomMaterial.trim()) {
-                      commitMaterialSelect(targetIdx, excelCustomMaterial.trim())
-                      setExcelCustomMaterial('')
-                    }
-                  }}
-                  className="w-6 h-6 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center transition-colors shadow-2xs cursor-pointer shrink-0"
-                  title="Save Custom Material"
-                >
-                  <Check size={12} className="stroke-[3]" />
-                </button>
+                    }}
+                    className="flex-1 text-[12.5px] px-3 py-1.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:border-emerald-500 focus:bg-white font-medium"
+                  />
+                  <button
+                    type="button"
+                    onMouseDown={e => { e.preventDefault(); saveCustom() }}
+                    className="w-7 h-7 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center shadow-2xs cursor-pointer shrink-0"
+                    title="Save Custom Material"
+                  >
+                    <Check size={13} className="stroke-[3]" />
+                  </button>
+                </div>
               </div>
-            </div>
-          </div>
+            }
+          >
+            {filteredMaterials.length === 0 ? (
+              <ExcelPopoverEmpty>No matching material — type it below</ExcelPopoverEmpty>
+            ) : (
+              filteredMaterials.map(mat => {
+                const isNo = mat === 'No Material'
+                return (
+                  <ExcelPopoverItem
+                    key={mat}
+                    selected={isNo ? (!curMat || curMat === 'No' || curMat === 'No Material') : curMat.toLowerCase() === mat.toLowerCase()}
+                    onPick={() => commitMaterialSelect(targetIdx, isNo ? 'No' : mat)}
+                    icon={Package}
+                    label={isNo ? 'No Material' : mat}
+                    sub={isNo ? 'Client supplies' : undefined}
+                  />
+                )
+              })
+            )}
+          </ExcelCellPopover>
         </div>
       )
     }
 
-    // 4 & 5. Start Time & End Time with standardized dropdown (Search + AM/PM Pills + Categorized suggestions)
+    // 4 & 5. Start Time & End Time (AM / PM pills + suggestions)
     if (col.id === 'start_time' || col.id === 'end_time') {
-      const curTime = (editingCell.tempValue || '').trim()
-      const q = curTime.toLowerCase()
+      const typed = (editingCell.tempValue || '').trim()
+      const q = typed.toLowerCase()
       const filteredTimes = q
         ? TIME_SUGGESTIONS.filter(t => t.toLowerCase().includes(q))
         : TIME_SUGGESTIONS
+      const pill = (label: string, value: string, active: boolean) => (
+        <button
+          type="button"
+          onMouseDown={e => { e.preventDefault(); setTemp(value) }}
+          className={`flex-1 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
+            active ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+          }`}
+        >
+          {label}
+        </button>
+      )
 
       return (
-        <div className="relative w-full h-full flex items-center">
+        <div ref={editorAnchorRef} className="relative w-full h-full flex items-center">
           <input
             ref={inputRef}
             type="text"
             value={editingCell.tempValue}
-            onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+            onChange={e => setTemp(e.target.value)}
             onKeyDown={handleEditorKeyDown}
             placeholder="e.g. 09:00 AM"
-            className={`w-full h-full text-[12px] font-mono border-0 outline-none p-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+            className={`${cellInputClass} font-mono`}
           />
-          <div
-            {...popoverProps}
-            className={`absolute z-[9999] left-0 ${
-              isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-            } w-[280px] sm:w-[320px] bg-white border border-slate-200 rounded-xl shadow-2xl p-2.5 text-slate-800 text-[11.5px] select-none flex flex-col pointer-events-auto transition-none`}
+          <ExcelCellPopover
+            anchorRef={editorAnchorRef}
+            width={320}
+            title={col.id === 'start_time' ? 'Shift Start Time' : 'Shift End Time'}
+            icon={Clock}
+            banner={
+              <>
+                <div className="flex items-center gap-1 mb-2 shrink-0">
+                  {pill('All', '', !q.includes('am') && !q.includes('pm'))}
+                  {pill('AM (Morning)', 'AM', q === 'am')}
+                  {pill('PM (Evening)', 'PM', q === 'pm')}
+                </div>
+                {q && q !== 'am' && q !== 'pm' && !TIME_SUGGESTIONS.some(t => t.toLowerCase() === q) && (
+                  <ExcelPopoverCustom onPick={() => commitTimeSelect(targetIdx, col.id as any, typed)} icon={Plus} badge="Custom">
+                    Use time &ldquo;{typed}&rdquo;
+                  </ExcelPopoverCustom>
+                )}
+              </>
+            }
+            listMaxHeight={220}
           >
-            {/* Header */}
-            <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-2 flex items-center justify-between">
-              <span>{col.id === 'start_time' ? 'Shift Start Time' : 'Shift End Time'}</span>
-              <Clock size={12} className="text-slate-400" />
-            </div>
-
-            {/* Quick AM / PM Pills */}
-            <div className="flex items-center gap-1 mb-2 shrink-0">
-              <button
-                type="button"
-                onMouseDown={e => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setEditingCell({ ...editingCell, tempValue: '' })
-                }}
-                className={`flex-1 py-1 rounded-lg text-[10.5px] font-bold border transition-colors ${
-                  !q.includes('am') && !q.includes('pm') ? 'bg-slate-900 text-white border-slate-900' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onMouseDown={e => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setEditingCell({ ...editingCell, tempValue: 'AM' })
-                }}
-                className={`flex-1 py-1 rounded-lg text-[10.5px] font-bold border transition-colors ${
-                  q === 'am' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                }`}
-              >
-                AM (Morning)
-              </button>
-              <button
-                type="button"
-                onMouseDown={e => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  setEditingCell({ ...editingCell, tempValue: 'PM' })
-                }}
-                className={`flex-1 py-1 rounded-lg text-[10.5px] font-bold border transition-colors ${
-                  q === 'pm' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100'
-                }`}
-              >
-                PM (Evening)
-              </button>
-            </div>
-
-            {/* Custom Time Prompt if user typed something specific */}
-            {q && !TIME_SUGGESTIONS.some(t => t.toLowerCase() === q) && (
-              <div
-                onMouseDown={e => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  commitTimeSelect(targetIdx, col.id as any, editingCell.tempValue.trim())
-                }}
-                className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[11.5px] font-bold flex items-center gap-1.5 cursor-pointer mb-2 shrink-0 border border-emerald-200"
-              >
-                <Plus size={12} className="text-emerald-700 stroke-[3]" />
-                <span>Use time: &ldquo;{editingCell.tempValue.trim()}&rdquo;</span>
-              </div>
+            {filteredTimes.length === 0 ? (
+              <ExcelPopoverEmpty>No matching time</ExcelPopoverEmpty>
+            ) : (
+              filteredTimes.map(timeStr => (
+                <ExcelPopoverItem
+                  key={timeStr}
+                  selected={typed.toUpperCase() === timeStr.toUpperCase()}
+                  onPick={() => commitTimeSelect(targetIdx, col.id as any, timeStr)}
+                  icon={Clock}
+                  label={timeStr}
+                  mono
+                />
+              ))
             )}
-
-            {/* Time List */}
-            <div className="space-y-0.5 overflow-y-auto max-h-52 pr-0.5 divide-y divide-slate-100">
-              {filteredTimes.map(timeStr => {
-                const isSelected = curTime.toUpperCase() === timeStr.toUpperCase()
-                return (
-                  <div
-                    key={timeStr}
-                    onMouseDown={e => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      commitTimeSelect(targetIdx, col.id as any, timeStr)
-                    }}
-                    className={`px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer font-mono font-semibold flex items-center justify-between ${
-                      isSelected ? 'bg-emerald-50 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
-                    }`}
-                  >
-                    <span>{timeStr}</span>
-                    {isSelected && <Check size={13} className="text-emerald-700 stroke-[3]" />}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+          </ExcelCellPopover>
         </div>
       )
     }
 
-    // 6. Payment Mode Column Dropdown (Clean, standardized matching Address dropdown)
+    // 6. Payment Mode Column Dropdown
     if (col.id === 'payment_mode') {
       const curMode = editingCell.tempValue
-      const modes: { id: PaymentMode; name: string; badge: string; color: string; desc: string }[] = [
-        { id: 'Cash', name: 'Cash', badge: 'Cash Payment', color: 'bg-emerald-50 text-emerald-800 border-emerald-200', desc: 'Direct cash collection on-site' },
-        { id: 'Online', name: 'Online', badge: 'Online Transfer', color: 'bg-indigo-50 text-indigo-800 border-indigo-200', desc: 'Card, bank transfer, or payment link' },
-        { id: 'Monthly', name: 'Monthly', badge: 'Monthly Contract', color: 'bg-blue-50 text-blue-800 border-blue-200', desc: 'Monthly recurring contract invoice' },
-        { id: 'Pending', name: 'Pending', badge: 'Pending Due', color: 'bg-amber-50 text-amber-800 border-amber-200', desc: 'Payment uncollected / Due later' },
+      const modes: { id: PaymentMode; badge: string; color: string; desc: string }[] = [
+        { id: 'Cash', badge: 'Cash Payment', color: 'bg-emerald-50 text-emerald-800 border-emerald-200', desc: 'Direct cash collection on-site' },
+        { id: 'Online', badge: 'Online Transfer', color: 'bg-indigo-50 text-indigo-800 border-indigo-200', desc: 'Card, bank transfer, or payment link' },
+        { id: 'Monthly', badge: 'Monthly Contract', color: 'bg-blue-50 text-blue-800 border-blue-200', desc: 'Monthly recurring contract invoice' },
+        { id: 'Pending', badge: 'Pending Due', color: 'bg-amber-50 text-amber-800 border-amber-200', desc: 'Payment uncollected / Due later' },
       ]
 
       return (
-        <div className="relative w-full h-7 flex items-center">
+        <div ref={editorAnchorRef} className="relative w-full h-7 flex items-center">
           <input
             ref={inputRef}
             type="text"
             value={editingCell.tempValue}
-            onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
+            onChange={e => setTemp(e.target.value)}
             onKeyDown={handleEditorKeyDown}
             placeholder="Mode..."
-            className={`w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
+            className={cellInputClass}
           />
-          <div
-            {...popoverProps}
-            className={`absolute z-[9999] left-0 ${
-              isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
-            } w-[290px] sm:w-[320px] bg-white border border-slate-200 rounded-xl shadow-2xl p-2.5 text-slate-800 text-[12px] select-none flex flex-col pointer-events-auto transition-none`}
-          >
-            {/* Header */}
-            <div className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-2 flex items-center justify-between">
-              <span>Payment Mode</span>
-              <CreditCard size={12} className="text-slate-400" />
-            </div>
-
-            {/* Mode items */}
-            <div className="space-y-1.5">
-              {modes.map(m => {
-                const isSelected = curMode.toLowerCase() === m.id.toLowerCase()
-                return (
-                  <div
-                    key={m.id}
-                    onMouseDown={e => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      commitPaymentModeSelect(targetIdx, m.id)
-                    }}
-                    className={`px-3 py-2 rounded-xl transition-colors cursor-pointer text-left flex items-center justify-between border ${
-                      isSelected ? 'bg-slate-900 text-white border-slate-900 shadow-xs' : 'hover:bg-slate-50 border-slate-200 text-slate-700'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded border ${m.color}`}>
-                          {m.name}
-                        </span>
-                        <span className={`text-[12px] font-bold ${isSelected ? 'text-white' : 'text-slate-900'}`}>
-                          {m.badge}
-                        </span>
-                      </div>
-                      <div className={`text-[10.5px] mt-0.5 ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
-                        {m.desc}
-                      </div>
-                    </div>
-                    {isSelected && <Check size={14} className="text-emerald-400 stroke-[3] shrink-0" />}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+          <ExcelCellPopover anchorRef={editorAnchorRef} width={320} title="Payment Mode" icon={CreditCard}>
+            {modes.map(m => (
+              <ExcelPopoverItem
+                key={m.id}
+                selected={curMode.toLowerCase() === m.id.toLowerCase()}
+                onPick={() => commitPaymentModeSelect(targetIdx, m.id)}
+                icon={CreditCard}
+                label={
+                  <span className="flex items-center gap-2">
+                    <span className={`text-[10px] font-extrabold uppercase px-1.5 rounded border ${m.color}`}>{m.id}</span>
+                    {m.badge}
+                  </span>
+                }
+                sub={m.desc}
+              />
+            ))}
+          </ExcelCellPopover>
         </div>
       )
     }

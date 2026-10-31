@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(excel-studio): Excel Job Sheet dropdowns (Address, Area, Start / End Time, Material, Mode) no longer flicker when the mouse moves over them — they open in a portal above the grid, next to the cell, and flip up near the bottom of the screen; all six share the Address design (header, search, green custom row, list with check) via `ExcelCellPopover` (UX-35)
 - fix(sync): Bookings ↔ Daily Job Sheet — editing a job-sheet card no longer wipes the collected amount (BJ-01); booking edits are saved to the job row in the database (BJ-02); booking payments land on the job row (BJ-03); monthly visits only after load and once per day (BJ-04); one completion path with linked invoice + next visit with its own row (BJ-05…07); cancel/delete/re-import keep the link or a copy (BJ-08…10); link by booking_id (BJ-11); card buttons work (BJ-12); material/notes/area sync (BJ-14…15); bookings do not rewrite monthly contracts (BJ-16); BK badge + delete confirm on the job sheet (BJ-17); Dubai due date (BJ-18) — R-SYNC-06
 - fix(cloud): website leads saved in Supabase (webhook + backfill + outbox); browser-only rows uploaded once per device; missing columns no longer block rows (migration `2026-11-01_cloud_columns.sql` adds `daily_jobs.team_name`); service types, review requests, GHL settings, Drive webhook URL cloud-synced; settings / profile saves report failures — R-SYNC-07
 
