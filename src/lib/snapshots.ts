@@ -24,7 +24,7 @@ export interface DeletionSnapshot {
 
 export const SNAPSHOT_KEY = 'safaeewala_deletion_snapshots' // local only, never cloud-synced
 const MAX_SNAPSHOTS = 10
-const MAX_STORED_CHARS = 2_500_000 // keep localStorage usable for the app's own cache
+const MAX_STORED_CHARS = 600_000 // keep localStorage usable — bigger copies are downloaded as a file instead
 export const SNAPSHOT_EVENT = 'safaeewala:snapshots-changed'
 
 export function listSnapshots(): DeletionSnapshot[] {

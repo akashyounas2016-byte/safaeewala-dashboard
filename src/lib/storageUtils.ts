@@ -16,6 +16,21 @@ function flagStorageProblem(key: string, err: unknown) {
   reportError(err instanceof Error ? err : new Error(String(err)), `localStorage ${key}`)
 }
 
+/**
+ * Browser copies of cloud tables. Since every record is saved in Supabase (R-SYNC-07) these are only a
+ * cache for a fast start: when the browser is full they are stored without heavy file/photo data,
+ * or skipped — never a reason to warn the user.
+ */
+const TABLE_CACHE_KEYS = new Set([
+  'safaeewala_bookings', 'safaeewala_clients', 'safaeewala_employees', 'safaeewala_agencies',
+  'safaeewala_invoices', 'safaeewala_inventory', 'safaeewala_daily_jobs', 'safaeewala_daily_expenses',
+  'safaeewala_fluent_form_leads',
+])
+/** Same rows without embedded files / photos (data: URLs) — they stay in the cloud */
+function withoutEmbeddedFiles(value: unknown): unknown {
+  return JSON.parse(JSON.stringify(value, (_k, v) => (typeof v === 'string' && v.startsWith('data:') && v.length > 2000 ? undefined : v)))
+}
+
 export function safeLocalStorageSet(key: string, value: any): boolean {
   try {
     const serialized = typeof value === 'string' ? value : JSON.stringify(value)
@@ -44,6 +59,7 @@ export function safeLocalStorageSet(key: string, value: any): boolean {
           'safaeewala_bookings_read_notifs',
           'safaeewala_bookings_deleted_notifs',
           'safaeewala_snapshots',
+          'safaeewala_deletion_snapshots', // before-delete copies (Settings → Backup) — up to 600 KB
         ]
         nonCriticalKeys.forEach(k => localStorage.removeItem(k))
 
@@ -51,6 +67,16 @@ export function safeLocalStorageSet(key: string, value: any): boolean {
         localStorage.setItem(key, serialized)
         return true
       } catch (again) {
+        if (TABLE_CACHE_KEYS.has(key)) {
+          // A cloud table's browser copy: keep a light version, or none — the data is in the cloud
+          try {
+            localStorage.setItem(key, JSON.stringify(withoutEmbeddedFiles(value)))
+          } catch {
+            localStorage.removeItem(key) // a stale copy is worse than none
+            console.info(`[Storage] "${key}" is not cached in this browser (storage full) — it loads from the cloud`)
+          }
+          return true
+        }
         // Still full: keep the app running but tell the user (TA-21)
         flagStorageProblem(key, again)
         return false
@@ -71,9 +97,17 @@ export function pruneNonCriticalStorage(): void {
     'safaeewala_bookings_read_notifs',
     'safaeewala_bookings_deleted_notifs',
     'safaeewala_snapshots',
+    'safaeewala_deletion_snapshots',
   ]
   nonCriticalKeys.forEach(k => {
     try { localStorage.removeItem(k) } catch {}
+  })
+  // Cloud tables' browser copies keep their rows but drop embedded files / photos (still in the cloud)
+  TABLE_CACHE_KEYS.forEach(k => {
+    try {
+      const raw = localStorage.getItem(k)
+      if (raw && raw.length > 200_000) localStorage.setItem(k, JSON.stringify(withoutEmbeddedFiles(JSON.parse(raw))))
+    } catch { /* leave it */ }
   })
   try {
     for (let i = localStorage.length - 1; i >= 0; i--) {
