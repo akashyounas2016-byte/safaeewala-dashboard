@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(excel-studio): Address, Location, Material, Mode, Start time and End time cells open their dropdown with one click (or double-click), also when empty, and show a small ▾; Material dropdown offers Yes, No, Sofa, custom values already used on the sheet and a custom box (UX-35)
 - fix(excel-studio): Save — a job with several cleaners is saved as one job again: editing the lead cleaner's row no longer removes the other cleaners, editing another cleaner's row no longer adds a duplicate job each save, and no false "changed on another screen" prompt (R-SYNC-08); the button returns to "Saved" when nothing is left to write
 - fix(excel-studio): Address dropdown opens with every client (current address highlighted and scrolled to) like Add Job Entry, filters when typing; a new address opens Add New Client and, once registered, the row keeps the client's address and area (they were overwritten when the popup closed); picking a client sets its area. Area, Material and Time lists also open in full. Time list 9:00 AM – 11:00 PM (UX-35)
 - feat(bookings, daily-job-sheet, settings): Multi-screen UX refinement batch:

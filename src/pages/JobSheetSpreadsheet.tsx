@@ -118,7 +118,7 @@ export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
   { id: 'end_time',     label: 'End time',   width: '100px', type: 'time',   formulaHint: 'e.g. 03:00 PM' },
   { id: 'address',      label: 'Address',    width: '230px', type: 'text',   formulaHint: 'Client name & address' },
   { id: 'area',         label: 'Location',   width: '125px', type: 'text',   formulaHint: 'Area or location' },
-  { id: 'material',     label: 'Material',   width: '120px', type: 'select', options: ['No', 'Yes', 'Sofa', 'Ladder', 'Steam Cleaner', 'Deep Clean Kit'] },
+  { id: 'material',     label: 'Material',   width: '120px', type: 'select', options: ['Yes', 'No', 'Sofa'] },
   { id: 'charges',      label: 'Charges',    width: '95px',  type: 'number', formulaHint: 'Gross charges' },
   { id: 'received',     label: 'Received',   width: '95px',  type: 'number', formulaHint: 'Amount received' },
   { id: 'pending',      label: 'Pending',    width: '95px',  type: 'formula', formulaHint: 'Pending amount' },
@@ -1201,6 +1201,8 @@ const COLUMN_PRESETS: Record<string, string[] | null> = {
 const newRowId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 /** Columns that are calculated, never typed into */
 const READ_ONLY_COLS = new Set(['pending'])
+/** Columns whose cells open their dropdown on a single click, filled or empty (UX-35) */
+const DROPDOWN_COLS = new Set(['address', 'area', 'material', 'payment_mode', 'start_time', 'end_time'])
 /** Time suggestions formatted with explicit AM and PM */
 export const TIME_SUGGESTIONS = [ // working day 9:00 AM – 11:00 PM
   '09:00 AM', '09:30 AM',
@@ -2044,6 +2046,9 @@ export function JobSheetSpreadsheet() {
       commitCellEdit()
     }
     setActiveCell({ rowIdx, colId })
+    // Dropdown columns open straight away — one click is enough, also on an empty cell
+    const alreadyOpen = editingCell && editingCell.rowIdx === rowIdx && editingCell.colId === colId
+    if (DROPDOWN_COLS.has(colId) && !alreadyOpen) handleCellDoubleClick(rowIdx, colId)
   }
 
   // Cell Double-click Handler
@@ -2469,9 +2474,10 @@ export function JobSheetSpreadsheet() {
 
     // 3. Material Column Dropdown
     if (col.id === 'material') {
-      const standardMaterials = [
-        'No Material', 'Yes', 'Chemicals Only', 'Machines Only', 'Sofa Kit', 'Ladder', 'Steam Cleaner', 'Deep Clean Kit'
-      ]
+      const usedCustom = Array.from(new Set(gridRows.map(r => String(r.material || '').trim()).filter(Boolean)))
+        .filter(m => !['yes', 'no', 'no material', 'sofa', '—'].includes(m.toLowerCase()))
+        .sort()
+      const standardMaterials = ['Yes', 'No Material', 'Sofa', ...usedCustom]
       const curMat = editingCell.tempValue || 'No'
       const q = untouched ? '' : editingCell.tempValue.toLowerCase().trim()
       const filteredMaterials = q
@@ -2544,8 +2550,8 @@ export function JobSheetSpreadsheet() {
                     selected={isNo ? (!curMat || curMat === 'No' || curMat === 'No Material') : curMat.toLowerCase() === mat.toLowerCase()}
                     onPick={() => commitMaterialSelect(targetIdx, isNo ? 'No' : mat)}
                     icon={Package}
-                    label={isNo ? 'No Material' : mat}
-                    sub={isNo ? 'Client supplies' : undefined}
+                    label={isNo ? 'No' : mat}
+                    sub={isNo ? 'No material — client supplies' : mat === 'Yes' ? 'Our cleaning material' : mat === 'Sofa' ? 'Sofa cleaning kit' : 'Custom'}
                   />
                 )
               })
@@ -4692,6 +4698,9 @@ export function JobSheetSpreadsheet() {
                                     ) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
                                   </span>
                                 )}
+                                {!isCellEditing && DROPDOWN_COLS.has(col.id) && (
+                                  <ChevronDown size={12} className="absolute right-1 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none" />
+                                )}
                               </td>
                             )
                           })}
@@ -4980,6 +4989,9 @@ export function JobSheetSpreadsheet() {
                                 <span>{cleanAddressDisplay(displayVal)}</span>
                               ) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
                             </span>
+                          )}
+                          {!isCellEditing && DROPDOWN_COLS.has(col.id) && (
+                            <ChevronDown size={12} className="absolute right-1 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none" />
                           )}
                         </td>
                       )
