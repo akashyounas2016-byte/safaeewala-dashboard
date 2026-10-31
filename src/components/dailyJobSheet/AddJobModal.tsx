@@ -472,9 +472,10 @@ export function AddJobForm({
   const [received, setReceived] = useState<number | string>(initial?.received ?? '')
   const [paymentMode, setPaymentMode] = useState<PaymentMode>(initial?.payment_mode ?? 'Cash')
 
-  // ── Row Color Preset (18 options with View All) ──
+  // ── Row Color Preset Dropdown (18 options in Drop-Up Mode) ──
   const [rowColor, setRowColor] = useState<string>(initial?.row_color || 'default')
-  const [showAllColors, setShowAllColors] = useState(false)
+  const [colorDropdownOpen, setColorDropdownOpen] = useState(false)
+  const colorRef = useRef<HTMLDivElement>(null)
 
   // ── Cleaning Material State & Custom Add with Tick/Cross ──
   const [materialsList, setMaterialsList] = useState<string[]>(() => {
@@ -508,6 +509,9 @@ export function AddJobForm({
       if (materialRef.current && !materialRef.current.contains(e.target as Node)) {
         setMaterialDropdownOpen(false)
         setIsAddingCustomMaterial(false)
+      }
+      if (colorRef.current && !colorRef.current.contains(e.target as Node)) {
+        setColorDropdownOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -709,16 +713,10 @@ export function AddJobForm({
     })
   }
 
-  // Presets to display (show strictly 1 row = 4 presets initially, or all 18 when expanded)
-  const displayedColorPresets = useMemo(() => {
-    if (showAllColors) return ROW_COLOR_PRESETS
-    const initial = ROW_COLOR_PRESETS.slice(0, 4)
-    if (rowColor && !initial.some(p => p.id === rowColor)) {
-      const selectedPreset = ROW_COLOR_PRESETS.find(p => p.id === rowColor)
-      if (selectedPreset) return [...initial.slice(0, 3), selectedPreset]
-    }
-    return initial
-  }, [showAllColors, rowColor])
+  // Selected color preset for trigger display
+  const selectedColorPreset = useMemo(() => {
+    return ROW_COLOR_PRESETS.find(p => p.id === rowColor) || ROW_COLOR_PRESETS[0]
+  }, [rowColor])
 
   return (
     <form id="add-job-entry-form" onSubmit={handleSubmit} className="text-slate-800">
@@ -1154,7 +1152,10 @@ export function AddJobForm({
 
               {/* Material Trigger Box */}
               <div
-                onClick={() => setMaterialDropdownOpen(prev => !prev)}
+                onClick={() => {
+                  setMaterialDropdownOpen(prev => !prev)
+                  setColorDropdownOpen(false)
+                }}
                 className={`w-full flex items-center justify-between border rounded-xl transition-all cursor-pointer px-3.5 py-2 text-[13px] min-h-[42px] ${
                   materialDropdownOpen
                     ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/15'
@@ -1271,58 +1272,103 @@ export function AddJobForm({
                 value={remarks}
                 onChange={e => setRemarks(e.target.value)}
                 placeholder="e.g. Balcony wash, Sofa shampoo, Key with security, Online payment…"
-                className="w-full text-[13px] px-3.5 py-2 min-h-[40px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-500 focus:bg-white transition-all text-slate-800 font-medium"
+                className="w-full text-[13px] px-3.5 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-500 focus:bg-white transition-all text-slate-800 font-medium"
               />
             </div>
           </div>
 
-          {/* 3. Row Color Theme */}
+          {/* 3. Row Color Theme Dropdown (Drop-Up Mode) */}
           <div className="space-y-1">
-            {/* Row Highlight Color Picker (with "View All" toggle, bottom-aligned with Material & Remarks) */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5 min-h-[18px]">
-                <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] flex items-center gap-1.5">
-                  <Palette size={12} className="text-slate-400" />
-                  Row Color Theme
-                </label>
-                {/* View All / Show Less Toggle Button */}
-                <button
-                  type="button"
-                  onClick={() => setShowAllColors(prev => !prev)}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10.5px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer"
-                >
-                  <span>{showAllColors ? 'Show Less' : 'View All'}</span>
-                  <ChevronDown size={11} className={`transition-transform duration-200 ${showAllColors ? 'rotate-180' : ''}`} />
-                </button>
+            <div className="relative" ref={colorRef}>
+              <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center gap-1.5">
+                <Palette size={12} className="text-slate-400" />
+                Row Color Theme
+              </label>
+
+              {/* Row Color Trigger Box */}
+              <div
+                onClick={() => {
+                  setColorDropdownOpen(prev => !prev)
+                  setMaterialDropdownOpen(false)
+                }}
+                className={`w-full flex items-center justify-between border rounded-xl transition-all cursor-pointer px-3.5 py-2 text-[13px] min-h-[42px] ${
+                  colorDropdownOpen
+                    ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/15'
+                    : rowColor !== 'default'
+                      ? 'bg-emerald-50/40 border-emerald-300/80 text-slate-800 hover:border-emerald-400'
+                      : 'bg-[#f8fafc] border-[#E4E8EC] text-slate-700 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-2 truncate flex-1 min-w-0 pr-1">
+                  <span
+                    className="w-4 h-4 rounded-full border border-black/15 shrink-0 shadow-2xs flex items-center justify-center"
+                    style={{ backgroundColor: selectedColorPreset?.circleColor || '#f1f5f9' }}
+                  />
+                  <span className="font-bold text-slate-900 truncate">
+                    {selectedColorPreset?.label ? selectedColorPreset.label.replace('Soft ', '') : 'Default'}
+                  </span>
+                </div>
+                <ChevronDown
+                  size={15}
+                  className={`text-slate-400 transition-transform duration-200 shrink-0 ${
+                    colorDropdownOpen ? 'rotate-180 text-emerald-600' : ''
+                  }`}
+                />
               </div>
 
-              {/* Color badges grid (Strictly 1 single row initially, or full wrap when View All clicked) */}
-              <div className={`min-h-[42px] flex items-center gap-1.5 ${showAllColors ? 'flex-wrap' : 'flex-nowrap overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'}`}>
-                {displayedColorPresets.map(preset => {
-                  const isSelected = rowColor === preset.id
-                  return (
-                    <button
-                      type="button"
-                      key={preset.id}
-                      onClick={() => setRowColor(preset.id)}
-                      title={preset.label}
-                      className={`group relative flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-all cursor-pointer text-[11.5px] font-semibold shrink-0 whitespace-nowrap ${
-                        isSelected
-                          ? 'border-emerald-500 bg-emerald-50/70 text-emerald-950 shadow-xs ring-2 ring-emerald-500/20'
-                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <span
-                        className="w-3.5 h-3.5 rounded-full border border-black/10 shrink-0 shadow-2xs flex items-center justify-center"
-                        style={{ backgroundColor: preset.circleColor }}
+              {/* Color Dropdown Popover (Drop-Up Mode: Opens Upwards) */}
+              {colorDropdownOpen && (
+                <div className="absolute z-50 right-0 bottom-full mb-1.5 w-full sm:w-[320px] bg-white border border-slate-200 rounded-2xl shadow-2xl p-3 animate-in fade-in slide-in-from-bottom-1 duration-150 flex flex-col">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                      <Palette size={12} className="text-slate-400" />
+                      Select Row Color ({ROW_COLOR_PRESETS.length})
+                    </span>
+                    {rowColor !== 'default' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setRowColor('default')
+                          setColorDropdownOpen(false)
+                        }}
+                        className="text-[10.5px] font-bold text-emerald-700 hover:text-emerald-800 underline cursor-pointer"
                       >
-                        {isSelected && <Check size={9} className="text-slate-900 stroke-[3.5]" />}
-                      </span>
-                      <span>{preset.label.replace('Soft ', '')}</span>
-                    </button>
-                  )
-                })}
-              </div>
+                        Reset to Default
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-60 overflow-y-auto pr-1 grid grid-cols-2 gap-1.5 [scrollbar-width:thin]">
+                    {ROW_COLOR_PRESETS.map(preset => {
+                      const isSelected = rowColor === preset.id
+                      const cleanName = preset.label.replace('Soft ', '')
+                      return (
+                        <button
+                          type="button"
+                          key={preset.id}
+                          onClick={() => {
+                            setRowColor(preset.id)
+                            setColorDropdownOpen(false)
+                          }}
+                          className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-[12px] font-semibold transition-all cursor-pointer text-left ${
+                            isSelected
+                              ? 'border-emerald-500 bg-emerald-50/80 text-emerald-950 font-bold shadow-xs ring-2 ring-emerald-500/20'
+                              : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100/80 text-slate-700'
+                          }`}
+                        >
+                          <span
+                            className="w-3.5 h-3.5 rounded-full border border-black/15 shrink-0 shadow-2xs flex items-center justify-center"
+                            style={{ backgroundColor: preset.circleColor }}
+                          >
+                            {isSelected && <Check size={8} className="text-slate-900 stroke-[3.5]" />}
+                          </span>
+                          <span className="truncate flex-1">{cleanName}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
