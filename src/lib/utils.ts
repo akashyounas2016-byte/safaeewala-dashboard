@@ -239,3 +239,39 @@ export function slugifyAgencyName(name: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
+/** Strips '(Monthly)' markers from address display and provides clean text */
+export function cleanAddressDisplay(val: unknown): string {
+  if (!val) return '—'
+  const str = String(val).trim()
+  if (!str) return '—'
+  return str
+    .replace(/\s*\(Monthly\)/gi, '')
+    .replace(/\s*\[Monthly\]/gi, '')
+    .replace(/\s+Monthly\s*$/i, '')
+}
+
+/** Normalizes an address string for comparison by removing punctuation, extra spaces, and monthly client markers */
+export function normalizeJobAddress(addr: unknown): string {
+  if (!addr) return ''
+  return String(addr)
+    .toLowerCase()
+    .replace(/\s*\(monthly\)/gi, '')
+    .replace(/\s*\[monthly\]/gi, '')
+    .replace(/\s+monthly\s*$/i, '')
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+const GENERIC_ADDRESS_TOKENS = new Set([
+  '', '—', '-', 'dubai', 'uae', 'villa', 'apartment', 'flat', 'office', 'custom', 'unknown',
+  'n/a', 'na', 'pending', 'tbd', 'none', 'null', 'home', 'house', 'room', 'studio'
+])
+
+/** Returns true if an address is empty, too short, or only a generic placeholder (not a specific site) */
+export function isGenericAddress(addr: unknown): boolean {
+  const norm = normalizeJobAddress(addr)
+  if (!norm || norm.length < 3) return true
+  return GENERIC_ADDRESS_TOKENS.has(norm)
+}
+

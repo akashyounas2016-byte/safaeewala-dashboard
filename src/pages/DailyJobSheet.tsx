@@ -83,6 +83,7 @@ import {
   type ScheduledShiftPlan,
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
+import { cleanAddressDisplay, normalizeJobAddress, isGenericAddress } from '@/lib/utils'
 import { todayDubai } from '@/lib/dubaiTime'
 import { escapeHtml } from '@/lib/html'
 import { invoicedJobIds } from '@/lib/receivables'
@@ -712,10 +713,10 @@ export function DailyJobSheet() {
   }
 
   // Map multi-cleaner jobs to consistent Team references (e.g. Team A, Team B, or custom team_name)
-  const multiCleanerJobs = todayJobs.filter(j => splitStaffNames(j.staff_name).length > 1 || Boolean(j.team_name))
+  const multiCleanerJobs = todayJobs.filter(j => splitStaffNames(j.staff_name).length > 1 || Boolean(j.team_name && j.team_name.trim() && j.team_name.trim().toLowerCase() !== 'project team'))
   const jobTeamMap = new Map<string, string>()
   multiCleanerJobs.forEach((job, idx) => {
-    if (job.team_name && job.team_name.trim()) {
+    if (job.team_name && job.team_name.trim() && job.team_name.trim().toLowerCase() !== 'project team') {
       jobTeamMap.set(job.id, job.team_name.trim())
     } else {
       const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -725,7 +726,7 @@ export function DailyJobSheet() {
 
   // ── Project Teams Data Structure (for Team-wise Columnar Display) ──
   const projectTeamsData = useMemo(() => {
-    const teamJobs = todayJobs.filter(j => splitStaffNames(j.staff_name).length > 1 || Boolean(j.team_name))
+    const teamJobs = todayJobs.filter(j => splitStaffNames(j.staff_name).length > 1 || Boolean(j.team_name && j.team_name.trim() && j.team_name.trim().toLowerCase() !== 'project team'))
     const teamsMap = new Map<string, {
       teamName: string
       cleaners: string[]
@@ -738,11 +739,17 @@ export function DailyJobSheet() {
 
     teamJobs.forEach((job, idx) => {
       const cleaners = splitStaffNames(job.staff_name)
-      const teamRef = job.team_name?.trim() || jobTeamMap.get(job.id) || `Team ${String.fromCharCode(65 + (idx % 26))}`
+      const cleanAddr = cleanAddressDisplay(job.address)
+      const hasSpecificAddr = cleanAddr && cleanAddr !== '—' && !isGenericAddress(job.address)
+      const rawTeam = (job.team_name && job.team_name.trim().toLowerCase() !== 'project team') ? job.team_name.trim() : ''
+      const teamRef = rawTeam || jobTeamMap.get(job.id) || `Team ${String.fromCharCode(65 + (idx % 26))}`
+
+      // Keep teams at different addresses strictly separate so different locations never merge!
+      const groupKey = hasSpecificAddr ? `${teamRef} · ${cleanAddr}` : `${teamRef} · #${job.id.slice(-4)}`
       
-      if (!teamsMap.has(teamRef)) {
-        teamsMap.set(teamRef, {
-          teamName: teamRef,
+      if (!teamsMap.has(groupKey)) {
+        teamsMap.set(groupKey, {
+          teamName: groupKey,
           cleaners: [],
           leadCleaner: cleaners[0] || 'Lead Cleaner',
           jobs: [],
@@ -752,7 +759,7 @@ export function DailyJobSheet() {
         })
       }
 
-      const tObj = teamsMap.get(teamRef)!
+      const tObj = teamsMap.get(groupKey)!
       cleaners.forEach(c => {
         const trimmed = c.trim()
         if (trimmed && !tObj.cleaners.includes(trimmed)) {

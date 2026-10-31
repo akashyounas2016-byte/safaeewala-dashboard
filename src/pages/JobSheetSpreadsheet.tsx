@@ -91,6 +91,31 @@ export function cleanAddressDisplay(val: unknown): string {
     .trim() || '—'
 }
 
+/** Normalizes an address string for comparison by removing punctuation, extra spaces, and monthly client markers */
+export function normalizeJobAddress(addr: unknown): string {
+  if (!addr) return ''
+  return String(addr)
+    .toLowerCase()
+    .replace(/\s*\(monthly\)/gi, '')
+    .replace(/\s*\[monthly\]/gi, '')
+    .replace(/\s+monthly\s*$/i, '')
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+const GENERIC_ADDRESS_TOKENS = new Set([
+  '', '—', '-', 'dubai', 'uae', 'villa', 'apartment', 'flat', 'office', 'custom', 'unknown',
+  'n/a', 'na', 'pending', 'tbd', 'none', 'null', 'home', 'house', 'room', 'studio'
+])
+
+/** Returns true if an address is empty, too short, or only a generic placeholder (not a specific site) */
+export function isGenericAddress(addr: unknown): boolean {
+  const norm = normalizeJobAddress(addr)
+  if (!norm || norm.length < 3) return true
+  return GENERIC_ADDRESS_TOKENS.has(norm)
+}
+
 export function isAddressMonthly(val: unknown): boolean {
   if (!val) return false
   return /\(Monthly\)|\[Monthly\]|\bMonthly Client\b/i.test(String(val))
@@ -959,15 +984,33 @@ export function getMultiCleanerPaymentInfo(row: DailyJob | undefined, allRows: D
     }
   }
 
-  // 2. Identify shared address shifts on the same date
-  const addr = (row.address || '').trim().toLowerCase()
-  if (!addr || !row.start_time) return null
+  // 2. Identify shared address shifts on the same date with overlapping hours
+  // Must have a specific, non-generic address and defined shift start & end times
+  const normAddr = normalizeJobAddress(row.address)
+  if (!normAddr || isGenericAddress(row.address) || !row.start_time || !row.end_time) {
+    if ((row as any)._isPrimaryCleaner) {
+      return {
+        isMultiCleaner: true,
+        isPrimary: true,
+        isSecondary: false,
+        primaryCleaner: row.staff_name,
+        teamRef: (row as any)._teamReference || row.team_name || 'Team A',
+        allCleaners: (row as any)._allCleaners || [row.staff_name],
+      }
+    }
+    return null
+  }
 
   const rowDate = row.date || todayDubai()
+  // Cleaners must share the EXACT specific address and their working hours must OVERLAP
   const matchingRows = allRows.filter(r => {
-    const rAddr = (r.address || '').trim().toLowerCase()
+    if (!r.staff_name || !r.staff_name.trim()) return false
     const rDate = r.date || todayDubai()
-    return rAddr === addr && rDate === rowDate && (r.staff_name || '').trim() && r.start_time
+    if (rDate !== rowDate) return false
+    const rNorm = normalizeJobAddress(r.address)
+    if (rNorm !== normAddr) return false
+    if (!r.start_time || !r.end_time) return false
+    return checkTimesOverlap(row.start_time, row.end_time, r.start_time, r.end_time)
   })
 
   if (matchingRows.length <= 1) {
@@ -978,15 +1021,27 @@ export function getMultiCleanerPaymentInfo(row: DailyJob | undefined, allRows: D
         isSecondary: false,
         primaryCleaner: row.staff_name,
         teamRef: (row as any)._teamReference || row.team_name || 'Team A',
-        allCleaners: [row.staff_name],
+        allCleaners: (row as any)._allCleaners || [row.staff_name],
       }
     }
     return null
   }
 
-  // Distinct cleaner names at this address
+  // Distinct cleaner names at this address & time
   const cleanerNames = Array.from(new Set(matchingRows.map(r => (r.staff_name || '').trim()))).filter(Boolean)
-  if (cleanerNames.length <= 1) return null
+  if (cleanerNames.length <= 1) {
+    if ((row as any)._isPrimaryCleaner) {
+      return {
+        isMultiCleaner: true,
+        isPrimary: true,
+        isSecondary: false,
+        primaryCleaner: row.staff_name,
+        teamRef: (row as any)._teamReference || row.team_name || 'Team A',
+        allCleaners: (row as any)._allCleaners || [row.staff_name],
+      }
+    }
+    return null
+  }
 
   // Primary cleaner row: either has _isPrimaryCleaner, positive charges/received, or first row in sequence
   const primaryRow =
@@ -995,7 +1050,22 @@ export function getMultiCleanerPaymentInfo(row: DailyJob | undefined, allRows: D
     matchingRows[0]
 
   const isPrimary = row.id === primaryRow.id
-  const teamRef = primaryRow.team_name || row.team_name || 'Team A'
+
+  // Determine unique deterministic team reference for this specific address cluster
+  let teamRef = (primaryRow.team_name || row.team_name || '').trim()
+  if (!teamRef || teamRef.toLowerCase() === 'project team') {
+    const dateClusters: string[] = []
+    allRows.forEach(r => {
+      const a = normalizeJobAddress(r.address)
+      if (!a || isGenericAddress(r.address) || !r.start_time || !r.end_time) return
+      if ((r.date || todayDubai()) !== rowDate) return
+      if (!dateClusters.includes(a)) dateClusters.push(a)
+    })
+    dateClusters.sort()
+    const cIdx = dateClusters.indexOf(normAddr)
+    const letter = String.fromCharCode(65 + ((cIdx >= 0 ? cIdx : 0) % 26))
+    teamRef = `Team ${letter}`
+  }
 
   return {
     isMultiCleaner: true,
@@ -1038,7 +1108,7 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
   jobs.forEach(job => {
     const cleaners = splitStaffNames(job.staff_name || '')
     if (cleaners.length > 1) {
-      if (job.team_name && job.team_name.trim()) {
+      if (job.team_name && job.team_name.trim() && job.team_name.trim().toLowerCase() !== 'project team') {
         multiCleanerTeamMap.set(job.id, job.team_name.trim())
       } else {
         multiCleanerTeamMap.set(job.id, `Team ${letters[teamCounter % letters.length]}`)
@@ -1056,7 +1126,7 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
     if (cleaners.length <= 1) {
       expandedJobs.push(job)
     } else {
-      const teamRef = multiCleanerTeamMap.get(job.id) || job.team_name || 'Team A'
+      const teamRef = multiCleanerTeamMap.get(job.id) || (job.team_name && job.team_name.trim().toLowerCase() !== 'project team' ? job.team_name.trim() : 'Team A')
       const primaryCleaner = (cleaners[0] || '').trim()
       cleaners.forEach((cleaner, cIdx) => {
         const isPrimary = cIdx === 0
@@ -2657,7 +2727,8 @@ export function JobSheetSpreadsheet() {
       charges: 0,
       received: 0,
       payment_mode: assignedPaymentMode as any,
-      team_name: isProject ? 'Project Team' : undefined,
+      team_name: undefined,
+      _isProjectViewRow: isProject ? true : undefined,
       remarks: '',
       is_overtime: false,
       created_at: new Date(blockTs + idx * 10).toISOString()
@@ -3165,10 +3236,17 @@ export function JobSheetSpreadsheet() {
     const payload = (row: DailyJob) => {
       const mcInfo = getMultiCleanerPaymentInfo(row, gridRows)
       const isSec = Boolean(mcInfo?.isSecondary)
+      let savedTeam = ''
+      if (mcInfo?.isMultiCleaner && mcInfo.teamRef) {
+        savedTeam = mcInfo.teamRef
+      } else if (row.team_name && row.team_name.trim() && row.team_name.trim().toLowerCase() !== 'project team') {
+        savedTeam = row.team_name.trim()
+      }
+
       return {
         date: row.date || selectedDate,
         staff_name: row.staff_name,
-        team_name: row.team_name || mcInfo?.teamRef || '',
+        team_name: savedTeam,
         start_time: row.start_time,
         end_time: row.end_time,
         duty_hours: cleanNum(row.duty_hours),
@@ -3293,7 +3371,7 @@ export function JobSheetSpreadsheet() {
         if (col.id === 'team_name') {
           if (mcInfo?.isSecondary) val = mcInfo.teamRef
           else if (mcInfo?.isPrimary && mcInfo.isMultiCleaner) val = `${mcInfo.teamRef} (Lead)`
-          else val = r.team_name || ''
+          else val = (r.team_name && r.team_name.trim().toLowerCase() !== 'project team') ? r.team_name : ''
         } else if (col.id === 'charges') {
           val = mcInfo?.isSecondary ? `Added ${mcInfo.teamRef || 'Team'}` : r.charges
         } else if (col.id === 'received') {
@@ -3325,7 +3403,7 @@ export function JobSheetSpreadsheet() {
         if (col.id === 'team_name') {
           if (mcInfo?.isSecondary) val = mcInfo.teamRef
           else if (mcInfo?.isPrimary && mcInfo.isMultiCleaner) val = `${mcInfo.teamRef} (Lead)`
-          else val = r.team_name || ''
+          else val = (r.team_name && r.team_name.trim().toLowerCase() !== 'project team') ? r.team_name : ''
         } else if (col.id === 'charges') {
           val = mcInfo?.isSecondary ? `Added ${mcInfo.teamRef || 'Team'}` : r.charges
         } else if (col.id === 'received') {
@@ -3360,7 +3438,7 @@ export function JobSheetSpreadsheet() {
       if (r.payment_mode === 'Pending' || rowPending(r) > 0) pending++
 
       const mc = getMultiCleanerPaymentInfo(r, gridRows)
-      if (r.team_name || mc?.isMultiCleaner || mc?.teamRef) project++
+      if (mc?.isMultiCleaner || (r.team_name && r.team_name.trim().toLowerCase() !== 'project team')) project++
     }
     return { all: gridRows.length, monthly, cash, online, pending, project }
   }, [gridRows, pendingCtx])
@@ -3380,22 +3458,41 @@ export function JobSheetSpreadsheet() {
     } else if (paymentModeFilter === 'Pending') {
       list = list.filter(r => r.payment_mode === 'Pending' || rowPending(r) > 0 || (isBlankRow(r) && !r.payment_mode))
     } else if (paymentModeFilter === 'Project') {
-      // Filter only jobs that belong to a project / team, or blank rows created in Project view
+      // Filter only jobs that genuinely belong to a project / multi-cleaner team, or blank rows created in Project view
       const projectRows = list.filter(r => {
         const mc = getMultiCleanerPaymentInfo(r, gridRows)
-        return Boolean(r.team_name || mc?.isMultiCleaner || mc?.teamRef || (isBlankRow(r) && r.team_name))
+        return Boolean(
+          mc?.isMultiCleaner ||
+          (r.team_name && r.team_name.trim() && r.team_name.trim().toLowerCase() !== 'project team') ||
+          (isBlankRow(r) && ((r as any)._isProjectViewRow || r.team_name))
+        )
       })
 
       // Group team-wise: Leader on top, other team members listed directly below
+      // Scoped strictly by Address + Team Reference so cleaners at different addresses NEVER merge!
       const teamMap = new Map<string, { leaders: DailyJob[]; members: DailyJob[] }>()
       projectRows.forEach(r => {
         const mc = getMultiCleanerPaymentInfo(r, gridRows)
-        const teamKey = String(mc?.teamRef || r.team_name || 'Project Team').trim()
+        const cleanAddr = cleanAddressDisplay(r.address)
+        const hasSpecificAddr = cleanAddr && cleanAddr !== '—' && !isGenericAddress(r.address)
+
+        let teamKey = ''
+        if (hasSpecificAddr) {
+          const label = mc?.teamRef || (r.team_name && r.team_name.trim().toLowerCase() !== 'project team' ? r.team_name.trim() : 'Team')
+          teamKey = `${label} · ${cleanAddr}`
+        } else if (mc?.teamRef) {
+          teamKey = mc.teamRef
+        } else if (r.team_name && r.team_name.trim() && r.team_name.trim().toLowerCase() !== 'project team') {
+          teamKey = r.team_name.trim()
+        } else {
+          teamKey = (r.staff_name && r.staff_name.trim()) ? `${r.staff_name.trim()}'s Shift` : `Shift #${r.id.slice(-6)}`
+        }
+
         if (!teamMap.has(teamKey)) {
           teamMap.set(teamKey, { leaders: [], members: [] })
         }
         const group = teamMap.get(teamKey)!
-        if (mc?.isPrimary) {
+        if (mc?.isPrimary || !mc?.isSecondary) {
           group.leaders.push(r)
         } else {
           group.members.push(r)
@@ -4316,7 +4413,8 @@ export function JobSheetSpreadsheet() {
                               if (isBlankShift) displayVal = ''
                               else if (mcInfo?.isSecondary) displayVal = mcInfo.teamRef
                               else if (mcInfo?.isPrimary && mcInfo.isMultiCleaner) displayVal = `${mcInfo.teamRef} (Lead)`
-                              else displayVal = rawVal || ''
+                              else if (rawVal && String(rawVal).trim().toLowerCase() !== 'project team') displayVal = rawVal
+                              else displayVal = ''
                             } else if (col.id === 'charges') {
                               if (isBlankShift) displayVal = ''
                               else if (mcInfo?.isSecondary) displayVal = `Added ${mcInfo.teamRef || 'Team'}`
@@ -4545,7 +4643,11 @@ export function JobSheetSpreadsheet() {
                             .filter(j => (j.staff_name || '').trim().toLowerCase() === staffKey)
                             .map(j => {
                               const mi = getMultiCleanerPaymentInfo(j, gridRows)
-                              return mi?.teamRef || j.team_name
+                              if (mi?.isMultiCleaner && mi.teamRef) return mi.teamRef
+                              if (j.team_name && j.team_name.trim() && j.team_name.trim().toLowerCase() !== 'project team') {
+                                return j.team_name.trim()
+                              }
+                              return null
                             })
                             .filter(Boolean)
                         ))
@@ -4618,7 +4720,8 @@ export function JobSheetSpreadsheet() {
                         if (isBlankShift) displayVal = ''
                         else if (mcInfo?.isSecondary) displayVal = mcInfo.teamRef
                         else if (mcInfo?.isPrimary && mcInfo.isMultiCleaner) displayVal = `${mcInfo.teamRef} (Lead)`
-                        else displayVal = rawVal || ''
+                        else if (rawVal && String(rawVal).trim().toLowerCase() !== 'project team') displayVal = rawVal
+                        else displayVal = ''
                       } else if (col.id === 'charges') {
                         if (isBlankShift) displayVal = ''
                         else if (mcInfo?.isSecondary) displayVal = `Added ${mcInfo.teamRef || 'Team'}`

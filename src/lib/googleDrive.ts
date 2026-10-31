@@ -1,4 +1,4 @@
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
+const CLIENT_ID = (import.meta.env?.VITE_GOOGLE_CLIENT_ID as string | undefined) || ''
 const SCOPE = 'https://www.googleapis.com/auth/drive.file'
 
 let _tokenClient: any = null
