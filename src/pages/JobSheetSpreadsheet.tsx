@@ -1162,10 +1162,7 @@ export const TIME_SUGGESTIONS = [
 /** Cell editor → datalist id (UX-35) */
 const AUTOCOMPLETE_LIST: Record<string, string> = {
   staff_name: 'xl-staff',
-  address: 'xl-address',
-  area: 'xl-area',
-  start_time: 'xl-time-suggestions',
-  end_time: 'xl-time-suggestions'
+  area: 'xl-area'
 }
 /** Rows drawn at once in long periods (AUD-56, UX-38) */
 const RENDER_PAGE = 300
@@ -1299,11 +1296,15 @@ export function JobSheetSpreadsheet() {
   >('today')
   const [showDatePresetDropdown, setShowDatePresetDropdown] = useState(false)
   const datePresetRef = useRef<HTMLDivElement>(null)
+  const threeDotRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (datePresetRef.current && !datePresetRef.current.contains(e.target as Node)) {
         setShowDatePresetDropdown(false)
+      }
+      if (threeDotRef.current && !threeDotRef.current.contains(e.target as Node)) {
+        setShowThreeDotMenu(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -2199,11 +2200,12 @@ export function JobSheetSpreadsheet() {
     showToast(`✓ Material set to "${val}"`)
   }
 
-  // Unified Interactive Cell Editor matching all UX requirements
+  // Unified Interactive Cell Editor matching all UX requirements (Stabilized against flickering & fluctuations)
   const renderCellEditor = (col: ColumnDef, targetIdx: number, isLightBg: boolean = true) => {
     if (!editingCell || editingCell.rowIdx !== targetIdx || editingCell.colId !== col.id) return null
+    const isNearBottom = targetIdx >= Math.max(1, visibleGridRows.length - 4)
 
-    // 1. Address Column Dropdown (Standardized matching Add Job Entry selector to prevent fluctuation)
+    // 1. Address Column Dropdown (Standardized matching Add Job Entry selector to prevent fluctuation & flicker)
     if (col.id === 'address') {
       return (
         <div className="relative w-full h-7 flex items-center">
@@ -2220,8 +2222,13 @@ export function JobSheetSpreadsheet() {
             className={`w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
           />
           <div
-            onMouseDown={e => e.stopPropagation()}
-            className="absolute z-[100] left-0 top-full mt-1 w-84 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl p-2.5 text-slate-800 text-[12px] animate-in fade-in select-none"
+            onMouseDown={e => {
+              e.preventDefault()
+              e.stopPropagation()
+            }}
+            className={`absolute z-[100] left-0 ${
+              isNearBottom ? 'bottom-full mb-1' : 'top-full mt-1'
+            } w-84 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl p-2.5 text-slate-800 text-[12px] animate-in fade-in select-none`}
           >
             {editingCell.tempValue.trim() && (
               <div
@@ -2288,8 +2295,13 @@ export function JobSheetSpreadsheet() {
             className={`w-full h-full text-[12px] font-semibold border-0 outline-none px-1 py-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
           />
           <div
-            onMouseDown={e => e.stopPropagation()}
-            className="absolute z-[100] left-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 text-slate-800 text-[12px] animate-in fade-in select-none"
+            onMouseDown={e => {
+              e.preventDefault()
+              e.stopPropagation()
+            }}
+            className={`absolute z-[100] left-0 ${
+              isNearBottom ? 'bottom-full mb-1' : 'top-full mt-1'
+            } w-64 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 text-slate-800 text-[12px] animate-in fade-in select-none`}
           >
             <div className="px-2.5 py-1 text-[10px] font-black uppercase text-slate-400 border-b border-slate-100 mb-1">
               Select Material
@@ -2354,24 +2366,27 @@ export function JobSheetSpreadsheet() {
       )
     }
 
-    // 3. Start Time & End Time with typing and clear AM / PM suggestions
+    // 3. Start Time & End Time with typing and clear AM / PM suggestions (No datalist clash, no blur flicker)
     if (col.id === 'start_time' || col.id === 'end_time') {
       return (
         <div className="relative w-full h-full">
           <input
             ref={inputRef}
             type="text"
-            list="xl-time-suggestions"
             value={editingCell.tempValue}
             onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
             onKeyDown={handleEditorKeyDown}
-            onBlur={commitCellEdit}
             placeholder="e.g. 10:00 AM"
             className={`w-full h-full text-[12px] font-mono border-0 outline-none p-0 focus:ring-0 ${isLightBg ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'}`}
           />
           <div
-            onMouseDown={e => e.stopPropagation()}
-            className="absolute z-[100] left-0 top-full mt-1 w-36 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl p-1 text-slate-800 text-[11.5px] animate-in fade-in"
+            onMouseDown={e => {
+              e.preventDefault()
+              e.stopPropagation()
+            }}
+            className={`absolute z-[100] left-0 ${
+              isNearBottom ? 'bottom-full mb-1' : 'top-full mt-1'
+            } w-36 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl p-1 text-slate-800 text-[11.5px] animate-in fade-in select-none`}
           >
             <div className="px-2 py-0.5 text-[9.5px] font-black uppercase text-slate-400">AM / PM Times</div>
             <div className="space-y-0.5">
@@ -3675,7 +3690,7 @@ export function JobSheetSpreadsheet() {
           </button>
 
           {/* ── Three-Dot Menu (Sync, Backup, File, Audit History & Tools) ── */}
-          <div className="relative">
+          <div className="relative" ref={threeDotRef}>
             <button
               type="button"
               onClick={(e) => {
