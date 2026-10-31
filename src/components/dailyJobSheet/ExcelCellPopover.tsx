@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ElementType, type ReactNode, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ElementType, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, Search } from 'lucide-react'
 
@@ -9,9 +9,12 @@ import { Check, Search } from 'lucide-react'
  * layer. A dropdown drawn inside a row was painted under the next rows whenever the mouse moved
  * over them — the flicker. Rendered in document.body with a fixed position next to the cell, the
  * dropdown is above everything and does not move while the mouse travels over it.
+ *
+ * It opens next to the element it is rendered in (the cell editor). That element is found through a
+ * hidden marker: a ref on the parent is not attached yet when this component's layout effect runs, which
+ * left the dropdown invisible on first open.
  */
-export function ExcelCellPopover({ anchorRef, width = 400, title, icon: Icon, search, banner, children, footer, listMaxHeight = 260 }: {
-  anchorRef: RefObject<HTMLElement | null>
+export function ExcelCellPopover({ width = 400, title, icon: Icon, search, banner, children, footer, listMaxHeight = 260 }: {
   width?: number
   title: string
   icon: ElementType
@@ -22,11 +25,12 @@ export function ExcelCellPopover({ anchorRef, width = 400, title, icon: Icon, se
   listMaxHeight?: number
 }) {
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null)
+  const markerRef = useRef<HTMLSpanElement>(null)
 
   useLayoutEffect(() => {
     let frame = 0
     const place = () => {
-      const el = anchorRef.current
+      const el = markerRef.current?.parentElement
       if (!el) return
       const r = el.getBoundingClientRect()
       const vw = window.innerWidth, vh = window.innerHeight
@@ -45,9 +49,11 @@ export function ExcelCellPopover({ anchorRef, width = 400, title, icon: Icon, se
       window.removeEventListener('scroll', schedule, true)
       window.removeEventListener('resize', schedule)
     }
-  }, [anchorRef, width])
+  }, [width])
 
-  return createPortal(
+  return <>
+    <span ref={markerRef} hidden />
+    {createPortal(
     <div
       // Keep the cell's input focused while choosing — except for inputs inside the dropdown
       onMouseDown={e => {
@@ -92,7 +98,8 @@ export function ExcelCellPopover({ anchorRef, width = 400, title, icon: Icon, se
       {footer}
     </div>,
     document.body,
-  )
+  )}
+  </>
 }
 
 /** One row of a cell dropdown — same look in every column */

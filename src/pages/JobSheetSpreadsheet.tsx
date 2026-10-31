@@ -1827,7 +1827,6 @@ export function JobSheetSpreadsheet() {
   const [colorPickerCleaner, setColorPickerCleaner] = useState<string | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
-  const editorAnchorRef = useRef<HTMLDivElement>(null) // cell the dropdown opens next to (ExcelCellPopover)
   const formulaInputRef = useRef<HTMLInputElement>(null)
   const spreadsheetRef = useRef<HTMLDivElement>(null)
 
@@ -2348,7 +2347,7 @@ export function JobSheetSpreadsheet() {
       }
 
       return (
-        <div ref={editorAnchorRef} className="relative w-full h-7 flex items-center">
+        <div className="relative w-full h-7 flex items-center">
           <input
             ref={inputRef}
             type="text"
@@ -2375,7 +2374,6 @@ export function JobSheetSpreadsheet() {
             className={cellInputClass}
           />
           <ExcelCellPopover
-            anchorRef={editorAnchorRef}
             width={440}
             title="Address & Client Directory"
             icon={Building2}
@@ -2423,7 +2421,7 @@ export function JobSheetSpreadsheet() {
       const isCustom = q && !allUniqueAreas.some(a => a.toLowerCase() === q)
 
       return (
-        <div ref={editorAnchorRef} className="relative w-full h-7 flex items-center">
+        <div className="relative w-full h-7 flex items-center">
           <input
             ref={inputRef}
             type="text"
@@ -2443,7 +2441,6 @@ export function JobSheetSpreadsheet() {
             className={cellInputClass}
           />
           <ExcelCellPopover
-            anchorRef={editorAnchorRef}
             width={380}
             title="Location / Area"
             icon={MapPin}
@@ -2491,7 +2488,7 @@ export function JobSheetSpreadsheet() {
       }
 
       return (
-        <div ref={editorAnchorRef} className="relative w-full h-7 flex items-center">
+        <div className="relative w-full h-7 flex items-center">
           <input
             ref={inputRef}
             type="text"
@@ -2505,7 +2502,6 @@ export function JobSheetSpreadsheet() {
             className={cellInputClass}
           />
           <ExcelCellPopover
-            anchorRef={editorAnchorRef}
             width={340}
             title="Cleaning Materials / Supplies"
             icon={Package}
@@ -2581,7 +2577,7 @@ export function JobSheetSpreadsheet() {
       )
 
       return (
-        <div ref={editorAnchorRef} className="relative w-full h-full flex items-center">
+        <div className="relative w-full h-full flex items-center">
           <input
             ref={inputRef}
             type="text"
@@ -2592,7 +2588,6 @@ export function JobSheetSpreadsheet() {
             className={`${cellInputClass} font-mono`}
           />
           <ExcelCellPopover
-            anchorRef={editorAnchorRef}
             width={320}
             title={col.id === 'start_time' ? 'Shift Start Time' : 'Shift End Time'}
             icon={Clock}
@@ -2642,7 +2637,7 @@ export function JobSheetSpreadsheet() {
       ]
 
       return (
-        <div ref={editorAnchorRef} className="relative w-full h-7 flex items-center">
+        <div className="relative w-full h-7 flex items-center">
           <input
             ref={inputRef}
             type="text"
@@ -2652,7 +2647,7 @@ export function JobSheetSpreadsheet() {
             placeholder="Mode..."
             className={cellInputClass}
           />
-          <ExcelCellPopover anchorRef={editorAnchorRef} width={320} title="Payment Mode" icon={CreditCard}>
+          <ExcelCellPopover width={320} title="Payment Mode" icon={CreditCard}>
             {modes.map(m => (
               <ExcelPopoverItem
                 key={m.id}
