@@ -132,14 +132,6 @@ export function AddJobForm({
     return map
   }, [existingJobsForDate, dailyJobs, date])
 
-  // R-JOB-01: a chosen cleaner already busy at this time on this date (all jobs of the date, saved or on screen)
-  const staffClash = useMemo(() => {
-    const byId = new Map<string, DailyJob>()
-    dailyJobs.filter(j => j.date === date).forEach(j => byId.set(j.id, j))
-    existingJobsForDate.filter(j => !j.date || j.date === date).forEach(j => byId.set(j.id, j))
-    return findStaffClash(Array.from(byId.values()), { staff_name: selectedStaff.join(', '), date, start_time: startTime, end_time: endTime }, [initial?.id || '', String((initial as any)?._originalJobId || '')])
-  }, [dailyJobs, existingJobsForDate, date, selectedStaff, startTime, endTime, initial?.id])
-
   // Auto-generate team name when multiple cleaners selected
   const defaultTeamName = useMemo(() => {
     if (selectedStaff.length < 2) return ''
@@ -194,6 +186,15 @@ export function AddJobForm({
   // ── Timing & Duration (12-Hour AM/PM Format) ──
   const [startTime, setStartTime] = useState(() => formatTime12h(initial?.start_time || '09:00 AM'))
   const [endTime, setEndTime]     = useState(() => formatTime12h(initial?.end_time || '09:00 AM'))
+
+  // R-JOB-01: a chosen cleaner already busy at this time on this date (all jobs of the date, saved or on screen)
+  const staffClash = useMemo(() => {
+    const byId = new Map<string, DailyJob>()
+    dailyJobs.filter(j => j.date === date).forEach(j => byId.set(j.id, j))
+    existingJobsForDate.filter(j => !j.date || j.date === date).forEach(j => byId.set(j.id, j))
+    return findStaffClash(Array.from(byId.values()), { staff_name: selectedStaff.join(', '), date, start_time: startTime, end_time: endTime }, [initial?.id || '', String((initial as any)?._originalJobId || '')])
+  }, [dailyJobs, existingJobsForDate, date, selectedStaff, startTime, endTime, initial?.id])
+
   const [dutyHours, setDutyHours] = useState<number>(() => {
     if (initial?.duty_hours) return Number(initial.duty_hours)
     return calcHours(initial?.start_time || '09:00 AM', initial?.end_time || '09:00 AM') || 0
