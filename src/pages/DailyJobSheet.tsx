@@ -1721,6 +1721,15 @@ export function DailyJobSheet() {
                 </div>
               )
             )}
+            {/* BJ-17: this row belongs to a booking */}
+            {job.booking_id && (
+              <span
+                className="mt-1 mr-1 inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-sky-100 text-sky-800 border border-sky-200"
+                title="Created from a booking — changes here update the booking; cancel or delete the booking to remove it"
+              >
+                BK-{job.booking_id.slice(0, 6).toUpperCase()}
+              </span>
+            )}
             {/* UX-27: inline row checks (warnings only) */}
             {rowChecks.has(job.id) && (
               <span
@@ -2207,7 +2216,16 @@ export function DailyJobSheet() {
               </button>
               <button
                 type="button"
-                onClick={() => { if (!blockIfClosed(job.date)) { const targetId = (job as any)._originalJobId || job.id; deleteDailyJob(targetId); } }}
+                onClick={async () => {
+                  if (blockIfClosed(job.date)) return
+                  const targetId = (job as any)._originalJobId || job.id
+                  // BJ-17: a booking's row — deleting it leaves the booking without its job
+                  if (job.booking_id) {
+                    const ok = await confirmAsync({ title: 'Row from a booking', message: 'This row was created from a booking. Delete it anyway? To remove the visit completely, cancel or delete the booking on the Bookings screen.', confirmLabel: 'Delete row', tone: 'danger' })
+                    if (!ok) return
+                  }
+                  deleteDailyJob(targetId)
+                }}
                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                   isMonthly
                     ? 'hover:bg-red-100 text-emerald-800 hover:text-red-600'
@@ -3860,7 +3878,7 @@ CREATE TABLE daily_expenses (
       {/* ── Import preview (UX-28) ── */}
       <ImportPreviewModal
         plan={importPlan}
-        existingJobs={d => dailyJobs.filter(j => j.date === d)}
+        existingJobs={d => dailyJobs.filter(j => j.date === d && !j.booking_id)}
         existingExpenses={d => dailyExpenses.filter(e => e.date === d)}
         onCancel={() => setImportPlan(null)}
         onConfirm={commitImport}

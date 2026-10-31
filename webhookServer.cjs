@@ -581,6 +581,22 @@ async function ghlFetch(pathname, init = {}) {
   return { ok: r.ok, status: r.status, text };
 }
 
+// Website leads are also saved in Supabase (cloud), not only in leads.json (AUD-59)
+const LEAD_COLUMNS = ["id","created_at","form_id","form_title","entry_id","source_url","page_source","category","client_name","email","phone","whatsapp","address","area","property_type","preferred_date","preferred_time","service","message","estimated_value","status","booking_id","raw_data","responded_at"];
+function leadRow(lead) {
+  const row = {};
+  LEAD_COLUMNS.forEach(k => {
+    if (lead[k] === undefined) return;
+    row[k] = (k === 'form_id' || k === 'entry_id') && lead[k] != null ? String(lead[k]) : lead[k];
+  });
+  return row;
+}
+function saveLeadToCloud(lead) {
+  if (!SUPABASE_URL || !SERVICE_KEY) return;
+  supa('/rest/v1/fluent_form_leads?on_conflict=id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: leadRow(lead) })
+    .catch(err => console.error('[Webhook] Lead kept in leads.json, cloud copy failed:', err.message));
+}
+
 function routeApi(req, res, parsedUrl, pathname) {
   if (pathname === '/api/ghl/status' && req.method === 'GET') {
     return sendJson(res, 200, { configured: Boolean(GHL_API_KEY), locationId: Boolean(GHL_LOCATION_ID) });
@@ -652,6 +668,7 @@ function routeApi(req, res, parsedUrl, pathname) {
       const leads = readLeads();
       const updated = [lead, ...leads];
       writeLeads(updated);
+      saveLeadToCloud(lead);
 
       console.log(`[Webhook] ✓ New Lead Received: ${lead.client_name} (${lead.service}) - Phone: ${lead.phone}`);
 

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { reportError } from '@/lib/errorReport'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { retryCloudState } from '@/lib/cloudState'
 
@@ -72,7 +73,7 @@ const DAILY_JOBS_COLUMNS = new Set([
   'id', 'created_at', 'date', 'staff_name', 'start_time', 'end_time',
   'duty_hours', 'ot_hours', 'address', 'area', 'material', 'charges',
   'received', 'payment_mode', 'is_overtime', 'remarks', 'service',
-  'booking_id', 'status'
+  'booking_id', 'status', 'team_name'
 ])
 
 const BOOKINGS_COLUMNS = new Set([
@@ -115,13 +116,29 @@ function settle(table: string, rowId: string) {
 
 async function run(e: Pick<OutboxEntry, 'table' | 'op' | 'rowId' | 'payload'>): Promise<string | null> {
   try {
-    const cleanPayload = sanitizeOutboxPayload(e.table, e.payload)
-    const q = supabase.from(e.table)
-    const { error } =
-      e.op === 'upsert' ? await q.upsert(cleanPayload as never) :
-      e.op === 'update' ? await q.update(cleanPayload as never).eq('id', e.rowId) :
-                          await q.delete().eq('id', e.rowId)
-    return error ? (error.message || String(error)) : null
+    let cleanPayload = sanitizeOutboxPayload(e.table, e.payload)
+    // A field the database has no column for used to reject the whole row, which then stayed in the
+    // outbox for ever. Now that one field is left out, the rest is saved, and the gap is reported so
+    // the column can be added (cloud audit 2026-11-01).
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const q = supabase.from(e.table)
+      const { error } =
+        e.op === 'upsert' ? await q.upsert(cleanPayload as never) :
+        e.op === 'update' ? await q.update(cleanPayload as never).eq('id', e.rowId) :
+                            await q.delete().eq('id', e.rowId)
+      if (!error) return null
+      const message = error.message || String(error)
+      const missing = /Could not find the '([^']+)' column/i.exec(message)?.[1]
+      if (missing && cleanPayload && missing in cleanPayload && e.op !== 'delete') {
+        reportError(new Error(`Supabase has no column ${e.table}.${missing} — that field was not saved`), 'sync')
+        cleanPayload = { ...cleanPayload }
+        delete cleanPayload[missing]
+        if (Object.keys(cleanPayload).filter(k => k !== 'id').length === 0) return null
+        continue
+      }
+      return message
+    }
+    return 'Too many missing columns'
   } catch (err) {
     return err instanceof Error ? err.message : String(err)
   }

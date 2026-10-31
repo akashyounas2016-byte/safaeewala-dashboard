@@ -18,6 +18,7 @@ const profiles = [
 ]
 const authUsers = new Map([[ADMIN, { id: ADMIN, email: 'admin@staff.safaeewala.com' }], [EMP, { id: EMP, email: 'sw-0001@staff.safaeewala.com' }]])
 const calls = []
+const leadsInCloud = []
 let n = 3
 const mock = http.createServer((req, res) => {
   let body = ''
@@ -50,6 +51,7 @@ const mock = http.createServer((req, res) => {
       authUsers.set(id, { id, email: b.email }); return json(200, { id, email: b.email })
     }
     if (u.pathname.startsWith('/auth/v1/admin/users/')) return json(200, {})
+    if (u.pathname === '/rest/v1/fluent_form_leads' && req.method === 'POST') { leadsInCloud.push(b); return json(201, []) }
     json(404, { message: 'mock: unknown ' + u.pathname })
   })
 })
@@ -102,6 +104,8 @@ try {
   check(r.status === 401, 'webhook with wrong secret → 401', r)
   r = await api('POST', '/api/webhook/fluent-forms?secret=hook-secret', null, { client_name: 'TEST lead', phone: '0500000000' })
   check(r.status >= 200 && r.status < 300, 'webhook with secret accepted', r)
+  await new Promise(res => setTimeout(res, 200))
+  check(leadsInCloud.length === 1 && leadsInCloud[0].client_name === 'TEST lead' && !('is_read' in leadsInCloud[0]), 'new website lead is saved in Supabase too (AUD-59)', leadsInCloud)
   let h = await fetch('http://127.0.0.1:3001/api/webhook/fluent-forms', { method: 'OPTIONS', headers: { Origin: 'https://evil.example' } })
   check(!h.headers.get('access-control-allow-origin'), 'unknown origin gets no CORS header', h.headers.get('access-control-allow-origin'))
   h = await fetch('http://127.0.0.1:3001/api/webhook/fluent-forms', { method: 'OPTIONS', headers: { Origin: 'https://crm.srv1646539.hstgr.cloud' } })

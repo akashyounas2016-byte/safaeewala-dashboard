@@ -4,7 +4,22 @@
 > `src/pages/JobSheetSpreadsheet.tsx` and the shared logic in `src/store/DataContext.tsx`
 > (`addBooking`, `updateBooking`, `deleteBooking`, `pushBookingToDailyJob`, `updateDailyJob`) and
 > `src/lib/clientDataSync.ts`, on `main` as of `cb9ca31`. Every finding below was read in the code.
-> IDs **BJ-01…BJ-18** (findings) and **BJS-01…BJS-16** (suggestions). Nothing is fixed yet.
+> IDs **BJ-01…BJ-18** (findings) and **BJS-01…BJS-16** (suggestions).
+>
+> **Status (`claude/workspace`, not merged):** ✅ BJ-01…BJ-12, BJ-14…BJ-18 fixed; BJ-13 partly — the stored
+> status now follows payments made on the job sheet, but job-only cards for past dates still show "completed"
+> (work done) with the unpaid amount as Pending. VAT on the auto invoice stays 5 % (no VAT setting exists).
+> Mapping in `src/lib/bookingSync.ts`, tests in `tests/unit/booking-sync.test.ts`.
+> Suggestions BJS-01…16 are not built yet.
+>
+> **Cloud audit (same round)** — places where data stayed in one browser or did not reach Supabase:
+> booking edits to the job row (BJ-02); booking delete (BJ-09); **website leads were only in the VPS file**
+> (now the webhook and the app copy them to Supabase, changes go through the outbox); rows that existed only
+> in a browser were replaced by the server list on load (now uploaded once per device — "cloud backfill");
+> fields without a database column were dropped silently (`daily_jobs.team_name` — migration
+> `2026-11-01_cloud_columns.sql`; the outbox now saves the rest of the row and reports the missing column);
+> custom service types, client review requests, GHL settings and the Google Drive webhook URL lived in one
+> browser (now cloud-synced keys); company-settings and profile-name saves failed without a message.
 
 ## 0. Answer: are the two screens fully synchronised?
 

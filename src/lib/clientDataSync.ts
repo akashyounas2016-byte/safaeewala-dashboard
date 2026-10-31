@@ -1376,6 +1376,14 @@ export function getScheduledMonthlyShiftsForDate(
  * Returns the count of newly inserted jobs.
  * Strictly complies with Rule 1: Master client contracts are NEVER mutated.
  */
+// BJ-04: Bookings, the job sheet and Excel all add today's monthly visits. Before the data has
+// arrived from the cloud they would see an empty day and insert visits that already exist, and two
+// screens could insert the same visit. So: nothing until the first load is done, and each
+// client/day is inserted at most once per session.
+let initialDataLoaded = false
+const insertedThisSession = new Set<string>()
+export function markInitialDataLoaded(loaded = true): void { initialDataLoaded = loaded }
+
 export function syncMonthlySchedulesToDailyJobs(
   dateStr: string,
   clients: Client[],
@@ -1388,7 +1396,12 @@ export function syncMonthlySchedulesToDailyJobs(
   insertedClients: string[]
 } {
   const result = getScheduledMonthlyShiftsForDate(dateStr, clients, dailyJobs)
-  const pendingShifts = result.shifts.filter(s => !s.alreadySynced)
+  if (!initialDataLoaded) {
+    return { insertedCount: 0, alreadySyncedCount: result.alreadySyncedCount, dayName: result.dayName, insertedClients: [] }
+  }
+  const sessionKey = (s: { client: Client }) => `${dateStr}|${s.client.id || normalizeKey(s.client.full_name)}`
+  const pendingShifts = result.shifts.filter(s => !s.alreadySynced && !insertedThisSession.has(sessionKey(s)))
+  pendingShifts.forEach(s => insertedThisSession.add(sessionKey(s)))
   const insertedClients: string[] = []
 
   pendingShifts.forEach(shift => {

@@ -117,6 +117,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/syncQueue.ts` (`dbInsert/dbUpdate/dbDelete`, `applyOutbox`), `src/lib/cloudState.ts`, `src/components/layout/SyncStatusBanner.tsx`; loader pages through tables (no 1000-row cap).
 - **Status:** Active in code · needs migration `supabase/migrations/2026-10-27_phase2_sync.sql` · Since: 2026-10-27 (AUD-02/03/04/20/23)
 
+### R-SYNC-06 — Bookings and the job sheet share one link and one set of rules
+- **Rule:** A booking and its job-sheet row are linked by `booking_id` only (a name guess is used for old bookings only when it is exact and unique). Edits flow both ways with the same mapping and are saved to the database; payments are the job row's `received`; completing (on either screen) creates one draft invoice linked to the booking and its rows (not for monthly contracts) and the next recurring visit with its own row; cancelling removes the row (copy kept), un-cancelling brings it back; deleting a booking keeps a copy; re-importing a day keeps booking rows; monthly visits are added only after the cloud data has loaded and once per client and day.
+- **Code:** `src/lib/bookingSync.ts`, `DataContext → createJobForBooking, onBookingCompleted, updateBooking, updateDailyJob`, `clientDataSync → syncMonthlySchedulesToDailyJobs`.
+- **Status:** Active · Since: 2026-11-01 (BJ-01…BJ-18)
+
+### R-SYNC-07 — Everything reaches the cloud
+- **Rule:** Every business record is saved in Supabase: tables through the outbox, other lists through cloud-synced keys; nothing is kept in one browser only (UI preferences excepted). Rows found only in a browser are uploaded once per device; a field without a column never blocks the rest of the row and is reported.
+- **Code:** `syncQueue.ts`, `cloudState.ts`, `DataContext → fromServer`, `fluentFormsSync.ts`, `webhookServer.cjs → saveLeadToCloud`.
+- **Status:** Active · Since: 2026-11-01
+
 ### R-SYNC-04 — Staff are matched by whole words
 - **Rule:** An employee matches a job's `staff_name` by normalised full name or whole-word match — "Rupa" must not match "Rupak".
 - **Code:** `clientDataSync.ts → employeeMatchesStaff`.

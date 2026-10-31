@@ -32,6 +32,11 @@ export const CLOUD_SYNCED_KEYS = [
   'safaeewala_inventory_usage',
   'safaeewala_closed_days',
   'safaeewala_driver_plans',
+  // settings that used to live in one browser only (cloud audit 2026-11-01)
+  'safaeewala_booking_service_types',
+  'safaeewala_review_requests',
+  'safaeewala_ghl_config',
+  'safaeewala_gdrive_webhook_url',
 ] as const
 
 const TABLE = 'app_state'

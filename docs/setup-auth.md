@@ -72,6 +72,9 @@ and the database refuses anyone who is not signed in.
    (My Duties is allowed for Employee by default).
 3. The driver opens the dashboard on the phone → My Duties → **Start shift — share my location**.
 
+## Step 5c — One more column (cloud audit)
+Supabase SQL Editor → run `supabase/migrations/2026-11-01_cloud_columns.sql` (adds the job sheet's team name).
+
 ## Step 6 — Check the data arrived
 1. On each device from Step 0, sign in once and leave the dashboard open for a minute — waiting
    changes upload by themselves.

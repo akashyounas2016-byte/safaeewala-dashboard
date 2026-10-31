@@ -123,7 +123,7 @@ function loadReviews(): Record<string, string> {
 function persistReview(bookingId: string) {
   const data = loadReviews()
   data[bookingId] = new Date().toISOString()
-  localStorage.setItem(REVIEW_KEY, JSON.stringify(data))
+  safeLocalStorageSet(REVIEW_KEY, data) // cloud-synced
 }
 
 /* ─── Main component ─── */

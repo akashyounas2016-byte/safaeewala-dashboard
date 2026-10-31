@@ -109,7 +109,7 @@ export function ImportPreviewModal({ plan, existingJobs, existingExpenses, onCan
         {(replacingJobs.length > 0 || replacingExpenses.length > 0) && (
           <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-900">
             <AlertTriangle size={15} className="text-amber-600 mt-0.5 shrink-0" />
-            <span>{fmtDate(date)} already has <b>{replacingJobs.length} job{replacingJobs.length === 1 ? '' : 's'}</b> and <b>{replacingExpenses.length} expense{replacingExpenses.length === 1 ? '' : 's'}</b>. Importing replaces them with the rows below.</span>
+            <span>{fmtDate(date)} already has <b>{replacingJobs.length} job{replacingJobs.length === 1 ? '' : 's'}</b> and <b>{replacingExpenses.length} expense{replacingExpenses.length === 1 ? '' : 's'}</b>. Importing replaces them with the rows below. Rows created from bookings are kept.</span>
           </div>
         )}
         {invalid.size > 0 && (

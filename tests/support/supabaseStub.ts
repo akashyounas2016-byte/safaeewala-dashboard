@@ -3,6 +3,7 @@ type Row = Record<string, any>
 export const db: Record<string, Row[]> = {}
 export const failing = new Set<string>()          // tables whose writes fail
 export const tsFormat = { pg: false }              // return timestamps in Postgres text format
+export const missingColumns: Record<string, string[]> = {} // columns the fake database does not have
 
 const table = (t: string) => (db[t] ||= [])
 const pk = (t: string) => (t === 'app_state' ? 'key' : 'id')
@@ -29,6 +30,8 @@ class Q implements PromiseLike<any> {
   private exec() {
     const t = this.t, rows = table(t)
     if (this.action.kind !== 'select' && failing.has(t)) return { data: null, error: { message: `stub failure on ${t}` } }
+    const bad = (missingColumns[t] || []).find(c => this.action.payload && c in this.action.payload)
+    if (bad) return { data: null, error: { message: `Could not find the '${bad}' column of '${t}' in the schema cache` } }
     if (this.action.kind === 'select') {
       const data = rows.filter(r => this.match(r)).map(r => out(t, r))
       return { data: this.single ? data[0] ?? null : data, error: null }

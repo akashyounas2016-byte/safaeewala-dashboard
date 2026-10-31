@@ -1,4 +1,5 @@
 import { todayDubai } from '@/lib/dubaiTime'
+import { safeLocalStorageSet } from '@/lib/storageUtils'
 /**
  * Safaeewala CRM - GoHighLevel (GHL) Integration Service
  * Manages GHL connection credentials, webhook workflow triggers, and booking confirmation email automation.
@@ -43,7 +44,7 @@ export function saveGHLConfig(config: Partial<GHLConfig>): GHLConfig {
   try {
     const current = getGHLConfig()
     const updated = { ...current, ...config }
-    localStorage.setItem(GHL_STORAGE_KEY, JSON.stringify(updated))
+    safeLocalStorageSet(GHL_STORAGE_KEY, updated) // cloud-synced (no secrets in it — TA-18)
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('safaeewala_ghl_config_updated', { detail: updated }))
     }

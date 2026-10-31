@@ -6,6 +6,7 @@ import { loadCompanyInfo } from '@/lib/companyInfo'
 import { useIsAdmin, useCurrentUser } from '@/store/UserContext'
 import { UsersAdminPanel, RolePermissionsPanel } from '@/components/settings/UserManagement'
 import { BeforeDeleteCopies } from '@/components/settings/BeforeDeleteCopies'
+import { notify } from '@/lib/notify'
 import { DataHealthPanel } from '@/components/settings/DataHealthPanel'
 import { HeartPulse } from 'lucide-react'
 import * as XLSX from 'xlsx'
@@ -802,10 +803,16 @@ export function Settings() {
   }, [])
 
   // Merge into company_settings.data so other sections (e.g. rolePermissions) are not wiped (AUD-43)
-  async function saveSettingsData(patch: Record<string, unknown>) {
+  async function saveSettingsData(patch: Record<string, unknown>): Promise<boolean> {
     const { data } = await supabase.from('company_settings').select('data').eq('id', 1).single()
     const current = (data?.data || {}) as Record<string, unknown>
-    await supabase.from('company_settings').upsert({ id: 1, data: { ...current, ...patch } })
+    const { error } = await supabase.from('company_settings').upsert({ id: 1, data: { ...current, ...patch } })
+    // Saved to the cloud or the user is told — company settings are admin-only in the database
+    if (error) {
+      notify.error(isAdmin ? `Settings not saved: ${error.message}` : 'Only an admin can change company settings.')
+      return false
+    }
+    return true
   }
 
   async function saveCompany(patch: CompanyData) {
@@ -1005,10 +1012,25 @@ export function Settings() {
 
   async function saveProfile(name: string) {
     setProfileSaving(true)
-    await supabase.from('profiles').update({ full_name: name }).eq('id', currentUserId)
-    setProfileName(name)
-    setProfileSaving(false)
-    setEditProfileOpen(false)
+    // Profiles change only through the server (the database refuses direct edits — SEC-01)
+    try {
+      const { data } = await supabase.auth.getSession()
+      const res = await fetch(`/api/admin/users/${currentUserId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {}) },
+        body: JSON.stringify({ full_name: name }),
+      })
+      if (!res.ok) {
+        const out = await res.json().catch(() => ({})) as { error?: string }
+        notify.error(out.error || 'Name not saved — ask an admin to change it in Settings → Users.')
+      } else {
+        setProfileName(name)
+        setEditProfileOpen(false)
+        notify.success('Name saved')
+      }
+    } finally {
+      setProfileSaving(false)
+    }
   }
 
   async function importBackup(file: File) {

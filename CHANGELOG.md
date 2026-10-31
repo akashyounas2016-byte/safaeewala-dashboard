@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(sync): Bookings ↔ Daily Job Sheet — editing a job-sheet card no longer wipes the collected amount (BJ-01); booking edits are saved to the job row in the database (BJ-02); booking payments land on the job row (BJ-03); monthly visits only after load and once per day (BJ-04); one completion path with linked invoice + next visit with its own row (BJ-05…07); cancel/delete/re-import keep the link or a copy (BJ-08…10); link by booking_id (BJ-11); card buttons work (BJ-12); material/notes/area sync (BJ-14…15); bookings do not rewrite monthly contracts (BJ-16); BK badge + delete confirm on the job sheet (BJ-17); Dubai due date (BJ-18) — R-SYNC-06
+- fix(cloud): website leads saved in Supabase (webhook + backfill + outbox); browser-only rows uploaded once per device; missing columns no longer block rows (migration `2026-11-01_cloud_columns.sql` adds `daily_jobs.team_name`); service types, review requests, GHL settings, Drive webhook URL cloud-synced; settings / profile saves report failures — R-SYNC-07
+
 - docs(audit): Bookings ↔ Daily Job Sheet audit — sync not complete: editing a job-sheet card on Bookings wipes received (BJ-01), booking edits not saved to the database for the job row (BJ-02), booking payments not on the job sheet (BJ-03), duplicate monthly visits (BJ-04) and BJ-05…18; suggestions BJS-01…16
 
 - chore(quality): technical-audit fixes — booking popup hooks crash (TA-06); tests in the repo + `npm run check`, deploy blocked on lint errors / type errors / failing tests (TA-07, TA-08); pinned VPS host key (TA-17); dead services removed (TA-05, TA-22); app error log on the VPS shown in Data health (TA-24); full-storage warning (TA-21); first load 1.4 → 0.68 MB (TA-13); security headers on the HTML + HSTS + CSP report-only (TA-16); GHL key on the server (TA-18); shared zod rules + import row checks (TA-19); database CHECK rules migration (TA-20); one `cleanNum` (TA-04)

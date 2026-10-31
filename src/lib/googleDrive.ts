@@ -1,3 +1,4 @@
+import { safeLocalStorageSet } from '@/lib/storageUtils'
 const CLIENT_ID = (import.meta.env?.VITE_GOOGLE_CLIENT_ID as string | undefined) || ''
 const SCOPE = 'https://www.googleapis.com/auth/drive.file'
 
@@ -64,7 +65,10 @@ export const GDRIVE_WEBHOOK_STORAGE_KEY = 'safaeewala_gdrive_webhook_url'
 
 export function getDriveWebhookUrl(): string {
   try {
-    return localStorage.getItem(GDRIVE_WEBHOOK_STORAGE_KEY) || ''
+    const raw = localStorage.getItem(GDRIVE_WEBHOOK_STORAGE_KEY) || ''
+    // stored as JSON so it can be cloud-synced; older versions stored the bare URL
+    if (raw.startsWith('"')) { try { return String(JSON.parse(raw)) } catch { return '' } }
+    return raw
   } catch {
     return ''
   }
@@ -72,7 +76,7 @@ export function getDriveWebhookUrl(): string {
 
 export function setDriveWebhookUrl(url: string): void {
   try {
-    localStorage.setItem(GDRIVE_WEBHOOK_STORAGE_KEY, url.trim())
+    safeLocalStorageSet(GDRIVE_WEBHOOK_STORAGE_KEY, JSON.stringify(url.trim())) // cloud-synced
   } catch (e) {
     console.error('Failed to save webhook URL to localStorage:', e)
   }

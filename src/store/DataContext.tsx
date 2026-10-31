@@ -1,14 +1,15 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency } from '../types'
 import { supabase } from '@/lib/supabase'
-import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs } from '@/lib/clientDataSync'
+import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry } from '@/lib/syncQueue'
 import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
 import { nextInvoiceNumber, ensureInvoiceNumber } from '@/lib/invoiceNumber'
 import { addHoursToTime, staffOfAgency } from '@/lib/utils'
 import { defaultAgencies } from '@/lib/defaultAgencies'
-import { todayDubai } from '@/lib/dubaiTime'
+import { todayDubai, addDays } from '@/lib/dubaiTime'
+import { jobFromBooking, jobPatchFromBookingPatch, bookingPatchFromJobPatch, nextOccurrence } from '@/lib/bookingSync'
 import { describeJobChange } from '@/lib/auditLog'
 import { saveDeletionSnapshot } from '@/lib/snapshots'
 export { defaultAgencies }
@@ -214,6 +215,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // Supabase returns at most 1000 rows per request — page through the table so large
     // ledgers (daily_jobs) are loaded completely. Each page has the 2 s timeout guard.
     const PAGE = 1000
+    const readFailed = new Set<string>()
     const q = async <T = unknown>(table: string, order = 'created_at'): Promise<T[]> => {
       const all: T[] = []
       try {
@@ -222,7 +224,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             setTimeout(() => reject(new Error('timeout')), 2000)
           )
           const fetchPromise = supabase.from(table).select('*').order(order, { ascending: false })
-            .range(from, from + PAGE - 1).then(r => (r.data ?? []) as unknown as T[])
+            .range(from, from + PAGE - 1).then(r => { if (r.error) throw r.error; return (r.data ?? []) as unknown as T[] })
           const page = await Promise.race([fetchPromise, timeoutPromise])
           all.push(...(page ?? []))
           if (!page || page.length < PAGE) break
@@ -230,8 +232,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return all
       } catch {
         // A partial read would look like deleted rows — treat it as "no server data" and use the cache
+        readFailed.add(table)
         return []
       }
+    }
+
+    /**
+     * Cloud backfill (one time per device and table): rows that exist only in this browser's copy —
+     * created before the cloud tables existed, or whose upload was lost — are uploaded through the
+     * outbox and kept on screen, instead of being replaced by the server list. Skipped when the
+     * table could not be read, so a network error never pushes an old copy over the cloud.
+     */
+    const BACKFILL_KEY = 'safaeewala_cloud_backfill_v1'
+    const backfilled = safeLocalStorageGet<Record<string, string>>(BACKFILL_KEY, {})
+    const fromServer = <T extends { id: string }>(table: string, cacheKey: string, server: T[]): T[] => {
+      const saved = safeLocalStorageGet<T[]>(cacheKey, [])
+      if (readFailed.has(table)) return server.length > 0 ? withPending(table, server) : saved
+      const serverIds = new Set(server.map(r => r.id))
+      const localOnly = saved.filter(r => r && r.id && !serverIds.has(r.id))
+      if (!backfilled[table] && localOnly.length > 0) {
+        localOnly.forEach(r => dbInsert(table, r))
+        console.info(`[cloud] uploading ${localOnly.length} ${table} row(s) that were only in this browser`)
+      }
+      if (!backfilled[table]) {
+        backfilled[table] = new Date().toISOString()
+        safeLocalStorageSet(BACKFILL_KEY, backfilled)
+        return [...withPending(table, server), ...localOnly]
+      }
+      return server.length > 0 ? withPending(table, server) : saved
     }
     // Server rows + local changes still waiting in the outbox (AUD-03)
     const withPending = <T extends { id: string }>(table: string, rows: T[]) =>
@@ -277,66 +305,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
       q('daily_jobs',     'date'),
       q('daily_expenses', 'date'),
     ]).then(([b, c, e, i, inv, dj, de]) => {
-      if (b && b.length > 0) {
-        setBookings(withPending('bookings', b as Booking[]))
-      } else {
-        const saved = safeLocalStorageGet<Booking[]>('safaeewala_bookings', [])
-        if (saved.length > 0) setBookings(saved)
-      }
+      setBookings(fromServer('bookings', 'safaeewala_bookings', b as Booking[]))
+      setClients(fromServer('clients', 'safaeewala_clients', c as Client[]))
+      setEmployees(fromServer('employees', 'safaeewala_employees', e as Employee[]))
+      setInvoices(fromServer('invoices', 'safaeewala_invoices', i as Invoice[]))
+      setInventory(fromServer('inventory', 'safaeewala_inventory', inv as InventoryItem[]))
 
-      if (c && c.length > 0) {
-        setClients(withPending('clients', c as Client[]))
-      } else {
-        const saved = safeLocalStorageGet<Client[]>('safaeewala_clients', [])
-        if (saved.length > 0) setClients(saved)
-      }
-
-      if (e && e.length > 0) {
-        setEmployees(withPending('employees', e as Employee[]))
-      } else {
-        const saved = safeLocalStorageGet<Employee[]>('safaeewala_employees', [])
-        if (saved.length > 0) setEmployees(saved)
-      }
-
-      if (i && i.length > 0) {
-        setInvoices(withPending('invoices', i as Invoice[]))
-      } else {
-        const saved = safeLocalStorageGet<Invoice[]>('safaeewala_invoices', [])
-        if (saved.length > 0) setInvoices(saved)
-      }
-
-      if (inv && inv.length > 0) {
-        setInventory(withPending('inventory', inv as InventoryItem[]))
-      } else {
-        const saved = safeLocalStorageGet<InventoryItem[]>('safaeewala_inventory', [])
-        if (saved.length > 0) setInventory(saved)
-      }
-
-      const initialJobs = ((dj || []) as DailyJob[]).map(j => ({
+      const cleanJob = (j: DailyJob): DailyJob => ({
         ...j,
         charges: safeNum(j.charges),
         received: safeNum(j.received),
         duty_hours: safeNum(j.duty_hours),
         ot_hours: safeNum(j.ot_hours),
         service: j.service || '',
-      }))
-      if (initialJobs.length > 0) {
-        setDailyJobs(withPending('daily_jobs', initialJobs))
-      } else {
-        const savedJobs = safeLocalStorageGet<DailyJob[]>('safaeewala_daily_jobs', [])
-        if (savedJobs.length > 0) setDailyJobs(savedJobs)
-      }
-
-      const initialExp = ((de || []) as DailyExpense[]).map(x => ({
-        ...x,
-        amount: safeNum(x.amount),
-      }))
-      if (initialExp.length > 0) {
-        setDailyExpenses(withPending('daily_expenses', initialExp))
-      } else {
-        const savedExp = safeLocalStorageGet<DailyExpense[]>('safaeewala_daily_expenses', [])
-        if (savedExp.length > 0) setDailyExpenses(savedExp)
-      }
+      })
+      setDailyJobs(fromServer('daily_jobs', 'safaeewala_daily_jobs', ((dj || []) as DailyJob[]).map(cleanJob)))
+      setDailyExpenses(fromServer('daily_expenses', 'safaeewala_daily_expenses',
+        ((de || []) as DailyExpense[]).map(x => ({ ...x, amount: safeNum(x.amount) }))))
+      markInitialDataLoaded() // BJ-04: monthly visits may be added from now on
       setLoading(false)
     }).catch(() => setLoading(false))
 
@@ -427,6 +413,67 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [loading, allClients, viewDailyJobs])
 
+  // ── Booking ↔ job-sheet helpers (R-SYNC-03, BJ-02…BJ-09) ──
+  /** Add the job-sheet row of a booking (saved through the outbox) */
+  function createJobForBooking(b: Booking, area?: string): DailyJob {
+    const clientArea = area || clients.find(c => c.id === b.client_id)?.area
+    const job: DailyJob = { ...jobFromBooking(b, crewToStaffName(b.assigned_crew, allEmployees), clientArea), id: uid(), created_at: now() }
+    setDailyJobs(p => {
+      const next = [job, ...p]
+      safeLocalStorageSet('safaeewala_daily_jobs', next)
+      return next
+    })
+    dbInsert('daily_jobs', job)
+    return job
+  }
+  /** Remove one job row (state + outbox) */
+  function removeJobRow(jobId: string) {
+    setDailyJobs(p => {
+      const next = p.filter(j => j.id !== jobId)
+      safeLocalStorageSet('safaeewala_daily_jobs', next)
+      return next
+    })
+    dbDelete('daily_jobs', jobId)
+  }
+  /**
+   * What happens once when a booking becomes completed — the same whether it was completed on
+   * Bookings or by collecting the full amount on the job sheet (BJ-05):
+   *  - a draft invoice linked to the booking and its job rows (no invoice for monthly contracts,
+   *    they are billed monthly — BJ-07)
+   *  - the next visit of a recurring booking, with its own job-sheet row (BJ-06)
+   */
+  function onBookingCompleted(booking: Booking, jobIds: string[]) {
+    const alreadyInvoiced = invoices.some(inv => inv.booking_id === booking.id)
+    if (booking.frequency !== 'monthly' && !alreadyInvoiced && booking.total_amount > 0) {
+      const sub = booking.total_amount
+      const vat = Math.round(sub * 0.05 * 100) / 100
+      const invoice: Invoice = {
+        id: uid(), created_at: now(),
+        invoice_number: nextInvoiceNumber(invoices),
+        booking_id: booking.id,
+        job_ids: jobIds,
+        client_id: booking.client_id,
+        client_name: booking.client_name,
+        client_address: booking.service_address,
+        trn: '', company_trn: companyTRN,
+        line_items: [{ description: `${booking.service_type} — ${booking.scheduled_date}`, quantity: 1, unit_price: sub, amount: sub }],
+        subtotal: sub, vat_rate: 5, vat_amount: vat, total: sub + vat,
+        status: 'draft',
+        due_date: addDays(todayDubai(), 10), // BJ-18: Dubai date
+        notes: 'Payment due within 10 days. Bank transfer or cash accepted.',
+      }
+      setInvoices(p => [invoice, ...p])
+      dbInsert('invoices', invoice)
+    }
+    const next = nextOccurrence(booking)
+    if (next && !bookings.some(b => b.client_id === booking.client_id && b.scheduled_date === next.scheduled_date && b.service_type === booking.service_type)) {
+      const nextRow: Booking = { ...next, id: uid(), created_at: now() }
+      setBookings(p => [nextRow, ...p])
+      dbInsert('bookings', nextRow)
+      createJobForBooking(nextRow)
+    }
+  }
+
   const store: DataStore = {
     bookings, clients: allClients, employees: allEmployees, agencies, invoices, inventory, loading,
     dailyJobs: viewDailyJobs, dailyExpenses,
@@ -446,26 +493,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       let resolvedClientId = b.client_id || ''
       if (matchedClient) {
         resolvedClientId = matchedClient.id
-        if (isMonthly) {
-          const existingDays = Array.isArray(matchedClient.service_days) ? matchedClient.service_days : []
-          const combinedDays = Array.from(new Set([...existingDays, ...recurringDays]))
-          const patch: Partial<Client> = {
-            source: matchedClient.source || 'monthly',
-            service_days: combinedDays,
-            scheduled_time: matchedClient.scheduled_time || b.scheduled_time,
-            end_time: matchedClient.end_time || b.end_time,
-            duration_hours: matchedClient.duration_hours || b.duration_hours,
-            preferred_cleaner: matchedClient.preferred_cleaner || (crewToStaffName(b.assigned_crew, allEmployees) || undefined),
-          }
-          const updated = { ...matchedClient, ...patch }
-          setClients(p => p.map(c => c.id === matchedClient.id ? updated : c))
-          dbUpdate('clients', matchedClient.id, patch)
-        } else if (!matchedClient.source && b.source) {
-          const updated = { ...matchedClient, source: b.source }
-          setClients(p => p.map(c => c.id === matchedClient.id ? updated : c))
-          dbUpdate('clients', matchedClient.id, { source: b.source })
+        // BJ-16 / R-SCHED-02: an existing client's permanent schedule is changed only on
+        // Monthly Clients — a booking never rewrites it. Only a missing source is filled in.
+        if (!matchedClient.source && (b.source || isMonthly)) {
+          const source = isMonthly ? 'monthly' : b.source
+          setClients(p => p.map(c => c.id === matchedClient.id ? { ...c, source } : c))
+          dbUpdate('clients', matchedClient.id, { source })
         }
       } else if (!resolvedClientId) {
+        // A brand-new monthly client starts with this booking's schedule (a new contract)
         const newClient: Client = {
           id: uid(), created_at: now(),
           full_name: b.client_name, phone: b.client_phone,
@@ -484,156 +520,64 @@ export function DataProvider({ children }: { children: ReactNode }) {
         dbInsert('clients', newClient)
       }
 
-      const row = { ...b, id: uid(), created_at: now(), client_id: resolvedClientId }
+      const row: Booking = { ...b, id: uid(), created_at: now(), client_id: resolvedClientId }
       setBookings(p => [row, ...p])
       dbInsert('bookings', row)
       logAudit('created', 'booking', row.id, b.client_name, `${b.service_type} · ${b.scheduled_date}`)
-
-      // Automatically synchronize with Daily Job Sheet
-      const jobRow: DailyJob = {
-        id: uid(),
-        created_at: now(),
-        date: b.scheduled_date || todayDubai(),
-        staff_name: crewToStaffName(b.assigned_crew, allEmployees) || 'Unassigned',
-        start_time: b.scheduled_time || '09:00',
-        end_time: b.end_time || addHoursToTime(b.scheduled_time || '09:00', b.duration_hours || 3),
-        duty_hours: safeNum(b.duration_hours || 3),
-        ot_hours: 0,
-        address: b.service_address || `${b.client_name} - Dubai`,
-        area: 'Dubai',
-        material: ((b as any).material as any) || 'No',
-        charges: safeNum(b.total_amount || 0),
-        received: b.status === 'completed' ? safeNum(b.total_amount || 0) : 0,
-        payment_mode: b.frequency === 'monthly' ? 'Monthly' : 'Cash',
-        is_overtime: false,
-        remarks: b.notes ? `[Booking] ${b.notes}` : `Booking: ${b.service_type || 'Standard Clean'}`,
-        service: b.service_type || 'Standard Clean',
-        booking_id: row.id,
-      }
-      setDailyJobs(p => {
-        const next = [jobRow, ...p]
-        safeLocalStorageSet('safaeewala_daily_jobs', next)
-        return next
-      })
-      dbInsert('daily_jobs', jobRow)
+      // Every booking has its job-sheet row (R-SYNC-03)
+      createJobForBooking(row, matchedClient?.area)
     },
     updateBooking: (id, patch) => {
       const booking = bookings.find(b => b.id === id)
       setBookings(p => p.map(b => b.id === id ? { ...b, ...patch } : b))
       dbUpdate('bookings', id, patch)
       if (patch.status && booking) logAudit('status_changed', 'booking', id, booking.client_name, `${booking.status} → ${patch.status}`)
+      if (!booking) return
+      const updated: Booking = { ...booking, ...patch }
+      const linked = dailyJobs.filter(j => j.booking_id === id)
 
-      // Update synchronized DailyJob row if exists
-      setDailyJobs(p => {
-        const hasLinked = p.some(j => j.booking_id === id)
-        if (!hasLinked) return p
-        const next = p.map(j => {
-          if (j.booking_id !== id) return j
-          return {
-            ...j,
-            date: patch.scheduled_date ?? j.date,
-            start_time: patch.scheduled_time ?? j.start_time,
-            end_time: patch.end_time ?? j.end_time,
-            duty_hours: patch.duration_hours ? safeNum(patch.duration_hours) : j.duty_hours,
-            staff_name: crewToStaffName(patch.assigned_crew, allEmployees) || j.staff_name,
-            address: patch.service_address ?? j.address,
-            charges: patch.total_amount !== undefined ? safeNum(patch.total_amount) : j.charges,
-            service: patch.service_type ?? j.service,
-            received: patch.status === 'completed' ? (patch.total_amount !== undefined ? safeNum(patch.total_amount) : j.charges) : j.received,
-          }
-        })
-        safeLocalStorageSet('safaeewala_daily_jobs', next)
-        return next
-      })
-
-      // When a booking is marked completed for the first time:
-      if (patch.status === 'completed' && booking && booking.status !== 'completed') {
-        // 1. Client totals (spent / visits / last service) are derived from the booking's
-        //    job-sheet row, so nothing is added here — adding it too double-counted (AUD-22)
-
-        // 2. Auto-create a draft invoice
-        const sub = booking.total_amount
-        const vat = Math.round(sub * 0.05 * 100) / 100
-        const due = new Date(); due.setDate(due.getDate() + 10)
-        const invoice = {
-          id: uid(), created_at: now(),
-          invoice_number: nextInvoiceNumber(invoices),
-          client_id: booking.client_id,
-          client_name: booking.client_name,
-          client_address: booking.service_address,
-          trn: '', company_trn: companyTRN,
-          line_items: [{ description: `${booking.service_type} — ${booking.scheduled_date}`, quantity: 1, unit_price: sub, amount: sub }],
-          subtotal: sub, vat_rate: 5, vat_amount: vat, total: sub + vat,
-          status: 'draft' as const,
-          due_date: due.toISOString().split('T')[0],
-          notes: 'Payment due within 10 days. Bank transfer or cash accepted.',
-        }
-        setInvoices(p => [invoice, ...p])
-        dbInsert('invoices', invoice)
-
-        // Auto-schedule next occurrence for recurring bookings
-        if (booking.frequency !== 'once') {
-          const d = new Date(booking.scheduled_date)
-          if (booking.frequency === 'weekly')   d.setDate(d.getDate() + 7)
-          else if (booking.frequency === 'biweekly') d.setDate(d.getDate() + 14)
-          else if (booking.frequency === 'monthly')  d.setMonth(d.getMonth() + 1)
-          const nextRow = {
-            ...booking,
-            id: uid(), created_at: now(),
-            status: 'confirmed' as const,
-            scheduled_date: d.toISOString().split('T')[0],
-          }
-          setBookings(p => [nextRow, ...p])
-          dbInsert('bookings', nextRow)
-        }
+      // BJ-08: a cancelled booking leaves the job sheet (a copy is kept); un-cancelling brings it back
+      if (patch.status === 'cancelled' && booking.status !== 'cancelled') {
+        if (linked.length) saveDeletionSnapshot(`Cancelled booking ${booking.client_name}`, { dailyJobs: linked })
+        linked.forEach(j => removeJobRow(j.id))
+        return
       }
+      if (booking.status === 'cancelled' && patch.status && patch.status !== 'cancelled') {
+        if (linked.length === 0) createJobForBooking(updated)
+        return
+      }
+
+      // BJ-02: the linked job row follows the booking — saved to the database, not only this browser
+      const staffName = patch.assigned_crew !== undefined ? (crewToStaffName(patch.assigned_crew, allEmployees) || null) : null
+      const jobPatch = jobPatchFromBookingPatch(patch, booking, staffName)
+      if (Object.keys(jobPatch).length > 0 && linked.length > 0) {
+        setDailyJobs(p => {
+          const next = p.map(j => j.booking_id === id ? { ...j, ...jobPatch } : j)
+          safeLocalStorageSet('safaeewala_daily_jobs', next)
+          return next
+        })
+        linked.forEach(j => dbUpdate('daily_jobs', j.id, jobPatch))
+      }
+
+      if (patch.status === 'completed' && booking.status !== 'completed') onBookingCompleted(updated, linked.map(j => j.id))
     },
     deleteBooking: (id) => {
       const b = bookings.find(b => b.id === id)
+      const linked = dailyJobs.filter(j => j.booking_id === id)
+      // BJ-09: copy first, then delete through the outbox (a failed delete is retried and shown)
+      if (b) saveDeletionSnapshot(`Booking ${b.client_name} ${b.scheduled_date}`, { dailyJobs: linked })
       setBookings(p => p.filter(b => b.id !== id))
       dbDelete('bookings', id)
-      setDailyJobs(p => {
-        const next = p.filter(j => j.booking_id !== id)
-        safeLocalStorageSet('safaeewala_daily_jobs', next)
-        return next
-      })
-      supabase.from('daily_jobs').delete().eq('booking_id', id).then(({ error }) => { if (error) console.error(error) })
+      linked.forEach(j => removeJobRow(j.id))
       if (b) logAudit('deleted', 'booking', id, b.client_name)
     },
     pushBookingToDailyJob: (bookingId) => {
       const b = bookings.find(x => x.id === bookingId)
       if (!b) return
       // Prevent duplicate push if already linked
-      const existing = dailyJobs.find(j => j.booking_id === bookingId)
-      if (existing) return
-
-      const jobRow: DailyJob = {
-        id: uid(),
-        created_at: now(),
-        date: b.scheduled_date || todayDubai(),
-        staff_name: crewToStaffName(b.assigned_crew, allEmployees) || 'Unassigned',
-        start_time: b.scheduled_time || '09:00',
-        end_time: b.end_time || addHoursToTime(b.scheduled_time || '09:00', b.duration_hours || 3),
-        duty_hours: safeNum(b.duration_hours || 3),
-        ot_hours: 0,
-        address: b.service_address || `${b.client_name} - Dubai`,
-        area: 'Dubai',
-        material: ((b as any).material as any) || 'No',
-        charges: safeNum(b.total_amount || 0),
-        received: b.status === 'completed' ? safeNum(b.total_amount || 0) : 0,
-        payment_mode: b.frequency === 'monthly' ? 'Monthly' : 'Cash',
-        is_overtime: false,
-        remarks: b.notes ? `[Booking] ${b.notes}` : `Booking: ${b.service_type || 'Standard Clean'}`,
-        service: b.service_type || 'Standard Clean',
-        booking_id: b.id,
-      }
-      setDailyJobs(p => {
-        const next = [jobRow, ...p]
-        safeLocalStorageSet('safaeewala_daily_jobs', next)
-        return next
-      })
-      dbInsert('daily_jobs', jobRow)
-      logAudit('created', 'daily_job', jobRow.id, jobRow.staff_name, `Synced from Booking #${b.id.slice(0, 6)}`)
+      if (dailyJobs.some(j => j.booking_id === bookingId)) return
+      const job = createJobForBooking(b)
+      logAudit('created', 'daily_job', job.id, job.staff_name, `Synced from Booking #${b.id.slice(0, 6)}`)
     },
 
     /* ── Clients ── */
@@ -868,41 +812,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (before?.booking_id) {
         const linkedBooking = bookings.find(b => b.id === before.booking_id)
         if (linkedBooking && linkedBooking.frequency !== 'monthly') {
-          const bookingPatch: Partial<Booking> = {}
-          if ('date' in sanitizedPatch && sanitizedPatch.date && sanitizedPatch.date !== linkedBooking.scheduled_date) {
-            bookingPatch.scheduled_date = sanitizedPatch.date
-          }
-          if ('start_time' in sanitizedPatch && sanitizedPatch.start_time && sanitizedPatch.start_time !== linkedBooking.scheduled_time) {
-            bookingPatch.scheduled_time = sanitizedPatch.start_time
-          }
-          if ('end_time' in sanitizedPatch && sanitizedPatch.end_time && sanitizedPatch.end_time !== linkedBooking.end_time) {
-            bookingPatch.end_time = sanitizedPatch.end_time
-          }
-          if ('duty_hours' in sanitizedPatch && sanitizedPatch.duty_hours !== undefined && sanitizedPatch.duty_hours !== linkedBooking.duration_hours) {
-            bookingPatch.duration_hours = sanitizedPatch.duty_hours
-          }
-          if ('charges' in sanitizedPatch && sanitizedPatch.charges !== undefined && sanitizedPatch.charges !== linkedBooking.total_amount) {
-            bookingPatch.total_amount = sanitizedPatch.charges
-          }
-          if ('address' in sanitizedPatch && sanitizedPatch.address && sanitizedPatch.address !== linkedBooking.service_address) {
-            bookingPatch.service_address = sanitizedPatch.address
-          }
-          if ('service' in sanitizedPatch && sanitizedPatch.service && sanitizedPatch.service !== linkedBooking.service_type) {
-            bookingPatch.service_type = sanitizedPatch.service
-          }
-          if ('staff_name' in sanitizedPatch && sanitizedPatch.staff_name) {
-            const crewIds = staffNameToCrew(sanitizedPatch.staff_name, allEmployees)
-            if (crewIds.length > 0 && JSON.stringify(crewIds) !== JSON.stringify(linkedBooking.assigned_crew)) {
-              bookingPatch.assigned_crew = crewIds
-            }
-          }
-          if ('received' in sanitizedPatch && sanitizedPatch.received !== undefined) {
-            const finalCharges = sanitizedPatch.charges !== undefined ? sanitizedPatch.charges : (before.charges || linkedBooking.total_amount || 0)
-            if (sanitizedPatch.received >= finalCharges && finalCharges > 0 && linkedBooking.status !== 'completed') {
-              bookingPatch.status = 'completed'
-            }
-          }
-
+          const crewIds = 'staff_name' in sanitizedPatch && sanitizedPatch.staff_name ? staffNameToCrew(sanitizedPatch.staff_name, allEmployees) : null
+          const bookingPatch = bookingPatchFromJobPatch(sanitizedPatch, before, linkedBooking, crewIds)
           if (Object.keys(bookingPatch).length > 0) {
             setBookings(prev => {
               const next = prev.map(b => b.id === before.booking_id ? { ...b, ...bookingPatch } : b)
@@ -910,6 +821,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
               return next
             })
             dbUpdate('bookings', before.booking_id, bookingPatch)
+            // BJ-05: completing by collecting the money runs the same steps as completing on Bookings
+            if (bookingPatch.status === 'completed') {
+              onBookingCompleted({ ...linkedBooking, ...bookingPatch }, dailyJobs.filter(j => j.booking_id === before.booking_id).map(j => j.id))
+            }
           }
         }
       }
@@ -954,14 +869,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     clearDailyData: (date) => {
       // AUD-55: delete the day's rows one by one through the outbox — a failed delete is retried, and
       // rows imported right after (new ids) can never be caught by a late "delete where date = …"
-      const dayJobs = dailyJobs.filter(j => j.date === date)
+      // BJ-10: rows that belong to a booking stay — they are removed by cancelling or deleting the
+      // booking, so a re-import or "delete day" never cuts a booking off from its job row
+      const dayJobs = dailyJobs.filter(j => j.date === date && !j.booking_id)
       const dayExpenses = dailyExpenses.filter(e => e.date === date)
       const jobIds = dayJobs.map(j => j.id)
       const expenseIds = dayExpenses.map(e => e.id)
+      const removeIds = new Set(jobIds)
       // BAK-5: keep a copy of the day before it is replaced or deleted
       saveDeletionSnapshot(`Day ${date}`, { dailyJobs: dayJobs, dailyExpenses: dayExpenses })
       setDailyJobs(p => {
-        const next = p.filter(j => j.date !== date)
+        const next = p.filter(j => !removeIds.has(j.id))
         safeLocalStorageSet('safaeewala_daily_jobs', next)
         return next
       })

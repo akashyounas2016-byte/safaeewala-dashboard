@@ -306,6 +306,7 @@ export function Bookings() {
     pushBookingToDailyJob,
     clients,
     employees,
+    loading,
   } = useData()
   const [view, setView] = useState<BookingViewMode>('grid')
   const [currentPage, setCurrentPage] = useState(1)
@@ -325,7 +326,20 @@ export function Bookings() {
   const handlePaymentSuccess = (payment: any) => {
     if (!paymentBooking) return
     const paidAmt = Number(payment.amount) || 0
-    if (paymentBooking.id.startsWith('dj-')) {
+    // BJ-12: today's monthly cards are not on the job sheet yet — add them first
+    if (paymentBooking.id.startsWith('monthly-sync-')) {
+      handleSyncDailyJobSheet()
+      notify.info('Monthly visits were added to the Daily Job Sheet — record the payment there or on the new card.')
+      setPaymentBooking(null)
+      return
+    }
+    // BJ-03: a booking's payment is the received amount of its job-sheet row, so the cash book,
+    // Pending and Overview see it too
+    const linkedJobId = paymentBooking.id.startsWith('dj-') ? paymentBooking.id.replace('dj-', '') : paymentBooking.job_sheet_id
+    if (linkedJobId && dailyJobs.some(j => j.id === linkedJobId)) {
+      const curJob = dailyJobs.find(j => j.id === linkedJobId)
+      updateDailyJob(linkedJobId, { received: (Number(curJob?.received) || 0) + paidAmt })
+    } else if (paymentBooking.id.startsWith('dj-')) {
       const jobId = paymentBooking.id.replace('dj-', '')
       const curJob = dailyJobs.find(j => j.id === jobId)
       const curReceived = (curJob?.received !== undefined && (curJob.received as any) !== '') ? Number(curJob.received) : 0
@@ -375,13 +389,12 @@ export function Bookings() {
   const synchronizedBookings = useMemo(() => {
     // 1. Existing bookings, enriched with latest live data from linked dailyJobs
     const enrichedBookings: Booking[] = bookings.map(b => {
-      const linkedJob = dailyJobs.find(j =>
-        (j.booking_id && j.booking_id === b.id) ||
-        (j.date === b.scheduled_date && (
-          (j.address && j.address.toLowerCase().includes(b.client_name.toLowerCase())) ||
-          (b.client_name && cleanClientNameFromAddress(j.address || '').toLowerCase().includes(b.client_name.toLowerCase()))
-        ))
-      )
+      // BJ-11: the link is booking_id. Older bookings without a linked row may fall back to a job of
+      // the same date whose cleaned client name is exactly the booking's — only if there is one.
+      const name = (b.client_name || '').toLowerCase().trim()
+      const guesses = dailyJobs.filter(j => !j.booking_id && j.date === b.scheduled_date && name &&
+        cleanClientNameFromAddress(j.address || '').toLowerCase().trim() === name)
+      const linkedJob = dailyJobs.find(j => j.booking_id === b.id) || (guesses.length === 1 ? guesses[0] : undefined)
 
       if (!linkedJob) {
         return {
@@ -750,14 +763,14 @@ export function Bookings() {
 
   // Auto-sync monthly recurring shifts to Daily Job Sheet for today
   useEffect(() => {
-    if (hasAutoSyncedRef.current) return
+    if (hasAutoSyncedRef.current || loading) return // BJ-04: not before the data has loaded
     const today = todayDubai()
     const res = syncMonthlySchedulesToDailyJobs(today, clients, dailyJobs, addDailyJob)
     if (res.insertedCount > 0) {
       setSyncedShiftsCount(res.insertedCount)
       hasAutoSyncedRef.current = true
     }
-  }, [clients, dailyJobs, addDailyJob])
+  }, [clients, dailyJobs, addDailyJob, loading])
 
   const handleSyncDailyJobSheet = () => {
     const today = todayDubai()
@@ -1674,7 +1687,12 @@ export function Bookings() {
                           type="button"
                           onClick={() => {
                             if (b.id.startsWith('dj-')) {
-                              updateDailyJob(b.id.replace('dj-', ''), { status: 'completed' as any })
+                              // BJ-12: completed = the full charge collected on the job-sheet row
+                              updateDailyJob(b.id.replace('dj-', ''), { status: 'completed', received: Number(b.total_amount) || 0 })
+                            } else if (b.id.startsWith('monthly-sync-')) {
+                              handleSyncDailyJobSheet()
+                              notify.info('Monthly visits were added to the Daily Job Sheet — complete the visit there.')
+                              return
                             } else {
                               updateBooking(b.id, { status: 'completed' as BookingStatus })
                             }
@@ -2261,17 +2279,27 @@ export function Bookings() {
           if (!selectedBooking) return
           if (selectedBooking.id.startsWith('dj-')) {
             const jobId = selectedBooking.id.replace('dj-', '')
-            updateDailyJob(jobId, {
-              date: patch.scheduled_date ?? selectedBooking.scheduled_date,
-              start_time: patch.scheduled_time ?? selectedBooking.scheduled_time,
-              end_time: patch.end_time ?? selectedBooking.end_time,
-              duty_hours: patch.duration_hours ?? selectedBooking.duration_hours,
-              charges: patch.total_amount ?? selectedBooking.total_amount,
-              staff_name: crewToStaffName(patch.assigned_crew, employees) || undefined,
-              address: patch.service_address ?? selectedBooking.service_address,
-              service: patch.service_type ?? selectedBooking.service_type,
-              received: patch.status === 'completed' ? (patch.total_amount ?? selectedBooking.total_amount) : undefined,
-            })
+            // BJ-01: only fields that were changed — an undefined "received" used to reset the
+            // collected amount to 0 and an undefined staff name blanked the cleaner
+            const jobPatch: Partial<DailyJob> = {}
+            if (patch.scheduled_date !== undefined) jobPatch.date = patch.scheduled_date
+            if (patch.scheduled_time !== undefined) jobPatch.start_time = patch.scheduled_time
+            if (patch.end_time !== undefined) jobPatch.end_time = patch.end_time
+            if (patch.duration_hours !== undefined) jobPatch.duty_hours = patch.duration_hours
+            if (patch.total_amount !== undefined) jobPatch.charges = patch.total_amount
+            if (patch.assigned_crew !== undefined) {
+              const staff = crewToStaffName(patch.assigned_crew, employees)
+              if (staff) jobPatch.staff_name = staff
+            }
+            if (patch.service_address !== undefined) jobPatch.address = patch.service_address
+            if (patch.service_type !== undefined) jobPatch.service = patch.service_type
+            if (patch.material !== undefined) jobPatch.material = patch.material as DailyJob['material']
+            if (patch.notes !== undefined) jobPatch.remarks = patch.notes
+            if (patch.status === 'completed') jobPatch.received = patch.total_amount ?? selectedBooking.total_amount
+            if (Object.keys(jobPatch).length > 0) updateDailyJob(jobId, jobPatch)
+          } else if (selectedBooking.id.startsWith('monthly-sync-')) {
+            handleSyncDailyJobSheet()
+            notify.info('Monthly visits were added to the Daily Job Sheet — edit the visit there or on its new card.')
           } else {
             updateBooking(selectedBooking.id, patch)
           }
@@ -2282,6 +2310,8 @@ export function Bookings() {
           if (selectedBooking.id.startsWith('dj-')) {
             const jobId = selectedBooking.id.replace('dj-', '')
             deleteDailyJob(jobId)
+          } else if (selectedBooking.id.startsWith('monthly-sync-')) {
+            notify.info('This is a monthly contract visit — change the schedule on Monthly Clients.')
           } else {
             deleteBooking(selectedBooking.id)
           }

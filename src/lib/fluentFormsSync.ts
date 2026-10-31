@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { dbInsert, dbUpdate, dbDelete } from '@/lib/syncQueue'
 import { supabase } from '@/lib/supabase'
 import type { FluentFormLead, LeadStatus } from '@/types'
 import { todayDubai } from '@/lib/dubaiTime'
@@ -332,14 +333,16 @@ async function flushLeadOutbox(): Promise<void> {
   writeLeadOutbox(left)
 }
 
-/** Supabase is a secondary copy; failures are logged, not fatal */
-async function supabaseLeadWrite(op: PromiseLike<{ error: { message: string } | null }>): Promise<void> {
-  try {
-    const { error } = await op
-    if (error) console.warn('[fluentForms] Supabase copy not updated:', error.message)
-  } catch (err) {
-    console.warn('[fluentForms] Supabase copy not updated:', err)
-  }
+/** Columns of public.fluent_form_leads — other fields of a lead object are not sent (AUD-59) */
+const LEAD_COLUMNS = ["id","created_at","form_id","form_title","entry_id","source_url","page_source","category","client_name","email","phone","whatsapp","address","area","property_type","preferred_date","preferred_time","service","message","estimated_value","status","booking_id","raw_data","responded_at"] as const
+function leadRow(lead: Partial<FluentFormLead>): Record<string, unknown> & { id: string } {
+  const src = lead as Record<string, unknown>
+  const row: Record<string, unknown> = {}
+  LEAD_COLUMNS.forEach(k => {
+    if (src[k] === undefined) return
+    row[k] = (k === 'form_id' || k === 'entry_id') && src[k] != null ? String(src[k]) : src[k]
+  })
+  return row as Record<string, unknown> & { id: string }
 }
 
 export async function fetchFluentFormLeads(): Promise<FluentFormLead[]> {
@@ -360,6 +363,12 @@ export async function fetchFluentFormLeads(): Promise<FluentFormLead[]> {
     const byId = new Map<string, FluentFormLead>()
     ;(db || []).forEach(l => byId.set(l.id, l))
     ;(vps || []).forEach(l => byId.set(l.id, { ...byId.get(l.id), ...l }))
+    // Leads that only reached the VPS file are copied to Supabase (the cloud store) — through the
+    // outbox, so a failed copy is retried
+    if (vps && db) {
+      const inDb = new Set(db.map(l => l.id))
+      vps.filter(l => l.id && !inDb.has(l.id) && !isDummyLead(l)).forEach(l => dbInsert('fluent_form_leads', leadRow(l)))
+    }
     const realData = Array.from(byId.values())
       .filter(l => !isDummyLead(l))
       .map(l => normalizeLeadWithRaw(l))
@@ -390,12 +399,13 @@ export function saveLeadsLocally(leads: FluentFormLead[]) {
 
 export async function insertFluentFormLead(lead: FluentFormLead): Promise<void> {
   await vpsWrite({ url: '/api/webhook/fluent-forms', method: 'POST', body: lead })
-  await supabaseLeadWrite(supabase.from('fluent_form_leads').insert(lead))
+  dbInsert('fluent_form_leads', leadRow(lead))
 }
 
 export async function updateFluentFormLead(id: string, updates: Partial<FluentFormLead>): Promise<void> {
   await vpsWrite({ url: `/api/webhook/fluent-forms/${id}`, method: 'PATCH', body: updates })
-  await supabaseLeadWrite(supabase.from('fluent_form_leads').update(updates).eq('id', id))
+  const row = leadRow({ ...updates, id }); delete (row as Record<string, unknown>).id
+  if (Object.keys(row).length > 0) dbUpdate('fluent_form_leads', id, row)
 }
 
 export async function updateFluentFormLeadStatus(id: string, status: LeadStatus, booking_id?: string): Promise<void> {
@@ -406,7 +416,7 @@ export async function updateFluentFormLeadStatus(id: string, status: LeadStatus,
 
 export async function deleteFluentFormLeadRemote(id: string): Promise<void> {
   await vpsWrite({ url: `/api/webhook/fluent-forms/${id}`, method: 'DELETE' })
-  await supabaseLeadWrite(supabase.from('fluent_form_leads').delete().eq('id', id))
+  dbDelete('fluent_form_leads', id)
 }
 
 /* ─── Export Leads to XLSX ─── */
