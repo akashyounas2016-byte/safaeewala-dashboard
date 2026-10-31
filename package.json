@@ -11,7 +11,8 @@
     "test": "node scripts/run-tests.mjs",
     "typecheck": "tsc -b",
     "lint:ci": "eslint . --quiet",
-    "check": "npm run lint:ci && npm run typecheck && npm test"
+    "check": "npm run lint:ci && npm run typecheck && npm test",
+    "api:local": "node --env-file=server.local.env webhookServer.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

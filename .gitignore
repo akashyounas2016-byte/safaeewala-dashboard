@@ -30,3 +30,7 @@ dist-ssr
 *.sw?
 .agents/
 *.backup.tsx
+
+# Local server secrets for npm run api:local (never commit)
+server.local.env
+.local-api-data/

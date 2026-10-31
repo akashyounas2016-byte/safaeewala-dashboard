@@ -13,6 +13,9 @@ export default defineConfig({
   server: {
     port: 5058,
     proxy: {
+      // Local testing of user management before the VPS has the new server: start the dev
+      // server with LOCAL_ADMIN_API=1 and run `npm run api:local` (reads server.local.env).
+      ...(process.env.LOCAL_ADMIN_API ? { '/api/admin': { target: 'http://127.0.0.1:3001', changeOrigin: true } } : {}),
       '/api': {
         target: 'https://crm.srv1646539.hstgr.cloud',
         changeOrigin: true,
