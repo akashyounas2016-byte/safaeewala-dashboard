@@ -90,6 +90,7 @@ import { todayDubai } from '@/lib/dubaiTime'
 import { escapeHtml } from '@/lib/html'
 import { invoicedJobIds } from '@/lib/receivables'
 import { notify, confirmAsync } from '@/lib/notify'
+import { findStaffClash, clashMessage } from '@/lib/shiftClash'
 import { ImportPreviewModal, type ImportPlan } from '@/components/dailyJobSheet/ImportPreviewModal'
 import { buildCleanerRoster } from '@/lib/attendance'
 import { buildRowChecks } from '@/lib/jobChecks'
@@ -216,6 +217,16 @@ export function DailyJobSheet() {
       patch.date = trimmed || job.date
     }
 
+    // R-JOB-01: a cleaner cannot be booked twice at the same time
+    if ('staff_name' in patch || 'start_time' in patch || 'end_time' in patch || 'date' in patch) {
+      const base = dailyJobs.find(j => j.id === targetJobId) || job
+      const clash = findStaffClash(dailyJobs, { ...base, ...patch }, [targetJobId])
+      if (clash) {
+        notify.error(`⛔ Time clash: ${clashMessage(clash)}`)
+        setInlineEdit(null)
+        return
+      }
+    }
     updateDailyJob(targetJobId, patch)
     setInlineEdit(null)
   }
@@ -4090,7 +4101,7 @@ CREATE TABLE daily_expenses (
           onClose={() => setShowAddJob(false)}
           onSave={j => {
             const newId = 'job-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)
-            addDailyJob({ ...j, id: newId, date: selectedDate })
+            addDailyJob({ ...j, id: newId, date: j.date || selectedDate }) // keep the date chosen in the form
             setRecentJobIds(prev => [newId, ...prev.filter(x => x !== newId)])
             setCurrentPage(1)
             setShowAddJob(false)

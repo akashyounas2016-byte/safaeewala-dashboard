@@ -42,7 +42,8 @@ import {
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
-import { confirmAsync } from '@/lib/notify'
+import { confirmAsync, notify } from '@/lib/notify'
+import { findClashAmong, clashMessage, timingChanged, type StaffClash } from '@/lib/shiftClash'
 import { invoicedJobIds } from '@/lib/receivables'
 import { fetchRecordHistory, type AuditEntry } from '@/lib/auditLog'
 import { ChangeLogHistoryModal } from '@/components/dailyJobSheet/ChangeLogHistoryModal'
@@ -2207,31 +2208,13 @@ export function JobSheetSpreadsheet() {
       ;(row as any)[colId] = trimmed
     }
 
-    // ── Conflict / Overlap Error Handling: Detect if cleaner is already assigned/engaged at this time ──
-    const targetStaff = colId === 'staff_name' ? trimmed : (row.staff_name || '')
-    const targetStart = colId === 'start_time' ? (row.start_time || '') : (row.start_time || '')
-    const targetEnd = colId === 'end_time' ? (row.end_time || '') : (row.end_time || '')
-    if (targetStaff && targetStart && targetEnd && targetStart !== '—' && targetEnd !== '—') {
-      const staffKey = targetStaff.trim().toLowerCase()
-      const clashingJob = updated.find((other, oIdx) => {
-        if (oIdx === rowIdx) return false
-        if ((other.staff_name || '').trim().toLowerCase() !== staffKey) return false
-        if (!other.start_time || !other.end_time || other.start_time === '—' || other.end_time === '—') return false
-        return checkTimesOverlap(targetStart, targetEnd, other.start_time, other.end_time)
-      })
-      if (clashingJob) {
-        showToast(`⚠️ Cleaner Clash Error: ${targetStaff} is already engaged from ${clashingJob.start_time} to ${clashingJob.end_time}! Entry not allowed.`)
-        return
-      }
-    }
-
     // If editing staff_name, synchronize all rows in this staff member's block so they stay together
     if (colId === 'staff_name') {
       const oldStaff = (gridRows[rowIdx]?.staff_name || '').trim().toLowerCase()
       if (oldStaff && trimmed.toLowerCase() !== oldStaff) {
-        updated.forEach(r => {
+        updated.forEach((r, i) => {
           if ((r.staff_name || '').trim().toLowerCase() === oldStaff) {
-            r.staff_name = trimmed
+            updated[i] = { ...r, staff_name: trimmed }
           }
         })
       } else {
@@ -2240,7 +2223,7 @@ export function JobSheetSpreadsheet() {
         if (targetBlock && !targetBlock.staffName) {
           const startIndex = rowIdx - targetBlock.blockRowIdx
           for (let i = 0; i < targetBlock.rowCount; i++) {
-            if (updated[startIndex + i]) updated[startIndex + i].staff_name = trimmed
+            if (updated[startIndex + i]) updated[startIndex + i] = { ...updated[startIndex + i], staff_name: trimmed }
           }
         }
       }
@@ -2263,9 +2246,24 @@ export function JobSheetSpreadsheet() {
     }
 
     updated[rowIdx] = row
+    if (refuseClash(updated)) { setEditingCell(null); return gridRows }
     pushState(updated)
     setEditingCell(null)
     return updated
+  }
+
+  /** R-JOB-01: a cleaner cannot work two jobs at the same time — show the error and refuse the change */
+  const showClash = (clash: StaffClash) => {
+    const msg = `⛔ Time clash: ${clashMessage(clash)}`
+    showToast(msg)
+    notify.error(msg)
+  }
+  const refuseClash = (next: DailyJob[]): boolean => {
+    // Only rows whose cleaner / time / date changed — an old clash must not block an unrelated edit
+    const changed = next.filter((r, i) => r !== gridRows[i] && timingChanged(gridRows.find(g => g.id === r.id), r))
+    const clash = findClashAmong(next, changed)
+    if (clash) showClash(clash)
+    return !!clash
   }
 
   // Quick Commit for Address / Building Dropdown Selection
@@ -2312,6 +2310,7 @@ export function JobSheetSpreadsheet() {
       r.ot_hours = Math.round(calcOTHours(r.start_time, r.end_time) * 10) / 10
     }
     updated[rowIdx] = r
+    if (refuseClash(updated)) { setEditingCell(null); return }
     pushState(updated)
     setEditingCell(null)
     showToast(`✓ ${colId === 'start_time' ? 'Start Time' : 'End Time'} set to "${timeStr}"`)
@@ -2712,6 +2711,7 @@ export function JobSheetSpreadsheet() {
   const handleSaveEditedRow = (updatedRow: DailyJob, index: number) => {
     const updated = [...gridRows]
     updated[index] = updatedRow
+    if (refuseClash(updated)) return // the popup stays open to fix the time or cleaner
     pushState(updated)
     setEditingRowState(null)
     showToast(`✓ Row #${index + 1} updated successfully`)
@@ -3324,6 +3324,13 @@ export function JobSheetSpreadsheet() {
     const inTouchedSplit = (r: DailyJob) => splitJobIds.has(splitOrigin(r))
     const plainEdited = edited.filter(r => !inTouchedSplit(r))
     const plainRemoved = removed.filter(r => !inTouchedSplit(r))
+
+    // R-JOB-01: nothing is saved while a changed row double-books a cleaner (paste, fill down, …)
+    const saveClash = findClashAmong(rows, [...added, ...edited.filter(r => timingChanged(loadedSnapshot.get(r.id), r))])
+    if (saveClash) {
+      showClash(saveClash)
+      return
+    }
 
     const live = new Map(dailyJobs.map(j => [j.id, j]))
     const changedElsewhere = [

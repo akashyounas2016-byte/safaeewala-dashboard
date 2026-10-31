@@ -27,6 +27,8 @@ export interface ClientModalFormProps {
   open: boolean
   onClose: () => void
   initialClient?: Client | null
+  /** Values filled in for a NEW client (e.g. the address typed on a job) — the popup stays "Add New Client" */
+  prefill?: Partial<Client>
   employees: Employee[]
   onSave: (clientData: Partial<Client>) => void
   isMonthly?: boolean
@@ -37,12 +39,14 @@ export function ClientModalForm({
   open,
   onClose,
   initialClient,
+  prefill,
   employees,
   onSave,
   isMonthly = false,
   isSaving = false,
 }: ClientModalFormProps) {
   const isEdit = !!initialClient
+  const seed: Partial<Client> | null | undefined = initialClient ?? prefill
 
   // Tab state for monthly client (Profile & Financials vs 7-Day Recurring Schedule)
   const [activeTab, setActiveTab] = useState<'profile' | 'schedule'>('profile')
@@ -85,6 +89,7 @@ export function ClientModalForm({
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    e.stopPropagation() // opened from inside the Add Job form: its submit must not also save the job
     const f = new FormData(e.currentTarget)
     const clientName = String(f.get('full_name') || '').trim() || (isEdit ? initialClient?.full_name || 'Client' : 'New Client')
     const remarks = String(f.get('remarks') || '')
@@ -255,7 +260,7 @@ export function ClientModalForm({
                   name="full_name"
                   label="Full Name *"
                   placeholder="e.g. Sarah Al-Rashidi"
-                  defaultValue={initialClient?.full_name || ''}
+                  defaultValue={seed?.full_name || ''}
                   required
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
@@ -265,7 +270,7 @@ export function ClientModalForm({
                   name="phone"
                   label="Phone Number"
                   placeholder="+971 50 000 0000"
-                  defaultValue={initialClient?.phone || ''}
+                  defaultValue={seed?.phone || ''}
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
@@ -274,7 +279,7 @@ export function ClientModalForm({
                   name="whatsapp"
                   label="WhatsApp Number"
                   placeholder="+971 50 000 0000"
-                  defaultValue={initialClient?.whatsapp ?? initialClient?.phone ?? ''}
+                  defaultValue={seed?.whatsapp ?? initialClient?.phone ?? ''}
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
@@ -300,7 +305,7 @@ export function ClientModalForm({
                   label="Email Address"
                   type="email"
                   placeholder="client@example.com"
-                  defaultValue={initialClient?.email ?? ''}
+                  defaultValue={seed?.email ?? ''}
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
@@ -309,7 +314,7 @@ export function ClientModalForm({
                   name="building_name"
                   label="Building / Villa Name"
                   placeholder="e.g. Marina Gate 1 / Villa 14"
-                  defaultValue={initialClient?.building_name ?? ''}
+                  defaultValue={seed?.building_name ?? ''}
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
@@ -318,7 +323,7 @@ export function ClientModalForm({
                   name="apartment"
                   label="Apartment / Flat / Unit"
                   placeholder="e.g. Apt 1204 / Unit 4B"
-                  defaultValue={initialClient?.apartment ?? ''}
+                  defaultValue={seed?.apartment ?? ''}
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
@@ -327,7 +332,7 @@ export function ClientModalForm({
                 <Select
                   name="city"
                   label="Emirate (City)"
-                  defaultValue={initialClient?.city || 'Dubai'}
+                  defaultValue={seed?.city || 'Dubai'}
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 >
                   <option value="Dubai">Dubai</option>
@@ -345,7 +350,7 @@ export function ClientModalForm({
                   name="area"
                   label="Area / Community"
                   placeholder="e.g. Dubai Marina, JBR, Downtown"
-                  defaultValue={initialClient?.area ?? ''}
+                  defaultValue={seed?.area ?? ''}
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
@@ -377,7 +382,7 @@ export function ClientModalForm({
                 <Textarea
                   name="remarks"
                   placeholder="Key with concierge, gate barrier code, parking slot, pet warnings, or specific client instructions..."
-                  defaultValue={initialClient?.remarks ?? initialClient?.notes ?? initialClient?.access_notes ?? ''}
+                  defaultValue={seed?.remarks ?? initialClient?.notes ?? initialClient?.access_notes ?? ''}
                   rows={3}
                   className="text-[12.5px] h-[92px] resize-none rounded-xl border-slate-200 focus:border-teal-500"
                 />
@@ -409,7 +414,7 @@ export function ClientModalForm({
                       step="any"
                       min="0"
                       placeholder="0.00"
-                      defaultValue={initialClient?.advance_amount ? String(initialClient.advance_amount) : ''}
+                      defaultValue={seed?.advance_amount ? String(seed.advance_amount) : ''}
                       className="h-8 font-black text-emerald-700 bg-white text-[12.5px] rounded-lg border-emerald-300"
                     />
                   </div>
@@ -427,7 +432,7 @@ export function ClientModalForm({
                       step="any"
                       min="0"
                       placeholder="0.00"
-                      defaultValue={initialClient?.adjustment_amount ? String(initialClient.adjustment_amount) : ''}
+                      defaultValue={seed?.adjustment_amount ? String(seed.adjustment_amount) : ''}
                       className="h-8 font-black text-indigo-700 bg-white text-[12.5px] rounded-lg border-indigo-300"
                     />
                   </div>
@@ -442,7 +447,7 @@ export function ClientModalForm({
                       step="any"
                       min="0"
                       placeholder="0.00"
-                      defaultValue={initialClient?.pending_amount ? String(initialClient.pending_amount) : ''}
+                      defaultValue={seed?.pending_amount ? String(seed.pending_amount) : ''}
                       className="h-8 font-black text-rose-700 bg-white text-[12.5px] rounded-lg border-rose-300"
                     />
                   </div>

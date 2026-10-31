@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(jobs): a cleaner can no longer be given two jobs at the same time — Add Job Entry (live red warning + refused), Edit Job, Daily Job Sheet inline edits and the Excel Job Sheet (cell, time dropdown, row popup, Save) show the clash and refuse the entry; Daily Job Sheet Add Job keeps the date chosen in the form (R-JOB-01)
+- feat(clients): a new address on Add Job Entry / Excel Job Sheet / row edit opens the Clients screen's "Add New Client" popup with the address filled in; the Add Job form is not submitted with it (R-DATA-11)
 - fix(excel-studio): cell dropdowns stayed invisible when opened (the position was computed before the cell was known) — the dropdown now finds its cell itself and shows on the first click (UX-35)
 - feat(excel-studio): Address, Location, Material, Mode, Start time and End time cells open their dropdown with one click (or double-click), also when empty, and show a small ▾; Material dropdown offers Yes, No, Sofa, custom values already used on the sheet and a custom box (UX-35)
 - fix(excel-studio): Save — a job with several cleaners is saved as one job again: editing the lead cleaner's row no longer removes the other cleaners, editing another cleaner's row no longer adds a duplicate job each save, and no false "changed on another screen" prompt (R-SYNC-08); the button returns to "Saved" when nothing is left to write

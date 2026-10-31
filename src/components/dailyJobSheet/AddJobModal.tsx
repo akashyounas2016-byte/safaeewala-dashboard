@@ -16,6 +16,7 @@ import {
 import { addHoursToTime, calcDurationFromTimes, cleanAddressDisplay } from '@/lib/utils'
 import { todayDubai } from '@/lib/dubaiTime'
 import { notify } from '@/lib/notify'
+import { findStaffClash, clashMessage } from '@/lib/shiftClash'
 import {
   Users,
   Clock,
@@ -130,6 +131,14 @@ export function AddJobForm({
     })
     return map
   }, [existingJobsForDate, dailyJobs, date])
+
+  // R-JOB-01: a chosen cleaner already busy at this time on this date (all jobs of the date, saved or on screen)
+  const staffClash = useMemo(() => {
+    const byId = new Map<string, DailyJob>()
+    dailyJobs.filter(j => j.date === date).forEach(j => byId.set(j.id, j))
+    existingJobsForDate.filter(j => !j.date || j.date === date).forEach(j => byId.set(j.id, j))
+    return findStaffClash(Array.from(byId.values()), { staff_name: selectedStaff.join(', '), date, start_time: startTime, end_time: endTime }, [initial?.id || '', String((initial as any)?._originalJobId || '')])
+  }, [dailyJobs, existingJobsForDate, date, selectedStaff, startTime, endTime, initial?.id])
 
   // Auto-generate team name when multiple cleaners selected
   const defaultTeamName = useMemo(() => {
@@ -440,22 +449,10 @@ export function AddJobForm({
 
     
     // Cleaner shift overlap / clash error check
-    if (existingJobsForDate && existingJobsForDate.length > 0 && startTime && endTime) {
-      for (const cleaner of selectedStaff) {
-        const cLower = cleaner.toLowerCase().trim()
-        const clash = existingJobsForDate.find(j => {
-          if (initial?.id && j.id === initial.id) return false
-          if (!j.staff_name) return false
-          const parts = j.staff_name.toLowerCase().split(/[,+]/).map(s => s.trim())
-          const matchCleaner = parts.includes(cLower) || j.staff_name.toLowerCase().trim() === cLower
-          if (!matchCleaner) return false
-          return checkTimesOverlap(startTime, endTime, j.start_time, j.end_time)
-        })
-        if (clash) {
-          notify.error(`⚠️ Cleaner Clash Error: ${cleaner} is already engaged from ${formatTime12h(clash.start_time)} to ${formatTime12h(clash.end_time)} on this date! Entry not allowed.`)
-          return
-        }
-      }
+    // R-JOB-01: the entry is refused while a cleaner is busy at this time
+    if (staffClash) {
+      notify.error(`⛔ Time clash: ${clashMessage(staffClash)}`)
+      return
     }
 
     onSave({
@@ -486,6 +483,11 @@ export function AddJobForm({
 
   return (
     <form id="add-job-entry-form" onSubmit={handleSubmit} className="text-slate-800">
+      {staffClash && (
+        <div role="alert" className="mb-3 px-3.5 py-2.5 rounded-xl border border-rose-300 bg-rose-50 text-rose-800 text-[12.5px] font-bold">
+          ⛔ Time clash: {clashMessage(staffClash)}
+        </div>
+      )}
       {/* ── TOP 4 CARDS: 2x2 EQUAL BALANCED 50/50 GRID ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         {/* CARD 1: Staff, Team & Date (50% Width) */}
@@ -1173,7 +1175,7 @@ export function AddJobForm({
           setShowQuickClientModal(false)
           setHasConfirmedUnregistered(true)
         }}
-        initialName={unregisteredClientName}
+        initialName=""
         initialBuilding={unregisteredClientName}
         initialArea={area}
         onClientRegistered={(newClient) => {

@@ -139,6 +139,18 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ---
 
+### R-JOB-01 — A cleaner cannot work two jobs at the same time
+- **Rule:** When a job is added or edited (Add Job Entry, Edit Job, Daily Job Sheet inline edit, Excel Job Sheet cell / time dropdown / row popup / Save), a cleaner who already has a job overlapping that time on that date is refused with an error message, and the entry is not saved. Back-to-back shifts (12:00 end, 12:00 start) are allowed; shifts after midnight count into the next day. Clashes already in the data do not block unrelated edits (remarks, money) — only a change of cleaner, time or date is checked.
+- **Code:** `src/lib/shiftClash.ts` (`findStaffClash`, `findClashAmong`), used by `AddJobModal`, `EditJobModal`, `DailyJobSheet → saveInlineEdit`, `JobSheetSpreadsheet → refuseClash / handleSaveAll`. Test: `tests/unit/shift-clash.test.ts`.
+- **Status:** Active · Since: 2026-10-31
+
+### R-DATA-11 — A new client typed on a job is registered first
+- **Rule:** A new address typed on a job (Add Job Entry, Excel Job Sheet, row edit) opens the Clients screen's "Add New Client" popup with the address filled in, so the details and WhatsApp number are saved before the job entry is finished.
+- **Code:** `QuickNewClientModal` → `ClientModalForm` (`prefill`).
+- **Status:** Active · Since: 2026-10-31
+
+---
+
 ## DATA — Data hygiene
 
 ### R-DATA-01 — Ignore Excel summary / bogus rows

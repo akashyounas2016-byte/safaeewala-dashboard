@@ -64,7 +64,7 @@ export function EditJobModal({
         initial={job}
         existingJobsForDate={existingJobsForDate}
         onSave={updatedJobData => {
-          onSave(job.id, updatedJobData)
+          onSave((job as any)._originalJobId || job.id, updatedJobData) // a per-cleaner row saves its job
           onClose()
         }}
       />
