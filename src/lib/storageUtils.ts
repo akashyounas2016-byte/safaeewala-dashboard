@@ -39,6 +39,11 @@ export function safeLocalStorageSet(key: string, value: any): boolean {
           'safaeewala_fluent_form_leads_backup',
           'safaeewala_cached_reports',
           'safaeewala_temp_excel_cache',
+          'safaeewala_audit_log',
+          'safaeewala_app_error_reports',
+          'safaeewala_bookings_read_notifs',
+          'safaeewala_bookings_deleted_notifs',
+          'safaeewala_snapshots',
         ]
         nonCriticalKeys.forEach(k => localStorage.removeItem(k))
 

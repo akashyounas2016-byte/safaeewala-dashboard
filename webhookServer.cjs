@@ -292,8 +292,8 @@ function healLead(lead) {
 // Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the server environment; the
 // service key never reaches the browser.
 // ═══════════════════════════════════════════════════════════════════════════
-const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const SUPABASE_URL = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://razvvxpaiqvykeatlvjl.supabase.co').replace(/\/+$/, '');
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
 const LOGIN_EMAIL_DOMAIN = 'safaeewala.com'; // real mail domain — Supabase rejects domains without mail
 const LOGIN_EMAIL_PREFIX = 'crm-';
 const ROLES = ['admin', 'manager', 'employee'];
