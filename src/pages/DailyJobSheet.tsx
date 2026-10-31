@@ -265,6 +265,45 @@ export function DailyJobSheet() {
   const [projectBoardView, setProjectBoardView] = useState<'board' | 'table'>('board')
   const searchInputRef                          = useRef<HTMLInputElement>(null)
   const searchContainerRef                      = useRef<HTMLDivElement>(null)
+  const jobsTableRef                            = useRef<HTMLDivElement>(null)
+
+  // Scrolling issue fix: Allow entire page (#main-content-scroll) to scroll smoothly
+  // even when mouse cursor is anywhere inside the Jobs widget / table area
+  useEffect(() => {
+    const el = jobsTableRef.current
+    if (!el) return
+
+    const handleWheel = (e: WheelEvent) => {
+      // 1. If Shift is held or user is predominantly scrolling horizontally, let table scroll horizontally
+      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        const tableContainer = el.querySelector('.table-scroll-container') as HTMLElement | null
+        if (tableContainer && e.shiftKey) {
+          tableContainer.scrollLeft += e.deltaY
+          e.preventDefault()
+        }
+        return
+      }
+
+      // 2. If cursor is inside a scrollable dropdown/popover, let it scroll its own items
+      const target = e.target as HTMLElement | null
+      const scrollable = target?.closest('.overflow-y-auto, .overflow-y-scroll') as HTMLElement | null
+      if (scrollable && scrollable !== el && scrollable.scrollHeight > scrollable.clientHeight) {
+        return
+      }
+
+      // 3. Otherwise forward vertical scroll delta directly to the page scroll container (#main-content-scroll)
+      const scroller = document.getElementById('main-content-scroll') || document.scrollingElement || document.documentElement
+      if (scroller && e.deltaY !== 0) {
+        scroller.scrollTop += e.deltaY
+        e.preventDefault()
+      }
+    }
+
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => {
+      el.removeEventListener('wheel', handleWheel)
+    }
+  }, [])
 
   // Collapse search input on outside click when query is empty
   useEffect(() => {
@@ -2798,7 +2837,7 @@ export function DailyJobSheet() {
       )}
 
       {/* ── Jobs Table ── */}
-      <div id="jobs-table-section" className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden scroll-mt-6">
+      <div id="jobs-table-section" ref={jobsTableRef} className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden scroll-mt-6">
         <div className="gradient-card px-5 py-3.5 border-b border-emerald-800/40 text-white flex items-center justify-between flex-wrap gap-3 relative z-30 shadow-xs">
           <div className="flex items-center gap-2.5 flex-wrap">
             <h3 className="text-[16px] font-black tracking-tight text-white flex items-center gap-2">
@@ -3476,14 +3515,6 @@ export function DailyJobSheet() {
           {/* Main Table Area */}
           <div
             className="flex-1 overflow-x-auto min-w-0 relative table-scroll-container"
-            onWheel={e => {
-              if (e.shiftKey) {
-                const el = e.currentTarget
-                if (el) el.scrollLeft += e.deltaY
-              }
-              // Normal vertical wheel scroll bubbles naturally without e.preventDefault()
-              // so the entire page scrolls smoothly when cursor is over the table
-            }}
           >
             <table
               className="w-full text-[12px] border-collapse relative"

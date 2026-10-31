@@ -106,7 +106,8 @@ main {
 
 .table-scroll-container {
   scrollbar-gutter: stable;
-  overscroll-behavior: contain;
+  overscroll-behavior-x: auto;
+  overscroll-behavior-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 

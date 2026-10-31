@@ -112,7 +112,7 @@ export function Layout() {
             </button>
           </div>
 
-          <main id="main-content-scroll" className="flex-1 overflow-y-auto bg-[#f0f4f3] scroll-smooth overscroll-contain">
+          <main id="main-content-scroll" className="flex-1 overflow-y-auto bg-[#f0f4f3] scroll-smooth overscroll-y-auto">
             <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 lg:pt-8 pb-10">
               <div className="mb-4">
                 <NotificationCenter />
