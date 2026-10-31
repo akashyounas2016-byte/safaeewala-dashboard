@@ -680,7 +680,7 @@ export function AddJobForm({
         const cLower = cleaner.toLowerCase().trim()
         const clash = existingJobsForDate.find(j => {
           if (!j.staff_name) return false
-          const parts = j.staff_name.toLowerCase().split(/[,\+]/).map(s => s.trim())
+          const parts = j.staff_name.toLowerCase().split(/[,+]/).map(s => s.trim())
           const matchCleaner = parts.includes(cLower) || j.staff_name.toLowerCase().trim() === cLower
           if (!matchCleaner) return false
           return checkTimesOverlap(startTime, endTime, j.start_time, j.end_time)

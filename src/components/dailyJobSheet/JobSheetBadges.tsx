@@ -29,7 +29,7 @@ export function cleanAddressDisplay(val: unknown): string {
 
 export function isAddressMonthly(val: unknown): boolean {
   if (!val) return false
-  return /\(Monthly\)|\[Monthly\]|Monthly Client/i.test(String(val))
+  return /\(Monthly\)|\[Monthly\]|\bMonthly Client\b/i.test(String(val))
 }
 
 export function AddressCell({ address, isDark }: { address: string; area?: string; isDark?: boolean }) {
