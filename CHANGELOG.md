@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(build): type errors from the multi-screen batch fixed so `npm run check` (and the deploy Check step) passes — Modal gets a `footer` (the Save / Cancel buttons of Edit Job and New Booking were not shown) and a `5xl` size; Bookings bell delete prop name; busy-cleaner tags in New Booking; `addDailyJob` accepts a chosen id
 - feat(jobs): a cleaner can no longer be given two jobs at the same time — Add Job Entry (live red warning + refused), Edit Job, Daily Job Sheet inline edits and the Excel Job Sheet (cell, time dropdown, row popup, Save) show the clash and refuse the entry; Daily Job Sheet Add Job keeps the date chosen in the form (R-JOB-01)
 - feat(clients): a new address on Add Job Entry / Excel Job Sheet / row edit opens the Clients screen's "Add New Client" popup with the address filled in; the Add Job form is not submitted with it (R-DATA-11)
 - fix(excel-studio): cell dropdowns stayed invisible when opened (the position was computed before the cell was known) — the dropdown now finds its cell itself and shows on the first click (UX-35)

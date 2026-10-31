@@ -978,7 +978,7 @@ export function Bookings() {
         notifications={bookingNotifications}
         onMarkNotificationRead={handleMarkNotifRead}
         onMarkAllNotificationsRead={handleMarkAllNotifsRead}
-        onNotificationDelete={handleDeleteNotif}
+        onDeleteNotification={handleDeleteNotif}
         onClearAllNotifications={handleClearAllNotifs}
       />
 

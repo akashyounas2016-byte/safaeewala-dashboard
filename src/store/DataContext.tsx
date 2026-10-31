@@ -51,7 +51,7 @@ interface DataStore {
 
   dailyJobs:          DailyJob[]
   dailyExpenses:      DailyExpense[]
-  addDailyJob:        (j: Omit<DailyJob, 'id' | 'created_at'>) => void
+  addDailyJob:        (j: Omit<DailyJob, 'id' | 'created_at'> & { id?: string }) => void // a caller may pick the id (to highlight the new row)
   updateDailyJob:     (id: string, patch: Partial<DailyJob>) => void
   deleteDailyJob:     (id: string) => void
   addDailyExpense:    (e: Omit<DailyExpense, 'id' | 'created_at'>) => void

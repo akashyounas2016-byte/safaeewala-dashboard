@@ -8,11 +8,13 @@ interface ModalProps {
   onClose: () => void
   title: React.ReactNode
   children: React.ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '5xl'
   lockScroll?: boolean
   className?: string
   bodyClassName?: string
   headerActions?: React.ReactNode
+  /** Buttons pinned under the scrolling body (e.g. Cancel / Save) */
+  footer?: React.ReactNode
 }
 
 const sizes = {
@@ -21,9 +23,10 @@ const sizes = {
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
   '2xl': 'max-w-5xl',
+  '5xl': 'max-w-7xl', // full Add / Edit Job form
 }
 
-export function Modal({ open, onClose, title, children, size = 'md', lockScroll = false, className, bodyClassName, headerActions }: ModalProps) {
+export function Modal({ open, onClose, title, children, size = 'md', lockScroll = false, className, bodyClassName, headerActions, footer }: ModalProps) {
   useEffect(() => {
     if (lockScroll && open) {
       document.body.style.overflow = 'hidden'
@@ -93,6 +96,11 @@ export function Modal({ open, onClose, title, children, size = 'md', lockScroll 
             {children}
           </div>
         </div>
+        {footer && (
+          <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-line shrink-0">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   )

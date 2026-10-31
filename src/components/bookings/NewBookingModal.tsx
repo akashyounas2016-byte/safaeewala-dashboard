@@ -498,7 +498,7 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
                   selected={selectedStaff}
                   onChange={setSelectedStaff}
                   placeholder="Select cleaner(s)…"
-                  busyCleaners={busyCleanersMap}
+                  busyCleaners={new Map(Array.from(busyCleanersMap, ([name, info]) => [name.toLowerCase(), { info }]))}
                 />
               </div>
               <div>

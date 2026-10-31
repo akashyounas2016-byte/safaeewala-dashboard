@@ -1130,7 +1130,7 @@ export function DailyJobSheet() {
 
       const isOverpayment = received > charges
       const isPureAdvance = charges === 0 && received > 0
-      const isExplicitAdv = job.payment_mode === 'Advance' || /(?:^|\b)advance(?:\b|$)/i.test(job.remarks || '')
+      const isExplicitAdv = (job.payment_mode as string) === 'Advance' || /(?:^|\b)advance(?:\b|$)/i.test(job.remarks || '')
 
       if (isOverpayment || isPureAdvance || (isExplicitAdv && received > 0)) {
         const advanceAmt = isPureAdvance ? received : (received > charges ? received - charges : received)
