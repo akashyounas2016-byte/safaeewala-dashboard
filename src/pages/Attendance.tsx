@@ -230,6 +230,14 @@ export function Attendance() {
     return { total, present, available, absent, onLeave, totalDuty, totalOT }
   }, [attendanceRecords])
 
+  // Active cleaners count: available or present staff who are not inactive in employee records
+  const activeCleanersCount = useMemo(() => {
+    return attendanceRecords.filter(r =>
+      (r.status === 'present' || r.status === 'available') &&
+      (!r.employee || r.employee.status === 'active')
+    ).length
+  }, [attendanceRecords])
+
   // ── Filtered Records for Display ──
   const filteredRecords = useMemo(() => {
     return attendanceRecords.filter(record => {
@@ -441,6 +449,95 @@ export function Attendance() {
           </button>
         </div>
       )}
+
+      {/* ── Executive Summary KPI Cards ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Cleaners */}
+        <div
+          onClick={() => setStatusFilter('all')}
+          className={`bg-white rounded-2xl p-5 border transition-all cursor-pointer group shadow-[0_4px_20px_rgba(15,23,42,0.04)] hover:shadow-[0_8px_25px_rgba(15,23,42,0.08)] ${
+            statusFilter === 'all' ? 'border-indigo-400 ring-2 ring-indigo-400/20' : 'border-[#E4E8EC]'
+          }`}
+          title="Click to view all cleaners"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-100/80 flex items-center justify-center text-indigo-600 group-hover:scale-105 transition-transform">
+              <Users size={20} />
+            </div>
+            <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50/80 px-2.5 py-1 rounded-full border border-indigo-100">
+              Total Roster
+            </span>
+          </div>
+          <p className="text-[28px] font-black text-slate-900 leading-none tracking-tight">{kpis.total}</p>
+          <p className="text-[13.5px] font-bold text-slate-700 mt-2">Total Cleaners</p>
+          <p className="text-[11.5px] text-slate-400 mt-0.5">All registered & rostered staff</p>
+        </div>
+
+        {/* Active Cleaners */}
+        <div
+          onClick={() => setStatusFilter('all')}
+          className="bg-white rounded-2xl p-5 border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.04)] hover:shadow-[0_8px_25px_rgba(15,23,42,0.08)] transition-all cursor-pointer group"
+          title="Click to view active cleaners"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-11 h-11 rounded-xl bg-teal-50 border border-teal-100/80 flex items-center justify-center text-teal-600 group-hover:scale-105 transition-transform">
+              <UserCheck size={20} />
+            </div>
+            <span className="text-[11px] font-bold text-teal-700 bg-teal-50/80 px-2.5 py-1 rounded-full border border-teal-100">
+              Active / Ready
+            </span>
+          </div>
+          <p className="text-[28px] font-black text-slate-900 leading-none tracking-tight">
+            {activeCleanersCount}
+          </p>
+          <p className="text-[13.5px] font-bold text-slate-700 mt-2">Active Cleaners</p>
+          <p className="text-[11.5px] text-slate-400 mt-0.5">{kpis.present} working · {kpis.available} on standby</p>
+        </div>
+
+        {/* Present Cleaners */}
+        <div
+          onClick={() => setStatusFilter('present')}
+          className={`bg-white rounded-2xl p-5 border transition-all cursor-pointer group shadow-[0_4px_20px_rgba(15,23,42,0.04)] hover:shadow-[0_8px_25px_rgba(15,23,42,0.08)] ${
+            statusFilter === 'present' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-[#E4E8EC]'
+          }`}
+          title="Click to filter present cleaners"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-100/80 flex items-center justify-center text-emerald-600 group-hover:scale-105 transition-transform">
+              <CheckCircle2 size={20} />
+            </div>
+            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50/80 px-2.5 py-1 rounded-full border border-emerald-200">
+              On Duty Today
+            </span>
+          </div>
+          <p className="text-[28px] font-black text-emerald-700 leading-none tracking-tight">{kpis.present}</p>
+          <p className="text-[13.5px] font-bold text-slate-700 mt-2">Present Cleaners</p>
+          <p className="text-[11.5px] text-slate-400 mt-0.5">{kpis.totalDuty}h duty · {kpis.totalOT}h OT logged</p>
+        </div>
+
+        {/* Absent Cleaners */}
+        <div
+          onClick={() => setStatusFilter('absent')}
+          className={`bg-white rounded-2xl p-5 border transition-all cursor-pointer group shadow-[0_4px_20px_rgba(15,23,42,0.04)] hover:shadow-[0_8px_25px_rgba(15,23,42,0.08)] ${
+            statusFilter === 'absent' ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-[#E4E8EC]'
+          }`}
+          title="Click to filter absent cleaners"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-11 h-11 rounded-xl bg-rose-50 border border-rose-100/80 flex items-center justify-center text-rose-600 group-hover:scale-105 transition-transform">
+              <UserX size={20} />
+            </div>
+            <span className="text-[11px] font-bold text-rose-700 bg-rose-50/80 px-2.5 py-1 rounded-full border border-rose-200">
+              Explicit Absent
+            </span>
+          </div>
+          <p className="text-[28px] font-black text-rose-600 leading-none tracking-tight">{kpis.absent + kpis.onLeave}</p>
+          <p className="text-[13.5px] font-bold text-slate-700 mt-2">Absent Cleaners</p>
+          <p className="text-[11.5px] text-slate-400 mt-0.5">
+            {kpis.absent + kpis.onLeave === 0 ? 'No uninformed absences' : `${kpis.absent} absent · ${kpis.onLeave} on leave`}
+          </p>
+        </div>
+      </div>
 
       {/* ── Filters & Controls Toolbar (Date/Calendar/Timeframe filters moved BEFORE Search, Single Calendar Icon, Dropdown for Staff) ── */}
       <div className="bg-white rounded-2xl p-3.5 border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.04)] flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">

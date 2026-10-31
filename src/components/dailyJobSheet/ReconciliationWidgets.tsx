@@ -317,7 +317,14 @@ export const ReconciliationWidgets: React.FC<ReconciliationWidgetsProps> = ({
                   todayAdvanceItems.map(item => (
                     <tr key={item.id} className="hover:bg-amber-100/40 transition-colors group">
                       <td className="px-4 py-2.5 font-semibold text-slate-800 break-words">
-                        {item.client}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{item.client}</span>
+                          {(item as any).isJob && (
+                            <span className="text-[9.5px] font-black bg-amber-200/90 text-amber-900 border border-amber-300 px-1.5 py-0.2 rounded-md">
+                              ⚡ Auto-Sync
+                            </span>
+                          )}
+                        </div>
                         {item.notes && <span className="block text-[10.5px] font-normal text-slate-500 mt-0.5">{item.notes}</span>}
                       </td>
                       <td className="px-3 py-2.5 text-right font-bold text-amber-800 whitespace-nowrap">
@@ -332,7 +339,7 @@ export const ReconciliationWidgets: React.FC<ReconciliationWidgetsProps> = ({
                             type="button"
                             onClick={() => onEditAdvance(item)}
                             className="text-slate-400 hover:text-amber-700 transition-colors p-1 rounded hover:bg-amber-50 cursor-pointer"
-                            title="Edit Advance"
+                            title={(item as any).isJob ? "Edit Job & Collection" : "Edit Advance"}
                           >
                             <Pencil size={12} />
                           </button>
@@ -340,7 +347,7 @@ export const ReconciliationWidgets: React.FC<ReconciliationWidgetsProps> = ({
                             type="button"
                             onClick={() => onDeleteAdvance(item.id)}
                             className="text-amber-500 hover:text-red-600 transition-colors p-1 rounded hover:bg-red-50 cursor-pointer"
-                            title="Delete"
+                            title={(item as any).isJob ? "Clear Overpayment" : "Delete"}
                           >
                             <Trash2 size={12} />
                           </button>

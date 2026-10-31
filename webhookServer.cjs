@@ -292,6 +292,36 @@ function healLead(lead) {
 // Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the server environment; the
 // service key never reaches the browser.
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Auto-load environment variables from .env files if present and not already set
+function loadEnvFile(filePath) {
+  try {
+    if (fs.existsSync(filePath)) {
+      const lines = fs.readFileSync(filePath, 'utf8').split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx !== -1) {
+          const key = trimmed.slice(0, eqIdx).trim();
+          let val = trimmed.slice(eqIdx + 1).trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+          }
+          if (key && !(key in process.env)) {
+            process.env[key] = val;
+          }
+        }
+      }
+    }
+  } catch {}
+}
+
+loadEnvFile(path.join(__dirname, '.env'));
+loadEnvFile(path.join(process.cwd(), '.env'));
+loadEnvFile(path.join(DATA_DIR, '.env'));
+loadEnvFile('/var/www/safaeewala/.env');
+
 const SUPABASE_URL = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://razvvxpaiqvykeatlvjl.supabase.co').replace(/\/+$/, '');
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
 const LOGIN_EMAIL_DOMAIN = 'safaeewala.com'; // real mail domain — Supabase rejects domains without mail

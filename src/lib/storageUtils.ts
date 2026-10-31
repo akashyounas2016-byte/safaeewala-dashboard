@@ -26,6 +26,11 @@ const TABLE_CACHE_KEYS = new Set([
   'safaeewala_invoices', 'safaeewala_inventory', 'safaeewala_daily_jobs', 'safaeewala_daily_expenses',
   'safaeewala_fluent_form_leads',
 ])
+const isTableCache = (k: string) =>
+  TABLE_CACHE_KEYS.has(k) ||
+  TABLE_CACHE_KEYS.has(`safaeewala_${k}`) ||
+  TABLE_CACHE_KEYS.has(k.replace('safaeewala_', ''))
+
 /** Same rows without embedded files / photos (data: URLs) — they stay in the cloud */
 function withoutEmbeddedFiles(value: unknown): unknown {
   return JSON.parse(JSON.stringify(value, (_k, v) => (typeof v === 'string' && v.startsWith('data:') && v.length > 2000 ? undefined : v)))
@@ -35,7 +40,7 @@ export function safeLocalStorageSet(key: string, value: any): boolean {
   try {
     const serialized = typeof value === 'string' ? value : JSON.stringify(value)
     localStorage.setItem(key, serialized)
-    onLocalWrite(key) // business keys are mirrored to Supabase app_state (AUD-02)
+    try { onLocalWrite(key) } catch { /* ignore non-blocking cloud mirror errors */ }
     return true
   } catch (err: any) {
     console.warn(`[Storage] Failed to save key "${key}" to localStorage:`, err?.message || err)
@@ -67,7 +72,7 @@ export function safeLocalStorageSet(key: string, value: any): boolean {
         localStorage.setItem(key, serialized)
         return true
       } catch (again) {
-        if (TABLE_CACHE_KEYS.has(key)) {
+        if (isTableCache(key)) {
           // A cloud table's browser copy: keep a light version, or none — the data is in the cloud
           try {
             localStorage.setItem(key, JSON.stringify(withoutEmbeddedFiles(value)))

@@ -7,11 +7,13 @@ import {
   cleanNum,
   calcHours,
   calcOTHours,
+  checkTimesOverlap,
   formatTime12h,
   formatTime24h,
 } from './jobSheetUtils'
 import { addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
 import { isMonthlyClient } from '@/lib/clientDataSync'
+import { notify } from '@/lib/notify'
 import {
   Users,
   Clock,
@@ -28,6 +30,7 @@ export interface SpreadsheetEditModalProps {
   employees: { full_name: string }[]
   clients: Client[]
   areaOptions?: string[]
+  existingRows?: DailyJob[]
 }
 
 const PRESET_MATERIALS = [
@@ -48,6 +51,7 @@ export function SpreadsheetEditModal({
   employees,
   clients,
   areaOptions = [],
+  existingRows = [],
 }: SpreadsheetEditModalProps) {
   const [staffName, setStaffName] = useState('')
   const [address, setAddress] = useState('')
@@ -151,6 +155,24 @@ export function SpreadsheetEditModal({
     if (!isRegistered && !hasConfirmedUnregistered && trimmedAddr.length > 1) {
       setShowQuickClientModal(true)
       return
+    }
+
+    // Cleaner shift overlap / clash check: prevent saving if cleaner is already busy
+    if (existingRows && existingRows.length > 0 && staffName && startTime && endTime) {
+      const parts = staffName.toLowerCase().split(/[,+]/).map(s => s.trim()).filter(Boolean)
+      for (const cleaner of parts) {
+        const clash = existingRows.find(j => {
+          if (row.id && j.id === row.id) return false
+          if (!j.staff_name) return false
+          const otherParts = j.staff_name.toLowerCase().split(/[,+]/).map(s => s.trim())
+          if (!otherParts.includes(cleaner)) return false
+          return checkTimesOverlap(startTime, endTime, j.start_time, j.end_time)
+        })
+        if (clash) {
+          notify.error(`⚠️ Cleaner Clash Error: ${cleaner} is already busy from ${formatTime12h(clash.start_time)} to ${formatTime12h(clash.end_time)} on this date! Entry not allowed.`)
+          return
+        }
+      }
     }
 
     const finalMaterial = (material === 'Other' && customMaterial.trim()

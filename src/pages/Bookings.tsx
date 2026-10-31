@@ -974,9 +974,12 @@ export function Bookings() {
         statusChip={datePreset === 'all' ? `${counts.in_progress} Active` : activeDateRange.label}
         actionLabel="New Booking"
         onAction={() => setShowModal(true)}
-        searchPlaceholder="Search bookings…"
-        searchValue={search}
-        onSearch={setSearch}
+        showSearch={false}
+        notifications={bookingNotifications}
+        onMarkNotificationRead={handleMarkNotifRead}
+        onMarkAllNotificationsRead={handleMarkAllNotifsRead}
+        onNotificationDelete={handleDeleteNotif}
+        onClearAllNotifications={handleClearAllNotifs}
       />
 
       {/* ── KPI Summary Cards (Row 1 + View All Expandable Row 2) ── */}
@@ -1617,11 +1620,11 @@ export function Bookings() {
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Charges</p>
                       <p className="text-[17px] font-black text-slate-900 tabular-nums">
-                        AED {b.total_amount.toLocaleString()}
+                        {b.total_amount.toLocaleString()}
                       </p>
                       {b.is_partially_paid ? (
                         <p className="text-[10.5px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md mt-0.5 inline-block">
-                          Paid: AED {b.received_amount} · Due: AED {b.pending_due}
+                          Paid: {b.received_amount} · Due: {b.pending_due}
                         </p>
                       ) : b.status === 'completed' || (b.received_amount && b.received_amount >= b.total_amount && b.total_amount > 0) ? (
                         <p className="text-[10px] font-bold text-emerald-700 flex items-center gap-1 mt-0.5">
@@ -1672,17 +1675,15 @@ export function Bookings() {
                         <span>Payment</span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => setSelectedBooking(b)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-50/60 hover:bg-teal-100 text-teal-950 text-[11.5px] font-bold border border-teal-200/80 hover:border-teal-300 transition-all cursor-pointer shadow-2xs"
-                        title="View Booking Details"
-                      >
-                        <Eye size={12} className="text-teal-700" />
-                        <span>Details</span>
-                      </button>
-
-                      {b.status !== 'completed' && (
+                      {b.status === 'completed' ? (
+                        <span
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-600 text-white text-[11.5px] font-bold shadow-2xs select-none"
+                          title="Booking Completed"
+                        >
+                          <Check size={12} strokeWidth={2.5} />
+                          <span>Completed</span>
+                        </span>
+                      ) : (
                         <button
                           type="button"
                           onClick={() => {
@@ -1698,11 +1699,11 @@ export function Bookings() {
                             }
                             notify.success(`Booking for ${b.client_name} marked as complete`)
                           }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11.5px] font-bold transition-all cursor-pointer shadow-2xs"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 text-[11.5px] font-bold transition-all cursor-pointer shadow-2xs"
                           title="Mark this booking as Completed"
                         >
-                          <CheckCircle size={12} />
-                          <span>Complete</span>
+                          <CheckCircle size={12} className="text-emerald-700" />
+                          <span>Mark as Completed</span>
                         </button>
                       )}
                     </div>
@@ -2774,15 +2775,6 @@ function KanbanBoard({
                         <span>Payment</span>
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => onSelect(b)}
-                      className="px-2 py-1 rounded-lg text-[10px] font-bold text-teal-800 bg-teal-50/80 hover:bg-teal-100 border border-teal-200 transition-colors flex items-center gap-1 cursor-pointer"
-                      title="Details"
-                    >
-                      <Eye size={10} className="text-teal-600" />
-                      <span>Details</span>
-                    </button>
                   </div>
                 </div>
               ))}
@@ -3128,21 +3120,19 @@ function BookingDetailModalContent({
                 </button>
               )}
 
-              {status !== 'cancelled' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.confirm('Are you sure you want to cancel this booking?')) {
-                      handleApplyStatus('cancelled')
-                    }
-                  }}
-                  className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                  title="Cancel Booking"
-                >
-                  <X size={12} />
-                  <span>Cancel</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm('Are you sure you want to delete this booking? This action cannot be undone.')) {
+                    onDelete()
+                  }
+                }}
+                className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                title="Delete this booking"
+              >
+                <Trash2 size={12} />
+                <span>Delete</span>
+              </button>
             </>
           )}
 
@@ -3174,20 +3164,6 @@ function BookingDetailModalContent({
               <span>Save</span>
             </button>
           )}
-
-          <button
-            type="button"
-            onClick={() => {
-              if (window.confirm('Are you sure you want to delete this booking? This action cannot be undone.')) {
-                onDelete()
-              }
-            }}
-            className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="Delete this booking"
-          >
-            <Trash2 size={12} />
-            <span>Delete</span>
-          </button>
         </div>
       }
     >

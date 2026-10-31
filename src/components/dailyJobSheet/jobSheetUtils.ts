@@ -124,6 +124,21 @@ export function calcOTHours(start: string, end: string): number {
   return totalOtMins > 0 ? Math.round((totalOtMins / 60) * 10) / 10 : 0
 }
 
+/**
+ * Checks whether two time windows overlap (handles 24h & 12h formats and overnight shifts)
+ */
+export function checkTimesOverlap(startA?: string, endA?: string, startB?: string, endB?: string): boolean {
+  if (!startA || !endA || !startB || !endB) return false
+  const sA = parseTimeToMinutes(startA)
+  let eA = parseTimeToMinutes(endA)
+  const sB = parseTimeToMinutes(startB)
+  let eB = parseTimeToMinutes(endB)
+  if (sA === null || eA === null || sB === null || eB === null) return false
+  if (eA <= sA) eA += 24 * 60
+  if (eB <= sB) eB += 24 * 60
+  return Math.max(sA, sB) < Math.min(eA, eB)
+}
+
 export function fmtDate(d: string) {
   if (!d) return '—'
   const parsed = new Date(d.includes('T') ? d : d + 'T00:00:00')

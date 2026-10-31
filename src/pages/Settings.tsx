@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle, Clock, Moon, Sun, CheckCircle2, XCircle, Loader2, Send, Key, Link2, Eye, EyeOff, Sparkles, ChevronDown, ChevronUp, Mail, HelpCircle, Database, Server, RefreshCw, FileText, Check, Copy, Info, ShieldCheck } from 'lucide-react'
-import { useDarkMode } from '@/hooks/useDarkMode'
+import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle, Clock, CheckCircle2, XCircle, Loader2, Send, Key, Link2, Eye, EyeOff, Sparkles, ChevronDown, ChevronUp, Mail, HelpCircle, Database, Server, RefreshCw, FileText, Check, Copy, Info, ShieldCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { loadCompanyInfo } from '@/lib/companyInfo'
 import { useIsAdmin, useCurrentUser } from '@/store/UserContext'
@@ -22,7 +21,6 @@ import { todayDubai } from '@/lib/dubaiTime'
 
 const allTabs = [
   { id: 'company',       label: 'Company',        icon: Building,   adminOnly: false },
-  { id: 'appearance',    label: 'Appearance',     icon: Moon,       adminOnly: false },
   { id: 'users',         label: 'Users',          icon: Users,      adminOnly: true  },
   { id: 'notifications', label: 'Notifications',  icon: Bell,       adminOnly: false },
   { id: 'roles',         label: 'Roles & Access', icon: Shield,     adminOnly: false },
@@ -32,65 +30,6 @@ const allTabs = [
   { id: 'activity',      label: 'Activity Log',   icon: Clock,      adminOnly: true  },
   { id: 'integrations',  label: 'Integrations',   icon: Globe,     adminOnly: false },
 ]
-
-function AppearancePanel() {
-  const { isDark, toggleDark } = useDarkMode()
-
-  return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-6">
-        <h3 className="text-[16px] font-bold text-[#111827] mb-4 flex items-center gap-2">
-          <Moon size={18} className="text-slate-600" />
-          Theme
-        </h3>
-
-        <div className="space-y-4">
-          <p className="text-[13px] text-slate-600">Choose your preferred theme for the dashboard</p>
-
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => {
-                if (isDark) toggleDark()
-              }}
-              className={`relative p-6 rounded-[16px] border-2 transition-all cursor-pointer ${
-                !isDark
-                  ? 'border-emerald-400 bg-emerald-50'
-                  : 'border-[#E4E8EC] bg-white hover:border-slate-300'
-              }`}
-            >
-              <Sun size={32} className={!isDark ? 'text-amber-500' : 'text-slate-400'} />
-              <p className={`text-[13px] font-bold mt-3 ${!isDark ? 'text-emerald-700' : 'text-slate-600'}`}>
-                Light Mode
-              </p>
-              {!isDark && <CheckCircle size={16} className="absolute top-3 right-3 text-emerald-500" />}
-            </button>
-
-            <button
-              onClick={() => {
-                if (!isDark) toggleDark()
-              }}
-              className={`relative p-6 rounded-[16px] border-2 transition-all cursor-pointer ${
-                isDark
-                  ? 'border-emerald-400 bg-emerald-50'
-                  : 'border-[#E4E8EC] bg-white hover:border-slate-300'
-              }`}
-            >
-              <Moon size={32} className={isDark ? 'text-blue-500' : 'text-slate-400'} />
-              <p className={`text-[13px] font-bold mt-3 ${isDark ? 'text-emerald-700' : 'text-slate-600'}`}>
-                Dark Mode
-              </p>
-              {isDark && <CheckCircle size={16} className="absolute top-3 right-3 text-emerald-500" />}
-            </button>
-          </div>
-
-          <p className="text-[11px] text-slate-500 bg-slate-50 rounded-lg p-3">
-            💡 Dark mode is perfect for night operations. Your preference is saved automatically.
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 
 function Toggle({ label, description, checked, onChange }: {
@@ -1099,13 +1038,10 @@ export function Settings() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+      <div className={`grid gap-6 items-start ${activeTab === 'backup' ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-3'}`}>
 
         {/* ── Left: Tab Content ── */}
-        <div className="xl:col-span-2 space-y-5">
-
-          {/* ── Appearance ── */}
-          {activeTab === 'appearance' && <AppearancePanel />}
+        <div className={`${activeTab === 'backup' ? 'w-full' : 'xl:col-span-2'} space-y-5`}>
 
           {/* ── Users ── */}
           {activeTab === 'users' && <UsersAdminPanel />}
@@ -1869,8 +1805,9 @@ export function Settings() {
           )}
         </div>
 
-        {/* ── Right sidebar ── */}
-        <div className="space-y-5">
+        {/* ── Right sidebar (Hidden on Backup tab so Backup & Disaster Recovery Center expands 100% full width) ── */}
+        {activeTab !== 'backup' && (
+          <div className="space-y-5">
 
 
           {/* User Account Card */}
@@ -2002,6 +1939,7 @@ export function Settings() {
           </div>
 
         </div>
+        )}
       </div>
 
       {/* ── Edit Profile modal ── */}

@@ -38,6 +38,7 @@ import {
   formatTime12h,
   calcHours,
   calcOTHours,
+  checkTimesOverlap,
   fmtDate,
   addDaysToYMD,
   STAFF_COLOR_PALETTES,
@@ -78,6 +79,7 @@ import {
   loadClientAdjustments,
   calcJobCollectable,
   jobCollected,
+  cleanClientNameFromAddress,
   isBogusJob,
   allocateClientCollection,
   type ScheduledShiftPlan,
@@ -157,6 +159,31 @@ export function DailyJobSheet() {
     const patch: Partial<DailyJob> = {}
     const targetJobId = (job as any)._originalJobId || job.id
 
+    // Clash & Overlap validation: prevent assigning cleaner to an overlapping shift
+    if (field === 'staff_name' || field === 'start_time' || field === 'end_time') {
+      const effectiveStaff = field === 'staff_name' ? (trimmed || job.staff_name) : job.staff_name
+      const effectiveStart = field === 'start_time' ? (formatTimeOnly(trimmed) !== '—' ? formatTimeOnly(trimmed) : trimmed) : job.start_time
+      const effectiveEnd = field === 'end_time' ? (formatTimeOnly(trimmed) !== '—' ? formatTimeOnly(trimmed) : trimmed) : job.end_time
+
+      if (effectiveStaff && effectiveStart && effectiveEnd && effectiveStart !== '—' && effectiveEnd !== '—') {
+        const staffList = splitStaffNames(effectiveStaff)
+        for (const cleaner of staffList) {
+          const cLower = cleaner.toLowerCase().trim()
+          const clashingJob = todayJobs.find(other => {
+            if (other.id === targetJobId) return false
+            if (!other.staff_name) return false
+            const otherStaff = splitStaffNames(other.staff_name).map(s => s.toLowerCase().trim())
+            if (!otherStaff.includes(cLower)) return false
+            return checkTimesOverlap(effectiveStart, effectiveEnd, other.start_time, other.end_time)
+          })
+          if (clashingJob) {
+            notify.error(`⚠️ Cleaner Clash Error: ${cleaner} is already busy from ${formatTime12h(clashingJob.start_time)} to ${formatTime12h(clashingJob.end_time)} on this date! Entry not allowed.`)
+            return
+          }
+        }
+      }
+    }
+
     if (field === 'staff_name') {
       patch.staff_name = trimmed || job.staff_name
     } else if (field === 'start_time') {
@@ -235,6 +262,20 @@ export function DailyJobSheet() {
   const [driveError, setDriveError]         = useState('')
   const [showDriveModal, setShowDriveModal] = useState(false)
   const [importNotice, setImportNotice]     = useState<{ jobs: number; expenses: number; date: string; pendingCount?: number; pendingRcvdCount?: number; advanceCount?: number; fileName?: string } | null>(null)
+
+  // Newly assigned / added job IDs: displayed at the top of the Jobs widget table
+  const [recentJobIds, setRecentJobIds] = useState<string[]>(() =>
+    safeLocalStorageGet('safaeewala_recent_job_ids', [])
+  )
+
+  useEffect(() => {
+    safeLocalStorageSet('safaeewala_recent_job_ids', recentJobIds)
+  }, [recentJobIds])
+
+  const isRecentJob = (job: DailyJob) => {
+    const origId = (job as any)._originalJobId || job.id
+    return recentJobIds.includes(job.id) || Boolean(origId && recentJobIds.includes(origId))
+  }
 
   // Auto-dismiss import notification after 30 seconds
   useEffect(() => {
@@ -693,7 +734,9 @@ export function DailyJobSheet() {
   }
 
   const handleSyncSingleShift = (shift: ScheduledShiftPlan) => {
+    const newId = 'job-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)
     addDailyJob({
+      id: newId,
       date: selectedDate,
       staff_name: shift.cleanerName,
       start_time: shift.startTime,
@@ -710,6 +753,8 @@ export function DailyJobSheet() {
       remarks: shift.remarks,
       service: shift.service,
     })
+    setRecentJobIds(prev => [newId, ...prev.filter(x => x !== newId)])
+    setCurrentPage(1)
   }
 
   // Map multi-cleaner jobs to consistent Team references (e.g. Team A, Team B, or custom team_name)
@@ -825,12 +870,32 @@ export function DailyJobSheet() {
   })
 
   // Sequential active jobs list (ordered by earliest shift start time or staff name)
-  const activeJobRows: Array<DailyJob & { isNil?: boolean }> = []
+  // Newly assigned / recent jobs appear at the very top of the Jobs widget table
+  const recentRows: Array<DailyJob & { isNil?: boolean }> = []
+  const standardRows: Array<DailyJob & { isNil?: boolean }> = []
+
   Object.keys(groupedJobs)
     .sort((a, b) => (groupedJobs[a][0]?.start_time || '').localeCompare(groupedJobs[b][0]?.start_time || '') || a.localeCompare(b))
     .forEach(staff => {
-      activeJobRows.push(...groupedJobs[staff])
+      groupedJobs[staff].forEach(job => {
+        if (isRecentJob(job)) {
+          recentRows.push(job)
+        } else {
+          standardRows.push(job)
+        }
+      })
     })
+
+  // Sort recentRows with most recently added first
+  recentRows.sort((a, b) => {
+    const idA = (a as any)._originalJobId || a.id
+    const idB = (b as any)._originalJobId || b.id
+    const idxA = recentJobIds.indexOf(idA) !== -1 ? recentJobIds.indexOf(idA) : 999
+    const idxB = recentJobIds.indexOf(idB) !== -1 ? recentJobIds.indexOf(idB) : 999
+    return idxA - idxB
+  })
+
+  const activeJobRows: Array<DailyJob & { isNil?: boolean }> = [...recentRows, ...standardRows]
 
   // Absentees / active employees with nil records (0 jobs today) placed at the bottom
   const activeStaffSet = new Set(
@@ -1040,13 +1105,61 @@ export function DailyJobSheet() {
     return list
   }, [todayJobs, todayPendingItems, pendingCtx, invoicedIds])
 
+  // Today Advance entries (Synchronized from todayJobs overpayments + manual advanceList)
+  const todayAdvanceEntries = useMemo(() => {
+    const list: Array<DailyAdvanceItem & { isJob?: boolean; job?: DailyJob }> = []
+
+    // 1. Overpayments & Advances automatically synchronized from todayJobs
+    todayJobs.forEach(job => {
+      if (isBogusJob(job)) return
+      if (String(job.payment_mode).toLowerCase() === 'monthly') return
+
+      const charges = cleanNum(job.charges)
+      const received = cleanNum(job.received)
+
+      const isOverpayment = received > charges
+      const isPureAdvance = charges === 0 && received > 0
+      const isExplicitAdv = job.payment_mode === 'Advance' || /(?:^|\b)advance(?:\b|$)/i.test(job.remarks || '')
+
+      if (isOverpayment || isPureAdvance || (isExplicitAdv && received > 0)) {
+        const advanceAmt = isPureAdvance ? received : (received > charges ? received - charges : received)
+        const cleanClient = cleanClientNameFromAddress(job.address || job.area || 'Client')
+
+        list.push({
+          id: `job-adv-${job.id}`,
+          date: job.date,
+          client: cleanClient,
+          received: received,
+          advance: advanceAmt,
+          notes: isOverpayment
+            ? `Auto-sync overpayment (${charges} chg / ${received} rcvd · Staff: ${job.staff_name || '—'})`
+            : `Advance collected on job (Staff: ${job.staff_name || '—'})`,
+          isJob: true,
+          job,
+        })
+      }
+    })
+
+    // 2. Extra items in advanceList for today (manual entries or imported advances)
+    todayAdvanceItems.forEach(item => {
+      if (!list.some(x => x.id === item.id || (item.notes && item.notes.includes(item.id)))) {
+        list.push({
+          ...item,
+          isJob: false,
+        })
+      }
+    })
+
+    return list
+  }, [todayJobs, todayAdvanceItems])
+
   const todayPendingTotalAmt   = todayPendingEntries.reduce((s, i) => s + cleanNum(i.amount), 0)
   const pendingTotalAmt        = todayPendingTotalAmt
   const pendingRcvdTotalCash   = todayPendingRcvdItems.reduce((s, i) => s + cleanNum(i.cash), 0)
   const pendingRcvdTotalOnline = todayPendingRcvdItems.reduce((s, i) => s + cleanNum(i.online), 0)
   const pendingRcvdGrandTotal  = pendingRcvdTotalCash + pendingRcvdTotalOnline
-  const advanceTotalRcvd       = todayAdvanceItems.reduce((s, i) => s + cleanNum(i.received), 0)
-  const advanceTotalAmt        = todayAdvanceItems.reduce((s, i) => s + cleanNum(i.advance), 0)
+  const advanceTotalRcvd       = todayAdvanceEntries.reduce((s, i) => s + cleanNum(i.received), 0)
+  const advanceTotalAmt        = todayAdvanceEntries.reduce((s, i) => s + cleanNum(i.advance), 0)
 
   // ── Auto-calculations ──
   const totalCharges   = todayJobs.reduce((s, j) => s + cleanNum(j.charges), 0)
@@ -1056,9 +1169,12 @@ export function DailyJobSheet() {
   const onlineTotal    = todayJobs.filter(j => j.payment_mode === 'Online').reduce((s, j) => s + jobCollected(j), 0)
   const totalExpenses  = todayExpenses.reduce((s, e) => s + cleanNum(e.amount), 0)
 
-  // Net Total updated formula: (Gross Collected + Pending Cash Received) - Total Expenses
+  // Net Total updated formula: (Gross Collected + Pending Cash Received + Standalone Cash Advances) - Total Expenses
+  const standaloneAdvanceCash = todayAdvanceItems
+    .filter(a => !todayJobs.some(j => `job-adv-${j.id}` === a.id))
+    .reduce((s, a) => s + cleanNum(a.received), 0)
   const pendingCashRcvdForNet = pendingRcvdTotalCash > 0 ? pendingRcvdTotalCash : pendingRcvdGrandTotal
-  const netTotal       = (grossCollected + pendingCashRcvdForNet) - totalExpenses
+  const netTotal       = (grossCollected + pendingCashRcvdForNet + standaloneAdvanceCash) - totalExpenses
 
   const totalOTHours   = Math.round(todayJobs.reduce((s, j) => s + (cleanNum(j.ot_hours) || calcOTHours(j.start_time, j.end_time)), 0) * 10) / 10
   const staffOnDuty    = new Set(todayJobs.map(j => j.staff_name)).size
@@ -1087,8 +1203,9 @@ export function DailyJobSheet() {
       }
     })
 
-    // 3. Advance collections (synced with driver/cleaner)
+    // 3. Advance collections (standalone advances not already counted on shift)
     todayAdvanceItems.forEach(item => {
+      if (todayJobs.some(j => `job-adv-${j.id}` === item.id)) return
       const staffRef = (item as any).staff || (item as any).cleaner || (item as any).driver || (item.notes && employees.find(e => item.notes?.toLowerCase().includes(e.full_name.toLowerCase()))?.full_name)
       if (staffRef) {
         summary[staffRef] = (summary[staffRef] || 0) + cleanNum(item.received)
@@ -1721,6 +1838,15 @@ export function DailyJobSheet() {
                 </div>
               )
             )}
+            {/* Newly added/assigned job badge */}
+            {isRecentJob(job) && (
+              <span
+                className="mt-1 mr-1 inline-flex items-center gap-1 text-[9.5px] font-black px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs"
+                title="Newly assigned job — displayed at the top"
+              >
+                <Sparkles size={10} className="text-emerald-600" /> RECENT
+              </span>
+            )}
             {/* BJ-17: this row belongs to a booking */}
             {job.booking_id && (
               <span
@@ -2116,16 +2242,29 @@ export function DailyJobSheet() {
           </td>
         )
 
-      case 'pending':
+      case 'pending': {
+        const pendingAmt = jobPending(job)
+        const chg = cleanNum(job.charges)
+        const rec = cleanNum(job.received)
+        const isOverpaid = rec > chg
+        const overpaidAmt = rec - chg
         return (
           <td key={id} className="px-3 py-3 font-semibold whitespace-nowrap">
-            {jobPending(job) > 0 ? (
-              <span className="text-red-500 font-bold">AED {jobPending(job).toLocaleString()}</span>
+            {pendingAmt > 0 ? (
+              <span className="text-red-500 font-bold">AED {pendingAmt.toLocaleString()}</span>
+            ) : isOverpaid ? (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full"
+                title={`Overpayment of AED ${overpaidAmt} (automatically in Advance widget)`}
+              >
+                +AED {overpaidAmt.toLocaleString()} Adv
+              </span>
             ) : (
               <span className={isMonthly ? 'text-emerald-700 font-medium' : 'text-slate-400 font-medium'}>Nil</span>
             )}
           </td>
         )
+      }
 
       case 'duty_hours':
         return (
@@ -2863,10 +3002,10 @@ export function DailyJobSheet() {
 
       {/* ── Jobs Table ── */}
       <div id="jobs-table-section" ref={jobsTableRef} className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden scroll-mt-6">
-        <div className="gradient-card px-5 py-3.5 border-b border-emerald-800/40 text-white flex items-center justify-between flex-wrap gap-3 relative z-30 shadow-xs">
+        <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#0f172a] px-5 py-3.5 border-b border-slate-800 text-white flex items-center justify-between flex-wrap gap-3 relative z-30 shadow-xs">
           <div className="flex items-center gap-2.5 flex-wrap">
             <h3 className="text-[16px] font-black tracking-tight text-white flex items-center gap-2">
-              <Briefcase size={16} className="text-emerald-300" />
+              <Briefcase size={16} className="text-sky-400" />
               <span>Jobs</span>
             </h3>
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -3008,13 +3147,13 @@ export function DailyJobSheet() {
                     onClick={() => setPaymentFilter(mode)}
                     className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                       isSelected
-                        ? 'bg-white text-emerald-950 shadow-sm font-black'
-                        : 'text-white/80 hover:text-white hover:bg-white/10 font-bold'
+                        ? 'bg-white text-slate-900 shadow-sm font-black'
+                        : 'text-slate-300 hover:text-white hover:bg-white/10 font-bold'
                     }`}
                   >
                     <span>{mode === 'ALL' ? 'All' : mode}</span>
                     <span className={`text-[10px] px-1 rounded-full ${
-                      isSelected ? 'bg-emerald-100 text-emerald-950 font-black' : 'bg-white/20 text-white'
+                      isSelected ? 'bg-slate-100 text-slate-900 font-black' : 'bg-white/20 text-white'
                     }`}>
                       {count}
                     </span>
@@ -3116,13 +3255,13 @@ export function DailyJobSheet() {
                 onClick={() => setShowColMenu(p => !p)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all cursor-pointer relative shadow-xs group ${
                   showColMenu
-                    ? 'border-white bg-white text-emerald-950 ring-2 ring-white/50'
-                    : 'border-white/20 bg-white/15 text-white hover:bg-white/25 hover:border-white/30'
+                    ? 'border-white bg-white text-slate-900 ring-2 ring-white/50'
+                    : 'border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30'
                 }`}
                 title="Customize Columns (Drag & Drop Sequence, Hide/Show Checkboxes)"
                 aria-label="Customize Columns"
               >
-                <Eye size={14} className={showColMenu ? 'text-emerald-900' : 'text-white/80 group-hover:text-white'} />
+                <Eye size={14} className={showColMenu ? 'text-slate-900' : 'text-white/80 group-hover:text-white'} />
                 <span className="hidden sm:inline text-[12px] font-bold">Columns</span>
                 {(activeColumns.length < ALL_COLUMNS.length || isOrderCustomized) && (
                   <span className="w-2 h-2 rounded-full bg-emerald-300 ring-2 ring-emerald-900 animate-pulse" title="Custom columns active" />
@@ -3297,12 +3436,12 @@ export function DailyJobSheet() {
             <button
               type="button"
               onClick={() => window.open(`/daily-job-sheet/spreadsheet?date=${selectedDate}`, '_blank', 'noopener,noreferrer')}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white text-emerald-900 hover:bg-emerald-50 font-black text-[12px] shadow-sm hover:shadow transition-all cursor-pointer group shrink-0 border border-white/80 active:scale-95"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white text-slate-900 hover:bg-slate-100 font-black text-[12px] shadow-sm hover:shadow transition-all cursor-pointer group shrink-0 border border-slate-200 active:scale-95"
               title="Open Full Interactive Excel Sheet in a New Window (Full Width, No Sidebar)"
             >
-              <FileSpreadsheet size={14} className="text-emerald-800 group-hover:scale-110 transition-transform" />
+              <FileSpreadsheet size={14} className="text-emerald-700 group-hover:scale-110 transition-transform" />
               <span className="hidden sm:inline">Excel Sheet</span>
-              <ExternalLink size={12} className="text-emerald-700 opacity-70 group-hover:opacity-100" />
+              <ExternalLink size={12} className="text-slate-400 group-hover:text-slate-600 transition-colors" />
             </button>
 
             {/* View All / Page size selector */}
@@ -3656,9 +3795,19 @@ export function DailyJobSheet() {
                           )
                         }
                         if (col.id === 'pending') {
+                          const totalAdv = filteredActiveJobRows.reduce((s, j) => {
+                            const chg = cleanNum(j.charges)
+                            const rec = cleanNum(j.received)
+                            return rec > chg ? s + (rec - chg) : (chg === 0 && rec > 0 ? s + rec : s)
+                          }, 0)
                           return (
                             <td key={col.id} className="sticky bottom-0 bg-slate-100 px-3 py-3 text-red-600">
-                              AED {totalPending.toLocaleString()}
+                              <div>AED {totalPending.toLocaleString()}</div>
+                              {totalAdv > 0 && (
+                                <div className="text-[10.5px] text-amber-700 font-bold mt-0.5">
+                                  +AED {totalAdv.toLocaleString()} Adv
+                                </div>
+                              )}
                             </td>
                           )
                         }
@@ -3822,12 +3971,36 @@ export function DailyJobSheet() {
         onAddPendingRcvd={() => setShowAddPendingRcvd(true)}
         onEditPendingRcvd={item => setEditingPendingRcvd(item)}
         onDeletePendingRcvd={id => setPendingRcvdList(prev => prev.filter(x => x.id !== id))}
-        todayAdvanceItems={todayAdvanceItems}
+        todayAdvanceItems={todayAdvanceEntries}
         advanceTotalAmt={advanceTotalAmt}
         advanceTotalRcvd={advanceTotalRcvd}
         onAddAdvance={() => setShowAddAdvance(true)}
-        onEditAdvance={item => setEditingAdvance(item)}
-        onDeleteAdvance={id => setAdvanceList(prev => prev.filter(x => x.id !== id))}
+        onEditAdvance={item => {
+          if ((item as any).isJob && (item as any).job) {
+            if (!blockIfClosed((item as any).job.date)) setEditJob((item as any).job)
+          } else {
+            const raw = advanceList.find(a => a.id === item.id)
+            if (raw) setEditingAdvance(raw)
+            else setEditingAdvance(item)
+          }
+        }}
+        onDeleteAdvance={id => {
+          const entry = todayAdvanceEntries.find(x => x.id === id)
+          if (entry && (entry as any).isJob && (entry as any).job) {
+            const job = (entry as any).job
+            if (window.confirm(`Are you sure you want to clear advance/overpayment for "${entry.client}"? Received amount will be matched to charges (AED ${cleanNum(job.charges)}).`)) {
+              if (!blockIfClosed(job.date)) {
+                if (cleanNum(job.charges) === 0) {
+                  deleteDailyJob(job.id)
+                } else {
+                  updateDailyJob(job.id, { received: cleanNum(job.charges) })
+                }
+              }
+            }
+          } else {
+            setAdvanceList(prev => prev.filter(x => x.id !== id))
+          }
+        }}
       />
 
       {/* ── Supabase setup notice (shown when no data ever) ── */}
@@ -3915,20 +4088,27 @@ CREATE TABLE daily_expenses (
           employees={availableEmps}
           clients={clients}
           onClose={() => setShowAddJob(false)}
-          onSave={j => { addDailyJob({ ...j, date: selectedDate }); setShowAddJob(false) }}
+          onSave={j => {
+            const newId = 'job-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)
+            addDailyJob({ ...j, id: newId, date: selectedDate })
+            setRecentJobIds(prev => [newId, ...prev.filter(x => x !== newId)])
+            setCurrentPage(1)
+            setShowAddJob(false)
+          }}
           key={addJobStaff || 'new'}
           initial={{ date: selectedDate, ...(addJobStaff ? { staff_name: addJobStaff } : {}) }}
           existingJobsForDate={todayJobs}
         />
       </Modal>
 
-      {/* ── Edit Job Modal (Executive Light Themed Layout) ── */}
+      {/* ── Edit Job Modal (Identical to Add Job Entry Pop-up) ── */}
       <EditJobModal
         open={!!editJob}
         job={editJob}
         onClose={() => setEditJob(null)}
         onSave={(id, patch) => updateDailyJob(id, patch)}
         employees={employees}
+        existingJobsForDate={todayJobs}
       />
 
       {/* ── Add Expense Modal ── */}
@@ -3989,7 +4169,7 @@ CREATE TABLE daily_expenses (
         todayJobs={todayJobs}
         employees={employees}
         driverSummary={driverSummary}
-        todayAdvanceItems={todayAdvanceItems}
+        todayAdvanceItems={todayAdvanceEntries}
         todayPendingRcvdItems={todayPendingRcvdItems}
         todayPendingEntries={todayPendingEntries}
         onClose={() => setEditingDriverStaff(null)}

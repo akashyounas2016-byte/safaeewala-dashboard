@@ -760,8 +760,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         duty_hours: safeNum(j.duty_hours),
         ot_hours: safeNum(j.ot_hours),
         service: j.service || '',
-        id: uid(),
-        created_at: now()
+        id: (j as any).id || uid(),
+        created_at: (j as any).created_at || now()
       }
       setDailyJobs(p => {
         const next = [row, ...p]

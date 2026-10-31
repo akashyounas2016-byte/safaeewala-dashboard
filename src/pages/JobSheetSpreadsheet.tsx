@@ -2214,7 +2214,8 @@ export function JobSheetSpreadsheet() {
         return checkTimesOverlap(targetStart, targetEnd, other.start_time, other.end_time)
       })
       if (clashingJob) {
-        showToast(`⚠️ Cleaner Clash Error: ${targetStaff} is already engaged from ${clashingJob.start_time} to ${clashingJob.end_time}!`)
+        showToast(`⚠️ Cleaner Clash Error: ${targetStaff} is already engaged from ${clashingJob.start_time} to ${clashingJob.end_time}! Entry not allowed.`)
+        return
       }
     }
 
@@ -3617,9 +3618,16 @@ export function JobSheetSpreadsheet() {
     const totalReceived = gridRows.reduce((s, r) => s + cleanNum(r.received), 0)
     // Per-row dues: an overpaid row must not hide another row's due
     const totalPending = gridRows.reduce((s, r) => s + rowPending(r), 0)
+    const totalAdvance = gridRows.reduce((s, r) => {
+      const chg = cleanNum(r.charges)
+      const rec = cleanNum(r.received)
+      if (rec > chg) return s + (rec - chg)
+      if (chg === 0 && rec > 0) return s + rec
+      return s
+    }, 0)
     const totalDuty = Math.round(gridRows.reduce((s, r) => s + cleanNum(r.duty_hours), 0) * 10) / 10
     const totalOT = Math.round(gridRows.reduce((s, r) => s + cleanNum(r.ot_hours), 0) * 10) / 10
-    return { totalCharges, totalReceived, totalPending, totalDuty, totalOT }
+    return { totalCharges, totalReceived, totalPending, totalAdvance, totalDuty, totalOT }
   }, [gridRows, pendingCtx])
 
   // ── Pre-calculate Staff Block Info (3 fixed rows, rowSpan & boundaries) ──
@@ -4813,12 +4821,16 @@ export function JobSheetSpreadsheet() {
                         else if (mcInfo?.isSecondary) displayVal = `Reference ${mcInfo.primaryCleaner || 'Lead'}`
                         else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                       } else if (col.id === 'pending') {
+                        const chg = cleanNum(row.charges)
+                        const rec = cleanNum(row.received)
                         if (isBlankShift) {
                           displayVal = ''
                         } else if (mcInfo?.isSecondary) {
                           displayVal = 'Nil'
                         } else if (pendVal > 0) {
                           displayVal = pendVal
+                        } else if (rec > chg) {
+                          displayVal = `+${rec - chg} Adv`
                         } else {
                           displayVal = 'Nil'
                         }
@@ -4889,6 +4901,8 @@ export function JobSheetSpreadsheet() {
                                     ? (isDarkCell ? 'text-indigo-200 font-bold text-[11px]' : 'text-indigo-800 font-bold text-[11px]')
                                     : isPendingDue
                                       ? (isDarkCell ? 'text-rose-300 font-black drop-shadow-xs' : 'text-rose-600 font-black')
+                                      : col.id === 'pending' && String(displayVal).includes('Adv')
+                                        ? (isDarkCell ? 'text-amber-300 font-bold' : 'text-amber-800 font-bold bg-amber-100/70 px-1 py-0.5 rounded border border-amber-300')
                                       : col.id === 'pending' && displayVal === 'Nil'
                                         ? (isDarkCell ? 'text-slate-200 font-bold' : 'text-slate-800 font-bold')
                                         : col.id === 'charges' || col.id === 'received'
@@ -5693,6 +5707,9 @@ export function JobSheetSpreadsheet() {
           <span>Charges: <strong className="text-indigo-950 font-black">AED {totals.totalCharges.toLocaleString()}</strong></span>
           <span>Received: <strong className="text-emerald-950 font-black">AED {totals.totalReceived.toLocaleString()}</strong></span>
           <span>Pending: <strong className="text-rose-700 font-black">AED {totals.totalPending.toLocaleString()}</strong></span>
+          {totals.totalAdvance > 0 && (
+            <span>Advance: <strong className="text-amber-800 font-black">AED {totals.totalAdvance.toLocaleString()}</strong></span>
+          )}
           <span>Duty: <strong className="text-slate-900 font-black">{totals.totalDuty}h</strong></span>
           <span>OT: <strong className="text-amber-800 font-black">{totals.totalOT}h</strong></span>
         </div>
@@ -5878,6 +5895,7 @@ export function JobSheetSpreadsheet() {
           employees={employees}
           clients={clients}
           areaOptions={areaOptions}
+          existingRows={gridRows}
         />
       )}
 

@@ -99,19 +99,20 @@ export function PageHero({
             </svg>
           </button>
 
-          {liveTag && (
-            <div className="mb-2 inline-flex items-center">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-white text-emerald-900 font-extrabold text-[10.5px] rounded-full shadow-md border border-white/90 shrink-0">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600" />
+          <div className="flex items-center flex-wrap mb-1.5">
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white inline-flex items-center flex-wrap sm:flex-nowrap">
+              <span>{title}</span>
+              {liveTag && (
+                <span className="relative -top-2 sm:-top-2.5 ml-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-white text-emerald-900 font-extrabold text-[10.5px] sm:text-[11px] rounded-full shadow-md border border-white/90 shrink-0 align-top">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600" />
+                  </span>
+                  <span>{liveTag}</span>
                 </span>
-                <span>{liveTag}</span>
-              </span>
-            </div>
-          )}
-
-          <h2 className="text-3xl font-bold mb-2 tracking-tight">{title}</h2>
+              )}
+            </h2>
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 text-white/80 text-sm">
             <span>{subtitle}</span>
@@ -204,10 +205,11 @@ export function PageHero({
                       <button
                         type="button"
                         onClick={onClearAllNotifications}
-                        className="text-[11px] font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors cursor-pointer"
-                        title="Clear all notifications"
+                        className="text-[11px] font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                        title="Delete all notifications"
                       >
-                        Clear
+                        <Trash2 size={12} />
+                        <span>Delete</span>
                       </button>
                     )}
                     <button

@@ -38,6 +38,7 @@ export interface Booking {
   pending_due?: number
   is_partially_paid?: boolean
   job_sheet_id?: string
+  row_color?: string
 }
 
 export interface Client {

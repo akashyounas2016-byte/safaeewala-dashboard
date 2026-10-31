@@ -40,6 +40,7 @@ export function jobFromBooking(b: Booking, staffName: string, area?: string): Om
     remarks: b.notes ? `${BOOKING_NOTE}${b.notes}` : `Booking: ${b.service_type || 'Standard Clean'}`,
     service: b.service_type || 'Standard Clean',
     booking_id: b.id,
+    row_color: b.row_color,
   }
 }
 
@@ -60,6 +61,7 @@ export function jobPatchFromBookingPatch(patch: Partial<Booking>, booking: Booki
   if (patch.notes !== undefined) out.remarks = patch.notes ? `${BOOKING_NOTE}${patch.notes}` : ''
   if (patch.status === 'completed') out.received = num(patch.total_amount ?? booking.total_amount)
   if (patch.received_amount !== undefined) out.received = num(patch.received_amount)
+  if (patch.row_color !== undefined) out.row_color = patch.row_color
   return out
 }
 
@@ -89,6 +91,7 @@ export function bookingPatchFromJobPatch(
     out.received_amount = received
     if (received >= charges && charges > 0 && booking.status !== 'completed') out.status = 'completed'
   }
+  if (patch.row_color !== undefined && patch.row_color !== booking.row_color) out.row_color = patch.row_color
   return out
 }
 
