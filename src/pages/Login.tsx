@@ -128,7 +128,7 @@ export function Login() {
                   autoComplete="username"
                   autoFocus
                   disabled={loading || lockedSeconds > 0}
-                  placeholder="e.g. SW-0007 or admin"
+                  placeholder="e.g. SW-0007 or your email"
                   className="w-full pl-10 pr-4 py-2.5 bg-[#091116] border border-[#1f2f38] rounded-xl text-white text-[13.5px] placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-colors disabled:opacity-50"
                 />
               </div>

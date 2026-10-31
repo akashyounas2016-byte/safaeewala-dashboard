@@ -29,7 +29,7 @@ and the database refuses anyone who is not signed in.
 
 ## Step 3 — Create the first admin (you)
 1. Supabase → **Authentication → Users → Add user → Create new user**.
-2. Email: `crm-admin@safaeewala.com` (this is your Login ID **admin**; no real mailbox needed).
+2. Email: `akashyounas2016@gmail.com` (the owner's own email — you sign in by typing this email).
    Password: a strong password only you know. Tick **Auto Confirm User**. Create.
 3. SQL Editor → New query → paste and Run:
    ```sql
@@ -59,7 +59,7 @@ and the database refuses anyone who is not signed in.
 
 ## Step 5 — Deploy, then sign in
 1. Deploy the new version (needs your permission; `git push origin main` deploys).
-2. Open the dashboard → sign in with Login ID **admin** and your password.
+2. Open the dashboard → sign in with **akashyounas2016@gmail.com** and your password.
 3. **Settings → Users → Add user** for each person:
    - pick the employee (optional) — name fills in, Login ID is suggested (SW-0001, SW-0002 …);
    - choose the role: **Admin**, **Manager** or **Employee**;
