@@ -321,8 +321,50 @@ export function Bookings() {
   const [serviceFilter, setServiceFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const [editingBookingForModal, setEditingBookingForModal] = useState<Booking | null>(null)
   const [invoiceBooking, setInvoiceBooking] = useState<Booking | null>(null)
   const [paymentBooking, setPaymentBooking] = useState<Booking | null>(null)
+  const [completedOverrideIds, setCompletedOverrideIds] = useState<string[]>(() => {
+    return safeLocalStorageGet<string[]>('safaeewala_completed_booking_ids', [])
+  })
+
+  const handleToggleMarkAsCompleted = (b: Booking) => {
+    const next = Array.from(new Set([...completedOverrideIds, b.id]))
+    setCompletedOverrideIds(next)
+    safeLocalStorageSet('safaeewala_completed_booking_ids', next)
+
+    if (b.id.startsWith('dj-')) {
+      updateDailyJob(b.id.replace('dj-', ''), { status: 'completed', received: Number(b.total_amount) || 0 })
+    } else if (b.id.startsWith('monthly-sync-')) {
+      handleSyncDailyJobSheet()
+    } else {
+      updateBooking(b.id, { status: 'completed' as BookingStatus })
+    }
+    notify.success(`Booking for ${b.client_name} marked as Completed`)
+  }
+
+  const handleUpdateBookingFromModal = (id: string, patch: Partial<Booking>) => {
+    if (id.startsWith('dj-')) {
+      const jobId = id.replace('dj-', '')
+      const jobPatch: Partial<DailyJob> = {}
+      if (patch.scheduled_date !== undefined) jobPatch.date = patch.scheduled_date
+      if (patch.scheduled_time !== undefined) jobPatch.start_time = patch.scheduled_time
+      if (patch.end_time !== undefined) jobPatch.end_time = patch.end_time
+      if (patch.duration_hours !== undefined) jobPatch.duty_hours = patch.duration_hours
+      if (patch.total_amount !== undefined) jobPatch.charges = patch.total_amount
+      if (patch.assigned_crew !== undefined) {
+        const staff = crewToStaffName(patch.assigned_crew, employees)
+        if (staff) jobPatch.staff_name = staff
+      }
+      if (patch.service_address !== undefined) jobPatch.address = patch.service_address
+      if (patch.material !== undefined) jobPatch.material = patch.material as DailyJob['material']
+      if (patch.notes !== undefined) jobPatch.remarks = patch.notes
+      if (patch.status === 'completed') jobPatch.received = patch.total_amount
+      if (Object.keys(jobPatch).length > 0) updateDailyJob(jobId, jobPatch)
+    } else {
+      updateBooking(id, patch)
+    }
+  }
 
   const handlePaymentSuccess = (payment: any) => {
     if (!paymentBooking) return
@@ -1174,16 +1216,15 @@ export function Bookings() {
                 filterKey: 'all',
               },
               {
-                label: 'Job Sheet Sync',
-                value: 'Auto-Sync',
-                sub: `${syncedShiftsCount} shifts synced today`,
-                icon: RefreshCw,
-                iconColor: 'text-emerald-600',
-                iconBg: 'bg-emerald-50',
-                badge: 'Live Sync',
-                badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-                filterKey: 'all',
-                onClick: handleSyncDailyJobSheet,
+                label: 'Uncollected Dues',
+                value: `AED ${filtered.reduce((sum, b) => sum + (Number(b.pending_due) || (b.status !== 'completed' ? Number(b.total_amount) || 0 : 0)), 0).toLocaleString()}`,
+                sub: `${filtered.filter(b => b.status !== 'completed' || Number(b.pending_due) > 0).length} shifts pending payment`,
+                icon: Wallet,
+                iconColor: 'text-amber-600',
+                iconBg: 'bg-amber-50',
+                badge: `${filtered.filter(b => b.status !== 'completed' || Number(b.pending_due) > 0).length} Pending`,
+                badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
+                filterKey: 'confirmed',
               },
             ].map(card => {
               const isActive = statusFilter === card.filterKey && card.filterKey !== 'all'
@@ -1191,9 +1232,7 @@ export function Bookings() {
                 <div
                   key={card.label}
                   onClick={() => {
-                    if (card.onClick) {
-                      card.onClick()
-                    } else if (card.filterKey === 'all') {
+                    if (card.filterKey === 'all') {
                       setStatusFilter('all')
                     } else {
                       setStatusFilter(statusFilter === card.filterKey ? 'all' : card.filterKey)
@@ -1341,6 +1380,18 @@ export function Bookings() {
                     Data & Tools
                   </div>
                   <div className="py-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowThreeDotMenu(false)
+                        handleSyncDailyJobSheet()
+                      }}
+                      className="w-full px-3.5 py-2 text-left text-[12.5px] font-semibold text-slate-700 hover:bg-teal-50 hover:text-teal-900 flex items-center gap-2.5 transition-colors cursor-pointer"
+                      title="Sync bookings with Daily Job Sheet shifts"
+                    >
+                      <RefreshCw size={14} className="text-emerald-600" />
+                      <span>Auto Sync with Job Sheet</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -1512,7 +1563,7 @@ export function Bookings() {
                   }`} />
 
                   <div>
-                    {/* Header: Client & Status */}
+                    {/* Header: Client & Status & Charges */}
                     <div className="flex items-start justify-between gap-2.5 mb-3">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <Initials name={b.client_name} idx={idx} />
@@ -1550,7 +1601,25 @@ export function Bookings() {
                           </div>
                         </div>
                       </div>
-                      <StatusPill status={b.status} />
+
+                      {/* Upper Row Right: Charges & Status */}
+                      <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[16px] font-black text-slate-900 tabular-nums">
+                            {b.total_amount.toLocaleString()}
+                          </span>
+                          <StatusPill status={completedOverrideIds.includes(b.id) ? 'completed' : b.status} />
+                        </div>
+                        {b.is_partially_paid ? (
+                          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">
+                            Paid: {b.received_amount} · Due: {b.pending_due}
+                          </span>
+                        ) : (b.status === 'completed' || completedOverrideIds.includes(b.id) || (b.received_amount && b.received_amount >= b.total_amount && b.total_amount > 0)) ? (
+                          <span className="text-[9.5px] font-bold text-emerald-700 flex items-center gap-0.5">
+                            <Check size={10} /> Fully Collected
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
 
                     {/* Service & Time details box */}
@@ -1579,11 +1648,33 @@ export function Bookings() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 text-[11.5px] text-slate-600 pt-1 border-t border-teal-100/60">
-                        <MapPin size={12} className="text-slate-400 shrink-0" />
-                        <span className="truncate" title={b.service_address}>
-                          {b.service_address || 'Address not specified'}
-                        </span>
+                      <div className="flex items-center justify-between gap-1.5 text-[11.5px] text-slate-600 pt-1 border-t border-teal-100/60">
+                        <div className="flex items-center gap-1.5 truncate min-w-0">
+                          <MapPin size={12} className="text-slate-400 shrink-0" />
+                          <span className="truncate" title={b.service_address}>
+                            {b.service_address || 'Address not specified'}
+                          </span>
+                        </div>
+                        {clientPhone && (
+                          <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                            <a
+                              href={`tel:${clientPhone}`}
+                              className="p-1 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
+                              title={`Call ${clientPhone}`}
+                            >
+                              <Phone size={12} />
+                            </a>
+                            <a
+                              href={`https://wa.me/${clientPhone.replace(/[^\d+]/g, '').replace(/^\+/, '')}?text=Hello%20${encodeURIComponent(b.client_name)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
+                              title="Chat on WhatsApp"
+                            >
+                              <MessageCircle size={12} />
+                            </a>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1616,98 +1707,47 @@ export function Bookings() {
                     </div>
                   </div>
 
-                  {/* Card Footer: Pricing & Quick Actions */}
-                  <div className="pt-3 border-t border-teal-100/70 flex items-center justify-between gap-2 mt-2">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Charges</p>
-                      <p className="text-[17px] font-black text-slate-900 tabular-nums">
-                        {b.total_amount.toLocaleString()}
-                      </p>
-                      {b.is_partially_paid ? (
-                        <p className="text-[10.5px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md mt-0.5 inline-block">
-                          Paid: {b.received_amount} · Due: {b.pending_due}
-                        </p>
-                      ) : b.status === 'completed' || (b.received_amount && b.received_amount >= b.total_amount && b.total_amount > 0) ? (
-                        <p className="text-[10px] font-bold text-emerald-700 flex items-center gap-1 mt-0.5">
-                          <Check size={11} /> Fully Collected
-                        </p>
-                      ) : null}
-                    </div>
+                  {/* Card Footer: ONLY 3 Buttons: Invoice, Payment, Mark as Completed */}
+                  <div className="pt-2.5 border-t border-teal-100/70 grid grid-cols-3 gap-2 mt-2" onClick={e => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => setInvoiceBooking(b)}
+                      className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-purple-50/70 hover:bg-purple-100 text-purple-900 text-[11px] font-bold border border-purple-200/80 hover:border-purple-300 transition-all cursor-pointer shadow-2xs"
+                      title="View or Generate Tax Invoice"
+                    >
+                      <FileText size={12} className="text-purple-600 shrink-0" />
+                      <span>Invoice</span>
+                    </button>
 
-                    <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-                      {clientPhone && (
-                        <>
-                          <a
-                            href={`tel:${clientPhone}`}
-                            className="p-1.5 rounded-xl text-slate-500 hover:text-teal-700 hover:bg-teal-50 border border-teal-200/80 hover:border-teal-300 transition-colors cursor-pointer"
-                            title={`Call ${clientPhone}`}
-                          >
-                            <Phone size={13} />
-                          </a>
-                          <a
-                            href={`https://wa.me/${clientPhone.replace(/[^\d+]/g, '').replace(/^\+/, '')}?text=Hello%20${encodeURIComponent(b.client_name)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1.5 rounded-xl text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border border-emerald-200/80 hover:border-emerald-300 transition-colors cursor-pointer"
-                            title="Chat on WhatsApp"
-                          >
-                            <MessageCircle size={13} />
-                          </a>
-                        </>
-                      )}
+                    <button
+                      type="button"
+                      onClick={() => setPaymentBooking(b)}
+                      className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-emerald-50/70 hover:bg-emerald-100 text-emerald-950 text-[11px] font-bold border border-emerald-200/80 hover:border-emerald-300 transition-all cursor-pointer shadow-2xs"
+                      title="Record Client Payment"
+                    >
+                      <Wallet size={12} className="text-emerald-700 shrink-0" />
+                      <span>Payment</span>
+                    </button>
 
+                    {(b.status === 'completed' || completedOverrideIds.includes(b.id)) ? (
+                      <span
+                        className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-emerald-600 text-white text-[11px] font-bold shadow-2xs select-none"
+                        title="Booking Completed"
+                      >
+                        <Check size={12} strokeWidth={2.5} className="shrink-0" />
+                        <span>Completed</span>
+                      </span>
+                    ) : (
                       <button
                         type="button"
-                        onClick={() => setInvoiceBooking(b)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-50/70 hover:bg-purple-100 text-purple-900 text-[11.5px] font-bold border border-purple-200/80 hover:border-purple-300 transition-all cursor-pointer shadow-2xs"
-                        title="View or Generate Tax Invoice"
+                        onClick={() => handleToggleMarkAsCompleted(b)}
+                        className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 text-[11px] font-bold transition-all cursor-pointer shadow-2xs truncate"
+                        title="Mark this booking as Completed"
                       >
-                        <FileText size={12} className="text-purple-600" />
-                        <span>Invoice</span>
+                        <CheckCircle size={12} className="text-emerald-700 shrink-0" />
+                        <span className="truncate">Mark as Completed</span>
                       </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setPaymentBooking(b)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50/70 hover:bg-emerald-100 text-emerald-950 text-[11.5px] font-bold border border-emerald-200/80 hover:border-emerald-300 transition-all cursor-pointer shadow-2xs"
-                        title="Record Client Payment"
-                      >
-                        <Wallet size={12} className="text-emerald-700" />
-                        <span>Payment</span>
-                      </button>
-
-                      {b.status === 'completed' ? (
-                        <span
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-600 text-white text-[11.5px] font-bold shadow-2xs select-none"
-                          title="Booking Completed"
-                        >
-                          <Check size={12} strokeWidth={2.5} />
-                          <span>Completed</span>
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (b.id.startsWith('dj-')) {
-                              // BJ-12: completed = the full charge collected on the job-sheet row
-                              updateDailyJob(b.id.replace('dj-', ''), { status: 'completed', received: Number(b.total_amount) || 0 })
-                            } else if (b.id.startsWith('monthly-sync-')) {
-                              handleSyncDailyJobSheet()
-                              notify.info('Monthly visits were added to the Daily Job Sheet — complete the visit there.')
-                              return
-                            } else {
-                              updateBooking(b.id, { status: 'completed' as BookingStatus })
-                            }
-                            notify.success(`Booking for ${b.client_name} marked as complete`)
-                          }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 text-[11.5px] font-bold transition-all cursor-pointer shadow-2xs"
-                          title="Mark this booking as Completed"
-                        >
-                          <CheckCircle size={12} className="text-emerald-700" />
-                          <span>Mark as Completed</span>
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
               )
@@ -2269,14 +2309,26 @@ export function Bookings() {
       {/* ── Modals ── */}
       <NewBookingModal
         open={showModal}
-        onClose={() => setShowModal(false)}
+        onClose={() => {
+          setShowModal(false)
+          setEditingBookingForModal(null)
+        }}
         onAdd={addBooking}
+        initialBooking={editingBookingForModal}
+        onUpdate={(id, patch) => {
+          handleUpdateBookingFromModal(id, patch)
+        }}
       />
 
       <BookingDetailModal
         booking={selectedBooking}
         open={!!selectedBooking}
         onClose={() => setSelectedBooking(null)}
+        onEditBooking={(b) => {
+          setSelectedBooking(null)
+          setEditingBookingForModal(b)
+          setShowModal(true)
+        }}
         onUpdate={(patch) => {
           if (!selectedBooking) return
           if (selectedBooking.id.startsWith('dj-')) {
@@ -2918,6 +2970,7 @@ type BookingDetailModalProps = {
   employees: Employee[]
   onOpenInvoice?: (b: Booking) => void
   onOpenPayment?: (b: Booking) => void
+  onEditBooking?: (b: Booking) => void
 }
 
 // TA-06: hooks must never run after an early return — the wrapper decides, the content always
@@ -2938,6 +2991,7 @@ function BookingDetailModalContent({
   employees,
   onOpenInvoice,
   onOpenPayment,
+  onEditBooking,
 }: BookingDetailModalProps & { booking: Booking }) {
 
   const { clients, pushBookingToDailyJob } = useData()
@@ -3067,8 +3121,8 @@ function BookingDetailModalContent({
     <Modal
       open={open}
       onClose={onClose}
-      size="xl"
-      className="max-w-3xl"
+      size="5xl"
+      className="max-w-5xl"
       title={
         <div className="flex items-center gap-2.5 flex-wrap">
           <span className="font-extrabold text-[16px] text-slate-900">
@@ -3077,16 +3131,6 @@ function BookingDetailModalContent({
           <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-md" title="Booking Reference ID">
             #{booking.id.slice(0, 8)}
           </span>
-          <Link
-            to={`/clients/${clientProfileId}`}
-            onClick={onClose}
-            className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold text-teal-800 hover:text-teal-950 bg-teal-50 hover:bg-teal-100/90 border border-teal-200/90 px-2.5 py-0.5 rounded-md transition-all cursor-pointer shadow-2xs group"
-            title={`Open client profile for ${booking.client_name}`}
-          >
-            <User size={11} className="text-teal-600 group-hover:text-teal-800" />
-            <span>Client ID: <strong className="text-teal-950 font-extrabold">#{displayClientId}</strong></span>
-            <ExternalLink size={10} className="text-teal-500 group-hover:text-teal-700" />
-          </Link>
           {saveNotice && (
             <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 animate-in fade-in">
               ✓ {saveNotice}
@@ -3095,25 +3139,31 @@ function BookingDetailModalContent({
         </div>
       }
       headerActions={
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Top Operation Actions: Shift, Start Job, Cancel */}
+        <div className="flex items-center gap-2 flex-nowrap shrink-0">
           {!isEditing && (
             <>
               <button
                 type="button"
-                onClick={() => setIsEditing(true)}
-                className="px-3 py-1.5 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-900 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
-                title="Shift or reschedule booking timing"
+                onClick={() => {
+                  onClose()
+                  if (onEditBooking) {
+                    onEditBooking(booking)
+                  } else {
+                    setIsEditing(true)
+                  }
+                }}
+                className="px-3 py-1.5 rounded-xl border border-teal-200 bg-teal-50 hover:bg-teal-100 text-teal-900 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
+                title="Edit this booking with Add New Booking form"
               >
-                <CalendarIcon size={12} className="text-teal-700" />
-                <span>Shift</span>
+                <Pencil size={12} className="text-teal-700" />
+                <span>Edit</span>
               </button>
 
               {status !== 'in_progress' && status !== 'completed' && status !== 'cancelled' && (
                 <button
                   type="button"
                   onClick={() => handleApplyStatus('in_progress')}
-                  className="px-3 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                  className="px-3 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
                   title="Start Job (Set In Progress)"
                 >
                   <Clock size={12} />
@@ -3128,7 +3178,7 @@ function BookingDetailModalContent({
                     onDelete()
                   }
                 }}
-                className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[12px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
                 title="Delete this booking"
               >
                 <Trash2 size={12} />
@@ -3142,14 +3192,14 @@ function BookingDetailModalContent({
               <button
                 type="button"
                 onClick={() => setIsEditing(false)}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-[12px] transition-colors cursor-pointer"
+                className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-[12px] transition-colors cursor-pointer whitespace-nowrap"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 form="booking-detail-form"
-                className="px-3.5 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-[12px] shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-[12px] shadow-xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
               >
                 <Check size={13} strokeWidth={2.5} />
                 <span>Save</span>
@@ -3159,7 +3209,7 @@ function BookingDetailModalContent({
             <button
               type="button"
               onClick={() => handleSave()}
-              className="px-3.5 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-[12px] shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+              className="px-3.5 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-[12px] shadow-xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
             >
               <Check size={13} strokeWidth={2.5} />
               <span>Save</span>
@@ -3353,11 +3403,24 @@ function BookingDetailModalContent({
                     <ExternalLink size={14} className="text-teal-400 group-hover:text-teal-200 transition-colors shrink-0" />
                   </Link>
 
-                  {/* Clickable Client ID Badge */}
+                  {booking.frequency === 'monthly' ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-black uppercase bg-emerald-400 text-emerald-950 shadow-2xs tracking-wide">
+                      Monthly Contract
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-bold uppercase bg-teal-900/80 text-teal-200 border border-teal-700/80">
+                      {booking.frequency || 'One-off'}
+                    </span>
+                  )}
+
+                  <SourceOriginTag source={resolveBookingSource(booking)} />
+                </div>
+                <div className="flex items-center gap-2.5 mt-1 text-[12px] text-slate-300 flex-wrap">
+                  {/* Clickable Client ID Badge moved under username */}
                   <Link
                     to={`/clients/${clientProfileId}`}
                     onClick={onClose}
-                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-teal-900/80 hover:bg-teal-800 text-teal-200 border border-teal-600/50 hover:border-teal-400 transition-all cursor-pointer shadow-2xs group"
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-mono font-bold bg-teal-900/70 hover:bg-teal-800 text-teal-200 border border-teal-700/60 hover:border-teal-400 transition-all cursor-pointer shadow-2xs group"
                     title={`Open Client Profile #${displayClientId}`}
                   >
                     <User size={10} className="text-teal-400 group-hover:text-teal-200" />
@@ -3365,14 +3428,7 @@ function BookingDetailModalContent({
                     <ExternalLink size={10} className="text-teal-400 group-hover:text-teal-200 ml-0.5" />
                   </Link>
 
-                  <SourceOriginTag source={resolveBookingSource(booking)} />
-                  {booking.frequency === 'monthly' && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-400 text-emerald-950">
-                      Monthly Contract
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 mt-1 text-[12px] text-slate-300">
+                  <span>·</span>
                   {booking.client_phone ? (
                     <a href={`tel:${booking.client_phone}`} className="flex items-center gap-1 hover:text-white transition-colors">
                       <Phone size={12} className="text-emerald-400" />
@@ -3393,7 +3449,7 @@ function BookingDetailModalContent({
           </div>
 
           {/* 2. Structured 4-Card Service & Scheduling Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             {/* Card 1: Schedule & Timing */}
             <div className="bg-emerald-50/60 rounded-2xl p-3.5 border border-emerald-200/80">
               <div className="flex items-center justify-between mb-1.5">

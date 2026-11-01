@@ -6,6 +6,12 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(bookings, excel-studio): Booking Cards & Details Polish, Modal Edits & Spreadsheet Mode Customization (UX-36, R-JOB-01, R-SYNC-06):
+  - Bookings Screen: Shifted charges to card upper row; restricted card footer strictly to 3 buttons (Invoice, Payment, and instant-saving Mark as Completed); replaced 'Job Sheet Sync' summary KPI card with 'Uncollected Dues' card; moved Auto Sync option into the header 3-dot dropdown menu.
+  - Booking Details Modal: Expanded modal width to 5xl and replaced multi-row wrap with single horizontal 4-card row (grid-cols-4) eliminating vertical scrolling; moved Client ID under username; placed 'Monthly Contract' tag in Client ID's former spot; replaced 'Shift' button with 'Edit' button opening the New Booking form in full edit mode with live updates; preserved single-row flex-nowrap header actions.
+  - New Booking Modal: Relocated booking frequency selector to 'Staff & Schedule' section with simple 'Frequency' label; removed 'Service Type' selector; integrated full initialBooking prefill and edit-mode submission.
+  - Excel Job Sheet: Removed badges from Cash/Online/Monthly/Pending payment modes; added support for custom payment mode values with quick "+ Add" input; added individual delete button (Trash2) next to every option with local persistence.
+
 - feat(time): Standardized VPS-style 12-hour AM/PM Time12hPicker project-wide across New Booking, Add Job Entry, Edit Job, Spreadsheet Edit Modal, Bookings Edit Modal, Clients & Monthly Clients Reschedule Modals, and Payment Processing (R-JOB-01, R-OT-01):
   - 12h format display with Clock icon and ChevronDown.
   - Dedicated AM / PM toggle pill button with soft emerald active badge.

@@ -1740,6 +1740,13 @@ export function JobSheetSpreadsheet() {
   const [formulaBarValue, setFormulaBarValue] = useState<string>('')
   const [filterSearch, setFilterSearch] = useState('')
   const [excelCustomMaterial, setExcelCustomMaterial] = useState('')
+  const [excelCustomPaymentMode, setExcelCustomPaymentMode] = useState('')
+  const [customPaymentModes, setCustomPaymentModes] = useState<string[]>(() => {
+    return safeLocalStorageGet<string[]>('safaeewala_custom_payment_modes', [])
+  })
+  const [deletedPaymentModes, setDeletedPaymentModes] = useState<string[]>(() => {
+    return safeLocalStorageGet<string[]>('safaeewala_deleted_payment_modes', [])
+  })
 
   // Filtered Client & Building list for Address dropdown matching Add Job Entry selector
   const filteredClientBuildings = useMemo(() => {
@@ -2386,10 +2393,10 @@ export function JobSheetSpreadsheet() {
   }
 
   // Quick Commit for Payment Mode Dropdown Selection
-  const commitPaymentModeSelect = (rowIdx: number, mode: PaymentMode) => {
+  const commitPaymentModeSelect = (rowIdx: number, mode: string) => {
     const updated = [...gridRows]
     const row = { ...updated[rowIdx] }
-    row.payment_mode = mode
+    row.payment_mode = mode as PaymentMode
     updated[rowIdx] = row
     pushState(updated)
     setEditingCell(null)
@@ -2696,13 +2703,64 @@ export function JobSheetSpreadsheet() {
 
     // 6. Payment Mode Column Dropdown
     if (col.id === 'payment_mode') {
-      const curMode = editingCell.tempValue
-      const modes: { id: PaymentMode; badge: string; color: string; desc: string }[] = [
-        { id: 'Cash', badge: 'Cash Payment', color: 'bg-emerald-50 text-emerald-800 border-emerald-200', desc: 'Direct cash collection on-site' },
-        { id: 'Online', badge: 'Online Transfer', color: 'bg-indigo-50 text-indigo-800 border-indigo-200', desc: 'Card, bank transfer, or payment link' },
-        { id: 'Monthly', badge: 'Monthly Contract', color: 'bg-blue-50 text-blue-800 border-blue-200', desc: 'Monthly recurring contract invoice' },
-        { id: 'Pending', badge: 'Pending Due', color: 'bg-amber-50 text-amber-800 border-amber-200', desc: 'Payment uncollected / Due later' },
+      const curMode = (editingCell.tempValue || '').trim()
+      const defaultModes = [
+        { id: 'Cash Payment', value: 'Cash', desc: 'Direct cash collection on-site' },
+        { id: 'Online Transfer', value: 'Online', desc: 'Card, bank transfer, or payment link' },
+        { id: 'Monthly Contract', value: 'Monthly', desc: 'Monthly recurring contract invoice' },
+        { id: 'Pending Due', value: 'Pending', desc: 'Payment uncollected / Due later' },
       ]
+
+      // Used custom modes in current sheet
+      const usedCustomModes = Array.from(
+        new Set(
+          gridRows
+            .map(r => r.payment_mode as string | undefined)
+            .filter((m): m is string => Boolean(m && !['Cash', 'Online', 'Monthly', 'Pending', 'Above', 'Cash Payment', 'Online Transfer', 'Monthly Contract', 'Pending Due'].includes(m)))
+        )
+      )
+
+      const allCustomModes = Array.from(new Set([...customPaymentModes, ...usedCustomModes]))
+      const allModeOptions = [
+        ...defaultModes,
+        ...allCustomModes.map(c => ({ id: c, value: c, desc: 'Custom payment mode' }))
+      ].filter(m => !deletedPaymentModes.includes(m.id) && !deletedPaymentModes.includes(m.value))
+
+      const q = untouched ? '' : curMode.toLowerCase()
+      const filteredModes = q
+        ? allModeOptions.filter(m => m.id.toLowerCase().includes(q) || m.value.toLowerCase().includes(q))
+        : allModeOptions
+
+      const handleSaveCustomPaymentMode = () => {
+        const val = excelCustomPaymentMode.trim()
+        if (!val) return
+        if (!customPaymentModes.includes(val)) {
+          const updated = [...customPaymentModes, val]
+          setCustomPaymentModes(updated)
+          safeLocalStorageSet('safaeewala_custom_payment_modes', updated)
+        }
+        if (deletedPaymentModes.includes(val)) {
+          const nextDeleted = deletedPaymentModes.filter(x => x !== val)
+          setDeletedPaymentModes(nextDeleted)
+          safeLocalStorageSet('safaeewala_deleted_payment_modes', nextDeleted)
+        }
+        commitPaymentModeSelect(targetIdx, val)
+        setExcelCustomPaymentMode('')
+      }
+
+      const handleDeletePaymentMode = (name: string, val: string) => {
+        if (customPaymentModes.includes(name) || customPaymentModes.includes(val)) {
+          const updated = customPaymentModes.filter(x => x !== name && x !== val)
+          setCustomPaymentModes(updated)
+          safeLocalStorageSet('safaeewala_custom_payment_modes', updated)
+        }
+        if (!deletedPaymentModes.includes(name) || !deletedPaymentModes.includes(val)) {
+          const nextDeleted = Array.from(new Set([...deletedPaymentModes, name, val]))
+          setDeletedPaymentModes(nextDeleted)
+          safeLocalStorageSet('safaeewala_deleted_payment_modes', nextDeleted)
+        }
+        showToast(`Payment mode "${name}" removed`)
+      }
 
       return (
         <div className="relative w-full h-7 flex items-center">
@@ -2715,22 +2773,68 @@ export function JobSheetSpreadsheet() {
             placeholder="Mode..."
             className={cellInputClass}
           />
-          <ExcelCellPopover width={320} title="Payment Mode" icon={CreditCard}>
-            {modes.map(m => (
-              <ExcelPopoverItem
-                key={m.id}
-                selected={curMode.toLowerCase() === m.id.toLowerCase()}
-                onPick={() => commitPaymentModeSelect(targetIdx, m.id)}
-                icon={CreditCard}
-                label={
-                  <span className="flex items-center gap-2">
-                    <span className={`text-[10px] font-extrabold uppercase px-1.5 rounded border ${m.color}`}>{m.id}</span>
-                    {m.badge}
-                  </span>
-                }
-                sub={m.desc}
-              />
-            ))}
+          <ExcelCellPopover
+            width={340}
+            title="Payment Mode"
+            icon={CreditCard}
+            banner={
+              <div className="flex items-center gap-1.5 p-1 bg-slate-50 border border-slate-200 rounded-xl mb-2">
+                <input
+                  type="text"
+                  value={excelCustomPaymentMode}
+                  onChange={e => setExcelCustomPaymentMode(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleSaveCustomPaymentMode()
+                    }
+                  }}
+                  placeholder="Type new payment mode..."
+                  className="w-full text-[12px] px-2.5 py-1 bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-500 font-medium text-slate-800 shadow-2xs"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveCustomPaymentMode}
+                  disabled={!excelCustomPaymentMode.trim()}
+                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-lg text-[11px] font-bold shrink-0 cursor-pointer flex items-center gap-1 transition-all"
+                  title="Add Custom Payment Mode"
+                >
+                  <Plus size={12} />
+                  <span>Add</span>
+                </button>
+              </div>
+            }
+          >
+            {filteredModes.length === 0 ? (
+              <ExcelPopoverEmpty>No payment modes found — type above to add</ExcelPopoverEmpty>
+            ) : (
+              filteredModes.map(m => {
+                const isSelected = curMode.toLowerCase() === m.value.toLowerCase() || curMode.toLowerCase() === m.id.toLowerCase()
+                return (
+                  <ExcelPopoverItem
+                    key={m.id}
+                    selected={isSelected}
+                    onPick={() => commitPaymentModeSelect(targetIdx, m.value)}
+                    icon={CreditCard}
+                    label={<span className="text-[12.5px] font-bold text-slate-900">{m.id}</span>}
+                    sub={m.desc}
+                    action={
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeletePaymentMode(m.id, m.value)
+                        }}
+                        className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                        title={`Delete ${m.id}`}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    }
+                  />
+                )
+              })
+            )}
           </ExcelCellPopover>
         </div>
       )

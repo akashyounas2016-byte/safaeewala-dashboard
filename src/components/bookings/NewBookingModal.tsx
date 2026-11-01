@@ -11,7 +11,7 @@ import {
 } from '@/components/dailyJobSheet/jobSheetUtils'
 import { cleanAddressDisplay } from '@/lib/utils'
 import { todayDubai } from '@/lib/dubaiTime'
-import { staffNameToCrew, getDayNameFromDate } from '@/lib/clientDataSync'
+import { staffNameToCrew, crewToStaffName, getDayNameFromDate } from '@/lib/clientDataSync'
 import { notify } from '@/lib/notify'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import {
@@ -35,6 +35,8 @@ export interface NewBookingModalProps {
   open: boolean
   onClose: () => void
   onAdd: (booking: Omit<Booking, 'id' | 'created_at'> & { recurring_days?: string[] }) => void
+  initialBooking?: Booking | null
+  onUpdate?: (id: string, patch: Partial<Booking>) => void
 }
 
 /* ─── Default Cleaning Services ─── */
@@ -90,7 +92,7 @@ const DEFAULT_PRESET_MATERIALS = [
 
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) {
+export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate }: NewBookingModalProps) {
   const { clients, employees, dailyJobs, bookings } = useData()
 
   // ── Form State ──
@@ -122,23 +124,80 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
   // Card 4: Charges & Booking Details
   const [totalAmount, setTotalAmount] = useState<number | ''>('')
   const [bookingStatus, setBookingStatus] = useState<BookingStatus>('confirmed')
-  const [serviceType, setServiceType] = useState('Standard / General Cleaning')
-  const [customServiceName, setCustomServiceName] = useState('')
-  const [isCustomService, setIsCustomService] = useState(false)
-  const [serviceTypesList, setServiceTypesList] = useState<string[]>(() => {
-    return safeLocalStorageGet('safaeewala_booking_service_types', DEFAULT_CLEANING_SERVICES)
-  })
 
   // Card 5: Cleaning Materials & Notes & Row Color Theme
   const [selectedMaterial, setSelectedMaterial] = useState<string>('No')
+  const [remarks, setRemarks] = useState('')
+  const [rowColor, setRowColor] = useState<string>('default')
+
+  // Populate from initialBooking when provided for editing
+  useEffect(() => {
+    if (!open) return
+    if (initialBooking) {
+      const c = clients.find(cl =>
+        (initialBooking.client_id && cl.id === initialBooking.client_id) ||
+        (cl.full_name && initialBooking.client_name && cl.full_name.toLowerCase().trim() === initialBooking.client_name.toLowerCase().trim())
+      )
+      if (c) {
+        setSelectedClientId(c.id)
+        setClientName(c.full_name)
+        setClientPhone(c.phone || c.whatsapp || initialBooking.client_phone || '')
+        setAddress(initialBooking.service_address || c.building_name || '')
+        setArea(c.area || '')
+        setUnregisteredClientName('')
+      } else {
+        setSelectedClientId('')
+        setClientName(initialBooking.client_name)
+        setUnregisteredClientName(initialBooking.client_name)
+        setClientPhone(initialBooking.client_phone || '')
+        setAddress(initialBooking.service_address || '')
+      }
+
+      if (initialBooking.assigned_crew && initialBooking.assigned_crew.length > 0) {
+        const staffStr = crewToStaffName(initialBooking.assigned_crew, employees)
+        setSelectedStaff(staffStr.split(/[,+/&]|\band\b/i).map(s => s.trim()).filter(Boolean))
+      } else {
+        setSelectedStaff([])
+      }
+
+      setScheduledDate(initialBooking.scheduled_date || todayDubai())
+      setStartTime(formatTime12h(initialBooking.scheduled_time || '09:00 AM') || '09:00 AM')
+      setEndTime(formatTime12h(initialBooking.end_time || '01:00 PM') || '01:00 PM')
+      setDutyHours(initialBooking.duration_hours || 4)
+      setTotalAmount(initialBooking.total_amount ?? '')
+      setBookingStatus(initialBooking.status || 'confirmed')
+      setFrequency(initialBooking.frequency || 'once')
+      setSelectedMaterial(((initialBooking as any).material as any) === 'Yes' ? 'Yes' : 'No')
+      setRemarks(initialBooking.notes || '')
+      if ((initialBooking as any).row_color) setRowColor((initialBooking as any).row_color)
+    } else {
+      setSelectedStaff([])
+      setScheduledDate(todayDubai())
+      setTeamName('')
+      setFrequency('once')
+      setSelectedDays([])
+      setAddress('')
+      setArea('')
+      setSelectedClientId('')
+      setClientPhone('')
+      setClientName('')
+      setUnregisteredClientName('')
+      setStartTime('09:00 AM')
+      setEndTime('01:00 PM')
+      setDutyHours(4)
+      setTotalAmount('')
+      setBookingStatus('confirmed')
+      setSelectedMaterial('No')
+      setRemarks('')
+      setRowColor('default')
+    }
+  }, [open, initialBooking, clients, employees])
   const [materialsList, setMaterialsList] = useState<string[]>(() => {
     return safeLocalStorageGet('safaeewala_job_materials', DEFAULT_PRESET_MATERIALS)
   })
   const [materialDropdownOpen, setMaterialDropdownOpen] = useState(false)
   const [isAddingCustomMaterial, setIsAddingCustomMaterial] = useState(false)
   const [customMaterialInput, setCustomMaterialInput] = useState('')
-  const [remarks, setRemarks] = useState('')
-  const [rowColor, setRowColor] = useState('default')
   const [colorDropdownOpen, setColorDropdownOpen] = useState(false)
 
   // ── Refs for Click-Outside ──
@@ -187,39 +246,6 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
   useEffect(() => {
     if (isAddingCustomMaterial) setTimeout(() => customMaterialInputRef.current?.focus(), 50)
   }, [isAddingCustomMaterial])
-
-  // Reset form when modal opens
-  useEffect(() => {
-    if (open) {
-      setSelectedStaff([])
-      setScheduledDate(todayDubai())
-      setTeamName('')
-      setFrequency('once')
-      setSelectedDays([])
-      setAddress('')
-      setArea('')
-      setSelectedClientId('')
-      setClientPhone('')
-      setClientName('')
-      setBuildingSearch('')
-      setAreaSearch('')
-      setStartTime('09:00')
-      setEndTime('13:00')
-      setDutyHours(4)
-      setTotalAmount('')
-      setBookingStatus('confirmed')
-      setServiceType('Standard / General Cleaning')
-      setCustomServiceName('')
-      setIsCustomService(false)
-      setSelectedMaterial('No')
-      setRemarks('')
-      setRowColor('default')
-      setBuildingDropdownOpen(false)
-      setAreaDropdownOpen(false)
-      setMaterialDropdownOpen(false)
-      setColorDropdownOpen(false)
-    }
-  }, [open])
 
   // ── Unique Client Buildings & Options ──
   const buildingOptions = useMemo(() => {
@@ -411,16 +437,12 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
     const finalClientName = clientName.trim() || cleanAddressDisplay(address.trim())
     const assignedCrewIds = staffNameToCrew(selectedStaff.join(', '), employees)
 
-    const finalService = isCustomService
-      ? (customServiceName.trim() || 'Custom Cleaning')
-      : serviceType
-
-    onAdd({
+    const bookingPayload = {
       client_name: finalClientName,
       client_phone: clientPhone.trim(),
       client_id: selectedClientId || '',
       service_address: cleanAddressDisplay(address.trim()),
-      service_type: finalService,
+      service_type: 'Standard / General Cleaning',
       frequency,
       scheduled_date: scheduledDate,
       scheduled_time: startTime,
@@ -433,7 +455,14 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
       notes: remarks.trim(),
       recurring_days: frequency === 'monthly' ? (selectedDays.length > 0 ? selectedDays : [getDayNameFromDate(scheduledDate)]) : undefined,
       ...(rowColor !== 'default' ? { row_color: rowColor } : {}),
-    } as any)
+    }
+
+    if (initialBooking && onUpdate) {
+      onUpdate(initialBooking.id, bookingPayload as any)
+      notify.success(`Booking #${initialBooking.id.slice(0, 8)} updated successfully!`)
+    } else {
+      onAdd(bookingPayload as any)
+    }
 
     onClose()
   }
@@ -442,7 +471,7 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
     <Modal
       open={open}
       onClose={onClose}
-      title="Add New Booking"
+      title={initialBooking ? 'Edit Booking' : 'Add New Booking'}
       size="5xl"
       footer={
         <div className="flex items-center gap-2">
@@ -458,8 +487,8 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
             form="add-booking-entry-form"
             className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[12.5px] shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
           >
-            <Plus size={15} className="stroke-[3]" />
-            <span>Save Booking</span>
+            <Check size={15} className="stroke-[3]" />
+            <span>{initialBooking ? 'Save Changes' : 'Save Booking'}</span>
           </button>
         </div>
       }
@@ -540,11 +569,11 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
               </div>
             )}
 
-            {/* Booking Frequency & Service Days */}
+            {/* Frequency & Service Days */}
             <div className="pt-2 border-t border-slate-100 space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em]">
-                  Booking Frequency
+                  Frequency
                 </label>
                 <select
                   value={frequency}
@@ -902,10 +931,10 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
               <h4 className="text-[13px] font-bold text-slate-900">Charges & Booking Details</h4>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <div>
                 <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-                  Total Amount (AED)
+                  Charges
                 </label>
                 <input
                   type="number"
@@ -932,40 +961,6 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
                   <option value="in_progress">Live Now (In Progress)</option>
                   <option value="completed">Completed</option>
                 </select>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em]">
-                    Service Type
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setIsCustomService(prev => !prev)}
-                    className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
-                  >
-                    {isCustomService ? 'Choose Standard' : '+ Custom'}
-                  </button>
-                </div>
-                {isCustomService ? (
-                  <input
-                    type="text"
-                    value={customServiceName}
-                    onChange={e => setCustomServiceName(e.target.value)}
-                    placeholder="e.g. Marble Polish…"
-                    className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-emerald-300 rounded-xl bg-emerald-50/30 focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-semibold text-slate-800"
-                  />
-                ) : (
-                  <select
-                    value={serviceType}
-                    onChange={e => setServiceType(e.target.value)}
-                    className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-semibold text-slate-800 cursor-pointer truncate"
-                  >
-                    {serviceTypesList.map(st => (
-                      <option key={st} value={st}>{st}</option>
-                    ))}
-                  </select>
-                )}
               </div>
             </div>
           </div>

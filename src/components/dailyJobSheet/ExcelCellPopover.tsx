@@ -103,13 +103,14 @@ export function ExcelCellPopover({ width = 400, title, icon: Icon, search, banne
 }
 
 /** One row of a cell dropdown — same look in every column */
-export function ExcelPopoverItem({ selected, onPick, icon: Icon, label, sub, mono }: {
+export function ExcelPopoverItem({ selected, onPick, icon: Icon, label, sub, mono, action }: {
   selected: boolean
   onPick: () => void
   icon?: ElementType
   label: ReactNode
   sub?: ReactNode
   mono?: boolean
+  action?: ReactNode
 }) {
   // The current value is scrolled into view when the full list opens
   const ref = useRef<HTMLDivElement>(null)
@@ -121,18 +122,21 @@ export function ExcelPopoverItem({ selected, onPick, icon: Icon, label, sub, mon
     <div
       ref={ref}
       onMouseDown={e => { e.preventDefault(); onPick() }}
-      className={`px-3 py-2 rounded-lg cursor-pointer text-left flex items-center justify-between ${
+      className={`px-3 py-2 rounded-lg cursor-pointer text-left flex items-center justify-between group/popitem ${
         selected ? 'bg-emerald-50/80 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
       }`}
     >
-      <div className="min-w-0 pr-2">
+      <div className="min-w-0 pr-2 flex-1">
         <div className={`text-[12.5px] font-bold text-slate-900 flex items-center gap-1.5 truncate ${mono ? 'font-mono' : ''}`}>
           {Icon && <Icon size={13} className={selected ? 'text-emerald-600 shrink-0' : 'text-slate-400 shrink-0'} />}
           <span className="truncate">{label}</span>
         </div>
         {sub && <div className="text-[11px] text-slate-500 truncate mt-0.5">{sub}</div>}
       </div>
-      {selected && <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />}
+      <div className="flex items-center gap-1.5 shrink-0">
+        {selected && <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />}
+        {action}
+      </div>
     </div>
   )
 }
