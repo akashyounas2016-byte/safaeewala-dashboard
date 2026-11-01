@@ -1229,11 +1229,29 @@ export function DailyJobSheet() {
   // 3 items display logic for bottom widgets (Sirf Expense Log aur Driver Staff Summary widgets mein teen rows dikhayen)
   const displayedExpenses = viewAllExpenses ? todayExpenses : todayExpenses.slice(0, 3)
 
+  const [deletedDrivers, setDeletedDrivers] = useState<string[]>(() =>
+    safeLocalStorageGet<string[]>('safaeewala_deleted_drivers', [])
+  )
+
   const sortedDrivers = useMemo(() => {
-    return Object.entries(driverSummary).sort((a, b) => b[1] - a[1])
-  }, [driverSummary])
+    return Object.entries(driverSummary)
+      .filter(([name]) => !deletedDrivers.includes(name))
+      .sort((a, b) => b[1] - a[1])
+  }, [driverSummary, deletedDrivers])
 
   const displayedDrivers = viewAllDrivers ? sortedDrivers : sortedDrivers.slice(0, 3)
+
+  const handleDeleteDriver = (driverName: string) => {
+    if (blockIfClosed()) return
+    if (!window.confirm(`Are you sure you want to remove ${driverName} from the driver summary?`)) return
+
+    setDeletedDrivers(prev => {
+      const updated = Array.from(new Set([...prev, driverName]))
+      safeLocalStorageSet('safaeewala_deleted_drivers', updated)
+      return updated
+    })
+    notify.success(`${driverName} removed from driver summary.`)
+  }
 
   // ── Date navigation (Timezone-safe without day skipping or date freeze) ──
   function prevDay() {
@@ -2493,7 +2511,7 @@ export function DailyJobSheet() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 text-white/80 text-[13px]">
-              <span>{isDateRange ? getPresetDisplayName(dateRangePreset) : fmtDate(selectedDate)}</span>
+              <span>{isDateRange ? `${fmtDate(effectiveStartDate)} – ${fmtDate(effectiveEndDate)}` : fmtDate(selectedDate)}</span>
               <span className="text-white/40 hidden sm:inline">·</span>
               <span className="text-emerald-300 font-semibold">{jobsCount} Active Jobs</span>
               <span className="text-white/40 hidden sm:inline">·</span>
@@ -2521,10 +2539,10 @@ export function DailyJobSheet() {
                   <button
                     type="button"
                     onClick={() => setShowRangeMenu(true)}
-                    className="h-10 px-3 flex items-center gap-1.5 text-white font-bold text-[12.5px] hover:text-emerald-200 transition-colors cursor-pointer"
-                    title="Active Preset (Click to change)"
+                    className="h-10 px-3 flex items-center gap-1.5 text-white font-bold text-[12.5px] hover:text-emerald-200 transition-colors cursor-pointer whitespace-nowrap"
+                    title="Active Date Range (Click to change)"
                   >
-                    <span>{getPresetDisplayName(dateRangePreset)}</span>
+                    <span>{fmtDate(effectiveStartDate)} – {fmtDate(effectiveEndDate)}</span>
                   </button>
                 ) : (
                   <input
@@ -3020,18 +3038,6 @@ export function DailyJobSheet() {
               <span>Jobs</span>
             </h3>
             <div className="flex items-center gap-1.5 flex-wrap">
-              {paymentFilter !== 'ALL' && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/20 text-white font-bold text-[11px] border border-white/20">
-                  Mode: {paymentFilter}
-                  <button
-                    onClick={() => setPaymentFilter('ALL')}
-                    className="hover:text-red-300 transition-colors cursor-pointer text-[10px] font-black ml-0.5"
-                    title="Clear mode filter"
-                  >
-                    ✕
-                  </button>
-                </span>
-              )}
               {searchQuery && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/20 text-white font-bold text-[11px] border border-white/20">
                   Search: "{searchQuery}"
@@ -3940,6 +3946,7 @@ export function DailyJobSheet() {
         viewAllDrivers={viewAllDrivers}
         onToggleViewAllDrivers={() => setViewAllDrivers(v => !v)}
         onEditDriverStaff={staff => setEditingDriverStaff(staff)}
+        onDeleteDriver={handleDeleteDriver}
         onOpenDriverModal={() => {
           const first = sortedDrivers[0]
           setEditingDriverStaff({

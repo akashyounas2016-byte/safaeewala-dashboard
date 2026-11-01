@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import {
   AlertCircle, CheckCircle, Pencil, AlertTriangle, Trash2, Users, MapPin, Link2,
-  Wallet, Plus, Clock, FileText, Check, ChevronDown
+  Wallet, Plus, Clock, FileText, Check, ChevronDown, Save
 } from 'lucide-react'
+import { notify } from '@/lib/notify'
 import type { TodayPendingEntry } from './ReconciliationWidgets'
 import { useData } from '@/store/DataContext'
 import type {
@@ -299,6 +300,7 @@ export function DriverStaffModal({
   onDeletePendingRcvd?: (id: string) => void
 }) {
   const [activeTab, setActiveTab] = useState<'jobs' | 'advance' | 'pending'>('jobs')
+  const [customJobRef, setCustomJobRef] = useState('')
 
   // Advance Form State
   const [showAdvanceForm, setShowAdvanceForm] = useState(false)
@@ -417,6 +419,24 @@ export function DriverStaffModal({
       onClose={onClose}
       title="Driver Payment Received & Cleaner Reconciliation"
       size="lg"
+      headerActions={
+        <button
+          type="button"
+          onClick={() => {
+            if (customJobRef.trim()) {
+              notify.success(`Reference "${customJobRef.trim()}" saved for ${activeStaffName}`)
+            } else {
+              notify.success(`Driver settings saved for ${activeStaffName}`)
+            }
+            onClose()
+          }}
+          className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[12px] flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+          title="Save and apply driver settings"
+        >
+          <Save size={13} />
+          <span>Save</span>
+        </button>
+      }
     >
       <div className="space-y-4 pt-1">
         {/* Driver Selector Dropdown */}
@@ -580,27 +600,51 @@ export function DriverStaffModal({
             )}
 
             {/* Reference Link Field */}
-            <div className="pt-1">
-              <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5 mb-1">
+            <div className="pt-1 space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
                 <Link2 size={12} className="text-emerald-600" />
                 Link Payment to Cleaner / Job Reference:
               </label>
-              <select
-                onChange={e => {
-                  const jobId = e.target.value
-                  const targetJob = todayJobs.find(j => j.id === jobId)
-                  if (targetJob) onEditJob(targetJob)
-                }}
-                defaultValue=""
-                className="w-full text-[12px] bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-700 focus:outline-none focus:border-emerald-500 font-medium cursor-pointer"
-              >
-                <option value="" disabled>Select shift to link or edit payment reference…</option>
-                {todayJobs.map(j => (
-                  <option key={j.id} value={j.id}>
-                    Cleaner: {j.staff_name} · {j.address || 'No Address'} · Received: AED {cleanNum(j.received)}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    list="driver-job-refs-list"
+                    value={customJobRef}
+                    onChange={e => {
+                      const val = e.target.value
+                      setCustomJobRef(val)
+                      const targetJob = todayJobs.find(j => j.id === val || `${j.staff_name} - ${j.address}` === val)
+                      if (targetJob) onEditJob(targetJob)
+                    }}
+                    placeholder="Select cleaner/job reference or type custom value…"
+                    className="w-full text-[12.5px] bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-emerald-500 font-medium shadow-2xs"
+                  />
+                  <datalist id="driver-job-refs-list">
+                    {todayJobs.map(j => (
+                      <option key={j.id} value={j.id}>
+                        Cleaner: {j.staff_name} · {j.address || 'No Address'} · Received: AED {cleanNum(j.received)}
+                      </option>
+                    ))}
+                  </datalist>
+                </div>
+                {customJobRef.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetJob = todayJobs.find(j => j.id === customJobRef.trim())
+                      if (targetJob) {
+                        onEditJob(targetJob)
+                      } else {
+                        notify.success(`Custom reference "${customJobRef.trim()}" linked to ${activeStaffName}`)
+                      }
+                    }}
+                    className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[12px] shrink-0 transition-colors cursor-pointer shadow-2xs"
+                  >
+                    Link / Apply
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -863,12 +907,6 @@ export function DriverStaffModal({
             </div>
           </div>
         )}
-
-        <div className="flex justify-end pt-2">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Close
-          </Button>
-        </div>
       </div>
     </Modal>
   )

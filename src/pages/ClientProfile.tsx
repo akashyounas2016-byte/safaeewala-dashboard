@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Phone, Mail, MapPin, Calendar, Star, MessageCircle,
   Copy, CheckCircle, User, Clock, ExternalLink, Pencil, FileText, Search,
@@ -131,7 +131,9 @@ export function ClientProfile() {
   const { id } = useParams<{ id: string }>()
   const { clients, bookings, employees, invoices, dailyJobs, updateClient } = useData()
 
-  const [activeTab,     setActiveTab]     = useState<'job_sheet' | 'financial_history' | 'bookings' | 'info'>('job_sheet')
+  const [searchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab') as 'job_sheet' | 'financial_history' | 'bookings' | 'info' | null
+  const [activeTab,     setActiveTab]     = useState<'job_sheet' | 'financial_history' | 'bookings' | 'info'>(initialTab || 'job_sheet')
   const [jobSearch,     setJobSearch]     = useState('')
   const [ledgerSearch,  setLedgerSearch]  = useState('')
   const [ledgerFilter,  setLedgerFilter]  = useState<'all' | 'pending' | 'advance' | 'adjustment' | 'invoices'>('all')
@@ -336,12 +338,17 @@ export function ClientProfile() {
 
   // Automatically set default active tab based on available history
   useEffect(() => {
+    const tabParam = searchParams.get('tab') as 'job_sheet' | 'financial_history' | 'bookings' | 'info' | null
+    if (tabParam) {
+      setActiveTab(tabParam)
+      return
+    }
     if (clientDailyJobs.length > 0) {
       setActiveTab('job_sheet')
     } else if (clientBookings.length > 0) {
       setActiveTab('bookings')
     }
-  }, [id, clientDailyJobs.length, clientBookings.length])
+  }, [id, clientDailyJobs.length, clientBookings.length, searchParams])
 
   // Enrich each job with parsed adjustment, pending, and advance amounts
   // Per business rule: If service amount is deducted from advance, consider it an adjustment with 'ADJ' tag

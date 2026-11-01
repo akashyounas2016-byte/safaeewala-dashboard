@@ -6,6 +6,13 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(daily-job-sheet, driver-widget, reconciliation): Jobs Header Single-Row, Preset Date Range Display, Pending Received Formula & Driver Widget Polish (UX-37, R-JOB-01, R-DRV-01):
+  - Jobs Widget Header: Removed mode tag display (`Mode: {paymentFilter}`) on filter selection to keep the header strictly single-row and eliminate layout wrapping.
+  - Header Date Range: Replaced redundant duplicate preset names ("Last 7 Days") with a clear single date range (`{startDate} – {endDate}`) in both subtitle and active navigation capsule.
+  - Pending Received Widget: Displayed client pending formula in a single row (`Pending: AED X − Received: AED Y = Remaining: AED Z`) and made the tag clickable, navigating directly to the client's financial history ledger or payment history view.
+  - Driver Summary Widget: Added individual delete button (`Trash2`) next to edit icon (`Pencil`) on each driver row with local deletion persistence.
+  - Driver Staff Modal: Made 'Link Payment to Cleaner / Job Reference' editable supporting custom typed values alongside dropdown datalist options with 'Link / Apply' action; removed bottom 'Close' button and added a clean 'Save' button in the modal header beside the cross (`X`) icon.
+
 - feat(bookings, excel-studio): Booking Cards & Details Polish, Modal Edits & Spreadsheet Mode Customization (UX-36, R-JOB-01, R-SYNC-06):
   - Bookings Screen: Shifted charges to card upper row; restricted card footer strictly to 3 buttons (Invoice, Payment, and instant-saving Mark as Completed); replaced 'Job Sheet Sync' summary KPI card with 'Uncollected Dues' card; moved Auto Sync option into the header 3-dot dropdown menu.
   - Booking Details Modal: Expanded modal width to 5xl and replaced multi-row wrap with single horizontal 4-card row (grid-cols-4) eliminating vertical scrolling; moved Client ID under username; placed 'Monthly Contract' tag in Client ID's former spot; replaced 'Shift' button with 'Edit' button opening the New Booking form in full edit mode with live updates; preserved single-row flex-nowrap header actions.

@@ -1,5 +1,7 @@
 import React from 'react'
-import { Clock, Plus, CheckCircle, Pencil, Trash2, Wallet } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Clock, Plus, CheckCircle, Pencil, Trash2, Wallet, Receipt, ExternalLink } from 'lucide-react'
+import { useData } from '@/store/DataContext'
 import { cleanNum, fmtDate } from './jobSheetUtils'
 import type {
   DailyJob,
@@ -70,6 +72,21 @@ export const ReconciliationWidgets: React.FC<ReconciliationWidgetsProps> = ({
   onEditAdvance,
   onDeleteAdvance,
 }) => {
+  const navigate = useNavigate()
+  const { clients } = useData()
+
+  const handleViewPaymentHistory = (item: DailyPendingReceivedItem) => {
+    const matchedClient = (clients || []).find(c =>
+      (item.client_id && c.id === item.client_id) ||
+      (c.full_name && item.client && c.full_name.toLowerCase().trim() === item.client.toLowerCase().trim())
+    )
+    if (matchedClient?.id) {
+      navigate(`/clients/${matchedClient.id}?tab=financial_history`)
+    } else {
+      navigate(`/payments?tab=history&search=${encodeURIComponent(item.client)}`)
+    }
+  }
+
   return (
     <div id="reconciliation-widgets-section" className="grid grid-cols-1 lg:grid-cols-3 gap-6 scroll-mt-6">
       {/* 1. Today Pending (Light Red) */}
@@ -219,11 +236,37 @@ export const ReconciliationWidgets: React.FC<ReconciliationWidgetsProps> = ({
                             {item.remarks || item.notes}
                           </p>
                         )}
-                        {item.previous_pending !== undefined && (
-                          <span className="inline-block mt-0.5 text-[9.5px] font-bold text-emerald-800 bg-emerald-200/70 border border-emerald-300 px-1.5 py-0.2 rounded">
-                            Pending: AED {cleanNum(item.previous_pending).toLocaleString()} → AED {cleanNum(item.remaining_pending).toLocaleString()}
-                          </span>
-                        )}
+                        {(() => {
+                          const rcvd = cleanNum(item.cash) + cleanNum(item.online)
+                          const prevPending = item.previous_pending !== undefined
+                            ? cleanNum(item.previous_pending)
+                            : (item.remaining_pending !== undefined ? cleanNum(item.remaining_pending) + rcvd : rcvd)
+                          const remPending = item.remaining_pending !== undefined
+                            ? cleanNum(item.remaining_pending)
+                            : Math.max(0, prevPending - rcvd)
+
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleViewPaymentHistory(item)}
+                              className="inline-flex items-center gap-1.5 mt-1 px-2.5 py-1 rounded-md text-[10.5px] font-bold bg-emerald-100 hover:bg-emerald-200/90 text-emerald-950 border border-emerald-300 transition-all cursor-pointer shadow-2xs group text-left flex-wrap"
+                              title={`View ${item.client}'s Payment History & Ledger`}
+                            >
+                              <Receipt size={11} className="text-emerald-700 shrink-0 group-hover:scale-110 transition-transform" />
+                              <span className="font-semibold text-emerald-800">Pending:</span>
+                              <span className="font-mono font-bold">AED {prevPending.toLocaleString()}</span>
+                              <span className="text-emerald-600 font-black">−</span>
+                              <span className="font-semibold text-emerald-800">Received:</span>
+                              <span className="font-mono font-bold text-emerald-900">AED {rcvd.toLocaleString()}</span>
+                              <span className="text-emerald-600 font-black">=</span>
+                              <span className="font-semibold text-emerald-800">Remaining:</span>
+                              <span className={`font-mono font-extrabold ${remPending > 0 ? 'text-amber-900 bg-amber-100/90 px-1 py-0.2 rounded border border-amber-200' : 'text-emerald-700'}`}>
+                                AED {remPending.toLocaleString()}
+                              </span>
+                              <ExternalLink size={10} className="text-emerald-600 opacity-60 group-hover:opacity-100 ml-0.5 shrink-0" />
+                            </button>
+                          )
+                        })()}
                       </td>
                       <td className="px-3 py-2.5 text-right font-bold text-emerald-800 whitespace-nowrap">
                         {cleanNum(item.cash) > 0 ? `AED ${cleanNum(item.cash).toLocaleString()}` : '—'}

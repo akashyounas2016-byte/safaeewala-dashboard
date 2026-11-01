@@ -17,6 +17,7 @@ export interface ExpensesAndDriversPanelProps {
   viewAllDrivers: boolean
   onToggleViewAllDrivers: () => void
   onEditDriverStaff: (staff: { name: string; currentAmount: number }) => void
+  onDeleteDriver?: (driverName: string) => void
   onOpenDriverModal?: () => void
   grossCollected: number
 }
@@ -36,6 +37,7 @@ export const ExpensesAndDriversPanel: React.FC<ExpensesAndDriversPanelProps> = (
   viewAllDrivers,
   onToggleViewAllDrivers,
   onEditDriverStaff,
+  onDeleteDriver,
   onOpenDriverModal,
   grossCollected,
 }) => {
@@ -167,6 +169,16 @@ export const ExpensesAndDriversPanel: React.FC<ExpensesAndDriversPanelProps> = (
                         >
                           <Pencil size={12} />
                         </button>
+                        {onDeleteDriver && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteDriver(name)}
+                            className="p-1 rounded-md text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            title={`Delete ${name} from Driver Summary`}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
                       </div>
                       <span className="text-[13px] font-bold text-emerald-700">AED {amount.toLocaleString()}</span>
                     </div>

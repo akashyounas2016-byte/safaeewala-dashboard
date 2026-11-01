@@ -23,7 +23,7 @@ import { formatDate } from '@/lib/utils'
 import { invoicedJobIds } from '@/lib/receivables'
 import { normalizeKey, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
 import * as XLSX from 'xlsx'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
 import type { MonthlyClientPayment } from '@/types'
 import { todayDubai } from '@/lib/dubaiTime'
@@ -107,8 +107,11 @@ export function PaymentProcessing() {
   const { dailyJobs, updateDailyJob, clients, invoices } = useData()
   const navigate = useNavigate()
 
+  const [searchParams] = useSearchParams()
+  const initialTab = (searchParams.get('tab') as 'pending' | 'monthly' | 'history') || 'pending'
+
   // ── Tab State: 'pending' | 'monthly' | 'history' ──
-  const [activeTab, setActiveTab] = useState<'pending' | 'monthly' | 'history'>('pending')
+  const [activeTab, setActiveTab] = useState<'pending' | 'monthly' | 'history'>(initialTab)
 
   // ── Monthly Client Payments (Synced with safaeewala_monthly_client_payments) ──
   const [monthlyPayments, setMonthlyPayments] = useState<MonthlyClientPayment[]>(() => {
@@ -174,7 +177,7 @@ export function PaymentProcessing() {
   const [monthlyMethodFilter, setMonthlyMethodFilter] = useState<string>('all')
 
   // ── Search & Filter State for History Tab ──
-  const [historySearch, setHistorySearch] = useState('')
+  const [historySearch, setHistorySearch] = useState(() => searchParams.get('search') || '')
   const [historyMethod, setHistoryMethod] = useState('all') // UX-12
 
   // ── Extract All Pending Records ──
