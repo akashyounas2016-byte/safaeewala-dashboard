@@ -16,7 +16,7 @@ import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee, matchesAgencyFilter } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { Employee, DailyJob, EmployeeRole, Agency, EmployeeDocument } from '@/types'
-import { getAssignableClients, getEmployeeDailyJobsHistory, calcJobOTHours, getEmployeeMonthlySalary, formatMonthlySalary, splitStaffNames, MONTHLY_WORK_HOURS } from '@/lib/clientDataSync'
+import { getAssignableClients, getEmployeeDailyJobsHistory, calcCleanerOTHours, getEmployeeMonthlySalary, formatMonthlySalary, splitStaffNames, MONTHLY_WORK_HOURS } from '@/lib/clientDataSync'
 import { EmployeeFormModal } from '@/components/employees/EmployeeFormModal'
 import { OvertimeWidget, LiveCrewWidget, ComplianceWidget, SkillsWidget } from '@/components/employees/EmployeeWidgets'
 import { todayDubai } from '@/lib/dubaiTime'
@@ -406,7 +406,7 @@ export function Employees() {
 
       const shifts = rangeJobs.length
       const dutyHours = Math.round(rangeJobs.reduce((s, j) => s + (Number(j.duty_hours) || 0), 0) * 10) / 10
-      const otHours = Math.round(rangeJobs.reduce((s, j) => s + calcJobOTHours(j), 0) * 10) / 10
+      const otHours = Math.round(rangeJobs.reduce((s, j) => s + calcCleanerOTHours(j, emp), 0) * 10) / 10
       // OT hours fall inside the duty window, so they are not added on top
       const totalHours = dutyHours
       // A shared shift's charge is split between its cleaners

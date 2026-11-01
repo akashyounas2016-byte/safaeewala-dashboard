@@ -12,6 +12,12 @@
 > - Affects:  rule IDs, files
 > ```
 
+## DEC-015 — Overtime is always automatic (2026-11-02)
+- **Context:** A number in an imported file's OT column, or any OT on a saved shift, set `is_overtime`, and that flag made the whole shift OT (a 3h shift showed 3h OT).
+- **Decision (owner):** OT is counted only by the rules of R-OT-01. No typing, no import value, no flag. Supersedes the "flag has highest priority" part of DEC-013.
+- **Why:** One source of truth; pay figures cannot drift from the rules.
+- **Affects:** R-OT-01, `recalculateAllRowsOT`, `calcJobOTHours`, `calcCleanerOTHours`, Excel OT column (read-only).
+
 ## DEC-014 — Real accounts and login everywhere, including localhost (2026-10-30)
 - **Context:** Audit SEC-01…03: the login was a browser flag with a password inside the JavaScript, and the database answered anyone. The live Supabase project also had no tables (AUD-69).
 - **Decision:** Supabase Auth with admin-created accounts only (no sign-up), roles admin/manager/employee with screen permissions, row-level security for signed-in users. Login is required on localhost too, because the database refuses anonymous requests. Supersedes DEC-002.

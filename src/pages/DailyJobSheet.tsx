@@ -39,6 +39,7 @@ import {
   calcHours,
   calcOTHours,
   recalculateAllRowsOT,
+  totalRowOT,
   calcDailyCleanerShiftsOT,
   checkTimesOverlap,
   fmtDate,
@@ -1219,7 +1220,7 @@ export function DailyJobSheet() {
 
   // R-OT-01: Cumulative Overtime across all shifts for the day
   const todayJobsWithOT = useMemo(() => recalculateAllRowsOT(todayJobs), [todayJobs])
-  const totalOTHours   = Math.round(todayJobsWithOT.reduce((s, j) => s + cleanNum(j.ot_hours), 0) * 10) / 10
+  const totalOTHours   = Math.round(todayJobsWithOT.reduce((s, j) => s + totalRowOT(j), 0) * 10) / 10
   const staffOnDuty    = new Set(todayJobs.map(j => j.staff_name)).size
   const jobsCount      = todayJobs.length
 

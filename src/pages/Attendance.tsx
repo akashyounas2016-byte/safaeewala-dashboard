@@ -195,7 +195,7 @@ export function Attendance() {
       const explicitOverride = (emp && overrides[`${selectedDate}_id:${emp.id}`]) || overrides[`${selectedDate}_${key}`]
 
       // One shared rule for a cleaner's day (R-ATT-01..03) — also used by the monthly calendar (UX-20)
-      const day = classifyAttendanceDay(cleanerJobs, explicitOverride)
+      const day = classifyAttendanceDay(cleanerJobs, explicitOverride, emp || cleanerName)
       const { status, absenceReason, dutyHours, otHours, isManualPresent } = day
       const firstStartTime = day.workedJobs[0]?.start_time
       const lastEndTime = day.workedJobs[day.workedJobs.length - 1]?.end_time

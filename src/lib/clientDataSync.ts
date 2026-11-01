@@ -126,33 +126,39 @@ export function isMonthlyJob(job: DailyJob): boolean {
 }
 
 /**
- * Helper to calculate overtime hours for a job (R-OT-01):
- * 1. If sibling jobs for the date are provided, evaluates daily multi-shift cumulative OT
- * 2. Explicit ot_hours from job record
- * 3. If is_overtime flag is set, duty_hours or elapsed time
- * 4. calcOTHours applying Scenario 1 (post-8:00 PM) + Scenario 2 (pre-8:00 PM exceeding 8h)
- * 5. Fallback if start/end times missing but duty_hours > 8
+ * Overtime of a job (R-OT-01, DEC-015 — always automatic):
+ * 1. Sibling jobs given: daily multi-shift cumulative OT
+ * 2. Job already worked out by recalculateAllRowsOT (every job from useData): that value
+ * 3. calcOTHours from the times alone
+ * 4. Times missing: duty hours above the 8 basic hours
  */
 export function calcJobOTHours(job: DailyJob, siblingJobs?: DailyJob[]): number {
   if (siblingJobs && siblingJobs.length > 1) {
     const otMap = calcDailyCleanerShiftsOT(siblingJobs)
     if (job.id && otMap.has(job.id)) return otMap.get(job.id)!
   }
-  if (job.ot_hours && Number(job.ot_hours) > 0) {
-    return Math.round(Number(job.ot_hours) * 10) / 10
-  }
-  if (job.is_overtime) {
-    const duty = Number(job.duty_hours) || 0
-    if (duty > 0) return duty
-  }
+  if ((job as any)._otCalculated) return cleanNum(job.ot_hours)
   const fromTimes = calcOTHours(job.start_time, job.end_time)
   if (fromTimes > 0) return fromTimes
-  // Fallback: if times are missing/invalid, check if duty_hours exceeds 8 basic hours (Scenario 2)
   const duty = Number(job.duty_hours) || 0
   if (duty > 8) {
     return Math.round((duty - 8) * 10) / 10
   }
   return 0
+}
+
+/** One cleaner's OT on a job — on a team job each cleaner has their own day (R-OT-01) */
+export function calcCleanerOTHours(job: DailyJob, cleaner: Employee | string | null | undefined): number {
+  const perCleaner = (job as any)._otByCleaner as Record<string, number> | undefined
+  if (perCleaner && cleaner) {
+    const name = (typeof cleaner === 'string' ? cleaner : cleaner.full_name || '').trim().toLowerCase()
+    if (perCleaner[name] !== undefined) return perCleaner[name]
+    if (typeof cleaner !== 'string') {
+      const key = Object.keys(perCleaner).find(k => employeeMatchesStaff(cleaner, k))
+      if (key) return perCleaner[key]
+    }
+  }
+  return calcJobOTHours(job)
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

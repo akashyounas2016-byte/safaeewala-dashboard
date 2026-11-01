@@ -14,7 +14,7 @@ import { EmployeeDocumentPreviewModal } from '@/components/employees/EmployeeDoc
 import {
   formatMonthlySalary,
   getEmployeeDailyJobsHistory,
-  calcJobOTHours,
+  calcCleanerOTHours,
   cleanClientNameFromAddress,
   splitStaffNames,
 } from '@/lib/clientDataSync'
@@ -160,7 +160,7 @@ export function EmployeeProfile() {
   // Aggregate stats from Daily Job Sheet
   const totalShifts = empJobs.length
   const totalDutyHours = Math.round(empJobs.reduce((s, j) => s + (Number(j.duty_hours) || 0), 0) * 10) / 10
-  const totalOTHours = Math.round(empJobs.reduce((s, j) => s + calcJobOTHours(j), 0) * 10) / 10
+  const totalOTHours = Math.round(empJobs.reduce((s, j) => s + calcCleanerOTHours(j, emp), 0) * 10) / 10
   // A shared shift's charge is split between its cleaners, not counted fully for each
   const totalRevenue = Math.round(empJobs.reduce((s, j) => s + (Number(j.charges) || 0) / Math.max(1, splitStaffNames(j.staff_name).length), 0))
   const totalCashCollected = empJobs.filter(j => j.payment_mode === 'Cash').reduce((s, j) => s + (Number(j.received) || 0), 0)
@@ -190,7 +190,7 @@ export function EmployeeProfile() {
         (j.remarks && j.remarks.toLowerCase().includes(q)) ||
         (j.payment_mode && j.payment_mode.toLowerCase().includes(q))
 
-      const ot = calcJobOTHours(j)
+      const ot = calcCleanerOTHours(j, emp)
       const matchOT = !onlyOT || ot > 0
       return matchSearch && matchOT
     })
@@ -207,7 +207,7 @@ export function EmployeeProfile() {
       const item = map.get(addr)!
       item.visits += 1
       item.dutyHours += Number(j.duty_hours) || 0
-      item.otHours += calcJobOTHours(j)
+      item.otHours += calcCleanerOTHours(j, emp)
     })
     return Array.from(map.values()).sort((a, b) => b.visits - a.visits)
   }, [empJobs])
@@ -463,7 +463,7 @@ export function EmployeeProfile() {
               </div>
               <span className="inline-flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                <span>{empJobs.filter(j => calcJobOTHours(j) > 0).length} OT Shifts</span>
+                <span>{empJobs.filter(j => calcCleanerOTHours(j, emp) > 0).length} OT Shifts</span>
               </span>
             </div>
             <p className="text-2xl font-black text-slate-900 tracking-tight">
@@ -624,7 +624,7 @@ export function EmployeeProfile() {
                     </thead>
                     <tbody className="divide-y divide-[#E4E8EC]">
                       {filteredJobs.map(job => {
-                        const ot = calcJobOTHours(job)
+                        const ot = calcCleanerOTHours(job, emp)
                         return (
                           <tr key={job.id} className="hover:bg-purple-50/30 transition-colors">
                             <td className="py-3 px-4 font-bold text-slate-800 whitespace-nowrap">
@@ -1091,7 +1091,7 @@ export function EmployeeProfile() {
             </div>
             <p className="text-[12px] text-amber-800 leading-relaxed mb-3">
               {totalOTHours > 0
-                ? `${emp.full_name} has logged ${totalOTHours} overtime hours across ${empJobs.filter(j => calcJobOTHours(j) > 0).length} shifts.`
+                ? `${emp.full_name} has logged ${totalOTHours} overtime hours across ${empJobs.filter(j => calcCleanerOTHours(j, emp) > 0).length} shifts.`
                 : `${emp.full_name} has completed standard shifts with 0 overtime hours logged.`}
             </p>
             <div className="flex items-center justify-between text-[11px] font-bold text-amber-900 bg-white/70 rounded-xl p-2.5 border border-amber-200">

@@ -51,7 +51,7 @@ export function AttendanceCalendar({ cleaners, employeeByName, dailyJobs, overri
       ? employeeMatchesStaff(emp, j.staff_name)
       : splitStaffNames(j.staff_name || '').some(n => n.trim().toLowerCase() === key))
     const override = (emp && overrides[`${date}_id:${emp.id}`]) || overrides[`${date}_${key}`]
-    return classifyAttendanceDay(jobs, override)
+    return classifyAttendanceDay(jobs, override, emp || name)
   }
 
   const todayStr = todayDubai()

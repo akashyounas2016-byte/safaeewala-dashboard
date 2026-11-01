@@ -3,7 +3,9 @@ import {
   calcOTHours,
   recalculateAllRowsOT,
   calcDailyCleanerShiftsOT,
+  totalRowOT,
 } from '@/components/dailyJobSheet/jobSheetUtils'
+import { calcCleanerOTHours, calcJobOTHours } from '@/lib/clientDataSync'
 
 const eq = (a: unknown, b: unknown, m: string) => {
   if (a !== b) {
@@ -69,23 +71,27 @@ eq(otMap.get('p3'), 2.0, 'OT map returns exact OT for Parmila shift 3')
 eq(otMap.get('s1'), 0.0, 'OT map returns exact OT for Sabirti shift 1')
 eq(otMap.get('s2'), 3.0, 'OT map returns exact OT for Sabirti shift 2')
 
-// ── Test 5: Explicit is_overtime flag ──
-const explicitOtShifts = [
-  { id: 'e1', date: day, staff_name: 'Fatima', start_time: '09:00 AM', end_time: '01:00 PM', is_overtime: true },
-  { id: 'e2', date: day, staff_name: 'Fatima', start_time: '02:00 PM', end_time: '10:00 PM' },
-]
-const explicitRecalc = recalculateAllRowsOT(explicitOtShifts)
-eq(explicitRecalc[0].ot_hours, 4.0, 'Explicit is_overtime gives full 4.0h OT and preserves basic quota')
-eq(explicitRecalc[1].ot_hours, 2.0, 'Second shift takes 6h basic (02:00 PM - 08:00 PM <= 8h) + 2h post-8 PM OT')
-
-// ── Test 6: Screenshot 2026-10-19 — what the wrong flag did ──
-// Sabirti's 09:00 AM row was saved with is_overtime=true, so its whole 3h showed as OT (2.5h + 3h = 5.5h)
-const sabirtiFlagged = recalculateAllRowsOT([
-  { id: 'f1', date: day, staff_name: 'Sabirti', start_time: '09:00 AM', end_time: '12:00 PM', is_overtime: true },
-  { id: 'f2', date: day, staff_name: 'Sabirti', start_time: '02:30 PM', end_time: '10:30 PM' },
+// ── Test 5: OT is always automatic — the old is_overtime flag and stored numbers are ignored (DEC-015) ──
+const flagged = recalculateAllRowsOT([
+  { id: 'f1', date: day, staff_name: 'Sabirti', start_time: '09:00 AM', end_time: '12:00 PM', is_overtime: true, ot_hours: 3 },
+  { id: 'f2', date: day, staff_name: 'Sabirti', start_time: '02:30 PM', end_time: '10:30 PM', ot_hours: 2.5 },
 ])
-eq(sabirtiFlagged[0].ot_hours, 3.0, 'flagged shift reproduces the screenshot (3h)')
-eq(sabirtiFlagged[1].ot_hours, 2.5, 'flagged shift takes no quota, reproduces the screenshot (2.5h)')
+eq(flagged[0].ot_hours, 0, 'old flag ignored: 09:00-12:00 has no OT (screenshot showed 3h)')
+eq(flagged[1].ot_hours, 3, 'old flag ignored: 02:30-10:30 has 3h OT (screenshot showed 2.5h)')
+
+// ── Test 6: Team job — each cleaner has their own day ──
+const team = recalculateAllRowsOT([
+  { id: 't1', date: day, staff_name: 'Krishna', start_time: '08:00 AM', end_time: '01:00 PM' },
+  { id: 't2', date: day, staff_name: 'Krishna, Qasim', start_time: '02:00 PM', end_time: '07:00 PM' },
+])
+eq(team[1]._otByCleaner.krishna, 2, 'Krishna: 5h morning + 5h team job = 10h, 2h OT')
+eq(team[1]._otByCleaner.qasim, 0, 'Qasim: only the 5h team job, no OT')
+eq(team[1].ot_hours, 2, 'the team row shows the highest')
+eq(totalRowOT(team[1]), 2, 'total OT of the row sums its cleaners')
+eq(calcCleanerOTHours(team[1] as any, 'Qasim'), 0, 'Qasim is not given Krishna\'s OT')
+eq(calcCleanerOTHours(team[1] as any, 'krishna'), 2, 'Krishna keeps his OT')
+eq(calcJobOTHours(team[0] as any), 0, 'calculated value is used, stored numbers are not')
+eq(calcJobOTHours({ start_time: '', end_time: '', duty_hours: 10 } as any), 2, 'no times: duty above 8h')
 
 // ── Test 7: Overlapping shifts of one cleaner count once ──
 const ambika = recalculateAllRowsOT([

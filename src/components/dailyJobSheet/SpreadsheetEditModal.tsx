@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Time12hPicker } from '@/components/common/Time12hPicker'
@@ -7,7 +7,7 @@ import type { DailyJob, MaterialType, PaymentMode, Client } from '@/types'
 import {
   cleanNum,
   calcHours,
-  calcOTHours,
+  recalculateAllRowsOT,
   checkTimesOverlap,
   formatTime12h,
   formatTime24h,
@@ -60,7 +60,6 @@ export function SpreadsheetEditModal({
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('13:00')
   const [dutyHours, setDutyHours] = useState<number>(4)
-  const [otHours, setOtHours] = useState<number | string>(0)
   const [material, setMaterial] = useState<string>('No')
   const [customMaterial, setCustomMaterial] = useState('')
   const [charges, setCharges] = useState<number | string>(0)
@@ -68,6 +67,13 @@ export function SpreadsheetEditModal({
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('Cash')
   const [remarks, setRemarks] = useState('')
   const [showQuickClientModal, setShowQuickClientModal] = useState(false)
+  // DEC-015: OT is automatic — the cleaner's other shifts of the day count too (R-OT-01)
+  const otHours = useMemo(() => {
+    if (!row) return 0
+    const edited = { ...row, staff_name: staffName, start_time: startTime, end_time: endTime, duty_hours: dutyHours }
+    const all = [...(existingRows || []).filter(r => r.id !== row.id), edited]
+    return cleanNum(recalculateAllRowsOT(all).find(r => r.id === row.id)?.ot_hours)
+  }, [row, existingRows, staffName, startTime, endTime, dutyHours])
   const [hasConfirmedUnregistered, setHasConfirmedUnregistered] = useState(false)
 
   // Populate state when row opens
@@ -81,7 +87,6 @@ export function SpreadsheetEditModal({
     setStartTime(s)
     setEndTime(e)
     setDutyHours(Number(row.duty_hours) || calcHours(s, e) || 4)
-    setOtHours(row.ot_hours !== undefined ? row.ot_hours : calcOTHours(s, e))
     
     const mat = String(row.material || 'No')
     if (PRESET_MATERIALS.includes(mat)) {
@@ -104,7 +109,6 @@ export function SpreadsheetEditModal({
     if (newStart && dutyHours > 0) {
       const calculatedEnd = addHoursToTime(newStart, dutyHours)
       setEndTime(calculatedEnd)
-      setOtHours(calcOTHours(newStart, calculatedEnd))
     }
   }
 
@@ -114,7 +118,6 @@ export function SpreadsheetEditModal({
       const duration = calcDurationFromTimes(startTime, newEnd)
       if (duration > 0) {
         setDutyHours(duration)
-        setOtHours(calcOTHours(startTime, newEnd))
       }
     }
   }
@@ -124,7 +127,6 @@ export function SpreadsheetEditModal({
     if (startTime && newDuty > 0) {
       const calculatedEnd = addHoursToTime(startTime, newDuty)
       setEndTime(calculatedEnd)
-      setOtHours(calcOTHours(startTime, calculatedEnd))
     }
   }
 
@@ -188,7 +190,7 @@ export function SpreadsheetEditModal({
       start_time: startTime,
       end_time: endTime,
       duty_hours: dutyHours,
-      ot_hours: cleanNum(otHours),
+      ot_hours: otHours,
       material: finalMaterial,
       charges: cleanNum(charges),
       received: cleanNum(received),
@@ -347,15 +349,15 @@ export function SpreadsheetEditModal({
             </div>
             <div>
               <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-                OT Hours
+                OT Hours (auto)
               </label>
               <input
                 type="number"
-                min="0"
-                step="0.5"
+                readOnly
+                tabIndex={-1}
                 value={otHours}
-                onChange={e => setOtHours(Number(e.target.value) || 0)}
-                className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-blue-500 transition-all font-bold text-amber-700 shadow-2xs"
+                title="Calculated automatically from the times (R-OT-01)"
+                className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-slate-100 cursor-not-allowed focus:outline-none font-bold text-amber-700 shadow-2xs"
               />
             </div>
           </div>

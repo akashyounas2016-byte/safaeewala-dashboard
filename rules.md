@@ -78,11 +78,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - **Scenario 2 (Excess Basic Hours Before 8:00 PM Rule):** Standard basic duty hours are **8 hours** (480 minutes). If an employee works more than 8 hours before 8:00 PM, all hours exceeding the 8-hour basic threshold qualify as Overtime (e.g., an 08:00 to 18:00 shift consists of 10 hours total before 8 PM: 8 hours standard duty + 2 hours OT).
   - **Combined Shifts (Scenario 1 + Scenario 2):** When a shift exceeds 8 hours before 8 PM and also extends past 8 PM, total OT is the sum of both components (e.g., 10:00 to 22:00 is 12h total: 10:00–20:00 has 10h pre-8 PM → 8h standard + 2h OT; 20:00–22:00 has 2h OT → Total OT = 4h).
   - **Multi-Shift Cumulative Tracking:** When a cleaner works multiple shifts on the same date, pre-8:00 PM duty is tracked cumulatively in chronological order against the daily 8-hour basic limit (480 mins). Excess pre-8 PM hours across earlier and later shifts plus post-8 PM hours are calculated at shift level and totaled across the day (`recalculateAllRowsOT`).
-- **Calculation Priority Hierarchy:**
-  1. **Full Overtime Flag:** If `is_overtime = true`, the entire `duty_hours` counts as OT. The flag means exactly that and is **never** set from a calculated OT value (no screen sets it; only an import OT column with the word "yes"). An OT **number** in an imported file is not used: OT is calculated from the times.
-  2. **Multi-Shift Cumulative Calculation:** `recalculateAllRowsOT(shifts)` evaluates chronological pre-8 PM accumulation against 8h basic limit + post-8 PM hours.
-  3. **Standalone Multi-Scenario Calculation:** `calcOTHours(start_time, end_time)` evaluates Scenario 1 (post-20:00 hours) + Scenario 2 (pre-20:00 hours exceeding 8 hours).
-  4. **Fallback:** If times are missing but `duty_hours > 8`, excess hours (`duty_hours - 8`) count as OT.
+- **Always automatic (DEC-015):** OT comes only from the rules above. It cannot be typed, pasted or imported (an OT number or "yes" in a file is not used), and the old `is_overtime` column and stored `ot_hours` are never read.
+- **Calculation:**
+  1. **Times known:** `recalculateAllRowsOT(shifts)`: chronological pre-8 PM accumulation against the 8h basic limit + post-8 PM hours.
+  2. **Times missing:** duty hours above what is left of the 8h basic limit.
+- **Team jobs:** one row, but each cleaner has their own day: each cleaner's OT is kept separately (`calcCleanerOTHours`) and used on Employees, profiles and Attendance. The row shows the highest; totals sum the cleaners (`totalRowOT`).
 - **Overlaps:** Time covered by two overlapping shifts of one cleaner is counted once. Each row still shows its own duty.
 - **One source:** `DataContext` works out OT for all jobs (`viewDailyJobs`), so every screen shows the same OT; a stored `ot_hours` is not trusted.
 - **Why:** Protects staff compensation and ensures accurate operational tracking for late evening shifts, split shifts, and prolonged daily shifts according to company overtime policy.

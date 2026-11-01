@@ -1238,7 +1238,7 @@ const COLUMN_PRESETS: Record<string, string[] | null> = {
 /** Temporary id for a grid row that is not saved yet */
 const newRowId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 /** Columns that are calculated, never typed into */
-const READ_ONLY_COLS = new Set(['pending'])
+const READ_ONLY_COLS = new Set(['pending', 'ot_hours']) // ot_hours: always automatic (DEC-015)
 /** Light background of a job done by one cleaner alone (not a team job) — UX-61 */
 const SOLO_ROW_BG = '#f0fdfa'
 /** Columns whose cells open their dropdown on a single click, filled or empty (UX-35) */
@@ -1545,37 +1545,32 @@ export function JobSheetSpreadsheet() {
     showToast(`Columns: ${name}`)
   }
 
-  // ── Team Members Details State & Lead Cleaner Jump Handler (Task 3) ──
-  const [teamDetailsInfo, setTeamDetailsInfo] = useState<{
-    teamRef: string
-    primaryCleaner: string
-    allCleaners: string[]
-    address?: string
-    area?: string
-    start_time?: string
-    end_time?: string
-    charges?: number
-    received?: number
-  } | null>(null)
+  // ── Received reference → the row where the payment was received (UX-62) ──
+  const [jumpTargetId, setJumpTargetId] = useState<string | null>(null)
+  const [flashRowId, setFlashRowId] = useState<string | null>(null)
 
   const handleJumpToLeadCleaner = (mcInfo: MultiCleanerPaymentInfo, row?: DailyJob) => {
+    // The lead may have other jobs that day: find this job's row, not just the lead's first row
     const leadName = (mcInfo.primaryCleaner || '').trim().toLowerCase()
-    const targetIdx = gridRows.findIndex(r => (r.staff_name || '').trim().toLowerCase() === leadName)
-    if (targetIdx >= 0) {
-      setActiveCell({ rowIdx: targetIdx, colId: 'received' })
-      showToast(`🎯 Jumped to Lead Cleaner: ${mcInfo.primaryCleaner} (${mcInfo.teamRef})`)
+    const leadRows = gridRows.filter(r => (r.staff_name || '').trim().toLowerCase() === leadName)
+    const jobId = (row as any)?._originalJobId
+    const sameSite = (r: DailyJob) => r.date === row?.date && normalizeJobAddress(r.address) === normalizeJobAddress(row?.address)
+    const target = (jobId && leadRows.find(r => ((r as any)._originalJobId || r.id) === jobId))
+      || leadRows.find(r => sameSite(r) && checkTimesOverlap(r.start_time, r.end_time, row?.start_time || '', row?.end_time || ''))
+      || leadRows.find(sameSite)
+      || leadRows[0]
+    if (!target) {
+      showToast(`Lead cleaner ${mcInfo.primaryCleaner} has no row on this sheet`)
+      return
     }
-    setTeamDetailsInfo({
-      teamRef: mcInfo.teamRef,
-      primaryCleaner: mcInfo.primaryCleaner,
-      allCleaners: mcInfo.allCleaners,
-      address: row?.address,
-      area: row?.area,
-      start_time: row?.start_time,
-      end_time: row?.end_time,
-      charges: row?.charges,
-      received: row?.received
-    })
+    setActiveCell({ rowIdx: gridRows.findIndex(r => r.id === target.id), colId: 'received' })
+    // Hidden by a filter, the search or the row limit: show it first
+    if (!filteredGridRows.some(r => r.id === target.id)) {
+      setPaymentModeFilter('ALL')
+      setFilterSearch('')
+    }
+    setRenderLimit(limit => Math.max(limit, gridRows.length))
+    setJumpTargetId(target.id)
   }
 
   // Autocomplete sources (UX-35) — live data only
@@ -2866,6 +2861,7 @@ export function JobSheetSpreadsheet() {
 
   // Formula Bar change
   const handleFormulaBarChange = (newVal: string) => {
+    if (activeCell && READ_ONLY_COLS.has(activeCell.colId)) return
     setFormulaBarValue(newVal)
     if (activeCell) {
       const updated = [...gridRows]
@@ -2894,8 +2890,9 @@ export function JobSheetSpreadsheet() {
   const handleSaveEditedRow = (updatedRow: DailyJob, index: number) => {
     const updated = [...gridRows]
     updated[index] = updatedRow
-    if (refuseClash(updated)) return // the popup stays open to fix the time or cleaner
-    pushState(updated)
+    const finalGrid = recalculateAllRowsOT(updated) // R-OT-01: the cleaner's other shifts change too
+    if (refuseClash(finalGrid)) return // the popup stays open to fix the time or cleaner
+    pushState(finalGrid)
     setEditingRowState(null)
     showToast(`✓ Row #${index + 1} updated successfully`)
   }
@@ -3560,7 +3557,7 @@ export function JobSheetSpreadsheet() {
         charges: isSec ? 0 : cleanNum(row.charges),
         received: isSec ? 0 : cleanNum(row.received),
         payment_mode: isSec ? ('Above' as any) : row.payment_mode,
-        is_overtime: Boolean(row.is_overtime), // R-OT-01: never set from a calculated OT value
+        is_overtime: false, // DEC-015: OT is automatic, this old flag is not used
         material: row.material,
         service: row.service,
         remarks: row.remarks,
@@ -3595,7 +3592,7 @@ export function JobSheetSpreadsheet() {
         charges: cleanNum(lead.charges), // the lead row holds the money of the whole team
         received: cleanNum(lead.received),
         payment_mode: lead.payment_mode,
-        is_overtime: Boolean(lead.is_overtime),
+        is_overtime: false,
       }
     }
 
@@ -3879,6 +3876,22 @@ export function JobSheetSpreadsheet() {
     )
   }, [gridRows, paymentModeFilter, filterSearch, pendingCtx, soloAtBottom])
   const visibleGridRows = useMemo(() => filteredGridRows.slice(0, renderLimit), [filteredGridRows, renderLimit])
+
+  // UX-62: once the payment row is on screen, scroll to it and flash it
+  useEffect(() => {
+    if (!jumpTargetId) return
+    const el = document.querySelector(`tr[data-row-id="${CSS.escape(jumpTargetId)}"]`)
+    if (!el) return // not rendered yet — this runs again when the rows change
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    const id = jumpTargetId
+    const raf = requestAnimationFrame(() => { setJumpTargetId(null); setFlashRowId(id) })
+    return () => cancelAnimationFrame(raf)
+  }, [jumpTargetId, visibleGridRows])
+  useEffect(() => {
+    if (!flashRowId) return
+    const t = window.setTimeout(() => setFlashRowId(null), 2200)
+    return () => window.clearTimeout(t)
+  }, [flashRowId])
 
   // Summary Totals
   const totals = useMemo(() => {
@@ -4793,9 +4806,10 @@ export function JobSheetSpreadsheet() {
                       return (
                         <tr
                           key={row.id}
+                          data-row-id={row.id}
                           onContextMenu={e => handleContextMenu(e, globalIndex, row)}
                           style={{ backgroundColor: palette.solidBg }}
-                          className={`transition-colors group hover:brightness-[0.97] ${
+                          className={`transition-colors group hover:brightness-[0.97] ${flashRowId === row.id ? 'outline outline-4 -outline-offset-2 outline-amber-400' : ''} ${
                             isSelectedRow
                               ? 'ring-2 ring-inset ring-emerald-600 font-semibold shadow-xs'
                               : ''
@@ -4913,7 +4927,7 @@ export function JobSheetSpreadsheet() {
                                       handleJumpToLeadCleaner(mcInfo, row)
                                     }}
                                     className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 border border-indigo-400/40 text-[10.5px] font-bold cursor-pointer transition-all shadow-2xs group/ref"
-                                    title={`Click to view team details & jump to lead cleaner (${mcInfo.primaryCleaner})`}
+                                    title={`Go to the row where the payment was received (${mcInfo.primaryCleaner})`}
                                   >
                                     <ExternalLink size={10} className="text-indigo-400 group-hover/ref:translate-x-0.5 transition-transform" />
                                     <span className="underline decoration-indigo-400 underline-offset-2">{displayVal}</span>
@@ -4926,7 +4940,7 @@ export function JobSheetSpreadsheet() {
                                       handleJumpToLeadCleaner(mcInfo, row)
                                     }}
                                     className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 border border-indigo-400/40 text-[10.5px] font-bold cursor-pointer transition-all shadow-2xs"
-                                    title="Click to view team members details"
+                                    title="Go to the lead cleaner's payment row"
                                   >
                                     <Users size={10} className="text-indigo-400" />
                                     <span>{displayVal}</span>
@@ -5050,9 +5064,10 @@ export function JobSheetSpreadsheet() {
                 return (
                   <tr
                     key={row.id}
+                    data-row-id={row.id}
                     onContextMenu={e => handleContextMenu(e, targetIdx, row)}
                     style={{ backgroundColor: rowBg }}
-                    className={`transition-colors group hover:brightness-[0.98] ${
+                    className={`transition-colors group hover:brightness-[0.98] ${flashRowId === row.id ? 'outline outline-4 -outline-offset-2 outline-amber-400' : ''} ${
                       isSelectedRow ? 'ring-2 ring-inset ring-emerald-500 font-semibold shadow-xs' : ''
                     }`}
                   >
@@ -5229,7 +5244,7 @@ export function JobSheetSpreadsheet() {
                                 handleJumpToLeadCleaner(mcInfo, row)
                               }}
                               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-[10.5px] font-bold cursor-pointer transition-all shadow-2xs group/ref"
-                              title={`Click to view team details & jump to lead cleaner (${mcInfo.primaryCleaner})`}
+                              title={`Go to the row where the payment was received (${mcInfo.primaryCleaner})`}
                             >
                               <ExternalLink size={10} className="text-indigo-600 group-hover/ref:translate-x-0.5 transition-transform" />
                               <span className="underline decoration-indigo-300 underline-offset-2">{displayVal}</span>
@@ -5242,7 +5257,7 @@ export function JobSheetSpreadsheet() {
                                 handleJumpToLeadCleaner(mcInfo, row)
                               }}
                               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-[10.5px] font-bold cursor-pointer transition-all shadow-2xs"
-                              title="Click to view team members details"
+                              title="Go to the lead cleaner's payment row"
                             >
                               <Users size={10} className="text-indigo-600" />
                               <span>{displayVal}</span>
@@ -6353,127 +6368,6 @@ export function JobSheetSpreadsheet() {
               }}
               onClose={() => setShowAddJobModal(false)}
             />
-          </div>
-        </Modal>
-      )}
-
-      {/* ── Team Members Details Modal (Task 3) ── */}
-      {teamDetailsInfo && (
-        <Modal
-          open={Boolean(teamDetailsInfo)}
-          onClose={() => setTeamDetailsInfo(null)}
-          title={`${teamDetailsInfo.teamRef} Details`}
-          size="md"
-        >
-          <div className="space-y-4 py-1">
-            {/* Header Card: Team Overview */}
-            <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-teal-200/80 rounded-2xl p-4 flex items-center justify-between shadow-2xs">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-sm shadow-xs">
-                  <Users size={20} />
-                </div>
-                <div>
-                  <h4 className="font-extrabold text-[15px] text-slate-900">{teamDetailsInfo.teamRef}</h4>
-                  <p className="text-[11.5px] text-slate-500 font-medium">
-                    {teamDetailsInfo.allCleaners.length} Assigned Cleaners
-                  </p>
-                </div>
-              </div>
-              <span className="px-3 py-1 rounded-full text-[11px] font-black bg-indigo-100 text-indigo-900 border border-indigo-200 shadow-2xs">
-                Active Team
-              </span>
-            </div>
-
-            {/* Address & Shift info if available */}
-            {teamDetailsInfo.address && (
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[12px] space-y-1">
-                <div className="flex items-center gap-2 text-slate-700 font-bold">
-                  <Building2 size={13} className="text-teal-600 shrink-0" />
-                  <span className="truncate">{cleanAddressDisplay(teamDetailsInfo.address)}</span>
-                </div>
-                {teamDetailsInfo.area && (
-                  <div className="flex items-center gap-2 text-slate-500 font-medium text-[11px]">
-                    <MapPin size={12} className="text-slate-400 shrink-0" />
-                    <span>{teamDetailsInfo.area}</span>
-                  </div>
-                )}
-                {teamDetailsInfo.start_time && teamDetailsInfo.end_time && (
-                  <div className="flex items-center gap-2 text-slate-500 font-medium text-[11px]">
-                    <Clock size={12} className="text-slate-400 shrink-0" />
-                    <span>{formatTime12h(teamDetailsInfo.start_time)} – {formatTime12h(teamDetailsInfo.end_time)}</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Team Members List */}
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-2">Team Cleaners (Sequence)</p>
-              <div className="space-y-2">
-                {teamDetailsInfo.allCleaners.map((cleaner, cIdx) => {
-                  const isLead = cleaner.trim().toLowerCase() === teamDetailsInfo.primaryCleaner.trim().toLowerCase()
-                  return (
-                    <div
-                      key={cleaner}
-                      className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                        isLead
-                          ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-400/30'
-                          : 'bg-white border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className={`w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-[11px] ${
-                          isLead ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-700 border border-slate-200'
-                        }`}>
-                          {cleaner.trim()[0]?.toUpperCase() || 'C'}
-                        </span>
-                        <div>
-                          <p className="font-bold text-[13px] text-slate-900">{cleaner}</p>
-                          <p className="text-[10.5px] text-slate-500 font-medium">Position #{cIdx + 1} in team sequence</p>
-                        </div>
-                      </div>
-
-                      {isLead ? (
-                        <span className="px-2.5 py-1 rounded-lg text-[10.5px] font-black bg-emerald-600 text-white shadow-2xs">
-                          ★ Lead Cleaner (In-Charge)
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-lg text-[10.5px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                          Team Member
-                        </span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const leadName = (teamDetailsInfo.primaryCleaner || '').trim().toLowerCase()
-                  const targetIdx = gridRows.findIndex(r => (r.staff_name || '').trim().toLowerCase() === leadName)
-                  if (targetIdx >= 0) {
-                    setActiveCell({ rowIdx: targetIdx, colId: 'received' })
-                    showToast(`🎯 Redirected to Lead Cleaner: ${teamDetailsInfo.primaryCleaner}`)
-                  }
-                  setTeamDetailsInfo(null)
-                }}
-                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[12px] shadow-2xs cursor-pointer flex items-center gap-1.5 transition-all"
-              >
-                <ExternalLink size={13} />
-                <span>Jump to Lead Cleaner in Grid</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setTeamDetailsInfo(null)}
-                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[12px] cursor-pointer transition-all"
-              >
-                Close
-              </button>
-            </div>
           </div>
         </Modal>
       )}

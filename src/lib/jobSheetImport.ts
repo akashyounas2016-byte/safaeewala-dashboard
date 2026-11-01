@@ -246,9 +246,6 @@ export function parseJobSheetWorkbook(wb: XLSX.WorkBook, fileName: string, fallb
       }
       dutyH = Math.round(dutyH * 10) / 10
 
-      const otVal = Math.round(cleanNum(nm('OT', 'ot_hours', 'overtime', 'OT Hours', 'OTHrs')) * 10) / 10
-      const isOt = String(nm('OT', 'is_overtime')).toLowerCase() === 'yes' // R-OT-01: an OT number is not the whole-shift flag
-
       let mat = String(nm('Material', 'material', 'Mat') || 'No').trim()
       if (mat.toUpperCase() === 'YES') mat = 'Yes'
       else if (mat.toUpperCase() === 'NO') mat = 'No'
@@ -263,14 +260,14 @@ export function parseJobSheetWorkbook(wb: XLSX.WorkBook, fileName: string, fallb
         start_time:   sTime,
         end_time:     eTime,
         duty_hours:   dutyH,
-        ot_hours:     otVal,
+        ot_hours:     0, // DEC-015: OT is worked out below from the times, whatever the file says
         address:      rawAddress,
         area:         locationVal,
         material:     mat as MaterialType,
         charges:      cleanNum(rawCharges),
         received:     cleanNum(rawReceived),
         payment_mode: modeVal,
-        is_overtime:  isOt,
+        is_overtime:  false,
         remarks:      String(nm('Remarks', 'remarks') || '').trim(),
         service:      serviceVal,
       })

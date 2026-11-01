@@ -6,7 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
-- fix(overtime): excessive OT — saving a shift with any OT set `is_overtime`, which then counted the whole shift as OT (Sabirti 2026-10-19 showed 5.5h, real 3h); the flag is no longer set from a calculated value (migration `2026-11-02_clear_auto_overtime_flag.sql` clears the old flags); overlapping shifts of one cleaner count once; every screen shows the same OT (R-OT-01)
+- feat(overtime): OT is always automatic — the Excel OT column is read-only, file values and the old `is_overtime` flag are ignored; each cleaner of a team job has their own OT on Employees, profiles and Attendance; job-sheet total counts every cleaner (R-OT-01, DEC-015)
+- feat(excel-studio): Received reference and team tag go straight to the row where the payment was received, no popup; a hidden row is shown first (UX-62)
+- fix(overtime): excessive OT — saving a shift with any OT set `is_overtime`, which then counted the whole shift as OT (Sabirti 2026-10-19 showed 5.5h, real 3h); overlapping shifts of one cleaner count once; every screen shows the same OT (R-OT-01)
 - feat(excel-studio): single-cleaner jobs have a light row colour, and "Solo at bottom" moves cleaners with only solo jobs below the team jobs (UX-61)
 - feat(overtime): Two-scenario cumulative multi-shift Overtime calculation & auto-standardization (R-OT-01):
   - Multi-Shift Cumulative Tracking: Implemented `recalculateAllRowsOT` and `calcDailyCleanerShiftsOT` in `jobSheetUtils.ts` to track daily cleaner duty chronologically across multiple shifts on the same date.

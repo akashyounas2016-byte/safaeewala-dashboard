@@ -48,9 +48,9 @@ eq(roster, ['TEST Gita', 'TEST Rupa', 'TEST Sita'], 'roster: employees + recent 
 const otWs = XLSX.utils.aoa_to_sheet([
   ['Staff', 'Start time', 'End time', 'Address', 'Location', 'Charges', 'Received', 'Duty Hrs', 'OT', 'Mode', 'Service', 'Remarks'],
   ['TEST Sabirti', '09:00 AM', '12:00 PM', 'TEST Villa 1', 'JLT', 90, 90, 3, 1, 'Online', '', ''],
-  ['', '02:30 PM', '10:30 PM', 'TEST Flat 2', 'JLT', 90, 90, 8, '', 'Cash', '', ''],
+  ['', '02:30 PM', '10:30 PM', 'TEST Flat 2', 'JLT', 90, 90, 8, 'yes', 'Cash', '', ''],
 ])
 const otWb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(otWb, otWs, 'Jobs')
 const otPlan = parseJobSheetWorkbook(otWb, '19-10-2026.xlsx', '2026-10-01')
-eq(otPlan.jobs.map(j => j.is_overtime), [false, false], 'OT number in the file does not set the flag')
+eq(otPlan.jobs.map(j => j.is_overtime), [false, false], 'OT number or "yes" in the file does not set the flag')
 eq(otPlan.jobs.map(j => j.ot_hours), [0, 3], 'imported OT comes from the times: 0h + 3h, whatever the file says')

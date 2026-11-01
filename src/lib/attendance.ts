@@ -1,5 +1,5 @@
 import type { DailyJob, Employee } from '@/types'
-import { calcJobOTHours, employeeMatchesStaff, isBogusJob, isBogusStaffName, splitStaffNames, SYNTHETIC_STAFF_ACTIVE_DAYS } from '@/lib/clientDataSync'
+import { calcCleanerOTHours, employeeMatchesStaff, isBogusJob, isBogusStaffName, splitStaffNames, SYNTHETIC_STAFF_ACTIVE_DAYS } from '@/lib/clientDataSync'
 import { addDays } from '@/lib/dubaiTime'
 
 export type AttendanceStatus = 'present' | 'available' | 'absent' | 'on_leave'
@@ -28,7 +28,7 @@ export interface DayClassification {
  *  - only rows specifically marked absent / leave → absent / on leave
  *  - otherwise available — blank days are never absences (R-ATT-01)
  */
-export function classifyAttendanceDay(jobs: DailyJob[], override?: AttendanceOverride | null): DayClassification {
+export function classifyAttendanceDay(jobs: DailyJob[], override?: AttendanceOverride | null, cleaner?: Employee | string): DayClassification {
   let dutyHours = 0
   let otHours = 0
   const workedJobs: DailyJob[] = []
@@ -48,7 +48,7 @@ export function classifyAttendanceDay(jobs: DailyJob[], override?: AttendanceOve
       return
     }
     dutyHours += Number(j.duty_hours) || 0
-    otHours += calcJobOTHours(j)
+    otHours += calcCleanerOTHours(j, cleaner)
     workedJobs.push(j)
   })
 

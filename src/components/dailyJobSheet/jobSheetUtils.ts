@@ -143,14 +143,20 @@ export interface ShiftOTCandidate {
  * 2. Unconditionally assigns post-8:00 PM (20:00) time to Overtime (Scenario 1).
  * 3. Tracks pre-8:00 PM duty chronologically against the daily standard 8 basic hours (480 mins).
  * 4. Pre-8:00 PM hours exceeding the 8h daily basic threshold qualify as Overtime (Scenario 2).
- * 5. Shifts explicitly flagged with is_overtime mark full duty as OT without consuming basic quota.
- *    The flag means "this whole shift is OT" — it is never set from a calculated OT value.
- * 6. Time covered by two overlapping shifts of one cleaner is counted once: a person cannot work it twice.
+ * 5. Time covered by two overlapping shifts of one cleaner is counted once: a person cannot work it twice.
+ * 6. OT is always automatic (DEC-015): stored ot_hours and the old is_overtime flag are never read.
+ * 7. A team job has one row but each cleaner has their own day, so each cleaner's OT is kept in
+ *    _otByCleaner (see calcCleanerOTHours); the row's ot_hours shows the highest of them.
  */
 export function recalculateAllRowsOT<T extends ShiftOTCandidate>(rows: T[]): T[] {
   if (!rows || rows.length === 0) return []
 
-  const clonedRows = rows.map(r => ({ ...r }))
+  const clonedRows = rows.map(r => ({ ...r, _otByCleaner: {} as Record<string, number> }))
+  const setCleanerOT = (row: any, cleaner: string, hours: number) => {
+    row._otByCleaner[cleaner] = hours
+    row.ot_hours = Math.max(...(Object.values(row._otByCleaner) as number[]))
+    row._otCalculated = true
+  }
 
   // Group rows by Date and Cleaner Name
   // Key format: `${date}:::${cleanerName.toLowerCase()}`
@@ -176,7 +182,8 @@ export function recalculateAllRowsOT<T extends ShiftOTCandidate>(rows: T[]): T[]
   const OT_CUTOFF = 20 * 60 // 8:00 PM (1200 mins)
   const BASIC_LIMIT_MINS = 8 * 60 // 8 basic hours (480 mins)
 
-  groups.forEach(entries => {
+  groups.forEach((entries, groupKey) => {
+    const cleaner = groupKey.split(':::')[1]
     const shiftsWithTimes: Array<{
       entry: { row: T; origIdx: number }
       sMins: number
@@ -216,11 +223,6 @@ export function recalculateAllRowsOT<T extends ShiftOTCandidate>(rows: T[]): T[]
       const dutyHours = Math.round((item.dutyMins / 60) * 10) / 10
       row.duty_hours = dutyHours
 
-      if (row.is_overtime) {
-        row.ot_hours = dutyHours
-        return
-      }
-
       // Only the part of this shift not already covered by an earlier overlapping shift counts
       const countFrom = Math.max(item.sMins, coveredUntil)
       coveredUntil = Math.max(coveredUntil, item.eMins)
@@ -236,31 +238,26 @@ export function recalculateAllRowsOT<T extends ShiftOTCandidate>(rows: T[]): T[]
       usedPreMins += basicAbsorbed
 
       const totalOtMins = postOtMins + preExcessMins
-      row.ot_hours = Math.round((totalOtMins / 60) * 10) / 10
+      setCleanerOT(row, cleaner, Math.round((totalOtMins / 60) * 10) / 10)
     })
 
     // Process shifts without valid start/end times if any
     shiftsWithoutTimes.forEach(e => {
-      const row = e.row
-      const duty = cleanNum(row.duty_hours)
-      if (duty > 0) {
-        if (row.is_overtime) {
-          row.ot_hours = duty
-        } else {
-          const dutyMins = duty * 60
-          const remainingBasicQuota = Math.max(0, BASIC_LIMIT_MINS - usedPreMins)
-          const basicAbsorbed = Math.min(dutyMins, remainingBasicQuota)
-          const excessMins = dutyMins - basicAbsorbed
-          usedPreMins += basicAbsorbed
-          row.ot_hours = Math.round((excessMins / 60) * 10) / 10
-        }
-      } else if (!row.start_time || row.start_time === '—') {
-        row.ot_hours = 0
-      }
+      const dutyMins = cleanNum(e.row.duty_hours) * 60
+      const remainingBasicQuota = Math.max(0, BASIC_LIMIT_MINS - usedPreMins)
+      const basicAbsorbed = Math.min(dutyMins, remainingBasicQuota)
+      usedPreMins += basicAbsorbed
+      setCleanerOT(e.row, cleaner, Math.round(((dutyMins - basicAbsorbed) / 60) * 10) / 10)
     })
   })
 
   return clonedRows
+}
+
+/** All OT of a row: the sum over its cleaners (a team job has one row but several cleaners) */
+export function totalRowOT(row: ShiftOTCandidate): number {
+  const perCleaner = row._otByCleaner ? (Object.values(row._otByCleaner) as number[]) : []
+  return perCleaner.length > 0 ? perCleaner.reduce((s, h) => s + h, 0) : cleanNum(row.ot_hours)
 }
 
 /**
