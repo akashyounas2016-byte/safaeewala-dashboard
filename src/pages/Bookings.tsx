@@ -1708,47 +1708,59 @@ export function Bookings() {
                   </div>
 
                   {/* Card Footer: ONLY 3 Buttons: Invoice, Payment, Mark as Completed */}
-                  <div className="pt-2.5 border-t border-teal-100/70 grid grid-cols-3 gap-2 mt-2" onClick={e => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      onClick={() => setInvoiceBooking(b)}
-                      className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-purple-50/70 hover:bg-purple-100 text-purple-900 text-[11px] font-bold border border-purple-200/80 hover:border-purple-300 transition-all cursor-pointer shadow-2xs"
-                      title="View or Generate Tax Invoice"
-                    >
-                      <FileText size={12} className="text-purple-600 shrink-0" />
-                      <span>Invoice</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setPaymentBooking(b)}
-                      className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-emerald-50/70 hover:bg-emerald-100 text-emerald-950 text-[11px] font-bold border border-emerald-200/80 hover:border-emerald-300 transition-all cursor-pointer shadow-2xs"
-                      title="Record Client Payment"
-                    >
-                      <Wallet size={12} className="text-emerald-700 shrink-0" />
-                      <span>Payment</span>
-                    </button>
-
-                    {(b.status === 'completed' || completedOverrideIds.includes(b.id)) ? (
-                      <span
-                        className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-emerald-600 text-white text-[11px] font-bold shadow-2xs select-none"
-                        title="Booking Completed"
+                  {(() => {
+                    const isCompleted = b.status === 'completed' || completedOverrideIds.includes(b.id)
+                    return (
+                      <div
+                        className={`pt-2.5 border-t border-teal-100/70 mt-2 gap-1.5 ${
+                          isCompleted
+                            ? 'grid grid-cols-3'
+                            : 'grid grid-cols-[1fr_1fr_1.65fr]'
+                        }`}
+                        onClick={e => e.stopPropagation()}
                       >
-                        <Check size={12} strokeWidth={2.5} className="shrink-0" />
-                        <span>Completed</span>
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleToggleMarkAsCompleted(b)}
-                        className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 text-[11px] font-bold transition-all cursor-pointer shadow-2xs truncate"
-                        title="Mark this booking as Completed"
-                      >
-                        <CheckCircle size={12} className="text-emerald-700 shrink-0" />
-                        <span className="truncate">Mark as Completed</span>
-                      </button>
-                    )}
-                  </div>
+                        <button
+                          type="button"
+                          onClick={() => setInvoiceBooking(b)}
+                          className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-xl bg-purple-50/70 hover:bg-purple-100 text-purple-900 text-[10.5px] sm:text-[11px] font-bold border border-purple-200/80 hover:border-purple-300 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+                          title="View or Generate Tax Invoice"
+                        >
+                          <FileText size={11} className="text-purple-600 shrink-0" />
+                          <span className="whitespace-nowrap">Invoice</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setPaymentBooking(b)}
+                          className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-xl bg-emerald-50/70 hover:bg-emerald-100 text-emerald-950 text-[10.5px] sm:text-[11px] font-bold border border-emerald-200/80 hover:border-emerald-300 transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+                          title="Record Client Payment"
+                        >
+                          <Wallet size={11} className="text-emerald-700 shrink-0" />
+                          <span className="whitespace-nowrap">Payment</span>
+                        </button>
+
+                        {isCompleted ? (
+                          <span
+                            className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-xl bg-emerald-600 text-white text-[11px] font-bold shadow-2xs select-none whitespace-nowrap"
+                            title="Booking Completed"
+                          >
+                            <Check size={12} strokeWidth={2.5} className="shrink-0" />
+                            <span className="whitespace-nowrap">Completed</span>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleMarkAsCompleted(b)}
+                            className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 text-[10.5px] sm:text-[11px] font-bold transition-all cursor-pointer shadow-2xs whitespace-nowrap"
+                            title="Mark this booking as Completed"
+                          >
+                            <CheckCircle size={11} className="text-emerald-700 shrink-0" />
+                            <span className="whitespace-nowrap">Mark as Completed</span>
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
               )
             })}

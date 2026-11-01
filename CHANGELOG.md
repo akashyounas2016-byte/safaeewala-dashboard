@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(bookings): Dynamic button width on cards for full text display (UX-38, R-JOB-01):
+  - Incompleted bookings: 'Mark as Completed' button widened to 1.65fr and given full text display without truncation (`whitespace-nowrap`), while 'Invoice' and 'Payment' buttons sized compactly to 1fr each.
+  - Completed bookings: All 3 buttons ('Invoice', 'Payment', 'Completed') evenly balanced at equal 33.33% width (`grid-cols-3`) with complete text display.
+
 - feat(daily-job-sheet, driver-widget, reconciliation): Jobs Header Single-Row, Preset Date Range Display, Pending Received Formula & Driver Widget Polish (UX-37, R-JOB-01, R-DRV-01):
   - Jobs Widget Header: Removed mode tag display (`Mode: {paymentFilter}`) on filter selection to keep the header strictly single-row and eliminate layout wrapping.
   - Header Date Range: Replaced redundant duplicate preset names ("Last 7 Days") with a clear single date range (`{startDate} – {endDate}`) in both subtitle and active navigation capsule.
