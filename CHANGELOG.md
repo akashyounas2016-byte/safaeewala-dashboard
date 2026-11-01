@@ -6,6 +6,13 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(excel-studio, daily-job-sheet, bookings): UX & Timing Polish:
+  - Add Job Entry & New Booking: Replaced AM/PM time pickers with pure numerical time dropdowns (9:00 to 22:00 at 30-min intervals) in Timing and Duty sections.
+  - Excel Job Sheet: Header date display shows a single date input when 'Today' or 'Yesterday' is active; From-To range input is reserved exclusively for custom/multi-day ranges.
+  - Excel Job Sheet: Moved Undo and Redo icons from the header and aligned them directly in the sub-bar alongside Columns and Reset Column controls.
+  - Excel Job Sheet: Made 'Received' column references clickable buttons that jump directly to the primary lead cleaner row and open a dedicated Team Details modal; cleaners of the same team are sequenced vertically adjacent (upar neechey sequence mein).
+  - Bookings: Card 'Complete' button styled with light green background as 'Mark as Completed' turning solid green 'Completed' on action; removed 'AED' currency prefix from card charges.
+
 - fix(build): type errors from the multi-screen batch fixed so `npm run check` (and the deploy Check step) passes — Modal gets a `footer` (the Save / Cancel buttons of Edit Job and New Booking were not shown) and a `5xl` size; Bookings bell delete prop name; busy-cleaner tags in New Booking; `addDailyJob` accepts a chosen id
 - feat(jobs): a cleaner can no longer be given two jobs at the same time — Add Job Entry (live red warning + refused), Edit Job, Daily Job Sheet inline edits and the Excel Job Sheet (cell, time dropdown, row popup, Save) show the clash and refuse the entry; Daily Job Sheet Add Job keeps the date chosen in the form (R-JOB-01)
 - feat(clients): a new address on Add Job Entry / Excel Job Sheet / row edit opens the Clients screen's "Add New Client" popup with the address filled in; the Add Job form is not submitted with it (R-DATA-11)

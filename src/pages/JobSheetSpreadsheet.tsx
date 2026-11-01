@@ -9,7 +9,7 @@ import {
   Printer, MoreVertical, ChevronDown, ExternalLink, CornerDownLeft,
   ChevronUp, Eye, EyeOff, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle,
   CloudUpload, Calendar, GripVertical, Info, History, Pencil, Edit2, Building2, Star,
-  Package, MapPin, Clock, CreditCard, UserPlus
+  Package, MapPin, Clock, CreditCard, UserPlus, Users
 } from 'lucide-react'
 import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
 import { ExcelCellPopover, ExcelPopoverItem, ExcelPopoverCustom, ExcelPopoverEmpty } from '@/components/dailyJobSheet/ExcelCellPopover'
@@ -1145,15 +1145,51 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
 
   // 3. Group expanded jobs by individual staff member
   const staffGroups = new Map<string, DailyJob[]>()
-  const staffKeysOrder: string[] = []
+  const rawStaffKeysOrder: string[] = []
 
   expandedJobs.forEach(job => {
     const key = (job.staff_name || '').trim().toLowerCase()
     if (!staffGroups.has(key)) {
       staffGroups.set(key, [])
-      staffKeysOrder.push(key)
+      rawStaffKeysOrder.push(key)
     }
     staffGroups.get(key)!.push(job)
+  })
+
+  // Map cleaners to teams so cleaners of the same team are placed consecutively (upar neechey sequence mein)
+  const cleanerToTeamMap = new Map<string, string>()
+  const teamToCleanersMap = new Map<string, string[]>()
+  expandedJobs.forEach(job => {
+    const rawCleaner = (job.staff_name || '').trim().toLowerCase()
+    const teamRef = (job as any)._teamReference || (job.team_name && job.team_name.trim().toLowerCase() !== 'project team' ? job.team_name.trim() : '')
+    if (rawCleaner && teamRef) {
+      cleanerToTeamMap.set(rawCleaner, teamRef)
+      if (!teamToCleanersMap.has(teamRef)) teamToCleanersMap.set(teamRef, [])
+      if (!teamToCleanersMap.get(teamRef)!.includes(rawCleaner)) {
+        teamToCleanersMap.get(teamRef)!.push(rawCleaner)
+      }
+    }
+  })
+
+  // Sequence staff keys: When any team member is encountered, place all fellow team members immediately after
+  const staffKeysOrder: string[] = []
+  const placedStaffKeys = new Set<string>()
+
+  rawStaffKeysOrder.forEach(key => {
+    if (placedStaffKeys.has(key)) return
+    const team = cleanerToTeamMap.get(key)
+    if (team && teamToCleanersMap.has(team)) {
+      const members = teamToCleanersMap.get(team)!
+      members.forEach(m => {
+        if (!placedStaffKeys.has(m) && staffGroups.has(m)) {
+          staffKeysOrder.push(m)
+          placedStaffKeys.add(m)
+        }
+      })
+    } else {
+      staffKeysOrder.push(key)
+      placedStaffKeys.add(key)
+    }
   })
 
   const result: DailyJob[] = []
@@ -1504,6 +1540,39 @@ export function JobSheetSpreadsheet() {
     setHiddenColIds(next)
     safeLocalStorageSet('safaeewala_excel_hidden_columns', next)
     showToast(`Columns: ${name}`)
+  }
+
+  // ── Team Members Details State & Lead Cleaner Jump Handler (Task 3) ──
+  const [teamDetailsInfo, setTeamDetailsInfo] = useState<{
+    teamRef: string
+    primaryCleaner: string
+    allCleaners: string[]
+    address?: string
+    area?: string
+    start_time?: string
+    end_time?: string
+    charges?: number
+    received?: number
+  } | null>(null)
+
+  const handleJumpToLeadCleaner = (mcInfo: MultiCleanerPaymentInfo, row?: DailyJob) => {
+    const leadName = (mcInfo.primaryCleaner || '').trim().toLowerCase()
+    const targetIdx = gridRows.findIndex(r => (r.staff_name || '').trim().toLowerCase() === leadName)
+    if (targetIdx >= 0) {
+      setActiveCell({ rowIdx: targetIdx, colId: 'received' })
+      showToast(`🎯 Jumped to Lead Cleaner: ${mcInfo.primaryCleaner} (${mcInfo.teamRef})`)
+    }
+    setTeamDetailsInfo({
+      teamRef: mcInfo.teamRef,
+      primaryCleaner: mcInfo.primaryCleaner,
+      allCleaners: mcInfo.allCleaners,
+      address: row?.address,
+      area: row?.area,
+      start_time: row?.start_time,
+      end_time: row?.end_time,
+      charges: row?.charges,
+      received: row?.received
+    })
   }
 
   // Autocomplete sources (UX-35) — live data only
@@ -3098,9 +3167,8 @@ export function JobSheetSpreadsheet() {
       return
     }
 
-    setDateFilterMode('range')
-
     if (presetKey === 'today') {
+      setDateFilterMode('single')
       setRangeStart(today)
       setRangeEnd(today)
       setSelectedDate(today)
@@ -3108,41 +3176,45 @@ export function JobSheetSpreadsheet() {
       showToast('Date set to Today')
     } else if (presetKey === 'yesterday') {
       const yest = addDaysToYMD(today, -1)
+      setDateFilterMode('single')
       setRangeStart(yest)
       setRangeEnd(yest)
       setSelectedDate(yest)
       setSearchParams({ date: yest }, { replace: true })
       showToast('Date set to Yesterday')
-    } else if (presetKey === 'last_month') {
-      const start = iso(new Date(y, m - 1, 1))
-      const end = iso(new Date(y, m, 0))
-      setRangeStart(start)
-      setRangeEnd(end)
-      showToast('Date range set to Last Month')
-    } else if (presetKey === 'last_3_months') {
-      const start = iso(new Date(y, m - 2, 1))
-      setRangeStart(start)
-      setRangeEnd(today)
-      showToast('Date range set to Last 3 Months')
-    } else if (presetKey === 'last_6_months') {
-      const start = iso(new Date(y, m - 5, 1))
-      setRangeStart(start)
-      setRangeEnd(today)
-      showToast('Date range set to Last 6 Months')
-    } else if (presetKey === 'last_year') {
-      const start = iso(new Date(y - 1, m, now.getDate()))
-      setRangeStart(start)
-      setRangeEnd(today)
-      showToast('Date range set to Last Year')
-    } else if (presetKey === 'two_years') {
-      const start = iso(new Date(y - 2, m, now.getDate()))
-      setRangeStart(start)
-      setRangeEnd(today)
-      showToast('Date range set to 2 Years')
-    } else if (presetKey === 'custom') {
-      if (!rangeStart) setRangeStart(today)
-      if (!rangeEnd) setRangeEnd(today)
-      showToast('Custom Range selected')
+    } else {
+      setDateFilterMode('range')
+      if (presetKey === 'last_month') {
+        const start = iso(new Date(y, m - 1, 1))
+        const end = iso(new Date(y, m, 0))
+        setRangeStart(start)
+        setRangeEnd(end)
+        showToast('Date range set to Last Month')
+      } else if (presetKey === 'last_3_months') {
+        const start = iso(new Date(y, m - 2, 1))
+        setRangeStart(start)
+        setRangeEnd(today)
+        showToast('Date range set to Last 3 Months')
+      } else if (presetKey === 'last_6_months') {
+        const start = iso(new Date(y, m - 5, 1))
+        setRangeStart(start)
+        setRangeEnd(today)
+        showToast('Date range set to Last 6 Months')
+      } else if (presetKey === 'last_year') {
+        const start = iso(new Date(y - 1, m, now.getDate()))
+        setRangeStart(start)
+        setRangeEnd(today)
+        showToast('Date range set to Last Year')
+      } else if (presetKey === 'two_years') {
+        const start = iso(new Date(y - 2, m, now.getDate()))
+        setRangeStart(start)
+        setRangeEnd(today)
+        showToast('Date range set to 2 Years')
+      } else if (presetKey === 'custom') {
+        if (!rangeStart) setRangeStart(today)
+        if (!rangeEnd) setRangeEnd(today)
+        showToast('Custom Range selected')
+      }
     }
   }
 
@@ -3898,33 +3970,32 @@ export function JobSheetSpreadsheet() {
 
         {/* Dynamic Date Filters & Action Controls */}
         <div className="relative z-10 flex items-center gap-2.5 flex-wrap">
-          {/* Quick Undo & Redo buttons */}
-          <div className="flex items-center bg-black/20 rounded-xl p-0.5 border border-white/20">
-            <button
-              onClick={handleUndo}
-              disabled={history.length === 0}
-              className={`p-1.5 rounded-lg transition-colors ${history.length > 0 ? 'text-white hover:bg-white/20 cursor-pointer' : 'text-white/40 cursor-not-allowed'}`}
-              title="Undo (Ctrl+Z)"
-            >
-              <Undo2 size={15} />
-            </button>
-            <button
-              onClick={handleRedo}
-              disabled={future.length === 0}
-              className={`p-1.5 rounded-lg transition-colors ${future.length > 0 ? 'text-white hover:bg-white/20 cursor-pointer' : 'text-white/40 cursor-not-allowed'}`}
-              title="Redo (Ctrl+Y)"
-            >
-              <Redo2 size={15} />
-            </button>
-          </div>
-
-          {/* ── Date Range Function Display (Default) & Preset Dropdown Menu ── */}
+          {/* ── Date Function Display (Single date for Today/Yesterday, Range for Custom) & Preset Dropdown Menu ── */}
           <div className="relative flex items-center gap-1.5 bg-black/25 rounded-xl p-1 border border-white/20 text-white text-[11px]" ref={datePresetRef}>
-            {/* Inline Date Range Picker: From Date to To Date */}
-            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-black/20 rounded-lg">
+            {/* Inline Date Display: Single Date for Today / Yesterday, From-To for Custom/Ranges */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-black/20 rounded-lg">
               <Calendar size={13} className="text-white/70 shrink-0" />
               {dateFilterMode === 'all' ? (
                 <span className="font-extrabold text-[11.5px] text-white px-2 py-0.5">All Dates</span>
+              ) : (activeDatePreset === 'today' || activeDatePreset === 'yesterday' || (dateFilterMode === 'single' && activeDatePreset !== 'custom')) ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="date"
+                    value={selectedDate || rangeStart || todayDubai()}
+                    onChange={e => {
+                      const newD = e.target.value
+                      setSelectedDate(newD)
+                      setRangeStart(newD)
+                      setRangeEnd(newD)
+                      setDateFilterMode('single')
+                      if (newD === todayDubai()) setActiveDatePreset('today')
+                      else if (newD === addDaysToYMD(todayDubai(), -1)) setActiveDatePreset('yesterday')
+                      else setActiveDatePreset('custom')
+                    }}
+                    className="bg-transparent px-1 py-0.5 font-bold focus:outline-none cursor-pointer [color-scheme:dark] text-[11.5px]"
+                    title="Selected Date"
+                  />
+                </div>
               ) : (
                 <div className="flex items-center gap-1.5">
                   <input
@@ -4290,8 +4361,38 @@ export function JobSheetSpreadsheet() {
           </div>
         </div>
 
-        {/* Right side: 'Columns' & 'Reset Column' buttons + View Mode Switcher at End */}
+        {/* Right side: Undo & Redo aligned with 'Columns' & 'Reset Column' buttons + View Mode Switcher */}
         <div className="flex items-center gap-2">
+          {/* Quick Undo & Redo buttons (aligned with column sections) */}
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-2xs">
+            <button
+              type="button"
+              onClick={handleUndo}
+              disabled={history.length === 0}
+              className={`p-1.5 rounded-lg transition-colors ${
+                history.length > 0
+                  ? 'text-slate-700 hover:text-slate-900 hover:bg-white hover:shadow-2xs cursor-pointer'
+                  : 'text-slate-300 cursor-not-allowed'
+              }`}
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={handleRedo}
+              disabled={future.length === 0}
+              className={`p-1.5 rounded-lg transition-colors ${
+                future.length > 0
+                  ? 'text-slate-700 hover:text-slate-900 hover:bg-white hover:shadow-2xs cursor-pointer'
+                  : 'text-slate-300 cursor-not-allowed'
+              }`}
+              title="Redo (Ctrl+Y)"
+            >
+              <Redo2 size={14} />
+            </button>
+          </div>
+
           {/* Columns Button with 'Columns' Text Label */}
           <button
             type="button"
@@ -4668,6 +4769,32 @@ export function JobSheetSpreadsheet() {
                                       </span>
                                     )}
                                   </div>
+                                ) : col.id === 'received' && mcInfo?.isSecondary && !isBlankShift ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleJumpToLeadCleaner(mcInfo, row)
+                                    }}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 border border-indigo-400/40 text-[10.5px] font-bold cursor-pointer transition-all shadow-2xs group/ref"
+                                    title={`Click to view team details & jump to lead cleaner (${mcInfo.primaryCleaner})`}
+                                  >
+                                    <ExternalLink size={10} className="text-indigo-400 group-hover/ref:translate-x-0.5 transition-transform" />
+                                    <span className="underline decoration-indigo-400 underline-offset-2">{displayVal}</span>
+                                  </button>
+                                ) : col.id === 'team_name' && mcInfo?.teamRef && !isBlankShift ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleJumpToLeadCleaner(mcInfo, row)
+                                    }}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 border border-indigo-400/40 text-[10.5px] font-bold cursor-pointer transition-all shadow-2xs"
+                                    title="Click to view team members details"
+                                  >
+                                    <Users size={10} className="text-indigo-400" />
+                                    <span>{displayVal}</span>
+                                  </button>
                                 ) : (
                                   <span
                                     title={
@@ -4956,6 +5083,32 @@ export function JobSheetSpreadsheet() {
                         >
                           {isCellEditing ? (
                             renderCellEditor(col, targetIdx, palette.isLight)
+                          ) : col.id === 'received' && mcInfo?.isSecondary && !isBlankShift ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleJumpToLeadCleaner(mcInfo, row)
+                              }}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-[10.5px] font-bold cursor-pointer transition-all shadow-2xs group/ref"
+                              title={`Click to view team details & jump to lead cleaner (${mcInfo.primaryCleaner})`}
+                            >
+                              <ExternalLink size={10} className="text-indigo-600 group-hover/ref:translate-x-0.5 transition-transform" />
+                              <span className="underline decoration-indigo-300 underline-offset-2">{displayVal}</span>
+                            </button>
+                          ) : col.id === 'team_name' && mcInfo?.teamRef && !isBlankShift ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleJumpToLeadCleaner(mcInfo, row)
+                              }}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-[10.5px] font-bold cursor-pointer transition-all shadow-2xs"
+                              title="Click to view team members details"
+                            >
+                              <Users size={10} className="text-indigo-600" />
+                              <span>{displayVal}</span>
+                            </button>
                           ) : (
                             <span
                               title={
@@ -6062,6 +6215,127 @@ export function JobSheetSpreadsheet() {
               }}
               onClose={() => setShowAddJobModal(false)}
             />
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Team Members Details Modal (Task 3) ── */}
+      {teamDetailsInfo && (
+        <Modal
+          open={Boolean(teamDetailsInfo)}
+          onClose={() => setTeamDetailsInfo(null)}
+          title={`${teamDetailsInfo.teamRef} Details`}
+          size="md"
+        >
+          <div className="space-y-4 py-1">
+            {/* Header Card: Team Overview */}
+            <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-teal-200/80 rounded-2xl p-4 flex items-center justify-between shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-sm shadow-xs">
+                  <Users size={20} />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-[15px] text-slate-900">{teamDetailsInfo.teamRef}</h4>
+                  <p className="text-[11.5px] text-slate-500 font-medium">
+                    {teamDetailsInfo.allCleaners.length} Assigned Cleaners
+                  </p>
+                </div>
+              </div>
+              <span className="px-3 py-1 rounded-full text-[11px] font-black bg-indigo-100 text-indigo-900 border border-indigo-200 shadow-2xs">
+                Active Team
+              </span>
+            </div>
+
+            {/* Address & Shift info if available */}
+            {teamDetailsInfo.address && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[12px] space-y-1">
+                <div className="flex items-center gap-2 text-slate-700 font-bold">
+                  <Building2 size={13} className="text-teal-600 shrink-0" />
+                  <span className="truncate">{cleanAddressDisplay(teamDetailsInfo.address)}</span>
+                </div>
+                {teamDetailsInfo.area && (
+                  <div className="flex items-center gap-2 text-slate-500 font-medium text-[11px]">
+                    <MapPin size={12} className="text-slate-400 shrink-0" />
+                    <span>{teamDetailsInfo.area}</span>
+                  </div>
+                )}
+                {teamDetailsInfo.start_time && teamDetailsInfo.end_time && (
+                  <div className="flex items-center gap-2 text-slate-500 font-medium text-[11px]">
+                    <Clock size={12} className="text-slate-400 shrink-0" />
+                    <span>{formatTime12h(teamDetailsInfo.start_time)} – {formatTime12h(teamDetailsInfo.end_time)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Team Members List */}
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-2">Team Cleaners (Sequence)</p>
+              <div className="space-y-2">
+                {teamDetailsInfo.allCleaners.map((cleaner, cIdx) => {
+                  const isLead = cleaner.trim().toLowerCase() === teamDetailsInfo.primaryCleaner.trim().toLowerCase()
+                  return (
+                    <div
+                      key={cleaner}
+                      className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                        isLead
+                          ? 'bg-emerald-50/70 border-emerald-300 ring-1 ring-emerald-400/30'
+                          : 'bg-white border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className={`w-7 h-7 rounded-full flex items-center justify-center font-extrabold text-[11px] ${
+                          isLead ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}>
+                          {cleaner.trim()[0]?.toUpperCase() || 'C'}
+                        </span>
+                        <div>
+                          <p className="font-bold text-[13px] text-slate-900">{cleaner}</p>
+                          <p className="text-[10.5px] text-slate-500 font-medium">Position #{cIdx + 1} in team sequence</p>
+                        </div>
+                      </div>
+
+                      {isLead ? (
+                        <span className="px-2.5 py-1 rounded-lg text-[10.5px] font-black bg-emerald-600 text-white shadow-2xs">
+                          ★ Lead Cleaner (In-Charge)
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-lg text-[10.5px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                          Team Member
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const leadName = (teamDetailsInfo.primaryCleaner || '').trim().toLowerCase()
+                  const targetIdx = gridRows.findIndex(r => (r.staff_name || '').trim().toLowerCase() === leadName)
+                  if (targetIdx >= 0) {
+                    setActiveCell({ rowIdx: targetIdx, colId: 'received' })
+                    showToast(`🎯 Redirected to Lead Cleaner: ${teamDetailsInfo.primaryCleaner}`)
+                  }
+                  setTeamDetailsInfo(null)
+                }}
+                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[12px] shadow-2xs cursor-pointer flex items-center gap-1.5 transition-all"
+              >
+                <ExternalLink size={13} />
+                <span>Jump to Lead Cleaner in Grid</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTeamDetailsInfo(null)}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[12px] cursor-pointer transition-all"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </Modal>
       )}

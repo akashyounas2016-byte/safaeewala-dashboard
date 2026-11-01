@@ -183,9 +183,9 @@ export function AddJobForm({
   const areaRef = useRef<HTMLDivElement>(null)
   const areaSearchInputRef = useRef<HTMLInputElement>(null)
 
-  // ── Timing & Duration (12-Hour AM/PM Format) ──
-  const [startTime, setStartTime] = useState(() => formatTime12h(initial?.start_time || '09:00 AM'))
-  const [endTime, setEndTime]     = useState(() => formatTime12h(initial?.end_time || '09:00 AM'))
+  // ── Timing & Duration (Numerical Format e.g. 09:00, 13:00) ──
+  const [startTime, setStartTime] = useState(() => formatTime24h(initial?.start_time || '09:00') || '09:00')
+  const [endTime, setEndTime]     = useState(() => formatTime24h(initial?.end_time || '13:00') || '13:00')
 
   // R-JOB-01: a chosen cleaner already busy at this time on this date (all jobs of the date, saved or on screen)
   const staffClash = useMemo(() => {
@@ -197,33 +197,32 @@ export function AddJobForm({
 
   const [dutyHours, setDutyHours] = useState<number>(() => {
     if (initial?.duty_hours) return Number(initial.duty_hours)
-    return calcHours(initial?.start_time || '09:00 AM', initial?.end_time || '09:00 AM') || 0
+    return calcHours(initial?.start_time || '09:00', initial?.end_time || '13:00') || 4
   })
   const [otHours, setOtHours]     = useState<number | string>(() => {
     if (initial?.ot_hours !== undefined) return initial.ot_hours
-    return calcOTHours(initial?.start_time || '09:00 AM', initial?.end_time || '09:00 AM')
+    return calcOTHours(initial?.start_time || '09:00', initial?.end_time || '13:00')
   })
   const [isOvertime, setIsOvertime] = useState(Boolean(initial?.is_overtime || Number(otHours) > 0))
 
-  const handleStartTimeChange = (newStart12h: string) => {
-    setStartTime(newStart12h)
-    if (newStart12h && dutyHours > 0) {
-      const calculatedEnd24 = addHoursToTime(newStart12h, dutyHours)
-      const calculatedEnd12h = formatTime12h(calculatedEnd24)
-      setEndTime(calculatedEnd12h)
-      const calculatedOT = calcOTHours(newStart12h, calculatedEnd12h)
+  const handleStartTimeChange = (newStart: string) => {
+    setStartTime(newStart)
+    if (newStart && dutyHours > 0) {
+      const calculatedEnd = addHoursToTime(newStart, dutyHours)
+      setEndTime(calculatedEnd)
+      const calculatedOT = calcOTHours(newStart, calculatedEnd)
       setOtHours(calculatedOT)
       setIsOvertime(calculatedOT > 0)
     }
   }
 
-  const handleEndTimeChange = (newEnd12h: string) => {
-    setEndTime(newEnd12h)
-    if (startTime && newEnd12h) {
-      const duration = calcDurationFromTimes(startTime, newEnd12h)
+  const handleEndTimeChange = (newEnd: string) => {
+    setEndTime(newEnd)
+    if (startTime && newEnd) {
+      const duration = calcDurationFromTimes(startTime, newEnd)
       if (duration > 0) {
         setDutyHours(duration)
-        const calculatedOT = calcOTHours(startTime, newEnd12h)
+        const calculatedOT = calcOTHours(startTime, newEnd)
         setOtHours(calculatedOT)
         setIsOvertime(calculatedOT > 0)
       }
@@ -233,10 +232,9 @@ export function AddJobForm({
   const handleDutyHoursChange = (newDuty: number) => {
     setDutyHours(newDuty)
     if (startTime && newDuty > 0) {
-      const calculatedEnd24 = addHoursToTime(startTime, newDuty)
-      const calculatedEnd12h = formatTime12h(calculatedEnd24)
-      setEndTime(calculatedEnd12h)
-      const calculatedOT = calcOTHours(startTime, calculatedEnd12h)
+      const calculatedEnd = addHoursToTime(startTime, newDuty)
+      setEndTime(calculatedEnd)
+      const calculatedOT = calcOTHours(startTime, calculatedEnd)
       setOtHours(calculatedOT)
       setIsOvertime(calculatedOT > 0)
     }
@@ -390,12 +388,13 @@ export function AddJobForm({
       setSelectedStaff(c.preferred_cleaner.split(/[,+/&]|\band\b/i).map(s => s.trim()).filter(Boolean))
     }
     if (c.scheduled_time) {
-      setStartTime(c.scheduled_time)
+      const sTime = formatTime24h(c.scheduled_time) || '09:00'
+      setStartTime(sTime)
       if (c.duration_hours) {
         setDutyHours(c.duration_hours)
-        const newEnd = addHoursToTime(c.scheduled_time, c.duration_hours)
+        const newEnd = addHoursToTime(sTime, c.duration_hours)
         setEndTime(newEnd)
-        setOtHours(calcOTHours(c.scheduled_time, newEnd))
+        setOtHours(calcOTHours(sTime, newEnd))
       }
     }
     setBuildingDropdownOpen(false)

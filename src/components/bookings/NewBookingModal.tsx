@@ -115,8 +115,8 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
   const [unregisteredClientName, setUnregisteredClientName] = useState('')
 
   // Card 3: Timing & Duty Hours
-  const [startTime, setStartTime] = useState('09:00 AM')
-  const [endTime, setEndTime] = useState('01:00 PM')
+  const [startTime, setStartTime] = useState('09:00')
+  const [endTime, setEndTime] = useState('13:00')
   const [dutyHours, setDutyHours] = useState(4)
 
   // Card 4: Charges & Booking Details
@@ -203,8 +203,8 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
       setClientName('')
       setBuildingSearch('')
       setAreaSearch('')
-      setStartTime('09:00 AM')
-      setEndTime('01:00 PM')
+      setStartTime('09:00')
+      setEndTime('13:00')
       setDutyHours(4)
       setTotalAmount('')
       setBookingStatus('confirmed')
@@ -327,9 +327,7 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
       const targetEndMins = (sMins + Math.round(dutyHours * 60)) % (24 * 60)
       const h24 = Math.floor(targetEndMins / 60)
       const m = String(targetEndMins % 60).padStart(2, '0')
-      const mer = h24 >= 12 ? 'PM' : 'AM'
-      const h12 = h24 % 12 || 12
-      setEndTime(`${String(h12).padStart(2, '0')}:${m} ${mer}`)
+      setEndTime(`${String(h24).padStart(2, '0')}:${m}`)
     }
   }
 
@@ -347,9 +345,7 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
       const targetEndMins = (sMins + Math.round(val * 60)) % (24 * 60)
       const h24 = Math.floor(targetEndMins / 60)
       const m = String(targetEndMins % 60).padStart(2, '0')
-      const mer = h24 >= 12 ? 'PM' : 'AM'
-      const h12 = h24 % 12 || 12
-      setEndTime(`${String(h12).padStart(2, '0')}:${m} ${mer}`)
+      setEndTime(`${String(h24).padStart(2, '0')}:${m}`)
     }
   }
 

@@ -2745,9 +2745,9 @@ function KanbanBoard({
                       {b.duration_hours || 3}h duty
                     </span>
                     <div className="text-right">
-                      <span className="font-black text-teal-950 block">AED {b.total_amount?.toLocaleString() || 0}</span>
+                      <span className="font-black text-teal-950 block">{b.total_amount?.toLocaleString() || 0}</span>
                       {b.is_partially_paid && (
-                        <span className="text-[9.5px] font-bold text-amber-700 block">Paid: AED {b.received_amount}</span>
+                        <span className="text-[9.5px] font-bold text-amber-700 block">Paid: {b.received_amount}</span>
                       )}
                     </div>
                   </div>
