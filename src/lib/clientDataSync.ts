@@ -1,5 +1,5 @@
 import type { Booking, DailyJob, Client, Employee, DailyPendingReceivedItem } from '@/types'
-import { cleanNum, calcHours, calcOTHours } from '@/components/dailyJobSheet/jobSheetUtils'
+import { cleanNum, calcHours, calcOTHours, calcDailyCleanerShiftsOT } from '@/components/dailyJobSheet/jobSheetUtils'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
 
@@ -127,12 +127,17 @@ export function isMonthlyJob(job: DailyJob): boolean {
 
 /**
  * Helper to calculate overtime hours for a job (R-OT-01):
- * 1. Explicit ot_hours from job record
- * 2. If is_overtime flag is set, duty_hours or elapsed time
- * 3. calcOTHours applying Scenario 1 (post-8:00 PM) + Scenario 2 (pre-8:00 PM exceeding 8h)
- * 4. Fallback if start/end times missing but duty_hours > 8
+ * 1. If sibling jobs for the date are provided, evaluates daily multi-shift cumulative OT
+ * 2. Explicit ot_hours from job record
+ * 3. If is_overtime flag is set, duty_hours or elapsed time
+ * 4. calcOTHours applying Scenario 1 (post-8:00 PM) + Scenario 2 (pre-8:00 PM exceeding 8h)
+ * 5. Fallback if start/end times missing but duty_hours > 8
  */
-export function calcJobOTHours(job: DailyJob): number {
+export function calcJobOTHours(job: DailyJob, siblingJobs?: DailyJob[]): number {
+  if (siblingJobs && siblingJobs.length > 1) {
+    const otMap = calcDailyCleanerShiftsOT(siblingJobs)
+    if (job.id && otMap.has(job.id)) return otMap.get(job.id)!
+  }
   if (job.ot_hours && Number(job.ot_hours) > 0) {
     return Math.round(Number(job.ot_hours) * 10) / 10
   }

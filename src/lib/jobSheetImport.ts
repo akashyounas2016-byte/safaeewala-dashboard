@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 import type { DailyAdvanceItem, DailyPendingItem, DailyPendingReceivedItem, MaterialType, PaymentMode } from '@/types'
-import { calcHours, cleanNum, formatTimeOnly } from '@/components/dailyJobSheet/jobSheetUtils'
+import { calcHours, cleanNum, formatTimeOnly, recalculateAllRowsOT } from '@/components/dailyJobSheet/jobSheetUtils'
 import type { ImportPlan } from '@/components/dailyJobSheet/ImportPreviewModal'
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- spreadsheet cells are untyped */
@@ -445,7 +445,8 @@ export function parseJobSheetWorkbook(wb: XLSX.WorkBook, fileName: string, fallb
     sheetName,
     sheetNames: wb.SheetNames,
     date: targetDate,
-    jobs: planJobs,
+    // R-OT-01: Automatically calculate cumulative multi-shift Overtime across all shifts for the day
+    jobs: recalculateAllRowsOT(planJobs),
     expenses: planExpenses,
     pending: newPendingItems,
     pendingRcvd: newPendingRcvdItems,

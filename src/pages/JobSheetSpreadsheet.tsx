@@ -19,7 +19,7 @@ import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
 import { useData } from '@/store/DataContext'
 import type { DailyJob, PaymentMode, MaterialType } from '@/types'
 import {
-  calcHours, calcOTHours, formatTimeOnly, formatTime12h, formatTime24h, cleanNum, fmtDate, addDaysToYMD, ROW_COLOR_PRESETS
+  calcHours, calcOTHours, recalculateAllRowsOT, formatTimeOnly, formatTime12h, formatTime24h, cleanNum, fmtDate, addDaysToYMD, ROW_COLOR_PRESETS
 } from '@/components/dailyJobSheet/jobSheetUtils'
 import {
   authorizeGoogleDrive,
@@ -1222,7 +1222,8 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
     }
   })
 
-  return result
+  // R-OT-01: Automatically calculate cumulative multi-shift Overtime across each cleaner's shifts
+  return recalculateAllRowsOT(result)
 }
 
 const DRAFT_PREFIX = 'safaeewala_excel_draft:' // local only, never cloud-synced
@@ -2216,7 +2217,8 @@ export function JobSheetSpreadsheet() {
       })
       updated[idx] = row
     })
-    pushState(updated)
+    const finalGrid = recalculateAllRowsOT(updated)
+    pushState(finalGrid)
     showToast(`✓ Pasted ${lines.length} row${lines.length === 1 ? '' : 's'}${added ? ` (${added} new)` : ''}`)
   }
 
@@ -2322,10 +2324,14 @@ export function JobSheetSpreadsheet() {
     }
 
     updated[rowIdx] = row
-    if (refuseClash(updated)) { setEditingCell(null); return gridRows }
-    pushState(updated)
+    // R-OT-01: Recalculate cumulative multi-shift Overtime when times or cleaner changes
+    const finalGrid = (colId === 'start_time' || colId === 'end_time' || colId === 'staff_name')
+      ? recalculateAllRowsOT(updated)
+      : updated
+    if (refuseClash(finalGrid)) { setEditingCell(null); return gridRows }
+    pushState(finalGrid)
     setEditingCell(null)
-    return updated
+    return finalGrid
   }
 
   /** R-JOB-01: a cleaner cannot work two jobs at the same time — show the error and refuse the change */
@@ -2383,11 +2389,12 @@ export function JobSheetSpreadsheet() {
     r[colId] = timeStr
     if (r.start_time && r.end_time && r.start_time !== '—' && r.end_time !== '—') {
       r.duty_hours = Math.round(calcHours(r.start_time, r.end_time) * 10) / 10
-      r.ot_hours = Math.round(calcOTHours(r.start_time, r.end_time) * 10) / 10
     }
     updated[rowIdx] = r
-    if (refuseClash(updated)) { setEditingCell(null); return }
-    pushState(updated)
+    // R-OT-01: Recalculate cumulative multi-shift Overtime
+    const finalGrid = recalculateAllRowsOT(updated)
+    if (refuseClash(finalGrid)) { setEditingCell(null); return }
+    pushState(finalGrid)
     setEditingCell(null)
     showToast(`✓ ${colId === 'start_time' ? 'Start Time' : 'End Time'} set to "${timeStr}"`)
   }
@@ -3997,16 +4004,9 @@ export function JobSheetSpreadsheet() {
     return map
   }, [visibleGridRows])
 
-  // Auto Recalculate all duty & OT hours
+  // Auto Recalculate all duty & OT hours (R-OT-01)
   const handleRecalculateHours = () => {
-    const updated = gridRows.map(r => {
-      if (r.start_time && r.end_time && r.start_time !== '—' && r.end_time !== '—') {
-        const duty = Math.round(calcHours(r.start_time, r.end_time) * 10) / 10
-        const ot = Math.round(calcOTHours(r.start_time, r.end_time) * 10) / 10
-        return { ...r, duty_hours: duty, ot_hours: ot }
-      }
-      return r
-    })
+    const updated = recalculateAllRowsOT(gridRows)
     pushState(updated)
     showToast('✓ All Duty & Overtime hours recalculated from Start/End times')
   }

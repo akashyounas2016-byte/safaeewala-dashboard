@@ -77,14 +77,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - **Scenario 1 (Post-8:00 PM Rule):** Any work executed after **8:00 PM (20:00)** is strictly and unconditionally treated as Overtime, regardless of how many basic hours were worked beforehand (e.g., a 4h shift from 18:00 to 22:00 yields 2 OT hours for 20:00–22:00 even though total duty is only 4h). Shifts crossing midnight (e.g. 21:00 → 02:00) remain continuous OT.
   - **Scenario 2 (Excess Basic Hours Before 8:00 PM Rule):** Standard basic duty hours are **8 hours** (480 minutes). If an employee works more than 8 hours before 8:00 PM, all hours exceeding the 8-hour basic threshold qualify as Overtime (e.g., an 08:00 to 18:00 shift consists of 10 hours total before 8 PM: 8 hours standard duty + 2 hours OT).
   - **Combined Shifts (Scenario 1 + Scenario 2):** When a shift exceeds 8 hours before 8 PM and also extends past 8 PM, total OT is the sum of both components (e.g., 10:00 to 22:00 is 12h total: 10:00–20:00 has 10h pre-8 PM → 8h standard + 2h OT; 20:00–22:00 has 2h OT → Total OT = 4h).
+  - **Multi-Shift Cumulative Tracking:** When a cleaner works multiple shifts on the same date, pre-8:00 PM duty is tracked cumulatively in chronological order against the daily 8-hour basic limit (480 mins). Excess pre-8 PM hours across earlier and later shifts plus post-8 PM hours are calculated at shift level and totaled across the day (`recalculateAllRowsOT`).
 - **Calculation Priority Hierarchy:**
-  1. **Explicit Record:** If `ot_hours > 0` is manually entered on the Daily Job Sheet row, use it directly (rounded to 0.1).
-  2. **Full Overtime Flag:** If `is_overtime = true`, the entire `duty_hours` counts as OT.
-  3. **Automatic Multi-Scenario Calculation:** `calcOTHours(start_time, end_time)` evaluates Scenario 1 (post-20:00 hours) + Scenario 2 (pre-20:00 hours exceeding 8 hours).
+  1. **Full Overtime Flag:** If `is_overtime = true`, the entire `duty_hours` counts as OT.
+  2. **Multi-Shift Cumulative Calculation:** `recalculateAllRowsOT(shifts)` evaluates chronological pre-8 PM accumulation against 8h basic limit + post-8 PM hours.
+  3. **Standalone Multi-Scenario Calculation:** `calcOTHours(start_time, end_time)` evaluates Scenario 1 (post-20:00 hours) + Scenario 2 (pre-20:00 hours exceeding 8 hours).
   4. **Fallback:** If times are missing but `duty_hours > 8`, excess hours (`duty_hours - 8`) count as OT.
-- **Why:** Protects staff compensation and ensures accurate operational tracking for late evening shifts and prolonged daily shifts according to company overtime policy.
-- **Code:** `src/lib/clientDataSync.ts → calcJobOTHours`, `src/components/dailyJobSheet/jobSheetUtils.ts → calcOTHours`.
-- **Status:** Active · Updated 2026-10-30
+- **Why:** Protects staff compensation and ensures accurate operational tracking for late evening shifts, split shifts, and prolonged daily shifts according to company overtime policy.
+- **Code:** `src/components/dailyJobSheet/jobSheetUtils.ts → recalculateAllRowsOT, calcDailyCleanerShiftsOT, calcOTHours`, `src/lib/clientDataSync.ts → calcJobOTHours`, `src/pages/JobSheetSpreadsheet.tsx`, `src/pages/DailyJobSheet.tsx`, `src/lib/jobSheetImport.ts`.
+- **Status:** Active · Updated 2026-11-01
 
 ### R-OT-02 — High OT flag
 - **Rule:** ≥ 10 OT hours in the selected period = "High OT" (amber accent, `HIGH` badge, `High OT >10h` filter).

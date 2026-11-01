@@ -60,5 +60,5 @@ It is the short form — the full, ID-numbered rules live in [rules.md](rules.md
 
 - **Scenario 1 (Post-8:00 PM):** Any duty after 20:00 is unconditionally OT, even if total duty is under 8h.
 - **Scenario 2 (Excess >8h Pre-8 PM):** If duty before 20:00 exceeds standard 8 basic hours, extra hours are OT.
-- **Combined:** Excess pre-8 PM hours + post-8 PM hours = Total OT. Explicit manual OT / `is_overtime` flags take highest priority.
+- **Combined:** Excess pre-8 PM hours + post-8 PM hours = Total OT. Multiple shifts on the same date track pre-8 PM duty cumulatively in chronological order against the 8-hour basic limit (`recalculateAllRowsOT`). Explicit `is_overtime` flags take highest priority.
 

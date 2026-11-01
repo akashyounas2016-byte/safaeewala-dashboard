@@ -6,6 +6,15 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(overtime): Two-scenario cumulative multi-shift Overtime calculation & auto-standardization (R-OT-01):
+  - Multi-Shift Cumulative Tracking: Implemented `recalculateAllRowsOT` and `calcDailyCleanerShiftsOT` in `jobSheetUtils.ts` to track daily cleaner duty chronologically across multiple shifts on the same date.
+  - Standardized Scenario 1 (unconditional OT for duty past 20:00 / 8:00 PM) + Scenario 2 (excess duty before 20:00 beyond standard 8-hour basic limit).
+  - Excel Job Sheet Spreadsheet (`JobSheetSpreadsheet.tsx`): Automatic multi-shift OT recalculation on load, inline cell editing of times/staff, pasting, and 'Recalculate Hours' action; accurately reflects shift-level OT (e.g. Parmila 3.5h, Sabirti 3.0h) and footer total OT.
+  - Daily Job Sheet (`DailyJobSheet.tsx`): Synchronized active job rows, table footer totals, inline cell edits, print views, and Excel export with cumulative cleaner OT map.
+  - Excel Importer (`jobSheetImport.ts`): Automatically runs `recalculateAllRowsOT` on imported sheets to eliminate human transcription errors and faulty static manual OT numbers.
+  - Client Data Sync (`clientDataSync.ts`): Updated `calcJobOTHours` to support sibling job context.
+  - Unit Tests: Added `tests/unit/overtime-cumulative.test.ts` covering Parmila 3-shift scenario, Sabirti 2-shift scenario, night/midnight shifts, and explicit overtime flags (all 21 test files & 274 checks passing).
+
 - feat(bookings): Dynamic button width on cards for full text display (UX-38, R-JOB-01):
   - Incompleted bookings: 'Mark as Completed' button widened to 1.65fr and given full text display without truncation (`whitespace-nowrap`), while 'Invoice' and 'Payment' buttons sized compactly to 1fr each.
   - Completed bookings: All 3 buttons ('Invoice', 'Payment', 'Completed') evenly balanced at equal 33.33% width (`grid-cols-3`) with complete text display.

@@ -92,7 +92,7 @@ export function calcHours(start: string, end: string): number {
 }
 
 /**
- * R-OT-01: Two-scenario Overtime (OT) Calculation
+ * R-OT-01: Two-scenario Overtime (OT) Calculation for a single standalone shift window
  * Scenario 1: Work performed after 8:00 PM (20:00) is always OT regardless of basic hours.
  * Scenario 2: Work performed before 8:00 PM exceeding standard basic duty hours (8 hours / 480 mins) is also OT.
  * Combined: Excess pre-8 PM hours + post-8 PM hours = Total OT.
@@ -122,6 +122,158 @@ export function calcOTHours(start: string, end: string): number {
 
   const totalOtMins = post8PmMins + pre8PmExcessMins
   return totalOtMins > 0 ? Math.round((totalOtMins / 60) * 10) / 10 : 0
+}
+
+export interface ShiftOTCandidate {
+  id?: string
+  date?: string
+  staff_name?: string
+  start_time?: string
+  end_time?: string
+  duty_hours?: number
+  ot_hours?: number
+  is_overtime?: boolean
+  [key: string]: any
+}
+
+/**
+ * R-OT-01: Daily Multi-Shift Cumulative Overtime Recalculator
+ * Cumulatively calculates OT for each cleaner on each date:
+ * 1. Shifts are grouped by date and cleaner name.
+ * 2. Unconditionally assigns post-8:00 PM (20:00) time to Overtime (Scenario 1).
+ * 3. Tracks pre-8:00 PM duty chronologically against the daily standard 8 basic hours (480 mins).
+ * 4. Pre-8:00 PM hours exceeding the 8h daily basic threshold qualify as Overtime (Scenario 2).
+ * 5. Shifts explicitly flagged with is_overtime mark full duty as OT without consuming basic quota.
+ */
+export function recalculateAllRowsOT<T extends ShiftOTCandidate>(rows: T[]): T[] {
+  if (!rows || rows.length === 0) return []
+
+  const clonedRows = rows.map(r => ({ ...r }))
+
+  // Group rows by Date and Cleaner Name
+  // Key format: `${date}:::${cleanerName.toLowerCase()}`
+  const groups = new Map<string, Array<{ row: T; origIdx: number }>>()
+
+  clonedRows.forEach((row, origIdx) => {
+    const rawStaff = (row.staff_name || '').trim()
+    if (!rawStaff && (!row.start_time || row.start_time === '—')) {
+      return
+    }
+
+    const dateKey = (row.date || 'default-date').trim()
+    const names = rawStaff ? rawStaff.split(/[,+/&]/).map(s => s.trim()).filter(Boolean) : ['']
+    names.forEach(cleaner => {
+      const groupKey = `${dateKey}:::${cleaner.toLowerCase()}`
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, [])
+      }
+      groups.get(groupKey)!.push({ row, origIdx })
+    })
+  })
+
+  const OT_CUTOFF = 20 * 60 // 8:00 PM (1200 mins)
+  const BASIC_LIMIT_MINS = 8 * 60 // 8 basic hours (480 mins)
+
+  groups.forEach(entries => {
+    const shiftsWithTimes: Array<{
+      entry: { row: T; origIdx: number }
+      sMins: number
+      eMins: number
+      post8PmMins: number
+      pre8PmMins: number
+      dutyMins: number
+    }> = []
+
+    const shiftsWithoutTimes: Array<{ row: T; origIdx: number }> = []
+
+    entries.forEach(e => {
+      const sMins = parseTimeToMinutes(e.row.start_time)
+      let eMins = parseTimeToMinutes(e.row.end_time)
+
+      if (sMins !== null && eMins !== null && e.row.start_time !== '—' && e.row.end_time !== '—') {
+        if (eMins < sMins) eMins += 24 * 60 // Overnight shift crossing midnight
+        const post8PmMins = eMins > OT_CUTOFF ? eMins - Math.max(sMins, OT_CUTOFF) : 0
+        const pre8PmEnd = Math.min(eMins, OT_CUTOFF)
+        const pre8PmStart = Math.min(sMins, OT_CUTOFF)
+        const pre8PmMins = Math.max(0, pre8PmEnd - pre8PmStart)
+        const dutyMins = eMins - sMins
+
+        shiftsWithTimes.push({
+          entry: e,
+          sMins,
+          eMins,
+          post8PmMins,
+          pre8PmMins,
+          dutyMins,
+        })
+      } else {
+        shiftsWithoutTimes.push(e)
+      }
+    })
+
+    // Sort chronologically by start time, then end time
+    shiftsWithTimes.sort((a, b) => a.sMins - b.sMins || a.eMins - b.eMins)
+
+    let usedPreMins = 0
+
+    shiftsWithTimes.forEach(item => {
+      const row = item.entry.row
+      const dutyHours = Math.round((item.dutyMins / 60) * 10) / 10
+      row.duty_hours = dutyHours
+
+      if (row.is_overtime) {
+        row.ot_hours = dutyHours
+        return
+      }
+
+      // Scenario 1: Post-8:00 PM is unconditionally OT
+      const postOtMins = item.post8PmMins
+
+      // Scenario 2: Pre-8:00 PM duty against remaining basic quota
+      const remainingBasicQuota = Math.max(0, BASIC_LIMIT_MINS - usedPreMins)
+      const basicAbsorbed = Math.min(item.pre8PmMins, remainingBasicQuota)
+      const preExcessMins = item.pre8PmMins - basicAbsorbed
+      usedPreMins += basicAbsorbed
+
+      const totalOtMins = postOtMins + preExcessMins
+      row.ot_hours = Math.round((totalOtMins / 60) * 10) / 10
+    })
+
+    // Process shifts without valid start/end times if any
+    shiftsWithoutTimes.forEach(e => {
+      const row = e.row
+      const duty = cleanNum(row.duty_hours)
+      if (duty > 0) {
+        if (row.is_overtime) {
+          row.ot_hours = duty
+        } else {
+          const dutyMins = duty * 60
+          const remainingBasicQuota = Math.max(0, BASIC_LIMIT_MINS - usedPreMins)
+          const basicAbsorbed = Math.min(dutyMins, remainingBasicQuota)
+          const excessMins = dutyMins - basicAbsorbed
+          usedPreMins += basicAbsorbed
+          row.ot_hours = Math.round((excessMins / 60) * 10) / 10
+        }
+      } else if (!row.start_time || row.start_time === '—') {
+        row.ot_hours = 0
+      }
+    })
+  })
+
+  return clonedRows
+}
+
+/**
+ * Returns a Map of row ID (or object key) -> recalculated ot_hours
+ */
+export function calcDailyCleanerShiftsOT<T extends ShiftOTCandidate>(rows: T[]): Map<string, number> {
+  const recalculated = recalculateAllRowsOT(rows)
+  const map = new Map<string, number>()
+  recalculated.forEach((r, idx) => {
+    const key = r.id || `row_${idx}`
+    map.set(key, cleanNum(r.ot_hours))
+  })
+  return map
 }
 
 /**

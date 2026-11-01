@@ -38,6 +38,8 @@ import {
   formatTime12h,
   calcHours,
   calcOTHours,
+  recalculateAllRowsOT,
+  calcDailyCleanerShiftsOT,
   checkTimesOverlap,
   fmtDate,
   addDaysToYMD,
@@ -194,7 +196,6 @@ export function DailyJobSheet() {
       const e = job.end_time
       if (s && e && s !== '—' && e !== '—') {
         patch.duty_hours = Math.round(calcHours(s, e) * 10) / 10
-        patch.ot_hours = Math.round(calcOTHours(s, e) * 10) / 10
       }
     } else if (field === 'end_time') {
       const formatted = formatTimeOnly(trimmed)
@@ -203,7 +204,6 @@ export function DailyJobSheet() {
       const e = patch.end_time
       if (s && e && s !== '—' && e !== '—') {
         patch.duty_hours = Math.round(calcHours(s, e) * 10) / 10
-        patch.ot_hours = Math.round(calcOTHours(s, e) * 10) / 10
       }
     } else if (field === 'address') {
       patch.address = trimmed
@@ -215,6 +215,26 @@ export function DailyJobSheet() {
       patch.received = cleanNum(trimmed)
     } else if (field === 'date') {
       patch.date = trimmed || job.date
+    }
+
+    // R-OT-01: Recalculate cumulative multi-shift Overtime if timing changed
+    if ('start_time' in patch || 'end_time' in patch) {
+      const sibJobs = todayJobs.map(j => (j.id === targetJobId ? { ...j, ...patch } : j))
+      const recalculated = recalculateAllRowsOT(sibJobs)
+      const updatedCur = recalculated.find(j => j.id === targetJobId)
+      if (updatedCur) {
+        patch.ot_hours = cleanNum(updatedCur.ot_hours)
+        patch.duty_hours = cleanNum(updatedCur.duty_hours)
+      }
+      const staffKey = (job.staff_name || '').trim().toLowerCase()
+      recalculated.forEach(sib => {
+        if (sib.id !== targetJobId && (sib.staff_name || '').trim().toLowerCase() === staffKey) {
+          const origSib = todayJobs.find(x => x.id === sib.id)
+          if (origSib && cleanNum(origSib.ot_hours) !== cleanNum(sib.ot_hours)) {
+            updateDailyJob(sib.id, { ot_hours: cleanNum(sib.ot_hours), duty_hours: cleanNum(sib.duty_hours) })
+          }
+        }
+      })
     }
 
     // R-JOB-01: a cleaner cannot be booked twice at the same time
@@ -908,6 +928,16 @@ export function DailyJobSheet() {
 
   const activeJobRows: Array<DailyJob & { isNil?: boolean }> = [...recentRows, ...standardRows]
 
+  // R-OT-01: Daily cumulative Overtime mapping for all active cleaner shifts
+  const activeJobRowsWithOT = useMemo(() => recalculateAllRowsOT(activeJobRows), [activeJobRows])
+  const activeJobOTMap = useMemo(() => {
+    const map = new Map<string, number>()
+    activeJobRowsWithOT.forEach(j => {
+      if (j.id) map.set(j.id, cleanNum(j.ot_hours))
+    })
+    return map
+  }, [activeJobRowsWithOT])
+
   // Absentees / active employees with nil records (0 jobs today) placed at the bottom
   const activeStaffSet = new Set(
     todayJobs.flatMap(j => (j.staff_name || '').split(/[,+/&]/).map(s => s.trim().toLowerCase())).filter(Boolean)
@@ -1187,7 +1217,9 @@ export function DailyJobSheet() {
   const pendingCashRcvdForNet = pendingRcvdTotalCash > 0 ? pendingRcvdTotalCash : pendingRcvdGrandTotal
   const netTotal       = (grossCollected + pendingCashRcvdForNet + standaloneAdvanceCash) - totalExpenses
 
-  const totalOTHours   = Math.round(todayJobs.reduce((s, j) => s + (cleanNum(j.ot_hours) || calcOTHours(j.start_time, j.end_time)), 0) * 10) / 10
+  // R-OT-01: Cumulative Overtime across all shifts for the day
+  const todayJobsWithOT = useMemo(() => recalculateAllRowsOT(todayJobs), [todayJobs])
+  const totalOTHours   = Math.round(todayJobsWithOT.reduce((s, j) => s + cleanNum(j.ot_hours), 0) * 10) / 10
   const staffOnDuty    = new Set(todayJobs.map(j => j.staff_name)).size
   const jobsCount      = todayJobs.length
 
@@ -1285,7 +1317,7 @@ export function DailyJobSheet() {
   // ── Excel export ──
   function buildWorkbook() {
     const wb = XLSX.utils.book_new()
-    const jobRows = todayJobs.map(j => ({
+    const jobRows = todayJobsWithOT.map(j => ({
       Staff: j.staff_name,
       'Start time': formatTimeOnly(j.start_time),
       'End time': formatTimeOnly(j.end_time),
@@ -1295,7 +1327,7 @@ export function DailyJobSheet() {
       Receive: cleanNum(j.received),
       Pending: jobPending(j) > 0 ? jobPending(j) : 'Nil',
       'Duty H': cleanNum(j.duty_hours),
-      OT: cleanNum(j.ot_hours) || calcOTHours(j.start_time, j.end_time),
+      OT: cleanNum(j.ot_hours),
       Material: j.material,
       Mod: j.payment_mode,
       Remarks: j.remarks,
@@ -1445,9 +1477,8 @@ export function DailyJobSheet() {
 
   // ── Print ──
   function printSheet() {
-    const jobRows = todayJobs.map(j => {
-      const otH = calcOTHours(j.start_time, j.end_time)
-      const otDisplay = cleanNum(j.ot_hours) || otH
+    const jobRows = todayJobsWithOT.map(j => {
+      const otDisplay = cleanNum(j.ot_hours)
       const isMonthly = j.payment_mode === 'Monthly'
       const rowStyle = isMonthly
         ? 'background:#d1fae5;color:#065f46;font-weight:600'
@@ -1531,7 +1562,7 @@ export function DailyJobSheet() {
           <td style="text-align:right">AED ${grossCollected.toLocaleString()}</td>
           <td style="text-align:right">AED ${todayJobs.reduce((s,j)=>s+jobPending(j),0).toLocaleString()}</td>
           <td style="text-align:center">${Math.round(todayJobs.reduce((s,j)=>s+cleanNum(j.duty_hours),0)*10)/10}h</td>
-          <td style="text-align:center">${Math.round(todayJobs.reduce((s,j)=>s+(cleanNum(j.ot_hours)||calcOTHours(j.start_time,j.end_time)),0)*10)/10}h</td>
+          <td style="text-align:center">${totalOTHours}h</td>
           <td colspan="4"></td>
         </tr></tfoot>
       </table>
@@ -3718,8 +3749,9 @@ export function DailyJobSheet() {
 
                   const job = row as DailyJob
                   const isMonthly = job.payment_mode === 'Monthly'
-                  const otHrs = calcOTHours(job.start_time, job.end_time)
-                  const otDisplay = cleanNum(job.ot_hours) || otHrs
+                  const otDisplay = activeJobOTMap.has(job.id)
+                    ? activeJobOTMap.get(job.id)!
+                    : (cleanNum(job.ot_hours) || calcOTHours(job.start_time, job.end_time))
 
                   // Cleaner unique color palette & custom row color preset
                   const staffKey = (job.staff_name || '').trim().toLowerCase()
@@ -3790,7 +3822,7 @@ export function DailyJobSheet() {
                 const totalReceived = filteredActiveJobRows.reduce((s, j) => s + cleanNum(j.received), 0)
                 const totalPending = filteredActiveJobRows.reduce((s, j) => s + jobPending(j), 0)
                 const totalDuty = Math.round(filteredActiveJobRows.reduce((s, j) => s + cleanNum(j.duty_hours), 0) * 10) / 10
-                const totalOT = Math.round(filteredActiveJobRows.reduce((s, j) => s + (cleanNum(j.ot_hours) || calcOTHours(j.start_time, j.end_time)), 0) * 10) / 10
+                const totalOT = Math.round(filteredActiveJobRows.reduce((s, j) => s + (activeJobOTMap.get(j.id) ?? cleanNum(j.ot_hours) ?? calcOTHours(j.start_time, j.end_time)), 0) * 10) / 10
                 const firstLabelColId = activeColumns.find(c => !['charges', 'received', 'pending', 'duty_hours', 'ot_hours'].includes(c.id))?.id
 
                 return (
