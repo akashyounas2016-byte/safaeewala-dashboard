@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
+import { Time12hPicker } from '@/components/common/Time12hPicker'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatDate, formatTime, addHoursToTime, subtractHoursFromTime, calcDurationFromTimes } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
@@ -3722,25 +3723,17 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: { client
             />
           </div>
           <div>
-            <label className="block text-[11.5px] font-bold text-[#111827] mb-1">Start Time *</label>
-            <input
-              type="time"
-              name="scheduled_time"
-              required
+            <Time12hPicker
+              label="Start Time *"
               value={startTime}
-              onChange={e => handleStartTimeChange(e.target.value)}
-              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-[#111827]"
+              onChange={handleStartTimeChange}
             />
           </div>
           <div>
-            <label className="block text-[11.5px] font-bold text-teal-800 mb-1">End Time *</label>
-            <input
-              type="time"
-              name="end_time"
-              required
+            <Time12hPicker
+              label="End Time *"
               value={endTime}
-              onChange={e => handleEndTimeChange(e.target.value)}
-              className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-emerald-500 font-bold text-teal-700"
+              onChange={handleEndTimeChange}
             />
           </div>
           <div>

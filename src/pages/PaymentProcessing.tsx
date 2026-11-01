@@ -10,6 +10,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
+import { Time12hPicker } from '@/components/common/Time12hPicker'
 import { useData } from '@/store/DataContext'
 import { ReceivablesNav } from '@/components/receivables/ReceivablesNav'
 import { Pager } from '@/components/common/Pager'
@@ -1638,19 +1639,15 @@ export function PaymentProcessing() {
                   value={editingItem.dutyHours ?? ''}
                   onChange={e => setEditingItem({ ...editingItem, dutyHours: Number(e.target.value) || 0 })}
                 />
-                <Input
-                  name="startTime"
+                <Time12hPicker
                   label="Start Time"
-                  type="time"
-                  value={editingItem.startTime || ''}
-                  onChange={e => setEditingItem({ ...editingItem, startTime: e.target.value })}
+                  value={editingItem.startTime || '09:00 AM'}
+                  onChange={val => setEditingItem({ ...editingItem, startTime: val })}
                 />
-                <Input
-                  name="endTime"
+                <Time12hPicker
                   label="End Time"
-                  type="time"
-                  value={editingItem.endTime || ''}
-                  onChange={e => setEditingItem({ ...editingItem, endTime: e.target.value })}
+                  value={editingItem.endTime || '01:00 PM'}
+                  onChange={val => setEditingItem({ ...editingItem, endTime: val })}
                 />
               </div>
             )}

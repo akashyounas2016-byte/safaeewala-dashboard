@@ -6,6 +6,12 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(time): Standardized VPS-style 12-hour AM/PM Time12hPicker project-wide across New Booking, Add Job Entry, Edit Job, Spreadsheet Edit Modal, Bookings Edit Modal, Clients & Monthly Clients Reschedule Modals, and Payment Processing (R-JOB-01, R-OT-01):
+  - 12h format display with Clock icon and ChevronDown.
+  - Dedicated AM / PM toggle pill button with soft emerald active badge.
+  - Floating popover with search & custom time input, plus 30-min suggestions (07:00 AM to 11:00 PM).
+  - Robust time parsing supporting both 12-hour and 24-hour inputs.
+
 - feat(excel-studio, daily-job-sheet, bookings): UX & Timing Polish:
   - Add Job Entry & New Booking: Replaced AM/PM time pickers with pure numerical time dropdowns (9:00 to 22:00 at 30-min intervals) in Timing and Duty sections.
   - Excel Job Sheet: Header date display shows a single date input when 'Today' or 'Yesterday' is active; From-To range input is reserved exclusively for custom/multi-day ranges.

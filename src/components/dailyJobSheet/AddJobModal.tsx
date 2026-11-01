@@ -183,9 +183,9 @@ export function AddJobForm({
   const areaRef = useRef<HTMLDivElement>(null)
   const areaSearchInputRef = useRef<HTMLInputElement>(null)
 
-  // ── Timing & Duration (Numerical Format e.g. 09:00, 13:00) ──
-  const [startTime, setStartTime] = useState(() => formatTime24h(initial?.start_time || '09:00') || '09:00')
-  const [endTime, setEndTime]     = useState(() => formatTime24h(initial?.end_time || '13:00') || '13:00')
+  // ── Timing & Duration (12-Hour AM/PM Format e.g. 09:00 AM, 01:00 PM) ──
+  const [startTime, setStartTime] = useState(() => formatTime12h(initial?.start_time || '09:00 AM') || '09:00 AM')
+  const [endTime, setEndTime]     = useState(() => formatTime12h(initial?.end_time || '01:00 PM') || '01:00 PM')
 
   // R-JOB-01: a chosen cleaner already busy at this time on this date (all jobs of the date, saved or on screen)
   const staffClash = useMemo(() => {
@@ -197,11 +197,11 @@ export function AddJobForm({
 
   const [dutyHours, setDutyHours] = useState<number>(() => {
     if (initial?.duty_hours) return Number(initial.duty_hours)
-    return calcHours(initial?.start_time || '09:00', initial?.end_time || '13:00') || 4
+    return calcHours(initial?.start_time || '09:00 AM', initial?.end_time || '01:00 PM') || 4
   })
   const [otHours, setOtHours]     = useState<number | string>(() => {
     if (initial?.ot_hours !== undefined) return initial.ot_hours
-    return calcOTHours(initial?.start_time || '09:00', initial?.end_time || '13:00')
+    return calcOTHours(initial?.start_time || '09:00 AM', initial?.end_time || '01:00 PM')
   })
   const [isOvertime, setIsOvertime] = useState(Boolean(initial?.is_overtime || Number(otHours) > 0))
 
@@ -388,7 +388,7 @@ export function AddJobForm({
       setSelectedStaff(c.preferred_cleaner.split(/[,+/&]|\band\b/i).map(s => s.trim()).filter(Boolean))
     }
     if (c.scheduled_time) {
-      const sTime = formatTime24h(c.scheduled_time) || '09:00'
+      const sTime = formatTime12h(c.scheduled_time) || '09:00 AM'
       setStartTime(sTime)
       if (c.duration_hours) {
         setDutyHours(c.duration_hours)

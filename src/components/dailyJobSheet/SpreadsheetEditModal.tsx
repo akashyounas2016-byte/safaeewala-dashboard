@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
+import { Time12hPicker } from '@/components/common/Time12hPicker'
 import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
 import type { DailyJob, MaterialType, PaymentMode, Client } from '@/types'
 import {
@@ -75,8 +76,8 @@ export function SpreadsheetEditModal({
     setStaffName(row.staff_name || '')
     setAddress(row.address || '')
     setArea(row.area || '')
-    const s = row.start_time || '09:00'
-    const e = row.end_time || '13:00'
+    const s = formatTime12h(row.start_time || '09:00 AM') || '09:00 AM'
+    const e = formatTime12h(row.end_time || '01:00 PM') || '01:00 PM'
     setStartTime(s)
     setEndTime(e)
     setDutyHours(Number(row.duty_hours) || calcHours(s, e) || 4)
@@ -317,30 +318,18 @@ export function SpreadsheetEditModal({
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
-                <span>Start Time</span>
-                <span className="text-blue-600 font-bold normal-case">{formatTime12h(startTime)}</span>
-              </label>
-              <input
-                type="time"
-                value={formatTime24h(startTime)}
-                onChange={e => handleStartTimeChange(e.target.value)}
-                list="edit-job-time-options"
-                className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-blue-500 transition-all font-semibold text-slate-800 shadow-2xs"
+            <div className="col-span-1">
+              <Time12hPicker
+                label="Start Time"
+                value={startTime}
+                onChange={handleStartTimeChange}
               />
             </div>
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5 flex items-center justify-between">
-                <span>End Time</span>
-                <span className="text-blue-600 font-bold normal-case">{formatTime12h(endTime)}</span>
-              </label>
-              <input
-                type="time"
-                value={formatTime24h(endTime)}
-                onChange={e => handleEndTimeChange(e.target.value)}
-                list="edit-job-time-options"
-                className="w-full text-[13px] px-3 py-2 border border-[#E4E8EC] rounded-xl bg-white focus:outline-none focus:border-blue-500 transition-all font-semibold text-slate-800 shadow-2xs"
+            <div className="col-span-1">
+              <Time12hPicker
+                label="End Time"
+                value={endTime}
+                onChange={handleEndTimeChange}
               />
             </div>
             <div>

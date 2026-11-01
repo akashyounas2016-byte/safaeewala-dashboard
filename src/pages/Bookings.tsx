@@ -14,6 +14,7 @@ import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
+import { Time12hPicker } from '@/components/common/Time12hPicker'
 import { NewBookingModal } from '@/components/bookings/NewBookingModal'
 import { BookingInvoiceModal } from '@/components/bookings/BookingInvoiceModal'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
@@ -3242,23 +3243,17 @@ function BookingDetailModalContent({
                 />
               </div>
               <div>
-                <label className="block text-[11.5px] font-bold text-slate-900 mb-1">Start Time *</label>
-                <input
-                  type="time"
-                  required
+                <Time12hPicker
+                  label="Start Time *"
                   value={startTime}
-                  onChange={e => handleStartTimeChange(e.target.value)}
-                  className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-bold text-slate-900"
+                  onChange={handleStartTimeChange}
                 />
               </div>
               <div>
-                <label className="block text-[11.5px] font-bold text-teal-800 mb-1">End Time *</label>
-                <input
-                  type="time"
-                  required
+                <Time12hPicker
+                  label="End Time *"
                   value={endTime}
-                  onChange={e => handleEndTimeChange(e.target.value)}
-                  className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-teal-600 font-bold text-teal-700"
+                  onChange={handleEndTimeChange}
                 />
               </div>
               <div>

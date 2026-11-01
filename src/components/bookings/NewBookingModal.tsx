@@ -115,8 +115,8 @@ export function NewBookingModal({ open, onClose, onAdd }: NewBookingModalProps) 
   const [unregisteredClientName, setUnregisteredClientName] = useState('')
 
   // Card 3: Timing & Duty Hours
-  const [startTime, setStartTime] = useState('09:00')
-  const [endTime, setEndTime] = useState('13:00')
+  const [startTime, setStartTime] = useState('09:00 AM')
+  const [endTime, setEndTime] = useState('01:00 PM')
   const [dutyHours, setDutyHours] = useState(4)
 
   // Card 4: Charges & Booking Details
