@@ -11,6 +11,7 @@ import { defaultAgencies } from '@/lib/defaultAgencies'
 import { todayDubai, addDays } from '@/lib/dubaiTime'
 import { jobFromBooking, jobPatchFromBookingPatch, bookingPatchFromJobPatch, nextOccurrence } from '@/lib/bookingSync'
 import { describeJobChange } from '@/lib/auditLog'
+import { recalculateAllRowsOT } from '@/components/dailyJobSheet/jobSheetUtils'
 import { saveDeletionSnapshot } from '@/lib/snapshots'
 export { defaultAgencies }
 
@@ -315,12 +316,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // Older booking-synced rows stored employee IDs in staff_name; show them as cleaner names
   // everywhere (read-only — the row is rewritten with names the next time it is saved)
+  // R-OT-01: OT depends on all of a cleaner's shifts that day, so it is worked out here — every screen
+  // (job sheets, Employees, profiles, Monthly Clients, AI bot) then shows the same OT, not a stale stored value.
   const viewDailyJobs = useMemo(() => {
     const byId = new Map(employees.map(e => [e.id, e.full_name]))
-    return dailyJobs.map(j => {
+    return recalculateAllRowsOT(dailyJobs.map(j => {
       if (!j.staff_name || !j.staff_name.split(",").some(t => byId.has(t.trim()))) return j
       return { ...j, staff_name: j.staff_name.split(",").map(t => byId.get(t.trim()) || t.trim()).join(", ") }
-    })
+    }))
   }, [dailyJobs, employees])
 
   // Names the user deleted — job-sheet history must not bring them back (AUD-17). Cloud-synced.

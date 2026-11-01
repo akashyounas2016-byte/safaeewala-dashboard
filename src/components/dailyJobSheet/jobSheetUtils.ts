@@ -144,6 +144,8 @@ export interface ShiftOTCandidate {
  * 3. Tracks pre-8:00 PM duty chronologically against the daily standard 8 basic hours (480 mins).
  * 4. Pre-8:00 PM hours exceeding the 8h daily basic threshold qualify as Overtime (Scenario 2).
  * 5. Shifts explicitly flagged with is_overtime mark full duty as OT without consuming basic quota.
+ *    The flag means "this whole shift is OT" — it is never set from a calculated OT value.
+ * 6. Time covered by two overlapping shifts of one cleaner is counted once: a person cannot work it twice.
  */
 export function recalculateAllRowsOT<T extends ShiftOTCandidate>(rows: T[]): T[] {
   if (!rows || rows.length === 0) return []
@@ -161,7 +163,7 @@ export function recalculateAllRowsOT<T extends ShiftOTCandidate>(rows: T[]): T[]
     }
 
     const dateKey = (row.date || 'default-date').trim()
-    const names = rawStaff ? rawStaff.split(/[,+/&]/).map(s => s.trim()).filter(Boolean) : ['']
+    const names = rawStaff ? rawStaff.split(/[,+/&]|\band\b/i).map(s => s.trim()).filter(Boolean) : ['']
     names.forEach(cleaner => {
       const groupKey = `${dateKey}:::${cleaner.toLowerCase()}`
       if (!groups.has(groupKey)) {
@@ -179,8 +181,6 @@ export function recalculateAllRowsOT<T extends ShiftOTCandidate>(rows: T[]): T[]
       entry: { row: T; origIdx: number }
       sMins: number
       eMins: number
-      post8PmMins: number
-      pre8PmMins: number
       dutyMins: number
     }> = []
 
@@ -192,18 +192,12 @@ export function recalculateAllRowsOT<T extends ShiftOTCandidate>(rows: T[]): T[]
 
       if (sMins !== null && eMins !== null && e.row.start_time !== '—' && e.row.end_time !== '—') {
         if (eMins < sMins) eMins += 24 * 60 // Overnight shift crossing midnight
-        const post8PmMins = eMins > OT_CUTOFF ? eMins - Math.max(sMins, OT_CUTOFF) : 0
-        const pre8PmEnd = Math.min(eMins, OT_CUTOFF)
-        const pre8PmStart = Math.min(sMins, OT_CUTOFF)
-        const pre8PmMins = Math.max(0, pre8PmEnd - pre8PmStart)
         const dutyMins = eMins - sMins
 
         shiftsWithTimes.push({
           entry: e,
           sMins,
           eMins,
-          post8PmMins,
-          pre8PmMins,
           dutyMins,
         })
       } else {
@@ -215,6 +209,7 @@ export function recalculateAllRowsOT<T extends ShiftOTCandidate>(rows: T[]): T[]
     shiftsWithTimes.sort((a, b) => a.sMins - b.sMins || a.eMins - b.eMins)
 
     let usedPreMins = 0
+    let coveredUntil = -1 // end of the time already counted for this cleaner
 
     shiftsWithTimes.forEach(item => {
       const row = item.entry.row
@@ -226,13 +221,18 @@ export function recalculateAllRowsOT<T extends ShiftOTCandidate>(rows: T[]): T[]
         return
       }
 
+      // Only the part of this shift not already covered by an earlier overlapping shift counts
+      const countFrom = Math.max(item.sMins, coveredUntil)
+      coveredUntil = Math.max(coveredUntil, item.eMins)
+
       // Scenario 1: Post-8:00 PM is unconditionally OT
-      const postOtMins = item.post8PmMins
+      const postOtMins = Math.max(0, item.eMins - Math.max(countFrom, OT_CUTOFF))
 
       // Scenario 2: Pre-8:00 PM duty against remaining basic quota
+      const preMins = Math.max(0, Math.min(item.eMins, OT_CUTOFF) - Math.min(countFrom, OT_CUTOFF))
       const remainingBasicQuota = Math.max(0, BASIC_LIMIT_MINS - usedPreMins)
-      const basicAbsorbed = Math.min(item.pre8PmMins, remainingBasicQuota)
-      const preExcessMins = item.pre8PmMins - basicAbsorbed
+      const basicAbsorbed = Math.min(preMins, remainingBasicQuota)
+      const preExcessMins = preMins - basicAbsorbed
       usedPreMins += basicAbsorbed
 
       const totalOtMins = postOtMins + preExcessMins

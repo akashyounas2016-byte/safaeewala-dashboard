@@ -203,7 +203,8 @@ export function AddJobForm({
     if (initial?.ot_hours !== undefined) return initial.ot_hours
     return calcOTHours(initial?.start_time || '09:00 AM', initial?.end_time || '01:00 PM')
   })
-  const [isOvertime, setIsOvertime] = useState(Boolean(initial?.is_overtime || Number(otHours) > 0))
+  // R-OT-01: the flag means "whole shift is OT"; a calculated OT value must never set it
+  const isOvertime = Boolean(initial?.is_overtime)
 
   const handleStartTimeChange = (newStart: string) => {
     setStartTime(newStart)
@@ -212,7 +213,6 @@ export function AddJobForm({
       setEndTime(calculatedEnd)
       const calculatedOT = calcOTHours(newStart, calculatedEnd)
       setOtHours(calculatedOT)
-      setIsOvertime(calculatedOT > 0)
     }
   }
 
@@ -224,7 +224,6 @@ export function AddJobForm({
         setDutyHours(duration)
         const calculatedOT = calcOTHours(startTime, newEnd)
         setOtHours(calculatedOT)
-        setIsOvertime(calculatedOT > 0)
       }
     }
   }
@@ -236,7 +235,6 @@ export function AddJobForm({
       setEndTime(calculatedEnd)
       const calculatedOT = calcOTHours(startTime, calculatedEnd)
       setOtHours(calculatedOT)
-      setIsOvertime(calculatedOT > 0)
     }
   }
 
@@ -470,7 +468,7 @@ export function AddJobForm({
       charges:      cleanNum(charges),
       received:     cleanNum(received),
       payment_mode: paymentMode,
-      is_overtime:  isOvertime || cleanNum(otHours) > 0,
+      is_overtime:  isOvertime,
       remarks:      remarks.trim(),
       service:      '', // Service field permanently removed per user instruction
     })

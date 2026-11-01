@@ -78,3 +78,26 @@ const explicitRecalc = recalculateAllRowsOT(explicitOtShifts)
 eq(explicitRecalc[0].ot_hours, 4.0, 'Explicit is_overtime gives full 4.0h OT and preserves basic quota')
 eq(explicitRecalc[1].ot_hours, 2.0, 'Second shift takes 6h basic (02:00 PM - 08:00 PM <= 8h) + 2h post-8 PM OT')
 
+// ── Test 6: Screenshot 2026-10-19 — what the wrong flag did ──
+// Sabirti's 09:00 AM row was saved with is_overtime=true, so its whole 3h showed as OT (2.5h + 3h = 5.5h)
+const sabirtiFlagged = recalculateAllRowsOT([
+  { id: 'f1', date: day, staff_name: 'Sabirti', start_time: '09:00 AM', end_time: '12:00 PM', is_overtime: true },
+  { id: 'f2', date: day, staff_name: 'Sabirti', start_time: '02:30 PM', end_time: '10:30 PM' },
+])
+eq(sabirtiFlagged[0].ot_hours, 3.0, 'flagged shift reproduces the screenshot (3h)')
+eq(sabirtiFlagged[1].ot_hours, 2.5, 'flagged shift takes no quota, reproduces the screenshot (2.5h)')
+
+// ── Test 7: Overlapping shifts of one cleaner count once ──
+const ambika = recalculateAllRowsOT([
+  { id: 'a1', date: day, staff_name: 'Ambika', start_time: '09:00 AM', end_time: '12:00 PM' },
+  { id: 'a2', date: day, staff_name: 'Ambika', start_time: '09:00 AM', end_time: '12:00 PM' },
+  { id: 'a3', date: day, staff_name: 'Ambika', start_time: '03:00 PM', end_time: '05:00 PM' },
+  { id: 'a4', date: day, staff_name: 'Ambika', start_time: '05:30 PM', end_time: '07:00 PM' },
+])
+eq(ambika.reduce((s, r) => s + (r.ot_hours || 0), 0), 0, 'Ambika: 6.5h real duty, no OT (was 1.5h from counting 09:00-12:00 twice)')
+eq(ambika[1].duty_hours, 3, 'overlapping row still shows its own duty')
+const lateOverlap = recalculateAllRowsOT([
+  { id: 'l1', date: day, staff_name: 'Laxmi', start_time: '06:00 PM', end_time: '10:00 PM' },
+  { id: 'l2', date: day, staff_name: 'Laxmi', start_time: '09:00 PM', end_time: '11:00 PM' },
+])
+eq(lateOverlap.reduce((s, r) => s + (r.ot_hours || 0), 0), 3, 'after 8 PM overlap counts once: 20:00-23:00 = 3h')

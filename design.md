@@ -100,6 +100,7 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
 ## 7. Interaction
 
 - Transitions `transition-all duration-200`; dropdown panels close on outside click.
+- Excel Job Sheet: a job done by one cleaner alone has a light teal row (`SOLO_ROW_BG`) unless the user chose a colour; "Solo at bottom" moves cleaners who only have solo jobs below the team jobs (UX-61).
 - Excel Job Sheet cell dropdowns use `ExcelCellPopover` (portal, Address design: header + icon, search, green custom row, emerald selected item with check). Never draw a dropdown inside a table row — row hover filters paint over it (UX-35).
 - Destructive actions ask for confirmation; empty states explain what to do next.
 - Responsive: < 640 px one column; 640–1024 px two columns; ≥ 1280 px full layout with side widgets.

@@ -1239,6 +1239,8 @@ const COLUMN_PRESETS: Record<string, string[] | null> = {
 const newRowId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 /** Columns that are calculated, never typed into */
 const READ_ONLY_COLS = new Set(['pending'])
+/** Light background of a job done by one cleaner alone (not a team job) — UX-61 */
+const SOLO_ROW_BG = '#f0fdfa'
 /** Columns whose cells open their dropdown on a single click, filled or empty (UX-35) */
 const DROPDOWN_COLS = new Set(['address', 'area', 'material', 'payment_mode', 'start_time', 'end_time'])
 /** Time suggestions formatted with explicit AM and PM */
@@ -1811,6 +1813,7 @@ export function JobSheetSpreadsheet() {
   const [viewMode, setViewMode] = useState<'blocks' | 'flat'>(() => {
     return safeGet('safaeewala_excel_view_mode', 'flat')
   })
+  const [soloAtBottom, setSoloAtBottom] = useState<boolean>(() => safeGet('safaeewala_excel_solo_bottom', false))
   const [showFormulaBar, setShowFormulaBar] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [zoomLevel, setZoomLevel] = useState<number>(100)
@@ -3557,7 +3560,7 @@ export function JobSheetSpreadsheet() {
         charges: isSec ? 0 : cleanNum(row.charges),
         received: isSec ? 0 : cleanNum(row.received),
         payment_mode: isSec ? ('Above' as any) : row.payment_mode,
-        is_overtime: cleanNum(row.ot_hours) > 0,
+        is_overtime: Boolean(row.is_overtime), // R-OT-01: never set from a calculated OT value
         material: row.material,
         service: row.service,
         remarks: row.remarks,
@@ -3592,7 +3595,7 @@ export function JobSheetSpreadsheet() {
         charges: cleanNum(lead.charges), // the lead row holds the money of the whole team
         received: cleanNum(lead.received),
         payment_mode: lead.payment_mode,
-        is_overtime: cleanNum(value('ot_hours')) > 0,
+        is_overtime: Boolean(lead.is_overtime),
       }
     }
 
@@ -3854,6 +3857,16 @@ export function JobSheetSpreadsheet() {
         organized.push(...group.members)
       })
       list = organized
+    } else if (soloAtBottom) {
+      // UX-61: team cleaners first, then cleaners who only have solo jobs. A cleaner's rows stay together.
+      const blocks = new Map<string, DailyJob[]>()
+      list.forEach(r => {
+        const k = (r.staff_name || '').trim().toLowerCase() || r.id
+        blocks.set(k, [...(blocks.get(k) || []), r])
+      })
+      const isTeam = (rows: DailyJob[]) => rows.some(r => getMultiCleanerPaymentInfo(r, gridRows)?.isMultiCleaner)
+      const all = Array.from(blocks.values())
+      list = [...all.filter(isTeam), ...all.filter(b => !isTeam(b))].flat()
     }
     if (!filterSearch.trim()) return list
     const q = filterSearch.toLowerCase()
@@ -3864,7 +3877,7 @@ export function JobSheetSpreadsheet() {
       (r.payment_mode || '').toLowerCase().includes(q) ||
       (r.remarks || '').toLowerCase().includes(q)
     )
-  }, [gridRows, paymentModeFilter, filterSearch, pendingCtx])
+  }, [gridRows, paymentModeFilter, filterSearch, pendingCtx, soloAtBottom])
   const visibleGridRows = useMemo(() => filteredGridRows.slice(0, renderLimit), [filteredGridRows, renderLimit])
 
   // Summary Totals
@@ -4519,6 +4532,23 @@ export function JobSheetSpreadsheet() {
             <span>Reset Column</span>
           </button>
 
+          {/* UX-61: solo jobs (one cleaner) to the bottom of the sheet */}
+          <button
+            type="button"
+            onClick={() => {
+              const next = !soloAtBottom
+              setSoloAtBottom(next)
+              safeSet('safaeewala_excel_solo_bottom', next)
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[12px] font-bold cursor-pointer transition-all ${
+              soloAtBottom ? 'bg-teal-50 border-teal-300 text-teal-900' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+            title="Show cleaners who only have single-cleaner jobs below the team jobs"
+          >
+            <span className="w-3 h-3 rounded-sm border border-teal-300" style={{ backgroundColor: SOLO_ROW_BG }} />
+            <span>Solo at bottom</span>
+          </button>
+
           {/* Mode Switcher: Icons only at the very right end */}
           <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-2xs">
             <button
@@ -4835,6 +4865,8 @@ export function JobSheetSpreadsheet() {
                               cellBg = customRowPreset.circleColor
                             } else if (colPalette) {
                               cellBg = colPalette.solidBg
+                            } else if (!isBlankShift && !mcInfo?.isMultiCleaner) {
+                              cellBg = SOLO_ROW_BG // UX-61
                             }
 
                             return (
@@ -5011,6 +5043,8 @@ export function JobSheetSpreadsheet() {
                     rowBg = chosenPalette.solidBg
                     isDarkRow = !chosenPalette.isLight
                   }
+                } else if ((row.address || row.start_time) && !getMultiCleanerPaymentInfo(row, gridRows)?.isMultiCleaner) {
+                  rowBg = SOLO_ROW_BG // UX-61: job done by one cleaner alone
                 }
 
                 return (

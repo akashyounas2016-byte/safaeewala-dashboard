@@ -247,7 +247,7 @@ export function parseJobSheetWorkbook(wb: XLSX.WorkBook, fileName: string, fallb
       dutyH = Math.round(dutyH * 10) / 10
 
       const otVal = Math.round(cleanNum(nm('OT', 'ot_hours', 'overtime', 'OT Hours', 'OTHrs')) * 10) / 10
-      const isOt = String(nm('OT', 'is_overtime')).toLowerCase() === 'yes' || otVal > 0
+      const isOt = String(nm('OT', 'is_overtime')).toLowerCase() === 'yes' // R-OT-01: an OT number is not the whole-shift flag
 
       let mat = String(nm('Material', 'material', 'Mat') || 'No').trim()
       if (mat.toUpperCase() === 'YES') mat = 'Yes'
