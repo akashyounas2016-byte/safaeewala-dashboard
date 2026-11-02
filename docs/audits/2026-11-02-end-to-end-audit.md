@@ -179,3 +179,38 @@ response time is not on the main path.
 | 6 | Next | E2E-24 (OT pay), E2E-30 (agency commission), Bookings rules section | M | **Yes** — OT rate, commission formula, booking states |
 | 7 | Later | E2E-17 (Realtime), E2E-16 (atomic RPCs), E2E-26 (date-window loading) | L | No |
 | 8 | Ongoing | E2E-01/02/03 (split pages, one time helper, `GridRow` type), E2E-05 (Playwright smoke tests), E2E-13 idle sign-out, E2E-14 CSP enforce | M–L | No |
+
+---
+
+## 11. Status after the fix round (2026-11-02, same day)
+
+Owner instruction: fix everything except `npm ci`; agencies have no commission (fixed-price contracts); OT pay
+belongs to the future Salaries screen.
+
+| ID | Status | Where |
+|---|---|---|
+| E2E-20, E2E-21 | ✅ Fixed — completion saves only the status on the record; old browser list migrated | R-BK-01, `Bookings.tsx` |
+| E2E-22 | ✅ Fixed — `recurrence_day` | R-BK-03, migration `2026-11-02_bookings_recurrence_day.sql` |
+| E2E-23 | ✅ No change needed — Daily Job Sheet already shows one row per cleaner; per-cleaner OT on Employees / profile / Attendance (DEC-015) | — |
+| E2E-24 | 📋 Planned — OT pay on the Salaries screen | R-PAY-04, DEC-016 |
+| E2E-30 | ✅ Done — commission removed (fixed-price contracts) | R-PAY-03, migration `2026-11-02_remove_agency_commission.sql` |
+| E2E-07 | ✅ Fixed for writes — database follows screen permissions for employees / agencies / invoices / inventory / clients. Reading stays open to active users because pickers need names; salaries are still readable through the API. A full fix needs a private salary table (follow-up). | R-SEC-03, migration `2026-11-02_role_based_writes.sql` |
+| E2E-08 | ✅ Fixed — private Storage, admin / manager only; old files moved on admin login | R-SEC-04, migration `2026-11-02_staff_documents_storage.sql` |
+| E2E-10, E2E-11 | ✅ Fixed — xlsx 0.20.3 (official CDN), react-router 7.18.5, zod 4.6.7; `npm audit`: 0 | `package.json` |
+| E2E-12 | ✅ Fixed — old migration never opens `app_state` to anon | `2026-10-27_phase2_sync.sql` |
+| E2E-13 | ✅ Fixed — idle sign-out after 2 hours | R-SYNC-09, `App.tsx` |
+| E2E-14 | ⏸ Deferred — enforce the CSP only after a week of clean reports on the live site | `nginx.conf` |
+| E2E-15 | ✅ Fixed — rate limit (webhook / admin 120, other API 600 per minute per IP) | `webhookServer.cjs` |
+| E2E-16 | ⏸ Mitigated — every part of a multi-step change is retried by the outbox until saved; atomic database functions are a later refactor | R-SYNC-05 |
+| E2E-17 | ✅ Fixed — Supabase Realtime on all business tables + settings | R-SYNC-09, migration `2026-11-02_realtime.sql` |
+| E2E-18 | ✅ Fixed — payment modes, materials, deleted drivers, sheet colours, monthly auto-sync are cloud-synced | R-SYNC-07 |
+| E2E-19 | ⏸ Kept — unused `is_overtime` column, harmless | — |
+| E2E-25 | ✅ Fixed except `npm ci` (owner) — releases kept, health check with automatic rollback, deploy tags, rollback workflow | `deploy.yml`, `rollback.yml`, `docs/workflow.md` |
+| E2E-02 | ✅ Fixed — one overlap check | `jobSheetUtils.checkTimesOverlap`, `shiftClash` |
+| E2E-06 | ✅ Fixed — pre-commit hook lints staged files; LF line endings for hooks | `.githooks/pre-commit`, `.gitattributes` |
+| E2E-01, E2E-03, E2E-04, E2E-05 | ⏸ Deferred — refactors / test tooling, not defects: split large pages when they are next changed; `GridRow` type; route `console.*` through `reportError`; Playwright needs a new dev dependency | — |
+| E2E-26, E2E-27, E2E-28 | ⏸ Deferred — fine at today's data size (≈100 jobs); date-window loading changes lifetime totals and needs a design | — |
+
+**Migrations to run in Supabase (SQL Editor, in this order):** `2026-11-02_bookings_recurrence_day.sql`,
+`2026-11-02_remove_agency_commission.sql`, `2026-11-02_realtime.sql`, `2026-11-02_staff_documents_storage.sql`,
+`2026-11-02_role_based_writes.sql`.
