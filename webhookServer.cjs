@@ -550,6 +550,22 @@ async function authorizeApi(req, pathname, parsedUrl) {
   return { ok: false, status: 401, error: isLeadWebhook ? 'Webhook secret or sign-in required' : 'Sign in first.' };
 }
 
+// E2E-15: requests per client IP per minute. Webhook and admin calls get a lower limit (flooding / guessing).
+const RATE_LIMIT = Number(process.env.RATE_LIMIT_PER_MIN) || 600;
+const RATE_LIMIT_SENSITIVE = Number(process.env.RATE_LIMIT_SENSITIVE_PER_MIN) || 120;
+const rateBuckets = new Map();
+function rateLimited(req, pathname) {
+  const ip = String(req.headers['x-real-ip'] || req.socket.remoteAddress || '?');
+  const sensitive = pathname.startsWith('/api/webhook/') || pathname.startsWith('/api/admin/');
+  const key = (sensitive ? 's:' : 'g:') + ip;
+  const now = Date.now();
+  let b = rateBuckets.get(key);
+  if (!b || now > b.reset) { b = { count: 0, reset: now + 60_000 }; rateBuckets.set(key, b); }
+  b.count += 1;
+  if (rateBuckets.size > 10_000) for (const [k, v] of rateBuckets) if (now > v.reset) rateBuckets.delete(k);
+  return b.count > (sensitive ? RATE_LIMIT_SENSITIVE : RATE_LIMIT);
+}
+
 const server = http.createServer((req, res) => {
   // CORS Headers
   const origin = req.headers.origin;
@@ -568,6 +584,15 @@ const server = http.createServer((req, res) => {
 
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
+
+  // E2E-25: deploy health check (no data, no sign-in)
+  if (pathname === '/api/health' && req.method === 'GET') {
+    return sendJson(res, 200, { ok: true, at: new Date().toISOString() });
+  }
+  if (rateLimited(req, pathname)) {
+    res.setHeader('Retry-After', '60');
+    return sendJson(res, 429, { error: 'Too many requests — try again in a minute' });
+  }
 
   // User management (admin only)
   if (pathname === '/api/admin/users' || pathname.startsWith('/api/admin/users/')) {

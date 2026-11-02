@@ -54,3 +54,9 @@ Only when the owner says so.
 - Browser automation: ask first (R-OPS-01).
 - VPS / `deploy.ps1` / `scp` / `ssh` / **`git push origin main`**: ask first (R-OPS-02).
 - Production database schema changes: ask first.
+
+## Deploy, versions and rollback (E2E-25)
+- Every push to `main` deploys. Before it, the running version is saved on the VPS in `/var/www/safaeewala/releases/` (last 5).
+- After it, `/api/health` and the home page must answer within 2 minutes, otherwise the previous version is put back and the run fails.
+- A successful deploy is tagged `deploy-YYYYMMDD-HHMM-<sha>`.
+- To go back by hand: GitHub → Actions → **Roll back the live site** → Run workflow (empty = newest kept version).

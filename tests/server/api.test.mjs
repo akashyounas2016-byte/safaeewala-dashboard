@@ -126,6 +126,16 @@ try {
   r = await api('POST', '/api/webhook/google-drive-backup', 'admin-token', { filename: '../../evil.xlsx', file_base64: Buffer.from('x').toString('base64') })
   const escaped = fs.existsSync(path.join(dataDir, '..', 'evil.xlsx')) || fs.existsSync(path.join(dataDir, 'evil.xlsx'))
   check(!escaped && fs.existsSync(path.join(dataDir, 'backups', 'evil.xlsx')), 'backup file stays inside backups/ (SEC-05)', fs.readdirSync(dataDir))
+  // E2E-25: health check for deploys
+  r = await api('GET', '/api/health', null)
+  check(r.status === 200 && r.body.ok === true, 'health check answers without sign-in (E2E-25)', r)
+  // E2E-15: flooding the webhook is cut off
+  let limited = 0
+  for (let i = 0; i < 130; i++) {
+    const x = await fetch('http://127.0.0.1:3001/api/webhook/fluent-forms', { method: 'GET', headers: { 'X-Real-IP': '203.0.113.9' } })
+    if (x.status === 429) limited++
+  }
+  check(limited > 0, 'too many webhook calls from one IP get 429 (E2E-15)', limited)
   const big = 'x'.repeat(1.5 * 1024 * 1024)
   r = await api('POST', '/api/admin/users', 'admin-token', { login_id: 'SW-0003', full_name: big, role: 'employee', password: 'Strong-Pass-2026' }).catch(e => ({ status: 'closed', body: String(e) }))
   check(r.status === 413 || r.status === 'closed', 'oversized request refused', r.status)

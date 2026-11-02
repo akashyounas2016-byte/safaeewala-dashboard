@@ -1,0 +1,30 @@
+name: Roll back the live site
+
+# E2E-25: GitHub → Actions → "Roll back the live site" → Run workflow.
+# Puts back a version kept by the deploy (the newest one by default) and checks that it answers.
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Release file name in /var/www/safaeewala/releases (empty = the newest)'
+        required: false
+        default: ''
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore and check
+        env:
+          SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          RELEASE: ${{ github.event.inputs.release }}
+        run: |
+          case "$RELEASE" in *[!A-Za-z0-9._-]*) echo "Invalid release name"; exit 1;; esac
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY_B64" | base64 -d > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          if [ -n "$VPS_KNOWN_HOSTS" ]; then echo "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts; OPTS="-o StrictHostKeyChecking=yes"; else ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null; OPTS="-o StrictHostKeyChecking=accept-new"; fi
+          ssh $OPTS "$VPS_USER@$VPS_HOST" "cd /var/www/safaeewala && ls -1t releases/*.tgz && f=\"${RELEASE:+releases/$RELEASE}\"; f=\${f:-\$(ls -1t releases/*.tgz | head -1)}; echo \"Restoring \$f\"; rm -rf dist && tar xzf \"\$f\" && docker compose up -d --build && for i in \$(seq 1 30); do curl -fsS http://localhost:8080/api/health >/dev/null && echo healthy && exit 0; sleep 4; done; exit 1"

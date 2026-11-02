@@ -4,17 +4,20 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write # E2E-25: a version tag is pushed for every live deploy
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      
+
       - name: Install
         run: npm install
 
@@ -28,11 +31,10 @@ jobs:
           VITE_SUPABASE_ANON_KEY: sb_publishable_dJSk7jhr01Da-rBfVlRF_w_D_sqc4Vh
         run: npm run build
 
-      - name: Deploy to VPS
+      - name: SSH setup
         env:
           SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
         run: |
           mkdir -p ~/.ssh
@@ -41,11 +43,40 @@ jobs:
           # TA-17: with the VPS_KNOWN_HOSTS secret the server's key is pinned; without it, trust on first use
           if [ -n "$VPS_KNOWN_HOSTS" ]; then
             echo "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
-            SSH_OPTS="-o StrictHostKeyChecking=yes"
+            echo "SSH_OPTS=-o StrictHostKeyChecking=yes" >> "$GITHUB_ENV"
           else
             echo "::warning::VPS_KNOWN_HOSTS secret is not set — the VPS host key is not pinned (TA-17)"
             ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-            SSH_OPTS="-o StrictHostKeyChecking=accept-new"
+            echo "SSH_OPTS=-o StrictHostKeyChecking=accept-new" >> "$GITHUB_ENV"
           fi
+
+      # E2E-25: keep the running version so it can be restored (last 5 kept in /var/www/safaeewala/releases)
+      - name: Keep the current live version
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh $SSH_OPTS "$VPS_USER@$VPS_HOST" 'cd /var/www/safaeewala && mkdir -p releases && if [ -d dist ]; then tar czf "releases/$(date +%Y%m%d-%H%M%S).tgz" dist Dockerfile nginx.conf docker-compose.yml webhookServer.cjs entrypoint.sh && ls -1t releases/*.tgz | tail -n +6 | xargs -r rm -f; fi'
+
+      - name: Deploy to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh $SSH_OPTS "$VPS_USER@$VPS_HOST" 'rm -rf /var/www/safaeewala/dist'
           scp $SSH_OPTS -r dist/ Dockerfile nginx.conf docker-compose.yml webhookServer.cjs entrypoint.sh "$VPS_USER@$VPS_HOST:/var/www/safaeewala/"
           ssh $SSH_OPTS "$VPS_USER@$VPS_HOST" "cd /var/www/safaeewala && docker compose up -d --build && docker ps --filter name=safaeewala-booking-crm"
+
+      # E2E-25: the new version must answer; if not, the previous version is put back automatically
+      - name: Health check (rolls back on failure)
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh $SSH_OPTS "$VPS_USER@$VPS_HOST" 'for i in $(seq 1 30); do curl -fsS http://localhost:8080/api/health >/dev/null && curl -fsS http://localhost:8080/ >/dev/null && echo "healthy" && exit 0; sleep 4; done; echo "not healthy - restoring the previous version"; cd /var/www/safaeewala && last=$(ls -1t releases/*.tgz 2>/dev/null | head -1); if [ -n "$last" ]; then rm -rf dist && tar xzf "$last" && docker compose up -d --build; fi; exit 1'
+
+      - name: Tag the live version
+        run: |
+          tag="deploy-$(date -u +%Y%m%d-%H%M)-${GITHUB_SHA::7}"
+          git tag "$tag"
+          git push origin "$tag"

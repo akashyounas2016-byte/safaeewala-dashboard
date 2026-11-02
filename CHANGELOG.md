@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- chore(deploy): the live version is kept before each deploy (last 5), a health check (`/api/health`) puts the previous version back automatically when the new one does not answer, every deploy gets a git tag, and Actions → "Roll back the live site" restores a kept version (E2E-25)
+- fix(security): rate limit on the API (webhook / admin 120 per minute per IP) (E2E-15); xlsx 0.20.3 from the official SheetJS CDN, react-router 7.18.5, zod 4.6.7 — npm audit: 0 vulnerabilities (E2E-10, E2E-11). Run `npm install` in the main folder after merging.
 - feat(sync): live updates between users — changes to bookings, clients, staff, agencies, invoices, inventory, jobs and expenses appear on every open screen without a reload; shared settings (payment modes, materials, deleted drivers, sheet colours, monthly auto-sync) are cloud-synced and arrive live with a Refresh prompt; idle sign-out after 2 hours (R-SYNC-09, E2E-13/17/18; migration `2026-11-02_realtime.sql`)
 - chore(agencies): commission removed everywhere — agencies work on a fixed-price contract (R-PAY-03, DEC-016; migration `2026-11-02_remove_agency_commission.sql`); OT pay planned on the Salaries screen (R-PAY-04); old Phase 2 migration can no longer reopen `app_state` to anonymous users (E2E-12)
 - fix(bookings): Mark as Completed no longer records the full amount as received, saves the status on the record so every device sees it, and the card moves to Completed at once; monthly visits keep their contract day (migration `2026-11-02_bookings_recurrence_day.sql`); new Bookings rules R-BK-01…03 (E2E-20, E2E-21, E2E-22)
