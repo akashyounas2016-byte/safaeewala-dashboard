@@ -17,6 +17,7 @@ import { formatDate, formatCurrency, daysUntil, isParentCompanyEmployee } from '
 import { getEmployeeDailyJobsHistory, employeeMatchesStaff, jobChargeShare, shiftSalaryCost, formatMonthlySalary } from '@/lib/clientDataSync'
 import { generateCertificateDataUrl } from '@/lib/agencyCertificates'
 import { todayDubai } from '@/lib/dubaiTime'
+import { docSrc, docKind, useDocUrls } from '@/lib/docStorage'
 
 // ── Pure Image / Document Upload Field for Agencies (matching EmployeeDocInput style) ──
 function AgencyDocUploadField({
@@ -36,6 +37,7 @@ function AgencyDocUploadField({
   onRemove: (docId: string) => void
   onPreview: (doc: AgencyDocument) => void
 }) {
+  useDocUrls() // E2E-08: re-render when a document's signed link is ready
   const reactId = useId()
   const catDocs = documents.filter(d => d.category === category)
   const doc = catDocs[catDocs.length - 1]
@@ -71,9 +73,9 @@ function AgencyDocUploadField({
       {doc ? (
         <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
           <div className="flex items-center gap-2 min-w-0">
-            {doc.file_data?.startsWith('data:image/') ? (
+            {docKind(doc) === 'image' ? (
               <img
-                src={doc.file_data}
+                src={docSrc(doc.file_data)}
                 alt={doc.name}
                 className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
               />
@@ -136,6 +138,7 @@ interface AgencyDashboardProps {
 }
 
 export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboardProps) {
+  useDocUrls() // E2E-08: re-render when a document's signed link is ready
   const { agencies, employees, dailyJobs, updateAgency, updateEmployee, addEmployee } = useData()
   const navigate = useNavigate()
 
@@ -1710,7 +1713,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
 
                           {doc.file_data && (
                             <a
-                              href={doc.file_data}
+                              href={docSrc(doc.file_data)}
                               download={doc.name}
                               className="px-2.5 py-1 rounded-lg text-[11.5px] font-bold text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors flex items-center gap-1 cursor-pointer"
                               title="Download file"
@@ -1906,7 +1909,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                         </button>
                         {doc.file_data ? (
                           <a
-                            href={doc.file_data}
+                            href={docSrc(doc.file_data)}
                             download={doc.name}
                             className="p-1.5 rounded-xl text-slate-500 hover:text-teal-700 hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-colors cursor-pointer"
                             title="Download File"
@@ -3430,7 +3433,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
             <div className="flex items-center gap-2">
               {previewDoc.file_data && (
                 <a
-                  href={previewDoc.file_data}
+                  href={docSrc(previewDoc.file_data)}
                   download={previewDoc.name}
                   className="inline-flex items-center gap-1.5 h-8 px-3 text-[11.5px] font-bold bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-xs transition-colors"
                 >
@@ -3473,15 +3476,15 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
             {/* Document Render Area */}
             <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-900/5 min-h-[360px] flex items-center justify-center p-2">
               {previewDoc.file_data ? (
-                previewDoc.file_type?.includes('image') || previewDoc.file_data.startsWith('data:image/') ? (
+                previewDoc.file_type?.includes('image') || docKind(previewDoc) === 'image' ? (
                   <img
-                    src={previewDoc.file_data}
+                    src={docSrc(previewDoc.file_data)}
                     alt={previewDoc.name}
                     className="max-h-[600px] w-auto max-w-full rounded-xl object-contain shadow-sm bg-white"
                   />
-                ) : previewDoc.file_type?.includes('pdf') || previewDoc.file_data.startsWith('data:application/pdf') ? (
+                ) : previewDoc.file_type?.includes('pdf') || docKind(previewDoc) === 'pdf' ? (
                   <iframe
-                    src={previewDoc.file_data}
+                    src={docSrc(previewDoc.file_data)}
                     title={previewDoc.name}
                     className="w-full h-[600px] rounded-xl border-0 bg-white"
                   />
@@ -3491,7 +3494,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                     <p className="font-bold text-slate-800 text-[14px]">{previewDoc.name}</p>
                     <p className="text-[12px] text-slate-500 mt-1">This file type can be downloaded directly.</p>
                     <a
-                      href={previewDoc.file_data}
+                      href={docSrc(previewDoc.file_data)}
                       download={previewDoc.name}
                       className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-teal-600 text-white rounded-xl font-bold text-[12px] hover:bg-teal-700 shadow-sm"
                     >

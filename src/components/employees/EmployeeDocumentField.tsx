@@ -6,6 +6,7 @@ import {
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import type { EmployeeDocument } from '@/types'
+import { docSrc, docKind, useDocUrls } from '@/lib/docStorage'
 
 export interface DocumentSectionProps {
   category?: EmployeeDocument['category']
@@ -31,6 +32,7 @@ export function EmployeeDocumentSection({
   children,
   description,
 }: DocumentSectionProps) {
+  useDocUrls() // E2E-08: re-render when a document's signed link is ready
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -110,7 +112,7 @@ export function EmployeeDocumentSection({
             </button>
             {doc.file_data && (
               <a
-                href={doc.file_data}
+                href={docSrc(doc.file_data)}
                 download={doc.name}
                 className="p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
                 title="Download Document"
@@ -150,6 +152,7 @@ export function EmployeeDocumentPreviewModal({
   doc: EmployeeDocument | null
   onClose: () => void
 }) {
+  useDocUrls() // E2E-08: re-render when a document's signed link is ready
   if (!doc) return null
 
   return (
@@ -162,7 +165,7 @@ export function EmployeeDocumentPreviewModal({
         <div className="flex items-center gap-2">
           {doc.file_data && (
             <a
-              href={doc.file_data}
+              href={docSrc(doc.file_data)}
               download={doc.name}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold shadow-xs transition-colors cursor-pointer"
             >
@@ -183,15 +186,15 @@ export function EmployeeDocumentPreviewModal({
       }
     >
       <div className="flex flex-col items-center justify-center p-3 bg-slate-50 rounded-2xl min-h-[300px]">
-        {doc.file_data?.startsWith('data:image/') ? (
+        {docKind(doc) === 'image' ? (
           <img
-            src={doc.file_data}
+            src={docSrc(doc.file_data)}
             alt={doc.name}
             className="max-h-[500px] max-w-full rounded-xl object-contain border border-slate-200 shadow-sm"
           />
-        ) : doc.file_data?.startsWith('data:application/pdf') ? (
+        ) : docKind(doc) === 'pdf' ? (
           <iframe
-            src={doc.file_data}
+            src={docSrc(doc.file_data)}
             title={doc.name}
             className="w-full h-[520px] rounded-xl border border-slate-200"
           />
@@ -207,7 +210,7 @@ export function EmployeeDocumentPreviewModal({
             </p>
             {doc.file_data && (
               <a
-                href={doc.file_data}
+                href={docSrc(doc.file_data)}
                 download={doc.name}
                 className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-[12.5px] shadow-sm cursor-pointer"
               >
@@ -241,6 +244,7 @@ export function EmployeeDocInput({
   onPreview: (doc: EmployeeDocument) => void
   accentColor?: 'sky' | 'purple' | 'amber' | 'emerald' | 'blue' | 'indigo' | 'teal'
 }) {
+  useDocUrls() // E2E-08: re-render when a document's signed link is ready
   const inputId = useId()
   const uploadInputId = `emp-upload-${name}-${inputId.replace(/:/g, '')}`
 
@@ -296,9 +300,9 @@ export function EmployeeDocInput({
       {doc ? (
         <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white border border-slate-200/90 shadow-2xs">
           <div className="flex items-center gap-2 min-w-0">
-            {doc.file_data?.startsWith('data:image/') ? (
+            {docKind(doc) === 'image' ? (
               <img
-                src={doc.file_data}
+                src={docSrc(doc.file_data)}
                 alt={doc.name}
                 className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
               />

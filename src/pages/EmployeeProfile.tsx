@@ -20,6 +20,7 @@ import {
 } from '@/lib/clientDataSync'
 import { calcEmployeeHealth, type EmployeeHealth } from '@/lib/employeeHealth'
 import { EmployeeFormModal } from '@/components/employees/EmployeeFormModal'
+import { docSrc, docKind, useDocUrls } from '@/lib/docStorage'
 
 /* ─── Avatar palette ─── */
 const avatarColors = [
@@ -112,6 +113,7 @@ function ExpiryCard({ date, label }: { date: string | undefined | null; label: s
 }
 
 export function EmployeeProfile() {
+  useDocUrls() // E2E-08: re-render when a document's signed link is ready
   const { id } = useParams<{ id: string }>()
   const { employees, dailyJobs, updateEmployee, agencies, clients } = useData()
 
@@ -989,7 +991,7 @@ export function EmployeeProfile() {
                             <Eye size={15} />
                           </button>
                           <a
-                            href={doc.file_data}
+                            href={docSrc(doc.file_data)}
                             download={doc.name}
                             className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-200 cursor-pointer"
                             title="Download Document"

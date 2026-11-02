@@ -389,6 +389,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ---
 
+### R-SEC-04 — Identity documents are private
+- **Rule:** Emirates ID, passport, visa, licence and other staff / agency documents are stored in the private Storage bucket `staff-documents`. Only admin and manager can upload, open or delete them (signed links valid for 1 hour). The employee / agency row keeps only a reference (`storage:<path>`). Files still inside old rows are moved on the next admin / manager login.
+- **Code:** `src/lib/docStorage.ts`, `DataContext → docsToStorage`. Migration `2026-11-02_staff_documents_storage.sql`.
+- **Status:** Active · Since: 2026-11-02 (E2E-08)
+
 ## OPS — Operating process
 
 ### R-OPS-01 — No browser automation without permission

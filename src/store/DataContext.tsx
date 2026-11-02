@@ -13,6 +13,8 @@ import { jobFromBooking, jobPatchFromBookingPatch, bookingPatchFromJobPatch, nex
 import { describeJobChange } from '@/lib/auditLog'
 import { recalculateAllRowsOT } from '@/components/dailyJobSheet/jobSheetUtils'
 import { subscribeTables, applyRowChange } from '@/lib/realtime'
+import { uploadInlineDocs, isInlineDoc } from '@/lib/docStorage'
+import { useAuth } from '@/store/UserContext'
 import { saveDeletionSnapshot } from '@/lib/snapshots'
 export { defaultAgencies }
 
@@ -314,6 +316,54 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // Retry unsaved changes now, on reconnect and every minute
     return startOutboxRetry()
   }, [])
+
+  // E2E-08 / R-SEC-04: identity documents go to private Storage; the row keeps only "storage:<path>".
+  // The swap only replaces a document that is still exactly the uploaded one (an edit meanwhile wins).
+  const EMP_FILE_FIELDS = ['eid_file', 'passport_file', 'visa_file', 'work_permit_file', 'driving_license_file', 'medical_insurance_file', 'noc_file'] as const
+  const docsToStorage = (kind: 'employees' | 'agencies', id: string, rec?: object) => {
+    if (!rec) return
+    const r = rec as { documents?: { id?: string; file_data?: string }[] } & Record<string, unknown>
+    // Employees also carry a copy of each file in eid_file, passport_file, … — those move too
+    const fieldDocs = kind === 'employees' ? EMP_FILE_FIELDS.map(k => ({ id: '__' + k, name: k, file_data: typeof r[k] === 'string' ? r[k] as string : undefined })) : []
+    const docs = [...(r.documents || []), ...fieldDocs]
+    if (!docs.some(d => isInlineDoc(d?.file_data))) return
+    void uploadInlineDocs(`${kind}/${id}`, docs).then(done => {
+      if (done.size === 0) return
+      const swap = <D extends { id?: string; file_data?: string }>(list?: D[]) =>
+        (list || []).map(d => { const u = d.id ? done.get(d.id) : undefined; return u && d.file_data === u.from ? { ...d, file_data: u.to } : d })
+      if (kind === 'employees') {
+        setEmployees(p => p.map(e => {
+          if (e.id !== id) return e
+          const fields: Record<string, string> = {}
+          EMP_FILE_FIELDS.forEach(k => { const u = done.get('__' + k); if (u && (e as unknown as Record<string, unknown>)[k] === u.from) fields[k] = u.to })
+          const documents = swap(e.documents)
+          dbUpdate('employees', id, { documents, ...fields })
+          return { ...e, documents, ...fields }
+        }))
+      } else {
+        setAgencies(p => {
+          const next = p.map(a => {
+            if (a.id !== id) return a
+            const documents = swap(a.documents)
+            dbUpdate('agencies', id, { documents })
+            fetch('/api/agencies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch: { documents } }) }).catch(() => {})
+            return { ...a, documents }
+          })
+          safeLocalStorageSet('safaeewala_agencies', next)
+          return next
+        })
+      }
+    })
+  }
+  // Old rows that still hold the files: moved once per session by an admin / manager (only they may upload)
+  const { user: authUser } = useAuth()
+  const docsMovedRef = useRef(false)
+  useEffect(() => {
+    if (loading || docsMovedRef.current || (authUser?.role !== 'admin' && authUser?.role !== 'manager')) return
+    docsMovedRef.current = true
+    employees.forEach(e => docsToStorage('employees', e.id, e))
+    agencies.forEach(a => docsToStorage('agencies', a.id, a))
+  }, [loading, authUser?.role]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // E2E-17 / R-SYNC-09: other users' changes arrive live — no reload needed
   useEffect(() => {
@@ -629,6 +679,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const row = { ...e, id: uid(), created_at: now() }
       setEmployees(p => [row, ...p])
       dbInsert('employees', row)
+      docsToStorage('employees', row.id, row)
       logAudit('created', 'employee', row.id, e.full_name, e.role)
     },
     updateEmployee: (id, patch) => {
@@ -646,6 +697,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return p
       })
       dbUpdate('employees', id, patch)
+      docsToStorage('employees', id, patch)
     },
     deleteEmployee: (id) => {
       const e = allEmployees.find(e => e.id === id)
@@ -670,6 +722,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return next
       })
       dbInsert('agencies', row)
+      docsToStorage('agencies', row.id, row)
       logAudit('created', 'agency', row.id, a.name)
     },
     updateAgency: (id, patch) => {
@@ -684,6 +737,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return next
       })
       dbUpdate('agencies', id, patch)
+      docsToStorage('agencies', id, patch)
       // Renaming an agency keeps staff that were linked by name (AUD-13)
       const before = agencies.find(a => a.id === id)
       if (before && patch.name && patch.name.trim() !== before.name.trim() && id !== 'agency-safaeewala') {

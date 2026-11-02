@@ -18,6 +18,7 @@ import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { cleanClientNameFromAddress, employeeMatchesStaff, splitStaffNames, isBogusJob } from '@/lib/clientDataSync'
 import { buildAgencyNotifications } from '@/lib/agencyAlerts'
 import { todayDubai } from '@/lib/dubaiTime'
+import { docSrc, docKind, useDocUrls } from '@/lib/docStorage'
 
 // ── Curated Distinct Light Color Themes for Agency Widgets ──
 const LIGHT_AGENCY_CARD_THEMES = [
@@ -261,6 +262,7 @@ function AgencyDocUploadField({
   onRemove: (docId: string) => void
   onPreview: (doc: AgencyDocument) => void
 }) {
+  useDocUrls() // E2E-08: re-render when a document's signed link is ready
   const catDocs = documents.filter(d => d.category === category)
   const doc = catDocs[catDocs.length - 1]
   const uploadInputId = useId()
@@ -295,9 +297,9 @@ function AgencyDocUploadField({
       {doc ? (
         <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
           <div className="flex items-center gap-2 min-w-0">
-            {doc.file_data?.startsWith('data:image/') ? (
+            {docKind(doc) === 'image' ? (
               <img
-                src={doc.file_data}
+                src={docSrc(doc.file_data)}
                 alt={doc.name}
                 className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
               />
@@ -355,6 +357,7 @@ function AgencyDocUploadField({
 }
 
 export function Agencies() {
+  useDocUrls() // E2E-08: re-render when a document's signed link is ready
   const navigate = useNavigate()
   const { agencies, addAgency, updateAgency, deleteAgency, employees, dailyJobs, bookings } = useData()
 
@@ -2531,7 +2534,7 @@ export function Agencies() {
             <div className="flex items-center gap-2">
               {previewDoc.file_data && (
                 <a
-                  href={previewDoc.file_data}
+                  href={docSrc(previewDoc.file_data)}
                   download={previewDoc.name}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-[12px] font-bold shadow-xs transition-colors cursor-pointer"
                 >
@@ -2552,15 +2555,15 @@ export function Agencies() {
           }
         >
           <div className="flex flex-col items-center justify-center p-3 bg-slate-50 rounded-2xl min-h-[300px]">
-            {previewDoc.file_data?.startsWith('data:image/') ? (
+            {docKind(previewDoc) === 'image' ? (
               <img
-                src={previewDoc.file_data}
+                src={docSrc(previewDoc.file_data)}
                 alt={previewDoc.name}
                 className="max-h-[500px] max-w-full rounded-xl object-contain border border-slate-200 shadow-sm"
               />
-            ) : previewDoc.file_data?.startsWith('data:application/pdf') ? (
+            ) : docKind(previewDoc) === 'pdf' ? (
               <iframe
-                src={previewDoc.file_data}
+                src={docSrc(previewDoc.file_data)}
                 title={previewDoc.name}
                 className="w-full h-[520px] rounded-xl border border-slate-200"
               />
@@ -2576,7 +2579,7 @@ export function Agencies() {
                 </p>
                 {previewDoc.file_data && (
                   <a
-                    href={previewDoc.file_data}
+                    href={docSrc(previewDoc.file_data)}
                     download={previewDoc.name}
                     className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-[12.5px] shadow-sm cursor-pointer"
                   >
