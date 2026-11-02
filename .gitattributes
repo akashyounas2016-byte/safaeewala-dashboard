@@ -1,0 +1,3 @@
+# E2E-06: shell hooks must keep LF line endings on Windows
+.githooks/* text eol=lf
+*.sh text eol=lf

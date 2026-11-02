@@ -1,5 +1,7 @@
 #!/bin/sh
-# E2E-06: no commit with lint errors or type errors (tests run in CI and with `npm run check`).
-# Skipped automatically when node_modules is missing. Bypass only in an emergency: git commit --no-verify
+# E2E-06: lint the staged TypeScript files before each commit (about 30 s). Type errors and tests are
+# checked by `npm run check` and by CI, which blocks the deploy. Emergency bypass: git commit --no-verify
 [ -d node_modules ] || exit 0
-npm run --silent lint:ci && npm run --silent typecheck || { echo; echo "Commit stopped: fix the lint / type errors above."; exit 1; }
+files=$(git diff --cached --name-only --diff-filter=ACMR | grep -E "\.(ts|tsx)$")
+[ -z "$files" ] && exit 0
+npx eslint --quiet $files || { echo; echo "Commit stopped: fix the lint errors above."; exit 1; }

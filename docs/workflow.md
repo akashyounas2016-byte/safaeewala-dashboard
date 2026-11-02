@@ -62,5 +62,5 @@ Only when the owner says so.
 - To go back by hand: GitHub → Actions → **Roll back the live site** → Run workflow (empty = newest kept version).
 
 ## Pre-commit check (E2E-06)
-- `.githooks/pre-commit` runs `lint:ci` and `typecheck` before every commit; a commit with errors is stopped. Turned on with `git config core.hooksPath .githooks` (already set for this repo and its worktrees; a fresh clone runs it once).
+- `.githooks/pre-commit` lints the staged TypeScript files before every commit (about 30 s); a commit with lint errors is stopped. Type errors and tests are caught by `npm run check` and by CI (deploy blocked). Turned on with `git config core.hooksPath .githooks` (already set for this repo and its worktrees; a fresh clone runs it once).
 - Full tests still run with `npm run check` and in CI.
