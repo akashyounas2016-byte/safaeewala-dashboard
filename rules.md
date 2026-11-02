@@ -313,8 +313,18 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ### R-PAY-02 — Salary vs advance payouts
 - **Rule:** Payouts have `payment_type` `salary` or `advance` and `status` `paid` / `pending` / `processing`. "Salary paid" counts only `paid` non-advance payouts.
-- **Code:** `AgencyDashboard.tsx → financials`; type `AgencyCommissionPayout`.
+- **Code:** `AgencyDashboard.tsx → financials`; type `AgencySalaryPayout`.
 - **Status:** Active
+
+---
+
+### R-PAY-03 — Agencies: fixed-price contracts, no commission
+- **Rule:** An agency works on a fixed-price contract. There is no commission rate, type or amount anywhere in the CRM.
+- **Status:** Active · Since: 2026-11-02 (DEC-016, E2E-30). Migration `2026-11-02_remove_agency_commission.sql`.
+
+### R-PAY-04 — Overtime pay (planned)
+- **Rule:** OT pay will be set and shown on the **Salaries** screen (OT hours from R-OT-01 × an OT rate). Not built yet — until then no screen pays or costs OT.
+- **Status:** Planned (DEC-016, E2E-24)
 
 ---
 

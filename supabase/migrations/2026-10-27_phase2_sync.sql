@@ -18,12 +18,11 @@ create table if not exists public.app_state (
 
 alter table public.app_state enable row level security;
 
--- The dashboard talks to Supabase with the public anon key (same as the other tables),
--- so the anon role needs read/write here. Tighten this when real Supabase Auth is added.
+-- Superseded by 2026-10-30_initial_schema_and_auth.sql: only signed-in, active users (E2E-12).
 do $$
 begin
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'app_state' and policyname = 'app_state_rw') then
-    create policy app_state_rw on public.app_state for all to anon, authenticated using (true) with check (true);
+    create policy app_state_rw on public.app_state for all to authenticated using (true) with check (true); -- never anon; 2026-10-30 narrows it to active users
   end if;
 end $$;
 
@@ -91,9 +90,6 @@ alter table public.agencies add column if not exists contact_persons jsonb;
 alter table public.agencies add column if not exists phone text;
 alter table public.agencies add column if not exists email text;
 alter table public.agencies add column if not exists address text;
-alter table public.agencies add column if not exists commission_rate numeric;
-alter table public.agencies add column if not exists commission_type text;
-alter table public.agencies add column if not exists fixed_commission_amount numeric;
 alter table public.agencies add column if not exists payment_terms text;
 alter table public.agencies add column if not exists termination_notice text;
 alter table public.agencies add column if not exists notes text;

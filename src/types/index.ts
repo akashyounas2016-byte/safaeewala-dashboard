@@ -93,7 +93,8 @@ export interface EmployeeDocument {
   notes?: string
 }
 
-export interface AgencyCommissionPayout {
+/** A salary or advance paid to an agency's staff (agencies work on a fixed-price contract, no commission — DEC-016) */
+export interface AgencySalaryPayout {
   id: string
   agency_id: string
   amount: number
@@ -110,7 +111,6 @@ export interface AgencyCommissionPayout {
   created_at: string
 }
 
-export type AgencySalaryPayout = AgencyCommissionPayout
 
 export interface AgencyContactPerson {
   id: string
@@ -152,9 +152,6 @@ export interface Agency {
   phone: string
   email?: string
   address?: string
-  commission_rate?: number
-  commission_type?: 'percentage' | 'fixed_hourly' | 'fixed_monthly'
-  fixed_commission_amount?: number
   payment_terms?: string
   termination_notice?: string
   notes?: string
@@ -192,7 +189,7 @@ export interface Agency {
     iban?: string
     account_title?: string
   }
-  payouts?: AgencyCommissionPayout[]
+  payouts?: AgencySalaryPayout[]
 }
 
 export interface Employee {

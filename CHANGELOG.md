@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- chore(agencies): commission removed everywhere — agencies work on a fixed-price contract (R-PAY-03, DEC-016; migration `2026-11-02_remove_agency_commission.sql`); OT pay planned on the Salaries screen (R-PAY-04); old Phase 2 migration can no longer reopen `app_state` to anonymous users (E2E-12)
 - fix(bookings): Mark as Completed no longer records the full amount as received, saves the status on the record so every device sees it, and the card moves to Completed at once; monthly visits keep their contract day (migration `2026-11-02_bookings_recurrence_day.sql`); new Bookings rules R-BK-01…03 (E2E-20, E2E-21, E2E-22)
 - feat(bookings): booking cards redesigned after the Daily Job Sheet — cleaner colour and avatars, shift strip, Charges / Received / Pending (UX-63)
 - docs(audit): end-to-end technical & functional audit — E2E-01…30: Mark as Completed records full payment (E2E-20), database readable by every role (E2E-07), ID documents in table rows (E2E-08), no deploy rollback (E2E-25), vulnerable xlsx (E2E-10); action plan

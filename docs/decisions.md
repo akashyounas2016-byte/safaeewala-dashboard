@@ -12,6 +12,11 @@
 > - Affects:  rule IDs, files
 > ```
 
+## DEC-016 — Agencies: fixed price, no commission · OT pay on the Salaries screen (2026-11-02)
+- **Context:** Audit E2E-30 (commission fields never used) and E2E-24 (OT never paid).
+- **Decision (owner):** "agency me commission ka koi scene nahi … fix price pr contract hota he" — commission removed everywhere. "OT ka option salaries wali screen pr aye ga" — OT pay belongs to the Salaries screen, to be built later.
+- **Affects:** R-PAY-03, R-PAY-04, `Agency` type, migration `2026-11-02_remove_agency_commission.sql`.
+
 ## DEC-015 — Overtime is always automatic (2026-11-02)
 - **Context:** A number in an imported file's OT column, or any OT on a saved shift, set `is_overtime`, and that flag made the whole shift OT (a 3h shift showed 3h OT).
 - **Decision (owner):** OT is counted only by the rules of R-OT-01. No typing, no import value, no flag. Supersedes the "flag has highest priority" part of DEC-013.

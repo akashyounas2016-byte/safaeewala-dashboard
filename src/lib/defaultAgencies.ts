@@ -13,8 +13,6 @@ export const defaultAgencies: Agency[] = [
     phone: '+971 4 800 7232',
     email: 'info@safaeewala.com',
     address: 'Al Barsha 1, Sheikh Zayed Road, Dubai, UAE',
-    commission_rate: 0,
-    commission_type: 'percentage',
     payment_terms: 'Internal Corporate / Parent HQ',
     termination_notice: 'Not Applicable (Parent Company)',
     notes: 'Parent Company Headquarters & Corporate Master Fleet for Safaeewala Group',
