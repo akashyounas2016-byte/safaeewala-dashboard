@@ -26,6 +26,15 @@ import type { Booking, BookingFrequency, BookingStatus, Employee, Client, DailyJ
 import { SourceOriginTag, resolveBookingSource } from '@/lib/sourceTracking'
 import { cleanClientNameFromAddress, isBogusJob, isMonthlyClient, crewToStaffName, staffNameToCrew, syncMonthlySchedulesToDailyJobs, getScheduledMonthlyShiftsForDate } from '@/lib/clientDataSync'
 import { todayDubai } from '@/lib/dubaiTime'
+import { STAFF_COLOR_PALETTES } from '@/components/dailyJobSheet/jobSheetUtils'
+
+/** UX-63: a cleaner keeps the same colour on every booking card (same palettes as the Daily Job Sheet) */
+function cleanerPalette(name: string) {
+  let h = 0
+  for (const ch of name.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return STAFF_COLOR_PALETTES[h % STAFF_COLOR_PALETTES.length]
+}
+const cleanerInitials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]?.toUpperCase()).join('') || '?'
 
 export type BookingDatePreset = 'today' | '7days' | '30days' | '3months' | '6months' | '1year' | 'all' | 'custom'
 export type BookingViewMode = 'grid' | 'table' | 'kanban' | 'calendar'
@@ -324,24 +333,40 @@ export function Bookings() {
   const [editingBookingForModal, setEditingBookingForModal] = useState<Booking | null>(null)
   const [invoiceBooking, setInvoiceBooking] = useState<Booking | null>(null)
   const [paymentBooking, setPaymentBooking] = useState<Booking | null>(null)
-  const [completedOverrideIds, setCompletedOverrideIds] = useState<string[]>(() => {
-    return safeLocalStorageGet<string[]>('safaeewala_completed_booking_ids', [])
-  })
-
+  // E2E-20/21 (R-BK-01): "Mark as Completed" stores the status on the booking / job row — every device sees it —
+  // and never records money: payment goes through Record Payment.
   const handleToggleMarkAsCompleted = (b: Booking) => {
-    const next = Array.from(new Set([...completedOverrideIds, b.id]))
-    setCompletedOverrideIds(next)
-    safeLocalStorageSet('safaeewala_completed_booking_ids', next)
-
     if (b.id.startsWith('dj-')) {
-      updateDailyJob(b.id.replace('dj-', ''), { status: 'completed', received: Number(b.total_amount) || 0 })
+      updateDailyJob(b.id.replace('dj-', ''), { status: 'completed' })
     } else if (b.id.startsWith('monthly-sync-')) {
-      handleSyncDailyJobSheet()
+      // The visit has no job row yet: create today's rows, this client's one already completed
+      const key = (v: string) => (v || '').toLowerCase().trim()
+      syncMonthlySchedulesToDailyJobs(todayDubai(), clients, dailyJobs, job => {
+        const mine = key(job.address) === key(b.service_address) || key(cleanClientNameFromAddress(job.address || '')) === key(b.client_name)
+        addDailyJob(mine ? { ...job, status: 'completed' } : job)
+      })
     } else {
       updateBooking(b.id, { status: 'completed' as BookingStatus })
     }
     notify.success(`Booking for ${b.client_name} marked as Completed`)
   }
+
+  // The old browser-only "completed" list (before R-BK-01): write those statuses to the records once, then drop it
+  useEffect(() => {
+    if (loading) return
+    const old = safeLocalStorageGet<string[]>('safaeewala_completed_booking_ids', [])
+    if (old.length === 0) return
+    old.forEach(id => {
+      if (id.startsWith('dj-')) {
+        const job = dailyJobs.find(j => j.id === id.slice(3))
+        if (job && job.status !== 'completed') updateDailyJob(job.id, { status: 'completed' })
+      } else if (!id.startsWith('monthly-sync-')) {
+        const bk = bookings.find(x => x.id === id)
+        if (bk && bk.status !== 'completed' && bk.status !== 'cancelled') updateBooking(bk.id, { status: 'completed' as BookingStatus })
+      }
+    })
+    try { localStorage.removeItem('safaeewala_completed_booking_ids') } catch { /* ignore */ }
+  }, [loading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUpdateBookingFromModal = (id: string, patch: Partial<Booking>) => {
     if (id.startsWith('dj-')) {
@@ -492,7 +517,7 @@ export function Bookings() {
 
       const nowStr = todayDubai()
       let status: BookingStatus = 'confirmed'
-      if (j.received > 0) {
+      if (j.status === 'completed' || j.received > 0) {
         status = 'completed'
       } else if (j.date === nowStr && j.staff_name && j.staff_name !== 'Unassigned') {
         status = 'in_progress'
@@ -1547,169 +1572,145 @@ export function Bookings() {
               const isMonthly = b.frequency === 'monthly' || b.frequency === 'weekly' || b.frequency === 'biweekly' || (b.frequency as string) === 'bi-weekly' || (matchedClient && isMonthlyClient(matchedClient, dailyJobs))
               const clientPhone = b.client_phone || matchedClient?.phone || matchedClient?.whatsapp || ''
               const theme = getCardStatusTheme(b.status)
+              // UX-63: card styled like a Daily Job Sheet row — cleaner colour, avatar, shift strip, money strip
+              const lead = assignedNames[0] || ''
+              const palette = lead ? cleanerPalette(lead) : null
+              const done = normalizeBookingStatus(b.status) === 'completed'
+              const received = Number(b.received_amount) || 0
+              const pending = Math.max(0, Number(b.pending_due ?? (b.total_amount - received)) || 0)
 
               return (
                 <div
                   key={b.id}
                   onClick={() => setSelectedBooking(b)}
-                  className={`${theme.cardClass} rounded-[22px] border p-5 transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden`}
+                  className={`${theme.cardClass} ${palette ? palette.borderLeft : 'border-l-[5px] border-l-amber-400'} ${done ? 'opacity-90' : ''} rounded-2xl border p-4 transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden min-h-[248px]`}
                 >
-                  {/* Status Indicator Bar at Top */}
-                  <div className={`absolute top-0 left-0 right-0 h-1.5 ${
-                    b.status === 'in_progress' ? 'bg-gradient-to-r from-cyan-500 to-teal-500' :
-                    b.status === 'confirmed' ? 'bg-gradient-to-r from-emerald-500 to-teal-500' :
-                    b.status === 'pending' ? 'bg-gradient-to-r from-amber-400 to-orange-400' :
-                    b.status === 'completed' ? 'bg-slate-400' : 'bg-rose-400'
-                  }`} />
-
                   <div>
-                    {/* Header: Client & Status & Charges */}
-                    <div className="flex items-start justify-between gap-2.5 mb-3">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <Initials name={b.client_name} idx={idx} />
-                        <div className="min-w-0">
-                          <h4 className="text-[14px] font-bold text-slate-900 group-hover:text-teal-700 transition-colors truncate" title={b.client_name}>
-                            {b.client_name}
-                          </h4>
-                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                            {isMonthly && (
-                              <span className="text-[9.5px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                Monthly
-                              </span>
-                            )}
-                            <SourceOriginTag source={resolveBookingSource(b)} />
-                            {b.is_sheet_synced ? (
-                              <span className="text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1" title="Synchronized on Daily Job Sheet">
-                                <Check size={10} className="text-emerald-600" />
-                                <span>Sheet Linked</span>
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  pushBookingToDailyJob(b.id)
-                                  notify.success(`Booking #${b.id.slice(0, 6)} pushed to Daily Job Sheet!`)
-                                }}
-                                className="text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 transition-colors cursor-pointer flex items-center gap-1"
-                                title="Click to push this shift to Daily Job Sheet"
+                    {/* Row 1 — cleaners (as on the Daily Job Sheet) and status */}
+                    <div className="flex items-start justify-between gap-2 mb-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {assignedNames.length > 0 ? (
+                          <div className="flex -space-x-2 shrink-0">
+                            {assignedNames.slice(0, 3).map((name, i) => (
+                              <span
+                                key={i}
+                                title={name}
+                                className={`w-8 h-8 rounded-full ring-2 ring-white flex items-center justify-center text-[11px] font-black ${cleanerPalette(name).avatarBg}`}
                               >
-                                <Plus size={9} />
-                                <span>Push to Sheet</span>
-                              </button>
-                            )}
+                                {cleanerInitials(name)}
+                              </span>
+                            ))}
                           </div>
-                        </div>
-                      </div>
-
-                      {/* Upper Row Right: Charges & Status */}
-                      <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[16px] font-black text-slate-900 tabular-nums">
-                            {b.total_amount.toLocaleString()}
+                        ) : (
+                          <span className="w-8 h-8 rounded-full border-2 border-dashed border-amber-400 text-amber-600 flex items-center justify-center shrink-0">
+                            <User size={13} />
                           </span>
-                          <StatusPill status={completedOverrideIds.includes(b.id) ? 'completed' : b.status} />
-                        </div>
-                        {b.is_partially_paid ? (
-                          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">
-                            Paid: {b.received_amount} · Due: {b.pending_due}
-                          </span>
-                        ) : (b.status === 'completed' || completedOverrideIds.includes(b.id) || (b.received_amount && b.received_amount >= b.total_amount && b.total_amount > 0)) ? (
-                          <span className="text-[9.5px] font-bold text-emerald-700 flex items-center gap-0.5">
-                            <Check size={10} /> Fully Collected
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {/* Service & Time details box */}
-                    <div className={`${theme.boxClass} rounded-xl p-3 border space-y-2 mb-3`}>
-                      <div className="flex items-center justify-between text-[11.5px] font-semibold text-slate-700">
-                        <span className="text-teal-800 font-bold flex items-center gap-1.5">
-                          <Sparkles size={12} className="text-teal-600" />
-                          <span>{b.service_type}</span>
-                        </span>
-                        <span className="text-slate-500 text-[11px] capitalize bg-white px-2 py-0.5 rounded-md border border-teal-200/60 font-medium">
-                          {b.frequency}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-[11.5px] text-slate-600 pt-1 border-t border-teal-100/60">
-                        <div className="flex items-center gap-1.5">
-                          <CalendarIcon size={12} className="text-slate-400 shrink-0" />
-                          <span className="tabular-nums font-medium">{formatDate(b.scheduled_date)}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 justify-end">
-                          <Clock size={12} className="text-slate-400 shrink-0" />
-                          <span className="tabular-nums font-medium">
-                            {formatTime(`${b.scheduled_date}T${b.scheduled_time}`)}
-                            {b.duration_hours ? ` (${b.duration_hours}h)` : ''}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-1.5 text-[11.5px] text-slate-600 pt-1 border-t border-teal-100/60">
-                        <div className="flex items-center gap-1.5 truncate min-w-0">
-                          <MapPin size={12} className="text-slate-400 shrink-0" />
-                          <span className="truncate" title={b.service_address}>
-                            {b.service_address || 'Address not specified'}
-                          </span>
-                        </div>
-                        {clientPhone && (
-                          <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                            <a
-                              href={`tel:${clientPhone}`}
-                              className="p-1 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
-                              title={`Call ${clientPhone}`}
-                            >
-                              <Phone size={12} />
-                            </a>
-                            <a
-                              href={`https://wa.me/${clientPhone.replace(/[^\d+]/g, '').replace(/^\+/, '')}?text=Hello%20${encodeURIComponent(b.client_name)}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-1 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
-                              title="Chat on WhatsApp"
-                            >
-                              <MessageCircle size={12} />
-                            </a>
-                          </div>
                         )}
+                        <div className="min-w-0">
+                          <p className={`text-[12.5px] truncate ${palette ? palette.nameColor : 'font-bold text-amber-700'}`} title={assignedNames.join(', ')}>
+                            {assignedNames.length > 0 ? assignedNames.join(', ') : 'No cleaner assigned'}
+                          </p>
+                          <p className="text-[10.5px] text-slate-500 font-medium">
+                            {assignedNames.length > 1 ? `Team of ${assignedNames.length}` : assignedNames.length === 1 ? 'Solo job' : 'Assign a cleaner'}
+                          </p>
+                        </div>
                       </div>
+                      <StatusPill status={b.status} />
                     </div>
 
-                    {/* Assigned Crew Chips */}
-                    <div className="mb-3">
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <Users size={12} className="text-slate-400" />
-                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                          Assigned Cleaners ({assignedNames.length})
-                        </span>
-                      </div>
-                      {assignedNames.length > 0 ? (
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {assignedNames.map((name, i) => (
-                            <span
-                              key={i}
-                              className="inline-flex items-center gap-1 text-[11px] font-semibold bg-teal-50 text-teal-800 border border-teal-200/80 px-2 py-0.5 rounded-lg"
-                            >
-                              <User size={10} className="text-teal-600" />
-                              <span className="truncate max-w-[120px]">{name}</span>
-                            </span>
-                          ))}
+                    {/* Row 2 — client */}
+                    <div className="flex items-center gap-2 mb-1">
+                      <Initials name={b.client_name} idx={idx} />
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-[14px] font-bold text-slate-900 group-hover:text-teal-700 transition-colors truncate" title={b.client_name}>
+                          {b.client_name}
+                        </h4>
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500 min-w-0">
+                          <MapPin size={11} className="text-slate-400 shrink-0" />
+                          <span className="truncate" title={b.service_address}>{b.service_address || 'Address not specified'}</span>
                         </div>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-lg">
-                          <AlertCircle size={10} />
-                          <span>No cleaners assigned yet</span>
-                        </span>
+                      </div>
+                      {clientPhone && (
+                        <div className="flex items-center gap-0.5 shrink-0" onClick={e => e.stopPropagation()}>
+                          <a href={`tel:${clientPhone}`} className="p-1 rounded-lg text-slate-400 hover:text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer" title={`Call ${clientPhone}`}>
+                            <Phone size={12} />
+                          </a>
+                          <a
+                            href={`https://wa.me/${clientPhone.replace(/[^\d+]/g, '').replace(/^\+/, '')}?text=Hello%20${encodeURIComponent(b.client_name)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
+                            title="Chat on WhatsApp"
+                          >
+                            <MessageCircle size={12} />
+                          </a>
+                        </div>
                       )}
+                    </div>
+
+                    {/* Tags */}
+                    <div className="flex items-center gap-1.5 flex-wrap mb-2.5 pl-[42px]">
+                      {isMonthly && (
+                        <span className="text-[9.5px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">Monthly</span>
+                      )}
+                      <span className="text-[9.5px] font-bold capitalize px-2 py-0.5 rounded-full bg-white text-slate-600 border border-slate-200">{b.frequency}</span>
+                      <SourceOriginTag source={resolveBookingSource(b)} />
+                      {b.is_sheet_synced ? (
+                        <span className="text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1" title="Synchronized on Daily Job Sheet">
+                          <Check size={10} className="text-emerald-600" />
+                          <span>Sheet Linked</span>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            pushBookingToDailyJob(b.id)
+                            notify.success(`Booking #${b.id.slice(0, 6)} pushed to Daily Job Sheet!`)
+                          }}
+                          className="text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 transition-colors cursor-pointer flex items-center gap-1"
+                          title="Click to push this shift to Daily Job Sheet"
+                        >
+                          <Plus size={9} />
+                          <span>Push to Sheet</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Row 3 — shift strip: date · start → end · duty (Job Sheet columns) */}
+                    <div className={`${theme.boxClass} rounded-xl border px-3 py-2 mb-2 grid grid-cols-[1fr_auto_auto] items-center gap-2 text-[11.5px]`}>
+                      <span className="flex items-center gap-1.5 text-slate-700 font-semibold min-w-0">
+                        <CalendarIcon size={12} className="text-slate-400 shrink-0" />
+                        <span className="truncate tabular-nums">{formatDate(b.scheduled_date)}</span>
+                      </span>
+                      <span className="font-mono font-semibold text-slate-900 tabular-nums whitespace-nowrap">
+                        {formatTime(`${b.scheduled_date}T${b.scheduled_time}`)}{b.end_time ? ` → ${formatTime(`${b.scheduled_date}T${b.end_time}`)}` : ''}
+                      </span>
+                      <span className="font-bold text-slate-700 tabular-nums bg-white/80 border border-slate-200 rounded-md px-1.5">
+                        {b.duration_hours ? `${b.duration_hours}h` : '—'}
+                      </span>
+                    </div>
+
+                    {/* Row 4 — money strip (Charges · Received · Pending) */}
+                    <div className="grid grid-cols-3 gap-1.5 text-center mb-1">
+                      <div className="rounded-lg bg-white/80 border border-slate-200 py-1">
+                        <p className="text-[9.5px] font-bold uppercase tracking-wide text-slate-400">Charges</p>
+                        <p className="text-[13px] font-black text-slate-900 tabular-nums">AED {b.total_amount.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-lg bg-white/80 border border-slate-200 py-1">
+                        <p className="text-[9.5px] font-bold uppercase tracking-wide text-slate-400">Received</p>
+                        <p className="text-[13px] font-black font-mono text-emerald-700 tabular-nums">{received.toLocaleString()}</p>
+                      </div>
+                      <div className={`rounded-lg border py-1 ${pending > 0 ? 'bg-rose-50 border-rose-200' : 'bg-white/80 border-slate-200'}`}>
+                        <p className="text-[9.5px] font-bold uppercase tracking-wide text-slate-400">Pending</p>
+                        <p className={`text-[13px] font-black tabular-nums ${pending > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{pending > 0 ? pending.toLocaleString() : 'Nil'}</p>
+                      </div>
                     </div>
                   </div>
 
                   {/* Card Footer: ONLY 3 Buttons: Invoice, Payment, Mark as Completed */}
                   {(() => {
-                    const isCompleted = b.status === 'completed' || completedOverrideIds.includes(b.id)
+                    const isCompleted = normalizeBookingStatus(b.status) === 'completed'
                     return (
                       <div
                         className={`pt-2.5 border-t border-teal-100/70 mt-2 gap-1.5 ${

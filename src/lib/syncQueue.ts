@@ -82,7 +82,7 @@ const BOOKINGS_COLUMNS = new Set([
   'service_address', 'service_type', 'status', 'frequency', 'scheduled_date',
   'scheduled_time', 'end_time', 'duration_hours', 'material', 'assigned_crew',
   'notes', 'total_amount', 'source', 'is_sheet_synced', 'received_amount',
-  'pending_due', 'is_partially_paid', 'job_sheet_id'
+  'pending_due', 'is_partially_paid', 'job_sheet_id', 'recurrence_day'
 ])
 
 function sanitizeOutboxPayload(table: string, payload?: Record<string, unknown>): Record<string, unknown> | undefined {

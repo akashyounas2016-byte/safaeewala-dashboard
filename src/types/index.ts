@@ -38,6 +38,8 @@ export interface Booking {
   pending_due?: number
   is_partially_paid?: boolean
   job_sheet_id?: string
+  /** Monthly bookings: the day of the month the contract is on (1-31), so Jan 31 → Feb 28 → Mar 31 (R-BK-03) */
+  recurrence_day?: number
   row_color?: string
 }
 

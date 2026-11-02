@@ -99,14 +99,17 @@ export function bookingPatchFromJobPatch(
 export function nextOccurrence(b: Booking): Omit<Booking, 'id' | 'created_at'> | null {
   if (!b.scheduled_date || b.frequency === 'once') return null
   let date: string
+  let anchorDay: number | undefined
   if (b.frequency === 'weekly') date = addDays(b.scheduled_date, 7)
   else if (b.frequency === 'biweekly') date = addDays(b.scheduled_date, 14)
   else {
     const [y, m, d] = b.scheduled_date.split('-').map(Number)
-    const last = new Date(y, m + 1, 0).getDate() // keep the 31st as the month's last day
-    date = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`
+    // E2E-22 / R-BK-03: count from the contract's own day, not from the last visit (a 28th must not stick)
+    anchorDay = b.recurrence_day || d
+    const last = new Date(y, m + 1, 0).getDate() // days in next month
+    date = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-${String(Math.min(anchorDay, last)).padStart(2, '0')}`
   }
   const { id: _id, created_at: _c, received_amount: _r, pending_due: _p, is_partially_paid: _pp, is_sheet_synced: _s, job_sheet_id: _j, ...rest } = b
   void _id; void _c; void _r; void _p; void _pp; void _s; void _j
-  return { ...rest, scheduled_date: date, status: 'confirmed' }
+  return { ...rest, scheduled_date: date, status: 'confirmed', ...(anchorDay ? { recurrence_day: anchorDay } : {}) }
 }

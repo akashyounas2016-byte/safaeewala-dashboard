@@ -96,6 +96,25 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ---
 
+## BK — Bookings
+
+### R-BK-01 — Completing is not paying
+- **Rule:** "Mark as Completed" sets only the status to `completed` on the record — the booking, or the Daily Job Sheet row for a job-sheet card; for a monthly-schedule card today's job rows are created and this client's row is completed. It never writes a received amount: money is recorded with Record Payment. A completed card moves from Live Now to Completed at once, on every device.
+- **Code:** `Bookings.tsx → handleToggleMarkAsCompleted`; old browser-only list moved to the records once.
+- **Status:** Active · Since: 2026-11-02 (E2E-20, E2E-21)
+
+### R-BK-02 — Statuses
+- **Rule:** `pending` (awaiting confirmation) → `confirmed` (shown as *Scheduled*) → `in_progress` (*Live Now*: today, cleaner assigned) → `completed`; `cancelled` at any point. A card linked to a job row is completed when the row is completed or fully paid.
+- **Code:** `Bookings.tsx → normalizeBookingStatus, synchronizedBookings`.
+- **Status:** Active
+
+### R-BK-03 — Recurring visits
+- **Rule:** The next visit is created when a visit is completed: weekly +7 days, biweekly +14, monthly on the contract's day of the month (`recurrence_day`), or the month's last day when the month is shorter.
+- **Code:** `bookingSync.ts → nextOccurrence`. Migration `2026-11-02_bookings_recurrence_day.sql`.
+- **Status:** Active · Since: 2026-11-02 (E2E-22)
+
+---
+
 ## SYNC — Cross-screen synchronisation
 
 ### R-SYNC-01 — Daily Job Sheet is the operational ledger

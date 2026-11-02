@@ -28,6 +28,11 @@ const nxt: any = nextOccurrence(booking)
 eq([nxt.scheduled_date, nxt.status, nxt.received_amount, nxt.is_partially_paid, nxt.job_sheet_id, nxt.id], ['2026-11-10', 'confirmed', undefined, undefined, undefined, undefined], 'BJ-06: next weekly visit with fresh payment state')
 eq((nextOccurrence({ ...booking, frequency: 'monthly', scheduled_date: '2026-01-31' }) as any).scheduled_date, '2026-02-28', 'monthly visit on the 31st → last day of next month')
 eq(nextOccurrence({ ...booking, frequency: 'once' }), null, 'one-off booking has no next visit')
+// E2E-22 / R-BK-03: the 31st does not drift to the 28th for good
+const feb: any = nextOccurrence({ ...booking, frequency: 'monthly', scheduled_date: '2026-01-31' })
+eq(feb.recurrence_day, 31, 'contract day is kept on the next visit')
+eq((nextOccurrence({ ...booking, ...feb }) as any).scheduled_date, '2026-03-31', 'Feb 28 → Mar 31, back on the contract day')
+eq((nextOccurrence({ ...booking, frequency: 'monthly', scheduled_date: '2026-12-15' }) as any).scheduled_date, '2027-01-15', 'December → January next year')
 
 // BJ-04: monthly visits are not added before the data has loaded, and only once per session
 const date = '2026-11-04'
