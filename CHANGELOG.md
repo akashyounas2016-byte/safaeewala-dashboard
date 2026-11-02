@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(security): the database enforces screen permissions for writes — a role can add / change employees, agencies, invoices, inventory and clients only with a screen that uses them (R-SEC-03, E2E-07; migration `2026-11-02_role_based_writes.sql`)
 - fix(security): staff and agency identity documents moved out of the table rows into the private Storage bucket `staff-documents` (admin / manager only, signed links); old files are moved on the next admin login (R-SEC-04, E2E-08; migration `2026-11-02_staff_documents_storage.sql`)
 - chore(deploy): the live version is kept before each deploy (last 5), a health check (`/api/health`) puts the previous version back automatically when the new one does not answer, every deploy gets a git tag, and Actions → "Roll back the live site" restores a kept version (E2E-25)
 - fix(security): rate limit on the API (webhook / admin 120 per minute per IP) (E2E-15); xlsx 0.20.3 from the official SheetJS CDN, react-router 7.18.5, zod 4.6.7 — npm audit: 0 vulnerabilities (E2E-10, E2E-11). Run `npm install` in the main folder after merging.

@@ -380,8 +380,9 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ### R-SEC-03 — Screens by role; the database checks too
 - **Rule:** Roles: **Admin** (everything), **Manager** and **Employee** (screens ticked in Settings → Roles & Access; defaults: Manager all but Settings, Employee Overview/Bookings/Attendance). A blocked screen is hidden from the menu and its URL shows "No access". The database only answers signed-in active users; deleting records is allowed for Admin and Manager only.
-- **Code:** `src/lib/permissions.ts` (`APP_MODULES`, `moduleForPath`, `canAccessModule`), `App.tsx → AuthGate, ModuleGate`, row-level security in the migration.
-- **Status:** In code · Since: 2026-10-30 (SEC-03)
+- **Database:** a role may add or change employees, agencies, invoices, inventory and clients only when it has a screen that works with that table (`role_can`, same screen list and defaults as the app): employees ← Employees/Agencies; agencies ← Agencies/Employees; invoices ← Invoices/Payments/Pending/Monthly Clients/Bookings/Daily Job Sheet; inventory ← Inventory/Daily Job Sheet; clients ← Clients/Monthly Clients/Bookings/Daily Job Sheet/Fluent Forms. Reading stays open to active users (pickers need names); deleting is admin + manager.
+- **Code:** `src/lib/permissions.ts` (`APP_MODULES`, `moduleForPath`, `canAccessModule`), `App.tsx → AuthGate, ModuleGate`, row-level security in the migrations (`2026-11-02_role_based_writes.sql`). Test: `tests/unit/role-writes-sql.test.ts`.
+- **Status:** In code · Since: 2026-10-30 (SEC-03) · DB writes by role since 2026-11-02 (E2E-07)
 
 ### R-SEC-02 — No secrets in the repo or docs
 - **Rule:** Credentials live in `.env` (see `.env.example` for names) and GitHub secrets only — never in code, docs, commits or chat.
