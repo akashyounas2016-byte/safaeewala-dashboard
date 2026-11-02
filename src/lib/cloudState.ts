@@ -37,6 +37,16 @@ export const CLOUD_SYNCED_KEYS = [
   'safaeewala_review_requests',
   'safaeewala_ghl_config',
   'safaeewala_gdrive_webhook_url',
+  // E2E-18: shared settings that every user / device must see the same (R-SYNC-07)
+  'safaeewala_custom_payment_modes',
+  'safaeewala_deleted_payment_modes',
+  'safaeewala_job_materials',
+  'safaeewala_deleted_drivers',
+  'safaeewala_excel_cleaner_colors',
+  'safaeewala_excel_cell_colors',
+  'safaeewala_excel_column_colors',
+  'safaeewala_row_filter_colors_v2',
+  'safaeewala_auto_sync_monthly_schedules',
 ] as const
 
 const TABLE = 'app_state'
@@ -183,4 +193,22 @@ export function onLocalWrite(key: string) {
 export function retryCloudState() {
   const meta = readMeta()
   Object.entries(meta).forEach(([key, m]) => { if (m.dirty && isSynced(key)) schedulePush(key, 0) })
+}
+
+/** Fired when another user / device changed a cloud-synced setting while this page is open */
+export const REMOTE_CHANGE_EVENT = 'safaeewala:remote-change'
+
+/** Live updates of cloud-synced settings (E2E-17, R-SYNC-09) */
+export function subscribeCloudState(): () => void {
+  const channel = supabase.channel('crm-app-state').on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, payload => {
+    const row = payload.new as { key?: string; value?: unknown; updated_at?: string }
+    if (!row?.key || !isSynced(row.key)) return
+    const m = readMeta()[row.key] || {}
+    if (row.updated_at && Date.parse(row.updated_at) === Date.parse(m.syncedAt || '')) return // our own upload
+    if (m.dirty) { schedulePush(row.key, 0); return } // our unsaved change: the push merges theirs in
+    writeLocal(row.key, row.value)
+    setKeyMeta(row.key, { syncedAt: row.updated_at, dirty: false })
+    window.dispatchEvent(new CustomEvent(REMOTE_CHANGE_EVENT, { detail: { key: row.key } }))
+  }).subscribe()
+  return () => { void supabase.removeChannel(channel) }
 }

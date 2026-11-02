@@ -1300,10 +1300,9 @@ function safeGet<T>(key: string, fallback: T): T {
   }
 }
 
+/** Through safeLocalStorageSet so shared settings (cleaner / cell / column colours) reach the cloud (E2E-18) */
 function safeSet(key: string, value: any) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-  } catch {}
+  safeLocalStorageSet(key, value)
 }
 
 /* ─── Excel Formula Parser & Evaluator ─── */

@@ -108,6 +108,11 @@ function sanitizeOutboxPayload(table: string, payload?: Record<string, unknown>)
   return payload
 }
 
+/** True while this browser has a change for the row that is not in Supabase yet (live updates skip it) */
+export function hasPendingWrite(table: string, rowId: string): boolean {
+  return readOutbox().some(e => e.key === `${table}:${rowId}`)
+}
+
 /** Drop a stale entry for a row once a newer write for it succeeded */
 function settle(table: string, rowId: string) {
   const list = readOutbox()

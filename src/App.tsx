@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { pullCloudState } from '@/lib/cloudState'
+import { pullCloudState, subscribeCloudState, REMOTE_CHANGE_EVENT } from '@/lib/cloudState'
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation, Link } from 'react-router-dom'
 import { DataProvider, useData } from '@/store/DataContext'
 import { UserProvider, useAuth, useRolePerms } from '@/store/UserContext'
@@ -94,6 +94,9 @@ function AuthMessage({ icon, title, text, onSignOut }: { icon: string; title: st
   )
 }
 
+/** E2E-13: a signed-in browser left alone this long is signed out */
+const IDLE_SIGN_OUT_MINUTES = 120
+
 /** Login is required everywhere, localhost included — the database only answers signed-in users (SEC-01, DEC-014) */
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { status, user, signOut } = useAuth()
@@ -106,12 +109,45 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     void pullCloudState().finally(() => { if (alive) setCloudPulledFor(user.id) })
     return () => { alive = false }
   }, [status, user])
+  // E2E-17: shared settings changed by another user arrive live; the open screen offers a refresh
+  const [remoteChange, setRemoteChange] = useState(false)
+  const synced = status === 'ready' && !!user && cloudPulledFor === user.id
+  useEffect(() => {
+    if (!synced) return
+    const stop = subscribeCloudState()
+    const onRemote = () => setRemoteChange(true)
+    window.addEventListener(REMOTE_CHANGE_EVENT, onRemote)
+    return () => { stop(); window.removeEventListener(REMOTE_CHANGE_EVENT, onRemote) }
+  }, [synced])
+  // E2E-13: sign out after a long time without any activity (shared office PCs)
+  useEffect(() => {
+    if (!synced) return
+    let last = Date.now()
+    const touch = () => { last = Date.now() }
+    const events = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'] as const
+    events.forEach(e => window.addEventListener(e, touch, { passive: true }))
+    const timer = window.setInterval(() => {
+      if (Date.now() - last > IDLE_SIGN_OUT_MINUTES * 60_000) void signOut()
+    }, 60_000)
+    return () => { events.forEach(e => window.removeEventListener(e, touch)); window.clearInterval(timer) }
+  }, [synced, signOut])
   if (status === 'ready' && user && cloudPulledFor !== user.id) return <div className="min-h-screen flex items-center justify-center"><PageLoader /></div>
   if (status === 'loading') return <div className="min-h-screen flex items-center justify-center"><PageLoader /></div>
   if (status === 'signed_out') return <Login />
   if (status === 'no_profile') return <AuthMessage icon="⏳" title="Account not set up" text="This login has no profile yet. Ask the admin to add you in Settings → Users." onSignOut={signOut} />
   if (status === 'disabled') return <AuthMessage icon="✗" title="Account disabled" text="Your access has been turned off. Contact the admin." onSignOut={signOut} />
-  return <>{children}</>
+  return (
+    <>
+      {children}
+      {remoteChange && (
+        <div role="status" className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-[12.5px] font-semibold shadow-2xl">
+          <span>Another user changed shared settings.</span>
+          <button type="button" onClick={() => window.location.reload()} className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold cursor-pointer">Refresh</button>
+          <button type="button" onClick={() => setRemoteChange(false)} className="text-slate-300 hover:text-white cursor-pointer" aria-label="Dismiss">✕</button>
+        </div>
+      )}
+    </>
+  )
 }
 
 /** Screen permission by role (R-SEC-03): blocks the URL too, not only the sidebar link */

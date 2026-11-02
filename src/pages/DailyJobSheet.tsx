@@ -495,16 +495,12 @@ export function DailyJobSheet() {
   const updateFilterColor = (mode: string, color: string) => {
     const updated = { ...filterColors, [mode]: color }
     setFilterColors(updated)
-    try {
-      localStorage.setItem('safaeewala_row_filter_colors_v2', JSON.stringify(updated))
-    } catch {}
+    safeLocalStorageSet('safaeewala_row_filter_colors_v2', updated) // shared on every device (E2E-18)
   }
 
   const resetFilterColors = () => {
     setFilterColors(DEFAULT_CATEGORY_ROW_COLORS)
-    try {
-      localStorage.removeItem('safaeewala_row_filter_colors_v2')
-    } catch {}
+    safeLocalStorageSet('safaeewala_row_filter_colors_v2', {})
   }
 
   // Column visibility & sequence customization state (persisted in localStorage)

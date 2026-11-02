@@ -12,6 +12,7 @@ import { todayDubai, addDays } from '@/lib/dubaiTime'
 import { jobFromBooking, jobPatchFromBookingPatch, bookingPatchFromJobPatch, nextOccurrence } from '@/lib/bookingSync'
 import { describeJobChange } from '@/lib/auditLog'
 import { recalculateAllRowsOT } from '@/components/dailyJobSheet/jobSheetUtils'
+import { subscribeTables, applyRowChange } from '@/lib/realtime'
 import { saveDeletionSnapshot } from '@/lib/snapshots'
 export { defaultAgencies }
 
@@ -313,6 +314,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // Retry unsaved changes now, on reconnect and every minute
     return startOutboxRetry()
   }, [])
+
+  // E2E-17 / R-SYNC-09: other users' changes arrive live — no reload needed
+  useEffect(() => {
+    if (loading) return
+    const put = <T extends { id: string }>(set: React.Dispatch<React.SetStateAction<T[]>>) =>
+      (event: 'INSERT' | 'UPDATE' | 'DELETE', row: Record<string, unknown> & { id: string }) => set(prev => applyRowChange(prev, event, row as unknown as Partial<T> & { id: string }))
+    const handlers = {
+      bookings: put(setBookings), clients: put(setClients), employees: put(setEmployees), agencies: put(setAgencies),
+      invoices: put(setInvoices), inventory: put(setInventory), daily_jobs: put(setDailyJobs), daily_expenses: put(setDailyExpenses),
+    }
+    return subscribeTables((table, event, row) => {
+      const clean = table === 'daily_jobs'
+        ? { ...row, ...(['charges', 'received', 'duty_hours', 'ot_hours'] as const).reduce((o, k) => (k in row ? { ...o, [k]: safeNum(row[k]) } : o), {}) }
+        : table === 'daily_expenses' && 'amount' in row ? { ...row, amount: safeNum(row.amount) } : row
+      handlers[table](event, clean)
+    })
+  }, [loading])
 
   // Older booking-synced rows stored employee IDs in staff_name; show them as cleaner names
   // everywhere (read-only — the row is rewritten with names the next time it is saved)

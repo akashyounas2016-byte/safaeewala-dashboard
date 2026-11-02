@@ -154,6 +154,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `JobSheetSpreadsheet.tsx → handleSaveAll` (`splitJobPayload`), rows built by `ensureThreeRowsPerStaff`.
 - **Status:** Active · Since: 2026-10-31
 
+### R-SYNC-09 — Several users, one live picture
+- **Rule:** Every insert / update / delete in bookings, clients, employees, agencies, invoices, inventory, daily jobs and expenses reaches every signed-in browser live (Supabase Realtime) and is merged without a reload; a row with an unsaved local change keeps the local version until it is uploaded. Shared settings (payment modes, materials, colours, closed days, …) are cloud-synced and arrive live too — the open screen offers *Refresh*. A browser idle for 2 hours is signed out.
+- **Code:** `src/lib/realtime.ts`, `DataContext` (subscribeTables), `cloudState.ts → subscribeCloudState`, `App.tsx → AuthGate`. Migration `2026-11-02_realtime.sql`.
+- **Status:** Active · Since: 2026-11-02 (E2E-13, E2E-17, E2E-18)
+
 ### R-SYNC-04 — Staff are matched by whole words
 - **Rule:** An employee matches a job's `staff_name` by normalised full name or whole-word match — "Rupa" must not match "Rupak".
 - **Code:** `clientDataSync.ts → employeeMatchesStaff`.
