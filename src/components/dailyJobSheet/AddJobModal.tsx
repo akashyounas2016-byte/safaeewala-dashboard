@@ -75,15 +75,6 @@ const POPULAR_AREAS = [
 ]
 
 
-function checkTimesOverlap(startA?: string, endA?: string, startB?: string, endB?: string): boolean {
-  const sA = parseTimeToMinutes(startA)
-  const eA = parseTimeToMinutes(endA)
-  const sB = parseTimeToMinutes(startB)
-  const eB = parseTimeToMinutes(endB)
-  if (sA === null || eA === null || sB === null || eB === null) return false
-  return sA < eB && sB < eA
-}
-
 export function AddJobForm({
   employees,
   onSave,

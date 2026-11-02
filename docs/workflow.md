@@ -60,3 +60,7 @@ Only when the owner says so.
 - After it, `/api/health` and the home page must answer within 2 minutes, otherwise the previous version is put back and the run fails.
 - A successful deploy is tagged `deploy-YYYYMMDD-HHMM-<sha>`.
 - To go back by hand: GitHub → Actions → **Roll back the live site** → Run workflow (empty = newest kept version).
+
+## Pre-commit check (E2E-06)
+- `.githooks/pre-commit` runs `lint:ci` and `typecheck` before every commit; a commit with errors is stopped. Turned on with `git config core.hooksPath .githooks` (already set for this repo and its worktrees; a fresh clone runs it once).
+- Full tests still run with `npm run check` and in CI.

@@ -61,27 +61,9 @@ export interface ColumnDef {
 }
 
 
-/** Checks whether two time ranges overlap (supports 12h and 24h formats) */
-export function checkTimesOverlap(startA: string, endA: string, startB: string, endB: string): boolean {
-  if (!startA || !endA || !startB || !endB || startA === '—' || endA === '—' || startB === '—' || endB === '—') return false
-  const parseMin = (t: string): number | null => {
-    const clean = t.trim().toUpperCase()
-    const m = clean.match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i)
-    if (!m) return null
-    let h = parseInt(m[1], 10)
-    const min = parseInt(m[2], 10)
-    const mer = m[3]
-    if (mer === 'PM' && h < 12) h += 12
-    if (mer === 'AM' && h === 12) h = 0
-    return h * 60 + min
-  }
-  const sA = parseMin(startA)
-  const eA = parseMin(endA)
-  const sB = parseMin(startB)
-  const eB = parseMin(endB)
-  if (sA === null || eA === null || sB === null || eB === null) return false
-  return sA < eB && sB < eA
-}
+/** E2E-02: one overlap check for the whole app (12h / 24h, overnight shifts) — kept as an export for older imports */
+export { checkTimesOverlap } from '@/components/dailyJobSheet/jobSheetUtils'
+import { checkTimesOverlap } from '@/components/dailyJobSheet/jobSheetUtils'
 
 /** Normalizes an address string for comparison by removing punctuation, extra spaces, and monthly client markers */
 export function normalizeJobAddress(addr: unknown): string {

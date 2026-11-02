@@ -1,0 +1,5 @@
+#!/bin/sh
+# E2E-06: no commit with lint errors or type errors (tests run in CI and with `npm run check`).
+# Skipped automatically when node_modules is missing. Bypass only in an emergency: git commit --no-verify
+[ -d node_modules ] || exit 0
+npm run --silent lint:ci && npm run --silent typecheck || { echo; echo "Commit stopped: fix the lint / type errors above."; exit 1; }
