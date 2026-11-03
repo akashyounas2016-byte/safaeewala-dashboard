@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useAuth, useRolePerms } from '@/store/UserContext'
 import { canAccessModule, moduleForPath, ROLE_META } from '@/lib/permissions'
+import { useFieldStaff } from '@/store/useFieldStaff'
 import { confirmAsync } from '@/lib/notify'
 import { useFluentFormsUnreadCount, markFluentFormsAsRead } from '@/lib/fluentFormsSync'
 import { Modal } from '@/components/ui/Modal'
@@ -243,13 +244,15 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
     })
   }, [navOrder])
 
+  const { isField } = useFieldStaff()
   const accessibleItems = useMemo(() => {
     return sortedNavItems.filter(item => {
-      // Only the screens this user's role allows (R-SEC-03)
+      // Only the screens this user's role allows (R-SEC-03); field staff only My Duties (R-SEC-05)
       const mod = moduleForPath(item.to)
+      if (isField) return mod === 'My Duties'
       return !mod || canAccessModule(me?.role, rolePerms, mod)
     })
-  }, [sortedNavItems, me?.role, rolePerms])
+  }, [sortedNavItems, me?.role, rolePerms, isField])
 
   // Items pinned to Favorites at the very top
   const favoriteItems = useMemo(() => {

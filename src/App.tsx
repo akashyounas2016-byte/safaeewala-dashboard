@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation, Link } fro
 import { DataProvider, useData } from '@/store/DataContext'
 import { UserProvider, useAuth, useRolePerms } from '@/store/UserContext'
 import { canAccessModule, firstAllowedPath, moduleForPath } from '@/lib/permissions'
+import { useFieldStaff } from '@/store/useFieldStaff'
 import { NotificationProvider } from '@/store/NotificationContext'
 import { Layout } from '@/components/layout/Layout'
 import { Login } from '@/pages/Login'
@@ -155,7 +156,11 @@ function ModuleGate() {
   const { user } = useAuth()
   const perms = useRolePerms()
   const { pathname } = useLocation()
+  const field = useFieldStaff()
   const module = moduleForPath(pathname)
+  // R-SEC-05: a cleaner / driver login opens My Duties only, whatever the employee role allows
+  if (field.resolving) return <PageLoader />
+  if (field.isField) return module === 'My Duties' ? <Outlet /> : <Navigate to="/my-duties" replace />
   if (!module || canAccessModule(user?.role, perms, module)) return <Outlet />
   const home = firstAllowedPath(user?.role, perms)
   if (pathname === '/' && home && home !== '/') return <Navigate to={home} replace />

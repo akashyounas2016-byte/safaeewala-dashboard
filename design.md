@@ -102,6 +102,14 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
 - Transitions `transition-all duration-200`; dropdown panels close on outside click.
 - Excel Job Sheet: a job done by one cleaner alone has a light teal row (`SOLO_ROW_BG`) unless the user chose a colour; "Solo at bottom" moves cleaners who only have solo jobs below the team jobs (UX-61).
 - Booking cards (UX-63) follow the Daily Job Sheet: cleaner colour on the left edge (same palettes, same colour per cleaner), cleaner avatars first, then client, a shift strip (date · start → end · hours) and a money strip (Charges · Received · Pending). Completed cards are in the Completed category only.
+- My Duties (UX-65), phone first:
+  - Header spans the full page column.
+  - A sticky date bar with a 7-day strip and arrows; every tap target is at least 44 px.
+  - Cleaner job cards: time strip, site plus a Maps button, then chips for team, Material and Collect AED.
+  - Drivers keep the coloured stop cards.
+  - One column on a phone, two from `md`.
+  - Safe-area bottom padding.
+  - The app can be installed on Android (`manifest.webmanifest`, theme colour `#064e3b`).
 - Attendance (UX-64): leave is amber, absence red, available sky. *Leave approvals* panel above the cleaner cards — pending first, Approve leave (green) / Reject → Absent (white, red text); a pending Monday leave has a yellow row and a yellow flag chip *Monday*. The mark dialog groups categories into *Leave (needs approval)* and *Absent* and warns when the cleaner has jobs that date. The Daily Job Sheet lists absent / on-leave cleaners with the same colours.
 - Excel Job Sheet: the Received reference and team tag go straight to the row where the payment was received and flash it, no popup (UX-62).
 - Excel Job Sheet cell dropdowns use `ExcelCellPopover` (portal, Address design: header + icon, search, green custom row, emerald selected item with check). Never draw a dropdown inside a table row — row hover filters paint over it (UX-35).

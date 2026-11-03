@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(my-duties): cleaners see only their own jobs and drivers only their own route. A cleaner / driver login opens My Duties only, with no AI bot and no office notifications. Admin / manager can preview anyone. Full-width header, sticky 7-day date bar, phone-first cards with a Maps button and cash to collect. The app can be installed on Android (R-SEC-05, UX-65)
 - feat(attendance): leave approval — leave from other roles waits for admin / manager, who approve it or reject it as absent; pending Monday leave flagged yellow in the approval list; marks saved one row per cleaner + date in `attendance_marks`, live for every user; Daily Job Sheet lists absent / on-leave cleaners and tags their remaining jobs; Next / Previous day fixed (R-ATT-05, R-ATT-06, R-ATT-07, R-SYNC-10, UX-64; migration `2026-11-03_attendance_marks.sql`)
 - docs(audit): attendance system audit — ATT-A01…A10
 - chore(quality): one time-overlap check for the whole app (E2E-02); pre-commit hook lints staged files (E2E-06)

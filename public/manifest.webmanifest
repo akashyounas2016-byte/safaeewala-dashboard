@@ -1,0 +1,15 @@
+{
+  "name": "Safaeewala Operations",
+  "short_name": "Safaeewala",
+  "description": "Safaeewala duties and operations",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f0f4f3",
+  "theme_color": "#064e3b",
+  "icons": [
+    { "src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

@@ -5,6 +5,7 @@ import { NotificationCenter } from '@/components/NotificationCenter'
 import { Menu, Bot, Sparkles, AlertTriangle, ChevronRight } from 'lucide-react'
 import { CRMAIBotModal } from '@/components/ai/CRMAIBotModal'
 import { useData } from '@/store/DataContext'
+import { useFieldStaff } from '@/store/useFieldStaff'
 import { analyzeCRMHealth } from '@/lib/crmAIBot'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { SyncStatusBanner } from './SyncStatusBanner'
@@ -41,6 +42,8 @@ export function Layout() {
   }
 
   const { bookings, clients } = useData()
+  // R-SEC-05: cleaners / drivers get no AI bot (revenue, OT reports) and no office notifications
+  const { isField } = useFieldStaff()
 
   // Real-time AI Health Analysis
   const aiHealth = useMemo(() => {
@@ -103,6 +106,7 @@ export function Layout() {
               </div>
             </div>
 
+            {!isField && (
             <button
               onClick={() => setShowAIBot(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/90 text-white font-bold text-[11px] shadow-sm"
@@ -110,13 +114,16 @@ export function Layout() {
               <Bot size={13} className="text-emerald-400" />
               <span>AI Bot ({issueCount})</span>
             </button>
+            )}
           </div>
 
           <main id="main-content-scroll" className="flex-1 overflow-y-auto bg-[#f0f4f3] scroll-smooth overscroll-y-auto">
-            <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 lg:pt-8 pb-10">
-              <div className="mb-4">
-                <NotificationCenter />
-              </div>
+            <div className={`max-w-[1440px] mx-auto pt-4 sm:pt-6 lg:pt-8 pb-[calc(2.5rem+env(safe-area-inset-bottom))] ${isField ? 'px-3 sm:px-6 lg:px-8' : 'px-4 sm:px-6 lg:px-8'}`}>
+              {!isField && (
+                <div className="mb-4">
+                  <NotificationCenter />
+                </div>
+              )}
 
               {/* AI Bot Duplication & Discrepancy Alert Banner */}
               {highIssues.length > 0 && !hideBanner && (
@@ -170,7 +177,7 @@ export function Layout() {
           </main>
 
           {/* ── Persistent Floating AI Bot Trigger Button ── */}
-          {!showAIBot && (
+          {!showAIBot && !isField && (
             <button
               type="button"
               onClick={() => setShowAIBot(true)}
@@ -198,7 +205,7 @@ export function Layout() {
 
           {/* ── AI Bot Draggable Floating Window / Chat Pop-up ── */}
           <CRMAIBotModal
-            open={showAIBot}
+            open={showAIBot && !isField}
             onClose={() => setShowAIBot(false)}
           />
         </div>

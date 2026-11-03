@@ -419,6 +419,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/docStorage.ts`, `DataContext → docsToStorage`. Migration `2026-11-02_staff_documents_storage.sql`.
 - **Status:** Active · Since: 2026-11-02 (E2E-08)
 
+### R-SEC-05 — Cleaners and drivers see only their own duties
+- **Rule:** *"cleaners ko sirf cleaners ki duties aur drivers ko sirf drivers ki duties nazar ayen, aur koi dosra inhein access na kar sakay."*
+  - **Field staff** = a login with role *Employee* linked to a staff record (Settings → Users) whose staff role is not *supervisor*.
+  - Field staff open **My Duties only**. Every other address sends them back to My Duties. The sidebar shows only My Duties. They get no AI bot and no office notifications.
+  - A driver sees only their own route (stops assigned to them in Drivers). Every other staff role sees only their own jobs: time, site, team mates, driver drop and pick-up, material, and cash to collect. They see no OT and no prices.
+  - Admin and manager can preview any cleaner or driver. Any other login not linked to a staff record sees nothing on My Duties.
+  - **Not yet in the database:** an employee login can still read the shared tables through the API (E2E-07 reads). Limiting field logins to their own rows needs a migration (planned).
+- **Code:** `src/lib/duties.ts → isFieldStaff, dutyKindOf, cleanerDuties`; `src/store/useFieldStaff.ts`; `App.tsx → ModuleGate`; `Sidebar.tsx`; `Layout.tsx`; `MyDuties.tsx`.
+- **Status:** Active · Since: 2026-11-03
+
 ## OPS — Operating process
 
 ### R-OPS-01 — No browser automation without permission
