@@ -85,3 +85,23 @@ export function clashMessage(c: StaffClash): string {
   const where = c.job.staff_name && (c.job as any).address ? ` at ${(c.job as any).address}` : ''
   return `${c.staff} is already busy from ${formatTime12h(c.job.start_time)} to ${formatTime12h(c.job.end_time)}${where}. Choose another time or cleaner.`
 }
+
+/**
+ * Every place in `rows` where one cleaner is booked twice at the same time (R-JOB-01). Rows of one
+ * job (a team split into one row per cleaner) never clash with each other. Each pair is listed once.
+ */
+export function findAllClashes(rows: ShiftLike[]): { staff: string; a: ShiftLike; b: ShiftLike }[] {
+  const out: { staff: string; a: ShiftLike; b: ShiftLike }[] = []
+  rows.forEach((row, i) => {
+    const later = rows.slice(i + 1)
+    let rest = later
+    // a row can clash with several later rows — report each
+    for (;;) {
+      const hit = findStaffClash(rest, row)
+      if (!hit) break
+      out.push({ staff: hit.staff, a: row, b: hit.job })
+      rest = rest.slice(rest.indexOf(hit.job) + 1)
+    }
+  })
+  return out
+}

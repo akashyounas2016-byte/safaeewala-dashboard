@@ -1,30 +1,28 @@
 # Development Workflow
 
 > How work is done on this repo by two AI agents (Claude and Antigravity) and the owner, and how every rule
-> and change stays tracked. **Last reviewed:** 2026-10-27
+> and change stays tracked. **Last reviewed:** 2026-11-03
 
-## 1. Who works where (R-OPS-03)
+## 1. Who works where (R-OPS-03, since 2026-11-03)
 
-| | Antigravity | Claude |
+| | Claude | Antigravity |
 |---|---|---|
-| Folder | `E:\ANTIGRAVITY PROJECTS\Safaeewala Booking Dashboard` | `E:\ANTIGRAVITY PROJECTS\Safaeewala Booking Dashboard-claude` (git worktree) |
-| Branch | `main` | `claude/workspace` |
-| Dev server | `localhost:5058` | `localhost:5059` (`npx vite --port 5059 --strictPort`) |
-| Deploys | Yes, with the owner's OK (`deploy.ps1`) | Never |
+| Folder | `E:\ANTIGRAVITY PROJECTS\Safaeewala Booking Dashboard` (main folder) | same folder |
+| Branch | `main` | `main` |
+| Dev server | `localhost:5058` — the owner checks every change here first | same |
+| Deploys | Only when the owner says so (`git push origin main` → GitHub Actions) | Only with the owner's OK |
 
-- The worktree's `node_modules` is a junction to the main folder's — **do not run `npm install` in the worktree**.
-- Both agents should avoid big edits to the same shared files at the same time: `src/types/index.ts`, `src/store/DataContext.tsx`, `src/lib/utils.ts`, `src/lib/clientDataSync.ts`, `src/App.tsx`.
+- Before editing: `git status`. The other agent may have uncommitted work in the same folder. Don't overwrite it, and stage only your own files (never `git add -A`).
+- Commit locally on `main` after `npm run check`. Pushing deploys, so push only on the owner's word.
+- The old worktree `…-claude` (branch `claude/workspace`, port 5059, 2026-10-27 → 2026-11-03) is no longer used for work.
+- Avoid big parallel edits to the shared files: `src/types/index.ts`, `src/store/DataContext.tsx`, `src/lib/utils.ts`, `src/lib/clientDataSync.ts`, `src/App.tsx`.
 
-## 2. Merging Claude's work into `main`
+## 2. Going live
 
-Only when the owner says so.
-
-1. In the main folder: `git status`. If Antigravity has uncommitted work, it is committed first (by Antigravity, or by Claude with the owner's OK — `git add` + `git commit` only).
-2. Dry-run conflicts without touching files:
-   `W=$(git stash create); git merge-tree --write-tree --name-only $W claude/workspace`
-3. In the worktree: `git rebase main` (or merge), resolve conflicts keeping **both** sides' intent, run `npx tsc -b`, check on 5059.
-4. In the main folder: `git merge --ff-only claude/workspace`. Git refuses if it would overwrite uncommitted files — that is the safety net.
-5. Production gets it on Antigravity's next approved deploy.
+1. The owner checks the change on localhost:5058.
+2. The owner says to deploy. Then run `git push origin main`.
+3. GitHub Actions runs the check, deploys, waits for `/api/health` and tags `deploy-YYYYMMDD-HHMM-<sha>`. It rolls back by itself if the health check fails.
+4. Migrations in `supabase/migrations/` are run by the owner in the Supabase SQL Editor, after the deploy.
 
 ## 3. Definition of done (every change)
 

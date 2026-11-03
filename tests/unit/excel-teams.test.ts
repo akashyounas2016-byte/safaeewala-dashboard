@@ -41,3 +41,29 @@ eq(map.get(`${day}|Team A`), TEAM_COLORS[0], 'first team gets the first colour')
 eq(map.get(`${day}|Team B`), TEAM_COLORS[1], 'second team gets the next colour')
 eq(map.size, 2, 'solo rows get no team colour')
 eq(TEAM_COLORS.some(c => c.bg.toLowerCase() === '#f0fdfa'), false, 'no team colour equals the solo colour')
+
+// Screenshot 2026-10-19: two different teams were both "Team A" — names are unique per date
+import { uniqueTeamRefs } from '@/lib/excelTeams'
+import { findAllClashes } from '@/lib/shiftClash'
+const teams = [
+  row('t1', 'Raju Kumar, Rahul, Qasim', { team_name: 'Team A' }),
+  row('t2', 'Adnan, Arjun Singh, Bilal Hassan', { team_name: 'Team A' }),
+  row('t3', 'Sita, Rupa', { team_name: '' }),
+  row('t4', 'Gita, Mina', { team_name: 'Team A', date: '2026-11-04' }),
+  row('solo', 'Kamla', { team_name: 'Team A' }),
+]
+const refs = uniqueTeamRefs(teams)
+eq([refs.get('t1'), refs.get('t2'), refs.get('t3')], ['Team A', 'Team B', 'Team C'], 'second "Team A" on the same date is renamed')
+eq(refs.get('t4'), 'Team A', 'another date may use Team A again')
+eq(refs.has('solo'), false, 'a solo job gets no team name')
+
+// R-JOB-01: Adnan twice 09:00–13:00 (screenshot) is found; rows of one team job never clash
+const shifts = [
+  { id: 'a1', date: day, staff_name: 'Adnan', start_time: '09:00 AM', end_time: '01:00 PM', address: 'acsddd', _originalJobId: 'j1' },
+  { id: 'a2', date: day, staff_name: 'Arjun Singh', start_time: '09:00 AM', end_time: '01:00 PM', address: 'acsddd', _originalJobId: 'j1' },
+  { id: 'a3', date: day, staff_name: 'Adnan', start_time: '09:00 AM', end_time: '01:00 PM', address: 'today testing ABC' },
+  { id: 'a4', date: day, staff_name: 'Arjun Singh', start_time: '09:00 AM', end_time: '01:00 PM', address: '809 Al qusais' },
+  { id: 'a5', date: day, staff_name: 'Adnan', start_time: '01:00 PM', end_time: '03:00 PM', address: 'later' },
+]
+const clashes = findAllClashes(shifts)
+eq(clashes.map(c => `${c.staff}:${c.a.id}-${c.b.id}`), ['Adnan:a1-a3', 'Arjun Singh:a2-a4'], 'both double bookings found, team rows and back-to-back shifts are fine')

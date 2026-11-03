@@ -95,3 +95,34 @@ export function buildTeamColorMap(rows: DailyJob[], teamOf: (r: DailyJob) => str
   })
   return map
 }
+
+/**
+ * A team name for every multi-cleaner job, unique per date (UX-66): a job keeps its saved name unless
+ * another team already uses it that day — then it gets the next free "Team X". Generic names
+ * ("Project team", empty) are replaced. Keys are job ids.
+ */
+export function uniqueTeamRefs(jobs: DailyJob[]): Map<string, string> {
+  const usedByDate = new Map<string, Set<string>>()
+  const out = new Map<string, string>()
+  const used = (date: string) => { if (!usedByDate.has(date)) usedByDate.set(date, new Set()); return usedByDate.get(date)! }
+  const teams = jobs.filter(j => splitStaffNames(j.staff_name || '').length > 1)
+  const isGeneric = (n: string) => !n || n.toLowerCase() === 'project team'
+  // saved names first, in sheet order — the first job keeps a name, a later duplicate is renamed
+  const pending: DailyJob[] = []
+  teams.forEach(j => {
+    const name = String(j.team_name || '').trim()
+    const set = used(j.date || '')
+    if (!isGeneric(name) && !set.has(name.toUpperCase())) { set.add(name.toUpperCase()); out.set(j.id, name) }
+    else pending.push(j)
+  })
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  pending.forEach(j => {
+    const set = used(j.date || '')
+    let name = ''
+    for (const l of letters) if (!set.has(`TEAM ${l}`)) { name = `Team ${l}`; break }
+    if (!name) name = `Team ${set.size + 1}`
+    set.add(name.toUpperCase())
+    out.set(j.id, name)
+  })
+  return out
+}

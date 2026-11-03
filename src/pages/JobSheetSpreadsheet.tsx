@@ -43,12 +43,12 @@ import {
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
 import { confirmAsync, notify } from '@/lib/notify'
-import { findClashAmong, clashMessage, timingChanged, type StaffClash } from '@/lib/shiftClash'
+import { findClashAmong, clashMessage, timingChanged, findAllClashes, type StaffClash } from '@/lib/shiftClash'
 import { invoicedJobIds } from '@/lib/receivables'
 import { fetchRecordHistory, type AuditEntry } from '@/lib/auditLog'
 import { ChangeLogHistoryModal } from '@/components/dailyJobSheet/ChangeLogHistoryModal'
 import { cleanAddressDisplay } from '@/lib/utils'
-import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, buildTeamColorMap } from '@/lib/excelTeams'
+import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, buildTeamColorMap, uniqueTeamRefs } from '@/lib/excelTeams'
 
 /* ─── Column Schema for the Excel Grid (Daily Job Sheet Exact Sequence) ─── */
 export interface ColumnDef {
@@ -1076,21 +1076,8 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
     }))
   }
 
-  // 1. Pre-assign Team References to jobs with multiple cleaners
-  const multiCleanerTeamMap = new Map<string, string>()
-  let teamCounter = 0
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-  jobs.forEach(job => {
-    const cleaners = splitStaffNames(job.staff_name || '')
-    if (cleaners.length > 1) {
-      if (job.team_name && job.team_name.trim() && job.team_name.trim().toLowerCase() !== 'project team') {
-        multiCleanerTeamMap.set(job.id, job.team_name.trim())
-      } else {
-        multiCleanerTeamMap.set(job.id, `Team ${letters[teamCounter % letters.length]}`)
-        teamCounter++
-      }
-    }
-  })
+  // 1. Team names of multi-cleaner jobs, unique per date (UX-66): two teams never share "Team A" that day
+  const multiCleanerTeamMap = uniqueTeamRefs(jobs)
 
   // 2. Expand multi-cleaner jobs into separate rows for each cleaner
   // Primary cleaner holds the charges & received amount so figures are accurate and not duplicated.
@@ -3851,6 +3838,11 @@ export function JobSheetSpreadsheet() {
     return () => window.clearTimeout(t)
   }, [flashRowId])
 
+  // R-JOB-01: every cleaner booked twice at the same time in this sheet — saved or not — shown at once
+  const gridClashes = useMemo(() => findAllClashes(gridRows), [gridRows])
+  const clashRowIds = useMemo(() => new Set(gridClashes.flatMap(c => [String(c.a.id), String(c.b.id)])), [gridClashes])
+  const [showAllClashes, setShowAllClashes] = useState(false)
+
   // Summary Totals
   const totals = useMemo(() => {
     const totalCharges = gridRows.reduce((s, r) => s + cleanNum(r.charges), 0)
@@ -4570,6 +4562,31 @@ export function JobSheetSpreadsheet() {
         </div>
       </div>
 
+      {/* ── R-JOB-01: time clashes in this sheet ── */}
+      {gridClashes.length > 0 && (
+        <div role="alert" className="mx-3 my-2 px-4 py-2.5 rounded-xl border border-rose-300 bg-rose-50 text-rose-900 text-[12.5px]">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="font-extrabold">⛔ {gridClashes.length} time clash{gridClashes.length > 1 ? 'es' : ''}: a cleaner has two jobs at the same time. Change a time or a cleaner. A new or changed row that clashes cannot be saved.</p>
+            {gridClashes.length > 3 && (
+              <button type="button" onClick={() => setShowAllClashes(v => !v)} className="text-[11.5px] font-bold underline cursor-pointer">
+                {showAllClashes ? 'Show less' : `Show all ${gridClashes.length}`}
+              </button>
+            )}
+          </div>
+          <ul className="mt-1.5 space-y-1">
+            {(showAllClashes ? gridClashes : gridClashes.slice(0, 3)).map((c, i) => (
+              <li key={i} className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold">{c.staff}</span>
+                <span>{formatTime12h(c.a.start_time || '')}–{formatTime12h(c.a.end_time || '')} at {(c.a as DailyJob).address || '—'}</span>
+                <span className="text-rose-500">and</span>
+                <span>{formatTime12h(c.b.start_time || '')}–{formatTime12h(c.b.end_time || '')} at {(c.b as DailyJob).address || '—'}</span>
+                <button type="button" onClick={() => setJumpTargetId(String(c.a.id))} className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-white border border-rose-300 hover:bg-rose-100 cursor-pointer">Show</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* ── Main Spreadsheet Grid Container (Full Width Edge-to-Edge) ── */}
       <div className="flex-1 overflow-auto bg-white relative w-full">
         <table className="w-full border-collapse border border-slate-300 text-[12px] font-mono">
@@ -4781,7 +4798,7 @@ export function JobSheetSpreadsheet() {
                           data-row-id={row.id}
                           onContextMenu={e => handleContextMenu(e, globalIndex, row)}
                           style={{ backgroundColor: palette.solidBg }}
-                          className={`transition-colors group hover:brightness-[0.97] ${flashRowId === row.id ? 'outline outline-4 -outline-offset-2 outline-amber-400' : ''} ${
+                          className={`transition-colors group hover:brightness-[0.97] ${flashRowId === row.id ? 'outline outline-4 -outline-offset-2 outline-amber-400' : clashRowIds.has(row.id) ? 'outline outline-2 -outline-offset-2 outline-rose-500' : ''} ${
                             isSelectedRow
                               ? 'ring-2 ring-inset ring-emerald-600 font-semibold shadow-xs'
                               : ''
@@ -5043,7 +5060,7 @@ export function JobSheetSpreadsheet() {
                     data-row-id={row.id}
                     onContextMenu={e => handleContextMenu(e, targetIdx, row)}
                     style={{ backgroundColor: rowBg }}
-                    className={`transition-colors group hover:brightness-[0.98] ${flashRowId === row.id ? 'outline outline-4 -outline-offset-2 outline-amber-400' : ''} ${
+                    className={`transition-colors group hover:brightness-[0.98] ${flashRowId === row.id ? 'outline outline-4 -outline-offset-2 outline-amber-400' : clashRowIds.has(row.id) ? 'outline outline-2 -outline-offset-2 outline-rose-500' : ''} ${
                       isSelectedRow ? 'ring-2 ring-inset ring-emerald-500 font-semibold shadow-xs' : ''
                     }`}
                   >
@@ -6331,7 +6348,8 @@ export function JobSheetSpreadsheet() {
               employees={employees}
               clients={clients}
               initial={{ date: effectiveTargetDate, start_time: '09:00', end_time: '13:00', duty_hours: 4 }}
-              existingJobsForDate={dailyJobs.filter(j => j.date === effectiveTargetDate)}
+              // R-JOB-01 / UX-66: rows on screen count too, saved or not — team letters and clashes
+              existingJobsForDate={gridRows.filter(r => (r.date || effectiveTargetDate) === effectiveTargetDate)}
               onSave={jobData => {
                 const newJob: DailyJob = {
                   ...jobData,
@@ -6340,8 +6358,11 @@ export function JobSheetSpreadsheet() {
                 }
                 // UX-66: a team job gets one row per cleaner, like the Daily Job Sheet; Save folds them into one job
                 const names = splitStaffNames(newJob.staff_name || '')
+                const wanted = (newJob.team_name || '').trim()
+                const takenOnDate = gridRows.some(r => (r.date || '') === newJob.date &&
+                  String((r as { _teamReference?: string })._teamReference || r.team_name || '').trim().toUpperCase() === wanted.toUpperCase())
                 const teamRef = names.length > 1
-                  ? (newJob.team_name && newJob.team_name.trim().toLowerCase() !== 'project team' ? newJob.team_name.trim() : nextTeamRef(gridRows, newJob.date))
+                  ? (wanted && wanted.toLowerCase() !== 'project team' && !takenOnDate ? wanted : nextTeamRef(gridRows, newJob.date))
                   : ''
                 const newRows = expandTeamJob(newJob, teamRef)
                 pushState(recalculateAllRowsOT(placeRowsInCleanerBlocks(gridRows, newRows)))

@@ -179,8 +179,8 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Status:** Active · Since: 2026-11-01
 
 ### R-SYNC-08 — Excel Job Sheet saves one job per job
-- **Rule:** A job with several cleaners shows one grid row per cleaner, but Save writes it back as **one** job: cleaners joined in `staff_name`, shared fields (time, address, area, material, notes) from the row that was changed, money from the lead row. Removing every cleaner row deletes the job. Save never creates a job for a per-cleaner row and never cuts cleaners off a job. A team job added with **Add Job** is split into one row per cleaner at once. Each row goes into that cleaner's block, and the team gets the next free *Team X* letter. On Save the rows are saved as one job.
-- **Code:** `JobSheetSpreadsheet.tsx → handleSaveAll` (`splitJobPayload`), rows built by `ensureThreeRowsPerStaff`; `src/lib/excelTeams.ts → expandTeamJob, placeRowsInCleanerBlocks, nextTeamRef`.
+- **Rule:** A job with several cleaners shows one grid row per cleaner, but Save writes it back as **one** job: cleaners joined in `staff_name`, shared fields (time, address, area, material, notes) from the row that was changed, money from the lead row. Removing every cleaner row deletes the job. Save never creates a job for a per-cleaner row and never cuts cleaners off a job. A team job added with **Add Job** is split into one row per cleaner at once. Each row goes into that cleaner's block, and the team gets the next free *Team X* letter. On Save the rows are saved as one job. **Team names are unique per date:** a name another team already uses that day (saved or on screen) is replaced with the next free letter, and the new name is saved with the job.
+- **Code:** `JobSheetSpreadsheet.tsx → handleSaveAll` (`splitJobPayload`), rows built by `ensureThreeRowsPerStaff`; `src/lib/excelTeams.ts → expandTeamJob, placeRowsInCleanerBlocks, nextTeamRef, uniqueTeamRefs`.
 - **Status:** Active · Since: 2026-10-31 · Add Job split since 2026-11-03
 
 ### R-SYNC-09 — Several users, one live picture
@@ -201,8 +201,8 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ---
 
 ### R-JOB-01 — A cleaner cannot work two jobs at the same time
-- **Rule:** When a job is added or edited (Add Job Entry, Edit Job, Daily Job Sheet inline edit, Excel Job Sheet cell / time dropdown / row popup / Save), a cleaner who already has a job overlapping that time on that date is refused with an error message, and the entry is not saved. Back-to-back shifts (12:00 end, 12:00 start) are allowed; shifts after midnight count into the next day. Clashes already in the data do not block unrelated edits (remarks, money) — only a change of cleaner, time or date is checked.
-- **Code:** `src/lib/shiftClash.ts` (`findStaffClash`, `findClashAmong`), used by `AddJobModal`, `EditJobModal`, `DailyJobSheet → saveInlineEdit`, `JobSheetSpreadsheet → refuseClash / handleSaveAll`. Test: `tests/unit/shift-clash.test.ts`.
+- **Rule:** When a job is added or edited (Add Job Entry, Edit Job, Daily Job Sheet inline edit, Excel Job Sheet cell / time dropdown / row popup / Save), a cleaner who already has a job overlapping that time on that date is refused with an error message, and the entry is not saved. Back-to-back shifts (12:00 end, 12:00 start) are allowed; shifts after midnight count into the next day. Clashes already in the data do not block unrelated edits (remarks, money) — only a change of cleaner, time or date is checked. The Excel Job Sheet lists every clash in the open sheet (saved or not) in a red banner as soon as it appears, outlines the rows in red, and *Show* jumps to them. Add Job in the Excel Job Sheet checks the rows on screen too, not only saved jobs.
+- **Code:** `src/lib/shiftClash.ts` (`findStaffClash`, `findClashAmong`, `findAllClashes`), used by `AddJobModal`, `EditJobModal`, `DailyJobSheet → saveInlineEdit`, `JobSheetSpreadsheet → refuseClash / handleSaveAll`. Test: `tests/unit/shift-clash.test.ts`.
 - **Status:** Active · Since: 2026-10-31
 
 ### R-DATA-11 — A new client typed on a job is registered first
@@ -449,9 +449,9 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** Development is local. Do not run `deploy.ps1`, `scp`/`ssh` to the VPS (`187.77.116.14`) **or `git push origin main`** (it auto-deploys via GitHub Actions) without explicit permission. See [prod.md](prod.md).
 - **Status:** Active
 
-### R-OPS-03 — Two agents, two folders
-- **Rule:** Antigravity works in the main folder; Claude works in the `-claude` worktree and merges into `main` only with the user's go-ahead. See [docs/workflow.md](docs/workflow.md).
-- **Status:** Active · Since: 2026-10-27
+### R-OPS-03 — Claude works in the main folder; the VPS only on request
+- **Rule:** *"ab se tum main pr hi kam kro ge take changes 5058 pr phle nzr ayn phir bad me jb me kahun hum vps pr change kren."* Claude edits the main folder (`main`, port 5058) and commits locally. The owner checks on localhost:5058. `git push origin main` (which deploys) happens only when the owner says so. Antigravity may work in the same folder, so check `git status` first and stage only your own files. The `-claude` worktree (2026-10-27 → 2026-11-03) is no longer used for work.
+- **Status:** Active · Since: 2026-11-03 (was: two agents, two folders)
 
 ---
 

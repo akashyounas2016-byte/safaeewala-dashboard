@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(excel-studio): two teams on one date no longer share "Team A"; names are unique per date, also for saved jobs, and each team gets its own colour (R-SYNC-08, UX-66)
+- fix(excel-studio): time clashes are shown at once. A red banner lists every cleaner booked twice in the sheet, the rows are outlined, and *Show* jumps to them. Add Job checks unsaved rows on screen too (before: only saved jobs, so a second overlapping job slipped in) (R-JOB-01)
+- docs(ops): Claude works in the main folder; the VPS is updated only on request (R-OPS-03)
 - fix(app): coming back to the browser tab no longer reloads the whole app. Supabase sends SIGNED_IN again on every return, and the app treated it as a new sign-in, so every screen was rebuilt and Settings jumped to Company (SET-01)
 - fix(settings): the chosen tab is kept in the URL and in the browser tab's session, so leaving Settings and coming back keeps it (SET-02)
 - feat(settings): when the server has no Supabase admin key, Users explains how to fix it (SET-03, K-06)
