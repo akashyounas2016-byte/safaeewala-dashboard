@@ -169,9 +169,9 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Status:** Active · Since: 2026-11-01
 
 ### R-SYNC-08 — Excel Job Sheet saves one job per job
-- **Rule:** A job with several cleaners shows one grid row per cleaner, but Save writes it back as **one** job: cleaners joined in `staff_name`, shared fields (time, address, area, material, notes) from the row that was changed, money from the lead row. Removing every cleaner row deletes the job. Save never creates a job for a per-cleaner row and never cuts cleaners off a job.
-- **Code:** `JobSheetSpreadsheet.tsx → handleSaveAll` (`splitJobPayload`), rows built by `ensureThreeRowsPerStaff`.
-- **Status:** Active · Since: 2026-10-31
+- **Rule:** A job with several cleaners shows one grid row per cleaner, but Save writes it back as **one** job: cleaners joined in `staff_name`, shared fields (time, address, area, material, notes) from the row that was changed, money from the lead row. Removing every cleaner row deletes the job. Save never creates a job for a per-cleaner row and never cuts cleaners off a job. A team job added with **Add Job** is split into one row per cleaner at once. Each row goes into that cleaner's block, and the team gets the next free *Team X* letter. On Save the rows are saved as one job.
+- **Code:** `JobSheetSpreadsheet.tsx → handleSaveAll` (`splitJobPayload`), rows built by `ensureThreeRowsPerStaff`; `src/lib/excelTeams.ts → expandTeamJob, placeRowsInCleanerBlocks, nextTeamRef`.
+- **Status:** Active · Since: 2026-10-31 · Add Job split since 2026-11-03
 
 ### R-SYNC-09 — Several users, one live picture
 - **Rule:** Every insert / update / delete in bookings, clients, employees, agencies, invoices, inventory, daily jobs and expenses reaches every signed-in browser live (Supabase Realtime) and is merged without a reload; a row with an unsaved local change keeps the local version until it is uploaded. Shared settings (payment modes, materials, colours, closed days, …) are cloud-synced and arrive live too — the open screen offers *Refresh*. A browser idle for 2 hours is signed out.

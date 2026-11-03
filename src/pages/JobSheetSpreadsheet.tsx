@@ -48,6 +48,7 @@ import { invoicedJobIds } from '@/lib/receivables'
 import { fetchRecordHistory, type AuditEntry } from '@/lib/auditLog'
 import { ChangeLogHistoryModal } from '@/components/dailyJobSheet/ChangeLogHistoryModal'
 import { cleanAddressDisplay } from '@/lib/utils'
+import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, buildTeamColorMap } from '@/lib/excelTeams'
 
 /* ─── Column Schema for the Excel Grid (Daily Job Sheet Exact Sequence) ─── */
 export interface ColumnDef {
@@ -1096,33 +1097,8 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
   // Secondary cleaners hold 0 charges/received and display team & primary cleaner references.
   const expandedJobs: DailyJob[] = []
   jobs.forEach(job => {
-    const cleaners = splitStaffNames(job.staff_name || '')
-    if (cleaners.length <= 1) {
-      expandedJobs.push(job)
-    } else {
-      const teamRef = multiCleanerTeamMap.get(job.id) || (job.team_name && job.team_name.trim().toLowerCase() !== 'project team' ? job.team_name.trim() : 'Team A')
-      const primaryCleaner = (cleaners[0] || '').trim()
-      cleaners.forEach((cleaner, cIdx) => {
-        const isPrimary = cIdx === 0
-        expandedJobs.push({
-          ...job,
-          id: isPrimary ? job.id : `${job.id}-cleaner-${(cleaner || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-          staff_name: (cleaner || '').trim(),
-          team_name: teamRef,
-          charges: isPrimary ? cleanNum(job.charges) : 0,
-          received: isPrimary ? cleanNum(job.received) : 0,
-          payment_mode: isPrimary ? job.payment_mode : ('Above' as any),
-          _isSplitShift: true,
-          _isPrimaryCleaner: isPrimary,
-          _isSecondaryCleaner: !isPrimary,
-          _primaryCleanerName: primaryCleaner,
-          _teamReference: teamRef,
-          _allCleaners: cleaners,
-          _cleanerIndex: cIdx + 1,
-          _originalJobId: job.id,
-        } as DailyJob)
-      })
-    }
+    const teamRef = multiCleanerTeamMap.get(job.id) || (job.team_name && job.team_name.trim().toLowerCase() !== 'project team' ? job.team_name.trim() : 'Team A')
+    expandedJobs.push(...expandTeamJob(job, teamRef))
   })
 
   // 3. Group expanded jobs by individual staff member
@@ -3484,8 +3460,9 @@ export function JobSheetSpreadsheet() {
     // Those rows are not jobs of their own: saving them one by one cut the other cleaners off the job
     // (lead row) or created a duplicate job on every save (other rows). They are folded back into their job.
     const splitOrigin = (r: DailyJob) => ((r as any)._isSplitShift ? String((r as any)._originalJobId || '') : '')
-    const splitJobIds = new Set([...edited, ...removed].map(splitOrigin).filter(Boolean))
+    const splitJobIds = new Set([...added, ...edited, ...removed].map(splitOrigin).filter(Boolean))
     const inTouchedSplit = (r: DailyJob) => splitJobIds.has(splitOrigin(r))
+    const plainAdded = added.filter(r => !inTouchedSplit(r)) // a new team job (Add Job) is saved once, below
     const plainEdited = edited.filter(r => !inTouchedSplit(r))
     const plainRemoved = removed.filter(r => !inTouchedSplit(r))
 
@@ -3589,9 +3566,9 @@ export function JobSheetSpreadsheet() {
       if (live.has(jobId)) updateDailyJob(jobId, p)
       else addDailyJob(p)
     })
-    added.forEach(r => addDailyJob(payload(r)))
+    plainAdded.forEach(r => addDailyJob(payload(r)))
     // Only rows that were already gone were "saved": no job changes, so no reload comes — settle here
-    const wroteSomething = added.length + plainEdited.length + splitJobIds.size + plainRemoved.filter(r => live.has(r.id)).length > 0
+    const wroteSomething = plainAdded.length + plainEdited.length + splitJobIds.size + plainRemoved.filter(r => live.has(r.id)).length > 0
     if (!wroteSomething) {
       reloadAfterSaveRef.current = false
       setLoadedSnapshot(new Map(rows.map(r => [r.id, r])))
@@ -3997,6 +3974,20 @@ export function JobSheetSpreadsheet() {
 
     return groups
   }, [visibleGridRows, gridRows, cleanerColors, pendingCtx])
+
+  // UX-66: every row of one team job has the same colour; solo rows keep the solo colour (UX-61)
+  const teamColorMap = useMemo(() => {
+    const keyOf = new Map<string, string>()
+    const map = buildTeamColorMap(gridRows, r => {
+      const info = getMultiCleanerPaymentInfo(r, gridRows)
+      const blank = !r.address && !r.start_time && !r.end_time && cleanNum(r.charges) === 0 && cleanNum(r.received) === 0
+      if (!info?.isMultiCleaner || !info.teamRef || blank) return null
+      const k = `${r.date || ''}|${info.teamRef}`
+      keyOf.set(r.id, k)
+      return k
+    })
+    return { byRow: (id: string) => { const k = keyOf.get(id); return k ? map.get(k) : undefined } }
+  }, [gridRows])
 
   // Cleaner index lookup for consistent color tints in Flat Grid Mode
   const cleanerIndexMap = useMemo(() => {
@@ -4860,6 +4851,8 @@ export function JobSheetSpreadsheet() {
                               cellBg = customRowPreset.circleColor
                             } else if (colPalette) {
                               cellBg = colPalette.solidBg
+                            } else if (!isBlankShift && teamColorMap.byRow(row.id)) {
+                              cellBg = teamColorMap.byRow(row.id)!.bg // UX-66
                             } else if (!isBlankShift && !mcInfo?.isMultiCleaner) {
                               cellBg = SOLO_ROW_BG // UX-61
                             }
@@ -5038,6 +5031,8 @@ export function JobSheetSpreadsheet() {
                     rowBg = chosenPalette.solidBg
                     isDarkRow = !chosenPalette.isLight
                   }
+                } else if (teamColorMap.byRow(row.id)) {
+                  rowBg = teamColorMap.byRow(row.id)!.bg // UX-66: same colour for every cleaner of the team
                 } else if ((row.address || row.start_time) && !getMultiCleanerPaymentInfo(row, gridRows)?.isMultiCleaner) {
                   rowBg = SOLO_ROW_BG // UX-61: job done by one cleaner alone
                 }
@@ -5238,9 +5233,10 @@ export function JobSheetSpreadsheet() {
                                 handleJumpToLeadCleaner(mcInfo, row)
                               }}
                               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-[10.5px] font-bold cursor-pointer transition-all shadow-2xs"
+                              style={teamColorMap.byRow(row.id) ? { backgroundColor: teamColorMap.byRow(row.id)!.tag, borderColor: teamColorMap.byRow(row.id)!.tag, color: '#ffffff' } : undefined}
                               title="Go to the lead cleaner's payment row"
                             >
-                              <Users size={10} className="text-indigo-600" />
+                              <Users size={10} className={teamColorMap.byRow(row.id) ? 'text-white' : 'text-indigo-600'} />
                               <span>{displayVal}</span>
                             </button>
                           ) : (
@@ -6342,10 +6338,17 @@ export function JobSheetSpreadsheet() {
                   id: newRowId('new'),
                   created_at: new Date().toISOString()
                 }
-                const updated = [newJob, ...gridRows]
-                pushState(updated)
+                // UX-66: a team job gets one row per cleaner, like the Daily Job Sheet; Save folds them into one job
+                const names = splitStaffNames(newJob.staff_name || '')
+                const teamRef = names.length > 1
+                  ? (newJob.team_name && newJob.team_name.trim().toLowerCase() !== 'project team' ? newJob.team_name.trim() : nextTeamRef(gridRows, newJob.date))
+                  : ''
+                const newRows = expandTeamJob(newJob, teamRef)
+                pushState(recalculateAllRowsOT(placeRowsInCleanerBlocks(gridRows, newRows)))
                 setShowAddJobModal(false)
-                showToast(`✓ Job added for ${newJob.staff_name || 'Staff'}`)
+                showToast(names.length > 1
+                  ? `✓ ${teamRef} added — ${names.length} cleaners, one row each`
+                  : `✓ Job added for ${newJob.staff_name || 'Staff'}`)
               }}
               onClose={() => setShowAddJobModal(false)}
             />
