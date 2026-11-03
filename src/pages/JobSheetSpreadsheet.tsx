@@ -48,7 +48,7 @@ import { invoicedJobIds } from '@/lib/receivables'
 import { fetchRecordHistory, type AuditEntry } from '@/lib/auditLog'
 import { ChangeLogHistoryModal } from '@/components/dailyJobSheet/ChangeLogHistoryModal'
 import { cleanAddressDisplay } from '@/lib/utils'
-import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, buildTeamColorMap, uniqueTeamRefs } from '@/lib/excelTeams'
+import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, buildTeamColorMap, uniqueTeamRefs, projectKey } from '@/lib/excelTeams'
 
 /* ─── Column Schema for the Excel Grid (Daily Job Sheet Exact Sequence) ─── */
 export interface ColumnDef {
@@ -1186,6 +1186,14 @@ const newRowId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().to
 const READ_ONLY_COLS = new Set(['pending', 'ot_hours']) // ot_hours: always automatic (DEC-015)
 /** Light background of a job done by one cleaner alone (not a team job) — UX-61 */
 const SOLO_ROW_BG = '#f0fdfa'
+/** UX-66: the project (location + date) of a team row; null for solo / blank rows */
+function projectKeyOf(r: DailyJob, allRows: DailyJob[]): string | null {
+  if (!r.address && !r.start_time && !r.end_time && cleanNum(r.charges) === 0 && cleanNum(r.received) === 0) return null
+  const info = getMultiCleanerPaymentInfo(r, allRows)
+  if (!info?.isMultiCleaner) return null
+  return projectKey(r, info.teamRef)
+}
+
 /** R-PAY-05: label of a team member's Received cell — the cash they collected, if the job is split */
 const memberReceivedLabel = (row: DailyJob, lead: string) => {
   const own = row.received_split?.[(row.staff_name || '').trim()]
@@ -3729,17 +3737,18 @@ export function JobSheetSpreadsheet() {
 
   // Filter Counts for Header Quick Filter Tabs
   const filterCounts = useMemo(() => {
-    let monthly = 0, cash = 0, online = 0, pending = 0, project = 0
+    let monthly = 0, cash = 0, online = 0, pending = 0
+    const projects = new Set<string>() // UX-66: one project per location and date, however many cleaners
     for (const r of gridRows) {
       if (r.payment_mode === 'Monthly') monthly++
       else if (r.payment_mode === 'Cash') cash++
       else if (r.payment_mode === 'Online') online++
       if (r.payment_mode === 'Pending' || rowPending(r) > 0) pending++
 
-      const mc = getMultiCleanerPaymentInfo(r, gridRows)
-      if (mc?.isMultiCleaner || (r.team_name && r.team_name.trim().toLowerCase() !== 'project team')) project++
+      const key = projectKeyOf(r, gridRows)
+      if (key) projects.add(key)
     }
-    return { all: gridRows.length, monthly, cash, online, pending, project }
+    return { all: gridRows.length, monthly, cash, online, pending, project: projects.size }
   }, [gridRows, pendingCtx])
 
   // Filtered rows for search and payment mode tabs
@@ -3776,9 +3785,9 @@ export function JobSheetSpreadsheet() {
         const hasSpecificAddr = cleanAddr && cleanAddr !== '—' && !isGenericAddress(r.address)
 
         let teamKey = ''
-        if (hasSpecificAddr) {
-          const label = mc?.teamRef || (r.team_name && r.team_name.trim().toLowerCase() !== 'project team' ? r.team_name.trim() : 'Team')
-          teamKey = `${label} · ${cleanAddr}`
+        const pKey = projectKeyOf(r, gridRows)
+        if (pKey && hasSpecificAddr) {
+          teamKey = `${pKey}` // UX-66: one group per location and date, whatever the team name
         } else if (mc?.teamRef) {
           teamKey = mc.teamRef
         } else if (r.team_name && r.team_name.trim() && r.team_name.trim().toLowerCase() !== 'project team') {
@@ -3979,12 +3988,10 @@ export function JobSheetSpreadsheet() {
   // UX-66: every row of one team job has the same colour; solo rows keep the solo colour (UX-61)
   const teamColorMap = useMemo(() => {
     const keyOf = new Map<string, string>()
+    // every row of one project (location + date) shares a colour; each project gets the next colour
     const map = buildTeamColorMap(gridRows, r => {
-      const info = getMultiCleanerPaymentInfo(r, gridRows)
-      const blank = !r.address && !r.start_time && !r.end_time && cleanNum(r.charges) === 0 && cleanNum(r.received) === 0
-      if (!info?.isMultiCleaner || !info.teamRef || blank) return null
-      const k = `${r.date || ''}|${info.teamRef}`
-      keyOf.set(r.id, k)
+      const k = projectKeyOf(r, gridRows)
+      if (k) keyOf.set(r.id, k)
       return k
     })
     return { byRow: (id: string) => { const k = keyOf.get(id); return k ? map.get(k) : undefined } }

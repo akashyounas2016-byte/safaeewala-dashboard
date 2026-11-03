@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(excel-studio): *Project* counts projects, not cleaner rows: 7 cleaners at 2 locations is 2 projects. A project is one location on one date; all its rows share one colour, different from every other project (UX-66)
 - feat(time): Booking and Add Job time pickers list plain numbers in 30-minute steps from 9:00, with Morning / Evening tabs; the box shows no AM/PM tag (the toggle beside it does); typing any time still works (UX-68)
 - feat(jobs): 20 more light row colours (UX-69); "Charges & Collection" is now "Charges", with *Split received between cleaners* (who collected how much) (R-PAY-05)
 - fix(sync): a job's row colour and the cash split are saved to Supabase. The row colour was never saved before (R-SYNC-11; migration `2026-11-03_daily_jobs_split_and_color.sql`)

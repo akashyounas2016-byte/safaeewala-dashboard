@@ -117,6 +117,7 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
   - equal footer buttons (`CardAction`).
   Monthly cards have an emerald tint. Delete asks first. One column on a phone, two from `md`. Parts are in `components/clients/ClientCardParts.tsx`; cleaner colours come from `lib/cleanerColors.ts`.
 - Excel Job Sheet team colours (UX-66):
+  - A **project** is the team work at one location on one date. Every team row at that address shares one light colour, whatever job or team name it came from. The *Project* tab counts projects, not rows, and groups by project.
   - Every row of one team job has the same light colour, and its team chip is filled in the matching strong colour.
   - Ten colours (amber, indigo, pink, green, sky, violet, orange, fuchsia, lime, red) are given in the order teams appear.
   - Solo jobs keep the solo colour.

@@ -1,6 +1,7 @@
 import type { DailyJob } from '@/types'
 import { splitStaffNames } from '@/lib/clientDataSync'
 import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
+import { normalizeJobAddress, isGenericAddress } from '@/lib/utils'
 
 /**
  * Team jobs in the Excel Job Sheet (R-SYNC-08, UX-66).
@@ -125,4 +126,16 @@ export function uniqueTeamRefs(jobs: DailyJob[]): Map<string, string> {
     out.set(j.id, name)
   })
   return out
+}
+
+/**
+ * A project = the team work at one location on one date (owner, 2026-11-03: "aik location par assign tamaam
+ * cleaners aik hi project"). Every team row at the same address that day belongs to it — whatever job or
+ * team name it came from — so the Project count, the grouping and the colour all follow the location.
+ * Rows without a specific address fall back to their team name. Returns null for a non-team row.
+ */
+export function projectKey(row: Pick<DailyJob, 'date' | 'address'>, teamRef?: string): string | null {
+  const addr = normalizeJobAddress(row.address)
+  if (addr && !isGenericAddress(row.address)) return `${row.date || ''}|@${addr}`
+  return teamRef ? `${row.date || ''}|${teamRef}` : null
 }

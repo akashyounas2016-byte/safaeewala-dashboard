@@ -67,3 +67,14 @@ const shifts = [
 ]
 const clashes = findAllClashes(shifts)
 eq(clashes.map(c => `${c.staff}:${c.a.id}-${c.b.id}`), ['Adnan:a1-a3', 'Arjun Singh:a2-a4'], 'both double bookings found, team rows and back-to-back shifts are fine')
+
+// Screenshot 2026-11-03: 7 cleaner rows at 2 locations were counted as 7 projects — a project is location + date
+import { projectKey } from '@/lib/excelTeams'
+const at = (address: string, date = day) => ({ date, address })
+eq(projectKey(at('today testing ABC'), 'Team Abv'), projectKey(at('Today Testing ABC '), 'Team B'), 'same location = same project, whatever the team name')
+eq(projectKey(at('today testing ABC'), 'Team Abv') === projectKey(at('809 Al qusais'), 'Team Abv'), false, 'another location is another project')
+eq(projectKey(at('today testing ABC', '2026-11-04'), 'T') === projectKey(at('today testing ABC'), 'T'), false, 'another date is another project')
+const rowsAtTwoPlaces = ['A', 'B', 'C', 'D', 'E'].map(() => at('today testing ABC')).concat([at('809 Al qusais'), at('809 Al qusais')])
+eq(new Set(rowsAtTwoPlaces.map(r => projectKey(r, 'x'))).size, 2, '7 cleaner rows at 2 locations = 2 projects')
+const colours = buildTeamColorMap(rowsAtTwoPlaces.map((r, i) => ({ ...r, id: String(i) }) as unknown as DailyJob), r => projectKey(r, 'x'))
+eq(colours.size === 2 && colours.get(projectKey(at('today testing ABC'), 'x')!) !== colours.get(projectKey(at('809 Al qusais'), 'x')!), true, 'each project its own colour')
