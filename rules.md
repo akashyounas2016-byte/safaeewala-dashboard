@@ -47,9 +47,9 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** *"System available cleaners mein say sirf unhein Absent count karay jo specifically mark hon, jabke blank entries ka matlab ho ga keh cleaner available tha magar koi job assigned nahi thi."*
   - **Present:** ≥ 1 worked shift that date (a row with duty hours or charges).
   - **Available / Standby:** no job that date → **never counted as absent**.
-  - **Absent:** only via an explicit mark — Attendance screen override, or a job-sheet row with no hours/charges whose remarks/address say `absent`, `not available`, `medical emergency`, `uninformed`.
-  - **On leave:** `on leave`, `sick leave`, `annual leave`, `emergency leave`, `day off`, `weekly off`, or override category *Approved Leave / Weekly Off*.
-- **Code:** `src/lib/attendance.ts → classifyAttendanceDay` (used by the Attendance list and the monthly calendar); overrides in localStorage `safaeewala_cleaner_attendance_overrides` (key `YYYY-MM-DD_<name lowercase>`).
+  - **Absent:** only via an explicit mark — Attendance screen *Uninformed Absence / Other*, a rejected leave (R-ATT-05), or a job-sheet row with no hours/charges whose remarks/address say `absent`, `not available`, `medical emergency`, `uninformed`.
+  - **On leave:** `on leave`, `sick leave`, `annual leave`, `emergency leave`, `day off`, `weekly off`, or an Attendance leave category (Sick / Emergency / Annual Leave, Weekly Off) — pending or approved.
+- **Code:** `src/lib/attendance.ts → classifyAttendanceDay` (Attendance list, monthly calendar); marks in the Supabase table `attendance_marks`, key `YYYY-MM-DD_id:<employeeId>` or `YYYY-MM-DD_<name lowercase>` (R-SYNC-10).
 - **Status:** Active · Since: 2026-10
 
 ### R-ATT-04 — Who appears on the attendance list
@@ -65,6 +65,25 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-ATT-03 — Manual override wins for that date
 - **Rule:** An Attendance override for a date replaces what the job sheet implies for that cleaner and date.
 - **Status:** Active
+
+### R-ATT-05 — Leave needs admin / manager approval
+- **Rule:** *"leave ka approval hona chaheye, admin dekhe ga k aya iski leave consider krni he ya isko mark as absent krna he."*
+  - A leave category (Sick Leave, Emergency Leave, Annual Leave, Weekly Off) marked by any other role is a **pending request**; the cleaner shows *Leave · Awaiting approval*.
+  - Admin or manager **approve** (stays leave) or **reject** (recorded as **absent**). A leave they mark themselves is approved at once.
+  - *Uninformed Absence* and *Other* are absences — final at once, no approval.
+  - A pending leave is not an absence (health score, reports). Other roles cannot change a decided leave; the database refuses a decision from any role but admin / manager.
+- **Code:** `src/lib/attendance.ts → newAbsenceMark, decideLeave, canApproveLeave`; `Attendance.tsx` (Leave approvals panel); trigger `attendance_marks_guard` in migration `2026-11-03_attendance_marks.sql`.
+- **Status:** Active · Since: 2026-11-03 (ATT-A06)
+
+### R-ATT-06 — Monday leave is flagged for approval
+- **Rule:** *"monday ki jo leave aye gi wo jab approval k liye admin ya manager k pas jae to tb just flag show kre take approval ya rejection me asani ho."* A **pending** leave on a Monday (Dubai calendar date) gets a yellow row and a yellow **Monday** flag in the Leave approvals list. The row also says how many other Monday absences / leave the cleaner had in the 90 days before. Only there — decided leave and other screens show no flag.
+- **Code:** `src/lib/attendance.ts → isMondayDate`; `Attendance.tsx` (Leave approvals).
+- **Status:** Active · Since: 2026-11-03 (ATT-A07)
+
+### R-ATT-07 — The Daily Job Sheet shows Attendance marks
+- **Rule:** A cleaner marked absent / on leave in Attendance is listed in the Daily Job Sheet for that date (red *Absent* or amber *On Leave / Leave · Pending* row with the reason and who marked it), also on a date with no jobs yet. A cleaner who still has jobs that date gets an *Absent / On leave in Attendance — reassign* tag on the job row. The job rows are never moved or deleted by a mark.
+- **Code:** `DailyJobSheet.tsx → attendanceMarkFor, nilRows, renderNilCell`.
+- **Status:** Active · Since: 2026-11-03 (ATT-A01)
 
 ---
 
@@ -158,6 +177,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** Every insert / update / delete in bookings, clients, employees, agencies, invoices, inventory, daily jobs and expenses reaches every signed-in browser live (Supabase Realtime) and is merged without a reload; a row with an unsaved local change keeps the local version until it is uploaded. Shared settings (payment modes, materials, colours, closed days, …) are cloud-synced and arrive live too — the open screen offers *Refresh*. A browser idle for 2 hours is signed out.
 - **Code:** `src/lib/realtime.ts`, `DataContext` (subscribeTables), `cloudState.ts → subscribeCloudState`, `App.tsx → AuthGate`. Migration `2026-11-02_realtime.sql`.
 - **Status:** Active · Since: 2026-11-02 (E2E-13, E2E-17, E2E-18)
+
+### R-SYNC-10 — Attendance marks: one row per cleaner and date
+- **Rule:** Present / Absent / Leave marks and leave decisions are rows of the Supabase table `attendance_marks` (one per cleaner + date), saved through the outbox and sent live to every user — two users marking at once no longer undo each other, and a reset mark does not come back. Until the migration has run the app keeps using the old shared value (`app_state` key `safaeewala_cleaner_attendance_overrides`); the migration copies it in (existing leave = approved).
+- **Code:** `src/store/useAttendanceMarks.ts`, `realtime.ts → subscribeAttendanceMarks`, `DataContext → attendanceMarks / saveAttendanceMarks`. Migration `2026-11-03_attendance_marks.sql`.
+- **Status:** Active · Since: 2026-11-03 (ATT-A02, ATT-A03)
 
 ### R-SYNC-04 — Staff are matched by whole words
 - **Rule:** An employee matches a job's `staff_name` by normalised full name or whole-word match — "Rupa" must not match "Rupak".

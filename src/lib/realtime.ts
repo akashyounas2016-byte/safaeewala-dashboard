@@ -41,3 +41,19 @@ export function applyRowChange<T extends { id: string }>(list: T[], event: RowCh
   next[i] = merged
   return next
 }
+
+/**
+ * Live attendance marks and leave decisions (R-SYNC-10). A separate channel, opened only once the
+ * attendance_marks table exists (migration 2026-11-03_attendance_marks.sql).
+ */
+export function subscribeAttendanceMarks(onChange: (event: RowChange, row: Record<string, unknown> & { id: string }) => void): () => void {
+  const channel = supabase.channel('crm-attendance-marks').on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_marks' }, payload => {
+    const event = payload.eventType as RowChange
+    const row = (event === 'DELETE' ? payload.old : payload.new) as Record<string, unknown> & { id?: string }
+    if (!row?.id) return
+    if (event !== 'DELETE' && hasPendingWrite('attendance_marks', row.id)) return
+    onChange(event, row as Record<string, unknown> & { id: string })
+  })
+  channel.subscribe()
+  return () => { void supabase.removeChannel(channel) }
+}

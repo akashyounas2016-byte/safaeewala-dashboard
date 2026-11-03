@@ -95,7 +95,7 @@ import { invoicedJobIds } from '@/lib/receivables'
 import { notify, confirmAsync } from '@/lib/notify'
 import { findStaffClash, clashMessage } from '@/lib/shiftClash'
 import { ImportPreviewModal, type ImportPlan } from '@/components/dailyJobSheet/ImportPreviewModal'
-import { buildCleanerRoster } from '@/lib/attendance'
+import { buildCleanerRoster, findMark, type AttendanceOverride } from '@/lib/attendance'
 import { buildRowChecks } from '@/lib/jobChecks'
 import { parseJobSheetWorkbook } from '@/lib/jobSheetImport'
 import { CLOSED_DAYS_KEY, type ClosedDay } from '@/lib/closedDays'
@@ -104,7 +104,7 @@ import { CLOSED_DAYS_KEY, type ClosedDay } from '@/lib/closedDays'
 export function DailyJobSheet() {
   const navigate = useNavigate()
   const { openMenu } = useLayout()
-  const { dailyJobs, dailyExpenses, employees, clients, invoices, loading, addDailyJob, updateDailyJob, deleteDailyJob, addDailyExpense, updateDailyExpense, deleteDailyExpense, clearDailyData, clearAllDailyData } = useData()
+  const { dailyJobs, dailyExpenses, employees, clients, invoices, loading, addDailyJob, updateDailyJob, deleteDailyJob, addDailyExpense, updateDailyExpense, deleteDailyExpense, clearDailyData, clearAllDailyData, attendanceMarks } = useData()
 
   const [searchParams, setSearchParams] = useSearchParams()
   const qDate = searchParams.get('date')
@@ -943,17 +943,29 @@ export function DailyJobSheet() {
   // AUD-51: same cleaner list as Attendance — no hard-coded roster, shared rows split (R-ATT-04)
   const allKnownCleaners = useMemo(() => buildCleanerRoster(employees, dailyJobs, selectedDate), [employees, dailyJobs, selectedDate])
 
+  // R-ATT-07: the Attendance mark (absent / leave / present) of a cleaner on a date, shown in the sheet
+  const attendanceMarkFor = (name: string, date: string): AttendanceOverride | undefined => {
+    const emp = employees.find(e => (e.full_name || '').trim().toLowerCase() === name.trim().toLowerCase())
+    return findMark(attendanceMarks, date, name, emp?.id)
+  }
+  const isAwayMark = (m?: AttendanceOverride) => m?.status === 'absent' || m?.status === 'on_leave'
+
   // Absentees / active employees with nil records (0 jobs today) placed at the bottom
   // Guard: if no data has been uploaded/imported for this date (todayJobs is empty),
-  // or if store is loading, keep nilRows empty so staff names/absent rows do not appear on empty days.
-  const nilRows: Array<any> = (todayJobs.length === 0 || (loading && dailyJobs.length === 0)) ? [] : allKnownCleaners
+  // or if store is loading, keep nilRows empty so staff names/absent rows do not appear on empty days —
+  // except cleaners marked absent / on leave in Attendance, who are always listed (R-ATT-07).
+  const emptyDay = todayJobs.length === 0 || (loading && dailyJobs.length === 0)
+  const nilRows: Array<any> = allKnownCleaners
     .filter(name => !activeStaffSet.has(name.trim().toLowerCase()))
-    .sort((a, b) => a.localeCompare(b))
-    .map(name => ({
+    .map(name => ({ name, mark: attendanceMarkFor(name, selectedDate) }))
+    .filter(({ mark }) => !emptyDay || isAwayMark(mark))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(({ name, mark }) => ({
       id: `nil-${name.toLowerCase().replace(/\s+/g, '-')}`,
       isNil: true,
       staff_name: name,
       date: selectedDate,
+      attendance: mark,
     }))
 
   // Unique staff list for color mapping (alphabetically consistent)
@@ -1754,11 +1766,47 @@ export function DailyJobSheet() {
   }
 
   const renderNilCell = (id: string, row: any) => {
+    const mark: AttendanceOverride | undefined = row.attendance
+    const away = isAwayMark(mark)
+    const onLeave = mark?.status === 'on_leave'
+    const pendingLeave = onLeave && mark?.approval === 'pending'
+    const awayLabel = !away ? '' : onLeave ? (pendingLeave ? 'Leave · Pending' : 'On Leave') : 'Absent'
+    const awayPill = onLeave ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-rose-100 text-rose-800 border-rose-300'
+    if (away && id === 'address') {
+      return (
+        <td key={id} className={`px-3 py-3 italic font-semibold max-w-[220px] truncate ${onLeave ? 'text-amber-800' : 'text-rose-700'}`} title={mark?.reason}>
+          {mark?.reason || (onLeave ? 'On leave' : 'Marked absent')}
+        </td>
+      )
+    }
+    if (away && id === 'payment_mode') {
+      return (
+        <td key={id} className="px-3 py-3 whitespace-nowrap">
+          <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border shadow-xs uppercase tracking-wider ${awayPill}`}>{awayLabel}</span>
+        </td>
+      )
+    }
+    if (away && id === 'remarks') {
+      const who = mark?.approval === 'pending' ? `Requested by ${mark.requestedBy || '—'}`
+        : mark?.decidedBy ? `${mark.approval === 'rejected' ? 'Leave rejected' : 'Approved'} by ${mark.decidedBy}`
+        : mark?.requestedBy ? `Marked by ${mark.requestedBy}` : 'Marked in Attendance'
+      return <td key={id} className="px-3 py-3 text-slate-500 max-w-[160px] truncate" title={who}>{who}</td>
+    }
+    if (away && id === 'actions') {
+      return (
+        <td key={id} className="px-3 py-3 whitespace-nowrap">
+          <a href={`/attendance?date=${selectedDate}`} onClick={e => { e.preventDefault(); navigate(`/attendance?date=${selectedDate}`) }}
+            className="text-[11px] font-bold px-2 py-1 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer">
+            Attendance
+          </a>
+        </td>
+      )
+    }
     if (id === 'staff') {
       return (
         <td key={id} className="px-3 py-3 font-semibold whitespace-nowrap">
           <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black bg-sky-500 text-white shadow-xs">
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-xs ${!away ? 'bg-sky-500' : onLeave ? 'bg-amber-500' : 'bg-rose-600'}`}>
               {(row.staff_name || 'U').trim()[0]?.toUpperCase() || 'U'}
             </span>
             <span className="text-slate-800 font-bold">{row.staff_name}</span>
@@ -1875,6 +1923,17 @@ export function DailyJobSheet() {
                         </span>
                       </div>
                     )}
+                    {(() => {
+                      // R-ATT-07: a cleaner marked absent / on leave in Attendance who still has jobs here
+                      const m = attendanceMarkFor(job.staff_name || '', job.date)
+                      return isAwayMark(m) ? (
+                        <div className="mt-0.5">
+                          <span className={`text-[9px] font-black px-1.5 py-0.2 rounded-full inline-block border ${m?.status === 'on_leave' ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-rose-100 text-rose-800 border-rose-300'}`} title={m?.reason}>
+                            {m?.status === 'on_leave' ? 'On leave in Attendance' : 'Absent in Attendance'} — reassign
+                          </span>
+                        </div>
+                      ) : null
+                    })()}
                     {isDateRange && (
                       <div className="text-[10px] text-slate-500 font-normal">{fmtDate(job.date)}</div>
                     )}
@@ -3737,8 +3796,13 @@ export function DailyJobSheet() {
               <tbody className="divide-y divide-[#E4E8EC]/70">
                 {displayedRows.map((row, idx) => {
                   if (row.isNil) {
+                    const away = isAwayMark(row.attendance)
+                    const leave = row.attendance?.status === 'on_leave'
                     return (
-                      <tr key={row.id} className="bg-sky-50/70 hover:bg-sky-100/70 transition-colors border-l-[5px] border-l-sky-500 border-t border-t-sky-200">
+                      <tr key={row.id} className={`transition-colors border-l-[5px] border-t ${
+                        !away ? 'bg-sky-50/70 hover:bg-sky-100/70 border-l-sky-500 border-t-sky-200'
+                        : leave ? 'bg-amber-50/70 hover:bg-amber-100/70 border-l-amber-500 border-t-amber-200'
+                        : 'bg-rose-50/70 hover:bg-rose-100/70 border-l-rose-500 border-t-rose-200'}`}>
                         {activeColumns.map(col => renderNilCell(col.id, row))}
                       </tr>
                     )

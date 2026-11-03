@@ -5,19 +5,23 @@ import {
   XCircle, Search, Filter, Printer, Download, Plus, RotateCw,
   ExternalLink, ChevronLeft, ChevronRight, MapPin, Briefcase,
   Sparkles, Check, HelpCircle, FileSpreadsheet, Eye, UserX,
-  Phone, AlertTriangle, X,
+  Phone, AlertTriangle, X, Flag, ShieldCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
 import type { DailyJob, Employee } from '@/types'
-import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { calcJobOTHours, isBogusJob, employeeMatchesStaff } from '@/lib/clientDataSync'
 
 
-import { classifyAttendanceDay, type AttendanceStatus, type AttendanceOverride, buildCleanerRoster } from '@/lib/attendance'
+import {
+  classifyAttendanceDay, type AttendanceStatus, type AttendanceOverride, buildCleanerRoster,
+  LEAVE_CATEGORIES, ABSENCE_CATEGORIES, type AbsenceCategory, isLeaveCategory, canApproveLeave,
+  isMondayDate, newAbsenceMark, decideLeave, splitMarkKey,
+} from '@/lib/attendance'
 import { AttendanceCalendar } from '@/components/attendance/AttendanceCalendar'
-import { todayDubai } from '@/lib/dubaiTime'
+import { todayDubai, addDays } from '@/lib/dubaiTime'
+import { useAuth } from '@/store/UserContext'
 export type { AttendanceStatus }
 
 export interface CleanerAttendanceRecord {
@@ -32,6 +36,9 @@ export interface CleanerAttendanceRecord {
   firstStartTime?: string
   lastEndTime?: string
   isManualPresent?: boolean
+  /** R-ATT-05: leave waiting for admin / manager */
+  leavePending?: boolean
+  mark?: AttendanceOverride
 }
 
 
@@ -66,21 +73,27 @@ function fmtDateHeading(dateStr: string): string {
   }
 }
 
-function addDays(dateStr: string, days: number): string {
-  try {
-    const [y, m, d] = dateStr.split('-').map(Number)
-    const dt = new Date(y, m - 1, d)
-    dt.setDate(dt.getDate() + days)
-    return dt.toISOString().split('T')[0]
-  } catch {
-    return dateStr
-  }
+const CATEGORY_LABEL: Record<AbsenceCategory, string> = {
+  'Sick Leave': 'Sick Leave / Medical',
+  'Emergency Leave': 'Family / Personal Emergency Leave',
+  'Annual Leave': 'Annual / Casual Leave',
+  'Weekly Off': 'Day Off / Weekly Rest',
+  'Uninformed Absence': 'Uninformed Absence / No Show',
+  'Other': 'Other Reason (absent)',
+}
+
+const fmtShortDate = (d: string) => {
+  const [y, m, day] = d.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, day)).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
 }
 
 export function Attendance() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { dailyJobs, employees, loading, addDailyJob } = useData()
+  const { dailyJobs, employees, loading, attendanceMarks: overrides, saveAttendanceMarks } = useData()
+  const { user } = useAuth()
+  const isApprover = canApproveLeave(user?.role)
+  const myName = user?.full_name || user?.email || 'Unknown user'
 
   // ── Selected Date State (URL synced or Today) ──
   const qDate = searchParams.get('date')
@@ -101,14 +114,7 @@ export function Attendance() {
     setSearchParams({ date: newDate })
   }
 
-  // ── Attendance Overrides (persisted in localStorage) ──
-  const [overrides, setOverrides] = useState<Record<string, AttendanceOverride>>(() => {
-    return safeLocalStorageGet('safaeewala_cleaner_attendance_overrides', {})
-  })
-
-  useEffect(() => {
-    safeLocalStorageSet('safaeewala_cleaner_attendance_overrides', overrides)
-  }, [overrides])
+  // Attendance marks come from the shared store: table attendance_marks, live for every user (R-SYNC-10)
 
   // ── Search & Filter State ──
   const [searchQuery, setSearchQuery] = useState('')
@@ -138,7 +144,8 @@ export function Attendance() {
 
   // ── Modal for Marking Specifically Absent ──
   const [absentModalCleaner, setAbsentModalCleaner] = useState<string | null>(null)
-  const [absenceReasonCategory, setAbsenceReasonCategory] = useState<'Sick Leave' | 'Emergency' | 'Approved Leave' | 'Uninformed Absence' | 'Weekly Off' | 'Other'>('Sick Leave')
+  const [absenceReasonCategory, setAbsenceReasonCategory] = useState<AbsenceCategory>('Sick Leave')
+  const [showDecided, setShowDecided] = useState(false)
   const [absenceCustomNote, setAbsenceCustomNote] = useState('')
 
   // ── Modal for Quick Shifts / Jobs ──
@@ -174,15 +181,46 @@ export function Attendance() {
     return emp ? `${selectedDate}_id:${emp.id}` : nameKey(name)
   }
   const getOverride = (name: string) => overrides[overrideKeyFor(name)] ?? overrides[nameKey(name)]
+  /** The key the cleaner's current mark is stored under (id key, or an older name key) */
+  const markKeyOf = (name: string) => (overrideKeyFor(name) in overrides ? overrideKeyFor(name) : nameKey(name))
   /** Write an override under the id key and drop any older name-keyed copy */
   const putOverride = (name: string, value: AttendanceOverride | null) => {
-    setOverrides(prev => {
-      const next = { ...prev }
-      delete next[nameKey(name)]
-      if (value) next[overrideKeyFor(name)] = value
-      else delete next[overrideKeyFor(name)]
-      return next
-    })
+    const idKey = overrideKeyFor(name)
+    const changes = [{ key: idKey, mark: value, cleanerName: name.trim() }]
+    if (nameKey(name) !== idKey && overrides[nameKey(name)]) changes.push({ key: nameKey(name), mark: null, cleanerName: name.trim() })
+    saveAttendanceMarks(changes)
+  }
+  /** Non-approvers cannot undo a leave that admin / manager already decided (R-ATT-05) */
+  const isLockedForMe = (m?: AttendanceOverride) => !isApprover && !!m && (m.approval === 'approved' || m.approval === 'rejected')
+
+  // ── Leave approvals (R-ATT-05) — every date, newest first; Monday requests are flagged (R-ATT-06) ──
+  const leaveRequests = useMemo(() => {
+    const nameFor = (cleanerKey: string) => cleanerKey.startsWith('id:')
+      ? employees.find(e => e.id === cleanerKey.slice(3))?.full_name || 'Unknown employee'
+      : cleanerKey.replace(/\b\w/g, c => c.toUpperCase())
+    return Object.entries(overrides)
+      .filter(([, m]) => m.approval)
+      .map(([key, m]) => {
+        const { date, cleanerKey } = splitMarkKey(key)
+        // R-ATT-06: other Monday absences / leave of this cleaner in the 90 days before — helps the decision
+        const since = addDays(date, -90)
+        const otherMondays = isMondayDate(date) ? Object.entries(overrides).filter(([k, o]) => {
+          const p = splitMarkKey(k)
+          return k !== key && p.cleanerKey === cleanerKey && p.date >= since && p.date < date && isMondayDate(p.date) && (o.status === 'absent' || o.status === 'on_leave')
+        }).length : 0
+        return { key, date, name: nameFor(cleanerKey), mark: m, monday: isMondayDate(date), otherMondays }
+      })
+      .sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name))
+  }, [overrides, employees])
+  const pendingLeaves = leaveRequests.filter(r => r.mark.approval === 'pending')
+  const decidedLeaves = leaveRequests.filter(r => r.mark.approval !== 'pending').slice(0, 20)
+  const handleDecideLeave = (key: string, approve: boolean) => {
+    const m = overrides[key]
+    const req = leaveRequests.find(r => r.key === key)
+    if (!m || !isApprover) return
+    saveAttendanceMarks([{ key, mark: decideLeave(m, approve, myName), cleanerName: req?.name }])
+    setSyncToast(approve ? `Leave approved — ${req?.name}` : `Leave rejected — ${req?.name} recorded as Absent`)
+    setTimeout(() => setSyncToast(null), 3000)
   }
 
   // ── Process Attendance Records for Every Known Cleaner ──
@@ -196,7 +234,7 @@ export function Attendance() {
 
       // One shared rule for a cleaner's day (R-ATT-01..03) — also used by the monthly calendar (UX-20)
       const day = classifyAttendanceDay(cleanerJobs, explicitOverride, emp || cleanerName)
-      const { status, absenceReason, dutyHours, otHours, isManualPresent } = day
+      const { status, absenceReason, dutyHours, otHours, isManualPresent, leavePending } = day
       const firstStartTime = day.workedJobs[0]?.start_time
       const lastEndTime = day.workedJobs[day.workedJobs.length - 1]?.end_time
       const activeWorkJobs = day.workedJobs
@@ -213,6 +251,8 @@ export function Attendance() {
         firstStartTime,
         lastEndTime,
         isManualPresent,
+        leavePending,
+        mark: explicitOverride,
       }
     })
   }, [allKnownCleaners, dateJobs, selectedDate, overrides, employeeByName])
@@ -270,6 +310,7 @@ export function Attendance() {
       dutyHours: defaultHours,
       reason: 'Manually marked as present',
       updatedAt: new Date().toISOString(),
+      requestedBy: myName,
     })
     setSyncToast(`${cleanerName} marked as Present for ${selectedDate}`)
     setTimeout(() => setSyncToast(null), 3000)
@@ -293,16 +334,13 @@ export function Attendance() {
 
   const handleConfirmMarkAbsent = () => {
     if (!absentModalCleaner) return
-    const fullReason = absenceCustomNote.trim()
-      ? `${absenceReasonCategory}: ${absenceCustomNote.trim()}`
-      : absenceReasonCategory
-
-    putOverride(absentModalCleaner, {
-      status: absenceReasonCategory === 'Approved Leave' || absenceReasonCategory === 'Weekly Off' ? 'on_leave' : 'absent',
-      reason: fullReason,
-      updatedAt: new Date().toISOString(),
-    })
-
+    // R-ATT-05: leave from a non-approver is a pending request; absence is final at once
+    const mark = newAbsenceMark(absenceReasonCategory, absenceCustomNote, user?.role, myName)
+    putOverride(absentModalCleaner, mark)
+    if (mark.approval === 'pending') {
+      setSyncToast(`Leave request for ${absentModalCleaner} sent to admin / manager for approval`)
+      setTimeout(() => setSyncToast(null), 3500)
+    }
     setAbsentModalCleaner(null)
   }
 
@@ -311,6 +349,7 @@ export function Attendance() {
       status: 'available',
       reason: undefined,
       updatedAt: new Date().toISOString(),
+      requestedBy: myName,
     })
   }
 
@@ -534,7 +573,7 @@ export function Attendance() {
           <p className="text-[28px] font-black text-rose-600 leading-none tracking-tight">{kpis.absent + kpis.onLeave}</p>
           <p className="text-[13.5px] font-bold text-slate-700 mt-2">Absent Cleaners</p>
           <p className="text-[11.5px] text-slate-400 mt-0.5">
-            {kpis.absent + kpis.onLeave === 0 ? 'No uninformed absences' : `${kpis.absent} absent · ${kpis.onLeave} on leave`}
+            {kpis.absent + kpis.onLeave === 0 ? 'No uninformed absences' : `${kpis.absent} absent · ${kpis.onLeave} on leave`}{pendingLeaves.length > 0 ? ` · ${pendingLeaves.length} leave pending` : ''}
           </p>
         </div>
       </div>
@@ -632,6 +671,75 @@ export function Attendance() {
         </div>
       </div>
 
+      {/* ── Leave approvals (R-ATT-05); Monday requests carry a yellow flag (R-ATT-06) ── */}
+      {(pendingLeaves.length > 0 || decidedLeaves.length > 0) && (
+        <div className="bg-white rounded-2xl border border-amber-200 shadow-[0_4px_20px_rgba(15,23,42,0.04)] overflow-hidden">
+          <div className="flex items-center justify-between gap-3 px-4 py-3 bg-amber-50/70 border-b border-amber-100 flex-wrap">
+            <p className="text-[13.5px] font-extrabold text-amber-950 flex items-center gap-2">
+              <ShieldCheck size={16} className="text-amber-600" />
+              Leave approvals
+              <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-amber-500 text-white">{pendingLeaves.length} pending</span>
+            </p>
+            <div className="flex items-center gap-3">
+              {!isApprover && pendingLeaves.length > 0 && (
+                <span className="text-[11px] text-amber-800 font-semibold">Admin / manager decide these requests</span>
+              )}
+              {decidedLeaves.length > 0 && (
+                <button type="button" onClick={() => setShowDecided(v => !v)} className="text-[11px] font-bold text-amber-800 hover:underline cursor-pointer">
+                  {showDecided ? 'Hide decided' : `Show decided (${decidedLeaves.length})`}
+                </button>
+              )}
+            </div>
+          </div>
+          {pendingLeaves.length === 0 && !showDecided ? (
+            <p className="px-4 py-3 text-[12px] text-slate-500">No leave waiting for approval.</p>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {[...pendingLeaves, ...(showDecided ? decidedLeaves : [])].map(r => {
+                const pending = r.mark.approval === 'pending'
+                const flagged = pending && r.monday
+                return (
+                  <div key={r.key} className={`flex items-center justify-between gap-3 px-4 py-2.5 flex-wrap ${flagged ? 'bg-yellow-50 border-l-4 border-l-yellow-400' : ''}`}>
+                    <div className="min-w-0">
+                      <p className="text-[12.5px] font-extrabold text-slate-900 flex items-center gap-2 flex-wrap">
+                        {r.name}
+                        <button type="button" onClick={() => handleDateChange(r.date)} className="text-[11px] font-bold text-teal-700 hover:underline cursor-pointer">{fmtShortDate(r.date)}</button>
+                        {flagged && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-yellow-300 text-yellow-950 border border-yellow-500" title="Leave on a Monday — check before deciding">
+                            <Flag size={10} className="fill-yellow-700 text-yellow-800" /> Monday
+                          </span>
+                        )}
+                        {flagged && r.otherMondays > 0 && (
+                          <span className="text-[10px] font-bold text-yellow-900">{r.otherMondays} other Monday{r.otherMondays > 1 ? 's' : ''} off in last 90 days</span>
+                        )}
+                        {!pending && (
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${r.mark.approval === 'approved' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                            {r.mark.approval === 'approved' ? 'Approved' : 'Rejected → Absent'}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-[11px] text-slate-600 truncate">
+                        {r.mark.reason || r.mark.category || 'Leave'}
+                        {r.mark.requestedBy && <span className="text-slate-400"> · requested by {r.mark.requestedBy}</span>}
+                        {!pending && r.mark.decidedBy && <span className="text-slate-400"> · decided by {r.mark.decidedBy}</span>}
+                      </p>
+                    </div>
+                    {pending && isApprover && (
+                      <div className="flex gap-1.5 shrink-0">
+                        <button type="button" onClick={() => handleDecideLeave(r.key, true)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] cursor-pointer">Approve leave</button>
+                        <button type="button" onClick={() => handleDecideLeave(r.key, false)}
+                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 font-bold text-[11px] cursor-pointer">Reject → Absent</button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Cleaners Attendance Roster Grid ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filteredRecords.map((cleaner, idx) => {
@@ -700,8 +808,8 @@ export function Attendance() {
                     )}
                     {isOnLeave && (
                       <span className="inline-flex items-center gap-1.5 text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                        <span>On Leave</span>
+                        <span className={`w-1.5 h-1.5 rounded-full bg-amber-500 ${cleaner.leavePending ? 'animate-pulse' : ''}`} />
+                        <span>{cleaner.leavePending ? 'Leave · Awaiting approval' : 'On Leave'}</span>
                       </span>
                     )}
                   </div>
@@ -783,6 +891,22 @@ export function Attendance() {
                     <p className="text-[11.5px] text-rose-900 font-semibold italic">
                       {cleaner.absenceReason || 'Specifically marked absent by supervisor'}
                     </p>
+                    {cleaner.mark?.approval && (
+                      <p className="text-[10.5px] text-slate-600 flex items-center gap-1">
+                        <ShieldCheck size={11} className="text-slate-500 shrink-0" />
+                        {cleaner.mark.approval === 'pending'
+                          ? `Leave requested${cleaner.mark.requestedBy ? ` by ${cleaner.mark.requestedBy}` : ''} — waiting for admin / manager`
+                          : `Leave ${cleaner.mark.approval === 'approved' ? 'approved' : 'rejected → absent'}${cleaner.mark.decidedBy ? ` by ${cleaner.mark.decidedBy}` : ''}`}
+                      </p>
+                    )}
+                    {cleaner.leavePending && isApprover && (
+                      <div className="flex gap-1.5 pt-1">
+                        <button type="button" onClick={() => handleDecideLeave(markKeyOf(cleaner.name), true)}
+                          className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10.5px] cursor-pointer">Approve leave</button>
+                        <button type="button" onClick={() => handleDecideLeave(markKeyOf(cleaner.name), false)}
+                          className="px-2 py-1 rounded-lg bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 font-bold text-[10.5px] cursor-pointer">Reject → Absent</button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -800,7 +924,7 @@ export function Attendance() {
 
                 <div className="flex items-center gap-1.5 flex-wrap justify-end">
                   {/* "Mark as Present" Option */}
-                  {!isPresent && (
+                  {!isPresent && !isLockedForMe(cleaner.mark) && (
                     <button
                       type="button"
                       onClick={() => handleMarkPresent(cleaner.name)}
@@ -825,7 +949,7 @@ export function Attendance() {
                   )}
 
                   {/* "Mark Available" Option for Absent / On Leave */}
-                  {(isAbsent || isOnLeave) && (
+                  {(isAbsent || isOnLeave) && !isLockedForMe(cleaner.mark) && (
                     <button
                       type="button"
                       onClick={() => handleMarkAvailable(cleaner.name)}
@@ -848,7 +972,7 @@ export function Attendance() {
                     </button>
                   )}
 
-                  {getOverride(cleaner.name) && (
+                  {getOverride(cleaner.name) && !isLockedForMe(cleaner.mark) && (
                     <button
                       type="button"
                       onClick={() => handleClearOverride(cleaner.name)}
@@ -874,39 +998,56 @@ export function Attendance() {
       />
 
       {/* ── Modal: Specifically Mark Absent ── */}
-      {absentModalCleaner && (
+      {absentModalCleaner && (() => {
+        const isLeave = isLeaveCategory(absenceReasonCategory)
+        const busy = attendanceRecords.find(r => r.name === absentModalCleaner)?.jobsCount || 0
+        return (
         <Modal
           open={!!absentModalCleaner}
           onClose={() => setAbsentModalCleaner(null)}
-          title={`Mark Cleaner Absent — ${absentModalCleaner}`}
+          title={`Absent / Leave — ${absentModalCleaner}`}
           size="md"
         >
           <div className="space-y-4">
-            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-rose-950 text-[12px] space-y-1">
+            <div className={`${isLeave ? 'bg-amber-50 border-amber-200 text-amber-950' : 'bg-rose-50 border-rose-200 text-rose-950'} border rounded-xl p-3 text-[12px] space-y-1`}>
               <p className="font-bold flex items-center gap-1.5">
-                <AlertTriangle size={14} className="text-rose-600 shrink-0" />
-                <span>Specify Reason for Absence ({selectedDate})</span>
+                <AlertTriangle size={14} className={`${isLeave ? 'text-amber-600' : 'text-rose-600'} shrink-0`} />
+                <span>{fmtDateHeading(selectedDate)}</span>
+                {isLeave && isMondayDate(selectedDate) && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-yellow-300 text-yellow-950 border border-yellow-500"><Flag size={10} /> Monday</span>
+                )}
               </p>
-              <p className="text-rose-800 text-[11px]">
-                By marking absent, this cleaner will specifically be recorded as Absent instead of Available (Standby).
+              <p className="text-[11px]">
+                {!isLeave
+                  ? 'Recorded as Absent at once (not Available / Standby).'
+                  : isApprover
+                    ? 'You are admin / manager: this leave is approved at once.'
+                    : 'This is a leave request. Admin / manager will approve it as leave or reject it as absent.'}
               </p>
             </div>
 
+            {busy > 0 && (
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-[11.5px] text-orange-900 font-semibold flex items-start gap-1.5">
+                <AlertTriangle size={14} className="text-orange-600 shrink-0 mt-0.5" />
+                <span>{absentModalCleaner} has {busy} job{busy > 1 ? 's' : ''} on this date in the Daily Job Sheet. Reassign {busy > 1 ? 'them' : 'it'} to another cleaner there — the jobs stay in the sheet.</span>
+              </div>
+            )}
+
             <div>
               <label className="block text-[11.5px] font-bold text-slate-700 mb-1.5">
-                Absence Category *
+                Category *
               </label>
               <select
                 value={absenceReasonCategory}
-                onChange={e => setAbsenceReasonCategory(e.target.value as any)}
+                onChange={e => setAbsenceReasonCategory(e.target.value as AbsenceCategory)}
                 className="w-full text-[13px] px-3.5 py-2.5 border border-[#E4E8EC] rounded-xl bg-white font-semibold text-slate-800 focus:outline-none focus:border-rose-500"
               >
-                <option value="Sick Leave">Sick Leave / Medical</option>
-                <option value="Emergency">Family / Personal Emergency</option>
-                <option value="Approved Leave">Approved Annual / Casual Leave</option>
-                <option value="Weekly Off">Day Off / Weekly Rest</option>
-                <option value="Uninformed Absence">Uninformed Absence / No Show</option>
-                <option value="Other">Other Reason</option>
+                <optgroup label={isApprover ? 'Leave' : 'Leave (needs approval)'}>
+                  {LEAVE_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
+                </optgroup>
+                <optgroup label="Absent">
+                  {ABSENCE_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
+                </optgroup>
               </select>
             </div>
 
@@ -929,15 +1070,16 @@ export function Attendance() {
               </Button>
               <Button
                 type="button"
-                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold"
+                className={`flex-1 text-white font-bold ${isLeave ? 'bg-amber-600 hover:bg-amber-700' : 'bg-rose-600 hover:bg-rose-700'}`}
                 onClick={handleConfirmMarkAbsent}
               >
-                Confirm Absent
+                {!isLeave ? 'Confirm Absent' : isApprover ? 'Save Leave' : 'Send Leave Request'}
               </Button>
             </div>
           </div>
         </Modal>
-      )}
+        )
+      })()}
 
       {/* ── Modal: View Cleaner Daily Shifts ── */}
       {selectedCleanerDetails && (

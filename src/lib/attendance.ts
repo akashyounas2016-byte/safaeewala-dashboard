@@ -4,16 +4,127 @@ import { addDays } from '@/lib/dubaiTime'
 
 export type AttendanceStatus = 'present' | 'available' | 'absent' | 'on_leave'
 
+export type LeaveApproval = 'pending' | 'approved' | 'rejected'
+
 export interface AttendanceOverride {
   status: AttendanceStatus
   dutyHours?: number
   reason?: string
   updatedAt: string
+  /** Absence / leave category chosen on the Attendance screen (Sick Leave, Uninformed Absence …) */
+  category?: string
+  /** R-ATT-05: leave needs admin / manager approval; a rejected leave is saved as absent */
+  approval?: LeaveApproval
+  requestedBy?: string
+  decidedBy?: string
+  decidedAt?: string
+  decisionNote?: string
+}
+
+/**
+ * Absence categories on the Attendance screen (R-ATT-05). A leave category is a request that
+ * admin / manager approve (stays leave) or reject (becomes absent); an absence is final at once.
+ */
+export const LEAVE_CATEGORIES = ['Sick Leave', 'Emergency Leave', 'Annual Leave', 'Weekly Off'] as const
+export const ABSENCE_CATEGORIES = ['Uninformed Absence', 'Other'] as const
+export type AbsenceCategory = (typeof LEAVE_CATEGORIES)[number] | (typeof ABSENCE_CATEGORIES)[number]
+export const isLeaveCategory = (c?: string) => (LEAVE_CATEGORIES as readonly string[]).includes(c || '')
+
+/** Only admin and manager decide leave requests (R-ATT-05) */
+export const canApproveLeave = (role?: string | null) => role === 'admin' || role === 'manager'
+
+/** Weekday of a YYYY-MM-DD calendar date (0 = Sunday), independent of the browser's time zone */
+export function weekdayOf(date: string): number {
+  const [y, m, d] = date.split('-').map(Number)
+  return new Date(Date.UTC(y, (m || 1) - 1, d || 1)).getUTCDay()
+}
+/** R-ATT-06: Monday leave requests get a yellow flag in the approval list */
+export const isMondayDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) && weekdayOf(date) === 1
+
+/** The mark a user sets: leave from a non-approver waits for approval; an approver's own leave is approved */
+export function newAbsenceMark(category: AbsenceCategory, note: string, role: string | null | undefined, by: string, now = new Date().toISOString()): AttendanceOverride {
+  const reason = note.trim() ? `${category}: ${note.trim()}` : category
+  if (!isLeaveCategory(category)) return { status: 'absent', category, reason, updatedAt: now, requestedBy: by }
+  const approver = canApproveLeave(role)
+  return {
+    status: 'on_leave', category, reason, updatedAt: now, requestedBy: by,
+    approval: approver ? 'approved' : 'pending',
+    ...(approver ? { decidedBy: by, decidedAt: now } : {}),
+  }
+}
+
+/** Admin / manager decision on a pending leave: approve keeps it as leave, reject records an absence */
+export function decideLeave(mark: AttendanceOverride, approve: boolean, by: string, note = '', now = new Date().toISOString()): AttendanceOverride {
+  return {
+    ...mark,
+    status: approve ? 'on_leave' : 'absent',
+    approval: approve ? 'approved' : 'rejected',
+    decidedBy: by,
+    decidedAt: now,
+    decisionNote: note.trim() || undefined,
+    updatedAt: now,
+  }
+}
+
+/** One row of the Supabase table `attendance_marks` (migration 2026-11-03_attendance_marks.sql) */
+export interface AttendanceMarkRow {
+  id: string            // "<date>_id:<employeeId>" or "<date>_<name lowercase>" — same key as before
+  date: string
+  cleaner_key: string
+  cleaner_name?: string | null
+  status: AttendanceStatus
+  category?: string | null
+  reason?: string | null
+  duty_hours?: number | null
+  approval?: LeaveApproval | null
+  requested_by?: string | null
+  decided_by?: string | null
+  decided_at?: string | null
+  decision_note?: string | null
+  updated_at: string
+}
+
+/** "2026-11-03_id:abc" → { date, cleanerKey } */
+export function splitMarkKey(key: string): { date: string; cleanerKey: string } {
+  const i = key.indexOf('_')
+  return i < 0 ? { date: key, cleanerKey: '' } : { date: key.slice(0, i), cleanerKey: key.slice(i + 1) }
+}
+
+export function markToRow(key: string, m: AttendanceOverride, cleanerName?: string): AttendanceMarkRow {
+  const { date, cleanerKey } = splitMarkKey(key)
+  return {
+    id: key, date, cleaner_key: cleanerKey, cleaner_name: cleanerName ?? null,
+    status: m.status, category: m.category ?? null, reason: m.reason ?? null,
+    duty_hours: m.dutyHours ?? null, approval: m.approval ?? null,
+    requested_by: m.requestedBy ?? null, decided_by: m.decidedBy ?? null,
+    decided_at: m.decidedAt ?? null, decision_note: m.decisionNote ?? null,
+    updated_at: m.updatedAt,
+  }
+}
+
+export function rowToMark(r: AttendanceMarkRow): AttendanceOverride {
+  const m: AttendanceOverride = { status: r.status, updatedAt: r.updated_at }
+  if (r.duty_hours != null) m.dutyHours = Number(r.duty_hours)
+  if (r.reason) m.reason = r.reason
+  if (r.category) m.category = r.category
+  if (r.approval) m.approval = r.approval
+  if (r.requested_by) m.requestedBy = r.requested_by
+  if (r.decided_by) m.decidedBy = r.decided_by
+  if (r.decided_at) m.decidedAt = r.decided_at
+  if (r.decision_note) m.decisionNote = r.decision_note
+  return m
+}
+
+/** The override of one cleaner on one date: by employee id first, then by name (AUD-38) */
+export function findMark(marks: Record<string, AttendanceOverride>, date: string, name: string, employeeId?: string): AttendanceOverride | undefined {
+  return (employeeId && marks[`${date}_id:${employeeId}`]) || marks[`${date}_${name.trim().toLowerCase()}`] || undefined
 }
 
 export interface DayClassification {
   status: AttendanceStatus
   absenceReason?: string
+  /** R-ATT-05: a leave request that admin / manager has not decided yet */
+  leavePending?: boolean
   dutyHours: number
   otHours: number
   workedJobs: DailyJob[]
@@ -59,10 +170,12 @@ export function classifyAttendanceDay(jobs: DailyJob[], override?: AttendanceOve
   let status: AttendanceStatus = 'available'
   let absenceReason: string | undefined
   let isManualPresent = false
+  let leavePending = false
   const m = mark as { reason: string; isLeave: boolean } | null
   if (override) {
     status = override.status
     absenceReason = override.reason
+    if (override.status === 'on_leave' && override.approval === 'pending') leavePending = true
     if (override.status === 'present' && workedJobs.length === 0) {
       isManualPresent = true
       dutyHours = override.dutyHours ?? 8
@@ -73,7 +186,7 @@ export function classifyAttendanceDay(jobs: DailyJob[], override?: AttendanceOve
     status = m.isLeave ? 'on_leave' : 'absent'
     absenceReason = m.reason
   }
-  return { status, absenceReason, dutyHours, otHours, workedJobs, isManualPresent }
+  return { status, absenceReason, dutyHours, otHours, workedJobs, isManualPresent, leavePending }
 }
 
 /**

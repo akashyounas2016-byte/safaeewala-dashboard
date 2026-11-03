@@ -115,7 +115,7 @@ function ExpiryCard({ date, label }: { date: string | undefined | null; label: s
 export function EmployeeProfile() {
   useDocUrls() // E2E-08: re-render when a document's signed link is ready
   const { id } = useParams<{ id: string }>()
-  const { employees, dailyJobs, updateEmployee, agencies, clients } = useData()
+  const { employees, dailyJobs, updateEmployee, agencies, clients, attendanceMarks } = useData()
 
   const [activeTab, setActiveTab]   = useState<'history' | 'locations' | 'info'>('history')
   const [search, setSearch]         = useState('')
@@ -168,7 +168,7 @@ export function EmployeeProfile() {
   const totalCashCollected = empJobs.filter(j => j.payment_mode === 'Cash').reduce((s, j) => s + (Number(j.received) || 0), 0)
   const uniqueClients = Array.from(new Set(empJobs.map(j => cleanClientNameFromAddress(j.address)).filter(Boolean)))
 
-  const health = useMemo(() => (emp ? calcEmployeeHealth(emp, empJobs) : null), [emp, empJobs])
+  const health = useMemo(() => (emp ? calcEmployeeHealth(emp, empJobs, attendanceMarks) : null), [emp, empJobs, attendanceMarks])
 
   const handlePhotoPick = async (file: File | undefined) => {
     if (!emp || !file) return

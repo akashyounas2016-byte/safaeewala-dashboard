@@ -1,14 +1,6 @@
 import type { DailyJob, Employee } from '@/types'
-import { safeLocalStorageGet } from '@/lib/storageUtils'
 import { daysUntil } from '@/lib/utils'
-
-/** Same localStorage key the Attendance screen writes its manual marks to */
-const ATTENDANCE_OVERRIDES_KEY = 'safaeewala_cleaner_attendance_overrides'
-
-interface AttendanceOverride {
-  status: 'present' | 'available' | 'absent' | 'on_leave'
-  reason?: string
-}
+import type { AttendanceOverride } from '@/lib/attendance'
 
 export interface HealthComponent {
   label: string
@@ -44,7 +36,7 @@ const isWorkedShift = (j: DailyJob) => (Number(j.duty_hours) || 0) > 0 || (Numbe
  *  - Activity (30): distinct days worked in the last 30 days vs. 22 expected working days.
  *  - Compliance (20): Visa, Passport, Work Permit and Emirates ID not expired.
  */
-export function calcEmployeeHealth(emp: Employee, empJobs: DailyJob[]): EmployeeHealth {
+export function calcEmployeeHealth(emp: Employee, empJobs: DailyJob[], overrides: Record<string, AttendanceOverride> = {}): EmployeeHealth {
   const windowStart = isoDaysAgo(WINDOW_DAYS)
   const activityStart = isoDaysAgo(ACTIVITY_DAYS)
   const today = isoDaysAgo(0)
@@ -67,8 +59,8 @@ export function calcEmployeeHealth(emp: Employee, empJobs: DailyJob[]): Employee
     }
   })
 
-  // Manual marks from the Attendance screen override the job sheet for that date
-  const overrides = safeLocalStorageGet<Record<string, AttendanceOverride>>(ATTENDANCE_OVERRIDES_KEY, {})
+  // Manual marks from the Attendance screen override the job sheet for that date (R-ATT-03).
+  // A pending leave is not an absence; a rejected leave is saved as absent (R-ATT-05).
   const nameKey = (emp.full_name || '').trim().toLowerCase()
   Object.entries(overrides).forEach(([key, o]) => {
     const sep = key.indexOf('_')

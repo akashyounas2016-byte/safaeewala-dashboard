@@ -38,8 +38,8 @@ check('empty stub row is ignored everywhere', isBogusJob(job({ address: '', char
 check('real row kept', !isBogusJob(job({})))
 
 // AUD-38: health score reads id-keyed overrides
-localStorage.setItem('safaeewala_cleaner_attendance_overrides', JSON.stringify({ [`${today}_id:e7`]: { status: 'absent', reason: 'Sick' } }))
-const h = calcEmployeeHealth({ id: 'e7', full_name: 'Renamed Person' } as any, [])
+// (marks now come from the shared store — attendance_marks, R-SYNC-10)
+const h = calcEmployeeHealth({ id: 'e7', full_name: 'Renamed Person' } as any, [], { [`${today}_id:e7`]: { status: 'absent', reason: 'Sick', updatedAt: '' } })
 check('absence keyed by id is counted after a rename', h.absences.length === 1, h.absences)
 
 console.log(failed ? `\n${failed} FAILED` : '\nALL PASSED')

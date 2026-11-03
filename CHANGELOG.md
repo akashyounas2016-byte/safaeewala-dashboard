@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(attendance): leave approval — leave from other roles waits for admin / manager, who approve it or reject it as absent; pending Monday leave flagged yellow in the approval list; marks saved one row per cleaner + date in `attendance_marks`, live for every user; Daily Job Sheet lists absent / on-leave cleaners and tags their remaining jobs; Next / Previous day fixed (R-ATT-05, R-ATT-06, R-ATT-07, R-SYNC-10, UX-64; migration `2026-11-03_attendance_marks.sql`)
+- docs(audit): attendance system audit — ATT-A01…A10
 - chore(quality): one time-overlap check for the whole app (E2E-02); pre-commit hook lints staged files (E2E-06)
 - fix(security): the database enforces screen permissions for writes — a role can add / change employees, agencies, invoices, inventory and clients only with a screen that uses them (R-SEC-03, E2E-07; migration `2026-11-02_role_based_writes.sql`)
 - fix(security): staff and agency identity documents moved out of the table rows into the private Storage bucket `staff-documents` (admin / manager only, signed links); old files are moved on the next admin login (R-SEC-04, E2E-08; migration `2026-11-02_staff_documents_storage.sql`)

@@ -16,6 +16,7 @@ import { subscribeTables, applyRowChange } from '@/lib/realtime'
 import { uploadInlineDocs, isInlineDoc } from '@/lib/docStorage'
 import { useAuth } from '@/store/UserContext'
 import { saveDeletionSnapshot } from '@/lib/snapshots'
+import { useAttendanceMarks, type AttendanceMarks, type AttendanceMarkChange } from '@/store/useAttendanceMarks'
 export { defaultAgencies }
 
 interface DataStore {
@@ -65,6 +66,10 @@ interface DataStore {
   clearAllDailyData:  () => Promise<void>
   /** Put back records from a before-delete copy, keeping their ids; existing ids are skipped (BAK-5) */
   restoreRecords:     (r: { dailyJobs?: DailyJob[]; dailyExpenses?: DailyExpense[]; employees?: Employee[]; agencies?: Agency[] }) => number
+
+  /** Present / Absent / Leave marks by "<date>_id:<employeeId>" or "<date>_<name>" (R-ATT-03, R-ATT-05, R-SYNC-10) */
+  attendanceMarks:     AttendanceMarks
+  saveAttendanceMarks: (changes: AttendanceMarkChange[]) => void
 }
 
 const DataContext = createContext<DataStore | null>(null)
@@ -131,6 +136,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [dailyExpenses, setDailyExpenses] = useState<DailyExpense[]>(() =>
     safeLocalStorageGet<DailyExpense[]>('safaeewala_daily_expenses', [])
   )
+  const { attendanceMarks, saveAttendanceMarks } = useAttendanceMarks()
   const [agencies, setAgencies] = useState<Agency[]>(() => {
     const saved = safeLocalStorageGet<Agency[]>('safaeewala_agencies', [])
     if (saved.length > 0) {
@@ -531,6 +537,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const store: DataStore = {
     bookings, clients: allClients, employees: allEmployees, agencies, invoices, inventory, loading,
     dailyJobs: viewDailyJobs, dailyExpenses,
+    attendanceMarks, saveAttendanceMarks,
 
     /* ── Bookings ── */
     addBooking: (b) => {
