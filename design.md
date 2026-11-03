@@ -102,6 +102,15 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
 - Transitions `transition-all duration-200`; dropdown panels close on outside click.
 - Excel Job Sheet: a job done by one cleaner alone has a light teal row (`SOLO_ROW_BG`) unless the user chose a colour; "Solo at bottom" moves cleaners who only have solo jobs below the team jobs (UX-61).
 - Booking cards (UX-63) follow the Daily Job Sheet: cleaner colour on the left edge (same palettes, same colour per cleaner), cleaner avatars first, then client, a shift strip (date · start → end · hours) and a money strip (Charges · Received · Pending). Completed cards are in the Completed category only.
+- Client cards (UX-67) are the same on Clients and Monthly Clients, and match the booking cards (UX-63). From top to bottom:
+  - the lead cleaner's colour on the left edge;
+  - the client name, address and a *Monthly* / *Standard* chip;
+  - cleaner avatars in their Daily Job Sheet colours;
+  - for monthly clients, a Mon–Sun strip (scheduled days filled, with the time slot), or an amber *No fixed schedule* hint;
+  - a line of contact and history;
+  - a money strip: Billed · Received · Due;
+  - equal footer buttons (`CardAction`).
+  Monthly cards have an emerald tint. Delete asks first. One column on a phone, two from `md`. Parts are in `components/clients/ClientCardParts.tsx`; cleaner colours come from `lib/cleanerColors.ts`.
 - Excel Job Sheet team colours (UX-66):
   - Every row of one team job has the same light colour, and its team chip is filled in the matching strong colour.
   - Ten colours (amber, indigo, pink, green, sky, violet, orange, fuchsia, lime, red) are given in the order teams appear.

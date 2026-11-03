@@ -6,6 +6,15 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(clients): Clients and Monthly Clients cards redesigned as one family after the Daily Job Sheet: cleaner colour, avatars, Mon–Sun schedule strip, money strip. Delete asks first (UX-67)
+- fix(clients): audit CM-01…CM-08:
+  - Editing a client the profile built from a booking or job row is no longer lost (CM-01).
+  - The demo recurring contracts are removed (CM-02, R-DATA-03).
+  - Payments and contracts are no longer rewritten on every page open, and update live (CM-03).
+  - The opening advance is linked to the new client (CM-04).
+  - Monthly invoice ranges and date presets use Dubai calendar dates; "This month" started a day early (CM-05).
+  - A note saying "monthly" no longer makes a client monthly (CM-06, R-SCHED-04).
+- docs(audit): Clients & Monthly Clients audit, with a guide to editing standard and monthly clients
 - fix(excel-studio): Add Job with several cleaners shows one row per cleaner, each in that cleaner's block, and Save keeps it one job. Before, Save made one job per cleaner. All rows of a team share one colour (R-SYNC-08, UX-66)
 - feat(my-duties): cleaners see only their own jobs and drivers only their own route. A cleaner / driver login opens My Duties only, with no AI bot and no office notifications. Admin / manager can preview anyone. Full-width header, sticky 7-day date bar, phone-first cards with a Maps button and cash to collect. The app can be installed on Android (R-SEC-05, UX-65)
 - feat(attendance): leave approval — leave from other roles waits for admin / manager, who approve it or reject it as absent; pending Monday leave flagged yellow in the approval list; marks saved one row per cleaner + date in `attendance_marks`, live for every user; Daily Job Sheet lists absent / on-leave cleaners and tags their remaining jobs; Next / Previous day fixed (R-ATT-05, R-ATT-06, R-ATT-07, R-SYNC-10, UX-64; migration `2026-11-03_attendance_marks.sql`)

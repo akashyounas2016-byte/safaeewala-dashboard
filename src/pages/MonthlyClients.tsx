@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useMemo, useEffect, useRef } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Search, Phone, MapPin, Calendar,
   Users, TrendingUp, DollarSign, Star, Clock, ExternalLink,
@@ -30,7 +30,9 @@ import {
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
-import { todayDubai } from '@/lib/dubaiTime'
+import { ClientCardShell, CleanerStack, WeekStrip, MoneyStrip, CardAction } from '@/components/clients/ClientCardParts'
+import { todayDubai, addDays, calendarDate } from '@/lib/dubaiTime'
+import { REMOTE_CHANGE_EVENT } from '@/lib/cloudState'
 import { escapeHtml } from '@/lib/html'
 
 export type MonthlyDatePreset =
@@ -87,7 +89,8 @@ function Avatar({ name, size = 'md', idx = 0 }: { name: string; size?: 'sm' | 'm
   )
 }
 
-const defaultContracts: RecurringContract[] = [
+/** Sample contracts an old version seeded into real data — recognised and left out (R-DATA-03) */
+const DEMO_CONTRACTS: RecurringContract[] = [
   {
     id: '1',
     clientName: 'Ahmed Al Mansoori',
@@ -132,6 +135,10 @@ const defaultContracts: RecurringContract[] = [
   },
 ]
 
+const isDemoContract = (c: RecurringContract) =>
+  DEMO_CONTRACTS.some(d => d.id === c.id && d.clientName === c.clientName && d.clientEmail === c.clientEmail)
+const withoutDemoContracts = (list: RecurringContract[]) => (Array.isArray(list) ? list.filter(c => !isDemoContract(c)) : [])
+
 const frequencyLabels: Record<RecurringContract['frequency'], string> = {
   weekly: 'Every Week',
   biweekly: 'Every 2 Weeks',
@@ -158,6 +165,7 @@ export interface MonthlyClientPayment {
 
 export function MonthlyClients() {
   const { clients, dailyJobs, employees, addClient, addBooking, addInvoice, invoices } = useData()
+  const navigate = useNavigate()
 
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState<'clients' | 'payments' | 'contracts' | 'recruitment'>('clients')
@@ -167,7 +175,10 @@ export function MonthlyClients() {
     return safeLocalStorageGet('safaeewala_monthly_client_payments', [])
   })
 
+  // CM-03: write only after a change on this screen (not on open), re-read when another user changes it
+  const loadedPaymentsRef = useRef(payments)
   useEffect(() => {
+    if (payments === loadedPaymentsRef.current) return
     safeLocalStorageSet('safaeewala_monthly_client_payments', payments)
   }, [payments])
 
@@ -216,13 +227,33 @@ export function MonthlyClients() {
   }, [viewMode])
 
   // ── Recurring Contracts State (from Subscriptions) ──
+  // CM-02 / R-DATA-03: no demo contracts — the three sample contracts once seeded here are left out
   const [contracts, setContracts] = useState<RecurringContract[]>(() => {
-    return safeLocalStorageGet('safaeewala_recurring_contracts', defaultContracts)
+    return withoutDemoContracts(safeLocalStorageGet<RecurringContract[]>('safaeewala_recurring_contracts', []))
   })
 
+  const loadedContractsRef = useRef(contracts)
   useEffect(() => {
+    if (contracts === loadedContractsRef.current) return
     safeLocalStorageSet('safaeewala_recurring_contracts', contracts)
   }, [contracts])
+
+  useEffect(() => {
+    const onRemote = (e: Event) => {
+      const key = (e as CustomEvent<{ key?: string }>).detail?.key
+      if (key === 'safaeewala_monthly_client_payments') {
+        const next = safeLocalStorageGet<MonthlyClientPayment[]>(key, [])
+        loadedPaymentsRef.current = next
+        setPayments(next)
+      } else if (key === 'safaeewala_recurring_contracts') {
+        const next = withoutDemoContracts(safeLocalStorageGet<RecurringContract[]>(key, []))
+        loadedContractsRef.current = next
+        setContracts(next)
+      }
+    }
+    window.addEventListener(REMOTE_CHANGE_EVENT, onRemote)
+    return () => window.removeEventListener(REMOTE_CHANGE_EVENT, onRemote)
+  }, [])
 
   const [contractSearch, setContractSearch] = useState('')
   const [contractStatusFilter, setContractStatusFilter] = useState<'all' | 'active' | 'paused'>('all')
@@ -251,7 +282,7 @@ export function MonthlyClients() {
 
   const activeRange = useMemo(() => {
     const now = new Date()
-    const todayStr = now.toISOString().split('T')[0]
+    const todayStr = todayDubai() // CM-05: Dubai date, not UTC
 
     if (datePreset === 'today') {
       return {
@@ -263,9 +294,7 @@ export function MonthlyClients() {
       }
     }
     if (datePreset === '7days') {
-      const d = new Date(now)
-      d.setDate(d.getDate() - 6)
-      const start = d.toISOString().split('T')[0]
+      const start = addDays(todayStr, -6)
       return {
         start,
         end: todayStr,
@@ -275,9 +304,7 @@ export function MonthlyClients() {
       }
     }
     if (datePreset === '14days') {
-      const d = new Date(now)
-      d.setDate(d.getDate() - 13)
-      const start = d.toISOString().split('T')[0]
+      const start = addDays(todayStr, -13)
       return {
         start,
         end: todayStr,
@@ -287,9 +314,7 @@ export function MonthlyClients() {
       }
     }
     if (datePreset === '28days') {
-      const d = new Date(now)
-      d.setDate(d.getDate() - 27)
-      const start = d.toISOString().split('T')[0]
+      const start = addDays(todayStr, -27)
       return {
         start,
         end: todayStr,
@@ -514,10 +539,10 @@ export function MonthlyClients() {
       frequency: 'weekly',
       amount: 350,
       startDate: today,
-      renewalDate: renewal.toISOString().split('T')[0],
+      renewalDate: calendarDate(renewal),
       status: 'active',
       lastBilled: today,
-      nextBillingDate: nextBilling.toISOString().split('T')[0],
+      nextBillingDate: calendarDate(nextBilling),
       notes: '',
     })
     setEditingContractId(null)
@@ -541,8 +566,8 @@ export function MonthlyClients() {
 
     const updated: RecurringContract = {
       ...contractForm,
-      renewalDate: renewalDate.toISOString().split('T')[0],
-      nextBillingDate: contractForm.nextBillingDate || new Date(startDate.getTime() + frequencyDays[contractForm.frequency] * 86400000).toISOString().split('T')[0],
+      renewalDate: calendarDate(renewalDate),
+      nextBillingDate: contractForm.nextBillingDate || calendarDate(new Date(startDate.getTime() + frequencyDays[contractForm.frequency] * 86400000)),
     }
 
     if (editingContractId) {
@@ -674,29 +699,29 @@ export function MonthlyClients() {
     if (preset === 'this_month') {
       const y = now.getFullYear()
       const m = now.getMonth()
-      const start = new Date(y, m, 1).toISOString().split('T')[0]
-      const end = new Date(y, m + 1, 0).toISOString().split('T')[0]
+      const start = calendarDate(new Date(y, m, 1))
+      const end = calendarDate(new Date(y, m + 1, 0))
       setInvoiceStartDate(start)
       setInvoiceEndDate(end)
     } else if (preset === 'last_month') {
       const y = now.getFullYear()
       const m = now.getMonth() - 1
-      const start = new Date(y, m, 1).toISOString().split('T')[0]
-      const end = new Date(y, m + 1, 0).toISOString().split('T')[0]
+      const start = calendarDate(new Date(y, m, 1))
+      const end = calendarDate(new Date(y, m + 1, 0))
       setInvoiceStartDate(start)
       setInvoiceEndDate(end)
     } else if (preset === '28days') {
       const d = new Date(now)
       d.setDate(d.getDate() - 27)
-      setInvoiceStartDate(d.toISOString().split('T')[0])
-      setInvoiceEndDate(now.toISOString().split('T')[0])
+      setInvoiceStartDate(calendarDate(d))
+      setInvoiceEndDate(calendarDate(now))
     }
   }
 
   const handleOpenCreateInvoice = (c: MonthlyClientSummary) => {
     setInvoiceClient(c)
     const now = new Date()
-    const todayStr = now.toISOString().split('T')[0]
+    const todayStr = todayDubai() // CM-05: Dubai date, not UTC
 
     if (activeRange.start && activeRange.end && !activeRange.isAllTime) {
       setInvoiceStartDate(activeRange.start)
@@ -705,8 +730,8 @@ export function MonthlyClients() {
     } else {
       const y = now.getFullYear()
       const m = now.getMonth()
-      setInvoiceStartDate(new Date(y, m, 1).toISOString().split('T')[0])
-      setInvoiceEndDate(new Date(y, m + 1, 0).toISOString().split('T')[0])
+      setInvoiceStartDate(calendarDate(new Date(y, m, 1)))
+      setInvoiceEndDate(calendarDate(new Date(y, m + 1, 0)))
       setInvoicePreset('this_month')
     }
 
@@ -715,7 +740,7 @@ export function MonthlyClients() {
     setInvoiceIssueDate(todayStr)
     const due = new Date(now)
     due.setDate(due.getDate() + 7)
-    setInvoiceDueDate(due.toISOString().split('T')[0])
+    setInvoiceDueDate(calendarDate(due))
 
     const contract = contractsByClientName.get(c.name.toLowerCase().trim())
     if (contract && contract.amount > 0) {
@@ -1873,199 +1898,57 @@ export function MonthlyClients() {
               <div className="xl:col-span-2 space-y-4">
                 {/* Monthly Client Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {filteredSummaries.map((c, idx) => {
+                  {filteredSummaries.map((c) => {
                     const matchedContract = contractsByClientName.get(c.name.toLowerCase().trim())
                     const clientPaymentsList = paymentsByClient.get(c.name.trim().toLowerCase()) || []
                     const clientRecordedAmt = clientPaymentsList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
                     const totalClientReceived = c.totalReceived + clientRecordedAmt
                     const clientBalanceDue = Math.max(0, c.totalCharges - totalClientReceived)
+                    // UX-67: cleaners of the permanent schedule first, else those seen on the job sheet
+                    const scheduled = Array.from(new Set(Object.values(c.day_cleaner_assignments || {}).flatMap(v => String(v).split(',')).map(s => s.trim()).filter(Boolean)))
+                    const cleanersOf = scheduled.length > 0 ? scheduled : c.cleaners
+                    const slot = c.scheduled_time ? `${formatTime(c.scheduled_time)}${c.end_time ? ` – ${formatTime(c.end_time)}` : ''}` : undefined
 
                     return (
-                      <div
-                        key={c.id}
-                        onClick={() => setSelectedSummary(c)}
-                        className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 cursor-pointer hover:shadow-[0_8px_30px_rgba(13,148,136,0.12)] hover:border-teal-300 transition-all group flex flex-col justify-between"
-                      >
-                        <div>
-                          {/* Top: Avatar, Name, Charges & Payment Status */}
-                          <div className="flex items-start gap-3 mb-3">
-                            <Avatar name={c.name} size="md" idx={idx} />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <p className="text-[14px] font-bold text-[#111827] group-hover:text-teal-700 transition-colors truncate">
-                                  {c.name}
-                                </p>
-                                <span className="text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.2 rounded-full uppercase tracking-wider">
-                                  Monthly
-                                </span>
-                                {matchedContract && (
-                                  <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.2 rounded-full flex items-center gap-1">
-                                    <RotateCw size={9} />
-                                    Contract: AED {matchedContract.amount}/{matchedContract.frequency === 'weekly' ? 'wk' : matchedContract.frequency === 'biweekly' ? '2wk' : 'mo'}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[12px] text-slate-500 mt-0.5 truncate flex items-center gap-1">
+                      <ClientCardShell key={c.id} lead={cleanersOf[0]} monthly onClick={() => setSelectedSummary(c)}>
+                        <div className="space-y-2.5 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-[14.5px] font-black text-[#111827] truncate group-hover:text-teal-700 transition-colors" title={c.name}>{c.name}</p>
+                              <p className="text-[11.5px] text-slate-500 flex items-center gap-1 mt-0.5 min-w-0">
                                 <MapPin size={11} className="shrink-0 text-slate-400" />
-                                <span>{c.area || 'Dubai'}</span>
+                                <span className="truncate">{c.area || 'Dubai'}</span>
                               </p>
                             </div>
-
-                            <div className="text-right shrink-0">
-                              <p className="text-[15.5px] font-extrabold text-[#111827]">
-                                AED {c.totalCharges.toLocaleString()}
-                              </p>
-                              <p className="text-[10.5px] text-slate-400 font-medium">Billed</p>
-                              <div className="mt-1">
-                                {clientBalanceDue > 0 ? (
-                                  <span className="inline-block text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full">
-                                    Due: AED {clientBalanceDue.toLocaleString()}
-                                  </span>
-                                ) : c.totalCharges > 0 ? (
-                                  <span className="inline-block text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full">
-                                    Paid in Full ✓
-                                  </span>
-                                ) : (
-                                  <span className="inline-block text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
-                                    No charges
-                                  </span>
-                                )}
-                              </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <span className="text-[9.5px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider bg-emerald-600 text-white">Monthly</span>
+                              {matchedContract && (
+                                <span className="text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <RotateCw size={9} /> AED {matchedContract.amount}/{matchedContract.frequency === 'weekly' ? 'wk' : matchedContract.frequency === 'biweekly' ? '2wk' : 'mo'}
+                                </span>
+                              )}
                             </div>
                           </div>
 
-                          {/* Service & Cleaner Details */}
-                          <div className="bg-[#f8fafc] rounded-xl p-2.5 border border-[#edf2f7] mb-3 text-[12px] text-slate-600">
-                            <div className="flex items-center gap-1.5 text-slate-700 font-semibold text-[12px]">
-                              <Calendar size={13} className="text-[#0d8a72] shrink-0" />
-                              <span className="text-slate-400 font-medium text-[11px]">Last Service:</span>
-                              <span className="text-slate-800 font-bold">
-                                {c.lastService ? (formatDisplayDate(c.lastService) || formatDate(c.lastService)) : 'No service logged'}
-                              </span>
-                            </div>
+                          <CleanerStack names={cleanersOf} />
+                          <WeekStrip days={c.service_days} time={slot} />
 
-                            {/* Recurring Schedule Days & Timing Slot */}
-                            {c.service_days && c.service_days.filter(d => d.toLowerCase() !== 'sunday').length > 0 && (
-                              <div className="mt-1.5 flex items-center gap-1.5 flex-wrap text-[11px]">
-                                <span className="text-slate-400 font-medium text-[10.5px]">Days:</span>
-                                <div className="flex items-center gap-1 flex-wrap">
-                                  {c.service_days.filter(d => d.toLowerCase() !== 'sunday').map(d => (
-                                    <span key={d} className="bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold px-1.5 py-0.2 rounded text-[9.5px]">
-                                      {d.slice(0, 3)}
-                                    </span>
-                                  ))}
-                                </div>
-                                {c.scheduled_time && (
-                                  <span className="text-slate-600 font-semibold text-[10.5px] flex items-center gap-0.5">
-                                    <Clock size={10} className="text-slate-400" />
-                                    {formatTime(c.scheduled_time)}{c.end_time ? ` – ${formatTime(c.end_time)}` : ''}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Cleaners & Day-by-Day Staff Assignment */}
-                            {c.day_cleaner_assignments && Object.keys(c.day_cleaner_assignments).length > 0 ? (
-                              <div className="mt-1.5 flex items-center gap-1 flex-wrap text-[10.5px]">
-                                <span className="text-slate-400 font-normal">Staff:</span>
-                                {Object.entries(c.day_cleaner_assignments).slice(0, 3).map(([day, cleaner]) => (
-                                  <span key={day} className="bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-medium border border-slate-200/60">
-                                    {day.slice(0, 3)}: {cleaner}
-                                  </span>
-                                ))}
-                                {Object.keys(c.day_cleaner_assignments).length > 3 && (
-                                  <span className="text-slate-400 font-medium">
-                                    +{Object.keys(c.day_cleaner_assignments).length - 3} more
-                                  </span>
-                                )}
-                              </div>
-                            ) : c.cleaners.length > 0 ? (
-                              <p className="text-[11px] text-slate-500 mt-1.5 truncate flex items-center gap-1">
-                                <span className="text-slate-400 font-normal">Cleaners:</span>
-                                <span className="text-slate-700 font-medium">{c.cleaners.join(', ')}</span>
-                              </p>
-                            ) : null}
+                          <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-[11.5px] text-slate-500">
+                            <span className="flex items-center gap-1"><Calendar size={11} />{c.lastService ? (formatDisplayDate(c.lastService) || formatDate(c.lastService)) : 'No service logged'}</span>
+                            <span className="flex items-center gap-1"><Clock size={11} />{c.visitsCount} visits · {c.totalDutyHours}h</span>
+                            {c.totalOTHours > 0 && <span className="font-bold text-amber-700">{c.totalOTHours}h OT</span>}
                           </div>
 
-                          {/* Highlights: OT, Duty Hours, Visits */}
-                          <div className="grid grid-cols-3 gap-2 text-center py-2 border-y border-[#edf2f7] mb-3">
-                            <div>
-                              <p className="text-[10px] text-slate-400 uppercase font-semibold">Overtime</p>
-                              <p className={`text-[12.5px] font-bold ${c.totalOTHours > 0 ? 'text-amber-600' : 'text-slate-500'}`}>
-                                {c.totalOTHours > 0 ? `${c.totalOTHours}h OT` : '0h'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-slate-400 uppercase font-semibold">Duty Hours</p>
-                              <p className="text-[12.5px] font-bold text-slate-700">
-                                {c.totalDutyHours}h
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] text-slate-400 uppercase font-semibold">Shifts</p>
-                              <p className="text-[12.5px] font-bold text-slate-700">
-                                {c.visitsCount} visits
-                              </p>
-                            </div>
-                          </div>
+                          <MoneyStrip billed={c.totalCharges} received={totalClientReceived} due={clientBalanceDue} />
                         </div>
 
-                        {/* Card Footer: Action Buttons in a Single Compact Row (Invoice, Payment, Contact, View Shift) */}
-                        <div className="grid grid-cols-4 gap-1.5 pt-2.5 border-t border-slate-100 mt-2 w-full">
-                          {/* 1. Invoice Button */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleOpenCreateInvoice(c)
-                            }}
-                            className="h-8 px-1.5 py-1 rounded-lg text-[10px] sm:text-[10.5px] font-bold text-teal-800 hover:text-white bg-teal-50 hover:bg-teal-600 border border-teal-200/90 transition-all flex items-center justify-center gap-1 cursor-pointer truncate shadow-2xs group/btn"
-                            title="Generate Simple or Detailed Invoice with custom date range"
-                          >
-                            <FileText size={11.5} className="shrink-0 text-teal-600 group-hover/btn:text-white" />
-                            <span className="truncate">Invoice</span>
-                          </button>
-
-                          {/* 2. Payment Button */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleOpenRecordPayment(c.name, clientBalanceDue > 0 ? clientBalanceDue : undefined)
-                            }}
-                            className="h-8 px-1.5 py-1 rounded-lg text-[10px] sm:text-[10.5px] font-bold text-emerald-800 hover:text-white bg-emerald-50 hover:bg-emerald-600 border border-emerald-200 transition-all flex items-center justify-center gap-1 cursor-pointer truncate shadow-2xs group/btn"
-                            title="Record payment for this client"
-                          >
-                            <CreditCard size={11.5} className="shrink-0 text-emerald-600 group-hover/btn:text-white" />
-                            <span className="truncate">Payment</span>
-                          </button>
-
-                          {/* 3. Contact Button */}
-                          <Link
-                            to={`/clients/${c.id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="h-8 px-1.5 py-1 rounded-lg text-[10px] sm:text-[10.5px] font-bold text-slate-700 hover:text-white bg-slate-100 hover:bg-slate-700 border border-slate-200 transition-all flex items-center justify-center gap-1 cursor-pointer truncate shadow-2xs group/btn"
-                            title="Contact & Full Client Profile"
-                          >
-                            <Phone size={11.5} className="shrink-0 text-slate-500 group-hover/btn:text-white" />
-                            <span className="truncate">Contact</span>
-                          </Link>
-
-                          {/* 4. View Shift Button */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setSelectedSummary(c)
-                            }}
-                            className="h-8 px-1.5 py-1 rounded-lg text-[10px] sm:text-[10.5px] font-bold text-indigo-800 hover:text-white bg-indigo-50 hover:bg-indigo-600 border border-indigo-200 transition-all flex items-center justify-center gap-1 cursor-pointer truncate shadow-2xs group/btn"
-                            title="View Shifts & Service Schedule"
-                          >
-                            <Clock size={11.5} className="shrink-0 text-indigo-600 group-hover/btn:text-white" />
-                            <span className="truncate">View Shift</span>
-                          </button>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-2.5 border-t border-slate-100">
+                          <CardAction tone="teal" icon={<FileText size={12} />} label="Invoice" title="Simple or detailed invoice for a date range" onClick={() => handleOpenCreateInvoice(c)} />
+                          <CardAction tone="emerald" icon={<CreditCard size={12} />} label="Payment" onClick={() => handleOpenRecordPayment(c.name, clientBalanceDue > 0 ? clientBalanceDue : undefined)} />
+                          <CardAction tone="slate" icon={<Phone size={12} />} label="Profile" title="Contact details, edit and 7-day schedule" onClick={() => navigate(`/clients/${c.id}`)} />
+                          <CardAction tone="indigo" icon={<Clock size={12} />} label="Shifts" title="Shifts and service schedule" onClick={() => setSelectedSummary(c)} />
                         </div>
-                      </div>
+                      </ClientCardShell>
                     )
                   })}
                 </div>
@@ -2636,7 +2519,7 @@ export function MonthlyClients() {
               <span>📅 Auto-Renewal Anniversary:</span>
               <strong className="font-bold">
                 {contractForm.startDate
-                  ? new Date(new Date(contractForm.startDate).getFullYear() + 1, new Date(contractForm.startDate).getMonth(), new Date(contractForm.startDate).getDate()).toISOString().split('T')[0]
+                  ? calendarDate(new Date(new Date(contractForm.startDate).getFullYear() + 1, new Date(contractForm.startDate).getMonth(), new Date(contractForm.startDate).getDate()))
                   : 'Auto-calculated'}
               </strong>
             </div>

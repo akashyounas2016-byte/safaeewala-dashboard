@@ -129,7 +129,7 @@ function persistReview(bookingId: string) {
 /* ─── Main component ─── */
 export function ClientProfile() {
   const { id } = useParams<{ id: string }>()
-  const { clients, bookings, employees, invoices, dailyJobs, updateClient } = useData()
+  const { clients, bookings, employees, invoices, dailyJobs, updateClient, addClient } = useData()
 
   const [searchParams] = useSearchParams()
   const initialTab = searchParams.get('tab') as 'job_sheet' | 'financial_history' | 'bookings' | 'info' | null
@@ -1737,7 +1737,10 @@ export function ClientProfile() {
         onSave={async patch => {
           if (!client) return
           setEditSaving(true)
-          updateClient(client.id, patch)
+          // CM-01: a client built here from a booking or job-sheet row is not in the client list yet —
+          // updateClient found nothing and the edit was lost; save it as a client under the same id
+          if (clients.some(c => c.id === client.id)) updateClient(client.id, patch)
+          else addClient({ ...client, ...patch, id: client.id })
 
           // Sync initial advance or adjustment to financial adjustments ledger if changed
           const adv = patch.advance_amount ?? 0

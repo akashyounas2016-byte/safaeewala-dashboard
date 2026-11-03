@@ -14,6 +14,7 @@ import { useData } from '@/store/DataContext'
 import { isBogusJob, isMonthlyJob, cleanClientNameFromAddress, normalizeKey } from '@/lib/clientDataSync'
 import { getCompanyInfo } from '@/lib/companyInfo'
 import { notify } from '@/lib/notify'
+import { calendarDate } from '@/lib/dubaiTime'
 
 const VAT_RATE = 0.05
 
@@ -71,7 +72,7 @@ function StatementInvoiceButton({ s, monthLabel, compact = false }: { s: ClientS
       total: Math.round((s.subtotal + s.vatAmount) * 100) / 100,
       apply_vat: true,
       status: 'sent',
-      due_date: due.toISOString().split('T')[0],
+      due_date: calendarDate(due),
       notes: `Monthly statement — ${monthLabel}`,
       job_ids: visitIds,                        // these visits are now collected through the invoice
     })

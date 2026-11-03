@@ -457,9 +457,8 @@ export function isMonthlyClient(
   // 3. Explicit day cleaner assignments map
   if (client.day_cleaner_assignments && Object.keys(client.day_cleaner_assignments).length > 0) return true
 
-  // 4. Notes, remarks, or access notes explicitly mentioning 'monthly' or 'recurring'
-  const combinedNotes = `${client.remarks || ''} ${client.notes || ''} ${client.access_notes || ''}`.toLowerCase()
-  if (combinedNotes.includes('monthly') || combinedNotes.includes('recurring')) return true
+  // 4. (removed, CM-06) a remark such as "monthly payment pending" made a standard client Monthly;
+  //    a client is monthly by its schedule, its source or its Monthly jobs — never by a word in a note
 
   // 5. Source explicitly set to monthly
   if (client.source === 'monthly' || client.source === 'monthly_contract') return true
@@ -642,8 +641,6 @@ export function extractMonthlyClientsFromDailyJobs(
       const isMonthly = (Array.isArray(c.service_days) && c.service_days.length > 0) ||
         Boolean(c.day_schedules && Object.keys(c.day_schedules).length > 0) ||
         Boolean(c.day_cleaner_assignments && Object.keys(c.day_cleaner_assignments).length > 0) ||
-        Boolean(c.notes && (c.notes.toLowerCase().includes('monthly') || c.notes.toLowerCase().includes('recurring'))) ||
-        Boolean(c.remarks && (c.remarks.toLowerCase().includes('monthly') || c.remarks.toLowerCase().includes('recurring'))) ||
         (c.source === 'monthly' || c.source === 'monthly_contract')
 
       if (isMonthly) {
@@ -756,8 +753,6 @@ export function extractAllClientsFromDailyJobs(
     const isMonthly = (Array.isArray(c.service_days) && c.service_days.length > 0) ||
       Boolean(c.day_schedules && Object.keys(c.day_schedules).length > 0) ||
       Boolean(c.day_cleaner_assignments && Object.keys(c.day_cleaner_assignments).length > 0) ||
-      Boolean(c.notes && (c.notes.toLowerCase().includes('monthly') || c.notes.toLowerCase().includes('recurring'))) ||
-      Boolean(c.remarks && (c.remarks.toLowerCase().includes('monthly') || c.remarks.toLowerCase().includes('recurring'))) ||
       c.source === 'monthly' ||
       hasMonthlyJob
 

@@ -39,6 +39,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** Recurring contract changes are made only in `/monthly-clients` or the Client Profile modal.
 - **Status:** Active · Since: 2026-10
 
+### R-SCHED-04 — What makes a client monthly
+- **Rule:** A client is **monthly** when any of these is true:
+  - it has a permanent schedule (`service_days`, `day_schedules` or `day_cleaner_assignments`);
+  - its source is `monthly` / `monthly_contract`;
+  - it has *Monthly* jobs on the Daily Job Sheet.
+- Every other client is **standard**. A word in a note or remark ("monthly payment pending") does not change the type.
+- A monthly client found only through Monthly jobs has **no fixed schedule**: its card says so, and the monthly auto-sync cannot fill the Daily Job Sheet for it until the schedule is set in *Edit → 7-Day Schedule*.
+- **Code:** `src/lib/clientDataSync.ts → isMonthlyClient` and the two summary builders.
+- **Status:** Active · Since: 2026-11-03 (CM-06)
+
 ---
 
 ## ATT — Attendance

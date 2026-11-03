@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign,
   Heart, Award, CheckCircle, Trash2, ExternalLink, ArrowUpDown, RotateCcw, X, Filter, Clock,
@@ -19,8 +19,10 @@ import { SourceOriginTag, resolveClientSource } from '@/lib/sourceTracking'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
 import { ClientModalForm } from '@/components/clients/ClientModalForm'
+import { ClientCardShell, CleanerStack, WeekStrip, MoneyStrip, CardAction } from '@/components/clients/ClientCardParts'
+import { confirmAsync } from '@/lib/notify'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
-import { todayDubai } from '@/lib/dubaiTime'
+import { todayDubai, calendarDate } from '@/lib/dubaiTime'
 
 export type ClientDatePreset = 'all' | '7days' | '30days' | '3months' | '6months' | '1year' | 'custom'
 
@@ -135,6 +137,7 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
 export function Clients() {
   const { clients, bookings, dailyJobs, employees, addClient, updateClient, deleteClient, addBooking, invoices } = useData()
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
 
   const initialFilter = searchParams.get('filter') || searchParams.get('type')
   const [filterType, setFilterType] = useState<'all' | 'active' | 'vip' | 'repeat' | 'monthly' | 'due' | 'inactive' | null>(
@@ -203,13 +206,13 @@ export function Clients() {
   // Active Date Range based on selected preset
   const activeDateRange = useMemo(() => {
     const today = new Date()
-    const todayStr = today.toISOString().split('T')[0]
+    const todayStr = calendarDate(today)
 
     if (datePreset === '7days') {
       const d = new Date(today)
       d.setDate(d.getDate() - 6)
       return {
-        start: d.toISOString().split('T')[0],
+        start: calendarDate(d),
         end: todayStr,
         label: 'Last 7 Days',
       }
@@ -218,7 +221,7 @@ export function Clients() {
       const d = new Date(today)
       d.setDate(d.getDate() - 29)
       return {
-        start: d.toISOString().split('T')[0],
+        start: calendarDate(d),
         end: todayStr,
         label: 'Last 30 Days',
       }
@@ -227,7 +230,7 @@ export function Clients() {
       const d = new Date(today)
       d.setMonth(d.getMonth() - 3)
       return {
-        start: d.toISOString().split('T')[0],
+        start: calendarDate(d),
         end: todayStr,
         label: 'Last 3 Months',
       }
@@ -236,7 +239,7 @@ export function Clients() {
       const d = new Date(today)
       d.setMonth(d.getMonth() - 6)
       return {
-        start: d.toISOString().split('T')[0],
+        start: calendarDate(d),
         end: todayStr,
         label: 'Last 6 Months',
       }
@@ -245,7 +248,7 @@ export function Clients() {
       const d = new Date(today)
       d.setFullYear(d.getFullYear() - 1)
       return {
-        start: d.toISOString().split('T')[0],
+        start: calendarDate(d),
         end: todayStr,
         label: 'Last 1 Year',
       }
@@ -1186,128 +1189,67 @@ export function Clients() {
 
           {/* Client cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filtered.map((c, idx) => {
+            {filtered.map((c) => {
+              // UX-67: one card design for Clients and Monthly Clients, after the Daily Job Sheet
               const isMonthly = isMonthlyClient(c, dailyJobs, allMonthlySummaries)
+              const nameLower    = c.full_name.toLowerCase().trim()
+              const liveBookings = bookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase().trim() === nameLower)
+              const clientInvs   = invoices.filter(i => i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower)
+              const invOutstanding = clientInvs.reduce((s, i) => s + i.total, 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
+              const outstanding  = calcClientPendingBalance(c, dailyJobs) + invOutstanding
+              const totalVisits  = Math.max(c.total_bookings, liveBookings.length)
+              const cleanersOf   = (c.preferred_cleaner || '').split(',').map(s => s.trim()).filter(Boolean)
+              const phone        = c.whatsapp || c.phone
               return (
-              <div
-                key={c.id}
-                onClick={() => setSelected(c)}
-                className={`rounded-[22px] p-5 cursor-pointer transition-all border ${
-                  isMonthly
-                    ? 'bg-emerald-50/80 border-emerald-300 shadow-[0_4px_24px_rgba(16,185,129,0.12)] ring-1 ring-emerald-400/40 hover:bg-emerald-100/70 hover:border-emerald-400 hover:shadow-[0_8px_32px_rgba(16,185,129,0.18)]'
-                    : 'bg-white border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] hover:border-emerald-200'
-                }`}
-              >
-                <div className="flex items-start gap-3 mb-4">
-                  <Avatar name={c.full_name} size="md" idx={idx} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-[14px] font-bold text-[#111827] truncate">{c.full_name}</p>
-                      {isMonthly && (
-                        <span className="text-[10px] bg-emerald-600 text-white font-black px-2 py-0.5 rounded-full shadow-2xs tracking-wider uppercase">
-                          Monthly
-                        </span>
-                      )}
+              <ClientCardShell key={c.id} lead={cleanersOf[0]} monthly={isMonthly} onClick={() => setSelected(c)}>
+                <div className="space-y-2.5 min-w-0">
+                  {/* Client + type */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[14.5px] font-black text-[#111827] truncate group-hover:text-teal-700 transition-colors" title={c.full_name}>{c.full_name}</p>
+                      <p className="text-[11.5px] text-slate-500 flex items-center gap-1 mt-0.5 min-w-0">
+                        <MapPin size={11} className="shrink-0 text-slate-400" />
+                        <span className="truncate">{[c.apartment, c.building_name, c.area].filter(Boolean).join(', ') || 'No address'}</span>
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className={`text-[9.5px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${isMonthly ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                        {isMonthly ? 'Monthly' : 'Standard'}
+                      </span>
                       <SourceOriginTag source={resolveClientSource(c, bookings)} />
                     </div>
-                    <p className="text-[12px] text-slate-500 mt-0.5">{c.nationality}</p>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-[15px] font-bold text-[#111827]">AED {c.total_spent.toLocaleString()}</p>
-                    <p className="text-[11px] text-slate-400">lifetime</p>
+
+                  <CleanerStack names={cleanersOf} empty="No preferred cleaner" />
+                  {isMonthly && <WeekStrip days={c.service_days} time={c.scheduled_time ? `${c.scheduled_time}${c.end_time ? ` – ${c.end_time}` : ''}` : undefined} />}
+
+                  {/* Contact + history */}
+                  <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-[11.5px] text-slate-500">
+                    {phone && (
+                      <a href={`tel:${phone}`} onClick={e => e.stopPropagation()} className="flex items-center gap-1 hover:text-teal-700"><Phone size={11} />{phone}</a>
+                    )}
+                    <Link to={`/clients/${c.id}`} onClick={e => e.stopPropagation()} className="flex items-center gap-1 hover:text-teal-700 hover:underline">
+                      <CalendarCheck size={11} />{totalVisits} visit{totalVisits !== 1 ? 's' : ''}
+                    </Link>
+                    {c.last_service && <span className="flex items-center gap-1"><Calendar size={11} />{formatDate(c.last_service)}</span>}
+                    {c.pet_info && <span className="text-[10.5px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 rounded-full font-bold">Pet</span>}
+                    {c.total_spent > 2000 && <span className="text-[10.5px] bg-purple-50 text-purple-700 border border-purple-200 px-1.5 rounded-full font-bold">VIP</span>}
                   </div>
+
+                  <MoneyStrip billed={c.total_spent} received={Math.max(0, c.total_spent - outstanding)} due={outstanding} />
                 </div>
 
-                <div className="space-y-1.5 text-[12px] text-slate-500">
-                  <div className="flex items-center gap-2">
-                    <Phone size={12} className="shrink-0 text-slate-400" />
-                    <span>{c.phone}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <MapPin size={12} className="shrink-0 text-slate-400" />
-                    <span className="truncate">{c.building_name ? `${c.building_name}, ` : ''}{c.area}</span>
-                  </div>
-                  {c.last_service && (
-                    <div className="flex items-center gap-2">
-                      <Calendar size={12} className="shrink-0 text-slate-400" />
-                      <span>Last service: {formatDate(c.last_service)}</span>
-                    </div>
-                  )}
+                <div className="grid grid-cols-3 gap-1.5 pt-2.5 border-t border-slate-100">
+                  <CardAction tone="teal" icon={<Edit2 size={12} />} label="Edit" title="Edit profile, address and schedule"
+                    onClick={() => { setSelected(c); setIsEditingClient(true) }} />
+                  <CardAction tone="slate" icon={<ExternalLink size={12} />} label="Profile" onClick={() => navigate(`/clients/${c.id}`)} />
+                  <CardAction tone="rose" icon={<Trash2 size={12} />} label="Delete" title="Delete client"
+                    onClick={async () => {
+                      const ok = await confirmAsync({ title: 'Delete client', message: `Delete "${c.full_name}"? Their jobs stay in the Daily Job Sheet.`, confirmLabel: 'Delete', tone: 'danger' })
+                      if (ok) deleteClient(c.id)
+                    }} />
                 </div>
-
-                {(() => {
-                  const nameLower    = c.full_name.toLowerCase().trim()
-                  const liveBookings = bookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase().trim() === nameLower)
-                  const clientInvs   = invoices.filter(i => i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower)
-                  const invOutstanding = clientInvs.reduce((s, i) => s + i.total, 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
-                  const clientPendingBalance = calcClientPendingBalance(c, dailyJobs)
-                  const outstanding  = clientPendingBalance + invOutstanding
-                  const isFromJobSheet = c.id.startsWith('dj-')
-                  const totalVisits  = Math.max(c.total_bookings, liveBookings.length)
-                  return (
-                    <div className={`flex items-center justify-between mt-4 pt-3.5 border-t ${isMonthly ? 'border-emerald-200/90' : 'border-[#E4E8EC]'}`}>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <Link
-                          to={`/clients/${c.id}`}
-                          onClick={e => e.stopPropagation()}
-                          className="text-[12px] text-slate-500 hover:text-emerald-600 hover:underline transition-colors font-medium"
-                        >
-                          {totalVisits} visit{totalVisits !== 1 ? 's' : ''}
-                        </Link>
-                        {isMonthly && (
-                          <span className="text-[10px] bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full font-bold">
-                            Monthly
-                          </span>
-                        )}
-                        {c.pet_info && (
-                          <span className="text-[11px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full font-medium">Pet</span>
-                        )}
-                        {c.total_spent > 2000 && (
-                          <span className="text-[11px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-medium">VIP</span>
-                        )}
-                        {outstanding > 0 && (
-                          <Link
-                            to={`/clients/${c.id}`}
-                            onClick={e => e.stopPropagation()}
-                            className="text-[11px] bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full font-semibold hover:bg-red-100 transition-colors"
-                          >
-                            AED {outstanding.toLocaleString()} owed
-                          </Link>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={e => {
-                            e.stopPropagation()
-                            setSelected(c)
-                            setIsEditingClient(true)
-                          }}
-                          className="flex items-center gap-1 text-[11.5px] font-semibold text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 px-2 py-1 rounded-lg border border-slate-200 transition-colors cursor-pointer"
-                          title="Edit Profile"
-                        >
-                          <Edit2 size={12} />
-                          <span>Edit</span>
-                        </button>
-                        <button
-                          onClick={e => { e.stopPropagation(); deleteClient(c.id) }}
-                          className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
-                          title="Delete client"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                        <Link
-                          to={`/clients/${c.id}`}
-                          onClick={e => e.stopPropagation()}
-                          className="flex items-center gap-1 text-[11.5px] font-semibold text-emerald-600 hover:text-emerald-700 hover:underline transition-colors shrink-0"
-                        >
-                          View Profile <ExternalLink size={11} />
-                        </Link>
-                      </div>
-                    </div>
-                  )
-                })()}
-              </div>
+              </ClientCardShell>
             )
           })}
         </div>
@@ -1344,8 +1286,10 @@ export function Clients() {
           const adjustment = clientData.adjustment_amount || 0
           const pending = clientData.pending_amount || 0
           const cleaner = clientData.preferred_cleaner || ''
+          const newClientId = crypto.randomUUID()
 
           addClient({
+            id:                newClientId,
             full_name:         clientName,
             phone:             clientData.phone || '',
             whatsapp:          clientData.whatsapp || '',
@@ -1375,7 +1319,7 @@ export function Clients() {
             if (advance > 0) {
               newEntries.push({
                 id: 'adj-init-adv-' + Date.now(),
-                client_id: '',
+                client_id: newClientId, // CM-04
                 client_name: clientName,
                 date: todayStr,
                 type: 'advance',
@@ -1387,7 +1331,7 @@ export function Clients() {
             if (adjustment > 0) {
               newEntries.push({
                 id: 'adj-init-adj-' + Date.now(),
-                client_id: '',
+                client_id: newClientId, // CM-04
                 client_name: clientName,
                 date: todayStr,
                 type: 'discount',

@@ -33,7 +33,7 @@ interface DataStore {
   deleteBooking:   (id: string) => void
   pushBookingToDailyJob: (bookingId: string) => void
 
-  addClient:       (c: Omit<Client, 'id' | 'created_at'>) => void
+  addClient:       (c: Omit<Client, 'id' | 'created_at'> & { id?: string }) => void // a caller may pick the id (CM-01)
   updateClient:    (id: string, patch: Partial<Client>) => void
   deleteClient:    (id: string) => void
 
@@ -643,7 +643,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     /* ── Clients ── */
     addClient: (c) => {
-      const row = { ...c, id: uid(), created_at: now() }
+      const row = { ...c, id: c.id || uid(), created_at: now() }
       setClients(p => [row, ...p])
       dbInsert('clients', row)
       logAudit('created', 'client', row.id, c.full_name)
