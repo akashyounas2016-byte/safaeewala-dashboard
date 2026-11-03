@@ -26,6 +26,22 @@ export function parseTimeToMinutes(timeStr?: string): number | null {
   return null
 }
 
+/**
+ * UX-68: the dropdown lists plain numbers in 30-minute steps; Morning (AM) or Evening (PM) is chosen
+ * separately. Morning starts at 9:00. Any other time can be typed.
+ */
+const halfHours = (fromH: number, toH: number, lastHalf = true) => {
+  const out: string[] = []
+  for (let h = fromH; h <= toH; h++) {
+    const h12 = String(h % 12 || 12).padStart(2, '0')
+    out.push(`${h12}:00`)
+    if (h < toH || lastHalf) out.push(`${h12}:30`)
+  }
+  return out
+}
+export const MORNING_TIMES = halfHours(9, 11)            // 09:00 … 11:30
+export const EVENING_TIMES = halfHours(12, 23, false)     // 12:00 … 11:00
+
 export const TIME_12H_SUGGESTIONS = [
   '07:00 AM', '07:30 AM', '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM',
   '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM', '01:30 PM', '02:00 PM', '02:30 PM',
@@ -65,6 +81,7 @@ export function Time12hPicker({
 
   const [isOpen, setIsOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [listHalf, setListHalf] = useState<'AM' | 'PM'>(meridiem)
   const containerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -80,6 +97,7 @@ export function Time12hPicker({
 
   useEffect(() => {
     if (isOpen) {
+      setListHalf(meridiem)
       setTimeout(() => searchInputRef.current?.focus(), 50)
     } else {
       setSearch('')
@@ -124,10 +142,11 @@ export function Time12hPicker({
   }
 
   const filteredSuggestions = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return TIME_12H_SUGGESTIONS
-    return TIME_12H_SUGGESTIONS.filter(t => t.toLowerCase().includes(q))
-  }, [search])
+    const list = listHalf === 'AM' ? MORNING_TIMES : EVENING_TIMES
+    const q = search.trim().toLowerCase().replace(/\s*(am|pm)$/, '')
+    if (!q) return list
+    return list.filter(t => t.includes(q))
+  }, [search, listHalf])
 
   const customCandidate = useMemo(() => {
     const q = search.trim().replace(/[^\d:]/g, '')
@@ -139,10 +158,11 @@ export function Time12hPicker({
     if (isNaN(minVal) || minVal < 0 || minVal > 59) return null
     const normH = String(h).padStart(2, '0')
     const normM = String(minVal).padStart(2, '0')
-    const candidate = `${normH}:${normM} ${meridiem}`
-    if (TIME_12H_SUGGESTIONS.includes(candidate)) return null
+    const typedMer = /pm/i.test(search) ? 'PM' : /am/i.test(search) ? 'AM' : listHalf
+    const candidate = `${normH}:${normM} ${typedMer}`
+    if ((typedMer === listHalf) && (listHalf === 'AM' ? MORNING_TIMES : EVENING_TIMES).includes(`${normH}:${normM}`)) return null
     return candidate
-  }, [search, meridiem])
+  }, [search, listHalf])
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
@@ -167,7 +187,7 @@ export function Time12hPicker({
         >
           <div className="flex items-center gap-2 truncate">
             <Clock size={15} className="text-emerald-600 shrink-0" />
-            <span className="font-bold text-slate-900 tracking-wide tabular-nums">{full12h}</span>
+            <span className="font-bold text-slate-900 tracking-wide tabular-nums">{formattedHHMM}</span>
           </div>
           <ChevronDown
             size={14}
@@ -181,6 +201,7 @@ export function Time12hPicker({
             type="button"
             disabled={disabled}
             onClick={() => handleToggleMeridiem('AM')}
+            title="Morning"
             className={`px-2.5 py-1.5 text-[11px] font-extrabold rounded-lg transition-all ${
               disabled
                 ? 'text-slate-400 cursor-not-allowed'
@@ -195,6 +216,7 @@ export function Time12hPicker({
             type="button"
             disabled={disabled}
             onClick={() => handleToggleMeridiem('PM')}
+            title="Evening"
             className={`px-2.5 py-1.5 text-[11px] font-extrabold rounded-lg transition-all ${
               disabled
                 ? 'text-slate-400 cursor-not-allowed'
@@ -223,21 +245,31 @@ export function Time12hPicker({
                 if (e.key === 'Enter') {
                   e.preventDefault()
                   if (customCandidate) {
-                    commitTime(customCandidate, meridiem)
+                    commitTime(customCandidate, listHalf)
                   } else if (filteredSuggestions.length > 0) {
-                    commitTime(filteredSuggestions[0], meridiem)
+                    commitTime(filteredSuggestions[0], listHalf)
                   }
                 }
               }}
-              placeholder="Search or type time (e.g. 09:15, 10:45)..."
+              placeholder="Type a time, e.g. 9:15 or 7:45 pm"
               className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:bg-white text-slate-800 placeholder-slate-400 font-medium"
             />
+          </div>
+
+          {/* Morning / Evening — which half of the day the numbers below are */}
+          <div className="flex items-center gap-1 mb-2 shrink-0">
+            {(['AM', 'PM'] as const).map(h => (
+              <button key={h} type="button" onMouseDown={e => { e.preventDefault(); setListHalf(h) }}
+                className={`flex-1 py-1.5 rounded-lg text-[11.5px] font-bold border cursor-pointer ${listHalf === h ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}>
+                {h === 'AM' ? 'Morning (AM)' : 'Evening (PM)'}
+              </button>
+            ))}
           </div>
 
           {/* Custom Time Add Option if user types a custom time */}
           {customCandidate && (
             <div
-              onClick={() => commitTime(customCandidate, meridiem)}
+              onClick={() => commitTime(customCandidate, listHalf)}
               className="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-900 hover:bg-emerald-100 text-[12px] font-bold flex items-center gap-2 cursor-pointer mb-1 shrink-0 transition-colors"
             >
               <Plus size={13} className="text-emerald-700 stroke-[3]" />
@@ -249,15 +281,15 @@ export function Time12hPicker({
           <div className="max-h-48 overflow-y-auto space-y-0.5 divide-y divide-slate-100 pr-0.5">
             {filteredSuggestions.length === 0 && !customCandidate ? (
               <div className="py-4 text-center text-[12px] text-slate-400">
-                No times found. Type custom time above.
+                No times found. Type the time above.
               </div>
             ) : (
               filteredSuggestions.map(timeStr => {
-                const isSelected = full12h === timeStr
+                const isSelected = full12h === `${timeStr} ${listHalf}`
                 return (
                   <div
                     key={timeStr}
-                    onClick={() => commitTime(timeStr, meridiem)}
+                    onClick={() => commitTime(timeStr, listHalf)}
                     className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between text-[12.5px] tabular-nums ${
                       isSelected
                         ? 'bg-emerald-50 text-emerald-950 font-bold'

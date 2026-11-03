@@ -74,7 +74,8 @@ const DAILY_JOBS_COLUMNS = new Set([
   'id', 'created_at', 'date', 'staff_name', 'start_time', 'end_time',
   'duty_hours', 'ot_hours', 'address', 'area', 'material', 'charges',
   'received', 'payment_mode', 'is_overtime', 'remarks', 'service',
-  'booking_id', 'status', 'team_name'
+  'booking_id', 'status', 'team_name',
+  'received_split', 'row_color', // migration 2026-11-03_daily_jobs_split_and_color.sql (R-PAY-05, R-SYNC-11)
 ])
 
 const BOOKINGS_COLUMNS = new Set([
@@ -85,7 +86,7 @@ const BOOKINGS_COLUMNS = new Set([
   'pending_due', 'is_partially_paid', 'job_sheet_id', 'recurrence_day'
 ])
 
-function sanitizeOutboxPayload(table: string, payload?: Record<string, unknown>): Record<string, unknown> | undefined {
+export function sanitizeOutboxPayload(table: string, payload?: Record<string, unknown>): Record<string, unknown> | undefined {
   if (!payload || typeof payload !== 'object') return payload
   if (table === 'daily_jobs') {
     const clean: Record<string, unknown> = {}

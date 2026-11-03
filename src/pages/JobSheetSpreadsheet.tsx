@@ -1186,6 +1186,11 @@ const newRowId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().to
 const READ_ONLY_COLS = new Set(['pending', 'ot_hours']) // ot_hours: always automatic (DEC-015)
 /** Light background of a job done by one cleaner alone (not a team job) — UX-61 */
 const SOLO_ROW_BG = '#f0fdfa'
+/** R-PAY-05: label of a team member's Received cell — the cash they collected, if the job is split */
+const memberReceivedLabel = (row: DailyJob, lead: string) => {
+  const own = row.received_split?.[(row.staff_name || '').trim()]
+  return own ? `Collected ${own} · Ref ${lead || 'Lead'}` : `Reference ${lead || 'Lead'}`
+}
 /** Columns whose cells open their dropdown on a single click, filled or empty (UX-35) */
 const DROPDOWN_COLS = new Set(['address', 'area', 'material', 'payment_mode', 'start_time', 'end_time'])
 /** Time suggestions formatted with explicit AM and PM */
@@ -3502,6 +3507,8 @@ export function JobSheetSpreadsheet() {
         charges: isSec ? 0 : cleanNum(row.charges),
         received: isSec ? 0 : cleanNum(row.received),
         payment_mode: isSec ? ('Above' as any) : row.payment_mode,
+        received_split: row.received_split, // R-PAY-05
+        row_color: row.row_color,           // R-SYNC-11
         is_overtime: false, // DEC-015: OT is automatic, this old flag is not used
         material: row.material,
         service: row.service,
@@ -3537,6 +3544,8 @@ export function JobSheetSpreadsheet() {
         charges: cleanNum(lead.charges), // the lead row holds the money of the whole team
         received: cleanNum(lead.received),
         payment_mode: lead.payment_mode,
+        received_split: lead.received_split, // R-PAY-05: who collected the team's cash
+        row_color: lead.row_color,           // R-SYNC-11
         is_overtime: false,
       }
     }
@@ -3665,7 +3674,7 @@ export function JobSheetSpreadsheet() {
         } else if (col.id === 'charges') {
           val = mcInfo?.isSecondary ? `Added ${mcInfo.teamRef || 'Team'}` : r.charges
         } else if (col.id === 'received') {
-          val = mcInfo?.isSecondary ? `Reference ${mcInfo.primaryCleaner || 'Lead'}` : r.received
+          val = mcInfo?.isSecondary ? memberReceivedLabel(r, mcInfo.primaryCleaner) : r.received
         } else if (col.id === 'pending') {
           val = mcInfo?.isSecondary ? 'Nil' : rowPending(r)
         } else if (col.id === 'payment_mode') {
@@ -3697,7 +3706,7 @@ export function JobSheetSpreadsheet() {
         } else if (col.id === 'charges') {
           val = mcInfo?.isSecondary ? `Added ${mcInfo.teamRef || 'Team'}` : r.charges
         } else if (col.id === 'received') {
-          val = mcInfo?.isSecondary ? `Reference ${mcInfo.primaryCleaner || 'Lead'}` : r.received
+          val = mcInfo?.isSecondary ? memberReceivedLabel(r, mcInfo.primaryCleaner) : r.received
         } else if (col.id === 'pending') {
           val = mcInfo?.isSecondary ? 'Nil' : rowPending(r)
         } else if (col.id === 'payment_mode') {
@@ -4828,7 +4837,7 @@ export function JobSheetSpreadsheet() {
                               else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                             } else if (col.id === 'received') {
                               if (isBlankShift) displayVal = ''
-                              else if (mcInfo?.isSecondary) displayVal = `Reference ${mcInfo.primaryCleaner || 'Lead'}`
+                              else if (mcInfo?.isSecondary) displayVal = memberReceivedLabel(row, mcInfo.primaryCleaner)
                               else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                             } else if (col.id === 'pending') {
                               if (isBlankShift) displayVal = ''
@@ -5166,7 +5175,7 @@ export function JobSheetSpreadsheet() {
                         else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                       } else if (col.id === 'received') {
                         if (isBlankShift) displayVal = ''
-                        else if (mcInfo?.isSecondary) displayVal = `Reference ${mcInfo.primaryCleaner || 'Lead'}`
+                        else if (mcInfo?.isSecondary) displayVal = memberReceivedLabel(row, mcInfo.primaryCleaner)
                         else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                       } else if (col.id === 'pending') {
                         const chg = cleanNum(row.charges)

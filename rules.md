@@ -193,6 +193,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/store/useAttendanceMarks.ts`, `realtime.ts → subscribeAttendanceMarks`, `DataContext → attendanceMarks / saveAttendanceMarks`. Migration `2026-11-03_attendance_marks.sql`.
 - **Status:** Active · Since: 2026-11-03 (ATT-A02, ATT-A03)
 
+### R-SYNC-11 — A job's row colour is saved in the cloud
+- **Rule:** The row colour chosen in Add Job or the Excel Job Sheet is saved with the job, so every device shows it. Before 2026-11-03 `daily_jobs` had no `row_color` column and the outbox dropped the field: the colour stayed in one browser only.
+- **Code:** `syncQueue.ts → DAILY_JOBS_COLUMNS`; migration `2026-11-03_daily_jobs_split_and_color.sql`.
+- **Status:** Active once the migration has run · Since: 2026-11-03
+
 ### R-SYNC-04 — Staff are matched by whole words
 - **Rule:** An employee matches a job's `staff_name` by normalised full name or whole-word match — "Rupa" must not match "Rupak".
 - **Code:** `clientDataSync.ts → employeeMatchesStaff`.
@@ -364,6 +369,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-PAY-04 — Overtime pay (planned)
 - **Rule:** OT pay will be set and shown on the **Salaries** screen (OT hours from R-OT-01 × an OT rate). Not built yet — until then no screen pays or costs OT.
 - **Status:** Planned (DEC-016, E2E-24)
+
+### R-PAY-05 — Who collected the cash of a team job
+- **Rule:** On a team job, *Add Job → Charges → Split received between cleaners* records how much each cleaner collected, e.g. Adnan 100 and Arjun 50.
+  - *Received* is the total of the split and cannot be typed while the split is on.
+  - The lead row still holds the job's money.
+  - Each team member's row in the Excel Job Sheet shows *Collected 50 · Ref Adnan*.
+  - Turning the split off on an edit removes it.
+- **Code:** `AddJobModal.tsx` (`received_split`), `JobSheetSpreadsheet.tsx → memberReceivedLabel` and the save. Column `daily_jobs.received_split` (migration `2026-11-03_daily_jobs_split_and_color.sql`).
+- **Status:** Active · Since: 2026-11-03
 
 ---
 

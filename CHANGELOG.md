@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(time): Booking and Add Job time pickers list plain numbers in 30-minute steps from 9:00, with Morning / Evening tabs; the box shows no AM/PM tag (the toggle beside it does); typing any time still works (UX-68)
+- feat(jobs): 20 more light row colours (UX-69); "Charges & Collection" is now "Charges", with *Split received between cleaners* (who collected how much) (R-PAY-05)
+- fix(sync): a job's row colour and the cash split are saved to Supabase. The row colour was never saved before (R-SYNC-11; migration `2026-11-03_daily_jobs_split_and_color.sql`)
 - fix(excel-studio): two teams on one date no longer share "Team A"; names are unique per date, also for saved jobs, and each team gets its own colour (R-SYNC-08, UX-66)
 - fix(excel-studio): time clashes are shown at once. A red banner lists every cleaner booked twice in the sheet, the rows are outlined, and *Show* jumps to them. Add Job checks unsaved rows on screen too (before: only saved jobs, so a second overlapping job slipped in) (R-JOB-01)
 - docs(ops): Claude works in the main folder; the VPS is updated only on request (R-OPS-03)

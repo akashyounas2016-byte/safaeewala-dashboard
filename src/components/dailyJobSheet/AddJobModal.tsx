@@ -230,9 +230,13 @@ export function AddJobForm({
   // ── Financials ──
   const [charges, setCharges] = useState<number | string>(initial?.charges ?? '')
   const [received, setReceived] = useState<number | string>(initial?.received ?? '')
+  // R-PAY-05: on a team job, who collected how much of the received cash
+  const [splitOn, setSplitOn] = useState(() => Object.keys(initial?.received_split || {}).length > 0)
+  const [split, setSplit] = useState<Record<string, string>>(() =>
+    Object.fromEntries(Object.entries(initial?.received_split || {}).map(([k, v]) => [k, String(v)])))
   const [paymentMode, setPaymentMode] = useState<PaymentMode>(initial?.payment_mode ?? 'Cash')
 
-  // ── Row Color Preset Dropdown (18 options in Drop-Up Mode) ──
+  // ── Row Color Preset Dropdown (all presets, drop-up, UX-69) ──
   const [rowColor, setRowColor] = useState<string>(initial?.row_color || 'default')
   const [colorDropdownOpen, setColorDropdownOpen] = useState(false)
   const colorRef = useRef<HTMLDivElement>(null)
@@ -435,6 +439,11 @@ export function AddJobForm({
     }
 
     
+    // R-PAY-05: received split between the team's cleaners — only cleaners still on the job, only amounts > 0
+    const useSplit = splitOn && selectedStaff.length >= 2
+    const splitSaved: Record<string, number> = Object.fromEntries(selectedStaff.map(n => [n, cleanNum(split[n])] as const).filter(([, v]) => v > 0))
+    const splitTotal = Object.values(splitSaved).reduce((a, b) => a + b, 0)
+
     // Cleaner shift overlap / clash error check
     // R-JOB-01: the entry is refused while a cleaner is busy at this time
     if (staffClash) {
@@ -455,7 +464,9 @@ export function AddJobForm({
       area:         area.trim(),
       material:     selectedMaterial as MaterialType,
       charges:      cleanNum(charges),
-      received:     cleanNum(received),
+      received:     useSplit ? splitTotal : cleanNum(received),
+      // turning the split off on an edit clears it ({}), a new job without a split sends nothing
+      received_split: useSplit ? splitSaved : (initial?.received_split ? {} : undefined),
       payment_mode: paymentMode,
       is_overtime:  false, // DEC-015: OT is automatic, this old flag is not used
       remarks:      remarks.trim(),
@@ -861,7 +872,7 @@ export function AddJobForm({
               <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
                 <CreditCard size={15} />
               </div>
-              <h4 className="text-[13px] font-bold text-slate-900">Charges & Collection</h4>
+              <h4 className="text-[13px] font-bold text-slate-900">Charges</h4>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -887,10 +898,12 @@ export function AddJobForm({
                   type="number"
                   min="0"
                   step="0.01"
-                  value={received}
+                  value={splitOn && selectedStaff.length >= 2 ? selectedStaff.reduce((sum, n) => sum + cleanNum(split[n]), 0) : received}
                   onChange={e => setReceived(e.target.value)}
+                  readOnly={splitOn && selectedStaff.length >= 2}
+                  title={splitOn && selectedStaff.length >= 2 ? 'Total of the split below' : undefined}
                   placeholder="0.00"
-                  className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-bold text-emerald-800"
+                  className={`w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500 transition-all font-bold text-emerald-800 ${splitOn && selectedStaff.length >= 2 ? 'bg-emerald-50/60 cursor-not-allowed' : 'bg-[#f8fafc] focus:bg-white'}`}
                 />
               </div>
               <div>
@@ -908,6 +921,47 @@ export function AddJobForm({
                 </select>
               </div>
             </div>
+
+            {/* R-PAY-05: split the received cash between the team's cleaners (who collected how much) */}
+            {selectedStaff.length >= 2 && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-2.5 space-y-2">
+                <label className="flex items-center gap-2 text-[12px] font-bold text-slate-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={splitOn}
+                    onChange={e => {
+                      const on = e.target.checked
+                      setSplitOn(on)
+                      // start the split with the whole amount on the first cleaner
+                      if (on && Object.keys(split).length === 0 && cleanNum(received) > 0) setSplit({ [selectedStaff[0]]: String(cleanNum(received)) })
+                      if (!on) setReceived(selectedStaff.reduce((sum, n) => sum + cleanNum(split[n]), 0) || received)
+                    }}
+                    className="w-4 h-4 accent-emerald-600 cursor-pointer"
+                  />
+                  Split received between cleaners
+                  <span className="font-medium text-slate-400">— who collected how much</span>
+                </label>
+                {splitOn && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {selectedStaff.map(n => (
+                      <div key={n} className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2.5 py-1">
+                        <span className="text-[12px] font-semibold text-slate-700 truncate flex-1" title={n}>{n}</span>
+                        <span className="text-[11px] text-slate-400">AED</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={split[n] ?? ''}
+                          onChange={e => setSplit(prev => ({ ...prev, [n]: e.target.value }))}
+                          placeholder="0"
+                          className="w-20 text-right text-[12.5px] font-bold text-emerald-800 px-1.5 py-1 border border-slate-200 rounded-md focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
       </div>
 
