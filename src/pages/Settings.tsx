@@ -19,6 +19,9 @@ import { useData } from '@/store/DataContext'
 import { getGHLConfig, saveGHLConfig, testGHLConnection, type GHLConfig } from '@/lib/ghlService'
 import { todayDubai } from '@/lib/dubaiTime'
 
+/** Last Settings tab of this browser tab (SET-02) */
+const SETTINGS_TAB_KEY = 'safaeewala_settings_tab'
+
 const allTabs = [
   { id: 'company',       label: 'Company',        icon: Building,   adminOnly: false },
   { id: 'users',         label: 'Users',          icon: Users,      adminOnly: true  },
@@ -707,13 +710,28 @@ export function Settings() {
   const currentUser = useCurrentUser()
   const roleLoaded  = currentUser !== null
   const tabs        = allTabs.filter(t => !t.adminOnly || !roleLoaded || isAdmin)
-  const [activeTab, setActiveTab] = useState(() => {
+  // SET-02: the chosen tab survives leaving the screen and coming back — kept in the URL (?tab=)
+  // and in this browser tab's session, so Settings no longer jumps back to Company
+  const [chosenTab, setChosenTab] = useState(() => {
     try {
       const p = new URLSearchParams(window.location.search).get('tab')
       if (p && allTabs.some(t => t.id === p)) return p
-    } catch {}
+      const last = sessionStorage.getItem(SETTINGS_TAB_KEY)
+      if (last && allTabs.some(t => t.id === last)) return last
+    } catch { /* storage blocked */ }
     return 'company'
   })
+  const setActiveTab = (id: string) => {
+    setChosenTab(id)
+    try {
+      sessionStorage.setItem(SETTINGS_TAB_KEY, id)
+      const url = new URL(window.location.href)
+      url.searchParams.set('tab', id)
+      window.history.replaceState(window.history.state, '', url)
+    } catch { /* storage blocked — the tab still switches */ }
+  }
+  // A tab this role cannot see (e.g. Users for a manager) shows Company instead
+  const activeTab = tabs.some(t => t.id === chosenTab) ? chosenTab : 'company'
   const [userEmail, setUserEmail] = useState('')
   const [company,  setCompany]   = useState<CompanyData>(DEFAULT_COMPANY)
   const [notif,    setNotif]     = useState<NotifData>(DEFAULT_NOTIF)

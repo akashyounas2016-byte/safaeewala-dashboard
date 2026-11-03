@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components -- context file: provider + its hooks belong together */
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import {
   ALL_MODULE_KEYS, DEFAULT_ROLE_PERMS, canAccessModule, normalizeRolePerms,
@@ -42,23 +42,29 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser]           = useState<CurrentUser | null>(null)
   const [rolePerms, setRolePerms] = useState<RolePerms>(DEFAULT_ROLE_PERMS)
 
+  /** Who is signed in now — a repeated SIGNED_IN for the same person must not reload the app (SET-01) */
+  const signedInAs = useRef<string | null>(null)
+
   const loadProfile = useCallback(async (authUserId: string | null, email: string) => {
-    if (!authUserId) { setUser(null); setStatus('signed_out'); return }
+    if (!authUserId) { signedInAs.current = null; setUser(null); setStatus('signed_out'); return }
     const [{ data: profile }, { data: settings }] = await Promise.all([
       supabase.from('profiles').select('login_id, full_name, role, status, employee_id').eq('id', authUserId).maybeSingle(),
       supabase.from('company_settings').select('data').eq('id', 1).maybeSingle(),
     ])
     setRolePerms(normalizeRolePerms(settings?.data?.rolePermissions))
-    if (!profile) { setUser(null); setStatus('no_profile'); return }
-    if (profile.status !== 'active') { setUser(null); setStatus('disabled'); return }
-    setUser({
+    if (!profile) { signedInAs.current = null; setUser(null); setStatus('no_profile'); return }
+    if (profile.status !== 'active') { signedInAs.current = null; setUser(null); setStatus('disabled'); return }
+    const next: CurrentUser = {
       id: authUserId,
       email,
       login_id: profile.login_id,
       full_name: profile.full_name || profile.login_id,
       role: profile.role as AppRole,
       employee_id: profile.employee_id ?? null,
-    })
+    }
+    // Same profile → keep the same object, so screens that depend on the user are not reset (SET-01)
+    setUser(prev => (prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
+    signedInAs.current = authUserId
     setStatus('ready')
   }, [])
 
@@ -69,7 +75,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
     })
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (!alive || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') return
-      if (event === 'SIGNED_IN') setStatus('loading')
+      // SET-01: Supabase sends SIGNED_IN again whenever the browser tab becomes visible. Showing the
+      // loader for it unmounted every screen — Settings jumped back to Company, open forms were lost.
+      // Only a sign-in by someone else (or after sign-out) shows the loader; the same user is re-checked quietly.
+      if (event === 'SIGNED_IN' && session?.user.id !== signedInAs.current) setStatus('loading')
       // defer: Supabase must not be called inside this callback
       setTimeout(() => { void loadProfile(session?.user.id ?? null, session?.user.email ?? '') }, 0)
     })
@@ -78,6 +87,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut()
+    signedInAs.current = null
     setUser(null)
     setStatus('signed_out')
   }, [])

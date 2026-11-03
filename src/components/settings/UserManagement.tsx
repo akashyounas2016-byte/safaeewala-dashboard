@@ -216,6 +216,17 @@ export function UsersAdminPanel() {
       {error && (
         <div className="mx-6 mt-4 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50 text-[12.5px] text-amber-900">
           {error} <button type="button" onClick={() => { setLoading(true); void load() }} className="underline font-bold ml-1 cursor-pointer">Try again</button>
+          {/SERVICE_ROLE_KEY|not set up on the server/i.test(error) && (
+            // SET-03: the live server has no Supabase admin key — say what to do, not only what is wrong
+            <div className="mt-2 text-[12px] text-amber-950 space-y-1">
+              <p className="font-bold">How to fix (one time, on the VPS):</p>
+              <ol className="list-decimal ml-5 space-y-0.5">
+                <li>Open <code className="bg-white/70 px-1 rounded">/var/www/safaeewala/.env</code> and add <code className="bg-white/70 px-1 rounded">SUPABASE_URL=…</code> and <code className="bg-white/70 px-1 rounded">SUPABASE_SERVICE_ROLE_KEY=…</code> (Supabase → Project Settings → API).</li>
+                <li>Run <code className="bg-white/70 px-1 rounded">docker compose up -d</code> in that folder.</li>
+                <li>Come back here and press Try again.</li>
+              </ol>
+            </div>
+          )}
         </div>
       )}
 

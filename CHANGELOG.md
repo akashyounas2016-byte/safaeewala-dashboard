@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(app): coming back to the browser tab no longer reloads the whole app. Supabase sends SIGNED_IN again on every return, and the app treated it as a new sign-in, so every screen was rebuilt and Settings jumped to Company (SET-01)
+- fix(settings): the chosen tab is kept in the URL and in the browser tab's session, so leaving Settings and coming back keeps it (SET-02)
+- feat(settings): when the server has no Supabase admin key, Users explains how to fix it (SET-03, K-06)
 - feat(clients): Clients and Monthly Clients cards redesigned as one family after the Daily Job Sheet: cleaner colour, avatars, Mon–Sun schedule strip, money strip. Delete asks first (UX-67)
 - fix(clients): audit CM-01…CM-08:
   - Editing a client the profile built from a booking or job row is no longer lost (CM-01).
