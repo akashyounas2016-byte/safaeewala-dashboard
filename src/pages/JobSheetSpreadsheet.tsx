@@ -49,6 +49,7 @@ import { fetchRecordHistory, type AuditEntry } from '@/lib/auditLog'
 import { ChangeLogHistoryModal } from '@/components/dailyJobSheet/ChangeLogHistoryModal'
 import { cleanAddressDisplay } from '@/lib/utils'
 import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, buildTeamColorMap, uniqueTeamRefs, projectKey } from '@/lib/excelTeams'
+import { splitEntryOf } from '@/lib/chargeSplit'
 
 /* ─── Column Schema for the Excel Grid (Daily Job Sheet Exact Sequence) ─── */
 export interface ColumnDef {
@@ -1184,8 +1185,8 @@ const COLUMN_PRESETS: Record<string, string[] | null> = {
 const newRowId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 /** Columns that are calculated, never typed into */
 const READ_ONLY_COLS = new Set(['pending', 'ot_hours']) // ot_hours: always automatic (DEC-015)
-/** Light background of a job done by one cleaner alone (not a team job) — UX-61 */
-const SOLO_ROW_BG = '#f0fdfa'
+/** UX-70: a row is white unless it is part of a team project (UX-66) or a colour was chosen for it */
+const DEFAULT_ROW_BG = '#ffffff'
 /** UX-66: the project (location + date) of a team row; null for solo / blank rows */
 function projectKeyOf(r: DailyJob, allRows: DailyJob[]): string | null {
   if (!r.address && !r.start_time && !r.end_time && cleanNum(r.charges) === 0 && cleanNum(r.received) === 0) return null
@@ -1194,11 +1195,20 @@ function projectKeyOf(r: DailyJob, allRows: DailyJob[]): string | null {
   return projectKey(r, info.teamRef)
 }
 
-/** R-PAY-05: label of a team member's Received cell — the cash they collected, if the job is split */
-const memberReceivedLabel = (row: DailyJob, lead: string) => {
-  const own = row.received_split?.[(row.staff_name || '').trim()]
-  return own ? `Collected ${own} · Ref ${lead || 'Lead'}` : `Reference ${lead || 'Lead'}`
+/**
+ * R-PAY-05: labels of a team member's money cells. Split Mode → the member's own charges, received and mode;
+ * Lump Sum → the money is on the lead row ("Added Team A", "Reference Adnan", "Above").
+ */
+const memberEntry = (row: DailyJob) => splitEntryOf(row, row.staff_name || '')
+const memberChargesLabel = (row: DailyJob, team: string) => {
+  const e = memberEntry(row)
+  return e ? `Split ${e.charges}` : `Added ${team || 'Team'}`
 }
+const memberReceivedLabel = (row: DailyJob, lead: string) => {
+  const e = memberEntry(row)
+  return e ? `Collected ${e.received} · Ref ${lead || 'Lead'}` : `Reference ${lead || 'Lead'}`
+}
+const memberModeLabel = (row: DailyJob) => memberEntry(row)?.payment_mode || 'Above'
 /** Columns whose cells open their dropdown on a single click, filled or empty (UX-35) */
 const DROPDOWN_COLS = new Set(['address', 'area', 'material', 'payment_mode', 'start_time', 'end_time'])
 /** Time suggestions formatted with explicit AM and PM */
@@ -3515,7 +3525,7 @@ export function JobSheetSpreadsheet() {
         charges: isSec ? 0 : cleanNum(row.charges),
         received: isSec ? 0 : cleanNum(row.received),
         payment_mode: isSec ? ('Above' as any) : row.payment_mode,
-        received_split: row.received_split, // R-PAY-05
+        charge_split: row.charge_split, // R-PAY-05
         row_color: row.row_color,           // R-SYNC-11
         is_overtime: false, // DEC-015: OT is automatic, this old flag is not used
         material: row.material,
@@ -3552,7 +3562,7 @@ export function JobSheetSpreadsheet() {
         charges: cleanNum(lead.charges), // the lead row holds the money of the whole team
         received: cleanNum(lead.received),
         payment_mode: lead.payment_mode,
-        received_split: lead.received_split, // R-PAY-05: who collected the team's cash
+        charge_split: lead.charge_split, // R-PAY-05: each cleaner's money of the team job
         row_color: lead.row_color,           // R-SYNC-11
         is_overtime: false,
       }
@@ -3680,13 +3690,13 @@ export function JobSheetSpreadsheet() {
           else if (mcInfo?.isPrimary && mcInfo.isMultiCleaner) val = `${mcInfo.teamRef} (Lead)`
           else val = (r.team_name && r.team_name.trim().toLowerCase() !== 'project team') ? r.team_name : ''
         } else if (col.id === 'charges') {
-          val = mcInfo?.isSecondary ? `Added ${mcInfo.teamRef || 'Team'}` : r.charges
+          val = mcInfo?.isSecondary ? memberChargesLabel(r, mcInfo.teamRef) : r.charges
         } else if (col.id === 'received') {
           val = mcInfo?.isSecondary ? memberReceivedLabel(r, mcInfo.primaryCleaner) : r.received
         } else if (col.id === 'pending') {
           val = mcInfo?.isSecondary ? 'Nil' : rowPending(r)
         } else if (col.id === 'payment_mode') {
-          val = mcInfo?.isSecondary ? 'Above' : r.payment_mode
+          val = mcInfo?.isSecondary ? memberModeLabel(r) : r.payment_mode
         }
         rowObj[col.label] = val !== undefined && val !== null ? val : ''
       })
@@ -3712,13 +3722,13 @@ export function JobSheetSpreadsheet() {
           else if (mcInfo?.isPrimary && mcInfo.isMultiCleaner) val = `${mcInfo.teamRef} (Lead)`
           else val = (r.team_name && r.team_name.trim().toLowerCase() !== 'project team') ? r.team_name : ''
         } else if (col.id === 'charges') {
-          val = mcInfo?.isSecondary ? `Added ${mcInfo.teamRef || 'Team'}` : r.charges
+          val = mcInfo?.isSecondary ? memberChargesLabel(r, mcInfo.teamRef) : r.charges
         } else if (col.id === 'received') {
           val = mcInfo?.isSecondary ? memberReceivedLabel(r, mcInfo.primaryCleaner) : r.received
         } else if (col.id === 'pending') {
           val = mcInfo?.isSecondary ? 'Nil' : rowPending(r)
         } else if (col.id === 'payment_mode') {
-          val = mcInfo?.isSecondary ? 'Above' : r.payment_mode
+          val = mcInfo?.isSecondary ? memberModeLabel(r) : r.payment_mode
         }
         rowObj[col.label] = val !== undefined && val !== null ? val : ''
       })
@@ -4538,7 +4548,6 @@ export function JobSheetSpreadsheet() {
             }`}
             title="Show cleaners who only have single-cleaner jobs below the team jobs"
           >
-            <span className="w-3 h-3 rounded-sm border border-teal-300" style={{ backgroundColor: SOLO_ROW_BG }} />
             <span>Solo at bottom</span>
           </button>
 
@@ -4813,7 +4822,7 @@ export function JobSheetSpreadsheet() {
                           key={row.id}
                           data-row-id={row.id}
                           onContextMenu={e => handleContextMenu(e, globalIndex, row)}
-                          style={{ backgroundColor: palette.solidBg }}
+                          style={{ backgroundColor: (cleanerColors[(row.staff_name || '').trim().toLowerCase()] || row.row_color) ? palette.solidBg : DEFAULT_ROW_BG }} // UX-70
                           className={`transition-colors group hover:brightness-[0.97] ${flashRowId === row.id ? 'outline outline-4 -outline-offset-2 outline-amber-400' : clashRowIds.has(row.id) ? 'outline outline-2 -outline-offset-2 outline-rose-500' : ''} ${
                             isSelectedRow
                               ? 'ring-2 ring-inset ring-emerald-600 font-semibold shadow-xs'
@@ -4840,7 +4849,7 @@ export function JobSheetSpreadsheet() {
                               else displayVal = ''
                             } else if (col.id === 'charges') {
                               if (isBlankShift) displayVal = ''
-                              else if (mcInfo?.isSecondary) displayVal = `Added ${mcInfo.teamRef || 'Team'}`
+                              else if (mcInfo?.isSecondary) displayVal = memberChargesLabel(row, mcInfo.teamRef)
                               else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                             } else if (col.id === 'received') {
                               if (isBlankShift) displayVal = ''
@@ -4852,7 +4861,7 @@ export function JobSheetSpreadsheet() {
                               else displayVal = rowPending(row)
                             } else if (col.id === 'payment_mode') {
                               if (isBlankShift) displayVal = ''
-                              else if (mcInfo?.isSecondary) displayVal = 'Above'
+                              else if (mcInfo?.isSecondary) displayVal = memberModeLabel(row)
                               else displayVal = rawVal || ''
                             } else if (col.id === 'start_time' || col.id === 'end_time') {
                               displayVal = isBlankShift ? '' : (rawVal ? formatTime12h(rawVal) : '')
@@ -4886,8 +4895,6 @@ export function JobSheetSpreadsheet() {
                               cellBg = colPalette.solidBg
                             } else if (!isBlankShift && teamColorMap.byRow(row.id)) {
                               cellBg = teamColorMap.byRow(row.id)!.bg // UX-66
-                            } else if (!isBlankShift && !mcInfo?.isMultiCleaner) {
-                              cellBg = SOLO_ROW_BG // UX-61
                             }
 
                             return (
@@ -5066,8 +5073,8 @@ export function JobSheetSpreadsheet() {
                   }
                 } else if (teamColorMap.byRow(row.id)) {
                   rowBg = teamColorMap.byRow(row.id)!.bg // UX-66: same colour for every cleaner of the team
-                } else if ((row.address || row.start_time) && !getMultiCleanerPaymentInfo(row, gridRows)?.isMultiCleaner) {
-                  rowBg = SOLO_ROW_BG // UX-61: job done by one cleaner alone
+                } else {
+                  rowBg = DEFAULT_ROW_BG // UX-70: solo jobs and new rows stay white
                 }
 
                 return (
@@ -5178,7 +5185,7 @@ export function JobSheetSpreadsheet() {
                         else displayVal = ''
                       } else if (col.id === 'charges') {
                         if (isBlankShift) displayVal = ''
-                        else if (mcInfo?.isSecondary) displayVal = `Added ${mcInfo.teamRef || 'Team'}`
+                        else if (mcInfo?.isSecondary) displayVal = memberChargesLabel(row, mcInfo.teamRef)
                         else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                       } else if (col.id === 'received') {
                         if (isBlankShift) displayVal = ''
@@ -5200,7 +5207,7 @@ export function JobSheetSpreadsheet() {
                         }
                       } else if (col.id === 'payment_mode') {
                         if (isBlankShift) displayVal = ''
-                        else if (mcInfo?.isSecondary) displayVal = 'Above'
+                        else if (mcInfo?.isSecondary) displayVal = memberModeLabel(row)
                         else displayVal = rawVal || ''
                       } else if (col.id === 'ot_hours') {
                         const ot = cleanNum(rawVal)

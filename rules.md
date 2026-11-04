@@ -370,14 +370,24 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** OT pay will be set and shown on the **Salaries** screen (OT hours from R-OT-01 × an OT rate). Not built yet — until then no screen pays or costs OT.
 - **Status:** Planned (DEC-016, E2E-24)
 
-### R-PAY-05 — Who collected the cash of a team job
-- **Rule:** On a team job, *Add Job → Charges → Split received between cleaners* records how much each cleaner collected, e.g. Adnan 100 and Arjun 50.
-  - *Received* is the total of the split and cannot be typed while the split is on.
-  - The lead row still holds the job's money.
-  - Each team member's row in the Excel Job Sheet shows *Collected 50 · Ref Adnan*.
-  - Turning the split off on an edit removes it.
-- **Code:** `AddJobModal.tsx` (`received_split`), `JobSheetSpreadsheet.tsx → memberReceivedLabel` and the save. Column `daily_jobs.received_split` (migration `2026-11-03_daily_jobs_split_and_color.sql`).
-- **Status:** Active · Since: 2026-11-03
+### R-PAY-05 — Charges of a job: Lump Sum or Split Mode
+- **Rule:** *"Charges section mein Lump Sum aur Split Mode ka toggle … Lump Sum Mode mein total amount aik hi cleaner (lead) ke record mein jayegi … Split Mode … har split entry mein cleaner ka naam, charges, received amount, aur compact payment mode."*
+  - **Lump Sum Mode** (default; the only mode for a one-cleaner job): *Charges*, *Advance Received* and *Payment Mode*.
+    - Advance Received is the first payment taken when the job is entered, not the full collection.
+    - The whole amount is on the **lead** cleaner's record. On the Excel Job Sheet the other cleaners show *Added Team X / Reference Lead / Above*.
+  - **Split Mode** (team jobs only): one line per cleaner with their own **charges**, **received** and **payment mode**.
+    - The job's charges and received are the **totals** of the lines.
+    - The job's payment mode is the common mode, else the lead's.
+    - On the Excel Job Sheet each member row shows *Split 150 · Collected 50 · Online*.
+    - Employees revenue and cash collected use each cleaner's own line (EMP-05).
+  - **Payment Mode** offers Cash, Online, Pending and Monthly, plus custom values. *+ Custom value…* adds a mode that every job and the Excel Mode column can then use (cloud-synced).
+  - Switching an edited job back to Lump Sum removes its split. Switching to Split Mode starts with an equal share of the charges and the advance on the lead.
+- **Code:**
+  - `ChargesCard.tsx`: Daily and Excel Add Job, and Edit Job.
+  - `src/lib/chargeSplit.ts`: `splitTotals`, `cleanerShare`, `splitEntryOf`.
+  - `JobSheetSpreadsheet.tsx`: `memberChargesLabel`, `memberReceivedLabel`, `memberModeLabel`, and the save.
+- **Data:** `daily_jobs.charge_split` jsonb, holding `[{cleaner, charges, received, payment_mode}]` (migration `2026-11-03_daily_jobs_split_and_color.sql`).
+- **Status:** Active · Since: 2026-11-03 · Lump Sum / Split Mode since 2026-11-04
 
 ---
 

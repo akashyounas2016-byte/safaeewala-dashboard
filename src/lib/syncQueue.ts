@@ -75,7 +75,7 @@ const DAILY_JOBS_COLUMNS = new Set([
   'duty_hours', 'ot_hours', 'address', 'area', 'material', 'charges',
   'received', 'payment_mode', 'is_overtime', 'remarks', 'service',
   'booking_id', 'status', 'team_name',
-  'received_split', 'row_color', // migration 2026-11-03_daily_jobs_split_and_color.sql (R-PAY-05, R-SYNC-11)
+  'charge_split', 'row_color', // migration 2026-11-03_daily_jobs_split_and_color.sql (R-PAY-05, R-SYNC-11)
 ])
 
 const BOOKINGS_COLUMNS = new Set([

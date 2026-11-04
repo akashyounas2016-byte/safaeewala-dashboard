@@ -30,17 +30,20 @@ export function parseTimeToMinutes(timeStr?: string): number | null {
  * UX-68: the dropdown lists plain numbers in 30-minute steps; Morning (AM) or Evening (PM) is chosen
  * separately. Morning starts at 9:00. Any other time can be typed.
  */
-const halfHours = (fromH: number, toH: number, lastHalf = true) => {
+/** Times from fromH:00 up to and including toH:00 (or the last step of toH), every `step` minutes, no AM / PM */
+export function timeSteps(fromH: number, toH: number, step = 30, includeLastHourSteps = true): string[] {
   const out: string[] = []
   for (let h = fromH; h <= toH; h++) {
     const h12 = String(h % 12 || 12).padStart(2, '0')
-    out.push(`${h12}:00`)
-    if (h < toH || lastHalf) out.push(`${h12}:30`)
+    for (let m = 0; m < 60; m += step) {
+      if (h === toH && m > 0 && !includeLastHourSteps) break
+      out.push(`${h12}:${String(m).padStart(2, '0')}`)
+    }
   }
   return out
 }
-export const MORNING_TIMES = halfHours(9, 11)            // 09:00 … 11:30
-export const EVENING_TIMES = halfHours(12, 23, false)     // 12:00 … 11:00
+export const MORNING_TIMES = timeSteps(9, 11)            // 09:00 … 11:30
+export const EVENING_TIMES = timeSteps(12, 23, 30, false) // 12:00 … 11:00
 
 export const TIME_12H_SUGGESTIONS = [
   '07:00 AM', '07:30 AM', '08:00 AM', '08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM',
@@ -56,6 +59,10 @@ export interface Time12hPickerProps {
   onChange: (val12h: string) => void
   disabled?: boolean
   className?: string
+  /** Open the list above the field (like the material drop-up in Add Job) — UX-68 */
+  dropUp?: boolean
+  /** Minutes between the listed times (default 30) */
+  stepMinutes?: number
 }
 
 /**
@@ -70,6 +77,8 @@ export function Time12hPicker({
   onChange,
   disabled = false,
   className = '',
+  dropUp = false,
+  stepMinutes = 30,
 }: Time12hPickerProps) {
   const mins = parseTimeToMinutes(value) ?? (label.toLowerCase().includes('start') ? 9 * 60 : 13 * 60)
   const h24 = Math.floor(mins / 60)
@@ -142,11 +151,13 @@ export function Time12hPicker({
   }
 
   const filteredSuggestions = useMemo(() => {
-    const list = listHalf === 'AM' ? MORNING_TIMES : EVENING_TIMES
+    const list = stepMinutes === 30
+      ? (listHalf === 'AM' ? MORNING_TIMES : EVENING_TIMES)
+      : (listHalf === 'AM' ? timeSteps(9, 11, stepMinutes) : timeSteps(12, 23, stepMinutes, false))
     const q = search.trim().toLowerCase().replace(/\s*(am|pm)$/, '')
     if (!q) return list
     return list.filter(t => t.includes(q))
-  }, [search, listHalf])
+  }, [search, listHalf, stepMinutes])
 
   const customCandidate = useMemo(() => {
     const q = search.trim().replace(/[^\d:]/g, '')
@@ -160,9 +171,9 @@ export function Time12hPicker({
     const normM = String(minVal).padStart(2, '0')
     const typedMer = /pm/i.test(search) ? 'PM' : /am/i.test(search) ? 'AM' : listHalf
     const candidate = `${normH}:${normM} ${typedMer}`
-    if ((typedMer === listHalf) && (listHalf === 'AM' ? MORNING_TIMES : EVENING_TIMES).includes(`${normH}:${normM}`)) return null
+    if ((typedMer === listHalf) && filteredSuggestions.includes(`${normH}:${normM}`)) return null
     return candidate
-  }, [search, listHalf])
+  }, [search, listHalf, filteredSuggestions])
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
@@ -232,7 +243,7 @@ export function Time12hPicker({
 
       {/* Floating Dropdown Popover */}
       {isOpen && (
-        <div className="absolute z-50 left-0 w-full min-w-[240px] sm:min-w-[280px] mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl p-2.5 animate-in fade-in zoom-in-95 duration-100 flex flex-col">
+        <div className={`absolute z-50 left-0 w-full min-w-[240px] sm:min-w-[280px] ${dropUp ? 'bottom-full mb-1.5' : 'mt-1.5'} bg-white border border-slate-200 rounded-2xl shadow-xl p-2.5 animate-in fade-in zoom-in-95 duration-100 flex flex-col`}>
           {/* Search / Custom Time Input */}
           <div className="relative mb-2 shrink-0">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />

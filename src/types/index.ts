@@ -327,8 +327,8 @@ export interface DailyJob {
   staff_name: string
   team_name?: string
   row_color?: string
-  /** R-PAY-05: on a team job, the cash each cleaner collected (name → AED); received is the total */
-  received_split?: Record<string, number>
+  /** R-PAY-05: Split Mode — each cleaner's charges, received and payment mode; charges / received are the totals */
+  charge_split?: { cleaner: string; charges: number; received: number; payment_mode: string }[]
   start_time: string
   end_time: string
   duty_hours: number

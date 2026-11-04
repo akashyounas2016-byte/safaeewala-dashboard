@@ -6,6 +6,17 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(jobs): Charges has Lump Sum and Split Mode. Lump Sum: Charges, Advance Received and Payment Mode (with custom values), all on the lead. Split Mode: each cleaner's charges, received and mode. The split is saved as `charge_split` (R-PAY-05)
+- feat(jobs): Add Job time lists open upwards and step every 15 minutes (UX-68)
+- feat(jobs): row colours are 17 clearly different colours; look-alike shades removed (UX-69)
+- feat(excel-studio): rows are white unless part of a team project or given a colour; new rows and blocks start white (UX-70)
+- fix(employees): audit EMP-01…05:
+  - Re-import skips existing people.
+  - Delete asks first.
+  - Dubai calendar dates.
+  - Attendance absence and leave show on the card.
+  - Split jobs credit each cleaner's own amount.
+  - Report: `docs/audits/2026-11-04-employees-audit.md`.
 - fix(excel-studio): *Project* counts projects, not cleaner rows: 7 cleaners at 2 locations is 2 projects. A project is one location on one date; all its rows share one colour, different from every other project (UX-66)
 - feat(time): Booking and Add Job time pickers list plain numbers in 30-minute steps from 9:00, with Morning / Evening tabs; the box shows no AM/PM tag (the toggle beside it does); typing any time still works (UX-68)
 - feat(jobs): 20 more light row colours (UX-69); "Charges & Collection" is now "Charges", with *Split received between cleaners* (who collected how much) (R-PAY-05)

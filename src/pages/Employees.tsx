@@ -19,16 +19,19 @@ import type { Employee, DailyJob, EmployeeRole, Agency, EmployeeDocument } from 
 import { getAssignableClients, getEmployeeDailyJobsHistory, calcCleanerOTHours, getEmployeeMonthlySalary, formatMonthlySalary, splitStaffNames, MONTHLY_WORK_HOURS } from '@/lib/clientDataSync'
 import { EmployeeFormModal } from '@/components/employees/EmployeeFormModal'
 import { OvertimeWidget, LiveCrewWidget, ComplianceWidget, SkillsWidget } from '@/components/employees/EmployeeWidgets'
-import { todayDubai } from '@/lib/dubaiTime'
+import { todayDubai, addDays, calendarDate } from '@/lib/dubaiTime'
+import { confirmAsync, notify } from '@/lib/notify'
+import { cleanerShare } from '@/lib/chargeSplit'
+import { findMark } from '@/lib/attendance'
 
 /* ─── Excel import/export helpers ─── */
 function toISODate(val: any): string {
   if (!val) return ''
-  if (val instanceof Date) return val.toISOString().split('T')[0]
+  if (val instanceof Date) return calendarDate(val) // EMP-03: no UTC shift
   const s = String(val).trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
   const d = new Date(s)
-  return isNaN(d.getTime()) ? s : d.toISOString().split('T')[0]
+  return isNaN(d.getTime()) ? s : calendarDate(d)
 }
 
 function parseEmpRole(v: string): EmployeeRole {
@@ -225,7 +228,13 @@ type SortBy = 'working_today' | 'ot_desc' | 'duty_desc' | 'shifts_desc' | 'name_
 type ViewMode = 'grid' | 'table'
 
 export function Employees() {
-  const { employees, bookings, dailyJobs, clients, agencies, addEmployee, updateEmployee, deleteEmployee } = useData()
+  const { employees, bookings, dailyJobs, clients, agencies, addEmployee, updateEmployee, deleteEmployee: removeEmployee, attendanceMarks } = useData()
+  // EMP-02: deleting asks first (the card and table buttons deleted at once)
+  const deleteEmployee = async (id: string) => {
+    const emp = employees.find(e => e.id === id)
+    const ok = await confirmAsync({ title: 'Delete employee', message: `Delete "${emp?.full_name || 'this employee'}"? Their past jobs stay in the job sheet.`, confirmLabel: 'Delete', tone: 'danger' })
+    if (ok) removeEmployee(id)
+  }
   const navigate = useNavigate()
 
   // Table Column Visibility (persisted per browser)
@@ -331,42 +340,30 @@ export function Employees() {
 
   // Active date range calculation
   const activeDateRange = useMemo(() => {
-    const today = new Date()
-    const todayStr = today.toISOString().split('T')[0]
+    const todayStr = todayDubai() // EMP-03: Dubai date, not UTC
+    const monthsAgo = (n: number) => { const [y, m, d] = todayStr.split('-').map(Number); return calendarDate(new Date(y, m - 1 - n, d)) }
 
     if (datePreset === 'today') {
       return { start: todayStr, end: todayStr, label: 'Today' }
     }
     if (datePreset === 'yesterday') {
-      const y = new Date(today)
-      y.setDate(y.getDate() - 1)
-      const yStr = y.toISOString().split('T')[0]
+      const yStr = addDays(todayStr, -1)
       return { start: yStr, end: yStr, label: 'Yesterday' }
     }
     if (datePreset === '7days') {
-      const d = new Date(today)
-      d.setDate(d.getDate() - 7)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 7 Days' }
+      return { start: addDays(todayStr, -7), end: todayStr, label: 'Last 7 Days' }
     }
     if (datePreset === '30days') {
-      const d = new Date(today)
-      d.setDate(d.getDate() - 30)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 30 Days' }
+      return { start: addDays(todayStr, -30), end: todayStr, label: 'Last 30 Days' }
     }
     if (datePreset === '3months') {
-      const d = new Date(today)
-      d.setMonth(d.getMonth() - 3)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 3 Months' }
+      return { start: monthsAgo(3), end: todayStr, label: 'Last 3 Months' }
     }
     if (datePreset === '6months') {
-      const d = new Date(today)
-      d.setMonth(d.getMonth() - 6)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 6 Months' }
+      return { start: monthsAgo(6), end: todayStr, label: 'Last 6 Months' }
     }
     if (datePreset === '1year') {
-      const d = new Date(today)
-      d.setFullYear(d.getFullYear() - 1)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 1 Year' }
+      return { start: monthsAgo(12), end: todayStr, label: 'Last 1 Year' }
     }
     if (datePreset === 'custom') {
       return { start: customStartDate, end: customEndDate, label: 'Custom Range' }
@@ -410,8 +407,10 @@ export function Employees() {
       // OT hours fall inside the duty window, so they are not added on top
       const totalHours = dutyHours
       // A shared shift's charge is split between its cleaners
-      const revenueGenerated = Math.round(rangeJobs.reduce((s, j) => s + (Number(j.charges) || 0) / Math.max(1, splitStaffNames(j.staff_name).length), 0))
-      const cashCollected = Math.round(rangeJobs.filter(j => j.payment_mode === 'Cash').reduce((s, j) => s + (Number(j.received) || 0) / Math.max(1, splitStaffNames(j.staff_name).length), 0))
+      // EMP-05: a split job (R-PAY-05) gives each cleaner their own amount; otherwise an equal share
+      const shares = rangeJobs.map(j => cleanerShare(j, emp))
+      const revenueGenerated = Math.round(shares.reduce((s, x) => s + x.charges, 0))
+      const cashCollected = Math.round(shares.filter(x => x.payment_mode === 'Cash').reduce((s, x) => s + x.received, 0))
 
       stats.set(emp.id, {
         shifts,
@@ -431,6 +430,10 @@ export function Employees() {
   const getTodayStatus = (emp: Employee) => {
     if (emp.status === 'on_leave') return { code: 'leave', label: 'On Leave', bg: 'bg-indigo-50 text-indigo-700 border-indigo-200', badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200' }
     if (emp.status === 'inactive') return { code: 'inactive', label: 'Inactive', bg: 'bg-slate-100 text-slate-500 border-slate-200', badgeBg: 'bg-slate-100 text-slate-500 border-slate-200' }
+    // EMP-04: today's Attendance mark (absent / leave, R-ATT-05) — same picture as Attendance and the job sheet
+    const mark = findMark(attendanceMarks, todayDubai(), emp.full_name, emp.id)
+    if (mark?.status === 'on_leave') return { code: 'leave', label: mark.approval === 'pending' ? 'Leave (pending)' : 'On Leave', bg: 'bg-indigo-50 text-indigo-700 border-indigo-200', badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200' }
+    if (mark?.status === 'absent') return { code: 'absent', label: 'Absent', bg: 'bg-rose-50 text-rose-700 border-rose-200', badgeBg: 'bg-rose-50 text-rose-700 border-rose-200' }
 
     const todayStr = todayDubai()
     const st = staffJobStats.get(emp.id)
@@ -1161,7 +1164,17 @@ export function Employees() {
                 setImporting(true)
                 try {
                   const rows = await parseEmployeesFile(file)
-                  rows.forEach(r => addEmployee(r))
+                  // EMP-01: skip people already on the list (same name, phone or Emirates ID)
+                  const norm = (v?: string) => String(v || '').replace(/\s+/g, ' ').trim().toLowerCase()
+                  const digits = (v?: string) => String(v || '').replace(/\D/g, '')
+                  const isKnown = (r: (typeof rows)[number], list: { full_name: string; phone?: string; emirates_id?: string }[]) => list.some(e =>
+                    norm(e.full_name) === norm(r.full_name) ||
+                    (digits(r.phone).length >= 7 && digits(e.phone).endsWith(digits(r.phone).slice(-9))) ||
+                    (digits(r.emirates_id).length >= 10 && digits(e.emirates_id) === digits(r.emirates_id)))
+                  const added: typeof rows = []
+                  rows.forEach(r => { if (!isKnown(r, [...employees, ...added])) { addEmployee(r); added.push(r) } })
+                  const skipped = rows.length - added.length
+                  notify.success(`Imported ${added.length} employee${added.length === 1 ? '' : 's'}${skipped ? ` · ${skipped} already on the list, skipped` : ''}`)
                 } finally {
                   setImporting(false)
                   e.target.value = ''
@@ -1882,7 +1895,7 @@ export function Employees() {
                     <button
                       type="button"
                       className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-[13px] font-bold py-2 rounded-xl transition-colors cursor-pointer"
-                      onClick={() => { deleteEmployee(selected!.id); setSelected(null); setConfirmDelete(false) }}
+                      onClick={() => { removeEmployee(selected!.id); setSelected(null); setConfirmDelete(false) }}
                     >
                       Yes, Delete
                     </button>

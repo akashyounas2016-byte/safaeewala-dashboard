@@ -17,6 +17,8 @@ import { addHoursToTime, calcDurationFromTimes, cleanAddressDisplay } from '@/li
 import { todayDubai } from '@/lib/dubaiTime'
 import { notify } from '@/lib/notify'
 import { findStaffClash, clashMessage } from '@/lib/shiftClash'
+import { ChargesCard, type SplitRowInput } from '@/components/dailyJobSheet/ChargesCard'
+import { splitTotals, type ChargeSplitEntry } from '@/lib/chargeSplit'
 import {
   Users,
   Clock,
@@ -230,10 +232,10 @@ export function AddJobForm({
   // ── Financials ──
   const [charges, setCharges] = useState<number | string>(initial?.charges ?? '')
   const [received, setReceived] = useState<number | string>(initial?.received ?? '')
-  // R-PAY-05: on a team job, who collected how much of the received cash
-  const [splitOn, setSplitOn] = useState(() => Object.keys(initial?.received_split || {}).length > 0)
-  const [split, setSplit] = useState<Record<string, string>>(() =>
-    Object.fromEntries(Object.entries(initial?.received_split || {}).map(([k, v]) => [k, String(v)])))
+  // R-PAY-05: Lump Sum (whole amount on the lead) or Split Mode (each cleaner's charges / received / mode)
+  const [splitOn, setSplitOn] = useState(() => (initial?.charge_split || []).length > 0)
+  const [split, setSplit] = useState<Record<string, SplitRowInput>>(() =>
+    Object.fromEntries((initial?.charge_split || []).map(e => [e.cleaner, { charges: String(e.charges ?? ''), received: String(e.received ?? ''), payment_mode: e.payment_mode || 'Cash' }])))
   const [paymentMode, setPaymentMode] = useState<PaymentMode>(initial?.payment_mode ?? 'Cash')
 
   // ── Row Color Preset Dropdown (all presets, drop-up, UX-69) ──
@@ -439,10 +441,15 @@ export function AddJobForm({
     }
 
     
-    // R-PAY-05: received split between the team's cleaners — only cleaners still on the job, only amounts > 0
+    // R-PAY-05: Split Mode — one entry per cleaner still on the job; the job keeps the totals
     const useSplit = splitOn && selectedStaff.length >= 2
-    const splitSaved: Record<string, number> = Object.fromEntries(selectedStaff.map(n => [n, cleanNum(split[n])] as const).filter(([, v]) => v > 0))
-    const splitTotal = Object.values(splitSaved).reduce((a, b) => a + b, 0)
+    const splitSaved: ChargeSplitEntry[] = useSplit ? selectedStaff.map(n => ({
+      cleaner: n,
+      charges: cleanNum(split[n]?.charges),
+      received: cleanNum(split[n]?.received),
+      payment_mode: split[n]?.payment_mode || paymentMode || 'Cash',
+    })) : []
+    const totals = splitTotals(splitSaved)
 
     // Cleaner shift overlap / clash error check
     // R-JOB-01: the entry is refused while a cleaner is busy at this time
@@ -463,11 +470,11 @@ export function AddJobForm({
       address:      address.trim(),
       area:         area.trim(),
       material:     selectedMaterial as MaterialType,
-      charges:      cleanNum(charges),
-      received:     useSplit ? splitTotal : cleanNum(received),
-      // turning the split off on an edit clears it ({}), a new job without a split sends nothing
-      received_split: useSplit ? splitSaved : (initial?.received_split ? {} : undefined),
-      payment_mode: paymentMode,
+      charges:      useSplit ? totals.charges : cleanNum(charges),
+      received:     useSplit ? totals.received : cleanNum(received),
+      payment_mode: (useSplit ? totals.payment_mode : paymentMode) as PaymentMode,
+      // back to Lump Sum on an edit clears the split ([]); a new lump-sum job sends nothing
+      charge_split: useSplit ? splitSaved : ((initial?.charge_split || []).length ? [] : undefined),
       is_overtime:  false, // DEC-015: OT is automatic, this old flag is not used
       remarks:      remarks.trim(),
       service:      '', // Service field permanently removed per user instruction
@@ -841,6 +848,8 @@ export function AddJobForm({
                   label="Start Time"
                   value={startTime}
                   onChange={handleStartTimeChange}
+                  dropUp
+                  stepMinutes={15} // UX-68: opens upwards, 15-minute steps
                 />
               </div>
               <div className="sm:col-span-5">
@@ -848,6 +857,8 @@ export function AddJobForm({
                   label="End Time"
                   value={endTime}
                   onChange={handleEndTimeChange}
+                  dropUp
+                  stepMinutes={15}
                 />
               </div>
               <div className="sm:col-span-2">
@@ -866,103 +877,15 @@ export function AddJobForm({
             </div>
           </div>
 
-        {/* CARD 4: Charges & Payment Mode */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3.5 flex flex-col justify-start">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
-                <CreditCard size={15} />
-              </div>
-              <h4 className="text-[13px] font-bold text-slate-900">Charges</h4>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-                  Charges
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={charges}
-                  onChange={e => setCharges(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-bold text-slate-800"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-                  Received
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={splitOn && selectedStaff.length >= 2 ? selectedStaff.reduce((sum, n) => sum + cleanNum(split[n]), 0) : received}
-                  onChange={e => setReceived(e.target.value)}
-                  readOnly={splitOn && selectedStaff.length >= 2}
-                  title={splitOn && selectedStaff.length >= 2 ? 'Total of the split below' : undefined}
-                  placeholder="0.00"
-                  className={`w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500 transition-all font-bold text-emerald-800 ${splitOn && selectedStaff.length >= 2 ? 'bg-emerald-50/60 cursor-not-allowed' : 'bg-[#f8fafc] focus:bg-white'}`}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
-                  Payment Mode
-                </label>
-                <select
-                  value={paymentMode}
-                  onChange={e => setPaymentMode(e.target.value as PaymentMode)}
-                  className="w-full text-[13px] px-3 py-2 min-h-[42px] border border-[#E4E8EC] rounded-xl bg-[#f8fafc] focus:outline-none focus:border-emerald-500 focus:bg-white transition-all font-semibold text-slate-800 cursor-pointer"
-                >
-                  {PAYMENT_MODES.map(m => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* R-PAY-05: split the received cash between the team's cleaners (who collected how much) */}
-            {selectedStaff.length >= 2 && (
-              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-2.5 space-y-2">
-                <label className="flex items-center gap-2 text-[12px] font-bold text-slate-700 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={splitOn}
-                    onChange={e => {
-                      const on = e.target.checked
-                      setSplitOn(on)
-                      // start the split with the whole amount on the first cleaner
-                      if (on && Object.keys(split).length === 0 && cleanNum(received) > 0) setSplit({ [selectedStaff[0]]: String(cleanNum(received)) })
-                      if (!on) setReceived(selectedStaff.reduce((sum, n) => sum + cleanNum(split[n]), 0) || received)
-                    }}
-                    className="w-4 h-4 accent-emerald-600 cursor-pointer"
-                  />
-                  Split received between cleaners
-                  <span className="font-medium text-slate-400">— who collected how much</span>
-                </label>
-                {splitOn && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                    {selectedStaff.map(n => (
-                      <div key={n} className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-2.5 py-1">
-                        <span className="text-[12px] font-semibold text-slate-700 truncate flex-1" title={n}>{n}</span>
-                        <span className="text-[11px] text-slate-400">AED</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={split[n] ?? ''}
-                          onChange={e => setSplit(prev => ({ ...prev, [n]: e.target.value }))}
-                          placeholder="0"
-                          className="w-20 text-right text-[12.5px] font-bold text-emerald-800 px-1.5 py-1 border border-slate-200 rounded-md focus:outline-none focus:border-emerald-500"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+        {/* CARD 4: Charges — Lump Sum or Split Mode (R-PAY-05) */}
+          <ChargesCard
+            staff={selectedStaff}
+            charges={charges} setCharges={setCharges}
+            received={received} setReceived={setReceived}
+            paymentMode={paymentMode} setPaymentMode={m => setPaymentMode(m as PaymentMode)}
+            splitOn={splitOn} setSplitOn={setSplitOn}
+            split={split} setSplit={setSplit}
+          />
       </div>
 
       

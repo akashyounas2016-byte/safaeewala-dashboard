@@ -100,13 +100,14 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
 ## 7. Interaction
 
 - Transitions `transition-all duration-200`; dropdown panels close on outside click.
-- Excel Job Sheet: a job done by one cleaner alone has a light teal row (`SOLO_ROW_BG`) unless the user chose a colour; "Solo at bottom" moves cleaners who only have solo jobs below the team jobs (UX-61).
+- Excel Job Sheet rows are **white** by default (UX-70, replaces the solo teal of UX-61). A row is coloured only when it belongs to a team project (UX-66) or a row or cleaner colour was chosen. New rows and blocks (*Add Row*, *Add Shift*, *Add First Row*) start white, also in the Cleaner Blocks view. "Solo at bottom" still moves cleaners who only have solo jobs below the team jobs.
 - Booking cards (UX-63) follow the Daily Job Sheet: cleaner colour on the left edge (same palettes, same colour per cleaner), cleaner avatars first, then client, a shift strip (date · start → end · hours) and a money strip (Charges · Received · Pending). Completed cards are in the Completed category only.
 - Time picker (UX-68, `Time12hPicker`, used by the Booking and Add Job popups and others):
   - The box shows only the time (09:00); the AM / PM toggle sits beside it.
   - The dropdown has *Morning (AM)* / *Evening (PM)* tabs, like the Excel Job Sheet. The list shows plain numbers in 30-minute steps: Morning from 09:00 to 11:30, Evening from 12:00 to 11:00.
   - Any other time can be typed ("9:15", "7:45 pm").
-- Row colours (UX-69): 38 presets, the original 18 plus 20 light ones (Mint … Silver Mist). The picker lists them all and scrolls.
+  - In the Add Job popup (Daily and Excel), the list opens upwards like the material drop-up and steps every 15 minutes (09:00, 09:15, 09:30 …).
+- Row colours (UX-69, revised 2026-11-04): 17 clearly different colours. There are 15 hues at least 18° apart on the colour wheel (Red, Orange, Yellow, Lime, Green, Emerald, Teal, Sky, Blue, Indigo, Violet, Purple, Orchid, Pink, Raspberry), plus Brown and Slate. Look-alike shades were removed. The row uses a light tint and the swatch a stronger one.
 - Client cards (UX-67) are the same on Clients and Monthly Clients, and match the booking cards (UX-63). From top to bottom:
   - the lead cleaner's colour on the left edge;
   - the client name, address and a *Monthly* / *Standard* chip;
