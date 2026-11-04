@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { splitEntryOf as splitEntryOfJob, withSplitEntry, isSplitJob } from '@/lib/chargeSplit'
+import { buildTeamColorMap, projectKey } from '@/lib/excelTeams'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import {
@@ -1102,6 +1103,18 @@ export function DailyJobSheet() {
   const totalRows  = allSheetRows.length
   const totalPages = pageSize === 'all' ? 1 : Math.ceil(totalRows / pageSize) || 1
   const activePage = Math.min(currentPage, totalPages)
+
+  // UX-71 everywhere: every row of one team project (location + date) has the same light colour
+  const teamBgOf = useMemo(() => {
+    const keyOf = new Map<string, string>()
+    const map = buildTeamColorMap(filteredActiveJobRows as DailyJob[], r => {
+      const team = (r as any)._isSplitShift || splitStaffNames(r.staff_name).length > 1
+      const k = team ? projectKey(r, (r as any)._teamReference || r.team_name || (r as any)._originalJobId) : null
+      if (k) keyOf.set(r.id, k)
+      return k
+    })
+    return (id: string) => { const k = keyOf.get(id); return k ? map.get(k)?.bg : undefined }
+  }, [filteredActiveJobRows])
 
   const displayedRows = pageSize === 'all'
     ? allSheetRows
@@ -3840,8 +3853,11 @@ export function DailyJobSheet() {
                   const isProjectRow = (job as any)._isSplitShift || (job as any)._isSecondaryCleaner || (job as any)._isPrimaryCleaner || splitStaffNames(job.staff_name).length > 1 || Boolean(job.team_name)
 
                   let dynamicRowBg = '#ffffff'
+                  const teamBg = teamBgOf(job.id)
                   if (customColorPreset && customColorPreset.circleColor) {
                     dynamicRowBg = customColorPreset.circleColor
+                  } else if (teamBg) {
+                    dynamicRowBg = teamBg // UX-71: one light colour per team project
                   } else if (isProjectRow && filterColors.Project && filterColors.Project !== DEFAULT_CATEGORY_ROW_COLORS.Project) {
                     dynamicRowBg = filterColors.Project
                   } else if (isCheckedRow && filterColors.Checks && filterColors.Checks !== DEFAULT_CATEGORY_ROW_COLORS.Checks) {

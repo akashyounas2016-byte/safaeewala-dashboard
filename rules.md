@@ -58,6 +58,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientDataSync.ts → isMonthlyContractStopped`, checked in `getScheduledMonthlyShiftsForDate`. Every sync path (startup, Daily Job Sheet, Bookings) goes through it.
 - **Status:** Active · Since: 2026-11-04
 
+### R-SCHED-06 — A clash is stopped where it starts
+- **Rule:** *"error ko booking entry ke waqt hi detect kar ke rokna chahiye tha taake job duplicate na ho."* A cleaner is never given two jobs at the same time (R-JOB-01), at every entry point:
+  - **Monthly schedule** (Add / Edit Monthly Client): the schedule is not saved when a cleaner already works for another monthly client on that weekday at an overlapping time. The message names the client, day and time.
+  - **Monthly auto-sync**: a visit whose cleaner is already booked at that time is added **unassigned**, with a remark naming the other job ("⚠ Ambika is already booked 09:00–12:00 at Office Luxam… : assign a cleaner"). Earlier it was added with the same cleaner.
+  - **New / Edit Booking**: not saved when a chosen cleaner already has a job-sheet row or another booking at an overlapping time that day.
+  - Add Job, Edit Job, inline edits and the Excel save already block clashes (R-JOB-01).
+- **Code:** `clientDataSync.ts → busyJobOf, findMonthlyScheduleClashes, syncMonthlySchedulesToDailyJobs`; `AddMonthlyClientModalForm.tsx`; `NewBookingModal.tsx`.
+- **Status:** Active · Since: 2026-11-04
+
 ---
 
 ## ATT — Attendance

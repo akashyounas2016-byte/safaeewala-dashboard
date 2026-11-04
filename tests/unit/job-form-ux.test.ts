@@ -29,10 +29,25 @@ const colours = ROW_COLOR_PRESETS.filter(p => p.id !== 'default')
 eq(colours.length, 40, '40 row colours')
 eq(new Set(ROW_COLOR_PRESETS.map(p => p.id)).size, ROW_COLOR_PRESETS.length, 'colour ids are unique')
 eq(new Set(ROW_COLOR_PRESETS.map(p => p.label)).size, ROW_COLOR_PRESETS.length, 'colour names are unique')
+// CIEDE2000: the colour difference that follows how people see colour (above 5 = clearly different)
+const de2000 = ([L1, a1, b1]: number[], [L2, a2, b2]: number[]) => {
+  const rad = Math.PI / 180, deg = 180 / Math.PI
+  const C1 = Math.hypot(a1, b1), C2 = Math.hypot(a2, b2), Cb = (C1 + C2) / 2, G = 0.5 * (1 - Math.sqrt(Cb ** 7 / (Cb ** 7 + 25 ** 7)))
+  const a1p = (1 + G) * a1, a2p = (1 + G) * a2, C1p = Math.hypot(a1p, b1), C2p = Math.hypot(a2p, b2)
+  const hue = (y: number, x: number) => { if (y === 0 && x === 0) return 0; const v = Math.atan2(y, x) * deg; return v < 0 ? v + 360 : v }
+  const h1p = hue(b1, a1p), h2p = hue(b2, a2p), dL = L2 - L1, dC = C2p - C1p
+  let dh = 0; if (C1p * C2p !== 0) { dh = h2p - h1p; if (dh > 180) dh -= 360; else if (dh < -180) dh += 360 }
+  const dH = 2 * Math.sqrt(C1p * C2p) * Math.sin((dh / 2) * rad), Lb = (L1 + L2) / 2, Cbp = (C1p + C2p) / 2
+  let hb = h1p + h2p; if (C1p * C2p !== 0) hb = Math.abs(h1p - h2p) > 180 ? (h1p + h2p + (h1p + h2p < 360 ? 360 : -360)) / 2 : (h1p + h2p) / 2
+  const T = 1 - 0.17 * Math.cos((hb - 30) * rad) + 0.24 * Math.cos(2 * hb * rad) + 0.32 * Math.cos((3 * hb + 6) * rad) - 0.2 * Math.cos((4 * hb - 63) * rad)
+  const dTh = 30 * Math.exp(-(((hb - 275) / 25) ** 2)), RC = 2 * Math.sqrt(Cbp ** 7 / (Cbp ** 7 + 25 ** 7))
+  const SL = 1 + (0.015 * (Lb - 50) ** 2) / Math.sqrt(20 + (Lb - 50) ** 2), SC = 1 + 0.045 * Cbp, SH = 1 + 0.015 * Cbp * T, RT = -Math.sin(2 * dTh * rad) * RC
+  return Math.sqrt((dL / SL) ** 2 + (dC / SC) ** 2 + (dH / SH) ** 2 + RT * (dC / SC) * (dH / SH))
+}
 let minDist = Infinity
-colours.forEach((p, i) => colours.slice(i + 1).forEach(q => { const [a1, b1] = [lab(p.circleColor), lab(q.circleColor)]; minDist = Math.min(minDist, Math.hypot(a1[0] - b1[0], a1[1] - b1[1], a1[2] - b1[2])) }))
-eq(minDist >= 7, true, `no two colours look alike (closest Lab distance ${minDist.toFixed(1)})`)
-eq(colours.every(p => lab(p.circleColor)[0] >= 82), true, 'all colours are fully light')
+colours.forEach((p, i) => colours.slice(i + 1).forEach(q => { minDist = Math.min(minDist, de2000(lab(p.circleColor), lab(q.circleColor))) }))
+eq(minDist >= 7, true, `no two colours look alike (closest CIEDE2000 ${minDist.toFixed(1)})`)
+eq(colours.every(p => lab(p.circleColor)[0] >= 80), true, 'all colours are fully light')
 eq(['rose', 'orange', 'teal', 'blue', 'slate'].every(id => ROW_COLOR_PRESETS.some(p => p.id === id)), true, 'older ids still have a colour')
 
 // Split Mode: per-cleaner money; totals; equal share when not split

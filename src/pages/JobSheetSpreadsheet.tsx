@@ -4911,7 +4911,7 @@ export function JobSheetSpreadsheet() {
                           key={row.id}
                           data-row-id={row.id}
                           onContextMenu={e => handleContextMenu(e, globalIndex, row)}
-                          style={{ backgroundColor: teamColorMap.byRow(row.id)?.bg || ((cleanerColors[(row.staff_name || '').trim().toLowerCase()] || row.row_color) ? palette.solidBg : DEFAULT_ROW_BG) }} // UX-70, UX-71: team colour first
+                          style={{ backgroundColor: teamColorMap.byRow(row.id)?.bg || (row.row_color && row.row_color !== 'default' ? palette.solidBg : DEFAULT_ROW_BG) }} // UX-70, UX-71, UX-79: team colour, else the row's own colour, else white
                           className={`transition-colors group hover:brightness-[0.97] ${flashRowId === row.id ? 'outline outline-4 -outline-offset-2 outline-amber-400' : clashRowIds.has(row.id) ? 'outline outline-2 -outline-offset-2 outline-rose-500' : ''} ${
                             isSelectedRow
                               ? 'ring-2 ring-inset ring-emerald-600 font-semibold shadow-xs'
@@ -5158,13 +5158,8 @@ export function JobSheetSpreadsheet() {
                 } else if (customRowPreset) {
                   rowBg = customRowPreset.circleColor
                   isDarkRow = false
-                } else if (hasCustomBlockColor) {
-                  const chosenPalette = BLOCK_PALETTES[customCleanerKey] || (customCleanerKey.startsWith('#') ? makeHexPalette(customCleanerKey) : null)
-                  if (chosenPalette) {
-                    rowBg = chosenPalette.solidBg
-                    isDarkRow = !chosenPalette.isLight
-                  }
                 } else {
+                  // UX-79: a cleaner's block colour marks only the name cell's edge; the rows stay white
                   rowBg = DEFAULT_ROW_BG // UX-70: solo jobs and new rows stay white
                 }
 

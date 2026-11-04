@@ -1403,6 +1403,36 @@ let initialDataLoaded = false
 const insertedThisSession = new Set<string>()
 export function markInitialDataLoaded(loaded = true): void { initialDataLoaded = loaded }
 
+/** Minutes after midnight of "09:00", "9:00 AM", "01:00 PM" — null when unreadable */
+function clockMinutes(t?: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i.exec(String(t || '').trim())
+  if (!m) return null
+  let h = Number(m[1]) % 24
+  const mer = (m[3] || '').toUpperCase()
+  if (mer === 'PM' && h < 12) h += 12
+  if (mer === 'AM' && h === 12) h = 0
+  return h * 60 + Number(m[2])
+}
+
+/**
+ * R-SCHED-06: the job a cleaner already has on the date at an overlapping time, if any. The monthly
+ * auto-sync uses it so two monthly clients never get the same cleaner at the same time (R-JOB-01).
+ */
+export function busyJobOf(jobs: Pick<DailyJob, 'date' | 'staff_name' | 'start_time' | 'end_time' | 'address'>[], cleaner: string, date: string, start: string, end: string) {
+  const a = clockMinutes(start), b = clockMinutes(end)
+  if (!cleaner || a === null || b === null) return undefined
+  const span = (s: number, e: number) => (e <= s ? [s, e + 1440] : [s, e])
+  const [s1, e1] = span(a, b)
+  const name = cleaner.trim().toLowerCase()
+  return jobs.find(j => {
+    if (j.date !== date || !splitStaffNames(j.staff_name || '').some(n => n.toLowerCase() === name)) return false
+    const c = clockMinutes(j.start_time), d = clockMinutes(j.end_time)
+    if (c === null || d === null) return false
+    const [s2, e2] = span(c, d)
+    return s1 < e2 && s2 < e1
+  })
+}
+
 export function syncMonthlySchedulesToDailyJobs(
   dateStr: string,
   clients: Client[],
@@ -1423,10 +1453,18 @@ export function syncMonthlySchedulesToDailyJobs(
   pendingShifts.forEach(s => insertedThisSession.add(sessionKey(s)))
   const insertedClients: string[] = []
 
+  // R-SCHED-06: a cleaner already busy at that time is not booked again — the visit is added unassigned
+  const placed: Pick<DailyJob, 'date' | 'staff_name' | 'start_time' | 'end_time' | 'address'>[] = dailyJobs.filter(j => j.date === dateStr)
   pendingShifts.forEach(shift => {
+    const busy = shift.cleanerName ? busyJobOf(placed, shift.cleanerName, dateStr, shift.startTime, shift.endTime) : undefined
+    const staff = busy ? '' : shift.cleanerName
+    const remarks = busy
+      ? `${shift.remarks} · ⚠ ${shift.cleanerName} is already booked ${busy.start_time}–${busy.end_time} at ${busy.address || 'another job'}: assign a cleaner`
+      : shift.remarks
+    placed.push({ date: dateStr, staff_name: staff, start_time: shift.startTime, end_time: shift.endTime, address: shift.address })
     addDailyJob({
       date: dateStr,
-      staff_name: shift.cleanerName,
+      staff_name: staff,
       start_time: shift.startTime,
       end_time: shift.endTime,
       duty_hours: shift.durationHours,
@@ -1438,7 +1476,7 @@ export function syncMonthlySchedulesToDailyJobs(
       received: 0,
       payment_mode: 'Monthly',
       is_overtime: false,
-      remarks: shift.remarks,
+      remarks,
       service: shift.service,
     })
     insertedClients.push(shift.client.full_name || shift.address)
@@ -1450,6 +1488,35 @@ export function syncMonthlySchedulesToDailyJobs(
     dayName: result.dayName,
     insertedClients,
   }
+}
+
+/**
+ * R-SCHED-06: clashes of a monthly schedule being saved with the schedules of the other monthly clients —
+ * same weekday, same cleaner, overlapping hours. Shown before the schedule is saved.
+ */
+export function findMonthlyScheduleClashes(
+  self: Pick<Client, 'id' | 'full_name'> | null | undefined,
+  days: Record<string, { startTime: string; endTime: string; cleaner: string }>,
+  clients: Client[],
+): { day: string; cleaner: string; other: string; time: string }[] {
+  const selfKey = normalizeKey(self?.full_name || '')
+  const out: { day: string; cleaner: string; other: string; time: string }[] = []
+  Object.entries(days).forEach(([day, row]) => {
+    const names = splitStaffNames(row.cleaner || '').filter(n => n && n.toLowerCase() !== 'unassigned')
+    if (names.length === 0) return
+    clients.forEach(c => {
+      if ((self?.id && c.id === self.id) || (selfKey && normalizeKey(c.full_name || '') === selfKey)) return
+      if (!isClientScheduledForDay(c, day as DayOfWeekName)) return
+      const other = getClientShiftDetailsForDay(c, day as DayOfWeekName)
+      const pseudo = [{ date: 'd', staff_name: other.cleanerName, start_time: other.startTime, end_time: other.endTime, address: c.full_name }]
+      names.forEach(n => {
+        if (busyJobOf(pseudo, n, 'd', row.startTime, row.endTime)) {
+          out.push({ day, cleaner: n, other: c.full_name, time: `${other.startTime}–${other.endTime}` })
+        }
+      })
+    })
+  })
+  return out
 }
 
 /**

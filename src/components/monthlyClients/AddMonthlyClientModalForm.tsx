@@ -4,6 +4,9 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import type { Client, Employee } from '@/types'
+import { useData } from '@/store/DataContext'
+import { findMonthlyScheduleClashes } from '@/lib/clientDataSync'
+import { notify } from '@/lib/notify'
 import { addHoursToTime, subtractHoursFromTime, calcDurationFromTimes, formatTime12h } from '@/lib/utils'
 
 export const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -235,9 +238,18 @@ export function AddMonthlyClientModalForm({
     }, 0)
   }, [activeDays, daySchedules])
 
+  const { clients: allClients } = useData()
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
+    // R-SCHED-06: a cleaner cannot be scheduled for two monthly clients at the same time
+    const scheduled = Object.fromEntries(activeDays.map(d => [d, daySchedules[d]]))
+    const selfName = String(f.get('full_name') || '').trim() || initialClient?.full_name || ''
+    const clashes = findMonthlyScheduleClashes(initialClient ? { id: initialClient.id, full_name: selfName } : { id: '', full_name: selfName }, scheduled, allClients || [])
+    if (clashes.length > 0) {
+      notify.error(`⛔ Time clash, not saved: ${clashes.slice(0, 3).map(c => `${c.cleaner} already works for ${c.other} on ${c.day} ${c.time}`).join('; ')}. Change the time or the cleaner.`)
+      return
+    }
     const clientName = String(f.get('full_name') || '').trim()
     if (!clientName) {
       alert('Please enter a valid client name.')

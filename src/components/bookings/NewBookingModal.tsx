@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { findStaffClash, clashMessage } from '@/lib/shiftClash'
 import { Modal } from '@/components/ui/Modal'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
@@ -432,6 +433,20 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
     if (!scheduledDate) {
       notify.error('Please select a scheduled date.')
       return
+    }
+
+    // R-JOB-01: stop a booking that gives a cleaner two jobs at the same time (job sheet rows and other bookings)
+    if (selectedStaff.length > 0) {
+      const own = initialBooking?.id
+      const bookedShifts = (bookings || [])
+        .filter(b => b.id !== own && b.scheduled_date === scheduledDate && b.status !== 'cancelled' && !b.job_sheet_id && (b.assigned_crew || []).length > 0)
+        .map(b => ({ id: b.id, date: b.scheduled_date, staff_name: crewToStaffName(b.assigned_crew, employees), start_time: b.scheduled_time, end_time: b.end_time, address: b.service_address }))
+      const sheetJobs = (dailyJobs || []).filter(j => !own || (j.booking_id !== own && j.id !== initialBooking?.job_sheet_id))
+      const clash = findStaffClash([...sheetJobs, ...bookedShifts] as never[], { staff_name: selectedStaff.join(', '), date: scheduledDate, start_time: startTime, end_time: endTime })
+      if (clash) {
+        notify.error(`⛔ Time clash: ${clashMessage(clash)}`)
+        return
+      }
     }
 
     const finalClientName = clientName.trim() || cleanAddressDisplay(address.trim())

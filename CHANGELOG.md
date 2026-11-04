@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(scheduling): clashes are stopped at the monthly schedule, the monthly auto-sync (visit added unassigned) and New / Edit Booking (R-SCHED-06)
+- fix(excel-studio): old cleaner block colours no longer paint rows; Daily Job Sheet uses one light colour per team project (UX-79, UX-71)
+- feat(jobs): 40 light row colours chosen by CIEDE2000 so no two look alike (UX-69)
 - feat(clients): Add New Client → Mode (General / Bi-Weekly / Monthly); Bi-Weekly days + contract duration; Monthly opens the monthly form with the typed details; description lines removed (R-CLI-02, UX-78). Needs `2026-11-04_clients_service_mode.sql`
 - fix(jobs): the start / end time list is no longer cut off in the Add Job popup (UX-77); row colours are 40 fully light shades (UX-69)
 - fix(excel-studio): one colour for all rows of a team project; a cleaner's block colour no longer splits a team (UX-71)
