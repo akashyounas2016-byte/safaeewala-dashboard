@@ -2,8 +2,7 @@ import { CalendarRange, Clock, Users, CalendarClock } from 'lucide-react'
 import { DAYS_OF_WEEK, DAY_SHORT } from '@/components/monthlyClients/AddMonthlyClientModalForm'
 import { biweeklyEndDate, biweeklyVisitDates, type BiWeeklyPlan, type BiWeeklyDay } from '@/lib/biweekly'
 import { todayDubai } from '@/lib/dubaiTime'
-
-const MONTH_OPTIONS = [1, 2, 3, 4, 6, 9, 12]
+import { ContractCalendar } from '@/components/clients/ContractCalendar'
 
 const toMin = (t: string) => { const [h, m] = (t || '0:0').split(':').map(Number); return (h || 0) * 60 + (m || 0) }
 const toTime = (min: number) => { const v = ((min % 1440) + 1440) % 1440; return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}` }
@@ -34,7 +33,6 @@ export function BiWeeklyScheduleCard({ plan, onChange, cleaners }: { plan: BiWee
     })
   }
   const visits = biweeklyVisitDates(plan)
-  const custom = !MONTH_OPTIONS.includes(plan.months)
 
   return (
     <div className="bg-white rounded-2xl border border-violet-200/90 shadow-[0_2px_8px_rgba(15,23,42,0.02)] overflow-hidden">
@@ -94,33 +92,18 @@ export function BiWeeklyScheduleCard({ plan, onChange, cleaners }: { plan: BiWee
         </table>
       </div>
 
-      {/* Contract duration */}
-      <div className="p-3 border-t border-violet-100 bg-violet-50/30 grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-        <div className="sm:col-span-3">
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Start date</label>
-          <input type="date" value={plan.start_date} onChange={e => onChange({ ...plan, start_date: e.target.value })}
-            className="w-full h-9 px-2.5 text-[12.5px] border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-violet-500" />
+      {/* Contract: duration chips + calendar (UX-81) */}
+      <div className="p-3 border-t border-violet-100 bg-violet-50/30 grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+        <div className="lg:col-span-8">
+          <ContractCalendar plan={plan} onChange={onChange} />
         </div>
-        <div className="sm:col-span-3">
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Contract duration</label>
-          <select value={custom ? 'custom' : plan.months} onChange={e => onChange({ ...plan, months: e.target.value === 'custom' ? (custom ? plan.months : 5) : Number(e.target.value) })}
-            className="w-full h-9 px-2.5 text-[12.5px] font-bold border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-violet-500 cursor-pointer">
-            {MONTH_OPTIONS.map(n => <option key={n} value={n}>{n} {n === 1 ? 'month' : 'months'}</option>)}
-            <option value="custom">Custom…</option>
-          </select>
-        </div>
-        {custom && (
-          <div className="sm:col-span-2">
-            <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Months</label>
-            <input type="number" min={1} max={60} value={plan.months} onChange={e => onChange({ ...plan, months: Math.max(1, Math.min(60, Number(e.target.value) || 1)) })}
-              className="w-full h-9 px-2.5 text-[12.5px] font-bold border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-violet-500" />
-          </div>
-        )}
-        <div className={`${custom ? 'sm:col-span-4' : 'sm:col-span-6'} flex items-center gap-2 text-[11.5px] text-violet-900 bg-white border border-violet-200 rounded-xl px-3 h-9`}>
-          <CalendarClock size={14} className="text-violet-600 shrink-0" />
-          {plan.days.length === 0
-            ? <span className="text-slate-500">Tick the days the client wants.</span>
-            : <span>Until <b>{biweeklyEndDate(plan)}</b> · <b>{visits.length}</b> visits</span>}
+        <div className="lg:col-span-4 flex flex-col gap-2 text-[11.5px] text-violet-900 bg-white border border-violet-200 rounded-xl p-3">
+          <div className="flex items-center gap-2 font-extrabold text-[12px]"><CalendarClock size={14} className="text-violet-600" />Contract</div>
+          <div className="flex justify-between"><span className="text-slate-500">Start</span><b>{plan.start_date || '—'}</b></div>
+          <div className="flex justify-between"><span className="text-slate-500">End</span><b>{biweeklyEndDate(plan)}</b></div>
+          <div className="flex justify-between"><span className="text-slate-500">Duration</span><b>{plan.months} {plan.months === 1 ? 'month' : 'months'}</b></div>
+          <div className="flex justify-between"><span className="text-slate-500">Visits</span><b>{visits.length}</b></div>
+          {plan.days.length === 0 && <span className="text-amber-700">Tick the days the client wants.</span>}
         </div>
       </div>
     </div>

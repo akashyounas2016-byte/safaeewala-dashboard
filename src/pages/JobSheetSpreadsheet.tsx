@@ -1721,6 +1721,8 @@ export function JobSheetSpreadsheet() {
 
   // Active & Editing Cell State
   const [activeCell, setActiveCell] = useState<{ rowIdx: number; colId: string } | null>(null)
+  // UX-80: a click on a column letter (A, B, C …) selects the whole column — e.g. to align it (UX-73)
+  const [selectedColId, setSelectedColId] = useState<string | null>(null)
   const [editingCell, setEditingCell] = useState<{ rowIdx: number; colId: string; tempValue: string } | null>(null)
   const [formulaBarValue, setFormulaBarValue] = useState<string>('')
   const [filterSearch, setFilterSearch] = useState('')
@@ -2126,6 +2128,10 @@ export function JobSheetSpreadsheet() {
     const alreadyOpen = editingCell && editingCell.rowIdx === rowIdx && editingCell.colId === colId
     if (DROPDOWN_COLS.has(colId) && !alreadyOpen) handleCellDoubleClick(rowIdx, colId)
   }
+
+  useEffect(() => {
+    if (selectedColId && activeCell && activeCell.colId !== selectedColId) setSelectedColId(null) // eslint-disable-line react-hooks/set-state-in-effect
+  }, [activeCell, selectedColId])
 
   // Cell Double-click Handler
   const handleCellDoubleClick = (rowIdx: number, colId: string) => {
@@ -4701,6 +4707,9 @@ export function JobSheetSpreadsheet() {
         </div>
       )}
 
+      {selectedColId && (
+        <style>{`td[data-col="${selectedColId}"]{box-shadow:inset 0 0 0 9999px rgba(16,185,129,0.12)}`}</style>
+      )}
       {/* ── Main Spreadsheet Grid Container (Full Width Edge-to-Edge) ── */}
       <div className="flex-1 overflow-auto bg-white relative w-full">
         <table className="w-full border-collapse border border-slate-300 text-[12px] font-mono">
@@ -4710,9 +4719,17 @@ export function JobSheetSpreadsheet() {
               {columns.map(col => (
                 <th
                   key={col.col}
+                  onClick={() => {
+                    setSelectedColId(prev => (prev === col.id ? null : col.id))
+                    setActiveCell(prev => ({ rowIdx: prev?.rowIdx ?? 0, colId: col.id }))
+                    setEditingCell(null)
+                  }}
+                  title={`Select column ${col.col} (${col.label}) — then align it with the buttons above`}
                   style={{ width: `${getColWidth(col)}px`, minWidth: `${getColWidth(col)}px` }}
-                  className={`h-6 border-r border-slate-300 text-center font-bold text-[11px] select-none ${
-                    activeCell && columns.find(c => c.id === activeCell.colId)?.col === col.col
+                  className={`h-6 border-r border-slate-300 text-center font-bold text-[11px] select-none cursor-pointer hover:bg-emerald-100 ${
+                    selectedColId === col.id
+                      ? 'bg-emerald-600 text-white font-black'
+                      : activeCell && columns.find(c => c.id === activeCell.colId)?.col === col.col
                       ? 'bg-emerald-200 text-emerald-950 font-black'
                       : 'bg-[#e5e7eb] text-slate-700'
                   }`}
@@ -4744,7 +4761,6 @@ export function JobSheetSpreadsheet() {
                   }
                 >
                   <div className="flex items-center gap-1.5 pr-2">
-                    <GripVertical size={11} className="text-slate-400 shrink-0" />
                     <span>{col.label}</span>
                   </div>
                   {/* Edge drag handle for resizing column width */}
@@ -4991,6 +5007,7 @@ export function JobSheetSpreadsheet() {
                             return (
                               <td
                                 key={col.id}
+                                data-col={col.id}
                                 onClick={() => handleCellClick(globalIndex, col.id)}
                                 onDoubleClick={() => handleCellDoubleClick(globalIndex, col.id)}
                                 onContextMenu={e => handleContextMenu(e, globalIndex, row, col.id)}
@@ -5202,6 +5219,7 @@ export function JobSheetSpreadsheet() {
                         return (
                           <td
                             key={col.id}
+                            data-col={col.id}
                             rowSpan={blockRowCount}
                             onClick={() => handleCellClick(targetIdx, col.id)}
                             onDoubleClick={() => handleCellDoubleClick(targetIdx, col.id)}
@@ -5317,6 +5335,7 @@ export function JobSheetSpreadsheet() {
                       return (
                         <td
                           key={col.id}
+                          data-col={col.id}
                           onClick={() => handleCellClick(targetIdx, col.id)}
                           onDoubleClick={() => handleCellDoubleClick(targetIdx, col.id)}
                           onContextMenu={e => handleContextMenu(e, targetIdx, row, col.id)}
