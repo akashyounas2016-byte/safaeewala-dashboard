@@ -107,11 +107,12 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
   - The dropdown has *Morning (AM)* / *Evening (PM)* tabs, like the Excel Job Sheet. The list shows plain numbers in 30-minute steps: Morning from 09:00 to 11:30, Evening from 12:00 to 11:00.
   - Any other time can be typed ("9:15", "7:45 pm").
   - In the Add Job popup (Daily and Excel), the list opens upwards like the material drop-up and steps every 15 minutes (09:00, 09:15, 09:30 …).
-- Row colours (UX-69, revised 2026-11-04): **40 light colours**, picked to be as far apart as possible in the CIE Lab colour space. A test checks that no two are closer than 9 units, all are light, and every name is unique. The swatch and the Excel row use the colour itself. Older colour ids are kept on their nearest new colour.
+- Row colours (UX-69, revised 2026-11-04): **40 fully light colours** (Lab lightness 82 or more), picked to be as far apart as possible in the CIE Lab colour space. A test checks that no two are closer than 7 units (clearly different side by side), all are light, and every name is unique. The swatch and the Excel row use the colour itself. Older colour ids are kept on their nearest new colour.
 - Team colour (UX-71): all rows of one team project (location + date) have **one** colour, whichever cleaner they belong to. A row colour chosen for any row of the project colours the whole project. A cleaner's own block colour never splits a team. Every other row stays white (UX-70).
 - Advance column (UX-72): the Excel Job Sheet has an **Advance** column after Pending. It shows money received beyond the charges. Pending shows only what is still due (no more *+445 Adv*). The footer Advance total uses the same formula.
 - Column alignment (UX-73): click any cell, then use the left / centre / right buttons next to Undo / Redo to align that whole column. The choice is saved and synced between devices.
 - Add Job Entry popup (UX-74): taller (up to 96% of the screen), so the start / end time lists open in full.
+- Time lists (UX-77): the start / end time list floats above the popup (fixed position), so the popup's scrolling body never cuts it. It opens upwards or downwards, wherever there is more room, and shrinks to fit the screen.
 - Add Job Entry popup (UX-75): the cleaning-materials card has no heading; the field label says what it is.
 - Add New Client popup (UX-76): wider (`max-w-5xl`). The *Preferred Cleaner(s)* list opens from the right edge and never pushes the popup wider.
 - Client cards (UX-67) are the same on Clients and Monthly Clients, and match the booking cards (UX-63). From top to bottom:

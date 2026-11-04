@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Clock, ChevronDown, Search, Plus, Check } from 'lucide-react'
 
 export function parseTimeToMinutes(timeStr?: string): number | null {
@@ -93,10 +94,37 @@ export function Time12hPicker({
   const [listHalf, setListHalf] = useState<'AM' | 'PM'>(meridiem)
   const containerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const popRef = useRef<HTMLDivElement>(null)
+  // UX-77: the list floats above the popup (fixed position, portal), so a scrolling popup body never cuts it.
+  // It opens up or down, wherever there is more room, and shrinks to fit.
+  const [pos, setPos] = useState<{ left: number; width: number; top?: number; bottom?: number; maxH: number } | null>(null)
+  const place = () => {
+    const r = containerRef.current?.getBoundingClientRect()
+    if (!r) return
+    const gap = 6, edge = 8, want = 340
+    const above = r.top - gap - edge
+    const below = window.innerHeight - r.bottom - gap - edge
+    const up = dropUp ? (above >= want || above >= below) : (below < want && above > below)
+    const width = Math.max(r.width, 280)
+    setPos({
+      left: Math.max(edge, Math.min(r.left, window.innerWidth - width - edge)),
+      width,
+      ...(up ? { bottom: window.innerHeight - r.top + gap } : { top: r.bottom + gap }),
+      maxH: Math.max(180, Math.min(420, up ? above : below)),
+    })
+  }
+  useEffect(() => {
+    if (!isOpen) return
+    const onMove = () => place()
+    window.addEventListener('resize', onMove)
+    window.addEventListener('scroll', onMove, true)
+    return () => { window.removeEventListener('resize', onMove); window.removeEventListener('scroll', onMove, true) }
+  }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const t = e.target as Node
+      if (containerRef.current && !containerRef.current.contains(t) && !popRef.current?.contains(t)) {
         setIsOpen(false)
       }
     }
@@ -186,7 +214,7 @@ export function Time12hPicker({
         {/* Dropdown Trigger Box (matching VPS Add New Booking pop-up) */}
         <div
           onClick={() => {
-            if (!disabled) setIsOpen(prev => !prev)
+            if (!disabled) { if (!isOpen) place(); setIsOpen(prev => !prev) }
           }}
           className={`flex-1 flex items-center justify-between border rounded-xl px-3 py-2 text-[13px] min-h-[42px] transition-all ${
             disabled
@@ -242,8 +270,12 @@ export function Time12hPicker({
       </div>
 
       {/* Floating Dropdown Popover */}
-      {isOpen && (
-        <div className={`absolute z-50 left-0 w-full min-w-[240px] sm:min-w-[280px] ${dropUp ? 'bottom-full mb-1.5' : 'mt-1.5'} bg-white border border-slate-200 rounded-2xl shadow-xl p-2.5 animate-in fade-in zoom-in-95 duration-100 flex flex-col`}>
+      {isOpen && pos && createPortal(
+        <div
+          ref={popRef}
+          style={{ position: 'fixed', left: pos.left, width: pos.width, top: pos.top, bottom: pos.bottom, maxHeight: pos.maxH }}
+          className="z-[300] bg-white border border-slate-200 rounded-2xl shadow-xl p-2.5 animate-in fade-in zoom-in-95 duration-100 flex flex-col"
+        >
           {/* Search / Custom Time Input */}
           <div className="relative mb-2 shrink-0">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -289,7 +321,7 @@ export function Time12hPicker({
           )}
 
           {/* Time Suggestions List */}
-          <div className="max-h-48 overflow-y-auto space-y-0.5 divide-y divide-slate-100 pr-0.5">
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 divide-y divide-slate-100 pr-0.5">
             {filteredSuggestions.length === 0 && !customCandidate ? (
               <div className="py-4 text-center text-[12px] text-slate-400">
                 No times found. Type the time above.
@@ -314,7 +346,8 @@ export function Time12hPicker({
               })
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

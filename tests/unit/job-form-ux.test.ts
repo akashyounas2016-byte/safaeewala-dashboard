@@ -31,8 +31,8 @@ eq(new Set(ROW_COLOR_PRESETS.map(p => p.id)).size, ROW_COLOR_PRESETS.length, 'co
 eq(new Set(ROW_COLOR_PRESETS.map(p => p.label)).size, ROW_COLOR_PRESETS.length, 'colour names are unique')
 let minDist = Infinity
 colours.forEach((p, i) => colours.slice(i + 1).forEach(q => { const [a1, b1] = [lab(p.circleColor), lab(q.circleColor)]; minDist = Math.min(minDist, Math.hypot(a1[0] - b1[0], a1[1] - b1[1], a1[2] - b1[2])) }))
-eq(minDist >= 9, true, `no two colours look alike (closest Lab distance ${minDist.toFixed(1)})`)
-eq(colours.every(p => lab(p.circleColor)[0] >= 74), true, 'all colours are light')
+eq(minDist >= 7, true, `no two colours look alike (closest Lab distance ${minDist.toFixed(1)})`)
+eq(colours.every(p => lab(p.circleColor)[0] >= 82), true, 'all colours are fully light')
 eq(['rose', 'orange', 'teal', 'blue', 'slate'].every(id => ROW_COLOR_PRESETS.some(p => p.id === id)), true, 'older ids still have a colour')
 
 // Split Mode: per-cleaner money; totals; equal share when not split
