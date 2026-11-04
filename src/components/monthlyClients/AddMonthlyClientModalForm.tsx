@@ -22,6 +22,8 @@ export interface AddMonthlyClientModalFormProps {
   employees: Employee[]
   initialClient?: Client | null
   isEdit?: boolean
+  /** Values typed in Add New Client before Mode → Monthly was chosen (R-CLI-02) */
+  prefill?: Partial<Client>
 }
 
 export function AddMonthlyClientModalForm({
@@ -30,7 +32,9 @@ export function AddMonthlyClientModalForm({
   employees,
   initialClient,
   isEdit = false,
+  prefill,
 }: AddMonthlyClientModalFormProps) {
+  const seedClient: Partial<Client> | null | undefined = initialClient ?? prefill
   // ── 7-Day Specific Schedule State ──
   const [daySchedules, setDaySchedules] = useState<Record<string, {
     enabled: boolean
@@ -309,16 +313,16 @@ export function AddMonthlyClientModalForm({
       {/* ── Client Basic Details (Compact 2 rows) ── */}
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          <Input name="full_name" label="Full Name *" placeholder="e.g. Sarah Al-Rashidi" defaultValue={initialClient?.full_name} required />
-          <Input name="phone" label="Phone Number *" placeholder="+971 50 000 0000" defaultValue={initialClient?.phone} required />
-          <Input name="whatsapp" label="WhatsApp (Optional)" placeholder="+971 50 000 0000" defaultValue={initialClient?.whatsapp ?? ''} />
-          <Input name="email" label="Email (Optional)" type="email" placeholder="client@example.com" defaultValue={initialClient?.email ?? ''} />
+          <Input name="full_name" label="Full Name *" placeholder="e.g. Sarah Al-Rashidi" defaultValue={seedClient?.full_name} required />
+          <Input name="phone" label="Phone Number *" placeholder="+971 50 000 0000" defaultValue={seedClient?.phone} required />
+          <Input name="whatsapp" label="WhatsApp (Optional)" placeholder="+971 50 000 0000" defaultValue={seedClient?.whatsapp ?? ''} />
+          <Input name="email" label="Email (Optional)" type="email" placeholder="client@example.com" defaultValue={seedClient?.email ?? ''} />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          <Input name="building" label="Building / Villa" placeholder="Marina Heights / Villa 42" defaultValue={initialClient?.building_name ?? ''} />
-          <Input name="apartment" label="Apartment / Flat" placeholder="Apt 1204" defaultValue={initialClient?.apartment ?? ''} />
-          <Input name="area" label="Area / Community" placeholder="Dubai Marina, JBR..." defaultValue={initialClient?.area ?? ''} />
-          <Select name="city" label="Emirate" defaultValue={initialClient?.city || 'Dubai'}>
+          <Input name="apartment" label="Apartment / Villa Number" placeholder="302 / Villa 25" defaultValue={seedClient?.apartment ?? ''} />
+          <Input name="building" label="Building / Villa Name" placeholder="Al Khair Building" defaultValue={seedClient?.building_name ?? ''} />
+          <Input name="area" label="Area / Community" placeholder="Dubai Marina, JBR..." defaultValue={seedClient?.area ?? ''} />
+          <Select name="city" label="Emirate" defaultValue={seedClient?.city || 'Dubai'}>
             <option>Dubai</option>
             <option>Abu Dhabi</option>
             <option>Sharjah</option>
@@ -604,7 +608,7 @@ export function AddMonthlyClientModalForm({
         </label>
         <Textarea
           name="remarks"
-          defaultValue={initialClient?.remarks ?? initialClient?.notes ?? initialClient?.access_notes ?? ''}
+          defaultValue={seedClient?.remarks ?? seedClient?.notes ?? seedClient?.access_notes ?? ''}
           placeholder="Special instructions, gate codes, key locations, or client preferences..."
           rows={2}
         />

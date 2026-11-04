@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(clients): Add New Client → Mode (General / Bi-Weekly / Monthly); Bi-Weekly days + contract duration; Monthly opens the monthly form with the typed details; description lines removed (R-CLI-02, UX-78). Needs `2026-11-04_clients_service_mode.sql`
 - fix(jobs): the start / end time list is no longer cut off in the Add Job popup (UX-77); row colours are 40 fully light shades (UX-69)
 - fix(excel-studio): one colour for all rows of a team project; a cleaner's block colour no longer splits a team (UX-71)
 - feat(jobs): Split Mode rows show and edit each cleaner's own charges / received on the Daily and Excel Job Sheets (R-PAY-05)

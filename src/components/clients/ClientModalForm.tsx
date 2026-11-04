@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -19,9 +19,11 @@ import {
 import type { Client, Employee } from '@/types'
 import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
 import { useData } from '@/store/DataContext'
-import { confirmAsync } from '@/lib/notify'
+import { confirmAsync, notify } from '@/lib/notify'
 import { findDuplicateClient, isUaeMobile } from '@/lib/validation'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
+import { BiWeeklyScheduleCard, emptyBiWeeklyPlan } from '@/components/clients/BiWeeklyScheduleCard'
+import type { BiWeeklyPlan, ClientServiceMode } from '@/lib/biweekly'
 
 export interface ClientModalFormProps {
   open: boolean
@@ -51,12 +53,57 @@ export function ClientModalForm({
   // Tab state for monthly client (Profile & Financials vs 7-Day Recurring Schedule)
   const [activeTab, setActiveTab] = useState<'profile' | 'schedule'>('profile')
 
+  // R-CLI-02: Mode — General (stay here), Bi-Weekly (days + duration here), Monthly (the monthly client form)
+  const startMode = (): ClientServiceMode => (isMonthly ? 'monthly' : seed?.service_mode === 'biweekly' ? 'biweekly' : seed?.service_mode === 'monthly' ? 'monthly' : 'general')
+  const [mode, setMode] = useState<ClientServiceMode>(startMode)
+  const [plan, setPlan] = useState<BiWeeklyPlan>(() => seed?.biweekly_plan ?? emptyBiWeeklyPlan())
+  const [monthlyPrefill, setMonthlyPrefill] = useState<Partial<Client> | undefined>(undefined)
+  const formRef = useRef<HTMLFormElement>(null)
+  const monthlyEdit = isMonthly && isEdit // an existing monthly client keeps its Profile / 7-Day Schedule tabs
+  const showMonthlyFlow = mode === 'monthly' && !monthlyEdit
+
   // Reset tab when modal opens
   useEffect(() => {
     if (open) {
       setActiveTab('profile')
+      setMode(startMode())
+      setPlan(seed?.biweekly_plan ?? emptyBiWeeklyPlan())
+      setMonthlyPrefill(undefined)
     }
-  }, [open])
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Switching mode keeps what was typed: Monthly opens the monthly client form with it filled in */
+  const chooseMode = (next: ClientServiceMode) => {
+    if (next === 'monthly' && formRef.current) {
+      const f = new FormData(formRef.current)
+      const v = (k: string) => String(f.get(k) || '').trim()
+      setMonthlyPrefill({
+        full_name: v('full_name'), phone: v('phone'), whatsapp: v('whatsapp'), email: v('email'),
+        apartment: v('apartment'), building_name: v('building_name'), area: v('area'), city: v('city') || 'Dubai',
+        remarks: v('remarks'),
+        advance_amount: Number(v('advance_amount')) || undefined,
+        adjustment_amount: Number(v('adjustment_amount')) || undefined,
+        pending_amount: Number(v('pending_amount')) || undefined,
+      })
+    }
+    setMode(next)
+  }
+  const modeSelect = (compact = false) => (
+    <div className={compact ? 'w-40' : ''}>
+      {!compact && <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Mode</label>}
+      <select
+        value={mode}
+        disabled={monthlyEdit}
+        onChange={e => chooseMode(e.target.value as ClientServiceMode)}
+        title={monthlyEdit ? 'Monthly client — change the schedule in the 7-Day Schedule tab' : 'General: one-off jobs · Bi-Weekly: chosen days every other week · Monthly: monthly client form'}
+        className={`w-full ${compact ? 'h-9' : 'h-9.5'} px-3 text-[13px] font-bold rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-teal-500 cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-50 ${mode === 'biweekly' ? 'text-violet-800' : mode === 'monthly' ? 'text-emerald-800' : 'text-slate-800'}`}
+      >
+        <option value="general">General</option>
+        <option value="biweekly">Bi-Weekly</option>
+        <option value="monthly">Monthly</option>
+      </select>
+    </div>
+  )
 
   // ── Multi-Cleaner Assignment State ──
   const [selectedCleaners, setSelectedCleaners] = useState<string[]>(() => {
@@ -114,6 +161,17 @@ export function ClientModalForm({
       advance_amount:    advance,
       adjustment_amount: adjustment,
       pending_amount:    pending,
+    }
+
+    // R-CLI-02: the mode, and the Bi-Weekly days and duration
+    if (mode === 'biweekly') {
+      if (plan.days.length === 0) { notify.error('Bi-Weekly: tick at least one day.'); return }
+      patch.service_mode = 'biweekly'
+      patch.biweekly_plan = plan
+      if (!cleaner) patch.preferred_cleaner = Array.from(new Set(plan.days.map(d => plan.day_schedules[d]?.cleaner).filter(Boolean))).join(', ')
+    } else {
+      patch.service_mode = monthlyEdit ? 'monthly' : 'general'
+      if (seed?.biweekly_plan) patch.biweekly_plan = null as unknown as undefined // no longer bi-weekly
     }
 
     // VAL-03: UAE mobile format (other countries are allowed after a confirm)
@@ -197,6 +255,7 @@ export function ClientModalForm({
             </div>
           )}
 
+          {showMonthlyFlow && modeSelect(true)}
           {activeTab === 'profile' && (
             <>
               <Button
@@ -210,7 +269,7 @@ export function ClientModalForm({
               </Button>
               <Button
                 type="submit"
-                form="client-modal-form"
+                form={showMonthlyFlow ? 'add-monthly-client-form' : 'client-modal-form'}
                 size="sm"
                 disabled={isSaving}
                 className="h-9 px-4.5 text-[12.5px] font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs cursor-pointer flex items-center gap-1.5 rounded-xl transition-all"
@@ -224,7 +283,20 @@ export function ClientModalForm({
       }
     >
       {/* ── Monthly Client Recurring Schedule Tab ── */}
-      {isMonthly && isEdit && activeTab === 'schedule' ? (
+      {showMonthlyFlow ? (
+        /* R-CLI-02: Mode → Monthly opens the monthly client form, with what was already typed */
+        <AddMonthlyClientModalForm
+          initialClient={isEdit ? initialClient : undefined}
+          prefill={isEdit ? undefined : monthlyPrefill}
+          isEdit={isEdit}
+          employees={employees}
+          onClose={onClose}
+          onAdd={monthlyData => {
+            onSave({ ...monthlyData, service_mode: 'monthly', ...(seed?.biweekly_plan ? { biweekly_plan: null as unknown as undefined } : {}) })
+            onClose()
+          }}
+        />
+      ) : isMonthly && isEdit && activeTab === 'schedule' ? (
         <AddMonthlyClientModalForm
           initialClient={initialClient}
           isEdit={true}
@@ -239,6 +311,7 @@ export function ClientModalForm({
         /* ── Unified Profile & Financial Form (Organized into 3 Clean Cards) ── */
         <form
           id="client-modal-form"
+          ref={formRef}
           onSubmit={handleSubmit}
           className="space-y-4"
         >
@@ -248,14 +321,11 @@ export function ClientModalForm({
               <div className="w-6.5 h-6.5 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center border border-teal-200/60">
                 <User size={13} />
               </div>
-              <div>
-                <p className="text-[12.5px] font-black text-slate-800">Primary Contact & Identity</p>
-                <p className="text-[10.5px] text-slate-500">Enter client name and direct communication phone lines</p>
-              </div>
+              <p className="text-[12.5px] font-black text-slate-800">Primary Contact & Identity</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
-              <div className="md:col-span-4">
+              <div className="md:col-span-3">
                 <Input
                   name="full_name"
                   label="Full Name *"
@@ -265,7 +335,7 @@ export function ClientModalForm({
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
-              <div className="md:col-span-4">
+              <div className="md:col-span-3">
                 <Input
                   name="phone"
                   label="Phone Number"
@@ -274,7 +344,7 @@ export function ClientModalForm({
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
-              <div className="md:col-span-4">
+              <div className="md:col-span-3">
                 <Input
                   name="whatsapp"
                   label="WhatsApp Number"
@@ -283,6 +353,7 @@ export function ClientModalForm({
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
+              <div className="md:col-span-3">{modeSelect()}</div>
             </div>
           </div>
 
@@ -292,10 +363,7 @@ export function ClientModalForm({
               <div className="w-6.5 h-6.5 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center border border-indigo-200/60">
                 <MapPin size={13} />
               </div>
-              <div>
-                <p className="text-[12.5px] font-black text-slate-800">Address & Crew Assignment</p>
-                <p className="text-[10.5px] text-slate-500">Physical service address, community and preferred cleaner(s)</p>
-              </div>
+              <p className="text-[12.5px] font-black text-slate-800">Address & Crew Assignment</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
@@ -369,6 +437,9 @@ export function ClientModalForm({
               </div>
             </div>
           </div>
+
+          {/* R-CLI-02: Bi-Weekly — days like the monthly schedule, and the contract duration */}
+          {mode === 'biweekly' && <BiWeeklyScheduleCard plan={plan} onChange={setPlan} cleaners={activeCleanersList} />}
 
           {/* ── Card 3: Financial Balances & Service Remarks ── */}
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_rgba(15,23,42,0.02)] p-4.5">

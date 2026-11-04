@@ -248,6 +248,17 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientAddress.ts → formatClientAddress`, `ClientModalForm.tsx`.
 - **Status:** Active · Since: 2026-11-04
 
+### R-CLI-02 — Client mode: General, Bi-Weekly or Monthly
+- **Rule:** *"'Mode' ka dropdown … 'General', 'Bi-Weekly', aur 'Monthly' … 'Monthly' select karne par system user ko monthly client flow par redirect kare; 'General' aur 'Bi-Weekly' … same pop-up par hi rahen … user specific days select kar sakay aur sath hi contract ki duration … define ki ja sakay."*
+  - **General** (default): an ordinary client with one-off jobs.
+  - **Bi-Weekly**: in the same popup, a schedule table like the monthly one (day, start, end, duration, cleaner) and the contract: start date and duration in months (1–12, or custom). Visits are the ticked days **every other week**, from the start week until the end date. The popup shows the end date and the number of visits. At least one day must be ticked.
+  - **Monthly**: the popup switches to the monthly client form (7-day schedule). What was already typed comes along. The mode can be switched back from the popup header.
+  - A Bi-Weekly plan does not make a client monthly (R-SCHED-04), so the monthly auto-sync does not touch it. Bi-Weekly visits are **not** added to the Daily Job Sheet automatically yet.
+  - An existing monthly client keeps its *Profile / 7-Day Schedule* tabs; its mode cannot be changed there.
+- **Data:** `clients.service_mode` text, `clients.biweekly_plan` jsonb (migration `2026-11-04_clients_service_mode.sql`). Until the migration runs, the outbox leaves these two fields out and saves the rest.
+- **Code:** `ClientModalForm.tsx` (`chooseMode`, `modeSelect`), `BiWeeklyScheduleCard.tsx`, `src/lib/biweekly.ts`, `AddMonthlyClientModalForm` (`prefill`).
+- **Status:** Active · Since: 2026-11-04
+
 ---
 
 ## DATA — Data hygiene

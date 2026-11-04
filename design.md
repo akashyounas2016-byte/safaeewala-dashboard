@@ -115,6 +115,7 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
 - Time lists (UX-77): the start / end time list floats above the popup (fixed position), so the popup's scrolling body never cuts it. It opens upwards or downwards, wherever there is more room, and shrinks to fit the screen.
 - Add Job Entry popup (UX-75): the cleaning-materials card has no heading; the field label says what it is.
 - Add New Client popup (UX-76): wider (`max-w-5xl`). The *Preferred Cleaner(s)* list opens from the right edge and never pushes the popup wider.
+- Add New Client popup (UX-78): no description lines under the card titles. The contact row is Full Name, Phone, WhatsApp and **Mode** (four equal columns). Bi-Weekly adds a violet schedule card under the address card; Monthly swaps the body for the monthly client form and keeps a compact Mode selector in the header.
 - Client cards (UX-67) are the same on Clients and Monthly Clients, and match the booking cards (UX-63). From top to bottom:
   - the lead cleaner's colour on the left edge;
   - the client name, address and a *Monthly* / *Standard* chip;

@@ -69,6 +69,10 @@ export interface Client {
   duration_hours?: number
   day_cleaner_assignments?: Record<string, string>
   day_schedules?: Record<string, { startTime: string; endTime: string; cleaner: string; duration?: number }>
+  /** R-CLI-02: General (one-off jobs), Bi-Weekly (plan below) or Monthly (schedule above) */
+  service_mode?: 'general' | 'biweekly' | 'monthly'
+  /** R-CLI-02: chosen weekdays every other week, and how many months */
+  biweekly_plan?: import('@/lib/biweekly').BiWeeklyPlan
   total_bookings: number
   total_spent: number
   last_service?: string
