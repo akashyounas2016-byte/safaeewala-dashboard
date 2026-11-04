@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import { formatClientAddress } from '@/lib/clientAddress'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -1552,7 +1553,7 @@ export function EditAdvanceModal({
             <Input name="client" list="clients-advance-widget-edit-list" label="Client *" defaultValue={item.client} required autoFocus />
             <datalist id="clients-advance-widget-edit-list">
               {pool.map(c => (
-                <option key={c.id} value={c.full_name}>{[c.building_name, c.apartment, c.area].filter(Boolean).join(', ')}</option>
+                <option key={c.id} value={c.full_name}>{formatClientAddress(c)}</option>
               ))}
             </datalist>
           </div>

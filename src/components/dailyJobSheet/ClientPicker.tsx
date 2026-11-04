@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { formatClientAddress } from '@/lib/clientAddress'
 import { MapPin, Phone, Search, X } from 'lucide-react'
 import { useData } from '@/store/DataContext'
 import { calcClientPendingBalance, getAssignableClients } from '@/lib/clientDataSync'
@@ -77,7 +78,7 @@ export function ClientPicker({ selected, onSelect, search, onSearch, accent = 'e
           {(selected.building_name || selected.area || selected.apartment) && (
             <p className="mt-2.5 pt-2 border-t border-slate-200/70 text-[11.5px] text-slate-600 flex items-center gap-1.5">
               <MapPin size={11} className="text-slate-400 shrink-0" />
-              {[selected.building_name, selected.apartment, selected.area, selected.city].filter(Boolean).join(', ')}
+              {formatClientAddress(selected, true)}
             </p>
           )}
           <div className="mt-3 p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between">
@@ -134,7 +135,7 @@ export function ClientPicker({ selected, onSelect, search, onSearch, accent = 'e
                   <div className="min-w-0">
                     <p className="text-[13px] font-bold text-slate-800 truncate">{c.full_name}</p>
                     <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                      {[c.building_name, c.apartment, c.area].filter(Boolean).join(', ') || c.phone || 'No address'}
+                      {formatClientAddress(c) || c.phone || 'No address'}
                     </p>
                   </div>
                   <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${due > 0 ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-slate-100 text-slate-600'}`}>

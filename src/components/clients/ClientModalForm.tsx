@@ -163,7 +163,7 @@ export function ClientModalForm({
       onClose={onClose}
       title={modalTitle}
       size="xl"
-      className="max-h-[96vh] max-w-4xl"
+      className="max-h-[96vh] max-w-5xl" // UX-76: wider, so the cleaner list fits
       bodyClassName="px-6 py-5 pb-6 bg-slate-50/50"
       headerActions={
         <div className="flex items-center gap-2 mr-1">
@@ -309,21 +309,22 @@ export function ClientModalForm({
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
+              {/* R-CLI-01: number first, then the building / villa name, then the area */}
               <div className="md:col-span-4">
                 <Input
-                  name="building_name"
-                  label="Building / Villa Name"
-                  placeholder="e.g. Marina Gate 1 / Villa 14"
-                  defaultValue={seed?.building_name ?? ''}
+                  name="apartment"
+                  label="Apartment / Villa Number"
+                  placeholder="e.g. 302 / Villa 25"
+                  defaultValue={seed?.apartment ?? ''}
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
               <div className="md:col-span-4">
                 <Input
-                  name="apartment"
-                  label="Apartment / Flat / Unit"
-                  placeholder="e.g. Apt 1204 / Unit 4B"
-                  defaultValue={seed?.apartment ?? ''}
+                  name="building_name"
+                  label="Building / Villa Name"
+                  placeholder="e.g. Al Khair Building"
+                  defaultValue={seed?.building_name ?? ''}
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
@@ -355,8 +356,9 @@ export function ClientModalForm({
                 />
               </div>
 
-              <div className="md:col-span-4">
+              <div className="md:col-span-4 min-w-0">
                 <CleanerMultiSelect
+                  alignRight
                   label="Preferred Cleaner(s)"
                   name="preferred_cleaner"
                   cleaners={activeCleanersList}

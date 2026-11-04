@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { formatClientAddress } from '@/lib/clientAddress'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign,
@@ -1209,7 +1210,7 @@ export function Clients() {
                       <p className="text-[14.5px] font-black text-[#111827] truncate group-hover:text-teal-700 transition-colors" title={c.full_name}>{c.full_name}</p>
                       <p className="text-[11.5px] text-slate-500 flex items-center gap-1 mt-0.5 min-w-0">
                         <MapPin size={11} className="shrink-0 text-slate-400" />
-                        <span className="truncate">{[c.apartment, c.building_name, c.area].filter(Boolean).join(', ') || 'No address'}</span>
+                        <span className="truncate">{formatClientAddress(c) || 'No address'}</span>
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
@@ -1378,7 +1379,7 @@ export function Clients() {
                 { label: 'Phone',          value: selected.phone || 'Not recorded' },
                 { label: 'WhatsApp',       value: selected.whatsapp || selected.phone || 'Not recorded' },
                 { label: 'Email',          value: selected.email || '—' },
-                { label: 'Address',        value: [selected.apartment ? `Apt ${selected.apartment}` : '', selected.building_name, selected.area, selected.city].filter(Boolean).join(', ') || '—' },
+                { label: 'Address',        value: formatClientAddress(selected, true) || '—' },
                 { label: 'Assigned Cleaner', value: selected.preferred_cleaner || 'Unassigned' },
                 { label: 'Source',         value: selected.source ? selected.source.replace(/_/g, ' ') : '—' },
                 { label: 'Total Services', value: selected.total_bookings },

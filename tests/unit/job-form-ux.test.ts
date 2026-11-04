@@ -17,18 +17,23 @@ eq(timeSteps(9, 11, 15).slice(0, 5), ['09:00', '09:15', '09:30', '09:45', '10:00
 eq(timeSteps(12, 23, 15, false).slice(-2), ['10:45', '11:00'], '15-minute evening list ends 11:00')
 eq([...MORNING_TIMES, ...timeSteps(9, 11, 15)].some(t => /am|pm/i.test(t)), false, 'no AM / PM tag in the lists')
 
-// Row colours: unique ids, and no two colours share a hue band (all clearly different)
-const hueOf = (hex: string) => {
-  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min
-  if (d === 0) return -1
-  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4
-  return Math.round(((h * 60) + 360) % 360)
+// Row colours: 40 light colours, unique ids, every pair clearly different (CIE Lab distance)
+const lab = (hex: string) => {
+  const f = (i: number) => { const c = parseInt(hex.slice(i, i + 2), 16) / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4 }
+  const [R, G, B] = [f(1), f(3), f(5)]
+  const t = (v: number) => (v > 0.008856 ? Math.cbrt(v) : 7.787 * v + 16 / 116)
+  const X = t((R * 0.4124 + G * 0.3576 + B * 0.1805) / 0.95047), Y = t(R * 0.2126 + G * 0.7152 + B * 0.0722), Z = t((R * 0.0193 + G * 0.1192 + B * 0.9505) / 1.08883)
+  return [116 * Y - 16, 500 * (X - Y), 200 * (Y - Z)]
 }
+const colours = ROW_COLOR_PRESETS.filter(p => p.id !== 'default')
+eq(colours.length, 40, '40 row colours')
 eq(new Set(ROW_COLOR_PRESETS.map(p => p.id)).size, ROW_COLOR_PRESETS.length, 'colour ids are unique')
-const vivid = ROW_COLOR_PRESETS.filter(p => p.id !== 'default' && p.id !== 'slate' && p.id !== 'stone').map(p => hueOf(p.circleColor)).sort((a, b) => a - b)
-const minGap = Math.min(...vivid.map((h, i) => (i === 0 ? h + 360 - vivid[vivid.length - 1] : h - vivid[i - 1])))
-eq(minGap >= 18, true, `colours at least 18° apart on the colour wheel (closest ${minGap}°)`)
+eq(new Set(ROW_COLOR_PRESETS.map(p => p.label)).size, ROW_COLOR_PRESETS.length, 'colour names are unique')
+let minDist = Infinity
+colours.forEach((p, i) => colours.slice(i + 1).forEach(q => { const [a1, b1] = [lab(p.circleColor), lab(q.circleColor)]; minDist = Math.min(minDist, Math.hypot(a1[0] - b1[0], a1[1] - b1[1], a1[2] - b1[2])) }))
+eq(minDist >= 9, true, `no two colours look alike (closest Lab distance ${minDist.toFixed(1)})`)
+eq(colours.every(p => lab(p.circleColor)[0] >= 74), true, 'all colours are light')
+eq(['rose', 'orange', 'teal', 'blue', 'slate'].every(id => ROW_COLOR_PRESETS.some(p => p.id === id)), true, 'older ids still have a colour')
 
 // Split Mode: per-cleaner money; totals; equal share when not split
 const split = [

@@ -1,4 +1,5 @@
 import type { DailyJob } from '@/types'
+import { splitEntryOf, isSplitJob } from '@/lib/chargeSplit'
 import { splitStaffNames } from '@/lib/clientDataSync'
 import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
 import { normalizeJobAddress, isGenericAddress } from '@/lib/utils'
@@ -16,14 +17,16 @@ export function expandTeamJob(job: DailyJob, teamRef: string): DailyJob[] {
   const primaryCleaner = (cleaners[0] || '').trim()
   return cleaners.map((cleaner, cIdx) => {
     const isPrimary = cIdx === 0
+    // R-PAY-05 Split Mode: each cleaner's row holds their own money and is edited like a solo job
+    const own = isSplitJob(job) ? splitEntryOf(job, cleaner) : undefined
     return {
       ...job,
       id: isPrimary ? job.id : `${job.id}-cleaner-${(cleaner || '').toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
       staff_name: (cleaner || '').trim(),
       team_name: teamRef,
-      charges: isPrimary ? cleanNum(job.charges) : 0,
-      received: isPrimary ? cleanNum(job.received) : 0,
-      payment_mode: isPrimary ? job.payment_mode : ('Above' as DailyJob['payment_mode']),
+      charges: own ? cleanNum(own.charges) : isPrimary ? cleanNum(job.charges) : 0,
+      received: own ? cleanNum(own.received) : isPrimary ? cleanNum(job.received) : 0,
+      payment_mode: own ? (own.payment_mode as DailyJob['payment_mode']) : isPrimary ? job.payment_mode : ('Above' as DailyJob['payment_mode']),
       _isSplitShift: true,
       _isPrimaryCleaner: isPrimary,
       _isSecondaryCleaner: !isPrimary,

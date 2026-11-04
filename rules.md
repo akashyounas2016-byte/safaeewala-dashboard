@@ -49,6 +49,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientDataSync.ts → isMonthlyClient` and the two summary builders.
 - **Status:** Active · Since: 2026-11-03 (CM-06)
 
+### R-SCHED-05 — Monthly visits sync only while the contract runs
+- **Rule:** *"active monthly clients ka data tab tak Daily Job Sheet par khud ba khud synchronize hota rahay jab tak unka contract manually off ya cancel nahi kiya jata."*
+  - An active monthly client's scheduled visits keep being added to the Daily Job Sheet automatically.
+  - When every contract of the client in *Monthly Clients → Contracts* is **paused** or **cancelled**, no new visits are added. Visits already on the sheet stay.
+  - A client with no contract record keeps syncing from their 7-day schedule (R-SCHED-04).
+  - Contracts are matched to the client by name.
+- **Code:** `src/lib/clientDataSync.ts → isMonthlyContractStopped`, checked in `getScheduledMonthlyShiftsForDate`. Every sync path (startup, Daily Job Sheet, Bookings) goes through it.
+- **Status:** Active · Since: 2026-11-04
+
 ---
 
 ## ATT — Attendance
@@ -91,9 +100,20 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Status:** Active · Since: 2026-11-03 (ATT-A07)
 
 ### R-ATT-07 — The Daily Job Sheet shows Attendance marks
-- **Rule:** A cleaner marked absent / on leave in Attendance is listed in the Daily Job Sheet for that date (red *Absent* or amber *On Leave / Leave · Pending* row with the reason and who marked it), also on a date with no jobs yet. A cleaner who still has jobs that date gets an *Absent / On leave in Attendance — reassign* tag on the job row. The job rows are never moved or deleted by a mark.
-- **Code:** `DailyJobSheet.tsx → attendanceMarkFor, nilRows, renderNilCell`.
-- **Status:** Active · Since: 2026-11-03 (ATT-A01)
+- **Rule:** A cleaner who still has jobs on a date they are marked absent / on leave gets an *Absent / On leave in Attendance — reassign* tag on the job row. The job rows are never moved or deleted by a mark.
+- The separate *Absent / On Leave* rows for cleaners without jobs were removed on 2026-11-04 (R-ATT-08).
+- **Code:** `DailyJobSheet.tsx → attendanceMarkFor`.
+- **Status:** Active · Since: 2026-11-03 (ATT-A01) · changed 2026-11-04
+
+### R-ATT-08 — A cleaner away that day is not offered for work
+- **Rule:** *"leave par gaya hoa cleaner Active Job Sheet ya scheduling dropdown mein nazar na aaye."*
+  - Away means marked **absent**, or **on leave** (pending or approved), in Attendance for that date. A rejected leave is an absence, so it also counts.
+  - Such a cleaner is not listed on the Daily Job Sheet when they have no job that day.
+  - They are not offered in the cleaner picker of Add / Edit Job (Daily and Excel) for that date, or in the Excel staff suggestions. The popup says who was left out.
+  - A cleaner already on the job being edited stays selected. A job they still hold stays on the sheet with the *reassign* tag (R-ATT-07).
+  - Marks kept by employee id or by name both count.
+- **Code:** `src/lib/attendance.ts → isAwayMark, awayCleanerNames`; `AddJobModal.tsx` (`pickableStaff`); `JobSheetSpreadsheet.tsx` (`staffOptions`); `DailyJobSheet.tsx` (`nilRows`).
+- **Status:** Active · Since: 2026-11-04
 
 ---
 
@@ -214,6 +234,19 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** A new address typed on a job (Add Job Entry, Excel Job Sheet, row edit) opens the Clients screen's "Add New Client" popup with the address filled in, so the details and WhatsApp number are saved before the job entry is finished.
 - **Code:** `QuickNewClientModal` → `ClientModalForm` (`prefill`).
 - **Status:** Active · Since: 2026-10-31
+
+---
+
+## CLI — Clients
+
+### R-CLI-01 — Client address format
+- **Rule:** *"pehle Apartment ya Villa Number, phir Building ya Villa Name, aur aakhir mein Area Name (misal ke tor par: 302, Al Khair Building, ya Villa 25, Mirdif)."*
+  - An address is written **number → building / villa name → area**, separated by commas: *302, Al Khair Building, Mirdif* or *Villa 25, Mirdif*. The city, where shown, comes last.
+  - In *Add New Client* → *Address & Crew Assignment*, the field **Apartment / Villa Number** comes first and **Building / Villa Name** after it.
+  - Client cards, the client picker, the client profile and Monthly Clients show addresses in this order.
+  - Not changed: the address text of monthly visits already synced to the Daily Job Sheet, because older rows are matched by it.
+- **Code:** `src/lib/clientAddress.ts → formatClientAddress`, `ClientModalForm.tsx`.
+- **Status:** Active · Since: 2026-11-04
 
 ---
 
@@ -389,14 +422,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - **Split Mode** (team jobs only): one line per cleaner with their own **charges**, **received** and **payment mode**.
     - The job's charges and received are the **totals** of the lines.
     - The job's payment mode is the common mode, else the lead's.
-    - On the Excel Job Sheet each member row shows *Split 150 · Collected 50 · Online*.
+    - On the Daily and Excel Job Sheets every cleaner's row shows their **own** charges, received, pending and mode as plain numbers, with no reference to the lead. They are edited in place like a solo job; saving updates that cleaner's line and the job totals.
     - Employees revenue and cash collected use each cleaner's own line (EMP-05).
   - **Payment Mode** offers Cash, Online, Pending and Monthly, plus custom values. *+ Custom value…* adds a mode that every job and the Excel Mode column can then use (cloud-synced).
   - Switching an edited job back to Lump Sum removes its split. Switching to Split Mode starts with an equal share of the charges and the advance on the lead.
 - **Code:**
   - `ChargesCard.tsx`: Daily and Excel Add Job, and Edit Job.
   - `src/lib/chargeSplit.ts`: `splitTotals`, `cleanerShare`, `splitEntryOf`.
-  - `JobSheetSpreadsheet.tsx`: `memberChargesLabel`, `memberReceivedLabel`, `memberModeLabel`, and the save.
+  - `JobSheetSpreadsheet.tsx`: `refMoney` (reference labels only for Lump Sum members), `splitJobPayload` (the split rebuilt from the rows on save).
+  - `excelTeams.ts → expandTeamJob` and `DailyJobSheet.tsx` (rows of a split job carry their own money; `withSplitEntry` on an inline edit).
 - **Data:** `daily_jobs.charge_split` jsonb, holding `[{cleaner, charges, received, payment_mode}]` (migration `2026-11-03_daily_jobs_split_and_color.sql`).
 - **Status:** Active · Since: 2026-11-03 · Lump Sum / Split Mode since 2026-11-04
 

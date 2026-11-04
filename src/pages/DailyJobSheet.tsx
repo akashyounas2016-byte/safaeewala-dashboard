@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { splitEntryOf as splitEntryOfJob, withSplitEntry, isSplitJob } from '@/lib/chargeSplit'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import {
@@ -210,6 +211,10 @@ export function DailyJobSheet() {
       patch.address = trimmed
     } else if (field === 'area') {
       patch.area = trimmed
+    } else if ((field === 'charges' || field === 'received') && (job as any)._ownMoney) {
+      // R-PAY-05: a Split Mode row edits only this cleaner's entry; the job keeps the totals
+      const original = dailyJobs.find(j => j.id === targetJobId)
+      if (original) Object.assign(patch, withSplitEntry(original, job.staff_name || '', { [field]: cleanNum(trimmed) }))
     } else if (field === 'charges') {
       patch.charges = cleanNum(trimmed)
     } else if (field === 'received') {
@@ -872,12 +877,15 @@ export function DailyJobSheet() {
         // Multi-cleaner display rule:
         // Primary cleaner holds the full charges & received amount so sheet figures are accurate and not duplicated.
         // Secondary staff hold 0 charges/received and display Team Reference ('Team A' / 'Team B').
+        // R-PAY-05 Split Mode: every cleaner's row holds their own charges / received / mode, editable in place
+        const own = isSplitJob(job) ? splitEntryOfJob(job, cleaner) : undefined
         acc[s].push({
           ...job,
           id: `${job.id}-cleaner-${cleaner.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
           staff_name: cleaner,
-          charges: isPrimary ? cleanNum(job.charges) : 0,
-          received: isPrimary ? cleanNum(job.received) : 0,
+          charges: own ? cleanNum(own.charges) : isPrimary ? cleanNum(job.charges) : 0,
+          received: own ? cleanNum(own.received) : isPrimary ? cleanNum(job.received) : 0,
+          ...(own ? { payment_mode: own.payment_mode as DailyJob['payment_mode'], _ownMoney: true } : {}),
           _originalJobId: job.id,
           _isSplitShift: true,
           _isPrimaryCleaner: isPrimary,
@@ -955,10 +963,11 @@ export function DailyJobSheet() {
   // or if store is loading, keep nilRows empty so staff names/absent rows do not appear on empty days —
   // except cleaners marked absent / on leave in Attendance, who are always listed (R-ATT-07).
   const emptyDay = todayJobs.length === 0 || (loading && dailyJobs.length === 0)
+  // R-ATT-08: a cleaner absent or on leave that day is not listed (a job they still hold stays visible, tagged "reassign")
   const nilRows: Array<any> = allKnownCleaners
     .filter(name => !activeStaffSet.has(name.trim().toLowerCase()))
     .map(name => ({ name, mark: attendanceMarkFor(name, selectedDate) }))
-    .filter(({ mark }) => !emptyDay || isAwayMark(mark))
+    .filter(({ mark }) => !emptyDay && !isAwayMark(mark))
     .sort((a, b) => a.name.localeCompare(b.name))
     .map(({ name, mark }) => ({
       id: `nil-${name.toLowerCase().replace(/\s+/g, '-')}`,
@@ -2193,7 +2202,7 @@ export function DailyJobSheet() {
         )
 
       case 'charges':
-        if ((job as any)._isSecondaryCleaner) {
+        if ((job as any)._isSecondaryCleaner && !(job as any)._ownMoney) {
           return (
             <td key={id} className="px-3 py-3 font-semibold whitespace-nowrap text-slate-400 text-[11.5px]" title={`Charges recorded under primary cleaner ${(job as any)._primaryCleanerName || ''}`}>
               <span className="italic">Included ({(job as any)._teamReference || 'Team A'})</span>
@@ -2266,7 +2275,7 @@ export function DailyJobSheet() {
         )
 
       case 'received':
-        if ((job as any)._isSecondaryCleaner) {
+        if ((job as any)._isSecondaryCleaner && !(job as any)._ownMoney) {
           return (
             <td key={id} className="px-3 py-3 font-semibold whitespace-nowrap">
               <span
@@ -2404,7 +2413,7 @@ export function DailyJobSheet() {
         )
 
       case 'payment_mode':
-        if ((job as any)._isSecondaryCleaner) {
+        if ((job as any)._isSecondaryCleaner && !(job as any)._ownMoney) {
           return (
             <td key={id} className="px-3 py-3">
               <span
@@ -4174,7 +4183,7 @@ CREATE TABLE daily_expenses (
         onClose={() => setShowAddJob(false)}
         title="Add Job Entry"
         size="2xl"
-        className="max-w-6xl w-full"
+        className="max-w-6xl w-full max-h-[96vh] min-h-[86vh]" // UX-74: taller, so the time lists open in full
         headerActions={
           <div className="flex items-center gap-2">
             <button

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { formatClientAddress } from '@/lib/clientAddress'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Search, Phone, MapPin, Calendar,
@@ -3503,7 +3504,7 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: { client
   const initialAddress = useMemo(() => {
     if (!matchedClient) return ''
     if ((matchedClient as any).address) return (matchedClient as any).address
-    return [matchedClient.apartment, matchedClient.building_name, matchedClient.area].filter(Boolean).join(', ')
+    return formatClientAddress(matchedClient)
   }, [matchedClient])
 
   const [scheduledDate, setScheduledDate] = useState(() => todayDubai())

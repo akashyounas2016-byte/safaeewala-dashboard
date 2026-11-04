@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { awayCleanerNames } from '@/lib/attendance'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
 import { Time12hPicker, parseTimeToMinutes } from '@/components/common/Time12hPicker'
@@ -84,7 +85,7 @@ export function AddJobForm({
   initial,
   existingJobsForDate = [],
 }: AddJobFormProps) {
-  const { clients, dailyJobs = [] } = useData()
+  const { clients, dailyJobs = [], attendanceMarks, employees: staffRecords } = useData()
 
   // ── Staff & Team State ──
   const [selectedStaff, setSelectedStaff] = useState<string[]>(() => {
@@ -94,8 +95,15 @@ export function AddJobForm({
 
   // ── Date ──
   const [date, setDate] = useState(() => initial?.date || todayDubai())
+  // R-ATT-08: cleaners absent or on leave on the job date are not offered (one already on this job stays)
+  const awayOnDate = useMemo(() => awayCleanerNames(attendanceMarks || {}, staffRecords || [], date), [attendanceMarks, staffRecords, date])
 
   // ── Busy / Working Cleaners on this Date (for dropdown tag & tooltip) ──
+  const pickableStaff = useMemo(() => {
+    const chosen = new Set(selectedStaff.map(n => n.trim().toLowerCase()))
+    return employees.filter(e => !awayOnDate.has(e.full_name.trim().toLowerCase()) || chosen.has(e.full_name.trim().toLowerCase()))
+  }, [employees, awayOnDate, selectedStaff])
+  const awayList = useMemo(() => employees.filter(e => awayOnDate.has(e.full_name.trim().toLowerCase())).map(e => e.full_name), [employees, awayOnDate])
   const busyCleanersMap = useMemo(() => {
     const map = new Map<string, { shiftCount: number; info: string }>()
     const targetDateJobs = existingJobsForDate.length > 0
@@ -517,13 +525,18 @@ export function AddJobForm({
                 <CleanerMultiSelect
                   label="Staff Name"
                   name="staff_name"
-                  cleaners={employees}
+                  cleaners={pickableStaff}
                   selected={selectedStaff}
                   onChange={setSelectedStaff}
                   placeholder="Select cleaner(s)…"
                   required
                   busyCleaners={busyCleanersMap}
                 />
+                {awayList.length > 0 && (
+                  <p className="mt-1 text-[10.5px] text-amber-700" title="Marked in Attendance (R-ATT-08)">
+                    Absent / on leave, not listed: {awayList.join(', ')}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
@@ -890,15 +903,9 @@ export function AddJobForm({
 
       
       {/* ── CARD 5: CLEANING MATERIALS (HORIZONTAL ROW ACROSS FULL WIDTH) ── */}
+      {/* UX-75: no card heading — the field labels say what each part is */}
       <div className="mt-4 bg-white rounded-2xl border border-slate-200/90 p-4 shadow-2xs space-y-3">
-        <div className="flex items-center gap-2 pb-2.5 border-b border-slate-100">
-          <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
-            <Package size={15} />
-          </div>
-          <h4 className="text-[13px] font-bold text-slate-900">Cleaning Materials</h4>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start pt-1">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
           {/* 1. Material Dropdown */}
           <div className="space-y-1">
             {/* Cleaning Material Dropdown — Styled identical to CleanerMultiSelect with Tick/Cross for Custom Save */}

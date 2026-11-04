@@ -6,6 +6,14 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(excel-studio): one colour for all rows of a team project; a cleaner's block colour no longer splits a team (UX-71)
+- feat(jobs): Split Mode rows show and edit each cleaner's own charges / received on the Daily and Excel Job Sheets (R-PAY-05)
+- feat(excel-studio): Advance column; Pending shows only what is due (UX-72)
+- feat(excel-studio): left / centre / right alignment per column (UX-73)
+- fix(attendance): a cleaner absent or on leave is not listed or offered for that date (R-ATT-08)
+- fix(jobs): taller Add Job popup; materials card heading removed; 40 clearly different light row colours (UX-74, UX-75, UX-69)
+- feat(monthly): monthly visits stop syncing once the client's contract is paused or cancelled (R-SCHED-05)
+- feat(clients): address format number → building → area; Add New Client field order; wider popup, cleaner list stays inside (R-CLI-01, UX-76)
 - feat(employees): every cleaner on the Daily Job Sheet is saved in the employees table automatically, with the same id; deleting one removes the cloud row; registered job-sheet staff with a salary count in payroll (R-EMP-06)
 - feat(jobs): Charges has Lump Sum and Split Mode. Lump Sum: Charges, Advance Received and Payment Mode (with custom values), all on the lead. Split Mode: each cleaner's charges, received and mode. The split is saved as `charge_split` (R-PAY-05)
 - feat(jobs): Add Job time lists open upwards and step every 15 minutes (UX-68)

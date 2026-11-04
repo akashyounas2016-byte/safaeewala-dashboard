@@ -45,6 +45,7 @@ export const CLOUD_SYNCED_KEYS = [
   'safaeewala_excel_cleaner_colors',
   'safaeewala_excel_cell_colors',
   'safaeewala_excel_column_colors',
+  'safaeewala_excel_column_align', // UX-73
   'safaeewala_row_filter_colors_v2',
   'safaeewala_auto_sync_monthly_schedules',
 ] as const

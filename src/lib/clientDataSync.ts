@@ -1,4 +1,4 @@
-import type { Booking, DailyJob, Client, Employee, DailyPendingReceivedItem } from '@/types'
+import type { Booking, DailyJob, Client, Employee, DailyPendingReceivedItem, RecurringContract } from '@/types'
 import { cleanNum, calcHours, calcOTHours, calcDailyCleanerShiftsOT } from '@/components/dailyJobSheet/jobSheetUtils'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
@@ -1222,6 +1222,17 @@ export interface ScheduledShiftPlan {
  * Returns all monthly clients scheduled for dateStr with their assigned cleaners.
  * Compares against dailyJobs for that date to see which shifts are already synced.
  */
+/**
+ * R-SCHED-05: a monthly client keeps syncing to the Daily Job Sheet while their contract runs. Once every
+ * contract of the client (Monthly Clients → Contracts) is paused or cancelled, no new visits are added.
+ * A client without a contract record keeps syncing from their schedule.
+ */
+export function isMonthlyContractStopped(client: Pick<Client, 'full_name'>, contracts: Pick<RecurringContract, 'clientName' | 'status'>[]): boolean {
+  const key = normalizeKey(client.full_name || '')
+  const own = contracts.filter(c => key && normalizeKey(c.clientName || '') === key)
+  return own.length > 0 && !own.some(c => c.status === 'active')
+}
+
 export function getScheduledMonthlyShiftsForDate(
   dateStr: string,
   clients: Client[],
@@ -1289,12 +1300,14 @@ export function getScheduledMonthlyShiftsForDate(
   })
 
   const shifts: ScheduledShiftPlan[] = []
+  const contracts = safeLocalStorageGet<RecurringContract[]>('safaeewala_recurring_contracts', [])
 
   clientMap.forEach(client => {
     // Check if client is scheduled on this day
     if (!isClientScheduledForDay(client, dayName)) {
       return
     }
+    if (isMonthlyContractStopped(client, contracts)) return // R-SCHED-05: contract switched off
 
     const { cleanerName, startTime, endTime, durationHours } = getClientShiftDetailsForDay(client, dayName)
 

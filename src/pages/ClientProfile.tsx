@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { formatClientAddress } from '@/lib/clientAddress'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Phone, Mail, MapPin, Calendar, Star, MessageCircle,
@@ -782,7 +783,7 @@ export function ClientProfile() {
               {(client.building_name || client.area) && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 text-slate-200">
                   <MapPin size={12} className="text-teal-400 shrink-0" />
-                  {[client.building_name, client.apartment, client.area, client.city].filter(Boolean).join(', ')}
+                  {formatClientAddress(client, true)}
                 </span>
               )}
             </div>

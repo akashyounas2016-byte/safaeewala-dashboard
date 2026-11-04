@@ -39,3 +39,13 @@ export function splitTotals(list: ChargeSplitEntry[]): { charges: number; receiv
   const modes = Array.from(new Set(list.map(e => e.payment_mode).filter(Boolean)))
   return { charges, received, payment_mode: modes.length === 1 ? modes[0] : (list[0]?.payment_mode || '') }
 }
+
+/** A job's split, totals included, after one cleaner's charges / received / mode were edited on the sheet (R-PAY-05) */
+export function withSplitEntry(job: Pick<DailyJob, 'charge_split'>, cleaner: string, patch: Partial<Omit<ChargeSplitEntry, 'cleaner'>>): Pick<DailyJob, 'charge_split' | 'charges' | 'received' | 'payment_mode'> {
+  const list = (job.charge_split || []).map(e => (same(e.cleaner, cleaner) ? { ...e, ...patch } : e))
+  const totals = splitTotals(list)
+  return { charge_split: list, charges: totals.charges, received: totals.received, payment_mode: totals.payment_mode as DailyJob['payment_mode'] }
+}
+
+/** True when a job is in Split Mode: every cleaner's row shows and edits their own money */
+export const isSplitJob = (job: Pick<DailyJob, 'charge_split'>) => (job.charge_split || []).length > 0

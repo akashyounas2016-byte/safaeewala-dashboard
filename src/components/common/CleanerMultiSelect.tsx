@@ -21,6 +21,8 @@ export interface CleanerMultiSelectProps {
   compact?: boolean
   className?: string
   busyCleaners?: Map<string, { shiftCount?: number; info?: string }> | Set<string> | string[]
+  /** Open the list from the right edge — for a picker in the last column of a popup (UX-76) */
+  alignRight?: boolean
 }
 
 export function CleanerMultiSelect({
@@ -35,6 +37,7 @@ export function CleanerMultiSelect({
   compact = false,
   className = '',
   busyCleaners,
+  alignRight = false,
 }: CleanerMultiSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
@@ -245,7 +248,7 @@ export function CleanerMultiSelect({
 
       {/* Floating Dropdown */}
       {isOpen && (
-        <div className="absolute z-50 left-0 w-full min-w-[340px] sm:min-w-[420px] max-w-lg mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-[0_12px_36px_rgba(15,23,42,0.16)] p-2.5 text-slate-800 animate-in fade-in zoom-in-95 duration-100">
+        <div className={`absolute z-50 ${alignRight ? 'right-0' : 'left-0'} w-full min-w-[300px] sm:min-w-[380px] max-w-[min(32rem,calc(100vw-3rem))] mt-1.5 bg-white rounded-2xl border border-slate-200 shadow-[0_12px_36px_rgba(15,23,42,0.16)] p-2.5 text-slate-800 animate-in fade-in zoom-in-95 duration-100`}>
           {/* Search box & Actions */}
           <div className="space-y-2 mb-2 pb-2 border-b border-slate-100">
             <div className="relative">

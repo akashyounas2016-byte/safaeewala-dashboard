@@ -222,3 +222,20 @@ export function buildCleanerRoster(employees: Employee[], dailyJobs: DailyJob[],
     .filter(name => !bogusStaff.includes(name.trim().toLowerCase()) && !isBogusStaffName(name))
     .sort((a, b) => a.localeCompare(b))
 }
+
+/** R-ATT-08: absent, or on leave (pending or approved), on that date — kept off the job sheet and the assign lists */
+export const isAwayMark = (m?: AttendanceOverride | null) => m?.status === 'absent' || m?.status === 'on_leave'
+
+/** R-ATT-08: lower-case names of every cleaner away on a date, whether the mark is kept by employee id or by name */
+export function awayCleanerNames(marks: Record<string, AttendanceOverride>, employees: Pick<Employee, 'id' | 'full_name'>[], date: string): Set<string> {
+  const out = new Set<string>()
+  Object.entries(marks).forEach(([key, m]) => {
+    if (!key.startsWith(`${date}_`) || !isAwayMark(m)) return
+    const { cleanerKey } = splitMarkKey(key)
+    if (cleanerKey.startsWith('id:')) {
+      const emp = employees.find(e => e.id === cleanerKey.slice(3))
+      if (emp?.full_name) out.add(emp.full_name.trim().toLowerCase())
+    } else if (cleanerKey) out.add(cleanerKey.trim().toLowerCase())
+  })
+  return out
+}
