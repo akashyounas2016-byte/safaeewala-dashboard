@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Car, MapPinned, Navigation, Route, Shuffle, Truck } from 'lucide-react'
+import { Car, MapPinned, Navigation, Route, Shuffle, Truck, Radar } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import { todayDubai } from '@/lib/dubaiTime'
 import { fmtDate } from '@/components/dailyJobSheet/jobSheetUtils'
 import { activeDrivers, buildRouteSites, googleMapsRouteUrl, sheetSignature, type RouteSite } from '@/lib/driverRoutes'
 import { useDayPlan, type DriverShift } from '@/lib/driverPlans'
-import { ageLabel, fetchDriverLocations, osmEmbedUrl, type DriverLocation } from '@/lib/driverLocation'
+import { ageLabel, fetchDriverLocations, subscribeDriverLocations, type DriverLocation } from '@/lib/driverLocation'
+import { DispatchBoard } from '@/components/drivers/DispatchBoard'
+import { LiveMap } from '@/components/drivers/LiveMap'
 import { SiteCard } from '@/components/drivers/SiteCard'
 import { DriverSheetActions } from '@/components/drivers/DriverSheetActions'
 import { notify } from '@/lib/notify'
 
-type Tab = 'routes' | 'drivers' | 'live'
+type Tab = 'routes' | 'dispatch' | 'drivers' | 'live'
 const card = 'bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)]'
 
 /**
@@ -69,6 +71,7 @@ export function Drivers() {
 
   const tabs: { id: Tab; label: string; icon: typeof Route }[] = [
     { id: 'routes', label: 'Route plan', icon: Route },
+    { id: 'dispatch', label: 'Dispatch by area', icon: Radar },
     { id: 'drivers', label: 'Drivers & duty sheets', icon: Car },
     { id: 'live', label: 'Live location', icon: MapPinned },
   ]
@@ -81,7 +84,7 @@ export function Drivers() {
         statusChip={`${sites.length} stops · ${cleanerCount} cleaners · ${drivers.length} drivers`}
         actions={
           <input type="date" value={date} onChange={e => e.target.value && setDate(e.target.value)}
-            className="px-3 py-2 text-[12.5px] font-bold border border-slate-200 rounded-xl bg-white focus:outline-none focus:border-emerald-500" />
+            className="px-3 py-2 text-[12.5px] font-bold border border-slate-200 rounded-xl bg-white text-slate-800 [color-scheme:light] focus:outline-none focus:border-emerald-500" /> /* DRV-A01: the hero's white text made the date invisible */
         }
       />
 
@@ -146,6 +149,10 @@ export function Drivers() {
             </>
           )}
         </div>
+      )}
+
+      {tab === 'dispatch' && (
+        <DispatchBoard date={date} drivers={drivers} sites={sites} driverOf={key => plan.assignments[key] || ''} onAssignDriver={assign} />
       )}
 
       {tab === 'drivers' && (
@@ -219,7 +226,12 @@ function LiveLocations({ drivers }: { drivers: ReturnType<typeof activeDrivers> 
     const load = () => fetchDriverLocations().then(l => { if (alive) { setLocations(l); setNow(Date.now()) } })
     void load()
     const t = setInterval(load, 30_000)
-    return () => { alive = false; clearInterval(t) }
+    const stop = subscribeDriverLocations(row => {
+      if (!alive) return
+      setLocations(prev => [row, ...prev.filter(l => l.employee_id !== row.employee_id)])
+      setNow(Date.now())
+    })
+    return () => { alive = false; clearInterval(t); stop() }
   }, [])
 
   const byDriver = new Map(locations.map(l => [l.employee_id, l]))
@@ -245,18 +257,18 @@ function LiveLocations({ drivers }: { drivers: ReturnType<typeof activeDrivers> 
         {drivers.length === 0 && <p className="px-4 py-8 text-center text-[12.5px] text-slate-400">No active drivers.</p>}
       </div>
       <div className={`${card} overflow-hidden min-h-[360px] flex flex-col`}>
+        <LiveMap
+          pins={locations.filter(l => drivers.some(d => d.id === l.employee_id)).map(l => ({ id: l.employee_id, lat: l.lat, lng: l.lng, live: isLive(l), label: drivers.find(d => d.id === l.employee_id)?.full_name || 'Driver' }))}
+          selected={current?.employee_id}
+          onSelect={setSelected}
+        />
         {current ? (
-          <>
-            <iframe title="Driver location" src={osmEmbedUrl(current.lat, current.lng)} className="w-full flex-1 min-h-[360px] border-0" loading="lazy" />
-            <div className="px-4 py-2.5 flex items-center justify-between gap-2 text-[12px] border-t border-slate-100">
-              <span className="text-slate-600">{drivers.find(d => d.id === current.employee_id)?.full_name} · updated {ageLabel(current.updated_at, now)}{current.accuracy ? ` · ±${Math.round(current.accuracy)} m` : ''}</span>
-              <a href={`https://www.google.com/maps?q=${current.lat},${current.lng}`} target="_blank" rel="noopener noreferrer" className="font-bold text-emerald-800 hover:underline">Open in Google Maps</a>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center p-8 text-center text-[12.5px] text-slate-400">
-            No live position yet. A driver starts sharing from <b className="mx-1">My Duties</b> on their phone after signing in.
+          <div className="px-4 py-2.5 flex items-center justify-between gap-2 text-[12px] border-t border-slate-100">
+            <span className="text-slate-600">{drivers.find(d => d.id === current.employee_id)?.full_name} · updated {ageLabel(current.updated_at, now)}{current.accuracy ? ` · ±${Math.round(current.accuracy)} m` : ''}{current.speed ? ` · ${Math.round(current.speed * 3.6)} km/h` : ''}</span>
+            <a href={`https://www.google.com/maps?q=${current.lat},${current.lng}`} target="_blank" rel="noopener noreferrer" className="font-bold text-emerald-800 hover:underline">Open in Google Maps</a>
           </div>
+        ) : (
+          <div className="px-4 py-2.5 text-[12px] text-slate-500 border-t border-slate-100">A driver starts sharing from <b>My Duties</b> on their phone after signing in. Green pin = live, amber = last known.</div>
         )}
       </div>
     </div>

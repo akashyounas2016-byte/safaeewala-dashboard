@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   MapPinned, Navigation, Square, ChevronLeft, ChevronRight, Clock, MapPin, Users, Truck,
-  Banknote, Lock, Eye, Package, CalendarDays, Sparkles,
+  Banknote, Lock, Eye, Package, CalendarDays, Sparkles, Phone, MessageCircle, PlayCircle, CheckCircle2, AlertTriangle, Car,
 } from 'lucide-react'
+import { useJobCheckins, nextStep, CHECKIN_LABEL, checkinId, type JobCheckin, type CheckinStatus } from '@/lib/jobCheckins'
+import { jobMatchesClient } from '@/lib/clientDataSync'
+import { whatsappUrl } from '@/lib/driverRoutes'
+import { notify } from '@/lib/notify'
+import type { Client } from '@/types'
 import { useData } from '@/store/DataContext'
 import { useAuth } from '@/store/UserContext'
 import { useFieldStaff } from '@/store/useFieldStaff'
@@ -27,7 +32,7 @@ const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
  */
 export function MyDuties() {
   const { user } = useAuth()
-  const { dailyJobs, employees, attendanceMarks } = useData()
+  const { dailyJobs, employees, attendanceMarks, clients } = useData()
   const { employee: linked } = useFieldStaff()
   const isOffice = canApproveLeave(user?.role) // admin / manager
 
@@ -63,6 +68,22 @@ export function MyDuties() {
   const cashTotal = duties.reduce((s, d) => s + d.cashToCollect, 0)
   const mark = person ? findMark(attendanceMarks, date, person.full_name, person.id) : undefined
 
+  // R-DUTY-01: job progress (On the way → Started → Done / Issue), live with the office
+  const checkins = useJobCheckins(date)
+  const checkinOf = (jobId: string) => (person ? checkins.rows[checkinId(jobId, person.full_name)] : undefined)
+  const doneCount = duties.filter(d => checkinOf(d.job.id)?.status === 'done').length
+  const step = async (jobId: string, status: CheckinStatus, note?: string) => {
+    const d = duties.find(x => x.job.id === jobId)
+    if (!person || !d) return
+    const err = await checkins.update({ id: d.job.id, date }, person.full_name, person.id, status, note)
+    if (err) notify.error(`Not saved: ${err}`)
+    else notify.success(`${CHECKIN_LABEL[status]} · ${d.site}`)
+  }
+  const clientOf = (jobId: string): Client | undefined => {
+    const job = dailyJobs.find(j => j.id === jobId)
+    return job ? clients.find(c => jobMatchesClient(job, c)) : undefined
+  }
+
   // Live location (drivers, own login only)
   const [sharing, setSharing] = useState(false)
   const [shareError, setShareError] = useState<string | null>(null)
@@ -93,9 +114,9 @@ export function MyDuties() {
   const countWord = kind === 'driver' ? (count === 1 ? 'stop' : 'stops') : (count === 1 ? 'job' : 'jobs')
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-3 sm:space-y-4">
+    <div className="w-full space-y-3 sm:space-y-4">
       {/* Header — full width of the page column on every screen size */}
-      <div className="w-full bg-gradient-to-br from-emerald-800 to-emerald-950 text-white rounded-[22px] sm:rounded-[24px] p-4 sm:p-6 shadow-[0_8px_32px_rgba(6,78,59,0.25)]">
+      <div className="w-full gradient-card text-white rounded-[22px] sm:rounded-[24px] px-4 py-4 sm:px-7 sm:py-6 shadow-[0_8px_32px_rgba(15,23,42,0.28)] ring-1 ring-black/10">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11.5px] text-emerald-200 font-bold uppercase tracking-wider flex items-center gap-1.5 flex-wrap">
@@ -118,6 +139,21 @@ export function MyDuties() {
             </div>
           )}
         </div>
+        {person && kind === 'cleaner' && duties.length > 0 && (
+          <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              { label: 'Jobs', value: String(duties.length) },
+              { label: 'Hours', value: `${totalHours}h` },
+              { label: 'Done', value: `${doneCount} / ${duties.length}` },
+              { label: 'Cash to collect', value: cashTotal > 0 ? `AED ${cashTotal}` : '—' },
+            ].map(x => (
+              <div key={x.label} className="rounded-xl bg-white/10 border border-white/10 px-3 py-2">
+                <p className="text-[10.5px] font-bold uppercase tracking-wider text-emerald-200">{x.label}</p>
+                <p className="text-[16px] font-black leading-tight">{x.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Date bar — stays on top while scrolling; big tap targets */}
@@ -214,7 +250,11 @@ export function MyDuties() {
           )}
           {duties.length === 0
             ? <EmptyDay text={`No jobs for ${fmtDate(date)}.`} />
-            : <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{duties.map((d, i) => <DutyCard key={d.job.id} duty={d} index={i} />)}</div>}
+            : <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3">{duties.map((d, i) => (
+                <DutyCard key={d.job.id} duty={d} index={i} checkin={checkinOf(d.job.id)} client={clientOf(d.job.id)}
+                  canUpdate={checkins.ready} onStep={(st, note) => void step(d.job.id, st, note)} />
+              ))}</div>}
+          {!checkins.ready && <p className="text-[11.5px] text-slate-500">Job progress (On the way / Started / Done) turns on once the office runs the job_checkins setup.</p>}
         </>
       )}
     </div>
@@ -226,8 +266,23 @@ function EmptyDay({ text }: { text: string }) {
 }
 
 /** One cleaning job on the cleaner's phone */
-function DutyCard({ duty: d, index }: { duty: CleanerDuty; index: number }) {
+function DutyCard({ duty: d, index, checkin, client, canUpdate, onStep }: {
+  duty: CleanerDuty; index: number; checkin?: JobCheckin; client?: Client; canUpdate: boolean
+  onStep: (status: CheckinStatus, note?: string) => void
+}) {
   const material = String(d.job.material || '').trim()
+  const [issueOpen, setIssueOpen] = useState(false)
+  const [issue, setIssue] = useState('')
+  const next = nextStep(checkin?.status)
+  const phone = client?.phone || client?.whatsapp || ''
+  const wa = client?.whatsapp || client?.phone || ''
+  const time = (iso?: string | null) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' }) : '')
+  const stepButton: Record<CheckinStatus, { label: string; icon: typeof Car; cls: string }> = {
+    on_way: { label: 'On my way', icon: Car, cls: 'bg-sky-600 active:bg-sky-700' },
+    started: { label: 'Start job', icon: PlayCircle, cls: 'bg-emerald-700 active:bg-emerald-800' },
+    done: { label: 'Finish job', icon: CheckCircle2, cls: 'bg-emerald-900 active:bg-black' },
+    issue: { label: 'Report issue', icon: AlertTriangle, cls: 'bg-rose-600' },
+  }
   return (
     <div className="bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_2px_10px_rgba(15,23,42,0.04)] overflow-hidden">
       <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-emerald-50/70 border-b border-emerald-100">
@@ -272,6 +327,49 @@ function DutyCard({ duty: d, index }: { duty: CleanerDuty; index: number }) {
           </p>
         )}
         {d.job.remarks && d.job.remarks !== '—' && <p className="text-[12px] text-slate-500 italic break-words">{d.job.remarks}</p>}
+
+        {/* R-DUTY-01: progress + quick actions */}
+        {checkin && (
+          <p className={`text-[11.5px] font-bold ${checkin.status === 'issue' ? 'text-rose-700' : checkin.status === 'done' ? 'text-emerald-700' : 'text-sky-700'}`}>
+            {CHECKIN_LABEL[checkin.status]}
+            {checkin.on_way_at ? ` · left ${time(checkin.on_way_at)}` : ''}
+            {checkin.started_at ? ` · started ${time(checkin.started_at)}` : ''}
+            {checkin.done_at ? ` · done ${time(checkin.done_at)}` : ''}
+            {checkin.status === 'issue' && checkin.note ? ` · ${checkin.note}` : ''}
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          {next ? (
+            <button type="button" disabled={!canUpdate} onClick={() => onStep(next)}
+              className={`col-span-2 min-h-[46px] rounded-xl text-white font-bold text-[14px] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 ${stepButton[next].cls}`}>
+              {(() => { const I = stepButton[next].icon; return <I size={18} /> })()} {stepButton[next].label}
+            </button>
+          ) : (
+            <span className="col-span-2 min-h-[46px] rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[13.5px] flex items-center justify-center gap-2"><CheckCircle2 size={17} /> Job done</span>
+          )}
+          <a href={phone ? `tel:${phone}` : undefined} aria-disabled={!phone}
+            className={`min-h-[42px] rounded-xl border text-[13px] font-bold flex items-center justify-center gap-1.5 ${phone ? 'border-slate-200 text-slate-800 active:bg-slate-100' : 'border-slate-100 text-slate-300 pointer-events-none'}`}>
+            <Phone size={15} /> Call client
+          </a>
+          <a href={wa ? whatsappUrl(wa, `Hello, this is your Safaeewala cleaner for ${d.site}.`) : undefined} target="_blank" rel="noopener noreferrer" aria-disabled={!wa}
+            className={`min-h-[42px] rounded-xl border text-[13px] font-bold flex items-center justify-center gap-1.5 ${wa ? 'border-emerald-200 text-emerald-800 active:bg-emerald-50' : 'border-slate-100 text-slate-300 pointer-events-none'}`}>
+            <MessageCircle size={15} /> WhatsApp
+          </a>
+          {checkin?.status !== 'done' && (
+            <button type="button" disabled={!canUpdate} onClick={() => setIssueOpen(o => !o)}
+              className="col-span-2 min-h-[38px] rounded-xl border border-rose-200 text-rose-700 text-[12.5px] font-bold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40">
+              <AlertTriangle size={14} /> Report an issue to the office
+            </button>
+          )}
+        </div>
+        {issueOpen && (
+          <div className="flex gap-2">
+            <input value={issue} onChange={e => setIssue(e.target.value)} placeholder="e.g. Client not at home, no key, extra work…"
+              className="flex-1 min-w-0 h-10 px-3 rounded-xl border border-rose-200 text-[13px]" />
+            <button type="button" disabled={!issue.trim()} onClick={() => { onStep('issue', issue.trim()); setIssue(''); setIssueOpen(false) }}
+              className="px-3 h-10 rounded-xl bg-rose-600 text-white text-[13px] font-bold disabled:opacity-40 cursor-pointer">Send</button>
+          </div>
+        )}
       </div>
     </div>
   )

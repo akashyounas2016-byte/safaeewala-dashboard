@@ -62,3 +62,16 @@ export function osmEmbedUrl(lat: number, lng: number, zoomDelta = 0.01): string 
   const bbox = [lng - zoomDelta, lat - zoomDelta, lng + zoomDelta, lat + zoomDelta].map(n => n.toFixed(5)).join(',')
   return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat.toFixed(6)},${lng.toFixed(6)}`
 }
+
+/**
+ * R-DRV-03: positions arrive live (Supabase Realtime) while the office has the map open; the 30-second
+ * reload stays as a fallback when Realtime is off for the table.
+ */
+export function subscribeDriverLocations(onRow: (row: DriverLocation) => void): () => void {
+  const channel = supabase.channel('crm-driver-locations').on('postgres_changes', { event: '*', schema: 'public', table: 'driver_locations' }, payload => {
+    const row = payload.new as DriverLocation | undefined
+    if (row?.employee_id) onRow(row)
+  })
+  channel.subscribe()
+  return () => { void supabase.removeChannel(channel) }
+}
