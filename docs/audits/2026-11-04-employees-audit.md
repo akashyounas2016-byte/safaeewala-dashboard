@@ -21,6 +21,8 @@
 | Identity documents | Private Storage bucket, admin/manager only (R-SEC-04). |
 | This browser's copy | `safaeewala_employees` in localStorage is a cache only; Supabase is the source. |
 
+**Update (same day, R-EMP-06):** job-sheet cleaners are now saved in the table automatically when an admin or manager opens the app, so the gap below is closed.
+
 **Verdict:** saving works and is live. But the team is not in the database yet. Until each cleaner is opened once and saved (or added with *Add Employee*), these features cannot be linked to their record by id: their login (My Duties, R-SEC-05), their documents, salary, and Attendance marks by id.
 
 ## 2. Findings

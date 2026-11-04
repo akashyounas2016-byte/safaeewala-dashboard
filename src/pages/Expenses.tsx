@@ -407,7 +407,7 @@ export function Expenses() {
   const periodPayroll = useMemo(() => {
     if (!periodDays) return 0
     const monthly = employees
-      .filter(e => (e.status === 'active' || e.status === 'engaged_in_project') && !e.id.startsWith('emp-dj-') && isParentCompanyEmployee(e))
+      .filter(e => (e.status === 'active' || e.status === 'engaged_in_project') && isParentCompanyEmployee(e)) // R-EMP-06: job-sheet staff are real employees
       .reduce((s, e) => s + getEmployeeMonthlySalary(e), 0)
     return Math.round(monthly * (periodDays / 30))
   }, [employees, periodDays])

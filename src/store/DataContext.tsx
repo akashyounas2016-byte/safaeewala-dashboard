@@ -16,6 +16,7 @@ import { subscribeTables, applyRowChange } from '@/lib/realtime'
 import { uploadInlineDocs, isInlineDoc } from '@/lib/docStorage'
 import { useAuth } from '@/store/UserContext'
 import { saveDeletionSnapshot } from '@/lib/snapshots'
+import { staffToRegister } from '@/lib/staffRegistry'
 import { useAttendanceMarks, type AttendanceMarks, type AttendanceMarkChange } from '@/store/useAttendanceMarks'
 export { defaultAgencies }
 
@@ -167,6 +168,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return defaultAgencies
   })
   const [loading,       setLoading]       = useState(true)
+  // True only when employees and daily jobs were really read from Supabase (not the browser cache) — R-EMP-06
+  const cloudStaffReadRef = useRef(false)
   const [companyTRN,    setCompanyTRN]    = useState(() => getCompanyInfo().trn)
 
   // Auto-persist agencies to localStorage
@@ -316,6 +319,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setDailyExpenses(fromServer('daily_expenses', 'safaeewala_daily_expenses',
         ((de || []) as DailyExpense[]).map(x => ({ ...x, amount: safeNum(x.amount) }))))
       markInitialDataLoaded() // BJ-04: monthly visits may be added from now on
+      cloudStaffReadRef.current = !readFailed.has('employees') && !readFailed.has('daily_jobs')
       setLoading(false)
     }).catch(() => setLoading(false))
 
@@ -421,6 +425,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const allEmployees = useMemo(() => {
     return extractAllEmployeesFromDailyJobs(viewDailyJobs, employees, deletedStaffSet)
   }, [viewDailyJobs, employees, deletedStaffSet])
+
+  // R-EMP-06: cleaners named on the Daily Job Sheet are saved as real employees (admin / manager session,
+  // after a real cloud read). Same id as on screen; "ignore duplicates" never overwrites a saved row.
+  const registeringRef = useRef(new Set<string>())
+  useEffect(() => {
+    if (loading || !cloudStaffReadRef.current || (authUser?.role !== 'admin' && authUser?.role !== 'manager')) return
+    const rows = staffToRegister(allEmployees, employees).filter(e => !registeringRef.current.has(e.id))
+    if (rows.length === 0) return
+    rows.forEach(e => registeringRef.current.add(e.id))
+    void supabase.from('employees').upsert(rows as never, { onConflict: 'id', ignoreDuplicates: true }).then(({ error }) => {
+      if (error) { rows.forEach(e => registeringRef.current.delete(e.id)); console.warn('[R-EMP-06] staff not registered:', error.message); return }
+      setEmployees(p => {
+        const have = new Set(p.map(e => e.id))
+        const next = [...rows.filter(e => !have.has(e.id)), ...p]
+        safeLocalStorageSet('safaeewala_employees', next)
+        return next
+      })
+      rows.forEach(e => logAudit('created', 'employee', e.id, e.full_name, 'Registered from Daily Job Sheet'))
+    })
+  }, [loading, allEmployees, employees, authUser?.role])
 
   /** Job-sheet name keys that belong to an employee (e.g. "Laxmi" rows for "Laxmi Rani") */
   const staffKeysOf = (emp: Employee): string[] => {
@@ -708,8 +732,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     },
     deleteEmployee: (id) => {
       const e = allEmployees.find(e => e.id === id)
+      const saved = employees.some(e => e.id === id)
       setEmployees(p => p.filter(e => e.id !== id))
-      if (!id.startsWith('emp-dj-')) dbDelete('employees', id)
+      if (saved || !id.startsWith('emp-dj-')) dbDelete('employees', id) // R-EMP-06: registered job-sheet staff are real rows
       // Keep the deleted person from re-appearing as a job-sheet-only employee (AUD-17)
       if (e) forgetStaffNames(staffKeysOf(e))
       if (e) logAudit('deleted', 'employee', id, e.full_name)

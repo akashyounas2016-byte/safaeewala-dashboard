@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(employees): every cleaner on the Daily Job Sheet is saved in the employees table automatically, with the same id; deleting one removes the cloud row; registered job-sheet staff with a salary count in payroll (R-EMP-06)
 - feat(jobs): Charges has Lump Sum and Split Mode. Lump Sum: Charges, Advance Received and Payment Mode (with custom values), all on the lead. Split Mode: each cleaner's charges, received and mode. The split is saved as `charge_split` (R-PAY-05)
 - feat(jobs): Add Job time lists open upwards and step every 15 minutes (UX-68)
 - feat(jobs): row colours are 17 clearly different colours; look-alike shades removed (UX-69)

@@ -307,6 +307,17 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** Add/Edit Employee popups in `Employees.tsx`, `EmployeeProfile.tsx`.
 - **Status:** Active
 
+### R-EMP-06 — Every job-sheet cleaner is a saved employee
+- **Rule:** *"daily job sheet me se data fully syncronize hona chaheye employee me"*
+  - Every cleaner named on the Daily Job Sheet is saved as a row in the `employees` table automatically, without opening and saving them by hand. A new name on the sheet is saved as soon as it appears.
+  - The row keeps the job-sheet id (`emp-dj-<name>`), so bookings, attendance marks and logins that already use it stay linked.
+  - Only facts from the sheet are filled in (name, first date, active / inactive); HR fields stay empty until someone edits the employee.
+  - It runs only in an admin or manager session, and only after employees and jobs were really read from Supabase (never from a stale browser copy). An existing row is never overwritten.
+  - Never registered: TEST records (prod.md §5) and names the user deleted (AUD-17).
+  - Deleting a registered job-sheet cleaner deletes the cloud row too.
+- **Code:** `src/lib/staffRegistry.ts`, the R-EMP-06 effect in `DataContext.tsx`.
+- **Status:** Active · Since: 2026-11-04
+
 ---
 
 ## AGN — Agencies
