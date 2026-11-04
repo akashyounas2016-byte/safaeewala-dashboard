@@ -117,6 +117,10 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
 - Time lists (UX-77): the start / end time list floats above the popup (fixed position), so the popup's scrolling body never cuts it. It opens upwards or downwards, wherever there is more room, and shrinks to fit the screen.
 - Add Job Entry popup (UX-75): the cleaning-materials card has no heading; the field label says what it is.
 - Add New Client popup (UX-76): wider (`max-w-5xl`). The *Preferred Cleaner(s)* list opens from the right edge and never pushes the popup wider.
+- Excel column letters (UX-80): a click on A, B, C … selects the whole column (green letter, tinted cells). The align buttons then act on it; a click on another column's cell ends the selection. The column names have no grip icon; the header still drags to reorder.
+- Bi-Weekly contract (UX-81): duration chips (1–12 months) and a month calendar. Use *Start* to click the first day and *End* to click the last day. The contract range is shaded, and each visit day has a green dot.
+- Drivers (UX-82): new *Dispatch by area* tab (R-DRV-04). *Live location* shows one OpenStreetMap map with every driver's pin, live. The header date picker has dark text (it was white on white, DRV-A01).
+- My Duties (UX-83): full page width like the other screens. The header shows Jobs, Hours, Done and Cash to collect. Each job card has a big next-step button, Call / WhatsApp and Report an issue (R-DUTY-01).
 - Add New Client popup (UX-78): no description lines under the card titles. The contact row is Full Name, Phone, WhatsApp and **Mode** (four equal columns). Bi-Weekly adds a violet schedule card under the address card; Monthly swaps the body for the monthly client form and keeps a compact Mode selector in the header.
 - Client cards (UX-67) are the same on Clients and Monthly Clients, and match the booking cards (UX-63). From top to bottom:
   - the lead cleaner's colour on the left edge;

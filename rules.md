@@ -329,7 +329,29 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-DRV-03 — Live location only while the driver shares it
 - **Rule:** Location is sent only after the driver presses "Start shift — share my location" on My Duties and while that page is open (at most every 20 s); "Stop sharing" marks it off. A driver can write only the row of the employee linked to their own login; office users can read. Shown as Live (< 5 min), No signal, or Stopped.
 - **Code:** `src/lib/driverLocation.ts`, migration `2026-10-31_driver_locations.sql`, Drivers → Live location.
-- **Status:** In code · needs the login setup (docs/setup-auth.md) and the driver_locations migration · Since: 2026-10-31
+- **Map (UX-82):** every driver's pin on one OpenStreetMap map (no API key). It zooms to fit all pins and has + / − / fit buttons. Positions arrive live through Supabase Realtime, with the 30-second reload kept as a fallback. Green pin = live, amber = last known. Speed is shown when the phone reports it.
+- **Limit:** a web page can share location only while it is open on the phone. Tracking in the background needs the Android app.
+- **Status:** In code · needs the login setup (docs/setup-auth.md) and the driver_locations migration; Realtime needs `2026-11-04_job_checkins.sql` · Since: 2026-10-31
+
+### R-DRV-04 — Dispatch by area
+- **Rule:** *"managers aur drivers area (maslan Al Qusais) select karke wahan available jobs aur cleaners ki suggestions dekh saken aur unhen assign kar sakein."* Drivers → **Dispatch by area**:
+  - The areas with jobs that day are listed, busiest first. A red count shows jobs without a cleaner.
+  - Each job of the chosen area shows its time, cleaners and progress (R-DUTY-01).
+  - **Suggested cleaners** are those free at that time (R-JOB-01) and not absent or on leave (R-ATT-08). Cleaners already working in the same area that day come first, then the least busy.
+  - One click assigns a cleaner to the Daily Job Sheet row (clash-checked again). The driver for the site is chosen on the same card (the route plan).
+- **Code:** `src/lib/dispatch.ts`, `src/components/drivers/DispatchBoard.tsx`.
+- **Status:** Active · Since: 2026-11-05
+
+### R-DUTY-01 — Job progress from My Duties
+- **Rule:** *"har cleaner ko unki designated duties wazeh taur par nazar aani chahiye … industry-standard operational options bhi shamil karein."* Each job card on My Duties has:
+  - one big next-step button: **On my way → Start job → Finish job**. Each step saves the time and, if the phone allows, the position;
+  - **Report an issue** with a short note (client not home, no key …);
+  - **Call client** and **WhatsApp** when the client record has a number.
+  - The header shows jobs, hours, done / total and cash to collect, at full page width like the other screens.
+  - The office sees the progress live on the Dispatch board.
+- **Data:** `public.job_checkins`: one row per job and cleaner. A field login writes only its own rows; office roles write any. Migration `2026-11-04_job_checkins.sql`. Until it runs, the buttons are disabled and a note says why.
+- **Code:** `src/lib/jobCheckins.ts`, `MyDuties.tsx → DutyCard`.
+- **Status:** In code · needs the migration · Since: 2026-11-05
 
 ---
 
@@ -470,7 +492,9 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ### R-FIN-04 — Invoice numbers
 - **Rule:** One scheme: `SAF-<year>-<NNNN>`, next = highest of the year + 1; `addInvoice` replaces any missing, legacy or duplicate number.
-- **Code:** `src/lib/invoiceNumber.ts`; `DataContext.addInvoice`.
+  - The year is the Dubai year (INV-A02).
+  - Before an invoice is written, the numbers already in Supabase are read and the next free one is taken (INV-A01). This covers two users or two tabs creating an invoice at the same time. Offline, the local number is kept.
+- **Code:** `src/lib/invoiceNumber.ts → reserveInvoiceNumber`; `DataContext.addInvoice`, `saveInvoiceWithFreeNumber`.
 - **Status:** Active · Since: 2026-10-27 (AUD-36)
 
 ### R-FIN-05 — Receivables exclude monthly-contract visits
@@ -518,6 +542,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/docStorage.ts`, `DataContext → docsToStorage`. Migration `2026-11-02_staff_documents_storage.sql`.
 - **Status:** Active · Since: 2026-11-02 (E2E-08)
 
+### R-SEC-06 — The server's /api never answers strangers
+- **Rule:** Every `/api` call that reads or changes data needs a signed-in, active user, **even while the service key is missing on the VPS** (K-06).
+  - Without the service key, the server checks the sign-in with the project's public (publishable) key: `/auth/v1/user`, then the user's own profile.
+  - Only two calls work without a sign-in, because they cannot carry one and only write: a Fluent Forms lead (until `FLUENT_WEBHOOK_SECRET` is set) and an error report from the login screen.
+- **Before (found 2026-11-05):** leads (names, phones, addresses), agencies and the error log could be read by anyone on the internet.
+- **Code:** `webhookServer.cjs → signedInWithPublicKey, authorizeApi`; test `tests/server/open-mode.test.mjs`.
+- **Status:** Active · Since: 2026-11-05
+
 ### R-SEC-05 — Cleaners and drivers see only their own duties
 - **Rule:** *"cleaners ko sirf cleaners ki duties aur drivers ko sirf drivers ki duties nazar ayen, aur koi dosra inhein access na kar sakay."*
   - **Field staff** = a login with role *Employee* linked to a staff record (Settings → Users) whose staff role is not *supervisor*.
@@ -553,6 +585,6 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 | ~~K-03~~ | ✅ Fixed 2026-10-27: agency saves send only the changed agency; deletes send `remove` (old servers fall back to the full list). | R-AGN-* | **Resolved** |
 | K-04 | New employee/agency fields may not exist as Supabase columns → writes rejected. Now visible (banner) and retried; fixed for good once the Phase 2 migration is run. | R-EMP-*, R-SYNC-05 | Open |
 | ~~K-05~~ | ✅ Fixed 2026-10-27: no seed/demo data is loaded. | R-DATA-03 | **Resolved** |
-| K-06 | The live server has no `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` (checked 2026-11-03: `/api/admin/users` → 503). Effects: Settings → Users shows *User management is not set up on the server*, and the server's `/api` routes (agencies, leads, error log) **do not ask for a login**. Fix: put the keys in `/var/www/safaeewala/.env` on the VPS, then run `docker compose up -d`. | R-SEC-01…03 | Open: owner action |
+| K-06 | The live server has no `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` (checked 2026-11-03: `/api/admin/users` → 503). Effects: Settings → Users shows *User management is not set up on the server*. Since 2026-11-05 the `/api` routes are no longer open: they check the sign-in with the public key (R-SEC-06). Fix: put the keys in `/var/www/safaeewala/.env` on the VPS, then run `docker compose up -d`. | R-SEC-01…03 | Open: owner action |
 
 Full list of sync / dummy-data issues with locations: [docs/audits/2026-10-27-data-sync-audit.md](docs/audits/2026-10-27-data-sync-audit.md) (AUD-01 … AUD-23), and for the finance & operations screens: [docs/audits/2026-10-27-finance-ops-screens-audit.md](docs/audits/2026-10-27-finance-ops-screens-audit.md) (AUD-24 … AUD-42), and for the Daily Job Sheet & Excel mode: [docs/audits/2026-10-29-daily-job-sheet-audit.md](docs/audits/2026-10-29-daily-job-sheet-audit.md) (AUD-44 … AUD-58).

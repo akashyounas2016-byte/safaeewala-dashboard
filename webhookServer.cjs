@@ -324,6 +324,9 @@ loadEnvFile('/var/www/safaeewala/.env');
 
 const SUPABASE_URL = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://razvvxpaiqvykeatlvjl.supabase.co').replace(/\/+$/, '');
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
+// SEC-06: the project's publishable (anon) key — public by design, it is in the web app too. With it the
+// server can check a sign-in even before the service key is set, so /api is never open to the internet.
+const PUBLIC_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_dJSk7jhr01Da-rBfVlRF_w_D_sqc4Vh';
 const LOGIN_EMAIL_DOMAIN = 'safaeewala.com'; // real mail domain — Supabase rejects domains without mail
 const LOGIN_EMAIL_PREFIX = 'crm-';
 const ROLES = ['admin', 'manager', 'employee'];
@@ -529,6 +532,23 @@ async function activeUserFrom(req) {
   return me && me.status === 'active' ? { ...user, role: me.role } : null;
 }
 
+/**
+ * SEC-06: a signed-in, active user checked with the public key only — used while the service key is
+ * missing. The profile is read with the user's own token (RLS lets a user read their own profile).
+ */
+async function signedInWithPublicKey(req) {
+  const token = String(req.headers.authorization || '').replace(/^Bearers+/i, '');
+  if (!token || !PUBLIC_KEY) return null;
+  const headers = { apikey: PUBLIC_KEY, Authorization: `Bearer ${token}` };
+  const ur = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers });
+  if (!ur.ok) return null;
+  const user = await ur.json();
+  const pr = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,status`, { headers });
+  const rows = pr.ok ? await pr.json() : [];
+  const me = Array.isArray(rows) ? rows[0] : null;
+  return me && me.status === 'active' ? { ...user, role: me.role } : null;
+}
+
 /** { ok } or { ok:false, status, error } for every /api request except /api/admin (own checks) */
 async function authorizeApi(req, pathname, parsedUrl) {
   const isLeadWebhook = req.method === 'POST' && pathname === '/api/webhook/fluent-forms';
@@ -538,8 +558,17 @@ async function authorizeApi(req, pathname, parsedUrl) {
   }
   if (!authConfigured()) {
     if (isLeadWebhook && WEBHOOK_SECRET) return { ok: false, status: 401, error: 'Webhook secret required' };
-    if (!warnedOpen) { console.warn('[Security] User management is not configured — /api endpoints are open (set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY).'); warnedOpen = true; }
-    return { ok: true };
+    // Write-only calls that cannot carry a sign-in: Fluent Forms sending a lead (until a secret is set)
+    // and error reports from the login screen. Everything that READS data needs a signed-in user (SEC-06).
+    if (isLeadWebhook) return { ok: true };
+    if (req.method === 'POST' && pathname === '/api/logs/errors') return { ok: true };
+    if (!warnedOpen) { console.warn('[Security] Service key not set — /api checks sign-ins with the public key (set SUPABASE_SERVICE_ROLE_KEY for full checks).'); warnedOpen = true; }
+    try {
+      if (await signedInWithPublicKey(req)) return { ok: true };
+    } catch (err) {
+      return { ok: false, status: 502, error: 'Could not verify the session' };
+    }
+    return { ok: false, status: 401, error: 'Sign in first.' };
   }
   try {
     const user = await activeUserFrom(req);

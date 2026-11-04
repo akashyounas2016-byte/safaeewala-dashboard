@@ -5,7 +5,7 @@ import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewT
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry } from '@/lib/syncQueue'
 import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
-import { nextInvoiceNumber, ensureInvoiceNumber } from '@/lib/invoiceNumber'
+import { nextInvoiceNumber, ensureInvoiceNumber, reserveInvoiceNumber } from '@/lib/invoiceNumber'
 import { addHoursToTime, staffOfAgency } from '@/lib/utils'
 import { defaultAgencies } from '@/lib/defaultAgencies'
 import { todayDubai, addDays } from '@/lib/dubaiTime'
@@ -170,6 +170,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [loading,       setLoading]       = useState(true)
   // True only when employees and daily jobs were really read from Supabase (not the browser cache) — R-EMP-06
   const cloudStaffReadRef = useRef(false)
+  // AGN-A01: agencies that exist only in the VPS file (made before the Supabase sync) — copied to Supabase once
+  const agenciesMissingInDbRef = useRef<Agency[]>([])
   const [companyTRN,    setCompanyTRN]    = useState(() => getCompanyInfo().trn)
 
   // Auto-persist agencies to localStorage
@@ -274,6 +276,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     ]).then(([apiList, dbList]) => {
       const api = Array.isArray(apiList) ? (apiList as Agency[]) : []
       const db = withPending('agencies', (dbList || []) as Agency[])
+      if (!readFailed.has('agencies')) agenciesMissingInDbRef.current = api.filter(a => a.id && !db.some(d => d.id === a.id))
       if (api.length === 0 && db.length === 0) return
       setAgencies(prev => {
         const byId = new Map<string, Agency>()
@@ -426,6 +429,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return extractAllEmployeesFromDailyJobs(viewDailyJobs, employees, deletedStaffSet)
   }, [viewDailyJobs, employees, deletedStaffSet])
 
+  // AGN-A01: copy VPS-only agencies into Supabase once per session (admin / manager — they may write)
+  useEffect(() => {
+    if (loading || (authUser?.role !== 'admin' && authUser?.role !== 'manager')) return
+    const missing = agenciesMissingInDbRef.current
+    if (missing.length === 0) return
+    agenciesMissingInDbRef.current = []
+    missing.forEach(a => dbInsert('agencies', a))
+  }, [loading, authUser?.role, agencies]) // agencies: the VPS list may arrive after the tables
+
   // R-EMP-06: cleaners named on the Daily Job Sheet are saved as real employees (admin / manager session,
   // after a real cloud read). Same id as on screen; "ignore duplicates" never overwrites a saved row.
   const registeringRef = useRef(new Set<string>())
@@ -526,6 +538,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
    *    they are billed monthly — BJ-07)
    *  - the next visit of a recurring booking, with its own job-sheet row (BJ-06)
    */
+  /** INV-A01: the number is checked against Supabase before the invoice is written */
+  function saveInvoiceWithFreeNumber(row: Invoice) {
+    void reserveInvoiceNumber(row.invoice_number, invoices).then(number => {
+      const saved = number === row.invoice_number ? row : { ...row, invoice_number: number }
+      if (saved !== row) setInvoices(p => p.map(x => (x.id === row.id ? saved : x)))
+      dbInsert('invoices', saved)
+    })
+  }
+
   function onBookingCompleted(booking: Booking, jobIds: string[]) {
     const alreadyInvoiced = invoices.some(inv => inv.booking_id === booking.id)
     if (booking.frequency !== 'monthly' && !alreadyInvoiced && booking.total_amount > 0) {
@@ -547,7 +568,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         notes: 'Payment due within 10 days. Bank transfer or cash accepted.',
       }
       setInvoices(p => [invoice, ...p])
-      dbInsert('invoices', invoice)
+      saveInvoiceWithFreeNumber(invoice)
     }
     const next = nextOccurrence(booking)
     if (next && !bookings.some(b => b.client_id === booking.client_id && b.scheduled_date === next.scheduled_date && b.service_type === booking.service_type)) {
@@ -826,7 +847,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // Sequential, unique number whatever the caller proposed (AUD-36)
       const row = { ...i, invoice_number: ensureInvoiceNumber(i.invoice_number, invoices), id: uid(), created_at: now() }
       setInvoices(p => [row, ...p])
-      dbInsert('invoices', row)
+      saveInvoiceWithFreeNumber(row)
       logAudit('created', 'invoice', row.id, i.client_name, `AED ${i.total} · ${row.invoice_number}`)
     },
     updateInvoice: (id, patch) => {

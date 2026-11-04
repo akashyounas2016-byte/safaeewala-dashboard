@@ -6,6 +6,13 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(security): /api needs a sign-in even without the VPS service key; leads, agencies and the error log were readable by anyone (R-SEC-06)
+- fix(agencies): agencies that existed only in the VPS file are copied to Supabase (AGN-A01)
+- fix(invoices): numbers checked against Supabase before saving (no duplicates); Dubai year, due date and date filter; overdue total minus part payments; overdue marked once invoices load; warning before deleting an issued invoice (INV-A01…A07)
+- feat(drivers): Dispatch by area with free-cleaner suggestions; one live map for all drivers (Realtime); readable header date (R-DRV-04, UX-82, DRV-A01)
+- feat(duties): My Duties full width; On my way / Start / Finish / Issue, call and WhatsApp the client (R-DUTY-01, UX-83). Needs `2026-11-04_job_checkins.sql`
+- feat(excel, clients): column letter selects the column; no grip icon; Bi-Weekly contract calendar (UX-80, UX-81)
+- docs: CRM audit 2026-11-05 (`docs/audits/2026-11-05-crm-audit.md`)
 - fix(scheduling): clashes are stopped at the monthly schedule, the monthly auto-sync (visit added unassigned) and New / Edit Booking (R-SCHED-06)
 - fix(excel-studio): old cleaner block colours no longer paint rows; Daily Job Sheet uses one light colour per team project (UX-79, UX-71)
 - feat(jobs): 40 light row colours chosen by CIEDE2000 so no two look alike (UX-69)

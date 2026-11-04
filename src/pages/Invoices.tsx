@@ -19,7 +19,7 @@ import { nextInvoiceNumber } from '@/lib/invoiceNumber'
 import { invoiceBalance, isPartlyPaid } from '@/lib/receivables'
 import { STANDARD_PRESETS, DEFAULT_FINANCE_PRESET, rangeForPreset, type StandardPreset } from '@/lib/datePresets'
 import { notify } from '@/lib/notify'
-import { todayDubai } from '@/lib/dubaiTime'
+import { todayDubai, toDubaiDate, addDays } from '@/lib/dubaiTime'
 
 const escapeHtml = (v: string) => v.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
 
@@ -173,13 +173,14 @@ export function Invoices() {
   useEffect(() => {
     const today = todayDubai()
     invoices
-      .filter(i => i.status === 'sent' && i.due_date < today)
+      .filter(i => i.status === 'sent' && i.due_date && i.due_date < today)
       .forEach(i => updateInvoice(i.id, { status: 'overdue' }))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [invoices]) // INV-A03: runs again once the invoices arrive from Supabase
 
   const dateFilteredInvoices = useMemo(() => {
-    return invoices.filter(i => isDateInRange(i.created_at))
+    // INV-A04: created_at is UTC — an invoice made after 8 PM Dubai belongs to the Dubai date
+    return invoices.filter(i => isDateInRange(i.created_at ? toDubaiDate(new Date(i.created_at)) : ''))
   }, [invoices, isDateInRange])
 
   const paidOf = (list: Invoice[]) => list.reduce((s, i) => s + (i.status === 'paid' ? i.total : (Number(i.amount_paid) || 0)), 0)
@@ -197,7 +198,7 @@ export function Invoices() {
     const pct = Math.round(((totalPaid - prev) / prev) * 100)
     return { delta: `${pct >= 0 ? '+' : ''}${pct}%`, up: pct >= 0 }
   }, [activeDateRange, invoices, totalPaid]) // eslint-disable-line react-hooks/exhaustive-deps
-  const totalOverdue = dateFilteredInvoices.filter(i => i.status === 'overdue').reduce((s, i) => s + i.total, 0)
+  const totalOverdue = dateFilteredInvoices.filter(i => i.status === 'overdue').reduce((s, i) => s + invoiceBalance(i), 0) // INV-A05: minus part payments
   const totalVat     = dateFilteredInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.vat_amount, 0)
   const paidCount    = dateFilteredInvoices.filter(i => i.status === 'paid').length
   const collectionRate = dateFilteredInvoices.length > 0 ? Math.round((paidCount / dateFilteredInvoices.length) * 100) : 0
@@ -626,6 +627,11 @@ export function Invoices() {
       <Modal open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)} title="Delete Invoice" size="sm">
         <div className="space-y-4">
           <p className="text-[13px] text-slate-600">This will permanently delete the invoice from Supabase. This cannot be undone.</p>
+          {(() => { const inv = invoices.find(i => i.id === confirmDeleteId); return inv && inv.status !== 'draft' ? (
+            <p className="text-[12.5px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+              {inv.invoice_number} was already issued ({inv.status}). UAE VAT rules expect issued tax invoices to be kept; delete it only if it was made by mistake. (INV-A07)
+            </p>
+          ) : null })()}
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
             <button
@@ -744,7 +750,7 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
   const [clientAddress, setClientAddress] = useState('')
   const [clientId, setClientId] = useState('')
   const [trn, setTrn] = useState('')
-  const defaultDueDate = useMemo(() => new Date(Date.now() + 10 * 86400000).toISOString().split('T')[0], [])
+  const defaultDueDate = useMemo(() => addDays(todayDubai(), 10), []) // INV-A06: Dubai date
   const [dueDate, setDueDate] = useState(defaultDueDate)
 
   const [showNameSuggestions, setShowNameSuggestions] = useState(false)
