@@ -23,9 +23,24 @@ DAY=$(TZ=Asia/Dubai date +%d)
 STATUS_FILE="$BACKUP_DIR/last-status.txt"
 ALERT_URL=$(env_get BACKUP_ALERT_URL || true)
 TMP_ENV=""
+TABLES=0
+OFFSITE_ON=false
+
+# UX-93: the result for Settings → Backup, in the data folder the app server can read (/data in the container)
+write_status() { # $1 = true|false, $2 = message
+  [ -d "$APP_DATA_DIR" ] || return 0
+  daily=$(ls "$BACKUP_DIR"/safaeewala-*-public.dump 2>/dev/null | wc -l)
+  monthly=$(ls "$BACKUP_DIR"/monthly/safaeewala-*-public.dump 2>/dev/null | wc -l)
+  total=$(du -sh "$BACKUP_DIR" 2>/dev/null | cut -f1)
+  msg=$(printf '%s' "$2" | tr -d '"\\')
+  printf '{"ok":%s,"at":"%s","stamp":"%s","message":"%s","tables":%s,"daily_count":%s,"monthly_count":%s,"total_size":"%s","keep_days":%s,"offsite":%s}\n' \
+    "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$STAMP" "$msg" "${TABLES:-0}" "$daily" "$monthly" "$total" "$KEEP_DAYS" "${OFFSITE_ON:-false}" \
+    > "$APP_DATA_DIR/backup-status.json.tmp" && mv "$APP_DATA_DIR/backup-status.json.tmp" "$APP_DATA_DIR/backup-status.json"
+}
 
 fail() {
   echo "$STAMP FAILED: $1" | tee "$STATUS_FILE" >&2
+  write_status false "$1" || true
   if [ -n "$ALERT_URL" ]; then
     curl -fsS -m 20 -H 'Content-Type: application/json' \
       -d "{\"source\":\"safaeewala-backup\",\"ok\":false,\"at\":\"$STAMP\",\"error\":\"$1\"}" "$ALERT_URL" >/dev/null || true
@@ -86,7 +101,9 @@ if [ -n "$REMOTE" ]; then
   if [ "$DAY" = "01" ]; then rclone copy "$BACKUP_DIR/monthly" "$REMOTE/monthly" --include "safaeewala-$STAMP-*" || fail "monthly off-site copy"; fi
   rclone delete "$REMOTE" --max-depth 1 --min-age "${KEEP_DAYS}d" --include 'safaeewala-*' || true
   OFFSITE="copied to $REMOTE"
+  OFFSITE_ON=true
 fi
 
 SIZE=$(du -ch "$BACKUP_DIR"/safaeewala-"$STAMP"-* | tail -1 | cut -f1)
 echo "$STAMP OK: $TABLES tables, $SIZE, $OFFSITE" | tee "$STATUS_FILE"
+write_status true "$TABLES tables, $SIZE"

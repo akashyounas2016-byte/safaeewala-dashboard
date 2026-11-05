@@ -632,7 +632,8 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - The connection string (`SUPABASE_DB_URL`) lives only in the VPS `.env` and is never passed on the command line (R-SEC-02).
   - The Daily Job Sheet spreadsheet export to Drive (Settings → Backup, n8n webhook) is a report, not a database backup.
   - Restore is manual (see the README) and goes to a TEST project first.
-- **Code:** `scripts/backup/db-backup.sh`, `scripts/backup/README.md`; [prod.md §7](prod.md).
+  - Settings → Backup shows the last result (UX-93): the script writes `backup-status.json` into the VPS data folder, the server returns it at `/api/backup-status` (signed-in users only).
+- **Code:** `scripts/backup/db-backup.sh`, `scripts/backup/README.md`, `webhookServer.cjs → /api/backup-status`, `src/lib/backupStatus.ts`, `src/components/settings/BackupStatusCard.tsx`; [prod.md §7](prod.md).
 - **Status:** Active (VPS cron since 2026-11-05; first run and a test restore checked) · Google Drive copy pending (owner login) · Since: 2026-11-05
 
 ---

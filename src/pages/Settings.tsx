@@ -6,6 +6,7 @@ import { loadCompanyInfo } from '@/lib/companyInfo'
 import { useIsAdmin, useCurrentUser } from '@/store/UserContext'
 import { UsersAdminPanel, RolePermissionsPanel } from '@/components/settings/UserManagement'
 import { BeforeDeleteCopies } from '@/components/settings/BeforeDeleteCopies'
+import { BackupStatusCard } from '@/components/settings/BackupStatusCard'
 import { notify } from '@/lib/notify'
 import { DataHealthPanel } from '@/components/settings/DataHealthPanel'
 import { HeartPulse } from 'lucide-react'
@@ -1395,6 +1396,9 @@ export function Settings() {
               </div>
 
               {/* Copies kept automatically before deletes (BAK-5) */}
+              {/* Nightly database backup on the VPS (UX-93, R-OPS-04) */}
+              <BackupStatusCard />
+
               <BeforeDeleteCopies />
 
               {/* Card 1: One-Click Instant Backups (Export Engine) */}

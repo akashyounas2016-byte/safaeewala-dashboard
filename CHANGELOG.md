@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(settings): Nightly database backup card on the Backup tab, fed by /api/backup-status (UX-93, R-OPS-04)
 - feat(clients): card grid limited to 4 rows with a View All button (UX-92)
 - ops(backup): nightly pg_dump of the database on the VPS, kept 30 days, optional Google Drive copy and failure alert (R-OPS-04)
 - feat(daily sheet): issue flag next to the cleaner's name; sync note no longer in Remarks (UX-86)

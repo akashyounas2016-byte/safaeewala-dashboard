@@ -846,6 +846,14 @@ function routeApi(req, res, parsedUrl, pathname) {
     return;
   }
 
+  // UX-93: result of the nightly database backup (R-OPS-04), written by scripts/backup/db-backup.sh
+  if (req.method === 'GET' && pathname === '/api/backup-status') {
+    const file = path.join(DATA_DIR, 'backup-status.json');
+    let status = null;
+    try { if (fs.existsSync(file)) status = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { status = null; }
+    return sendJson(res, 200, status ? { configured: true, ...status } : { configured: false });
+  }
+
   // 6. GET /api/agencies -> return persisted agencies
   if (req.method === 'GET' && pathname === '/api/agencies') {
     const list = readAgencies();

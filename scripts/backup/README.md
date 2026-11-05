@@ -13,7 +13,7 @@
 - The date is Dubai time, e.g. `safaeewala-2026-11-06_0200-public.dump`.
 - Daily copies are kept for 30 days in `/var/backups/safaeewala` on the VPS. The copy of the 1st of each month also goes to `monthly/` and is kept for good: every backup holds all data up to that day, so this keeps the full history at under 1 GB for years.
 - Off-site copy (Google Drive) when `BACKUP_RCLONE_REMOTE` is set.
-- `last-status.txt` in that folder gives the result of the last run. If `BACKUP_ALERT_URL` is set (for example an n8n webhook), a failed run is posted there.
+- `last-status.txt` in that folder gives the result of the last run; `backup-status.json` in the app data folder feeds Settings → Backup (UX-93). If `BACKUP_ALERT_URL` is set (for example an n8n webhook), a failed run is posted there.
 - The app has no Supabase Storage buckets, so there are no files to back up beyond the database.
 
 ## Setup on the VPS (once)
