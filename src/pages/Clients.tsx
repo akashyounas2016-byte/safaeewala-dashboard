@@ -135,6 +135,9 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
   )
 }
 
+/** UX-92: 4 rows of 3 cards before View All */
+const CLIENT_CARDS_PREVIEW = 12
+
 export function Clients() {
   const { clients, bookings, dailyJobs, employees, addClient, updateClient, deleteClient, addBooking, invoices } = useData()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -172,6 +175,8 @@ export function Clients() {
     'recent' | 'top_spent' | 'lowest_spent' | 'pending_due' | 'most_bookings' | 'least_bookings' | 'name' | 'name_asc' | 'name_desc' | 'recent_service' | 'oldest_client'
   >('recent')
   const [showAllCards, setShowAllCards] = useState(false)
+  // UX-92: the card grid shows 4 rows (3 per row) until View All is pressed
+  const [showAllClientCards, setShowAllClientCards] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [datePreset, setDatePreset] = useState<ClientDatePreset>('all')
   const [customStartDate, setCustomStartDate] = useState('')
@@ -1189,7 +1194,7 @@ export function Clients() {
 
           {/* Client cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map((c) => {
+            {(showAllClientCards ? filtered : filtered.slice(0, CLIENT_CARDS_PREVIEW)).map((c) => {
               // UX-67: one card design for Clients and Monthly Clients, after the Daily Job Sheet
               const isMonthly = isMonthlyClient(c, dailyJobs, allMonthlySummaries)
               const nameLower    = c.full_name.toLowerCase().trim()
@@ -1253,6 +1258,19 @@ export function Clients() {
             )
           })}
         </div>
+
+          {filtered.length > CLIENT_CARDS_PREVIEW && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => setShowAllClientCards(prev => !prev)}
+                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 hover:bg-slate-100/90 text-slate-600 hover:text-slate-900 border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all duration-200 cursor-pointer text-[12px] font-semibold"
+              >
+                <span>{showAllClientCards ? 'Show Less' : `View All (${filtered.length})`}</span>
+                {showAllClientCards ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </button>
+            </div>
+          )}
 
           {filtered.length === 0 && (
             <div className="bg-white rounded-[22px] border border-[#E4E8EC] py-16 text-center">

@@ -625,13 +625,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-OPS-04 — Nightly database backup without Supabase Pro
 - **Rule:** *"backup hum kya n8n k through na bana len rozana take supabase paid ki zarorat b na rahe?"* The owner chose a backup on the VPS instead of n8n: *"tmhara mashwara ziyada bhter he start kro"*.
   - Every night at 02:00 Dubai time, the VPS saves a full copy of the database with `pg_dump`: the public schema (tables, data, functions, RLS policies) and the sign-in rows (auth).
-  - Copies are kept for 30 days on the VPS, plus an off-site copy in Google Drive, because a backup on the VPS alone is lost with the VPS.
+  - It also saves the VPS data folder (agencies and Fluent Form leads are kept there, not in Supabase).
+  - Daily copies are kept for 30 days; the copy of the 1st of each month is kept for good (*"mjhe complete record nahi rkhna chaheye?"*). Plus an off-site copy in Google Drive, because a backup on the VPS alone is lost with the VPS.
+  - The time is fixed at 02:00 Dubai (owner asked for a setting; a fixed time was advised because nobody works then and a setting needs a link from the app to the VPS cron).
   - Each run checks that the copy can be read. A failed run is written to `last-status.txt`, and is posted to `BACKUP_ALERT_URL` when that is set.
   - The connection string (`SUPABASE_DB_URL`) lives only in the VPS `.env` and is never passed on the command line (R-SEC-02).
   - The Daily Job Sheet spreadsheet export to Drive (Settings → Backup, n8n webhook) is a report, not a database backup.
   - Restore is manual (see the README) and goes to a TEST project first.
 - **Code:** `scripts/backup/db-backup.sh`, `scripts/backup/README.md`; [prod.md §7](prod.md).
-- **Status:** In setup · Since: 2026-11-05
+- **Status:** Active (VPS cron since 2026-11-05; first run and a test restore checked) · Google Drive copy pending (owner login) · Since: 2026-11-05
 
 ---
 

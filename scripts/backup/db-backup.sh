@@ -1,6 +1,7 @@
 #!/bin/sh
-# R-OPS-04: nightly full backup of the Supabase database, kept on the VPS for KEEP_DAYS days,
-# with an optional off-site copy (rclone → Google Drive). Runs from root's crontab on the VPS.
+# R-OPS-04: nightly full backup of the Supabase database and of the VPS data folder (agencies, leads).
+# Daily copies are kept KEEP_DAYS days; the copy made on the 1st of each month is kept for good (monthly/).
+# Optional off-site copy (rclone → Google Drive). Runs from root's crontab on the VPS.
 #
 # Needs in ENV_FILE:  SUPABASE_DB_URL=postgresql://postgres.<ref>:<password>@<pooler-host>:5432/postgres
 # Optional:           BACKUP_RCLONE_REMOTE=gdrive:Safaeewala-Backups   BACKUP_ALERT_URL=https://…
@@ -9,6 +10,7 @@ set -eu
 ENV_FILE=${ENV_FILE:-/var/www/safaeewala/.env}
 BACKUP_DIR=${BACKUP_DIR:-/var/backups/safaeewala}
 KEEP_DAYS=${KEEP_DAYS:-30}
+APP_DATA_DIR=${APP_DATA_DIR:-/var/www/safaeewala/data}
 PG_IMAGE=${PG_IMAGE:-postgres:17-alpine}
 
 # Read one value from the .env without sourcing it (passwords may hold shell characters)
@@ -17,6 +19,7 @@ env_get() {
 }
 
 STAMP=$(TZ=Asia/Dubai date +%Y-%m-%d_%H%M)
+DAY=$(TZ=Asia/Dubai date +%d)
 STATUS_FILE="$BACKUP_DIR/last-status.txt"
 ALERT_URL=$(env_get BACKUP_ALERT_URL || true)
 TMP_ENV=""
@@ -60,16 +63,30 @@ dump "safaeewala-$STAMP-auth.dump" --schema=auth --data-only
 TABLES=$(docker run --rm -v "$BACKUP_DIR:/out" "$PG_IMAGE" pg_restore --list "/out/safaeewala-$STAMP-public.dump" | grep -c ' TABLE DATA public ' || true)
 [ "${TABLES:-0}" -gt 0 ] || fail "the public dump holds no tables"
 
-find "$BACKUP_DIR" -name 'safaeewala-*.dump' -mtime +"$KEEP_DAYS" -delete
+# 3. VPS data folder: agencies.json and leads.json live here, not in Supabase (logs left out)
+if [ -d "$APP_DATA_DIR" ]; then
+  tar -czf "$BACKUP_DIR/safaeewala-$STAMP-files.tar.gz.tmp" -C "$(dirname "$APP_DATA_DIR")" --exclude="$(basename "$APP_DATA_DIR")/logs" "$(basename "$APP_DATA_DIR")" \
+    || fail "tar of $APP_DATA_DIR"
+  mv "$BACKUP_DIR/safaeewala-$STAMP-files.tar.gz.tmp" "$BACKUP_DIR/safaeewala-$STAMP-files.tar.gz"
+fi
+
+# The 1st of the month is kept for good, so the full history stays without keeping every day
+if [ "$DAY" = "01" ]; then
+  mkdir -p "$BACKUP_DIR/monthly"
+  cp "$BACKUP_DIR"/safaeewala-"$STAMP"-* "$BACKUP_DIR/monthly/"
+fi
+
+find "$BACKUP_DIR" -maxdepth 1 -name 'safaeewala-*' -mtime +"$KEEP_DAYS" -delete
 
 REMOTE=$(env_get BACKUP_RCLONE_REMOTE || true)
 OFFSITE="off-site copy not set up"
 if [ -n "$REMOTE" ]; then
   command -v rclone >/dev/null 2>&1 || fail "BACKUP_RCLONE_REMOTE is set but rclone is not installed"
-  rclone copy "$BACKUP_DIR" "$REMOTE" --include "safaeewala-$STAMP-*.dump" || fail "off-site copy to $REMOTE"
-  rclone delete "$REMOTE" --min-age "${KEEP_DAYS}d" --include 'safaeewala-*.dump' || true
+  rclone copy "$BACKUP_DIR" "$REMOTE" --max-depth 1 --include "safaeewala-$STAMP-*" || fail "off-site copy to $REMOTE"
+  if [ "$DAY" = "01" ]; then rclone copy "$BACKUP_DIR/monthly" "$REMOTE/monthly" --include "safaeewala-$STAMP-*" || fail "monthly off-site copy"; fi
+  rclone delete "$REMOTE" --max-depth 1 --min-age "${KEEP_DAYS}d" --include 'safaeewala-*' || true
   OFFSITE="copied to $REMOTE"
 fi
 
-SIZE=$(du -ch "$BACKUP_DIR"/safaeewala-"$STAMP"-*.dump | tail -1 | cut -f1)
+SIZE=$(du -ch "$BACKUP_DIR"/safaeewala-"$STAMP"-* | tail -1 | cut -f1)
 echo "$STAMP OK: $TABLES tables, $SIZE, $OFFSITE" | tee "$STATUS_FILE"

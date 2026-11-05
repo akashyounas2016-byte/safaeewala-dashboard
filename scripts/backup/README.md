@@ -8,16 +8,18 @@
 |---|---|
 | `safaeewala-<date>-public.dump` | Every app table with its data, views, functions, triggers and RLS policies |
 | `safaeewala-<date>-auth.dump` | The sign-in rows (users, identities), so logins can come back too |
+| `safaeewala-<date>-files.tar.gz` | The VPS data folder: `agencies.json`, `leads.json` and Drive-webhook exports (they are not in Supabase) |
 
 - The date is Dubai time, e.g. `safaeewala-2026-11-06_0200-public.dump`.
-- Copies are kept for 30 days in `/var/backups/safaeewala` on the VPS, plus an off-site copy (Google Drive) when `BACKUP_RCLONE_REMOTE` is set.
+- Daily copies are kept for 30 days in `/var/backups/safaeewala` on the VPS. The copy of the 1st of each month also goes to `monthly/` and is kept for good: every backup holds all data up to that day, so this keeps the full history at under 1 GB for years.
+- Off-site copy (Google Drive) when `BACKUP_RCLONE_REMOTE` is set.
 - `last-status.txt` in that folder gives the result of the last run. If `BACKUP_ALERT_URL` is set (for example an n8n webhook), a failed run is posted there.
 - The app has no Supabase Storage buckets, so there are no files to back up beyond the database.
 
 ## Setup on the VPS (once)
 
 1. Script: `/opt/safaeewala-backup/db-backup.sh` (`chmod 700`, LF line endings).
-2. In `/var/www/safaeewala/.env` (chmod 600, never in git), set `SUPABASE_DB_URL` to the Supabase *Session pooler* connection string (Project Settings → Database → Connect, port 5432). The service role key is not enough for this.
+2. In `/var/www/safaeewala/.env` (chmod 600, never in git), set `SUPABASE_DB_URL` to the Supabase *Session pooler* connection string (the **Connect** button in the project's top bar → Connection String → Session pooler, port 5432). The service role key is not enough for this.
 3. Optional settings: `BACKUP_RCLONE_REMOTE=gdrive:Safaeewala-Backups` (after `rclone config`) and `BACKUP_ALERT_URL=…`.
 4. Cron (the VPS runs on UTC; 22:00 UTC = 02:00 Dubai):
    ```
@@ -36,4 +38,5 @@ Use a TEST project first. Never restore over live data without the owner's OK.
      pg_restore --no-owner --no-privileges --clean --if-exists -d "$TARGET_DB_URL" /in/<file>-public.dump
    ```
 3. If logins must come back too, restore the sign-ins with `pg_restore --data-only -d "$TARGET_DB_URL" /in/<file>-auth.dump`. On a new project, do this before users sign up.
-4. Point the app at the target (`VITE_SUPABASE_*`, VPS `.env`) only after the data has been checked.
+4. VPS data folder: `tar -xzf <file>-files.tar.gz -C /var/www/safaeewala` (stop the container first).
+5. Point the app at the target (`VITE_SUPABASE_*`, VPS `.env`) only after the data has been checked.

@@ -138,6 +138,7 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
   - Daily Job Sheet (UX-86): the same issue flag next to the cleaner's name; Remarks no longer show the sync note.
   - Sidebar settings (UX-89): each item has 👁 **Shown / Hidden** next to Favorite and Up / Down. Hidden items leave the menu and stay in the settings. The bottom *Customize Items Sequence* button is gone; the sliders button at the top opens the settings. Up / Down move the item itself (they moved the wrong item when the role hid some screens).
   - Clients (UX-90): cards use the full width, three per row; Top Clients, Pending Balances, Client Distribution, Top Locations and Recent Bookings sit below the cards, as in the table view.
+  - Clients (UX-92): the card grid shows 4 rows (12 cards on a wide screen); a **View All (n)** button below opens the rest and turns into **Show Less**.
   - Excel Job Sheet (UX-91): the Mode list shows only the names (Cash Payment, Online Transfer …), no descriptions.
   - Client forms: *Full Name (optional)*; *Building / Villa Name \** (R-CLI-03).
 - Add New Client popup (UX-78): no description lines under the card titles. The contact row is Full Name, Phone, WhatsApp and **Mode** (four equal columns). Bi-Weekly adds a violet schedule card under the address card; Monthly swaps the body for the monthly client form and keeps a compact Mode selector in the header.
