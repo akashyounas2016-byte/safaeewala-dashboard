@@ -87,3 +87,9 @@ There are **two** ways code reaches production. Both need the owner's permission
 - Frontend errors: `src/lib/errorLogger.ts`; route errors are caught by `ErrorBoundary` (resets on navigation).
 - Chunk-load failures after a deploy auto-reload once (`lazyWithRetry` in `App.tsx`).
 - Audit trail: Supabase `audit_log` (created / updated / deleted / status changes).
+
+## 7. Database backup (R-OPS-04)
+
+- Nightly at 02:00 Dubai (cron `0 22 * * *` UTC): `/opt/safaeewala-backup/db-backup.sh` → `/var/backups/safaeewala`, kept 30 days, with an off-site copy via rclone when `BACKUP_RCLONE_REMOTE` is set.
+- Needs `SUPABASE_DB_URL` (Session pooler connection string) in `/var/www/safaeewala/.env`.
+- Last result: `/var/backups/safaeewala/last-status.txt`. Setup and restore steps: [scripts/backup/README.md](scripts/backup/README.md).

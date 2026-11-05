@@ -622,6 +622,17 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** *"ab se tum main pr hi kam kro ge take changes 5058 pr phle nzr ayn phir bad me jb me kahun hum vps pr change kren."* Claude edits the main folder (`main`, port 5058) and commits locally. The owner checks on localhost:5058. `git push origin main` (which deploys) happens only when the owner says so. Antigravity may work in the same folder, so check `git status` first and stage only your own files. The `-claude` worktree (2026-10-27 → 2026-11-03) is no longer used for work.
 - **Status:** Active · Since: 2026-11-03 (was: two agents, two folders)
 
+### R-OPS-04 — Nightly database backup without Supabase Pro
+- **Rule:** *"backup hum kya n8n k through na bana len rozana take supabase paid ki zarorat b na rahe?"* The owner chose a backup on the VPS instead of n8n: *"tmhara mashwara ziyada bhter he start kro"*.
+  - Every night at 02:00 Dubai time, the VPS saves a full copy of the database with `pg_dump`: the public schema (tables, data, functions, RLS policies) and the sign-in rows (auth).
+  - Copies are kept for 30 days on the VPS, plus an off-site copy in Google Drive, because a backup on the VPS alone is lost with the VPS.
+  - Each run checks that the copy can be read. A failed run is written to `last-status.txt`, and is posted to `BACKUP_ALERT_URL` when that is set.
+  - The connection string (`SUPABASE_DB_URL`) lives only in the VPS `.env` and is never passed on the command line (R-SEC-02).
+  - The Daily Job Sheet spreadsheet export to Drive (Settings → Backup, n8n webhook) is a report, not a database backup.
+  - Restore is manual (see the README) and goes to a TEST project first.
+- **Code:** `scripts/backup/db-backup.sh`, `scripts/backup/README.md`; [prod.md §7](prod.md).
+- **Status:** In setup · Since: 2026-11-05
+
 ---
 
 ## Known issues (rules not yet fully honoured)

@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- ops(backup): nightly pg_dump of the database on the VPS, kept 30 days, optional Google Drive copy and failure alert (R-OPS-04)
 - feat(daily sheet): issue flag next to the cleaner's name; sync note no longer in Remarks (UX-86)
 - feat(sidebar): show / hide items in the sidebar settings; duplicate bottom button removed; Up / Down fixed (UX-89)
 - feat(clients): three cards per row, widgets below (UX-90); client name optional, the address identifies the client (R-CLI-03)
