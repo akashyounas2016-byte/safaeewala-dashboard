@@ -275,6 +275,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientAddress.ts → formatClientAddress`, `ClientModalForm.tsx`.
 - **Status:** Active · Since: 2026-11-04
 
+### R-CLI-03 — The address identifies a client; the name is optional
+- **Rule:** *"CRM system ke tamam modules mein Client Name ki field ko optional banaya jaye … main zareya unka Address hoga."*
+  - Add Client, Add Monthly Client and the quick client form save without a name.
+  - The **address is required**: an apartment / villa number or a building / villa name. An area alone is not an address.
+  - Without a name, the address ("302, Al Khair Building") is stored as the client's name, so every list, search, match and invoice keeps working. A name can be added later.
+  - Job and booking forms already ask only for the address. Payment and contract forms still ask for a client, because a payment must belong to one; the client can be picked by its name or its address.
+- **Code:** `src/lib/clientAddress.ts → hasClientAddress, clientNameOrAddress`; `ClientModalForm`, `AddMonthlyClientModalForm`; `schemas.ts`.
+- **Status:** Active · Since: 2026-11-05
+
 ### R-CLI-02 — Client mode: General, Bi-Weekly or Monthly
 - **Rule:** *"'Mode' ka dropdown … 'General', 'Bi-Weekly', aur 'Monthly' … 'Monthly' select karne par system user ko monthly client flow par redirect kare; 'General' aur 'Bi-Weekly' … same pop-up par hi rahen … user specific days select kar sakay aur sath hi contract ki duration … define ki ja sakay."*
   - **General** (default): an ordinary client with one-off jobs.

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { requireFields } from '@/components/common/FormGuard'
+import { clientNameOrAddress, hasClientAddress } from '@/lib/clientAddress'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -139,7 +140,10 @@ export function ClientModalForm({
     e.preventDefault()
     e.stopPropagation() // opened from inside the Add Job form: its submit must not also save the job
     const f = new FormData(e.currentTarget)
-    const clientName = String(f.get('full_name') || '').trim() || (isEdit ? initialClient?.full_name || 'Client' : 'New Client')
+    // R-CLI-03: the name is optional, the address is required and names the client when the name is empty
+    const addressParts = { apartment: String(f.get('apartment') || ''), building_name: String(f.get('building_name') || ''), area: String(f.get('area') || '') }
+    if (!requireFields(e.currentTarget, [{ name: 'building_name', label: 'Address (apartment / villa number or building name)', ok: hasClientAddress(addressParts) }])) return
+    const clientName = clientNameOrAddress(f.get('full_name'), addressParts)
     const remarks = String(f.get('remarks') || '')
     const advance = parseFloat(String(f.get('advance_amount') || '0')) || 0
     const adjustment = parseFloat(String(f.get('adjustment_amount') || '0')) || 0
@@ -330,10 +334,9 @@ export function ClientModalForm({
               <div className="md:col-span-3">
                 <Input
                   name="full_name"
-                  label="Full Name *"
+                  label="Full Name (optional)"
                   placeholder="e.g. Sarah Al-Rashidi"
                   defaultValue={seed?.full_name || ''}
-                  required
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
@@ -392,7 +395,7 @@ export function ClientModalForm({
               <div className="md:col-span-4">
                 <Input
                   name="building_name"
-                  label="Building / Villa Name"
+                  label="Building / Villa Name *"
                   placeholder="e.g. Al Khair Building"
                   defaultValue={seed?.building_name ?? ''}
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"

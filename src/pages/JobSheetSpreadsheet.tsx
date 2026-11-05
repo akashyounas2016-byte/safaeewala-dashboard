@@ -1374,10 +1374,10 @@ export function JobSheetSpreadsheet() {
     if (col.id === 'payment_mode') {
       const curMode = (editingCell.tempValue || '').trim()
       const defaultModes = [
-        { id: 'Cash Payment', value: 'Cash', desc: 'Direct cash collection on-site' },
-        { id: 'Online Transfer', value: 'Online', desc: 'Card, bank transfer, or payment link' },
-        { id: 'Monthly Contract', value: 'Monthly', desc: 'Monthly recurring contract invoice' },
-        { id: 'Pending Due', value: 'Pending', desc: 'Payment uncollected / Due later' },
+        { id: 'Cash Payment', value: 'Cash' },
+        { id: 'Online Transfer', value: 'Online' },
+        { id: 'Monthly Contract', value: 'Monthly' },
+        { id: 'Pending Due', value: 'Pending' },
       ]
 
       // Used custom modes in current sheet
@@ -1392,7 +1392,7 @@ export function JobSheetSpreadsheet() {
       const allCustomModes = Array.from(new Set([...customPaymentModes, ...usedCustomModes]))
       const allModeOptions = [
         ...defaultModes,
-        ...allCustomModes.map(c => ({ id: c, value: c, desc: 'Custom payment mode' }))
+        ...allCustomModes.map(c => ({ id: c, value: c }))
       ].filter(m => !deletedPaymentModes.includes(m.id) && !deletedPaymentModes.includes(m.value))
 
       const q = untouched ? '' : curMode.toLowerCase()
@@ -1485,8 +1485,7 @@ export function JobSheetSpreadsheet() {
                     selected={isSelected}
                     onPick={() => commitPaymentModeSelect(targetIdx, m.value)}
                     icon={CreditCard}
-                    label={<span className="text-[12.5px] font-bold text-slate-900">{m.id}</span>}
-                    sub={m.desc}
+                    label={<span className="text-[12.5px] font-bold text-slate-900">{m.id}</span>} // UX-91: name only, no description
                     action={
                       <button
                         type="button"

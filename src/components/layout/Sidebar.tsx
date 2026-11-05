@@ -5,7 +5,7 @@ import {
   LayoutDashboard, CalendarCheck, Users, UserCheck,
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
   CreditCard, TrendingUp, Globe, Clock, LogOut, ChevronLeft, Building2,
-  CalendarDays, Star, SlidersHorizontal, ArrowUp, ArrowDown, RotateCcw, Sparkles, Truck, Navigation,
+  CalendarDays, Star, SlidersHorizontal, ArrowUp, ArrowDown, RotateCcw, Sparkles, Truck, Navigation, Eye, EyeOff,
 } from 'lucide-react'
 import { useAuth, useRolePerms } from '@/store/UserContext'
 import { canAccessModule, moduleForPath, ROLE_META } from '@/lib/permissions'
@@ -188,6 +188,16 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
     return safeLocalStorageGet<string[]>('safaeewala_sidebar_favorites', [])
   })
 
+  // ── Hidden items (UX-89): hidden from the menu, still listed in the settings to show them again ──
+  const [hiddenItems, setHiddenItems] = useState<string[]>(() => safeLocalStorageGet<string[]>('safaeewala_sidebar_hidden', []))
+  const toggleHidden = (to: string) => {
+    setHiddenItems(prev => {
+      const next = prev.includes(to) ? prev.filter(p => p !== to) : [...prev, to]
+      safeLocalStorageSet('safaeewala_sidebar_hidden', next)
+      return next
+    })
+  }
+
   // ── Toggle Favorite Handler ──
   const toggleFavorite = (to: string, e?: React.MouseEvent) => {
     if (e) {
@@ -203,25 +213,16 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
   }
 
   // ── Sequence Reorder Handlers ──
-  const moveItemUp = (index: number) => {
-    if (index <= 0) return
+  // Moves an item past its visible neighbour in the settings list (screens the role cannot open are skipped)
+  const moveItem = (to: string, neighbour: string | undefined) => {
+    if (!neighbour) return
     setNavOrder(prev => {
       const next = [...prev]
-      const temp = next[index]
-      next[index] = next[index - 1]
-      next[index - 1] = temp
-      safeLocalStorageSet('safaeewala_sidebar_nav_order', next)
-      return next
-    })
-  }
-
-  const moveItemDown = (index: number) => {
-    if (index >= navOrder.length - 1) return
-    setNavOrder(prev => {
-      const next = [...prev]
-      const temp = next[index]
-      next[index] = next[index + 1]
-      next[index + 1] = temp
+      const a = next.indexOf(to)
+      const b = next.indexOf(neighbour)
+      if (a < 0 || b < 0) return prev
+      next[a] = neighbour
+      next[b] = to
       safeLocalStorageSet('safaeewala_sidebar_nav_order', next)
       return next
     })
@@ -231,8 +232,10 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
     const defaultOrder = ALL_NAV_ITEMS.map(i => i.to)
     setNavOrder(defaultOrder)
     setFavorites([])
+    setHiddenItems([])
     safeLocalStorageSet('safaeewala_sidebar_nav_order', defaultOrder)
     safeLocalStorageSet('safaeewala_sidebar_favorites', [])
+    safeLocalStorageSet('safaeewala_sidebar_hidden', [])
   }
 
   // ── Sorted & Filtered Navigation Lists ──
@@ -256,13 +259,13 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
 
   // Items pinned to Favorites at the very top
   const favoriteItems = useMemo(() => {
-    return accessibleItems.filter(item => favorites.includes(item.to))
-  }, [accessibleItems, favorites])
+    return accessibleItems.filter(item => favorites.includes(item.to) && !hiddenItems.includes(item.to))
+  }, [accessibleItems, favorites, hiddenItems])
 
   // Non-favorite items for the sections below
   const nonFavoriteItems = useMemo(() => {
-    return accessibleItems.filter(item => !favorites.includes(item.to))
-  }, [accessibleItems, favorites])
+    return accessibleItems.filter(item => !favorites.includes(item.to) && !hiddenItems.includes(item.to))
+  }, [accessibleItems, favorites, hiddenItems])
 
   const workspaceNav = useMemo(() => {
     return nonFavoriteItems.filter(item => item.category === 'Workspace')
@@ -420,20 +423,7 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
           </>
         )}
 
-        {/* Customize Sidebar Sequence Link */}
-        <div className="pt-3 px-2">
-          <button
-            type="button"
-            onClick={() => setIsSettingsOpen(true)}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11.5px] font-semibold text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 transition-all cursor-pointer group"
-          >
-            <SlidersHorizontal size={13} className="text-slate-500 group-hover:text-emerald-400 transition-colors" />
-            <span className="flex-1 text-left truncate">Customize Items Sequence</span>
-            <span className="text-[9px] font-bold text-emerald-400/80 bg-emerald-500/10 px-1.5 py-0.2 rounded">
-              Edit
-            </span>
-          </button>
-        </div>
+        {/* UX-89: the bottom "Customize Items Sequence" button was removed; the sliders button at the top opens the same settings */}
       </nav>
 
       {/* ── Modal: Sidebar Navigation Settings ── */}
@@ -455,6 +445,7 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
               <p className="text-[11px] text-slate-600 leading-relaxed">
                 Click ⭐ <strong>Favorite</strong> to pin any item to the top under <strong>Favorites</strong>.
                 Use <strong>▲ Up</strong> and <strong>▼ Down</strong> to arrange the navigation items in your exact preferred sequence.
+                Click 👁 <strong>Shown / Hidden</strong> to hide an item from the menu (it stays here to show it again).
               </p>
             </div>
 
@@ -464,6 +455,8 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
                 <span>Total Items: <strong className="text-slate-800 font-extrabold">{accessibleItems.length}</strong></span>
                 <span className="text-slate-300">|</span>
                 <span>Pinned Favorites: <strong className="text-amber-700 font-extrabold">{favorites.length}</strong></span>
+                <span className="text-slate-300">|</span>
+                <span>Hidden: <strong className="text-slate-800 font-extrabold">{accessibleItems.filter(i => hiddenItems.includes(i.to)).length}</strong></span>
               </span>
               <button
                 type="button"
@@ -482,11 +475,12 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
                 const ItemIcon = item.icon
                 const isFirst = index === 0
                 const isLast = index === accessibleItems.length - 1
+                const isHidden = hiddenItems.includes(item.to)
 
                 return (
                   <div
                     key={item.to}
-                    className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                    className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isHidden ? 'opacity-55' : ''} ${
                       isFav
                         ? 'bg-amber-50/70 border-amber-200/90 shadow-2xs'
                         : 'bg-white hover:bg-slate-50/80 border-slate-200/80 shadow-2xs'
@@ -534,8 +528,21 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
                       </div>
                     </div>
 
-                    {/* Action Controls: Favorite & Move Up / Down */}
+                    {/* Action Controls: Show / Hide, Favorite & Move Up / Down */}
                     <div className="flex items-center gap-2 shrink-0 ml-4">
+                      {/* Show / Hide in the menu (UX-89) */}
+                      <button
+                        type="button"
+                        onClick={() => toggleHidden(item.to)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[11.5px] font-bold transition-all cursor-pointer shadow-2xs ${
+                          isHidden ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border-slate-300' : 'bg-white hover:bg-emerald-50 text-emerald-700 border-slate-200'
+                        }`}
+                        title={isHidden ? 'Hidden from the menu: click to show it' : 'Shown in the menu: click to hide it'}
+                      >
+                        {isHidden ? <EyeOff size={13} /> : <Eye size={13} />}
+                        <span>{isHidden ? 'Hidden' : 'Shown'}</span>
+                      </button>
+
                       {/* Favorite Button */}
                       <button
                         type="button"
@@ -555,7 +562,7 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
                       <button
                         type="button"
                         disabled={isFirst}
-                        onClick={() => moveItemUp(index)}
+                        onClick={() => moveItem(item.to, accessibleItems[index - 1]?.to)}
                         className="px-2.5 py-1.5 rounded-lg border bg-white hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 border-slate-200 cursor-pointer transition-colors flex items-center gap-1 text-[11.5px] font-bold shadow-2xs"
                         title="Move Up in Sequence"
                       >
@@ -567,7 +574,7 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
                       <button
                         type="button"
                         disabled={isLast}
-                        onClick={() => moveItemDown(index)}
+                        onClick={() => moveItem(item.to, accessibleItems[index + 1]?.to)}
                         className="px-2.5 py-1.5 rounded-lg border bg-white hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 border-slate-200 cursor-pointer transition-colors flex items-center gap-1 text-[11.5px] font-bold shadow-2xs"
                         title="Move Down in Sequence"
                       >

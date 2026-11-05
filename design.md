@@ -134,6 +134,12 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
   - Excel Job Sheet (UX-86): a **flag** next to the cleaner's name replaces the sync text in Remarks. Hovering shows each issue with time, site and the reason. Red = time clash now. Amber = the visit needs a cleaner (the scheduled cleaner was busy when the monthly schedule added it). Grey = **no clash now, only history**: a cleaner was assigned since; *Clear flag* removes it (Save to keep).
   - Copy buttons (UX-87) work on the http VPS address too (fallback copy when the browser has no clipboard API). The new-user card says what was copied, or how to copy by hand.
   - Settings (UX-88): the side widgets (owner card, System Health, Data Backup) show on the Company tab only; every other tab uses the full width.
+- Round 2026-11-05 d:
+  - Daily Job Sheet (UX-86): the same issue flag next to the cleaner's name; Remarks no longer show the sync note.
+  - Sidebar settings (UX-89): each item has 👁 **Shown / Hidden** next to Favorite and Up / Down. Hidden items leave the menu and stay in the settings. The bottom *Customize Items Sequence* button is gone; the sliders button at the top opens the settings. Up / Down move the item itself (they moved the wrong item when the role hid some screens).
+  - Clients (UX-90): cards use the full width, three per row; Top Clients, Pending Balances, Client Distribution, Top Locations and Recent Bookings sit below the cards, as in the table view.
+  - Excel Job Sheet (UX-91): the Mode list shows only the names (Cash Payment, Online Transfer …), no descriptions.
+  - Client forms: *Full Name (optional)*; *Building / Villa Name \** (R-CLI-03).
 - Add New Client popup (UX-78): no description lines under the card titles. The contact row is Full Name, Phone, WhatsApp and **Mode** (four equal columns). Bi-Weekly adds a violet schedule card under the address card; Monthly swaps the body for the monthly client form and keeps a compact Mode selector in the header.
 - Client cards (UX-67) are the same on Clients and Monthly Clients, and match the booking cards (UX-63). From top to bottom:
   - the lead cleaner's colour on the left edge;

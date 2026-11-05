@@ -10,3 +10,21 @@ export function formatClientAddress(c: Partial<Pick<Client, 'apartment' | 'build
     .filter(Boolean)
     .join(', ')
 }
+
+type AddressParts = Partial<Pick<Client, 'apartment' | 'building_name' | 'area' | 'city'>>
+
+/** R-CLI-03: a client needs an address: an apartment / villa number or a building / villa name */
+export function hasClientAddress(c: AddressParts): boolean {
+  return Boolean(String(c.apartment || '').trim() || String(c.building_name || '').trim())
+}
+
+/**
+ * R-CLI-03: the client's name is optional; the address identifies the client. Without a name, the
+ * address ("302, Al Khair Building") is stored as the name, so every screen and match still works.
+ */
+export function clientNameOrAddress(name: unknown, c: AddressParts): string {
+  const n = String(name ?? '').trim()
+  if (n) return n
+  const short = [c.apartment, c.building_name].map(p => String(p || '').trim()).filter(Boolean).join(', ')
+  return short || formatClientAddress(c)
+}

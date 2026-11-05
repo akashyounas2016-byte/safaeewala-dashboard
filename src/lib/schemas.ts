@@ -24,7 +24,7 @@ export const dailyJobSchema = z.object({
 })
 
 export const clientSchema = z.object({
-  full_name: z.string().trim().min(1, 'Name is missing'),
+  full_name: z.string().trim().min(1, 'Name or address is missing'), // R-CLI-03: the address stands in for an empty name
   phone: z.string().trim().max(30),
   email: z.string().trim().email('Check the email').or(z.literal('')).optional(),
   advance_amount: money.optional(),

@@ -1182,14 +1182,13 @@ export function Clients() {
           </div>
         </div>
       ) : (
-        /* ── GRID CARD VIEW (2 cols cards + 1 col widgets sidebar) ── */
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+        /* ── GRID CARD VIEW (UX-90): cards over the full width, three per row; the widgets below them ── */
+        <div className="space-y-6">
 
-          {/* ── Left: Client Grid (at equal height with Top Clients widget) ── */}
-          <div className="xl:col-span-2 space-y-4">
+          <div className="space-y-4">
 
           {/* Client cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map((c) => {
               // UX-67: one card design for Clients and Monthly Clients, after the Daily Job Sheet
               const isMonthly = isMonthlyClient(c, dailyJobs, allMonthlySummaries)
@@ -1263,8 +1262,8 @@ export function Clients() {
           )}
         </div>
 
-        {/* ── Right sidebar widgets ── */}
-        <div className="space-y-5">
+        {/* ── Widgets below the cards, like the table view ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
           {renderTopClientsWidget()}
           {renderOutstandingDuesWidget()}
           {renderClientRetentionWidget()}

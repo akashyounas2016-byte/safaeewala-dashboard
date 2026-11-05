@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { requireFields } from '@/components/common/FormGuard'
+import { clientNameOrAddress, hasClientAddress } from '@/lib/clientAddress'
 import { Calendar, Clock, Users, Sparkles, Check } from 'lucide-react'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -245,16 +246,18 @@ export function AddMonthlyClientModalForm({
     const f = new FormData(e.currentTarget)
     // R-SCHED-06: a cleaner cannot be scheduled for two monthly clients at the same time
     const scheduled = Object.fromEntries(activeDays.map(d => [d, daySchedules[d]]))
-    const selfName = String(f.get('full_name') || '').trim() || initialClient?.full_name || ''
+    // R-CLI-03: the name is optional; without one the address names the client
+    const addressParts = { apartment: String(f.get('apartment') || ''), building_name: String(f.get('building') || ''), area: String(f.get('area') || '') }
+    const selfName = clientNameOrAddress(f.get('full_name'), addressParts) || initialClient?.full_name || ''
     const clashes = findMonthlyScheduleClashes(initialClient ? { id: initialClient.id, full_name: selfName } : { id: '', full_name: selfName }, scheduled, allClients || [])
     if (clashes.length > 0) {
       notify.error(`⛔ Time clash, not saved: ${clashes.slice(0, 3).map(c => `${c.cleaner} already works for ${c.other} on ${c.day} ${c.time}`).join('; ')}. Change the time or the cleaner.`)
       return
     }
-    const clientName = String(f.get('full_name') || '').trim()
+    const clientName = selfName
     // UX-84: message at the top + outlined fields instead of a browser alert
     if (!requireFields(e.currentTarget, [
-      { name: 'full_name', label: 'Full Name', ok: !!clientName },
+      { name: 'building', label: 'Address (apartment / villa number or building name)', ok: hasClientAddress(addressParts) },
       { name: 'schedule_days', label: 'Service days (tick at least one)', ok: activeDays.length > 0 },
     ])) return
 
@@ -322,14 +325,14 @@ export function AddMonthlyClientModalForm({
       {/* ── Client Basic Details (Compact 2 rows) ── */}
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          <Input name="full_name" label="Full Name *" placeholder="e.g. Sarah Al-Rashidi" defaultValue={seedClient?.full_name} required />
+          <Input name="full_name" label="Full Name (optional)" placeholder="e.g. Sarah Al-Rashidi" defaultValue={seedClient?.full_name} />
           <Input name="phone" label="Phone Number *" placeholder="+971 50 000 0000" defaultValue={seedClient?.phone} required />
           <Input name="whatsapp" label="WhatsApp (Optional)" placeholder="+971 50 000 0000" defaultValue={seedClient?.whatsapp ?? ''} />
           <Input name="email" label="Email (Optional)" type="email" placeholder="client@example.com" defaultValue={seedClient?.email ?? ''} />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <Input name="apartment" label="Apartment / Villa Number" placeholder="302 / Villa 25" defaultValue={seedClient?.apartment ?? ''} />
-          <Input name="building" label="Building / Villa Name" placeholder="Al Khair Building" defaultValue={seedClient?.building_name ?? ''} />
+          <Input name="building" label="Building / Villa Name *" placeholder="Al Khair Building" defaultValue={seedClient?.building_name ?? ''} />
           <Input name="area" label="Area / Community" placeholder="Dubai Marina, JBR..." defaultValue={seedClient?.area ?? ''} />
           <Select name="city" label="Emirate" defaultValue={seedClient?.city || 'Dubai'}>
             <option>Dubai</option>

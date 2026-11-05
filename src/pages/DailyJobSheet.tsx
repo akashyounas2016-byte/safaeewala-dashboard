@@ -96,6 +96,8 @@ import { escapeHtml } from '@/lib/html'
 import { invoicedJobIds } from '@/lib/receivables'
 import { notify, confirmAsync } from '@/lib/notify'
 import { findStaffClash, clashMessage } from '@/lib/shiftClash'
+import { jobFlags, splitSyncNote, type JobFlag } from '@/lib/jobFlags'
+import { JobFlagIcon } from '@/components/dailyJobSheet/JobFlagIcon'
 import { ImportPreviewModal, type ImportPlan } from '@/components/dailyJobSheet/ImportPreviewModal'
 import { buildCleanerRoster, findMark, type AttendanceOverride } from '@/lib/attendance'
 import { buildRowChecks } from '@/lib/jobChecks'
@@ -1874,6 +1876,17 @@ export function DailyJobSheet() {
     return <td key={id} className="px-3 py-3 text-slate-400 font-medium whitespace-nowrap">—</td>
   }
 
+  // UX-86: a flag next to the cleaner's name (live clash, or the sync note) instead of text in Remarks
+  const originalIdOf = (job: DailyJob) => String((job as { _originalJobId?: string })._originalJobId || job.id)
+  const flagsOfJob = (job: DailyJob): JobFlag[] => {
+    const sameDay = dailyJobs.filter(j => j.date === job.date)
+    return jobFlags(job, job.staff_name ? findStaffClash(sameDay, job, [job.id, originalIdOf(job)]) : null)
+  }
+  const clearJobFlag = (flag: JobFlag) => {
+    updateDailyJob(originalIdOf(flag.row), { remarks: splitSyncNote(flag.row.remarks).text })
+    notify.success('Flag cleared')
+  }
+
   const renderJobCell = (
     id: string,
     job: DailyJob,
@@ -1936,6 +1949,7 @@ export function DailyJobSheet() {
                   <div>
                     <div className={`font-bold flex items-center gap-1.5 ${isMonthly ? 'text-emerald-950 font-extrabold' : palette.nameColor}`}>
                       {job.staff_name}
+                      <JobFlagIcon flags={flagsOfJob(job)} onClear={clearJobFlag} />
                       <Pencil size={11} className="opacity-0 group-hover/cell:opacity-60 text-emerald-700 transition-opacity" />
                     </div>
                     {(job as any)._isSplitShift && (
@@ -1967,6 +1981,7 @@ export function DailyJobSheet() {
                   <div>
                     <span className={`text-[12px] font-semibold flex items-center gap-1.5 ${isMonthly ? 'text-emerald-950 font-bold' : palette.nameColor}`}>
                       {job.staff_name}
+                      <JobFlagIcon flags={flagsOfJob(job)} onClear={clearJobFlag} />
                       <Pencil size={11} className="opacity-0 group-hover/cell:opacity-60 text-emerald-700 transition-opacity" />
                     </span>
                     {isDateRange && (
@@ -2453,8 +2468,8 @@ export function DailyJobSheet() {
 
       case 'remarks':
         return (
-          <td key={id} className={`px-3 py-3 max-w-[140px] truncate ${isMonthly ? 'text-emerald-900 font-medium' : 'text-slate-600'}`} title={job.remarks}>
-            {job.remarks || '—'}
+          <td key={id} className={`px-3 py-3 max-w-[140px] truncate ${isMonthly ? 'text-emerald-900 font-medium' : 'text-slate-600'}`} title={splitSyncNote(job.remarks).text}>
+            {splitSyncNote(job.remarks).text || '—'}
           </td>
         )
 

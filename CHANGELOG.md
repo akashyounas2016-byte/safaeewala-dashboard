@@ -6,6 +6,11 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(daily sheet): issue flag next to the cleaner's name; sync note no longer in Remarks (UX-86)
+- feat(sidebar): show / hide items in the sidebar settings; duplicate bottom button removed; Up / Down fixed (UX-89)
+- feat(clients): three cards per row, widgets below (UX-90); client name optional, the address identifies the client (R-CLI-03)
+- fix(excel): Mode options without descriptions (UX-91)
+- data: Office ABC Trading DMCC registered as a monthly client with Uma Sunar (Mon–Sat 09:00–12:00), so it no longer clashes with Office Luxam (Ambika) — owner request 2026-11-05
 - feat(excel): flag next to the cleaner's name with a hover popup (clash / needs a cleaner / history) instead of the sync text in Remarks (UX-86)
 - fix(copy): Copy buttons work on the http VPS address (Add user credentials, webhook snippets, review message) (UX-87)
 - fix(settings): owner, System Health and Backup widgets on the Company tab only (UX-88)
