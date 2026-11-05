@@ -1,6 +1,7 @@
 // Team isolation and multi-cleaner verification rules (R-SCHED-01, R-TEAM-01)
 import { normalizeJobAddress, isGenericAddress, cleanAddressDisplay } from '@/lib/utils'
-import { getMultiCleanerPaymentInfo, checkTimesOverlap } from '@/pages/JobSheetSpreadsheet'
+import { getMultiCleanerPaymentInfo } from '@/lib/excelSheet/rows'
+import { checkTimesOverlap } from '@/components/dailyJobSheet/jobSheetUtils'
 import type { DailyJob } from '@/types'
 
 const eq = (a: unknown, b: unknown, m: string) => {

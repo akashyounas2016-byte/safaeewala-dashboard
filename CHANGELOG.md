@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- refactor(excel): step 1 of splitting the Excel Job Sheet — columns, palettes, row logic, settings and formulas moved to src/lib/excelSheet/ (6,518 → 5,173 lines); no behaviour change (CODE-A01)
 - fix(excel): column headers follow the column alignment (UX-85)
 - feat(invoices): issued invoices are voided, not deleted; a taken number is retried (R-FIN-05, INV-A09)
 - feat(clients): Bi-Weekly visits go to the Daily Job Sheet by themselves, every week or every other week (R-SCHED-07)

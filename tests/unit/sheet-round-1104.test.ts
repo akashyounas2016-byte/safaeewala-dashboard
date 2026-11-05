@@ -48,7 +48,8 @@ eq(formatClientAddress({ apartment: '302', building_name: 'Al Khair Building', a
 eq(formatClientAddress({ apartment: 'Villa 25', area: 'Mirdif', city: 'Dubai' }, true), 'Villa 25, Mirdif, Dubai', 'villa with city')
 
 // Sheet wiring
-const sheet = fs.readFileSync('src/pages/JobSheetSpreadsheet.tsx', 'utf8')
+// CODE-A01: the column list moved to src/lib/excelSheet/columns.ts
+const sheet = fs.readFileSync('src/pages/JobSheetSpreadsheet.tsx', 'utf8') + fs.readFileSync('src/lib/excelSheet/columns.ts', 'utf8')
 eq(/id: 'advance',\s+label: 'Advance'/.test(sheet) && !/Adv`/.test(sheet), true, 'Advance column; Pending has no "+X Adv" text')
 eq(/safaeewala_excel_column_align/.test(sheet) && /AlignCenter/.test(sheet), true, 'column alignment buttons, saved')
 eq(/if \(teamColorMap\.byRow\(row\.id\)\) \{\s+rowBg = teamColorMap/.test(sheet), true, 'team colour comes before cleaner colours')
