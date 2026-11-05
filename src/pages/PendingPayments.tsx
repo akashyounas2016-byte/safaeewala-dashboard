@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { requireFields } from '@/components/common/FormGuard'
 import { useSearchParams } from 'react-router-dom'
 import {
   Clock, AlertCircle, CheckCircle, CheckCircle2, DollarSign,
@@ -1485,15 +1486,12 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
             e.preventDefault()
             const f = new FormData(e.currentTarget)
             const amt = cleanNum(f.get('amount'))
-            if (amt <= 0) {
-              notify.error('Please enter a valid pending amount.')
-              return
-            }
             const client = String(f.get('client') || '').trim()
-            if (!client) {
-              notify.error('Please enter a client name.')
-              return
-            }
+            // UX-84
+            if (!requireFields(e.currentTarget, [
+              { name: 'client', label: 'Client name', ok: !!client },
+              { name: 'amount', label: 'Amount', ok: amt > 0 },
+            ])) return
 
             const newItem: DailyPendingItem = {
               id: `pend-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,

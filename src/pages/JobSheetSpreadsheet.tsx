@@ -50,7 +50,7 @@ import { invoicedJobIds } from '@/lib/receivables'
 import { fetchRecordHistory, type AuditEntry } from '@/lib/auditLog'
 import { ChangeLogHistoryModal } from '@/components/dailyJobSheet/ChangeLogHistoryModal'
 import { cleanAddressDisplay } from '@/lib/utils'
-import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, buildTeamColorMap, uniqueTeamRefs, projectKey } from '@/lib/excelTeams'
+import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, padCleanerBlocks, buildTeamColorMap, uniqueTeamRefs, projectKey } from '@/lib/excelTeams'
 import { splitEntryOf, splitTotals, isSplitJob } from '@/lib/chargeSplit'
 
 /* ─── Column Schema for the Excel Grid (Daily Job Sheet Exact Sequence) ─── */
@@ -6491,7 +6491,8 @@ export function JobSheetSpreadsheet() {
                   ? (wanted && wanted.toLowerCase() !== 'project team' && !takenOnDate ? wanted : nextTeamRef(gridRows, newJob.date))
                   : ''
                 const newRows = expandTeamJob(newJob, teamRef)
-                pushState(recalculateAllRowsOT(placeRowsInCleanerBlocks(gridRows, newRows)))
+                // UX-84: a cleaner's block always has 3 rows, also for a cleaner new to the sheet
+                pushState(recalculateAllRowsOT(padCleanerBlocks(placeRowsInCleanerBlocks(gridRows, newRows), effectiveTargetDate)))
                 setShowAddJobModal(false)
                 showToast(names.length > 1
                   ? `✓ ${teamRef} added — ${names.length} cleaners, one row each`

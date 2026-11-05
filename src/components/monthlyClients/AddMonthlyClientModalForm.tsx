@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import { requireFields } from '@/components/common/FormGuard'
 import { Calendar, Clock, Users, Sparkles, Check } from 'lucide-react'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -251,15 +252,11 @@ export function AddMonthlyClientModalForm({
       return
     }
     const clientName = String(f.get('full_name') || '').trim()
-    if (!clientName) {
-      alert('Please enter a valid client name.')
-      return
-    }
-
-    if (activeDays.length === 0) {
-      alert('Please select at least one day in the schedule table.')
-      return
-    }
+    // UX-84: message at the top + outlined fields instead of a browser alert
+    if (!requireFields(e.currentTarget, [
+      { name: 'full_name', label: 'Full Name', ok: !!clientName },
+      { name: 'schedule_days', label: 'Service days (tick at least one)', ok: activeDays.length > 0 },
+    ])) return
 
     const remarks = String(f.get('remarks') || '').trim()
     const advance = parseFloat(String(f.get('advance_amount') || '0')) || 0
@@ -430,7 +427,7 @@ export function AddMonthlyClientModalForm({
         </div>
 
         {/* 5 Columns × 7 Rows Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" data-field="schedule_days">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">

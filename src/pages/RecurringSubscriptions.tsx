@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { requireInPopup } from '@/components/common/FormGuard'
 import { Plus, Trash2, Edit2, Save, X, Power, Calendar, DollarSign, TrendingUp } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
 import { Button } from '@/components/ui/Button'
@@ -120,11 +121,13 @@ export function RecurringSubscriptions() {
     setShowModal(true)
   }
 
-  const handleSave = () => {
-    if (!formData.clientName || !formData.serviceType || formData.amount <= 0) {
-      alert('Please fill all required fields')
-      return
-    }
+  const handleSave = (e?: { currentTarget: EventTarget | null }) => {
+    // UX-84
+    if (!requireInPopup(e?.currentTarget ?? null, [
+      { name: 'sub_client', label: 'Client name', ok: !!formData.clientName },
+      { name: 'sub_service', label: 'Service type', ok: !!formData.serviceType },
+      { name: 'sub_amount', label: 'Amount', ok: formData.amount > 0 },
+    ])) return
 
     // Calculate renewal date (1 year from start)
     const startDate = new Date(formData.startDate)
@@ -300,6 +303,7 @@ export function RecurringSubscriptions() {
         <div className="space-y-4">
           <Input
             label="Client Name"
+            data-field="sub_client"
             value={formData.clientName}
             onChange={e => setFormData({ ...formData, clientName: e.target.value })}
             placeholder="e.g., Ahmed Al Mansoori"
@@ -315,6 +319,7 @@ export function RecurringSubscriptions() {
           />
           <Input
             label="Service Type"
+            data-field="sub_service"
             value={formData.serviceType}
             onChange={e => setFormData({ ...formData, serviceType: e.target.value })}
             placeholder="e.g., Weekly Villa Cleaning"
@@ -332,6 +337,7 @@ export function RecurringSubscriptions() {
           <Input
             label="Amount (AED)"
             type="number"
+            data-field="sub_amount"
             value={formData.amount}
             onChange={e => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
             required

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { requireFields } from '@/components/common/FormGuard'
 import {
   Plus, Trash2, TrendingDown, DollarSign, PieChart, Filter, Download,
   Calendar, Search, X, ChevronLeft, ChevronRight, ChevronDown,
@@ -1128,15 +1129,12 @@ export function Expenses() {
             e.preventDefault()
             const f = new FormData(e.currentTarget)
             const amt = Number(f.get('amount')) || 0
-            if (amt <= 0) {
-              notify.error('Please enter a valid expense amount.')
-              return
-            }
             const name = String(f.get('name') || '').trim()
-            if (!name) {
-              notify.error('Please enter a description or payee name.')
-              return
-            }
+            // UX-84
+            if (!requireFields(e.currentTarget, [
+              { name: 'amount', label: 'Amount (AED)', ok: amt > 0 },
+              { name: 'name', label: 'Description / Payee', ok: !!name },
+            ])) return
 
             addDailyExpense({
               date: String(f.get('date')) || todayDubai(),
@@ -1315,15 +1313,12 @@ export function Expenses() {
               e.preventDefault()
               const f = new FormData(e.currentTarget)
               const amt = Number(f.get('amount')) || 0
-              if (amt <= 0) {
-                notify.error('Please enter a valid expense amount.')
-                return
-              }
               const name = String(f.get('name') || '').trim()
-              if (!name) {
-                notify.error('Please enter a description or payee name.')
-                return
-              }
+              // UX-84
+              if (!requireFields(e.currentTarget, [
+                { name: 'amount', label: 'Amount (AED)', ok: amt > 0 },
+                { name: 'name', label: 'Description / Payee', ok: !!name },
+              ])) return
 
               updateDailyExpense(editingExpense.id, {
                 date: String(f.get('date')) || editingExpense.date,

@@ -95,6 +95,7 @@ export function Time12hPicker({
   const containerRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const popRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   // UX-77: the list floats above the popup (fixed position, portal), so a scrolling popup body never cuts it.
   // It opens up or down, wherever there is more room, and shrinks to fit.
   const [pos, setPos] = useState<{ left: number; width: number; top?: number; bottom?: number; maxH: number } | null>(null)
@@ -140,6 +141,11 @@ export function Time12hPicker({
       setSearch('')
     }
   }, [isOpen])
+
+  // UX-84: switching Morning / Evening (or opening the list) starts the list at its first time
+  useEffect(() => {
+    if (isOpen && listRef.current) listRef.current.scrollTop = 0
+  }, [isOpen, listHalf])
 
   const commitTime = (raw: string, mer: 'AM' | 'PM') => {
     let targetMer = mer
@@ -321,7 +327,7 @@ export function Time12hPicker({
           )}
 
           {/* Time Suggestions List */}
-          <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 divide-y divide-slate-100 pr-0.5">
+          <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto space-y-0.5 divide-y divide-slate-100 pr-0.5">
             {filteredSuggestions.length === 0 && !customCandidate ? (
               <div className="py-4 text-center text-[12px] text-slate-400">
                 No times found. Type the time above.

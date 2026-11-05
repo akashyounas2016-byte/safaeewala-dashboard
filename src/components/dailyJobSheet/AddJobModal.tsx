@@ -17,6 +17,8 @@ import {
 import { addHoursToTime, calcDurationFromTimes, cleanAddressDisplay } from '@/lib/utils'
 import { todayDubai } from '@/lib/dubaiTime'
 import { notify } from '@/lib/notify'
+import { useRequiredFields } from '@/lib/requiredFields'
+import { RequiredBanner } from '@/components/common/RequiredBanner'
 import { findStaffClash, clashMessage } from '@/lib/shiftClash'
 import { ChargesCard, type SplitRowInput } from '@/components/dailyJobSheet/ChargesCard'
 import { splitTotals, type ChargeSplitEntry } from '@/lib/chargeSplit'
@@ -420,19 +422,19 @@ export function AddJobForm({
     setCustomMaterialInput('')
   }
 
+  // UX-84: nothing is saved while a required field is empty
+  const req = useRequiredFields([
+    { key: 'staff', label: 'Staff Name', ok: selectedStaff.some(n => n.trim()) },
+    { key: 'date', label: 'Job Date', ok: !!date },
+    { key: 'address', label: 'Address', ok: !!address.trim() },
+    { key: 'start_time', label: 'Start Time', ok: parseTimeToMinutes(startTime) !== null },
+    { key: 'end_time', label: 'End Time', ok: parseTimeToMinutes(endTime) !== null },
+  ])
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-
+    if (!req.check()) return
     const finalStaff = selectedStaff.join(', ').trim()
-    if (!finalStaff) {
-      notify.error('Please select at least one cleaner / staff member.')
-      return
-    }
-
-    if (!address.trim()) {
-      notify.error('Please enter the client or building address.')
-      return
-    }
 
     // Automatic check: Does this client exist in the system?
     const trimmedAddr = address.trim()
@@ -495,7 +497,8 @@ export function AddJobForm({
   }, [rowColor])
 
   return (
-    <form id="add-job-entry-form" onSubmit={handleSubmit} className="text-slate-800">
+    <form id="add-job-entry-form" onSubmit={handleSubmit} noValidate className="text-slate-800">
+      <RequiredBanner missing={req.missing} />
       {staffClash && (
         <div role="alert" className="mb-3 px-3.5 py-2.5 rounded-xl border border-rose-300 bg-rose-50 text-rose-800 text-[12.5px] font-bold">
           ⛔ Time clash: {clashMessage(staffClash)}
@@ -521,7 +524,7 @@ export function AddJobForm({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
-              <div>
+              <div {...req.field('staff')}>
                 <CleanerMultiSelect
                   label="Staff Name"
                   name="staff_name"
@@ -538,7 +541,7 @@ export function AddJobForm({
                   </p>
                 )}
               </div>
-              <div>
+              <div {...req.field('date')}>
                 <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
                   Job Date <span className="text-red-500">*</span>
                 </label>
@@ -599,7 +602,7 @@ export function AddJobForm({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
 
               {/* Address Dropdown */}
-              <div className="relative" ref={buildingRef}>
+              <div className="relative" ref={buildingRef} {...req.field('address')}>
                 <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
                   Address <span className="text-red-500">*</span>
                 </label>
@@ -856,7 +859,7 @@ export function AddJobForm({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-              <div className="sm:col-span-5">
+              <div className="sm:col-span-5" {...req.field('start_time')}>
                 <Time12hPicker
                   label="Start Time"
                   value={startTime}
@@ -865,7 +868,7 @@ export function AddJobForm({
                   stepMinutes={15} // UX-68: opens upwards, 15-minute steps
                 />
               </div>
-              <div className="sm:col-span-5">
+              <div className="sm:col-span-5" {...req.field('end_time')}>
                 <Time12hPicker
                   label="End Time"
                   value={endTime}

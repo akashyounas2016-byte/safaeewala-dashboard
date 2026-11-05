@@ -132,3 +132,13 @@ main {
   100% { width: 100%; }
 }
 
+
+/* UX-84: a required field left empty — red outline and label until it is filled */
+[data-invalid="true"] {
+  outline: 2px solid #f43f5e;
+  outline-offset: 3px;
+  border-radius: 12px;
+}
+[data-invalid="true"] label {
+  color: #e11d48;
+}

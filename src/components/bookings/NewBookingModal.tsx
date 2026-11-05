@@ -14,6 +14,8 @@ import { cleanAddressDisplay } from '@/lib/utils'
 import { todayDubai } from '@/lib/dubaiTime'
 import { staffNameToCrew, crewToStaffName, getDayNameFromDate } from '@/lib/clientDataSync'
 import { notify } from '@/lib/notify'
+import { useRequiredFields } from '@/lib/requiredFields'
+import { RequiredBanner } from '@/components/common/RequiredBanner'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import {
   Users,
@@ -422,18 +424,18 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
     return ROW_COLOR_PRESETS.find(p => p.id === rowColor) || ROW_COLOR_PRESETS[0]
   }, [rowColor])
 
+  // UX-84: nothing is saved while a required field is empty
+  const req = useRequiredFields([
+    { key: 'date', label: 'Job Date', ok: !!scheduledDate },
+    { key: 'address', label: 'Address', ok: !!address.trim() },
+    { key: 'start_time', label: 'Start Time', ok: parseTimeToMinutes(startTime) !== null },
+    { key: 'end_time', label: 'End Time', ok: parseTimeToMinutes(endTime) !== null },
+  ])
+
   // ── Submit Handler ──
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!address.trim()) {
-      notify.error('Please enter or select a service address.')
-      return
-    }
-    if (!scheduledDate) {
-      notify.error('Please select a scheduled date.')
-      return
-    }
+    if (!req.check()) return
 
     // R-JOB-01: stop a booking that gives a cleaner two jobs at the same time (job sheet rows and other bookings)
     if (selectedStaff.length > 0) {
@@ -508,7 +510,8 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
         </div>
       }
     >
-      <form id="add-booking-entry-form" onSubmit={handleSubmit} className="text-slate-800 p-1 sm:p-2">
+      <form id="add-booking-entry-form" onSubmit={handleSubmit} noValidate className="text-slate-800 p-1 sm:p-2">
+        <RequiredBanner missing={req.missing} />
         {/* ── TOP 4 CARDS: 2x2 EQUAL BALANCED 50/50 GRID ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
 
@@ -541,7 +544,7 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
                   busyCleaners={new Map(Array.from(busyCleanersMap, ([name, info]) => [name.toLowerCase(), { info }]))}
                 />
               </div>
-              <div>
+              <div {...req.field('date')}>
                 <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
                   Job Date <span className="text-red-500">*</span>
                 </label>
@@ -640,7 +643,7 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
               {/* Address Dropdown */}
-              <div className="relative" ref={buildingRef}>
+              <div className="relative" ref={buildingRef} {...req.field('address')}>
                 <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
                   Address <span className="text-red-500">*</span>
                 </label>
@@ -907,14 +910,14 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-              <div className="sm:col-span-5">
+              <div className="sm:col-span-5" {...req.field('start_time')}>
                 <Time12hPicker
                   label="Start Time"
                   value={startTime}
                   onChange={handleStartTimeChange}
                 />
               </div>
-              <div className="sm:col-span-5">
+              <div className="sm:col-span-5" {...req.field('end_time')}>
                 <Time12hPicker
                   label="End Time"
                   value={endTime}

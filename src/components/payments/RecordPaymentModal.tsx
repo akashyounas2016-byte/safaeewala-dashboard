@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { requireFields } from '@/components/common/FormGuard'
 import {
   Wallet, DollarSign, Calendar, CreditCard, Building2,
   Check, X, Search, ChevronDown, CheckCircle2, User,
@@ -142,17 +143,14 @@ export function RecordPaymentModal({
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const amt = parseFloat(amount)
-    if (!clientName.trim()) {
-      alert('Please enter or select a Client Name.')
-      return
-    }
-    if (isNaN(amt) || amt <= 0) {
-      alert('Please enter a valid payment amount.')
-      return
-    }
+    // UX-84
+    if (!requireFields(e.currentTarget, [
+      { name: 'client_name', label: 'Client Name', ok: !!clientName.trim() },
+      { name: 'amount', label: 'Amount', ok: !isNaN(amt) && amt > 0 },
+    ])) return
 
     const newPayment: MonthlyClientPayment = {
       id: `mp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -233,6 +231,7 @@ export function RecordPaymentModal({
               type="text"
               required
               placeholder="Search or enter client name…"
+              data-field="client_name"
               value={clientName}
               onChange={e => {
                 setClientName(e.target.value)
@@ -349,6 +348,7 @@ export function RecordPaymentModal({
               required
               min="0.01"
               placeholder="e.g. 1500"
+              data-field="amount"
               value={amount}
               onChange={e => setAmount(e.target.value)}
               className="w-full text-[15px] px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:bg-white font-black text-emerald-700 transition-colors shadow-2xs"

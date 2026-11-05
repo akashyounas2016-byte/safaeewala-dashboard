@@ -74,6 +74,8 @@ export function Modal({ open, onClose, title, children, size = 'md', lockScroll 
           sizes[size],
           className
         )}
+        role="dialog"
+        aria-modal="true"
         onWheel={(e) => {
           // Keep scrolling contained within the modal card when cursor is over it
           e.stopPropagation()
@@ -92,7 +94,7 @@ export function Modal({ open, onClose, title, children, size = 'md', lockScroll 
           </div>
         </div>
         <div className="flex-1 overflow-y-auto min-h-0 overscroll-contain">
-          <div className={cn("px-6 py-5 pb-6", bodyClassName)}>
+          <div className={cn("px-6 py-5 pb-6", bodyClassName)} data-modal-body>
             {children}
           </div>
         </div>

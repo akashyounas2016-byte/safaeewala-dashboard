@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { requireInPopup } from '@/components/common/FormGuard'
 import { Mail, Users, TrendingUp, Plus, Trash2, Edit2, Save, BarChart3, Gift, Eye, Send } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
 import { Button } from '@/components/ui/Button'
@@ -161,11 +162,12 @@ export function MarketingDashboard() {
     setShowCampaignModal(true)
   }
 
-  const handleSaveCampaign = () => {
-    if (!campaignForm.name || !campaignForm.subject) {
-      alert('Please fill all required fields')
-      return
-    }
+  const handleSaveCampaign = (e?: { currentTarget: EventTarget | null }) => {
+    // UX-84
+    if (!requireInPopup(e?.currentTarget ?? null, [
+      { name: 'campaign_name', label: 'Campaign name', ok: !!campaignForm.name },
+      { name: 'campaign_subject', label: 'Email Subject', ok: !!campaignForm.subject },
+    ])) return
 
     if (editingCampaignId) {
       setCampaigns(c => c.map(x => x.id === editingCampaignId ? campaignForm : x))
@@ -472,6 +474,7 @@ export function MarketingDashboard() {
         <div className="space-y-4">
           <Input
             label="Campaign Name"
+            data-field="campaign_name"
             value={campaignForm.name}
             onChange={e => setCampaignForm({ ...campaignForm, name: e.target.value })}
             placeholder="e.g., Summer Promotion 2026"
@@ -503,6 +506,7 @@ export function MarketingDashboard() {
 
           <Input
             label="Email Subject"
+            data-field="campaign_subject"
             value={campaignForm.subject}
             onChange={e => setCampaignForm({ ...campaignForm, subject: e.target.value })}
             placeholder="e.g., 20% Off Summer Cleaning - Limited Time"

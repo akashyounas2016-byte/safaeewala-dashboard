@@ -11,6 +11,7 @@ import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { SyncStatusBanner } from './SyncStatusBanner'
 import { Toaster } from 'sonner'
 import { ConfirmHost } from '@/components/common/ConfirmHost'
+import { FormGuard } from '@/components/common/FormGuard'
 
 /* ── Layout context — lets PageHero access openMenu and toggleSidebar ── */
 export const LayoutContext = createContext<{
@@ -169,6 +170,7 @@ export function Layout() {
               <SyncStatusBanner />
               <Toaster position="top-right" richColors closeButton />
               <ConfirmHost />
+              <FormGuard /> {/* UX-84: required fields in every popup */}
 
               <ErrorBoundary key={location.pathname}>
                 <Outlet />

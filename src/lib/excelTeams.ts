@@ -72,6 +72,43 @@ export function placeRowsInCleanerBlocks(grid: DailyJob[], newRows: DailyJob[]):
   return [...top, ...out]
 }
 
+/** UX-84: every cleaner's block has at least this many rows (empty shift rows fill the rest) */
+export const MIN_BLOCK_ROWS = 3
+
+/** An empty shift row in a cleaner's block (not saved until something is typed into it) */
+export function emptyShiftRow(staffName: string, date: string): DailyJob {
+  const key = staffName.trim().toLowerCase().replace(/[^a-z0-9]/g, '-') || 'unassigned'
+  return {
+    id: `blank_${key}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    date,
+    staff_name: staffName,
+    team_name: '',
+    start_time: '', end_time: '', duty_hours: 0, ot_hours: 0,
+    address: '', area: '', material: '' as DailyJob['material'],
+    charges: 0, received: 0, payment_mode: '' as DailyJob['payment_mode'],
+    remarks: '', is_overtime: false, created_at: new Date().toISOString(),
+  }
+}
+
+/**
+ * UX-84: pad every named cleaner block (rows next to each other with the same cleaner) to
+ * MIN_BLOCK_ROWS with empty shift rows, so a cleaner added by Add Job gets 3 rows like the others.
+ */
+export function padCleanerBlocks(rows: DailyJob[], date: string): DailyJob[] {
+  const key = (r: DailyJob) => (r.staff_name || '').trim().toLowerCase()
+  const out: DailyJob[] = []
+  let i = 0
+  while (i < rows.length) {
+    const k = key(rows[i])
+    let j = i
+    while (j < rows.length && key(rows[j]) === k) j++
+    out.push(...rows.slice(i, j))
+    if (k) for (let n = j - i; n < MIN_BLOCK_ROWS; n++) out.push(emptyShiftRow(rows[i].staff_name.trim(), rows[i].date || date))
+    i = j
+  }
+  return out
+}
+
 /** Light row colours for teams (none is the solo colour #f0fdfa); `tag` colours the team chip */
 export const TEAM_COLORS = [
   { bg: '#fef3c7', tag: '#d97706' }, // amber

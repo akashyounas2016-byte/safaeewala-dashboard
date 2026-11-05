@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { requireFields, requireInPopup } from '@/components/common/FormGuard'
 import { formatClientAddress } from '@/lib/clientAddress'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -556,11 +557,13 @@ export function MonthlyClients() {
     setShowContractModal(true)
   }
 
-  const handleSaveContract = () => {
-    if (!contractForm.clientName || !contractForm.serviceType || contractForm.amount <= 0) {
-      notify.error('Please fill client name, service type, and amount.')
-      return
-    }
+  const handleSaveContract = (e?: { currentTarget: EventTarget | null }) => {
+    // UX-84
+    if (!requireInPopup(e?.currentTarget ?? null, [
+      { name: 'contract_client', label: 'Client name', ok: !!contractForm.clientName },
+      { name: 'contract_service', label: 'Service type', ok: !!contractForm.serviceType },
+      { name: 'contract_amount', label: 'Amount', ok: contractForm.amount > 0 },
+    ])) return
 
     const startDate = new Date(contractForm.startDate || new Date())
     const renewalDate = new Date(startDate.getFullYear() + 1, startDate.getMonth(), startDate.getDate())
@@ -2422,6 +2425,7 @@ export function MonthlyClients() {
           <div className="relative">
             <Input
               label="Client Name"
+              data-field="contract_client"
               value={contractForm.clientName}
               onChange={e => {
                 setContractForm({ ...contractForm, clientName: e.target.value })
@@ -2477,6 +2481,7 @@ export function MonthlyClients() {
             <div>
               <label className="text-[12px] font-semibold text-slate-700 block mb-1">Service Type</label>
               <select
+                data-field="contract_service"
                 value={contractForm.serviceType}
                 onChange={e => setContractForm({ ...contractForm, serviceType: e.target.value })}
                 className="w-full text-[13px] px-3 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500 text-slate-800"
@@ -2501,6 +2506,7 @@ export function MonthlyClients() {
             <Input
               label="Contract Amount (AED)"
               type="number"
+              data-field="contract_amount"
               value={contractForm.amount || ''}
               onChange={e => setContractForm({ ...contractForm, amount: parseFloat(e.target.value) || 0 })}
               placeholder="e.g. 350"
@@ -2927,10 +2933,11 @@ export function MonthlyClients() {
           className="space-y-4"
           onSubmit={e => {
             e.preventDefault()
-            if (!paymentFormClient.trim()) {
-              notify.error('Please enter or select a client name.')
-              return
-            }
+            // UX-84
+            if (!requireFields(e.currentTarget, [
+              { name: 'payment_client', label: 'Client Name', ok: !!paymentFormClient.trim() },
+              { name: 'payment_amount', label: 'Amount', ok: Number(paymentFormAmount) > 0 },
+            ])) return
             // Payments must belong to a known monthly client, so balances add up (UX-21)
             const matched = monthlySummaries.find(c => normalizeKey(c.name) === normalizeKey(paymentFormClient))
             if (!matched) {
@@ -2964,6 +2971,7 @@ export function MonthlyClients() {
                 type="text"
                 required
                 placeholder="Search or enter client name…"
+                data-field="payment_client"
                 value={paymentFormClient}
                 onChange={e => {
                   setPaymentFormClient(e.target.value)
@@ -3017,6 +3025,7 @@ export function MonthlyClients() {
                 min="0.01"
                 required
                 placeholder="0.00"
+                data-field="payment_amount"
                 value={paymentFormAmount}
                 onChange={e => setPaymentFormAmount(e.target.value)}
                 className="w-full text-[13px] px-3.5 py-2.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500 font-bold text-emerald-800"

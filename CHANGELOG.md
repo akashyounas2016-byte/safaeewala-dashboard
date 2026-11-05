@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(excel): a cleaner added by Add Job gets a 3-row block like the others (UX-84)
+- feat(forms): popups never save with a required field empty; red message at the top and outlined fields, in every popup (R-FORM-01, UX-84)
+- fix(time picker): Morning / Evening switch starts the list at the top (UX-84)
 - fix(security): /api needs a sign-in even without the VPS service key; leads, agencies and the error log were readable by anyone (R-SEC-06)
 - fix(agencies): agencies that existed only in the VPS file are copied to Supabase (AGN-A01)
 - fix(invoices): numbers checked against Supabase before saving (no duplicates); Dubai year, due date and date filter; overdue total minus part payments; overdue marked once invoices load; warning before deleting an issued invoice (INV-A01…A07)

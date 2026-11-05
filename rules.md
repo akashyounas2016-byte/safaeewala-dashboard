@@ -234,6 +234,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ---
 
+### R-FORM-01 — A popup never saves with a required field empty
+- **Rule:** *"CRM ke tamam pop-ups aur Add Job Entry mein, agar koi mandatory field khaali ho to data save na ho … top par wazeh error message … specific field ko highlight kare."*
+  - Nothing is saved while a required field (marked *) is empty or invalid.
+  - A red message at the top of the popup names every missing field; a click on a name jumps to it.
+  - Each missing field gets a red outline and a red label until it is filled.
+- **Required in Add Job Entry** (Daily Job Sheet, Excel Job Sheet, Edit Job): Staff Name, Job Date, Address, Start Time, End Time. **New Booking:** Job Date, Address, Start Time, End Time.
+- **Code:** `src/lib/requiredFields.ts` + `RequiredBanner` (controlled forms); `src/components/common/FormGuard.tsx` handles every field marked `required` in any form, and `requireFields` / `requireInPopup` handle checks done in code (monthly client days, payments, expenses, contracts, campaigns, Bi-Weekly days).
+- **Status:** Active · Since: 2026-11-05
+
 ### R-JOB-01 — A cleaner cannot work two jobs at the same time
 - **Rule:** When a job is added or edited (Add Job Entry, Edit Job, Daily Job Sheet inline edit, Excel Job Sheet cell / time dropdown / row popup / Save), a cleaner who already has a job overlapping that time on that date is refused with an error message, and the entry is not saved. Back-to-back shifts (12:00 end, 12:00 start) are allowed; shifts after midnight count into the next day. Clashes already in the data do not block unrelated edits (remarks, money) — only a change of cleaner, time or date is checked. The Excel Job Sheet lists every clash in the open sheet (saved or not) in a red banner as soon as it appears, outlines the rows in red, and *Show* jumps to them. Add Job in the Excel Job Sheet checks the rows on screen too, not only saved jobs.
 - **Code:** `src/lib/shiftClash.ts` (`findStaffClash`, `findClashAmong`, `findAllClashes`), used by `AddJobModal`, `EditJobModal`, `DailyJobSheet → saveInlineEdit`, `JobSheetSpreadsheet → refuseClash / handleSaveAll`. Test: `tests/unit/shift-clash.test.ts`.

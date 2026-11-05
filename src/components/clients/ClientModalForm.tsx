@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { requireFields } from '@/components/common/FormGuard'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -165,7 +166,8 @@ export function ClientModalForm({
 
     // R-CLI-02: the mode, and the Bi-Weekly days and duration
     if (mode === 'biweekly') {
-      if (plan.days.length === 0) { notify.error('Bi-Weekly: tick at least one day.'); return }
+      // UX-84
+      if (!requireFields(e.currentTarget, [{ name: 'biweekly_days', label: 'Bi-Weekly days (tick at least one)', ok: plan.days.length > 0 }])) return
       patch.service_mode = 'biweekly'
       patch.biweekly_plan = plan
       if (!cleaner) patch.preferred_cleaner = Array.from(new Set(plan.days.map(d => plan.day_schedules[d]?.cleaner).filter(Boolean))).join(', ')
@@ -439,7 +441,7 @@ export function ClientModalForm({
           </div>
 
           {/* R-CLI-02: Bi-Weekly — days like the monthly schedule, and the contract duration */}
-          {mode === 'biweekly' && <BiWeeklyScheduleCard plan={plan} onChange={setPlan} cleaners={activeCleanersList} />}
+          {mode === 'biweekly' && <div data-field="biweekly_days"><BiWeeklyScheduleCard plan={plan} onChange={setPlan} cleaners={activeCleanersList} /></div>}
 
           {/* ── Card 3: Financial Balances & Service Remarks ── */}
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_rgba(15,23,42,0.02)] p-4.5">
