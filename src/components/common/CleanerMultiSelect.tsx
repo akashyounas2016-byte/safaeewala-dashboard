@@ -137,12 +137,17 @@ export function CleanerMultiSelect({
         </label>
       )}
 
-      {/* Hidden input to support standard HTML FormData */}
+      {/* Invisible input for FormData. Not type="hidden": browsers skip `required` on hidden inputs, so an
+          empty required cleaner field is now caught by FormGuard like any other field (R-FORM-01) */}
       {name && (
         <input
-          type="hidden"
+          type="text"
+          tabIndex={-1}
+          aria-hidden="true"
+          className="sr-only"
           name={name}
           value={selected.join(', ')}
+          onChange={() => {}}
           required={required && selected.length === 0}
         />
       )}
