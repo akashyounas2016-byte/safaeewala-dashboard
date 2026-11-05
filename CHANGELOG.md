@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(excel): flag next to the cleaner's name with a hover popup (clash / needs a cleaner / history) instead of the sync text in Remarks (UX-86)
+- fix(copy): Copy buttons work on the http VPS address (Add user credentials, webhook snippets, review message) (UX-87)
+- fix(settings): owner, System Health and Backup widgets on the Company tab only (UX-88)
 - refactor(excel): step 1 of splitting the Excel Job Sheet — columns, palettes, row logic, settings and formulas moved to src/lib/excelSheet/ (6,518 → 5,173 lines); no behaviour change (CODE-A01)
 - fix(excel): column headers follow the column alignment (UX-85)
 - feat(invoices): issued invoices are voided, not deleted; a taken number is retried (R-FIN-05, INV-A09)

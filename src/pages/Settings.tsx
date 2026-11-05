@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { copyText } from '@/lib/clipboard'
 import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle, Clock, CheckCircle2, XCircle, Loader2, Send, Key, Link2, Eye, EyeOff, Sparkles, ChevronDown, ChevronUp, Mail, HelpCircle, Database, Server, RefreshCw, FileText, Check, Copy, Info, ShieldCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { loadCompanyInfo } from '@/lib/companyInfo'
@@ -102,7 +103,7 @@ function GHLPanel() {
   }
 
   const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text)
+    void copyText(text)
     setCopiedKey(key)
     setTimeout(() => setCopiedKey(null), 2000)
   }
@@ -651,7 +652,7 @@ function ActivityLogPanel() {
           <div className="relative">
             <pre className="text-[11px] font-mono bg-slate-900 text-emerald-400 p-4 rounded-xl overflow-x-auto whitespace-pre-wrap">{AUDIT_SQL}</pre>
             <button
-              onClick={() => { navigator.clipboard.writeText(AUDIT_SQL); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
+              onClick={() => { void copyText(AUDIT_SQL); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
               className="absolute top-2 right-2 text-[11px] font-semibold bg-white/10 text-white px-2.5 py-1 rounded-lg hover:bg-white/20 transition-colors"
             >
               {copied ? 'Copied!' : 'Copy'}
@@ -821,7 +822,7 @@ export function Settings() {
   const totalRecords = bookings.length + clients.length + employees.length + invoices.length + inventory.length + dailyJobs.length + dailyExpenses.length
 
   function handleCopySnippet(text: string, key: string) {
-    navigator.clipboard.writeText(text)
+    void copyText(text)
     setCopiedSnippet(key)
     setTimeout(() => setCopiedSnippet(null), 2000)
   }
@@ -1056,11 +1057,11 @@ export function Settings() {
         </div>
       </div>
 
-      {/* the Roles table needs the full width for its role columns, so the side panel is hidden there */}
-      <div className={`grid gap-6 items-start ${activeTab === 'backup' || activeTab === 'roles' ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-3'}`}>
+      {/* UX-88: the side widgets (owner, system health, backup) belong to the Company tab only; every other tab uses the full width */}
+      <div className={`grid gap-6 items-start ${activeTab === 'company' ? 'grid-cols-1 xl:grid-cols-3' : 'grid-cols-1'}`}>
 
         {/* ── Left: Tab Content ── */}
-        <div className={`${activeTab === 'backup' || activeTab === 'roles' ? 'w-full' : 'xl:col-span-2'} space-y-5`}>
+        <div className={`${activeTab === 'company' ? 'xl:col-span-2' : 'w-full'} space-y-5`}>
 
           {/* ── Users ── */}
           {activeTab === 'users' && <UsersAdminPanel />}
@@ -1825,7 +1826,7 @@ export function Settings() {
         </div>
 
         {/* ── Right sidebar (Hidden on Backup tab so Backup & Disaster Recovery Center expands 100% full width) ── */}
-        {activeTab !== 'backup' && activeTab !== 'roles' && (
+        {activeTab === 'company' && (
           <div className="space-y-5">
 
 

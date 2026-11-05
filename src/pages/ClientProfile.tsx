@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { copyText } from '@/lib/clipboard'
 import { formatClientAddress } from '@/lib/clientAddress'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
 import {
@@ -1811,7 +1812,7 @@ export function ClientProfile() {
             <div className="flex flex-col sm:flex-row gap-2">
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(reviewMsg)
+                  void copyText(reviewMsg)
                   setCopied(true)
                   setTimeout(() => setCopied(false), 2500)
                 }}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { copyText } from '@/lib/clipboard'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import {
@@ -102,13 +103,13 @@ export function GoogleDriveWebhookModal({
   }'`
 
   const handleCopyWorkflow = () => {
-    navigator.clipboard.writeText(getN8nSampleWorkflowJson())
+    void copyText(getN8nSampleWorkflowJson())
     setCopiedWorkflow(true)
     setTimeout(() => setCopiedWorkflow(false), 2500)
   }
 
   const handleCopyCurl = () => {
-    navigator.clipboard.writeText(sampleCurl)
+    void copyText(sampleCurl)
     setCopiedCurl(true)
     setTimeout(() => setCopiedCurl(false), 2500)
   }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { copyText } from '@/lib/clipboard'
 import { Copy, KeyRound, Pencil, Plus, Power, RefreshCw, ShieldCheck, UserPlus } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
@@ -81,7 +82,7 @@ function CredentialsCard({ loginId, password, onClose }: { loginId: string; pass
       <p className="text-[12.5px] text-slate-600">Give these to the user. The password is not shown again — reset it if it is lost.</p>
       <div className="rounded-xl bg-slate-900 text-emerald-200 font-mono text-[13px] p-4 whitespace-pre">{text}</div>
       <div className="flex gap-2 justify-end">
-        <button type="button" onClick={() => { void navigator.clipboard.writeText(text); notify.success('Copied') }}
+        <button type="button" onClick={() => void copyText(text).then(ok => (ok ? notify.success('Login ID and password copied') : notify.error('Copy failed: select the text above and press Ctrl+C')))}
           className="px-3 py-2 rounded-xl border border-slate-200 text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 cursor-pointer flex items-center gap-1.5"><Copy size={13} /> Copy</button>
         <button type="button" onClick={onClose} className="px-3 py-2 rounded-xl bg-emerald-700 text-white text-[12.5px] font-bold hover:bg-emerald-800 cursor-pointer">Done</button>
       </div>

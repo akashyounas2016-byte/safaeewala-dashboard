@@ -30,6 +30,8 @@ import { type BlockPalette, BLOCK_PALETTES, SOLID_PALETTE_KEYS, LIGHT_PALETTE_KE
 import { newRowId, sameJobRow, isBlankNewRow, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff } from '@/lib/excelSheet/rows'
 import { DRAFT_PREFIX, COLUMN_PRESETS, READ_ONLY_COLS, DEFAULT_ROW_BG, projectKeyOf, memberChargesLabel, memberReceivedLabel, memberModeLabel, refMoney, DROPDOWN_COLS, TIME_SUGGESTIONS, DUBAI_AREAS, RENDER_PAGE, safeGet, safeSet } from '@/lib/excelSheet/sheetConfig'
 import { evaluateFormula } from '@/lib/excelSheet/formula'
+import { jobFlags, splitSyncNote, type JobFlag } from '@/lib/jobFlags'
+import { JobFlagIcon } from '@/components/dailyJobSheet/JobFlagIcon'
 
 /** E2E-02: one overlap check for the whole app (12h / 24h, overnight shifts) — kept as an export for older imports */
 export { checkTimesOverlap } from '@/components/dailyJobSheet/jobSheetUtils'
@@ -2581,6 +2583,20 @@ export function JobSheetSpreadsheet() {
   // R-JOB-01: every cleaner booked twice at the same time in this sheet — saved or not — shown at once
   const gridClashes = useMemo(() => findAllClashes(gridRows), [gridRows])
   const clashRowIds = useMemo(() => new Set(gridClashes.flatMap(c => [String(c.a.id), String(c.b.id)])), [gridClashes])
+  // UX-86: issues of a row (live clash, sync note) shown as a flag next to the cleaner's name
+  const rowClash = useMemo(() => {
+    const map = new Map<string, StaffClash>()
+    // each row points to the other job of the pair
+    gridClashes.forEach(c => { map.set(String(c.a.id), { staff: c.staff, job: c.b }); map.set(String(c.b.id), { staff: c.staff, job: c.a }) })
+    return map
+  }, [gridClashes])
+  const flagsOf = (rows: DailyJob[]): JobFlag[] => rows.flatMap(r => jobFlags(r, rowClash.get(String(r.id))))
+  const clearFlag = (flag: JobFlag) => {
+    const jobOf = (r: DailyJob) => String((r as { _originalJobId?: string })._originalJobId || r.id)
+    const jobId = jobOf(flag.row)
+    pushState(gridRows.map(r => (jobOf(r) === jobId ? { ...r, remarks: splitSyncNote(r.remarks).text } : r)))
+    showToast('✓ Flag cleared · Save to keep the change')
+  }
   const [showAllClashes, setShowAllClashes] = useState(false)
 
   // Summary Totals
@@ -3599,6 +3615,7 @@ export function JobSheetSpreadsheet() {
 
                             let rawVal = row[col.id as keyof DailyJob]
                             let displayVal: any = rawVal
+                            if (col.id === 'remarks') displayVal = splitSyncNote(rawVal).text // UX-86: the note is the flag
                             const isBlankShift = !row.address && !row.start_time && !row.end_time && cleanNum(row.charges) === 0 && cleanNum(row.received) === 0
                             const mcInfo = getMultiCleanerPaymentInfo(row, gridRows)
 
@@ -3682,7 +3699,10 @@ export function JobSheetSpreadsheet() {
                                   renderCellEditor(col, globalIndex, true)
                                 ) : col.id === 'staff_name' ? (
                                   <div className="flex flex-col items-start leading-tight py-0.5">
-                                    <span className="font-black text-white tracking-wide truncate">{displayVal}</span>
+                                    <span className="inline-flex items-center gap-1 max-w-full">
+                                      <span className="font-black text-white tracking-wide truncate">{displayVal}</span>
+                                      <JobFlagIcon flags={flagsOf([row])} onClear={clearFlag} />
+                                    </span>
                                     {mcInfo?.teamRef && !isBlankShift && (
                                       <span className={`inline-flex items-center gap-0.5 text-[9.5px] font-black px-1.5 py-0.2 rounded-md mt-0.5 border shadow-2xs ${
                                         mcInfo.isPrimary ? 'bg-indigo-100 text-indigo-900 border-indigo-300' : 'bg-indigo-950/80 text-indigo-200 border-indigo-500/40'
@@ -3907,8 +3927,11 @@ export function JobSheetSpreadsheet() {
                               />
                             ) : (
                               <div className="flex flex-col items-center justify-center h-full min-h-[60px] px-2 text-center gap-1">
-                                <span className={`font-bold text-[13px] tracking-tight select-text ${isDarkRow ? 'text-white' : 'text-slate-900'}`}>
-                                  {blockInfo?.staffName || '—'}
+                                <span className="inline-flex items-center gap-1">
+                                  <span className={`font-bold text-[13px] tracking-tight select-text ${isDarkRow ? 'text-white' : 'text-slate-900'}`}>
+                                    {blockInfo?.staffName || '—'}
+                                  </span>
+                                  <JobFlagIcon flags={flagsOf(gridRows.filter(j => (j.staff_name || '').trim().toLowerCase() === staffKey))} onClear={clearFlag} />
                                 </span>
                                 {blockTeams.map(tName => (
                                   <span
@@ -3932,6 +3955,7 @@ export function JobSheetSpreadsheet() {
 
                       let rawVal = row[col.id as keyof DailyJob]
                       let displayVal: any = rawVal
+                      if (col.id === 'remarks') displayVal = splitSyncNote(rawVal).text // UX-86: the note is the flag
                       const isBlankShift = !row.address && !row.start_time && !row.end_time && cleanNum(row.charges) === 0 && cleanNum(row.received) === 0
                       const pendVal = rowPending(row)
                       const mcInfo = getMultiCleanerPaymentInfo(row, gridRows)

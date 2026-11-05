@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { copyText } from '@/lib/clipboard'
 import {
   Globe, Send, Search, Filter, ExternalLink, Calendar, Phone,
   Mail, MessageSquare, CheckCircle, Clock, AlertTriangle, ArrowUpRight,
@@ -1759,7 +1760,7 @@ export function FluentFormsLeads() {
               />
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(webhookConfig.restEndpoint)
+                  void copyText(webhookConfig.restEndpoint)
                   setCopiedUrl(true)
                   setTimeout(() => setCopiedUrl(false), 2000)
                 }}
@@ -1839,7 +1840,7 @@ export function FluentFormsLeads() {
               <label className="text-[12px] font-bold text-slate-700">Test cURL Command (Ready for ReqBin or Terminal)</label>
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(webhookConfig.sampleCurl)
+                  void copyText(webhookConfig.sampleCurl)
                   setCopiedCurl(true)
                   setTimeout(() => setCopiedCurl(false), 2000)
                 }}

@@ -4,7 +4,8 @@ import { canAccessModule, permRoleOf, normalizeRolePerms, DEFAULT_ROLE_PERMS, fi
 import { invoiceBalance, invoicedJobIds } from '@/lib/receivables'
 import { biweeklyVisitOn, biweeklyVisitDates, type BiWeeklyPlan } from '@/lib/biweekly'
 import { getScheduledMonthlyShiftsForDate } from '@/lib/clientDataSync'
-import type { Client, Invoice } from '@/types'
+import type { Client, DailyJob, Invoice } from '@/types'
+import { jobFlags, splitSyncNote } from '@/lib/jobFlags'
 
 const eq = (a: unknown, b: unknown, m: string) => {
   if (JSON.stringify(a) !== JSON.stringify(b)) { console.log('FAIL', m, JSON.stringify(a), JSON.stringify(b)); process.exitCode = 1 } else console.log('PASS ', m)
@@ -46,7 +47,22 @@ eq(firstAllowedPath('employee', DEFAULT_ROLE_PERMS, 'driver'), '/my-duties', 'dr
 const custom = normalizeRolePerms({ driver: ['My Duties', 'Drivers'] })
 eq(canAccessModule('employee', custom, 'Drivers', 'driver'), true, 'admin can give a driver more screens')
 eq(custom.cleaner, ['My Duties'], 'missing columns keep their defaults')
-eq(/activeTab === 'backup' \|\| activeTab === 'roles'/.test(src('src/pages/Settings.tsx')), true, 'Roles tab uses the full width')
+// UX-88: the side widgets show on the Company tab only; every other tab (Roles included) uses the full width
+eq(/activeTab === 'company' \? 'grid-cols-1 xl:grid-cols-3' : 'grid-cols-1'/.test(src('src/pages/Settings.tsx')) && /\{activeTab === 'company' && \(/.test(src('src/pages/Settings.tsx')), true, 'side widgets on the Company tab only')
+
+// UX-86: the sync note leaves Remarks and becomes a flag next to the cleaner
+const note = splitSyncNote('Monthly Contract · ⚠ Ambika is already booked 09:00–12:00 at Office Luxam Trading DMCC: assign a cleaner')
+eq([note.text, note.note?.cleaner, note.note?.at], ['Monthly Contract', 'Ambika', 'Office Luxam Trading DMCC'], 'note split from the remarks')
+const jobRow = (staff: string) => ({ id: 'j9', staff_name: staff, remarks: 'Monthly Contract · ⚠ Ambika is already booked 09:00–12:00 at Office Luxam: assign a cleaner' }) as unknown as DailyJob
+eq(jobFlags(jobRow(''), null).map(f => f.level), ['open'], 'no cleaner yet → amber flag')
+eq(jobFlags(jobRow('Bimala'), null).map(f => f.level), ['history'], 'cleaner assigned, no clash → grey history flag')
+eq(jobFlags({ ...jobRow('Bimala'), remarks: '' } as DailyJob, { staff: 'Bimala', job: jobRow('Bimala') }).map(f => f.level), ['clash'], 'live clash → red flag')
+eq(jobFlags({ ...jobRow('Bimala'), remarks: 'Monthly Contract' } as DailyJob, null).length, 0, 'plain remarks → no flag')
+
+// UX-87: Copy works on http too (VPS address)
+eq(/document\.execCommand\('copy'\)/.test(src('src/lib/clipboard.ts')), true, 'copy has a fallback without navigator.clipboard')
+eq(['src/components/settings/UserManagement.tsx', 'src/pages/Settings.tsx', 'src/pages/FluentFormsLeads.tsx', 'src/pages/ClientProfile.tsx', 'src/components/dailyJobSheet/GoogleDriveWebhookModal.tsx']
+  .some(f => /navigator\.clipboard/.test(src(f))), false, 'no Copy button calls navigator.clipboard directly')
 
 // SEC-A03: field logins limited in the database
 const sql = src('supabase/migrations/2026-11-05_field_login_rows.sql')

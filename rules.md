@@ -64,6 +64,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Only between the contract's start and end dates. **Every week** on the chosen days by default; *Every other week* can be chosen on the card.
   - The row: address "<building> Apt <n> - <client>", the day's time and cleaner, payment mode Cash, charges 0 (filled by the office), remark "(Bi-Weekly Schedule)". A busy cleaner is not double-booked (R-SCHED-06).
 - **Code:** `src/lib/biweekly.ts → biweeklyVisitOn`; `clientDataSync.getScheduledMonthlyShiftsForDate`.
+- **The sync note (UX-86):** when a visit is added without a cleaner, the reason is kept at the end of its remarks. The Excel Job Sheet hides it from Remarks and shows a flag next to the cleaner's name instead (`src/lib/jobFlags.ts`). The flag stays grey (history, no clash) after a cleaner is assigned, until it is cleared.
 - **Status:** In code · needs `2026-11-04_clients_service_mode.sql` · Since: 2026-11-05
 
 ### R-SCHED-06 — A clash is stopped where it starts
