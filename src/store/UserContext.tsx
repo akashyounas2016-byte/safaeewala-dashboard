@@ -116,8 +116,8 @@ export function useIsAdmin() {
 }
 
 /** Can the signed-in user open this screen? No user → no access. */
-export function useCanAccess(module: ModuleKey): boolean {
+export function useCanAccess(module: ModuleKey, staffRole?: string | null): boolean {
   const u     = useCurrentUser()
   const perms = useContext(RolePermsCtx)
-  return canAccessModule(u?.role, perms, module)
+  return canAccessModule(u?.role, perms, module, staffRole)
 }

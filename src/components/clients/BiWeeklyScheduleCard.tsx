@@ -43,8 +43,17 @@ export function BiWeeklyScheduleCard({ plan, onChange, cleaners }: { plan: BiWee
           </div>
           <span className="text-[12.5px] font-extrabold text-slate-800">Bi-Weekly Schedule</span>
           <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-violet-100 text-violet-800 border border-violet-200">
-            {plan.days.length} days · every other week
+            {plan.days.length} days · {plan.every_weeks === 2 ? 'every other week' : 'every week'}
           </span>
+        </div>
+        {/* R-SCHED-07: every week by default; every other week when the client wants that */}
+        <div className="flex rounded-xl border border-violet-200 bg-white p-0.5">
+          {([1, 2] as const).map(n => (
+            <button key={n} type="button" onClick={() => onChange({ ...plan, every_weeks: n })}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${(plan.every_weeks ?? 1) === n ? 'bg-violet-600 text-white' : 'text-violet-800 hover:bg-violet-50'}`}>
+              {n === 1 ? 'Every week' : 'Every other week'}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -104,6 +113,7 @@ export function BiWeeklyScheduleCard({ plan, onChange, cleaners }: { plan: BiWee
           <div className="flex justify-between"><span className="text-slate-500">Duration</span><b>{plan.months} {plan.months === 1 ? 'month' : 'months'}</b></div>
           <div className="flex justify-between"><span className="text-slate-500">Visits</span><b>{visits.length}</b></div>
           {plan.days.length === 0 && <span className="text-amber-700">Tick the days the client wants.</span>}
+          <span className="text-slate-500">Visits appear on the Daily Job Sheet by themselves on these days, like monthly visits.</span>
         </div>
       </div>
     </div>

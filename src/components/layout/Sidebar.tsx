@@ -244,15 +244,15 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
     })
   }, [navOrder])
 
-  const { isField } = useFieldStaff()
+  const { employee: staff } = useFieldStaff()
+  const staffRole = me?.role === 'employee' ? staff?.role : undefined
   const accessibleItems = useMemo(() => {
     return sortedNavItems.filter(item => {
-      // Only the screens this user's role allows (R-SEC-03); field staff only My Duties (R-SEC-05)
+      // Only the screens this user's role allows (R-SEC-03); staff logins by their staff role (R-SEC-07)
       const mod = moduleForPath(item.to)
-      if (isField) return mod === 'My Duties'
-      return !mod || canAccessModule(me?.role, rolePerms, mod)
+      return !mod || canAccessModule(me?.role, rolePerms, mod, staffRole)
     })
-  }, [sortedNavItems, me?.role, rolePerms, isField])
+  }, [sortedNavItems, me?.role, rolePerms, staffRole])
 
   // Items pinned to Favorites at the very top
   const favoriteItems = useMemo(() => {

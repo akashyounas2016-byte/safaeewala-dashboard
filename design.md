@@ -125,6 +125,11 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
   - Excel Job Sheet: every cleaner block has at least 3 rows. A cleaner added by Add Job gets a full block (job row + empty rows), like the others.
   - Popups: a missing required field shows a red message at the top (chips name the fields) and a red outline on the field (R-FORM-01). The browser's small bubble is not used.
   - Time picker: switching Morning / Evening (or opening the list) starts the list at its first time.
+- Round 2026-11-05 b (UX-85):
+  - Excel Job Sheet: a column header follows its column's alignment (left / center / right).
+  - Invoices: issued invoices show *Void* instead of *Delete*; a void invoice has a grey, struck-through status.
+  - Bi-Weekly card: *Every week / Every other week* switch; a note says the visits appear on the Daily Job Sheet by themselves.
+  - Settings → Roles & Access: six columns (Admin, Manager, Employee, Supervisor, Driver, Cleaner) over the full width.
 - Add New Client popup (UX-78): no description lines under the card titles. The contact row is Full Name, Phone, WhatsApp and **Mode** (four equal columns). Bi-Weekly adds a violet schedule card under the address card; Monthly swaps the body for the monthly client form and keeps a compact Mode selector in the header.
 - Client cards (UX-67) are the same on Clients and Monthly Clients, and match the booking cards (UX-63). From top to bottom:
   - the lead cleaner's colour on the left edge;

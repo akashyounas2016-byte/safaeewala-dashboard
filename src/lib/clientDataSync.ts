@@ -2,6 +2,7 @@ import type { Booking, DailyJob, Client, Employee, DailyPendingReceivedItem, Rec
 import { cleanNum, calcHours, calcOTHours, calcDailyCleanerShiftsOT } from '@/components/dailyJobSheet/jobSheetUtils'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
+import { biweeklyVisitOn } from '@/lib/biweekly'
 
 /** Ids of the old demo clients (seed data, removed 2026-10-27) — may still exist in old stored data */
 const SEED_CLIENT_ID_PREFIX = 'c1000001-0000-0000-0000-'
@@ -1212,7 +1213,7 @@ export interface ScheduledShiftPlan {
   area: string
   remarks: string
   service: string
-  paymentMode: 'Monthly'
+  paymentMode: 'Monthly' | 'Cash'
   charges: number
   alreadySynced: boolean
   existingJobId?: string
@@ -1231,6 +1232,26 @@ export function isMonthlyContractStopped(client: Pick<Client, 'full_name'>, cont
   const key = normalizeKey(client.full_name || '')
   const own = contracts.filter(c => key && normalizeKey(c.clientName || '') === key)
   return own.length > 0 && !own.some(c => c.status === 'active')
+}
+
+/** Address of a scheduled visit: "<building> Apt <n> - <client name>", never with "(Monthly)" */
+export function scheduledAddressOf(client: Client): string {
+  const bldg = (client.building_name || '').trim()
+  const apt = (client.apartment || '').trim()
+  const bldgApt = [bldg, apt ? `Apt ${apt}` : ''].filter(Boolean).join(' ')
+  const clientName = (client.full_name || 'Monthly Client').trim()
+  const address = (client as Client & { address?: string }).address
+  let baseAddr = ''
+  if (bldgApt && clientName && !bldgApt.toLowerCase().includes(clientName.toLowerCase())) baseAddr = `${bldgApt} - ${clientName}`
+  else if (bldgApt) baseAddr = bldgApt
+  else if (address) baseAddr = `${address} - ${clientName}`
+  else baseAddr = clientName
+  const cleanBase = baseAddr
+    .replace(/\s*\((?:Monthly|monthly)\)/gi, '')
+    .replace(/\bMonthly\b/gi, '')
+    .replace(/\s*-\s*$/, '')
+    .trim()
+  return cleanBase || clientName
 }
 
 export function getScheduledMonthlyShiftsForDate(
@@ -1311,31 +1332,8 @@ export function getScheduledMonthlyShiftsForDate(
 
     const { cleanerName, startTime, endTime, durationHours } = getClientShiftDetailsForDay(client, dayName)
 
-    // Format address with building and client name (ensuring '(Monthly)' appears at most once)
-    const bldg = (client.building_name || '').trim()
-    const apt = (client.apartment || '').trim()
-    const bldgApt = [bldg, apt ? `Apt ${apt}` : ''].filter(Boolean).join(' ')
+    const formattedAddr = scheduledAddressOf(client)
     const clientName = (client.full_name || 'Monthly Client').trim()
-
-    let baseAddr = ''
-    if (bldgApt && clientName && !bldgApt.toLowerCase().includes(clientName.toLowerCase())) {
-      baseAddr = `${bldgApt} - ${clientName}`
-    } else if (bldgApt) {
-      baseAddr = bldgApt
-    } else if ((client as any).address) {
-      baseAddr = `${(client as any).address} - ${clientName}`
-    } else {
-      baseAddr = clientName
-    }
-
-    const cleanBase = baseAddr
-      .replace(/\s*\((?:Monthly|monthly)\)/gi, '')
-      .replace(/\bMonthly\b/gi, '')
-      .replace(/\s*-\s*$/, '')
-      .trim()
-
-    const formattedAddr = cleanBase ? cleanBase : clientName
-
     const area = client.area || 'Dubai'
 
     const remarks = client.remarks
@@ -1364,6 +1362,30 @@ export function getScheduledMonthlyShiftsForDate(
       remarks,
       service: 'Regular Cleaning',
       paymentMode: 'Monthly',
+      charges: 0,
+      alreadySynced: Boolean(matchedJob),
+      existingJobId: matchedJob?.id,
+    })
+  })
+
+  // R-SCHED-07: Bi-Weekly clients — the day's time and cleaner from their plan, inside the contract dates
+  clients.forEach(client => {
+    if (client.service_mode !== 'biweekly' || clientMap.has(client.id)) return
+    const visit = biweeklyVisitOn(client.biweekly_plan, dateStr)
+    if (!visit) return
+    const matchedJob = jobsOnDate.find(j => jobMatchesClient(j, client))
+    shifts.push({
+      client,
+      dayName,
+      cleanerName: visit.cleaner || '',
+      startTime: visit.startTime,
+      endTime: visit.endTime,
+      durationHours: visit.duration || calcHours(visit.startTime, visit.endTime),
+      address: scheduledAddressOf(client),
+      area: client.area || 'Dubai',
+      remarks: '(Bi-Weekly Schedule)',
+      service: 'Regular Cleaning',
+      paymentMode: 'Cash',
       charges: 0,
       alreadySynced: Boolean(matchedJob),
       existingJobId: matchedJob?.id,
@@ -1474,7 +1496,7 @@ export function syncMonthlySchedulesToDailyJobs(
       material: 'No',
       charges: shift.charges,
       received: 0,
-      payment_mode: 'Monthly',
+      payment_mode: shift.paymentMode,
       is_overtime: false,
       remarks,
       service: shift.service,

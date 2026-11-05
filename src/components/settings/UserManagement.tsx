@@ -7,7 +7,7 @@ import { useData } from '@/store/DataContext'
 import { useAuth, useRolePerms, useSetRolePerms } from '@/store/UserContext'
 import {
   ALL_MODULE_KEYS, ROLE_META, generatePassword, nextLoginId, passwordProblem, passwordStrength,
-  type AppRole, type ModuleKey, type RolePerms,
+  type AppRole, type ModuleKey, type RolePerms, PERM_ROLES,
 } from '@/lib/permissions'
 
 /** A login, as stored in public.profiles */
@@ -320,7 +320,7 @@ export function UsersAdminPanel() {
   )
 }
 
-/** Settings → Roles & Access: which screens Manager and Employee may open (admin sees everything) */
+/** Settings → Roles & Access: which screens each role may open (admin sees everything) — R-SEC-03, R-SEC-07 */
 export function RolePermissionsPanel() {
   const { user } = useAuth()
   const stored = useRolePerms()
@@ -355,6 +355,7 @@ export function RolePermissionsPanel() {
         <div>
           <h3 className="text-[15px] font-bold text-[#111827]">Roles & screen access</h3>
           <p className="text-[12px] text-slate-500 mt-0.5">Tick the screens each role may open. Blocked screens disappear from the menu and their links show “No access”.</p>
+          <p className="text-[11.5px] text-slate-400 mt-0.5">Supervisor, Driver and Cleaner apply to Employee logins linked to a staff record (Settings → Users), by that person's staff role. Employee applies to Employee logins without a staff record.</p>
         </div>
         {isAdmin && (
           <button type="button" disabled={!dirty || saving} onClick={() => void save()}
@@ -368,7 +369,8 @@ export function RolePermissionsPanel() {
           <thead className="bg-[#f8fafc] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
             <tr>
               <th className="text-left px-6 py-2.5">Screen</th>
-              {(Object.keys(ROLE_META) as AppRole[]).map(r => <th key={r} className="px-3 py-2.5 text-center">{ROLE_META[r].label}</th>)}
+              <th className="px-3 py-2.5 text-center">{ROLE_META.admin.label}</th>
+              {PERM_ROLES.map(r => <th key={r.key} className="px-3 py-2.5 text-center">{r.label}</th>)}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -376,7 +378,7 @@ export function RolePermissionsPanel() {
               <tr key={mod}>
                 <td className="px-6 py-2.5 font-semibold text-slate-700">{mod}</td>
                 <td className="px-3 py-2.5 text-center"><input type="checkbox" checked disabled className="w-4 h-4 accent-emerald-600" title="Admin always has every screen" /></td>
-                {(['manager', 'employee'] as const).map(role => (
+                {PERM_ROLES.map(({ key: role }) => (
                   <td key={role} className="px-3 py-2.5 text-center">
                     <input type="checkbox" checked={draft[role].includes(mod)} disabled={!isAdmin} onChange={() => toggle(role, mod)} className="w-4 h-4 accent-emerald-600 cursor-pointer" />
                   </td>

@@ -45,6 +45,7 @@ function StatusPill({ status }: { status: string }) {
     sent:    { bg: 'bg-blue-50',     text: 'text-blue-700' },
     overdue: { bg: 'bg-red-50',      text: 'text-red-700' },
     draft:   { bg: 'bg-slate-100',   text: 'text-slate-600' },
+    void:    { bg: 'bg-slate-200',   text: 'text-slate-500 line-through' },
   }
   const c = cfg[status] ?? { bg: 'bg-slate-100', text: 'text-slate-600' }
   return (
@@ -145,6 +146,8 @@ export function Invoices() {
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<Invoice | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [voidReason, setVoidReason] = useState('')
+  const confirmTarget = invoices.find(i => i.id === confirmDeleteId)
 
   // Dynamic Date Filter state
   const [datePreset, setDatePreset] = useState<InvoiceDatePreset>(DEFAULT_FINANCE_PRESET)
@@ -352,6 +355,7 @@ export function Invoices() {
                 <option value="paid">Paid</option>
                 <option value="sent">Pending</option>
                 <option value="overdue">Overdue</option>
+                <option value="void">Void</option>
                 <option value="draft">Draft</option>
               </select>
             </div>
@@ -487,14 +491,14 @@ export function Invoices() {
                           <button onClick={() => printInvoice(inv)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="Print / Download PDF">
                             <Download size={14} />
                           </button>
-                          {inv.status !== 'paid' && inv.status !== 'sent' && (
+                          {inv.status !== 'paid' && inv.status !== 'sent' && inv.status !== 'void' && (
                             <button
                               onClick={() => updateInvoice(inv.id, { status: 'sent' })}
                               className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors" title="Mark as sent">
                               <Send size={14} />
                             </button>
                           )}
-                          {inv.status !== 'paid' && (
+                          {inv.status !== 'paid' && inv.status !== 'void' && (
                             <button
                               onClick={() => updateInvoice(inv.id, { status: 'paid', paid_date: todayDubai() })}
                               className="p-1.5 rounded-lg hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 transition-colors" title="Mark as paid">
@@ -503,7 +507,7 @@ export function Invoices() {
                           )}
                           <button
                             onClick={() => setConfirmDeleteId(inv.id)}
-                            className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" title="Delete invoice">
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" title={inv.status === 'draft' ? 'Delete draft' : 'Void invoice (issued invoices are kept)'}>
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -624,14 +628,46 @@ export function Invoices() {
       </Modal>
 
       {/* ── Delete Confirmation Modal ── */}
-      <Modal open={!!confirmDeleteId} onClose={() => setConfirmDeleteId(null)} title="Delete Invoice" size="sm">
-        <div className="space-y-4">
-          <p className="text-[13px] text-slate-600">This will permanently delete the invoice from Supabase. This cannot be undone.</p>
-          {(() => { const inv = invoices.find(i => i.id === confirmDeleteId); return inv && inv.status !== 'draft' ? (
-            <p className="text-[12.5px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
-              {inv.invoice_number} was already issued ({inv.status}). UAE VAT rules expect issued tax invoices to be kept; delete it only if it was made by mistake. (INV-A07)
+      {/* INV-A07: only a draft can be deleted. An issued tax invoice is voided: kept with its number, counted nowhere. */}
+      <Modal open={!!confirmDeleteId && confirmTarget?.status !== 'draft'} onClose={() => { setConfirmDeleteId(null); setVoidReason('') }} title={confirmTarget?.status === 'void' ? 'Invoice is void' : 'Void Invoice'} size="sm">
+        {confirmTarget && (confirmTarget.status === 'void' ? (
+          <p className="text-[13px] text-slate-600">{confirmTarget.invoice_number} is already void. Issued tax invoices are kept for VAT records and cannot be deleted.</p>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-[13px] text-slate-600">
+              <b>{confirmTarget.invoice_number}</b> was already issued ({confirmTarget.status}). UAE VAT rules expect issued tax invoices to be kept, so it cannot be deleted.
+              Voiding keeps it with its number, marks it <b>VOID</b>, and removes it from every total and balance. Its jobs can be billed again.
             </p>
-          ) : null })()}
+            <div>
+              <label className="block text-[12px] font-bold text-slate-700 mb-1">Reason <span className="text-red-500">*</span></label>
+              <input value={voidReason} onChange={e => setVoidReason(e.target.value)} placeholder="e.g. Wrong amount, client cancelled…"
+                className="w-full text-[13px] px-3.5 py-2.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-rose-400" />
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => { setConfirmDeleteId(null); setVoidReason('') }}>Cancel</Button>
+              <button
+                disabled={!voidReason.trim()}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-[13px] font-semibold py-2 rounded-xl transition-colors cursor-pointer"
+                onClick={() => {
+                  const note = `VOID ${todayDubai()}: ${voidReason.trim()}`
+                  const patch = { status: 'void' as const, notes: confirmTarget.notes ? `${confirmTarget.notes}\n${note}` : note }
+                  updateInvoice(confirmTarget.id, patch)
+                  if (selected?.id === confirmTarget.id) setSelected({ ...selected, ...patch })
+                  notify.success(`${confirmTarget.invoice_number} is now void`)
+                  setConfirmDeleteId(null)
+                  setVoidReason('')
+                }}
+              >
+                Void invoice
+              </button>
+            </div>
+          </div>
+        ))}
+      </Modal>
+
+      <Modal open={!!confirmDeleteId && confirmTarget?.status === 'draft'} onClose={() => setConfirmDeleteId(null)} title="Delete Draft Invoice" size="sm">
+        <div className="space-y-4">
+          <p className="text-[13px] text-slate-600">This draft was never issued. It will be deleted permanently from Supabase.</p>
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1" onClick={() => setConfirmDeleteId(null)}>Cancel</Button>
             <button
@@ -1364,6 +1400,7 @@ function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete, onRecordP
     sent:    { bg: 'bg-blue-50',    text: 'text-blue-700' },
     overdue: { bg: 'bg-red-50',     text: 'text-red-700' },
     draft:   { bg: 'bg-slate-100',  text: 'text-slate-600' },
+    void:    { bg: 'bg-slate-200',  text: 'text-slate-500 line-through' },
   }
   const sc = statusCfg[invoice.status] ?? { bg: 'bg-slate-100', text: 'text-slate-600' }
 
@@ -1492,9 +1529,9 @@ function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete, onRecordP
           onClick={onDelete}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 text-red-600 text-[12px] font-semibold hover:bg-red-50 transition-colors"
         >
-          <Trash2 size={13} /> Delete
+          <Trash2 size={13} /> {invoice.status === 'draft' ? 'Delete' : 'Void'}
         </button>
-        {invoice.status !== 'paid' && (
+        {invoice.status !== 'paid' && invoice.status !== 'void' && (
           <>
             {invoice.status !== 'sent' && (
               <Button variant="secondary" className="flex-1" size="sm" onClick={onSend}>

@@ -10,7 +10,9 @@ const eq = (a: unknown, b: unknown, m: string) => {
 
 const plan = { days: ['Monday', 'Thursday'], day_schedules: {}, start_date: '2026-11-10', months: 1 }
 eq(biweeklyEndDate(plan), '2026-12-09', 'one month from 10 Nov ends 9 Dec')
-eq(biweeklyVisitDates(plan), ['2026-11-12', '2026-11-23', '2026-11-26', '2026-12-07'], 'chosen days, every other week, inside the contract')
+eq(biweeklyVisitDates({ ...plan, every_weeks: 2 }), ['2026-11-12', '2026-11-23', '2026-11-26', '2026-12-07'], 'chosen days, every other week, inside the contract')
+// R-SCHED-07: every week is the default
+eq(biweeklyVisitDates(plan), ['2026-11-12', '2026-11-16', '2026-11-19', '2026-11-23', '2026-11-26', '2026-11-30', '2026-12-03', '2026-12-07'], 'chosen days every week by default')
 eq(biweeklyEndDate({ start_date: '2026-01-31', months: 1 }), '2026-02-27', 'month end is clamped')
 eq(biweeklyVisitDates({ ...plan, days: [] }), [], 'no days, no visits')
 

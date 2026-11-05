@@ -481,7 +481,7 @@ export function ClientProfile() {
   const clientInvoices = invoices.filter(i =>
     i.client_id === id || i.client_name.toLowerCase().trim() === client.full_name.toLowerCase().trim()
   )
-  const totalInvoiced = clientInvoices.reduce((s, i) => s + i.total, 0)
+  const totalInvoiced = clientInvoices.filter(i => i.status !== 'void').reduce((s, i) => s + i.total, 0) // INV-A07: void counts nowhere
   const totalPaid     = clientInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
   const outstanding   = totalInvoiced - totalPaid
 

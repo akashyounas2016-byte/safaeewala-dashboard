@@ -284,7 +284,8 @@ export interface Invoice {
   vat_amount: number
   vat_rate: number
   total: number
-  status: 'draft' | 'sent' | 'paid' | 'overdue'
+  /** void = cancelled after it was issued; kept for VAT records, counts nowhere (INV-A07) */
+  status: 'draft' | 'sent' | 'paid' | 'overdue' | 'void'
   due_date: string
   paid_date?: string
   notes?: string

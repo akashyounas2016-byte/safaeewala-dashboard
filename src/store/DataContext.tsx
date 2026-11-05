@@ -3,12 +3,13 @@ import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, Daily
 import { supabase } from '@/lib/supabase'
 import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
-import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry } from '@/lib/syncQueue'
+import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry, sanitizeOutboxPayload } from '@/lib/syncQueue'
 import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
 import { nextInvoiceNumber, ensureInvoiceNumber, reserveInvoiceNumber } from '@/lib/invoiceNumber'
 import { addHoursToTime, staffOfAgency } from '@/lib/utils'
 import { defaultAgencies } from '@/lib/defaultAgencies'
 import { todayDubai, addDays } from '@/lib/dubaiTime'
+import { notify } from '@/lib/notify'
 import { jobFromBooking, jobPatchFromBookingPatch, bookingPatchFromJobPatch, nextOccurrence } from '@/lib/bookingSync'
 import { describeJobChange } from '@/lib/auditLog'
 import { recalculateAllRowsOT } from '@/components/dailyJobSheet/jobSheetUtils'
@@ -540,11 +541,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
    */
   /** INV-A01: the number is checked against Supabase before the invoice is written */
   function saveInvoiceWithFreeNumber(row: Invoice) {
-    void reserveInvoiceNumber(row.invoice_number, invoices).then(number => {
-      const saved = number === row.invoice_number ? row : { ...row, invoice_number: number }
-      if (saved !== row) setInvoices(p => p.map(x => (x.id === row.id ? saved : x)))
-      dbInsert('invoices', saved)
-    })
+    // INV-A09: the database refuses a taken number (unique index); then the next free one is tried
+    void (async () => {
+      const tried = new Set<string>()
+      let number = await reserveInvoiceNumber(row.invoice_number, invoices)
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const saved = number === row.invoice_number ? row : { ...row, invoice_number: number }
+        if (saved !== row) setInvoices(p => p.map(x => (x.id === row.id ? saved : x)))
+        const { error } = await supabase.from('invoices').insert(sanitizeOutboxPayload('invoices', saved as never) as never)
+        if (!error) return
+        if (error.code !== '23505') { dbInsert('invoices', saved); return } // offline / other error: the outbox retries
+        tried.add(number)
+        const known = [...invoices, ...[...tried].map(n => ({ invoice_number: n }))]
+        number = await reserveInvoiceNumber(nextInvoiceNumber(known), known)
+      }
+      notify.error(`Invoice ${number} could not get a free number. Reload the page and try again.`)
+    })()
   }
 
   function onBookingCompleted(booking: Booking, jobIds: string[]) {

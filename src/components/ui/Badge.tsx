@@ -39,6 +39,7 @@ export function StatusBadge({ status }: { status: string }) {
     sent:        { label: 'Sent',        variant: 'info'    },
     paid:        { label: 'Paid',        variant: 'success' },
     overdue:     { label: 'Overdue',     variant: 'danger'  },
+    void:        { label: 'Void',        variant: 'neutral' },
   }
   const config = map[status] ?? { label: status, variant: 'default' as BadgeVariant }
   return <Badge label={config.label} variant={config.variant} />

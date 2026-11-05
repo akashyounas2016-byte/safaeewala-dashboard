@@ -158,11 +158,12 @@ function ModuleGate() {
   const { pathname } = useLocation()
   const field = useFieldStaff()
   const module = moduleForPath(pathname)
-  // R-SEC-05: a cleaner / driver login opens My Duties only, whatever the employee role allows
+  // R-SEC-05 / R-SEC-07: a staff login uses its staff role's column (Supervisor / Driver / Cleaner)
   if (field.resolving) return <PageLoader />
-  if (field.isField) return module === 'My Duties' ? <Outlet /> : <Navigate to="/my-duties" replace />
-  if (!module || canAccessModule(user?.role, perms, module)) return <Outlet />
-  const home = firstAllowedPath(user?.role, perms)
+  const staffRole = user?.role === 'employee' ? field.employee?.role : undefined
+  if (!module || canAccessModule(user?.role, perms, module, staffRole)) return <Outlet />
+  const home = firstAllowedPath(user?.role, perms, staffRole)
+  if (field.isField && home) return <Navigate to={home} replace />
   if (pathname === '/' && home && home !== '/') return <Navigate to={home} replace />
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-6">

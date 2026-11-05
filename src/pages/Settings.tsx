@@ -1056,10 +1056,11 @@ export function Settings() {
         </div>
       </div>
 
-      <div className={`grid gap-6 items-start ${activeTab === 'backup' ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-3'}`}>
+      {/* the Roles table needs the full width for its role columns, so the side panel is hidden there */}
+      <div className={`grid gap-6 items-start ${activeTab === 'backup' || activeTab === 'roles' ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-3'}`}>
 
         {/* ── Left: Tab Content ── */}
-        <div className={`${activeTab === 'backup' ? 'w-full' : 'xl:col-span-2'} space-y-5`}>
+        <div className={`${activeTab === 'backup' || activeTab === 'roles' ? 'w-full' : 'xl:col-span-2'} space-y-5`}>
 
           {/* ── Users ── */}
           {activeTab === 'users' && <UsersAdminPanel />}
@@ -1824,7 +1825,7 @@ export function Settings() {
         </div>
 
         {/* ── Right sidebar (Hidden on Backup tab so Backup & Disaster Recovery Center expands 100% full width) ── */}
-        {activeTab !== 'backup' && (
+        {activeTab !== 'backup' && activeTab !== 'roles' && (
           <div className="space-y-5">
 
 

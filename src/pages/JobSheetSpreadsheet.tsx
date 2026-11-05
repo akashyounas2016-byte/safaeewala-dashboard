@@ -4760,7 +4760,8 @@ export function JobSheetSpreadsheet() {
                     : "Drag column to reorder · Right-click header to color whole row · Drag edge to resize"
                   }
                 >
-                  <div className="flex items-center gap-1.5 pr-2">
+                  {/* UX-85: the header follows its column's alignment (left / center / right) */}
+                  <div className={`flex items-center gap-1.5 pr-2 ${alignClass(col).includes('text-right') ? 'justify-end' : alignClass(col).includes('text-center') ? 'justify-center' : 'justify-start'}`}>
                     <span>{col.label}</span>
                   </div>
                   {/* Edge drag handle for resizing column width */}

@@ -58,6 +58,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientDataSync.ts → isMonthlyContractStopped`, checked in `getScheduledMonthlyShiftsForDate`. Every sync path (startup, Daily Job Sheet, Bookings) goes through it.
 - **Status:** Active · Since: 2026-11-04
 
+### R-SCHED-07 — Bi-Weekly visits go to the Daily Job Sheet by themselves
+- **Rule:** *"bi-weekly ki jobs … days, time select ho jayen gen jo k automatically sheet me show ho jaen gi un days me, jese monthly job show hoti hen."*
+  - The days, time and cleaner chosen in Add New Client → Mode Bi-Weekly create the visits on the Daily Job Sheet by themselves, with the same sync as monthly visits.
+  - Only between the contract's start and end dates. **Every week** on the chosen days by default; *Every other week* can be chosen on the card.
+  - The row: address "<building> Apt <n> - <client>", the day's time and cleaner, payment mode Cash, charges 0 (filled by the office), remark "(Bi-Weekly Schedule)". A busy cleaner is not double-booked (R-SCHED-06).
+- **Code:** `src/lib/biweekly.ts → biweeklyVisitOn`; `clientDataSync.getScheduledMonthlyShiftsForDate`.
+- **Status:** In code · needs `2026-11-04_clients_service_mode.sql` · Since: 2026-11-05
+
 ### R-SCHED-06 — A clash is stopped where it starts
 - **Rule:** *"error ko booking entry ke waqt hi detect kar ke rokna chahiye tha taake job duplicate na ho."* A cleaner is never given two jobs at the same time (R-JOB-01), at every entry point:
   - **Monthly schedule** (Add / Edit Monthly Client): the schedule is not saved when a cleaner already works for another monthly client on that weekday at an overlapping time. The message names the client, day and time.
@@ -499,10 +507,21 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `Overview.tsx → jobCollected, bookingsWithoutJobRow`; `Reports.tsx → workItems`.
 - **Status:** Active · Since: 2026-10-27 (AUD-01, AUD-05)
 
+### R-FIN-05 — Issued invoices are voided, never deleted
+- **Rule:** *"Jari ho chuki invoice … jo bhtr lage krdo."* Only a **draft** can be deleted. An issued invoice (sent, paid, overdue) is **voided**:
+  - it keeps its number and stays in the list, marked VOID (filter: Void);
+  - the reason and date are added to its notes;
+  - it counts in no total, balance or receivable, and its jobs can be billed again;
+  - a void invoice cannot be paid, sent or deleted.
+- **Why:** UAE VAT expects issued tax invoices to be kept (INV-A07).
+- **Code:** `Invoices.tsx` (Void modal), `receivables.ts → invoiceBalance, invoicedJobIds`, `Invoice.status 'void'`.
+- **Status:** Active · Since: 2026-11-05
+
 ### R-FIN-04 — Invoice numbers
 - **Rule:** One scheme: `SAF-<year>-<NNNN>`, next = highest of the year + 1; `addInvoice` replaces any missing, legacy or duplicate number.
   - The year is the Dubai year (INV-A02).
   - Before an invoice is written, the numbers already in Supabase are read and the next free one is taken (INV-A01). This covers two users or two tabs creating an invoice at the same time. Offline, the local number is kept.
+  - The database refuses a number that is taken (unique index, `2026-11-01_data_constraints.sql`). The app then takes the next free number and saves again, up to 5 times (INV-A09).
 - **Code:** `src/lib/invoiceNumber.ts → reserveInvoiceNumber`; `DataContext.addInvoice`, `saveInvoiceWithFreeNumber`.
 - **Status:** Active · Since: 2026-10-27 (AUD-36)
 
@@ -559,13 +578,23 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `webhookServer.cjs → signedInWithPublicKey, authorizeApi`; test `tests/server/open-mode.test.mjs`.
 - **Status:** Active · Since: 2026-11-05
 
+### R-SEC-07 — Roles & Access columns for Supervisor, Driver and Cleaner
+- **Rule:** *"setting me role and access ki tab me drivers and cleaners, supervisor k columns b add krdo."* Settings → Roles & Access has the columns Admin, Manager, Employee, **Supervisor, Driver, Cleaner**.
+  - An Employee login linked to a staff record (Settings → Users) uses the column of that person's staff role. Driver = driver; Supervisor = supervisor; every other field role (cleaner, crew lead, ducting …) = Cleaner. An Employee login without a staff record uses Employee.
+  - Defaults: Driver and Cleaner = **My Duties only** (R-SEC-05); Supervisor = Overview, Bookings, Daily Job Sheet, Attendance, Drivers, My Duties.
+  - The admin may tick more screens for a column; the menu, the URL guard and the database (role_can) follow the same column.
+  - The Roles tab uses the full page width (the side panel is hidden there).
+- **Database (SEC-A03):** `2026-11-05_field_login_rows.sql` — a Driver / Cleaner login reads only its own data unless its column has a screen that uses the table: cleaner = jobs with their name; driver = all jobs from yesterday to 7 days ahead; clients of those jobs; their own staff record and the drivers; the driver plan. No bookings, invoices, expenses, inventory, agencies or leads. They write nothing except job progress and location.
+- **Code:** `src/lib/permissions.ts → PermRole, PERM_ROLES, permRoleOf, canAccessModule`; `App.tsx → ModuleGate`; `Sidebar.tsx`; `UserManagement.tsx → RolePermissionsPanel`.
+- **Status:** In code · the database part needs the migration · Since: 2026-11-05
+
 ### R-SEC-05 — Cleaners and drivers see only their own duties
 - **Rule:** *"cleaners ko sirf cleaners ki duties aur drivers ko sirf drivers ki duties nazar ayen, aur koi dosra inhein access na kar sakay."*
   - **Field staff** = a login with role *Employee* linked to a staff record (Settings → Users) whose staff role is not *supervisor*.
   - Field staff open **My Duties only**. Every other address sends them back to My Duties. The sidebar shows only My Duties. They get no AI bot and no office notifications.
   - A driver sees only their own route (stops assigned to them in Drivers). Every other staff role sees only their own jobs: time, site, team mates, driver drop and pick-up, material, and cash to collect. They see no OT and no prices.
   - Admin and manager can preview any cleaner or driver. Any other login not linked to a staff record sees nothing on My Duties.
-  - **Not yet in the database:** an employee login can still read the shared tables through the API (E2E-07 reads). Limiting field logins to their own rows needs a migration (planned).
+  - **Database:** `2026-11-05_field_login_rows.sql` limits field logins to their own rows (R-SEC-07). Screens beyond My Duties can be given per column in Roles & Access.
 - **Code:** `src/lib/duties.ts → isFieldStaff, dutyKindOf, cleanerDuties`; `src/store/useFieldStaff.ts`; `App.tsx → ModuleGate`; `Sidebar.tsx`; `Layout.tsx`; `MyDuties.tsx`.
 - **Status:** Active · Since: 2026-11-03
 

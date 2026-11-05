@@ -38,11 +38,38 @@ export const APP_MODULES = [
 export type ModuleKey = (typeof APP_MODULES)[number]['key']
 export const ALL_MODULE_KEYS = APP_MODULES.map(m => m.key) as ModuleKey[]
 
+/**
+ * Columns of Settings → Roles & Access (R-SEC-07). An Employee login linked to a staff record uses the
+ * column of that staff role: Supervisor, Driver or Cleaner (every other field role counts as Cleaner).
+ * An Employee login without a staff record uses the Employee column.
+ */
+export type PermRole = 'manager' | 'employee' | 'supervisor' | 'driver' | 'cleaner'
+export const PERM_ROLES: { key: PermRole; label: string }[] = [
+  { key: 'manager', label: 'Manager' },
+  { key: 'employee', label: 'Employee' },
+  { key: 'supervisor', label: 'Supervisor' },
+  { key: 'driver', label: 'Driver' },
+  { key: 'cleaner', label: 'Cleaner' },
+]
+
 /** Screens each role gets until the admin changes them (admin always gets everything) */
-export type RolePerms = Record<Exclude<AppRole, 'admin'>, ModuleKey[]>
+export type RolePerms = Record<PermRole, ModuleKey[]>
 export const DEFAULT_ROLE_PERMS: RolePerms = {
-  manager:  ALL_MODULE_KEYS.filter(k => k !== 'Settings'),
-  employee: ['Overview', 'Bookings', 'Attendance', 'My Duties'],
+  manager:    ALL_MODULE_KEYS.filter(k => k !== 'Settings'),
+  employee:   ['Overview', 'Bookings', 'Attendance', 'My Duties'],
+  supervisor: ['Overview', 'Bookings', 'Daily Job Sheet', 'Attendance', 'Drivers', 'My Duties'],
+  driver:     ['My Duties'], // R-SEC-05: field staff see their own duties only, unless the admin adds screens
+  cleaner:    ['My Duties'],
+}
+
+/** Which column applies to a login (null for admin = everything) */
+export function permRoleOf(role: AppRole | undefined, staffRole?: string | null): PermRole | null {
+  if (role === 'admin' || !role) return null
+  if (role === 'manager') return 'manager'
+  if (!staffRole) return 'employee'
+  if (staffRole === 'supervisor') return 'supervisor'
+  if (staffRole === 'driver') return 'driver'
+  return 'cleaner'
 }
 
 /** Which screen a URL belongs to ("/clients/123" → Clients) */
@@ -60,9 +87,9 @@ export function moduleForPath(pathname: string): ModuleKey | null {
 
 /** Clean stored permissions: keep only known screens */
 export function normalizeRolePerms(stored: unknown): RolePerms {
-  const out: RolePerms = { manager: [...DEFAULT_ROLE_PERMS.manager], employee: [...DEFAULT_ROLE_PERMS.employee] }
+  const out = Object.fromEntries(PERM_ROLES.map(r => [r.key, [...DEFAULT_ROLE_PERMS[r.key]]])) as RolePerms
   if (stored && typeof stored === 'object') {
-    for (const role of ['manager', 'employee'] as const) {
+    for (const { key: role } of PERM_ROLES) {
       const list = (stored as Record<string, unknown>)[role]
       if (Array.isArray(list)) out[role] = list.filter((k): k is ModuleKey => ALL_MODULE_KEYS.includes(k as ModuleKey))
     }
@@ -70,15 +97,17 @@ export function normalizeRolePerms(stored: unknown): RolePerms {
   return out
 }
 
-export function canAccessModule(role: AppRole | undefined, perms: RolePerms, module: ModuleKey): boolean {
+/** `staffRole`: role of the staff record linked to an Employee login (R-SEC-07) */
+export function canAccessModule(role: AppRole | undefined, perms: RolePerms, module: ModuleKey, staffRole?: string | null): boolean {
   if (!role) return false
   if (role === 'admin') return true
-  return perms[role].includes(module)
+  const column = permRoleOf(role, staffRole)
+  return !!column && perms[column].includes(module)
 }
 
 /** First screen a user may open (for redirects) */
-export function firstAllowedPath(role: AppRole | undefined, perms: RolePerms): string | null {
-  const m = APP_MODULES.find(x => canAccessModule(role, perms, x.key))
+export function firstAllowedPath(role: AppRole | undefined, perms: RolePerms, staffRole?: string | null): string | null {
+  const m = APP_MODULES.find(x => canAccessModule(role, perms, x.key, staffRole))
   return m ? m.paths[0] : null
 }
 

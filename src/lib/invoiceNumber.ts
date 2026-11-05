@@ -30,7 +30,7 @@ export function ensureInvoiceNumber(proposed: string | undefined, existing: Arra
  * Supabase are read and the next free one is taken. Offline: the local number is kept.
  */
 export async function reserveInvoiceNumber(proposed: string, local: Array<{ invoice_number?: string }>): Promise<string> {
-  const year = proposed.match(/^SAF-(d{4})-/)?.[1] || todayDubai().slice(0, 4)
+  const year = proposed.match(/^SAF-(\d{4})-/)?.[1] || todayDubai().slice(0, 4)
   try {
     const { data, error } = await supabase.from('invoices').select('invoice_number').like('invoice_number', `SAF-${year}-%`)
     if (error || !data) return proposed

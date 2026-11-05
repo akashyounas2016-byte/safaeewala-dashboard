@@ -6,7 +6,7 @@ import type { Invoice } from '@/types'
 
 /** Amount still owed on an invoice (partial payments via amount_paid) */
 export function invoiceBalance(inv: Pick<Invoice, 'total' | 'status' | 'amount_paid'>): number {
-  if (inv.status === 'paid') return 0
+  if (inv.status === 'paid' || inv.status === 'void') return 0
   return Math.max(0, Math.round(((Number(inv.total) || 0) - (Number(inv.amount_paid) || 0)) * 100) / 100)
 }
 
@@ -20,7 +20,7 @@ export const isPartlyPaid = (inv: Pick<Invoice, 'total' | 'status' | 'amount_pai
 export function invoicedJobIds(invoices: Invoice[]): Set<string> {
   const ids = new Set<string>()
   invoices.forEach(inv => {
-    if (inv.status === 'draft') return
+    if (inv.status === 'draft' || inv.status === 'void') return // a voided invoice frees its jobs again
     ;(inv.job_ids || []).forEach(id => ids.add(id))
   })
   return ids

@@ -317,7 +317,7 @@ export function Clients() {
   // Client pending balance & dues calculation
   const getClientOutstanding = (c: typeof clients[0]) => {
     const nameLower = c.full_name.toLowerCase().trim()
-    const clientInvs = invoices.filter(i => i.client_id === c.id || (i.client_name && i.client_name.toLowerCase().trim() === nameLower))
+    const clientInvs = invoices.filter(i => i.status !== 'void' && (i.client_id === c.id || (i.client_name && i.client_name.toLowerCase().trim() === nameLower)))
     const invOutstanding = clientInvs.reduce((s, i) => s + (i.total || 0), 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + (i.total || 0), 0)
     const clientPendingBalance = calcClientPendingBalance(c, dailyJobs)
     return Math.max(0, clientPendingBalance + invOutstanding)
@@ -742,7 +742,7 @@ export function Clients() {
             {filtered.map((c, idx) => {
               const nameLower = c.full_name.toLowerCase().trim()
               const liveBookings = bookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase().trim() === nameLower)
-              const clientInvs = invoices.filter(i => i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower)
+              const clientInvs = invoices.filter(i => i.status !== 'void' && (i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower))
               const invOutstanding = clientInvs.reduce((s, i) => s + i.total, 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
               const clientPendingBalance = calcClientPendingBalance(c, dailyJobs)
               const outstanding = clientPendingBalance + invOutstanding
@@ -1195,7 +1195,7 @@ export function Clients() {
               const isMonthly = isMonthlyClient(c, dailyJobs, allMonthlySummaries)
               const nameLower    = c.full_name.toLowerCase().trim()
               const liveBookings = bookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase().trim() === nameLower)
-              const clientInvs   = invoices.filter(i => i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower)
+              const clientInvs   = invoices.filter(i => i.status !== 'void' && (i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower))
               const invOutstanding = clientInvs.reduce((s, i) => s + i.total, 0) - clientInvs.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
               const outstanding  = calcClientPendingBalance(c, dailyJobs) + invOutstanding
               const totalVisits  = Math.max(c.total_bookings, liveBookings.length)

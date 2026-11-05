@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(excel): column headers follow the column alignment (UX-85)
+- feat(invoices): issued invoices are voided, not deleted; a taken number is retried (R-FIN-05, INV-A09)
+- feat(clients): Bi-Weekly visits go to the Daily Job Sheet by themselves, every week or every other week (R-SCHED-07)
+- feat(security): Supervisor / Driver / Cleaner columns in Roles & Access; SQL that limits field logins to their own rows (R-SEC-07, SEC-A03). Needs `2026-11-05_field_login_rows.sql`
 - fix(excel): a cleaner added by Add Job gets a 3-row block like the others (UX-84)
 - feat(forms): popups never save with a required field empty; red message at the top and outlined fields, in every popup (R-FORM-01, UX-84)
 - fix(time picker): Morning / Evening switch starts the list at the top (UX-84)
