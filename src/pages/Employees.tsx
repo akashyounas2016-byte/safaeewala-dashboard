@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
-import { PageHero, type HeroNotification } from '@/components/layout/PageHero'
+import { PageHero } from '@/components/layout/PageHero'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee, matchesAgencyFilter } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
@@ -635,39 +635,7 @@ export function Employees() {
   }, [employees, search, roleFilter, agencyFilter, statusFilter, workFilter, expiryFilter, sortBy, staffJobStats, agencies])
 
   // Employee alerts for the header bell: expired / expiring (≤30 days) documents and contracts
-  const employeeNotifications = useMemo<HeroNotification[]>(() => {
-    const docs: [keyof Employee, string][] = [
-      ['visa_expiry', 'Visa'],
-      ['passport_expiry', 'Passport'],
-      ['work_permit_expiry', 'Work Permit'],
-      ['eid_end_date', 'Emirates ID'],
-      ['medical_insurance_expiry', 'Medical Insurance'],
-      ['driving_license_expiry_date', 'Driving License'],
-      ['end_date', 'Employment contract'],
-    ]
-    const list: (HeroNotification & { days: number })[] = []
-    employees.forEach(e => {
-      if (e.status === 'inactive') return
-      docs.forEach(([field, label]) => {
-        const date = e[field] as string | undefined
-        if (!date) return
-        const days = daysUntil(date)
-        if (days > 30) return
-        const plural = (n: number) => (n === 1 ? '' : 's')
-        list.push({
-          id: `${e.id}-${String(field)}`,
-          title: `${e.full_name}: ${label} ${days < 0 ? 'expired' : 'expiring'}`,
-          detail: days < 0
-            ? `Expired ${-days} day${plural(-days)} ago (${formatDate(date)})`
-            : `${days === 0 ? 'Expires today' : `${days} day${plural(days)} left`} (${formatDate(date)})`,
-          tone: days < 0 ? 'danger' : 'warning',
-          onClick: () => navigate(`/employees/${e.id}`),
-          days,
-        })
-      })
-    })
-    return list.sort((a, b) => a.days - b.days)
-  }, [employees, navigate])
+  // R-ALERT-01: document expiry alerts are in Sidebar → Alerts (lib/alerts → employeeDocAlerts)
 
   /* Overtime Top Performers Leaderboard */
   const topOTStaff = useMemo(() => {
@@ -1204,7 +1172,6 @@ export function Employees() {
         }
         actionLabel="Add Employee"
         onAction={handleOpenAddModal}
-        notifications={employeeNotifications}
       />
 
       {/* ── KPI Cards: Focused on Employees' Real Work, Duty Hours & OT ── */}

@@ -632,6 +632,19 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/duties.ts → isFieldStaff, dutyKindOf, cleanerDuties`; `src/store/useFieldStaff.ts`; `App.tsx → ModuleGate`; `Sidebar.tsx`; `Layout.tsx`; `MyDuties.tsx`.
 - **Status:** Active · Since: 2026-11-03
 
+## ALERT — Alerts
+
+### R-ALERT-01 — Every alert in one place: Sidebar → Alerts
+- **Rule:** *"Sidebar mein ek dedicated 'Alert' section shamil kijaye. CRM ke tamam alerts, notification, aur screen par show honay walay AI bot alerts (jaise priority discrepancies) ko is section mein consolidate kiya jaye. Main screens ko declutter karne ke liye alerts ko pop-ups ya headers se hata kar sirf is central section mein display kiya jaye."*
+  - **Alerts** (`/alerts`, under Overview in the sidebar) lists, high priority first: system notifications (late jobs, overdue invoices, low stock), AI Bot findings (duplicates, discrepancies — *Review in AI Bot*), today's Daily Job Sheet issues (clash, job without a cleaner), a failed or missing nightly backup, employee documents expiring (≤30 days), agency documents / payouts / staff compliance, pending bookings and today's bookings without a cleaner.
+  - Tabs by priority and source; each alert links to where it is fixed. *Dismiss* hides it in this browser; *Dismissed* shows and restores them.
+  - The sidebar item shows the number of open alerts.
+  - Removed from the screens: the alert ticker and the AI Bot discrepancy banner above every page, and the alert lists of the Employees, Agencies and Bookings header bells (the bell now only opens Alerts).
+  - Kept: the sync banner (unsaved changes / sync errors must stay in view), the floating AI Bot button (the chat), and inline page notices that confirm an action (import done, delete done).
+  - Cleaners and drivers get no alerts (R-SEC-05). Roles & Access has an **Alerts** column; a permissions save made before Alerts existed gives it to the roles that get it by default.
+- **Code:** `src/lib/alerts.ts`, `src/store/useAlerts.ts`, `src/pages/Alerts.tsx`; `Sidebar.tsx`, `Layout.tsx`, `PageHero.tsx`; `permissions.ts → normalizeRolePerms`.
+- **Status:** Active · Since: 2026-11-05
+
 ## OPS — Operating process
 
 ### R-OPS-01 — No browser automation without permission

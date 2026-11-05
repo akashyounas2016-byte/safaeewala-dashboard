@@ -145,16 +145,18 @@ export function Clients() {
   const navigate = useNavigate()
 
   const initialFilter = searchParams.get('filter') || searchParams.get('type')
-  const [filterType, setFilterType] = useState<'all' | 'active' | 'vip' | 'repeat' | 'monthly' | 'due' | 'inactive' | null>(
-    initialFilter === 'active' || initialFilter === 'vip' || initialFilter === 'repeat' || initialFilter === 'monthly' || initialFilter === 'due' || initialFilter === 'inactive' ? initialFilter : null
+  type ClientFilter = 'active' | 'vip' | 'repeat' | 'monthly' | 'due' | 'inactive' | 'new' | 'booked' | 'paying' | 'advance'
+  const CLIENT_FILTERS: string[] = ['active', 'vip', 'repeat', 'monthly', 'due', 'inactive', 'new', 'booked', 'paying', 'advance']
+  const [filterType, setFilterType] = useState<ClientFilter | null>(
+    initialFilter && CLIENT_FILTERS.includes(initialFilter) ? initialFilter as ClientFilter : null
   )
   const initialAgency = searchParams.get('agency') || searchParams.get('source') || ''
   const [agencyFilter, setAgencyFilter] = useState<string>(initialAgency)
 
   useEffect(() => {
     const f = searchParams.get('filter') || searchParams.get('type')
-    if (f === 'active' || f === 'vip' || f === 'repeat' || f === 'monthly' || f === 'due' || f === 'inactive') {
-      setFilterType(f)
+    if (f && CLIENT_FILTERS.includes(f)) {
+      setFilterType(f as ClientFilter)
     } else if (f === 'all') {
       setFilterType(null)
     }
@@ -360,6 +362,12 @@ export function Clients() {
 
   const areas = [...new Set(clients.map(c => c.area).filter(Boolean))].sort()
 
+  // UX-97: a client's bookings, matched by id or name (same as the cards and Recent Bookings)
+  const clientBookingCount = (c: typeof clients[0]) => {
+    const n = c.full_name.toLowerCase().trim()
+    return Math.max(c.total_bookings || 0, bookings.filter(b => b.client_id === c.id || (b.client_name || '').toLowerCase().trim() === n).length)
+  }
+
   const filtered = (() => {
     const base = clients.filter(c => {
       const q = search.toLowerCase().trim()
@@ -377,6 +385,10 @@ export function Clients() {
         filterType === 'monthly' ? isClientMonthly :
         filterType === 'due' ? getClientOutstanding(c) > 0 :
         filterType === 'inactive' ? (!c.last_service || (Date.now() - new Date(c.last_service).getTime()) > 60 * 86400000) :
+        filterType === 'new' ? c.created_at >= startOfMonth :
+        filterType === 'booked' ? clientBookingCount(c) > 0 :
+        filterType === 'paying' ? c.total_spent > 0 :
+        filterType === 'advance' ? (c.advance_amount || 0) > 0 :
         true
       )
       const matchDate = isClientInDateRange(c)
@@ -433,68 +445,68 @@ export function Clients() {
   const scopeRepeat = scopeClients.filter(c => c.total_bookings > 1).length
   const scopeRepeatRate = scopeClients.length > 0 ? Math.round((scopeRepeat / scopeClients.length) * 100) : 0
   const scopeInactive = scopeClients.filter(c => !c.last_service || (Date.now() - new Date(c.last_service).getTime()) > 60 * 86400000).length
-  const SCOPE_LABEL: Record<string, string> = { active: 'Active clients', monthly: 'Monthly clients', due: 'Clients with a due balance', vip: 'VIP clients', repeat: 'Repeat clients', inactive: 'At-risk clients' }
+  const SCOPE_LABEL: Record<string, string> = { active: 'Active clients', monthly: 'Monthly clients', due: 'Clients with a due balance', vip: 'VIP clients', repeat: 'Repeat clients', inactive: 'At-risk clients', new: 'Clients new this month', booked: 'Clients with bookings', paying: 'Paying clients', advance: 'Clients with an advance' }
 
   interface KpiCardItem {
     label: string
     value: string | number
     sub: string
     icon: any
-    iconBg: string
-    iconColor: string
+    /** label colour + solid icon tile, like the Daily Job Sheet KPI cards (UX-97) */
+    labelColor: string
+    iconSolid: string
     delta: string
     deltaUp: boolean
-    filter: any
+    filter: ClientFilter | 'all' | null
   }
 
-  // 6 Primary Summary Cards (Single Row)
+  // UX-97: first row Total · Active · Monthly · New This Month · VIP · Total Bookings
+  // (Due Balance ↔ New This Month and Repeat Rate ↔ Total Bookings swapped, owner request 2026-11-05)
   const primaryCards: KpiCardItem[] = [
-    { label: 'Total Clients',    value: clients.length, sub: 'Registered accounts', icon: Users, iconBg: 'bg-blue-50', iconColor: 'text-blue-600', delta: clientDeltaLabel, deltaUp: newThisMonth >= 0, filter: null },
-    { label: 'Active Clients',   value: activeClients, sub: 'Recent bookings', icon: TrendingUp, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: `${activeClients} active`, deltaUp: activeClients > 0, filter: 'active' },
-    { label: 'Monthly Clients',  value: monthlyCount, sub: 'Recurring contracts', icon: Star, iconBg: 'bg-teal-50', iconColor: 'text-teal-600', delta: `${monthlyCount} recurring`, deltaUp: monthlyCount > 0, filter: 'monthly' },
-    { label: 'Due Balance',      value: `AED ${totalOutstanding.toLocaleString()}`, sub: 'Pending collections', icon: AlertCircle, iconBg: 'bg-red-50', iconColor: 'text-red-600', delta: `${clientsWithDue.length} owe`, deltaUp: false, filter: 'due' },
-    { label: 'VIP Clients',      value: vipClients, sub: 'AED 2k+ spend', icon: Award, iconBg: 'bg-amber-50', iconColor: 'text-amber-600', delta: vipClients > 0 ? `${vipClients} VIP` : '0 VIP', deltaUp: vipClients > 0, filter: 'vip' },
-    { label: 'Repeat Rate',      value: `${repeatRate}%`, sub: '2+ service visits', icon: Heart, iconBg: 'bg-pink-50', iconColor: 'text-pink-600', delta: `${repeatClients} repeat`, deltaUp: repeatRate > 0, filter: 'repeat' },
+    { label: 'Total Clients',   value: clients.length, sub: 'Registered accounts', icon: Users, labelColor: 'text-blue-700', iconSolid: 'bg-[#2563eb] shadow-blue-500/25', delta: clientDeltaLabel, deltaUp: newThisMonth >= 0, filter: 'all' },
+    { label: 'Active Clients',  value: activeClients, sub: 'Recent bookings', icon: TrendingUp, labelColor: 'text-emerald-700', iconSolid: 'bg-[#059669] shadow-emerald-500/25', delta: `${activeClients} active`, deltaUp: activeClients > 0, filter: 'active' },
+    { label: 'Monthly Clients', value: monthlyCount, sub: 'Recurring contracts', icon: Star, labelColor: 'text-teal-700', iconSolid: 'bg-[#0d9488] shadow-teal-500/25', delta: `${monthlyCount} recurring`, deltaUp: monthlyCount > 0, filter: 'monthly' },
+    { label: 'New This Month',  value: newThisMonth, sub: 'Joined this month', icon: Sparkles, labelColor: 'text-indigo-700', iconSolid: 'bg-[#4f46e5] shadow-indigo-500/25', delta: clientDeltaLabel, deltaUp: newThisMonth >= newLastMonth, filter: 'new' },
+    { label: 'VIP Clients',     value: vipClients, sub: 'AED 2k+ spend', icon: Award, labelColor: 'text-amber-700', iconSolid: 'bg-[#d97706] shadow-amber-500/25', delta: vipClients > 0 ? `${vipClients} VIP` : '0 VIP', deltaUp: vipClients > 0, filter: 'vip' },
+    { label: 'Total Bookings',  value: totalBookingsAll, sub: 'Completed visits', icon: CalendarCheck, labelColor: 'text-sky-700', iconSolid: 'bg-[#0284c7] shadow-sky-500/25', delta: 'All records', deltaUp: true, filter: 'booked' },
   ]
 
-  // 6 Secondary Cards (Expandable on clicking blinking arrow)
+  // Second row (More Client Metrics): Due Balance and Repeat Rate moved here
   const secondaryCards: KpiCardItem[] = [
-    { label: 'Total Revenue',    value: `AED ${(totalSpent / 1000).toFixed(1)}k`, sub: `AED ${totalSpent.toLocaleString()} lifetime`, icon: CheckCircle, iconBg: 'bg-purple-50', iconColor: 'text-purple-600', delta: 'All time', deltaUp: true, filter: null },
-    { label: 'Avg Lifetime',     value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client average', icon: DollarSign, iconBg: 'bg-cyan-50', iconColor: 'text-cyan-600', delta: 'Per Client', deltaUp: true, filter: null },
-    { label: 'New This Month',   value: newThisMonth, sub: 'Joined this month', icon: Sparkles, iconBg: 'bg-indigo-50', iconColor: 'text-indigo-600', delta: clientDeltaLabel, deltaUp: newThisMonth >= newLastMonth, filter: null },
-    { label: 'At-Risk (>60d)',   value: inactiveClientsCount, sub: 'No visits in 60+ days', icon: Clock, iconBg: 'bg-orange-50', iconColor: 'text-orange-600', delta: `${inactiveClientsCount} dormant`, deltaUp: false, filter: 'inactive' },
-    { label: 'Total Bookings',   value: totalBookingsAll, sub: 'Completed visits', icon: CalendarCheck, iconBg: 'bg-sky-50', iconColor: 'text-sky-600', delta: 'All records', deltaUp: true, filter: null },
-    { label: 'Advance Balance',  value: `AED ${totalAdvanceAmount.toLocaleString()}`, sub: 'Client credits / deposits', icon: Wallet, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: 'Deposits', deltaUp: true, filter: null },
+    { label: 'Total Revenue',   value: `AED ${(totalSpent / 1000).toFixed(1)}k`, sub: `AED ${totalSpent.toLocaleString()} lifetime`, icon: CheckCircle, labelColor: 'text-purple-700', iconSolid: 'bg-[#7c3aed] shadow-purple-500/25', delta: 'All time', deltaUp: true, filter: 'paying' },
+    { label: 'Avg Lifetime',    value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client average', icon: DollarSign, labelColor: 'text-cyan-700', iconSolid: 'bg-[#0891b2] shadow-cyan-500/25', delta: 'Per Client', deltaUp: true, filter: 'paying' },
+    { label: 'Due Balance',     value: `AED ${totalOutstanding.toLocaleString()}`, sub: 'Pending collections', icon: AlertCircle, labelColor: 'text-rose-700', iconSolid: 'bg-[#e11d48] shadow-rose-500/25', delta: `${clientsWithDue.length} owe`, deltaUp: false, filter: 'due' },
+    { label: 'At-Risk (>60d)',  value: inactiveClientsCount, sub: 'No visits in 60+ days', icon: Clock, labelColor: 'text-orange-700', iconSolid: 'bg-[#ea580c] shadow-orange-500/25', delta: `${inactiveClientsCount} dormant`, deltaUp: false, filter: 'inactive' },
+    { label: 'Repeat Rate',     value: `${repeatRate}%`, sub: '2+ service visits', icon: Heart, labelColor: 'text-pink-700', iconSolid: 'bg-[#db2777] shadow-pink-500/25', delta: `${repeatClients} repeat`, deltaUp: repeatRate > 0, filter: 'repeat' },
+    { label: 'Advance Balance', value: `AED ${totalAdvanceAmount.toLocaleString()}`, sub: 'Client credits / deposits', icon: Wallet, labelColor: 'text-emerald-700', iconSolid: 'bg-[#047857] shadow-emerald-500/25', delta: 'Deposits', deltaUp: true, filter: 'advance' },
   ]
 
+  // UX-97: every card is clickable — it filters the cards and the widgets below (Total Clients shows all)
   const renderCard = (card: KpiCardItem) => {
-    const isSelected = filterType === card.filter && card.filter !== null
+    const isSelected = card.filter === 'all' ? !filterType : filterType === card.filter
     return (
       <button
         key={card.label}
         type="button"
-        onClick={() => {
-          if (card.filter !== null) {
-            setFilterType(isSelected ? null : (card.filter as any))
-          }
-        }}
-        className={`text-left bg-white rounded-[22px] border-2 shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 sm:p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all cursor-pointer flex flex-col justify-between ${
+        aria-pressed={isSelected}
+        onClick={() => setFilterType(card.filter === 'all' || isSelected ? null : card.filter)}
+        className={`group relative text-left rounded-[16px] p-4 sm:p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer flex flex-col justify-between w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1 ${
           isSelected
-            ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-500/20'
-            : 'border-[#E4E8EC] hover:border-emerald-200'
+            ? 'bg-emerald-50/50 border-2 border-emerald-500 shadow-[0_1px_2px_rgba(20,32,27,0.04)]'
+            : 'bg-white hover:bg-[#FAFBF9] border border-[#E2E5E0] hover:border-[#C9D2CC] shadow-[0_1px_2px_rgba(20,32,27,0.04)]'
         }`}
       >
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <div className={`w-9 h-9 rounded-xl ${card.iconBg} flex items-center justify-center shrink-0`}>
-            <card.icon size={17} className={card.iconColor} />
+        <div className="flex items-start justify-between gap-2 mb-2 w-full">
+          <span className={`text-[11px] font-bold tracking-wider uppercase truncate ${card.labelColor}`}>{card.label}</span>
+          <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0 text-white shadow-md transition-transform duration-200 group-hover:scale-105 ${card.iconSolid}`}>
+            <card.icon size={18} strokeWidth={2.2} />
           </div>
-          <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full truncate shrink-0 ${card.deltaUp ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
-            {card.delta}
-          </span>
         </div>
-        <p className="text-[21px] sm:text-[22px] font-black text-[#111827] tracking-tight leading-tight truncate">{card.value}</p>
-        <p className="text-[12px] font-bold text-slate-800 mt-1 truncate">{card.label}</p>
-        <p className="text-[11px] text-slate-400 mt-0.5 truncate">{card.sub}</p>
+        <div className="w-full">
+          <p className="text-[23px] sm:text-[26px] font-black tracking-tight leading-tight truncate text-[#111827]">{card.value}</p>
+          <p className="text-[11px] sm:text-[11.5px] font-medium mt-1 truncate text-slate-500">{card.sub}</p>
+          <span className={`inline-block mt-1.5 text-[10.5px] font-bold px-2 py-0.5 rounded-full truncate max-w-full ${card.deltaUp ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{card.delta}</span>
+        </div>
       </button>
     )
   }
@@ -573,44 +585,51 @@ export function Clients() {
     </div>
   )
 
+  // UX-97 audit: newest first (safe when created_at is missing), the client's current name, a readable date,
+  // whether the booking has its Daily Job Sheet row (R-SYNC-03), and a click opens that booking
+  const recentBookings = [...scopeBookings]
+    .sort((a, b) => String(b.created_at || b.scheduled_date || '').localeCompare(String(a.created_at || a.scheduled_date || '')))
+    .slice(0, 5)
   const renderRecentBookingsWidget = () => (
     <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-[15px] font-bold text-[#111827]">Recent Bookings</h3>
         <span className="text-[11px] text-slate-400">Latest activity</span>
       </div>
-      {scopeBookings.length === 0 ? (
+      {recentBookings.length === 0 ? (
         <p className="text-[12px] text-slate-400 text-center py-4">No bookings yet</p>
       ) : (
         <div className="space-y-3">
-          {[...scopeBookings]
-            .sort((a, b) => b.created_at.localeCompare(a.created_at))
-            .slice(0, 5)
-            .map((b, idx) => {
-              const statusColor =
-                b.status === 'completed'   ? 'bg-slate-100 text-slate-600' :
-                b.status === 'in_progress' ? 'bg-emerald-50 text-emerald-700' :
-                b.status === 'confirmed'   ? 'bg-blue-50 text-blue-700' :
-                b.status === 'cancelled'   ? 'bg-red-50 text-red-600' :
-                'bg-amber-50 text-amber-700'
-              const statusLabel =
-                b.status === 'completed'   ? 'Done' :
-                b.status === 'in_progress' ? 'Live' :
-                b.status === 'confirmed'   ? 'Scheduled' :
-                b.status === 'cancelled'   ? 'Cancelled' : 'Pending'
-              return (
-                <Link key={b.id} to="/bookings" className="flex items-center gap-3 hover:bg-slate-50 rounded-xl -mx-2 px-2 py-1 transition-colors">
-                  <Avatar name={b.client_name} size="sm" idx={idx} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-semibold text-[#111827] truncate">{b.client_name}</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">{b.service_type} · {b.scheduled_date}</p>
-                  </div>
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusColor}`}>
-                    {statusLabel}
-                  </span>
-                </Link>
-              )
-            })}
+          {recentBookings.map((b, idx) => {
+            const statusColor =
+              b.status === 'completed'   ? 'bg-slate-100 text-slate-600' :
+              b.status === 'in_progress' ? 'bg-emerald-50 text-emerald-700' :
+              b.status === 'confirmed'   ? 'bg-blue-50 text-blue-700' :
+              b.status === 'cancelled'   ? 'bg-red-50 text-red-600' :
+              'bg-amber-50 text-amber-700'
+            const statusLabel =
+              b.status === 'completed'   ? 'Done' :
+              b.status === 'in_progress' ? 'Live' :
+              b.status === 'confirmed'   ? 'Scheduled' :
+              b.status === 'cancelled'   ? 'Cancelled' : 'Pending'
+            const client = clients.find(c => c.id === b.client_id)
+            const onSheet = b.status === 'cancelled' || dailyJobs.some(j => j.booking_id === b.id || j.id === b.job_sheet_id)
+            return (
+              <Link key={b.id} to={`/bookings?booking=${encodeURIComponent(b.id)}`} className="flex items-center gap-3 hover:bg-slate-50 rounded-xl -mx-2 px-2 py-1 transition-colors">
+                <Avatar name={client?.full_name || b.client_name || '?'} size="sm" idx={idx} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] font-semibold text-[#111827] truncate">{client?.full_name || b.client_name || b.service_address || 'Booking'}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                    {b.service_type || 'Cleaning'} · {b.scheduled_date ? formatDate(b.scheduled_date) : 'No date'}
+                    {!onSheet && <span className="ml-1 text-amber-700 font-bold" title="This booking has no row on the Daily Job Sheet">· not on sheet</span>}
+                  </p>
+                </div>
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusColor}`}>
+                  {statusLabel}
+                </span>
+              </Link>
+            )
+          })}
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import {
@@ -18,7 +18,7 @@ import { Time12hPicker } from '@/components/common/Time12hPicker'
 import { NewBookingModal } from '@/components/bookings/NewBookingModal'
 import { BookingInvoiceModal } from '@/components/bookings/BookingInvoiceModal'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
-import { PageHero, type HeroNotification } from '@/components/layout/PageHero'
+import { PageHero } from '@/components/layout/PageHero'
 import { formatCurrency, formatDate, formatTime, addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { useData } from '@/store/DataContext'
@@ -322,6 +322,16 @@ export function Bookings() {
   const [serviceFilter, setServiceFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  // UX-97: /bookings?booking=<id> (Clients → Recent Bookings) opens that booking once it is loaded
+  const [searchParams, setSearchParams] = useSearchParams()
+  const linkedBookingId = searchParams.get('booking')
+  useEffect(() => {
+    if (!linkedBookingId) return
+    const hit = bookings.find(b => b.id === linkedBookingId)
+    if (!hit) return
+    setSelectedBooking(hit)
+    setSearchParams(p => { p.delete('booking'); return p }, { replace: true })
+  }, [linkedBookingId, bookings, setSearchParams])
   const [editingBookingForModal, setEditingBookingForModal] = useState<Booking | null>(null)
   const [invoiceBooking, setInvoiceBooking] = useState<Booking | null>(null)
   const [paymentBooking, setPaymentBooking] = useState<Booking | null>(null)
@@ -422,13 +432,7 @@ export function Bookings() {
   const threeDotMenuRef = useRef<HTMLDivElement>(null)
   const [showAllCards, setShowAllCards] = useState(false)
 
-  // Notifications state with localStorage persistence
-  const [readNotifIds, setReadNotifIds] = useState<string[]>(() => {
-    return safeLocalStorageGet('safaeewala_bookings_read_notifs', [])
-  })
-  const [deletedNotifIds, setDeletedNotifIds] = useState<string[]>(() => {
-    return safeLocalStorageGet('safaeewala_bookings_deleted_notifs', [])
-  })
+
 
   // Daily Job Sheet auto-sync state
   const [syncedShiftsCount, setSyncedShiftsCount] = useState<number>(0)
@@ -839,126 +843,7 @@ export function Bookings() {
     return res
   }
 
-  // Active Notifications List
-  const readSet = useMemo(() => new Set(readNotifIds), [readNotifIds])
-  const deletedSet = useMemo(() => new Set(deletedNotifIds), [deletedNotifIds])
-
-  const bookingNotifications = useMemo<HeroNotification[]>(() => {
-    const list: HeroNotification[] = []
-    const today = todayDubai()
-
-    // 1. Pending bookings awaiting confirmation
-    const pendingList = synchronizedBookings.filter(b => b.status === 'pending')
-    pendingList.forEach(b => {
-      const id = `pending-${b.id}`
-      if (deletedSet.has(id)) return
-      list.push({
-        id,
-        title: `Pending Booking: ${b.client_name}`,
-        detail: `${b.service_type} on ${b.scheduled_date} at ${formatTime(b.scheduled_time)} awaiting confirmation`,
-        tone: 'warning',
-        time: b.scheduled_date === today ? 'Today' : b.scheduled_date,
-        read: readSet.has(id),
-        onClick: () => {
-          setStatusFilter('pending')
-          setSelectedBooking(b)
-        },
-      })
-    })
-
-    // 2. Unassigned staff on today's active bookings
-    const unassignedToday = synchronizedBookings.filter(
-      b => b.scheduled_date === today &&
-           b.status !== 'completed' &&
-           b.status !== 'cancelled' &&
-           (!b.assigned_crew || b.assigned_crew.length === 0)
-    )
-    unassignedToday.forEach(b => {
-      const id = `unassigned-${b.id}`
-      if (deletedSet.has(id)) return
-      list.push({
-        id,
-        title: `Unassigned Cleaner: ${b.client_name}`,
-        detail: `Today at ${formatTime(b.scheduled_time)} (${b.duration_hours}h) needs cleaner assigned!`,
-        tone: 'danger',
-        time: b.scheduled_time,
-        read: readSet.has(id),
-        onClick: () => {
-          setSelectedBooking(b)
-        },
-      })
-    })
-
-    // 3. Live shifts currently running
-    const liveNow = synchronizedBookings.filter(
-      b => b.status === 'in_progress' && b.scheduled_date === today
-    )
-    liveNow.forEach(b => {
-      const id = `live-${b.id}`
-      if (deletedSet.has(id)) return
-      list.push({
-        id,
-        title: `Shift Live: ${b.client_name}`,
-        detail: `Cleaner on-site (${formatTime(b.scheduled_time)} - ${formatTime(b.end_time)}) • ${b.service_type}`,
-        tone: 'info',
-        time: 'Live',
-        read: readSet.has(id),
-        onClick: () => {
-          setStatusFilter('in_progress')
-          setSelectedBooking(b)
-        },
-      })
-    })
-
-    // 4. Monthly recurring shifts auto-synced notice
-    if (syncedShiftsCount > 0) {
-      const id = `monthly-sync-${today}`
-      if (!deletedSet.has(id)) {
-        list.push({
-          id,
-          title: `Daily Job Sheet Synced`,
-          detail: `${syncedShiftsCount} monthly recurring shifts generated on Daily Job Sheet for today`,
-          tone: 'success',
-          time: 'Today',
-          read: readSet.has(id),
-        })
-      }
-    }
-
-    return list
-  }, [synchronizedBookings, deletedSet, readSet, syncedShiftsCount])
-
-  const handleMarkNotifRead = (id: string) => {
-    setReadNotifIds(prev => {
-      if (prev.includes(id)) return prev
-      const next = [...prev, id]
-      safeLocalStorageSet('safaeewala_bookings_read_notifs', next)
-      return next
-    })
-  }
-
-  const handleMarkAllNotifsRead = () => {
-    const allIds = bookingNotifications.map(n => n.id)
-    setReadNotifIds(allIds)
-    safeLocalStorageSet('safaeewala_bookings_read_notifs', allIds)
-  }
-
-  const handleDeleteNotif = (id: string) => {
-    setDeletedNotifIds(prev => {
-      const next = [...prev, id]
-      safeLocalStorageSet('safaeewala_bookings_deleted_notifs', next)
-      return next
-    })
-  }
-
-  const handleClearAllNotifs = () => {
-    const allIds = bookingNotifications.map(n => n.id)
-    setDeletedNotifIds(prev => {
-      const next = Array.from(new Set([...prev, ...allIds]))
-      safeLocalStorageSet('safaeewala_bookings_deleted_notifs', next)
-      return next
-    })
-  }
+  // R-ALERT-01: booking alerts are in Sidebar → Alerts (lib/alerts → bookingAlerts)
 
   // Monthly clients count & extra metrics (strictly in sync with dateFilteredBookings)
   const monthlyBookingsInScope = useMemo(() => {
@@ -1035,11 +920,6 @@ export function Bookings() {
         actionLabel="New Booking"
         onAction={() => setShowModal(true)}
         showSearch={false}
-        notifications={bookingNotifications}
-        onMarkNotificationRead={handleMarkNotifRead}
-        onMarkAllNotificationsRead={handleMarkAllNotifsRead}
-        onDeleteNotification={handleDeleteNotif}
-        onClearAllNotifications={handleClearAllNotifs}
       />
 
       {/* ── KPI Summary Cards (Row 1 + View All Expandable Row 2) ── */}

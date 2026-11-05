@@ -27,4 +27,4 @@ eq(/findMonthlyScheduleClashes\(/.test(monthly), true, 'monthly schedule save ch
 const sheet = fs.readFileSync('src/pages/JobSheetSpreadsheet.tsx', 'utf8')
 eq(/else if \(hasCustomBlockColor\) \{\s+const chosenPalette/.test(sheet), false, 'a cleaner block colour no longer paints the rows')
 const djs = fs.readFileSync('src/pages/DailyJobSheet.tsx', 'utf8')
-eq(/dynamicRowBg = teamBg/.test(djs), true, 'Daily Job Sheet: one colour per team project')
+eq(/dynamicRowBg = customColorPreset\?\.bg \|\| teamBg/.test(djs), true, 'Daily Job Sheet: one colour per team project (after the row colour, UX-96)')

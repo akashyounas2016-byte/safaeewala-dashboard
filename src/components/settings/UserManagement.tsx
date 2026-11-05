@@ -339,7 +339,7 @@ export function RolePermissionsPanel() {
     try {
       const { data } = await supabase.from('company_settings').select('data').eq('id', 1).maybeSingle()
       const current = (data?.data ?? {}) as Record<string, unknown>
-      const { error } = await supabase.from('company_settings').upsert({ id: 1, data: { ...current, rolePermissions: draft } })
+      const { error } = await supabase.from('company_settings').upsert({ id: 1, data: { ...current, rolePermissions: { ...draft, _modules: ALL_MODULE_KEYS } } }) // R-ALERT-01: screens known at save time
       if (error) throw error
       setStored(draft)
       notify.success('Screen permissions saved')

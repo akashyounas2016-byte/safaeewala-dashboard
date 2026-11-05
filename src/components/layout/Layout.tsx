@@ -1,8 +1,7 @@
 import { createContext, useContext, useState, useMemo } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
-import { NotificationCenter } from '@/components/NotificationCenter'
-import { Menu, Bot, Sparkles, AlertTriangle, ChevronRight } from 'lucide-react'
+import { Menu, Bot, ChevronRight } from 'lucide-react'
 import { CRMAIBotModal } from '@/components/ai/CRMAIBotModal'
 import { useData } from '@/store/DataContext'
 import { useFieldStaff } from '@/store/useFieldStaff'
@@ -16,9 +15,11 @@ import { FormGuard } from '@/components/common/FormGuard'
 /* ── Layout context — lets PageHero access openMenu and toggleSidebar ── */
 export const LayoutContext = createContext<{
   openMenu: () => void
+  /** R-ALERT-01: Alerts → AI Bot findings open the AI Bot */
+  openAIBot: () => void
   toggleSidebar?: () => void
   isSidebarCollapsed?: boolean
-}>({ openMenu: () => {} })
+}>({ openMenu: () => {}, openAIBot: () => {} })
 export const useLayout = () => useContext(LayoutContext)
 
 export function Layout() {
@@ -32,7 +33,6 @@ export function Layout() {
     }
   })
   const [showAIBot, setShowAIBot]     = useState(false)
-  const [hideBanner, setHideBanner]   = useState(false)
 
   const handleToggleSidebar = () => {
     setSidebarCollapsed(prev => {
@@ -58,6 +58,7 @@ export function Layout() {
     <LayoutContext.Provider
       value={{
         openMenu: () => setSidebarOpen(true),
+        openAIBot: () => setShowAIBot(true),
         toggleSidebar: handleToggleSidebar,
         isSidebarCollapsed: sidebarCollapsed,
       }}
@@ -120,53 +121,7 @@ export function Layout() {
 
           <main id="main-content-scroll" className="flex-1 overflow-y-auto bg-[#f0f4f3] scroll-smooth overscroll-y-auto">
             <div className={`max-w-[1440px] mx-auto pt-4 sm:pt-6 lg:pt-8 pb-[calc(2.5rem+env(safe-area-inset-bottom))] ${isField ? 'px-3 sm:px-6 lg:px-8' : 'px-4 sm:px-6 lg:px-8'}`}>
-              {!isField && (
-                <div className="mb-4">
-                  <NotificationCenter />
-                </div>
-              )}
-
-              {/* AI Bot Duplication & Discrepancy Alert Banner */}
-              {highIssues.length > 0 && !hideBanner && (
-                <div className="mb-5 p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-indigo-500/10 border border-amber-300/80 flex items-center justify-between flex-wrap gap-3 animate-in fade-in">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
-                      <Bot size={18} />
-                    </div>
-                    <div>
-                      <p className="text-[13px] font-bold text-slate-800 flex items-center gap-1.5">
-                        <span>AI Bot Alert: {highIssues.length} high priority discrepancies / duplicate bookings detected!</span>
-                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.2 rounded-full bg-rose-100 text-rose-800">
-                          Action Advised
-                        </span>
-                      </p>
-                      <p className="text-[11.5px] text-slate-500 mt-0.5">
-                        Move suspicious or duplicate bookings to "Pending" to prevent dispatching crew prematurely.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowAIBot(true)}
-                      className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-[12px] flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
-                    >
-                      <Sparkles size={13} className="text-amber-400" />
-                      <span>Review in AI Bot</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHideBanner(true)}
-                      className="text-slate-400 hover:text-slate-600 text-[12px] px-2 py-1 font-semibold cursor-pointer"
-                      title="Hide notification for now"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </div>
-              )}
-
+              {/* R-ALERT-01: notifications and AI Bot alerts live in Sidebar → Alerts, not on every screen */}
               <SyncStatusBanner />
               <Toaster position="top-right" richColors closeButton />
               <ConfirmHost />

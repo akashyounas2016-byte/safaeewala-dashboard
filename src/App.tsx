@@ -60,6 +60,7 @@ const Invoices               = lazyWithRetry(() => import('@/pages/Invoices').th
 const Inventory              = lazyWithRetry(() => import('@/pages/Inventory').then(m => ({ default: m.Inventory })))
 const Expenses               = lazyWithRetry(() => import('@/pages/Expenses').then(m => ({ default: m.Expenses })))
 const Reports                = lazyWithRetry(() => import('@/pages/Reports').then(m => ({ default: m.Reports })))
+const Alerts                 = lazyWithRetry(() => import('@/pages/Alerts').then(m => ({ default: m.Alerts })))
 const Settings               = lazyWithRetry(() => import('@/pages/Settings').then(m => ({ default: m.Settings })))
 const DailyJobSheet          = lazyWithRetry(() => import('@/pages/DailyJobSheet').then(m => ({ default: m.DailyJobSheet })))
 const JobSheetSpreadsheet     = lazyWithRetry(() => import('@/pages/JobSheetSpreadsheet').then(m => ({ default: m.JobSheetSpreadsheet })))
@@ -214,6 +215,7 @@ function AppRoutes() {
                 <Route path="expenses"   element={<Expenses />} />
                 <Route path="pending"    element={<PendingPayments />} />
                 <Route path="reports"    element={<Reports />} />
+                <Route path="alerts"     element={<Alerts />} />
                 <Route path="settings"   element={<Settings />} />
                 <Route path="attendance" element={<Attendance />} />
                 <Route path="drivers"    element={<Drivers />} />

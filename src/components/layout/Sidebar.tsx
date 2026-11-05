@@ -5,8 +5,9 @@ import {
   LayoutDashboard, CalendarCheck, Users, UserCheck,
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
   CreditCard, TrendingUp, Globe, Clock, LogOut, ChevronLeft, Building2,
-  CalendarDays, Star, SlidersHorizontal, ArrowUp, ArrowDown, RotateCcw, Sparkles, Truck, Navigation, Eye, EyeOff,
+  CalendarDays, Star, SlidersHorizontal, ArrowUp, ArrowDown, RotateCcw, Sparkles, Truck, Navigation, Eye, EyeOff, Bell,
 } from 'lucide-react'
+import { useAlerts } from '@/store/useAlerts'
 import { useAuth, useRolePerms } from '@/store/UserContext'
 import { canAccessModule, moduleForPath, ROLE_META } from '@/lib/permissions'
 import { useFieldStaff } from '@/store/useFieldStaff'
@@ -28,6 +29,7 @@ export interface NavItemConfig {
 export const ALL_NAV_ITEMS: NavItemConfig[] = [
   // ── Workspace ──
   { to: '/',                 label: 'Overview',          icon: LayoutDashboard, category: 'Workspace' },
+  { to: '/alerts',           label: 'Alerts',            icon: Bell,            category: 'Workspace' }, // R-ALERT-01
   { to: '/bookings',         label: 'Bookings',          icon: CalendarCheck,                              category: 'Workspace' },
   { to: '/daily-job-sheet',  label: 'Daily Job Sheet',   icon: ClipboardList,   adminOnly: true,    category: 'Workspace' },
   { to: '/fluent-forms',     label: 'Fluent Forms',      icon: Globe,                               category: 'Workspace' },
@@ -66,12 +68,13 @@ interface NavItemProps {
   onClose: () => void
   tag?: string
   badge?: number
+  badgeTitle?: string
   onClick?: () => void
   isFavorite?: boolean
   onToggleFavorite?: (e: React.MouseEvent) => void
 }
 
-function NavItem({ to, label, icon: Icon, onClose, tag, badge, onClick, isFavorite, onToggleFavorite }: NavItemProps) {
+function NavItem({ to, label, icon: Icon, onClose, tag, badge, badgeTitle, onClick, isFavorite, onToggleFavorite }: NavItemProps) {
   const handleClick = () => {
     onClose()
     if (to === '/agencies') {
@@ -115,7 +118,7 @@ function NavItem({ to, label, icon: Icon, onClose, tag, badge, onClick, isFavori
 
           {typeof badge === 'number' && badge > 0 && !tag && (
             <span
-              title={`${badge} new form submission${badge > 1 ? 's' : ''}`}
+              title={badgeTitle || `${badge} new form submission${badge > 1 ? 's' : ''}`}
               className="inline-flex items-center justify-center px-2 py-0.5 min-w-[20px] h-5 rounded-full text-[11px] font-black bg-[#34d399] text-[#064e3b] shadow-[0_2px_10px_rgba(52,211,153,0.45)] animate-pulse shrink-0"
             >
               {badge > 99 ? '99+' : badge}
@@ -166,6 +169,11 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
   const { user: me, signOut } = useAuth()
   const rolePerms      = useRolePerms()
   const fluentUnreadCount = useFluentFormsUnreadCount()
+  // R-ALERT-01: open alerts on the Alerts item (none for cleaners / drivers, R-SEC-05)
+  const { isField: isFieldLogin } = useFieldStaff()
+  const { alerts: openAlerts } = useAlerts(!isFieldLogin)
+  const badgeOf = (to: string) => (to === '/fluent-forms' ? fluentUnreadCount : to === '/alerts' ? openAlerts.length : undefined)
+  const badgeTitleOf = (to: string) => (to === '/alerts' ? `${openAlerts.length} open alert${openAlerts.length === 1 ? '' : 's'}` : undefined)
 
   // ── Customizer Modal State ──
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -354,7 +362,8 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
                   {...item}
                   isFavorite={true}
                   onToggleFavorite={(e) => toggleFavorite(item.to, e)}
-                  badge={item.to === '/fluent-forms' ? fluentUnreadCount : undefined}
+                  badge={badgeOf(item.to)}
+                  badgeTitle={badgeTitleOf(item.to)}
                   onClick={item.to === '/fluent-forms' ? () => markFluentFormsAsRead() : undefined}
                   onClose={onClose}
                 />
@@ -378,7 +387,8 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
                   {...item}
                   isFavorite={favorites.includes(item.to)}
                   onToggleFavorite={(e) => toggleFavorite(item.to, e)}
-                  badge={isFluent ? fluentUnreadCount : undefined}
+                  badge={badgeOf(item.to)}
+                  badgeTitle={badgeTitleOf(item.to)}
                   onClick={isFluent ? () => markFluentFormsAsRead() : undefined}
                   onClose={onClose}
                 />

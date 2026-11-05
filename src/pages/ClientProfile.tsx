@@ -28,6 +28,7 @@ import { ClientModalForm } from '@/components/clients/ClientModalForm'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
 import type { MonthlyClientPayment } from '@/types'
 import { todayDubai } from '@/lib/dubaiTime'
+import { upcomingVisits, jobSheetSummary } from '@/lib/clientProfileSummary'
 
 /* ─── Client Financial Adjustment & Advance Types ─── */
 export interface ClientFinancialAdjustment {
@@ -333,7 +334,7 @@ export function ClientProfile() {
     return bookings
       .filter(b =>
         b.client_id === id ||
-        b.client_name.toLowerCase().trim() === client.full_name.toLowerCase().trim()
+        (b.client_name || '').toLowerCase().trim() === client.full_name.toLowerCase().trim()
       )
       .sort((a, b) => new Date(b.scheduled_date).getTime() - new Date(a.scheduled_date).getTime())
   }, [bookings, id, client])
@@ -437,7 +438,9 @@ export function ClientProfile() {
   }
 
   const completed     = clientBookings.filter(b => b.status === 'completed')
-  const upcoming      = clientBookings.filter(b => ['pending', 'confirmed'].includes(b.status))
+  // UX-98 audit: only today or later (past "confirmed" bookings were listed), soonest first, plus visits on the sheet
+  const upcoming      = upcomingVisits(clientBookings, clientDailyJobs, todayDubai())
+  const sheetSummary  = jobSheetSummary(clientDailyJobs, todayDubai())
   const bookingSpent  = completed.reduce((s, b) => s + b.total_amount, 0)
   const reviewedCount = completed.filter(b => reviewMap[b.id]).length
 
@@ -706,7 +709,7 @@ export function ClientProfile() {
   return (
     <div className="space-y-6">
 
-      {/* Back nav & Actions */}
+      {/* Back nav */}
       <div className="flex items-center justify-between">
         <Link
           to="/clients"
@@ -714,22 +717,6 @@ export function ClientProfile() {
         >
           <ArrowLeft size={14} /> Back to Clients
         </Link>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowPaymentModal(true)}
-            className="flex items-center gap-2 text-[13px] font-bold px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors cursor-pointer"
-          >
-            <Wallet size={14} /> Record Payment
-          </button>
-          <button
-            type="button"
-            onClick={() => setEditOpen(true)}
-            className="flex items-center gap-2 text-[13px] font-semibold px-4 py-2 rounded-xl border border-[#E4E8EC] bg-white text-slate-700 hover:bg-slate-50 shadow-xs transition-colors cursor-pointer"
-          >
-            <Pencil size={13} /> Edit Profile
-          </button>
-        </div>
       </div>
 
       {/* ── Client Dark Hero Card (CRM Signature Dark Slate-Teal Theme — Unified) ── */}
@@ -738,7 +725,25 @@ export function ClientProfile() {
         <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-teal-400/15 blur-3xl pointer-events-none" />
         <div className="absolute -left-20 -bottom-20 w-80 h-80 rounded-full bg-emerald-400/15 blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col sm:flex-row items-start gap-5">
+        {/* UX-98: actions inside the header — light primary, outlined secondary, readable on the dark card */}
+        <div className="relative z-20 flex items-center gap-2 flex-wrap sm:absolute sm:top-6 sm:right-7 mb-4 sm:mb-0">
+          <button
+            type="button"
+            onClick={() => setShowPaymentModal(true)}
+            className="flex items-center gap-2 text-[13px] font-bold px-4 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-[#04201c] shadow-sm transition-colors cursor-pointer"
+          >
+            <Wallet size={14} /> Record Payment
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditOpen(true)}
+            className="flex items-center gap-2 text-[13px] font-semibold px-4 py-2 rounded-xl border border-white/25 bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+          >
+            <Pencil size={13} /> Edit Profile
+          </button>
+        </div>
+
+        <div className="relative z-10 flex flex-col sm:flex-row items-start gap-5 sm:pr-[300px]">
           <Avatar name={client.full_name} size="xl" idx={clientIdx} />
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -842,11 +847,11 @@ export function ClientProfile() {
         </div>
       </div>
 
-      {/* ── Tabs + Sidebar Layout ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      {/* ── UX-98: main content over the full width; the summary widgets below it ── */}
+      <div className="space-y-6">
 
-        {/* Left 2 Cols: Service History Tabs */}
-        <div className="xl:col-span-2 space-y-4">
+        {/* Service History Tabs */}
+        <div className="space-y-4">
 
           {/* Tab Navigation */}
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-3 py-3">
@@ -1551,8 +1556,8 @@ export function ClientProfile() {
           )}
         </div>
 
-        {/* ── Right Sidebar ── */}
-        <div className="space-y-5">
+        {/* ── Summary widgets (were the right sidebar) ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
 
           {/* Daily Job Sheet summary widget */}
           {clientDailyJobs.length > 0 && (
@@ -1561,8 +1566,8 @@ export function ClientProfile() {
                 <h3 className="text-[15px] font-bold text-[#111827] flex items-center gap-1.5">
                   <FileText size={16} className="text-purple-600" /> Job Sheet Summary
                 </h3>
-                <span className="text-[11px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">
-                  {clientDailyJobs.length} shifts
+                <span className="text-[11px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full" title="Shifts up to today · scheduled ahead">
+                  {sheetSummary.worked} worked{sheetSummary.ahead > 0 ? ` · ${sheetSummary.ahead} ahead` : ''}
                 </span>
               </div>
               <div className="space-y-2 text-[12px]">
@@ -1578,10 +1583,14 @@ export function ClientProfile() {
                   <span className="text-slate-500">Duty Hours</span>
                   <span className="font-bold text-slate-700">{totalDJDutyHours} hrs</span>
                 </div>
+                <div className="flex justify-between py-1.5 border-b border-[#edf2f7]">
+                  <span className="text-slate-500">Last worked</span>
+                  <span className="font-bold text-slate-700">{sheetSummary.lastWorked ? formatDate(sheetSummary.lastWorked) : '—'}</span>
+                </div>
                 <div className="flex justify-between py-1.5">
                   <span className="text-slate-500">Cleaners</span>
-                  <span className="font-medium text-slate-700 text-right truncate ml-2">
-                    {Array.from(new Set(clientDailyJobs.map(j => j.staff_name).filter(Boolean))).join(', ') || '—'}
+                  <span className="font-medium text-slate-700 text-right truncate ml-2" title={sheetSummary.cleaners.join(', ')}>
+                    {sheetSummary.cleaners.join(', ') || '—'}
                   </span>
                 </div>
               </div>
@@ -1592,57 +1601,25 @@ export function ClientProfile() {
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
             <h3 className="text-[15px] font-bold text-[#111827] mb-4">Upcoming Bookings</h3>
             {upcoming.length === 0 ? (
-              <p className="text-[12px] text-slate-400 text-center py-4">No upcoming bookings</p>
+              <p className="text-[12px] text-slate-400 text-center py-4">No upcoming bookings or visits</p>
             ) : (
               <div className="space-y-3">
-                {upcoming.slice(0, 4).map(b => (
-                  <div key={b.id} className="flex items-center gap-3">
+                {upcoming.slice(0, 5).map(v => (
+                  <div key={v.key} className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
                       <Calendar size={14} className="text-emerald-600" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-semibold text-[#111827] truncate">{b.service_type}</p>
-                      <p className="text-[11px] text-slate-500">{formatDate(b.scheduled_date)} · {formatTimeOnly(b.scheduled_time)}</p>
+                      <p className="text-[12px] font-semibold text-[#111827] truncate">{v.label}</p>
+                      <p className="text-[11px] text-slate-500 truncate">{formatDate(v.date)}{v.time ? ` · ${formatTimeOnly(v.time)}` : ''}{v.cleaners ? ` · ${v.cleaners}` : ''}</p>
                     </div>
-                    <StatusPill status={b.status} />
+                    {v.status === 'on_sheet'
+                      ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 shrink-0">On sheet</span>
+                      : <StatusPill status={v.status} />}
                   </div>
                 ))}
+                {upcoming.length > 5 && <p className="text-[11px] text-slate-400 text-center">+{upcoming.length - 5} more</p>}
               </div>
-            )}
-          </div>
-
-          {/* Review summary */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <Star size={16} className="text-amber-500" />
-              <h3 className="text-[15px] font-bold text-[#111827]">Review Requests</h3>
-            </div>
-            {completed.length === 0 ? (
-              <p className="text-[12px] text-slate-400 text-center py-4">No completed bookings yet</p>
-            ) : (
-              <>
-                {[
-                  { label: 'Completed jobs',   value: completed.length,                                    color: 'text-[#111827]' },
-                  { label: 'Reviews requested', value: reviewedCount,                                       color: 'text-emerald-600' },
-                  { label: 'Pending',           value: completed.length - reviewedCount,                    color: 'text-amber-600' },
-                ].map(r => (
-                  <div key={r.label} className="flex justify-between py-2 border-b border-[#E4E8EC] last:border-0">
-                    <span className="text-[12px] text-slate-500">{r.label}</span>
-                    <span className={`text-[12px] font-bold ${r.color}`}>{r.value}</span>
-                  </div>
-                ))}
-                {completed.length - reviewedCount > 0 && (
-                  <button
-                    onClick={() => {
-                      const pending = completed.find(b => !reviewMap[b.id])
-                      if (pending) { setReviewBooking(pending); setCopied(false) }
-                    }}
-                    className="w-full mt-3 py-2.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 text-[12px] font-semibold hover:bg-amber-100 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Star size={13} /> Request Next Review
-                  </button>
-                )}
-              </>
             )}
           </div>
 

@@ -3209,19 +3209,25 @@ export function DailyJobSheet() {
 
       {/* ── Jobs Table ── */}
       <div id="jobs-table-section" ref={jobsTableRef} className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden scroll-mt-6">
-        <div className="bg-[#0F1F19] px-5 py-3.5 border-b border-[#0F1F19] text-white flex items-center justify-between flex-wrap gap-3 relative z-30 shadow-xs">
+        {/* UX-96: white header like the Clients widgets */}
+        <div className="bg-white px-5 py-4 border-b border-[#E2E5E0] text-[#14201B] flex items-center justify-between flex-wrap gap-3 relative z-30">
           <div className="flex items-center gap-2.5 flex-wrap">
-            <h3 className="text-[16px] font-black tracking-tight text-white flex items-center gap-2">
-              <Briefcase size={16} className="text-sky-400" />
-              <span>Jobs</span>
-            </h3>
+            <div className="flex items-center gap-2.5">
+              <span className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center justify-center shrink-0">
+                <Briefcase size={17} />
+              </span>
+              <div>
+                <h3 className="text-[15px] font-bold text-[#111827] leading-tight">Jobs</h3>
+                <p className="text-[11.5px] text-slate-500 leading-tight">{todayJobs.length} job{todayJobs.length === 1 ? '' : 's'} · {isDateRange ? `${fmtDate(effectiveStartDate)} – ${fmtDate(effectiveEndDate)}` : fmtDate(selectedDate)}</p>
+              </div>
+            </div>
             <div className="flex items-center gap-1.5 flex-wrap">
               {searchQuery && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/20 text-white font-bold text-[11px] border border-white/20">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-[11px] border border-slate-200">
                   Search: "{searchQuery}"
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="hover:text-red-300 transition-colors cursor-pointer text-[10px] font-black ml-0.5"
+                    className="hover:text-red-600 transition-colors cursor-pointer text-[10px] font-black ml-0.5"
                     title="Clear search"
                   >
                     ✕
@@ -3229,11 +3235,11 @@ export function DailyJobSheet() {
                 </span>
               )}
               {selectedLetter !== 'ALL' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 text-white font-bold text-[11px] border border-white/20">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold text-[11px] border border-slate-200">
                   Letter: "{selectedLetter}"
                   <button
                     onClick={() => setSelectedLetter('ALL')}
-                    className="hover:text-red-300 transition-colors cursor-pointer text-[11px] font-black ml-0.5"
+                    className="hover:text-red-600 transition-colors cursor-pointer text-[11px] font-black ml-0.5"
                     title="Reset letter filter"
                   >
                     ✕
@@ -3249,8 +3255,8 @@ export function DailyJobSheet() {
               ref={searchContainerRef}
               className={`relative flex items-center transition-all duration-300 ease-in-out h-8.5 rounded-xl border overflow-hidden ${
                 isSearchExpanded || searchQuery
-                  ? 'w-52 sm:w-64 md:w-72 bg-white border-white ring-2 ring-white/40 shadow-md text-slate-900'
-                  : 'w-9 bg-white/15 border-white/20 hover:bg-white/25 hover:border-white/40 cursor-pointer text-white'
+                  ? 'w-52 sm:w-64 md:w-72 bg-white border-emerald-300 ring-2 ring-emerald-100 shadow-sm text-slate-900'
+                  : 'w-9 bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 cursor-pointer text-slate-600'
               }`}
               onClick={() => {
                 if (!isSearchExpanded) {
@@ -3272,13 +3278,13 @@ export function DailyJobSheet() {
                   }
                 }}
                 className={`h-full px-2.5 flex items-center justify-center shrink-0 cursor-pointer transition-colors ${
-                  isSearchExpanded || searchQuery ? 'text-slate-500 hover:text-emerald-700' : 'text-white/80 hover:text-white'
+                  isSearchExpanded || searchQuery ? 'text-slate-500 hover:text-emerald-700' : 'text-slate-500 hover:text-slate-800'
                 }`}
                 aria-label="Search"
               >
                 <Search
                   size={14}
-                  className={isSearchExpanded || searchQuery ? 'text-emerald-700' : 'text-white'}
+                  className={isSearchExpanded || searchQuery ? 'text-emerald-700' : 'text-slate-500'}
                 />
               </button>
 
@@ -3318,7 +3324,7 @@ export function DailyJobSheet() {
             </div>
 
             {/* Payment Category Filters (Project, Monthly, Cash, Online, Pending, Checks) + Three-Dot Color Customizer */}
-            <div className="flex items-center bg-black/25 p-0.5 rounded-xl border border-white/20 text-[11.5px] font-bold backdrop-blur-sm">
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-[11.5px] font-bold">
               {(['ALL', 'Project', 'Monthly', 'Cash', 'Online', 'Pending', 'Checks'] as const).map(mode => {
                 const isSelected = paymentFilter === mode
                 const count = mode === 'ALL'
@@ -3343,12 +3349,12 @@ export function DailyJobSheet() {
                     className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                       isSelected
                         ? 'bg-white text-slate-900 shadow-sm font-black'
-                        : 'text-slate-300 hover:text-white hover:bg-white/10 font-bold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 font-bold'
                     }`}
                   >
                     <span>{mode === 'ALL' ? 'All' : mode}</span>
                     <span className={`text-[10px] px-1 rounded-full ${
-                      isSelected ? 'bg-slate-100 text-slate-900 font-black' : 'bg-white/20 text-white'
+                      isSelected ? 'bg-slate-100 text-slate-900 font-black' : 'bg-slate-200 text-slate-700'
                     }`}>
                       {count}
                     </span>
@@ -3361,7 +3367,7 @@ export function DailyJobSheet() {
                 <button
                   type="button"
                   onClick={() => setShowFilterColorMenu(p => !p)}
-                  className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
+                  className="p-1 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-white transition-colors cursor-pointer"
                   title="Customize Row Colors by Category"
                   aria-label="Customize Row Colors by Category"
                 >
@@ -3412,14 +3418,14 @@ export function DailyJobSheet() {
 
             {/* When Project filter is selected: Toggle between Team-Wise Column Board and Standard Table */}
             {paymentFilter === 'Project' && (
-              <div className="flex items-center bg-white/20 p-0.5 rounded-xl border border-white/30 text-[11px] font-bold text-white animate-in fade-in zoom-in-95">
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-[11px] font-bold text-slate-700 animate-in fade-in zoom-in-95">
                 <button
                   type="button"
                   onClick={() => setProjectBoardView('board')}
                   className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                     projectBoardView === 'board'
                       ? 'bg-white text-emerald-950 shadow-xs font-black'
-                      : 'text-white/80 hover:bg-white/10 font-semibold'
+                      : 'text-slate-600 hover:bg-white/70 font-semibold'
                   }`}
                   title="Team-Wise Columnar Board View"
                 >
@@ -3432,7 +3438,7 @@ export function DailyJobSheet() {
                   className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                     projectBoardView === 'table'
                       ? 'bg-white text-emerald-950 shadow-xs font-black'
-                      : 'text-white/80 hover:bg-white/10 font-semibold'
+                      : 'text-slate-600 hover:bg-white/70 font-semibold'
                   }`}
                   title="Standard Table View"
                 >
@@ -3450,16 +3456,16 @@ export function DailyJobSheet() {
                 onClick={() => setShowColMenu(p => !p)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all cursor-pointer relative shadow-xs group ${
                   showColMenu
-                    ? 'border-white bg-white text-slate-900 ring-2 ring-white/50'
-                    : 'border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30'
+                    ? 'border-emerald-300 bg-emerald-50 text-slate-900 ring-2 ring-emerald-100'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300'
                 }`}
                 title="Customize Columns (Drag & Drop Sequence, Hide/Show Checkboxes)"
                 aria-label="Customize Columns"
               >
-                <Eye size={14} className={showColMenu ? 'text-slate-900' : 'text-white/80 group-hover:text-white'} />
+                <Eye size={14} className={showColMenu ? 'text-slate-900' : 'text-slate-500 group-hover:text-slate-800'} />
                 <span className="hidden sm:inline text-[12px] font-bold">Columns</span>
                 {(activeColumns.length < ALL_COLUMNS.length || isOrderCustomized) && (
-                  <span className="w-2 h-2 rounded-full bg-emerald-300 ring-2 ring-emerald-900 animate-pulse" title="Custom columns active" />
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white animate-pulse" title="Custom columns active" />
                 )}
               </button>
 
@@ -3644,7 +3650,7 @@ export function DailyJobSheet() {
               <select
                 value={pageSize}
                 onChange={e => setPageSize(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                className="text-[12px] font-bold text-slate-800 bg-white border border-white/40 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-white/40 cursor-pointer shadow-xs"
+                className="text-[12px] font-bold text-slate-800 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-100 cursor-pointer shadow-xs"
                 title="Rows Per Page"
               >
                 <option value={10}>10 Rows Per Page</option>
@@ -3919,35 +3925,19 @@ export function DailyJobSheet() {
                   const isOnlineRow = job.payment_mode === 'Online'
                   const isProjectRow = (job as any)._isSplitShift || (job as any)._isSecondaryCleaner || (job as any)._isPrimaryCleaner || splitStaffNames(job.staff_name).length > 1 || Boolean(job.team_name)
 
-                  let dynamicRowBg = '#ffffff'
+                  // UX-96: white by default. A colour shows only when one was chosen: the row's own colour (Excel / Add Job),
+                  // the team project colour, or a category colour changed in "Customize Row Colors" (the built-in tints are off)
+                  const pickedCategory = (k: string) => (filterColors[k] && filterColors[k] !== DEFAULT_CATEGORY_ROW_COLORS[k] ? filterColors[k] : null)
                   const teamBg = teamBgOf(job.id)
-                  if (customColorPreset) {
-                    dynamicRowBg = customColorPreset.bg
-                  } else if (teamBg) {
-                    dynamicRowBg = teamBg // UX-71: one light colour per team project
-                  } else if (isProjectRow && filterColors.Project && filterColors.Project !== DEFAULT_CATEGORY_ROW_COLORS.Project) {
-                    dynamicRowBg = filterColors.Project
-                  } else if (isCheckedRow && filterColors.Checks && filterColors.Checks !== DEFAULT_CATEGORY_ROW_COLORS.Checks) {
-                    dynamicRowBg = filterColors.Checks
-                  } else if (isPendingRow && filterColors.Pending && filterColors.Pending !== DEFAULT_CATEGORY_ROW_COLORS.Pending) {
-                    dynamicRowBg = filterColors.Pending
-                  } else if (isMonthly && filterColors.Monthly) {
-                    dynamicRowBg = filterColors.Monthly
-                  } else if (isCashRow && filterColors.Cash && filterColors.Cash !== DEFAULT_CATEGORY_ROW_COLORS.Cash) {
-                    dynamicRowBg = filterColors.Cash
-                  } else if (isOnlineRow && filterColors.Online && filterColors.Online !== DEFAULT_CATEGORY_ROW_COLORS.Online) {
-                    dynamicRowBg = filterColors.Online
-                  } else if (isProjectRow && filterColors.Project) {
-                    dynamicRowBg = filterColors.Project
-                  } else if (isCheckedRow && filterColors.Checks) {
-                    dynamicRowBg = filterColors.Checks
-                  } else if (isPendingRow && filterColors.Pending) {
-                    dynamicRowBg = filterColors.Pending
-                  } else if (filterColors.ALL && filterColors.ALL !== DEFAULT_CATEGORY_ROW_COLORS.ALL) {
-                    dynamicRowBg = filterColors.ALL
-                  } else if (isMonthly) {
-                    dynamicRowBg = filterColors.Monthly || '#d1fae5'
-                  }
+                  const dynamicRowBg = customColorPreset?.bg || teamBg
+                    || (isProjectRow && pickedCategory('Project'))
+                    || (isCheckedRow && pickedCategory('Checks'))
+                    || (isPendingRow && pickedCategory('Pending'))
+                    || (isMonthly && pickedCategory('Monthly'))
+                    || (isCashRow && pickedCategory('Cash'))
+                    || (isOnlineRow && pickedCategory('Online'))
+                    || pickedCategory('ALL')
+                    || '#ffffff'
 
                   const borderClass = isFirstShiftOfStaff
                     ? 'border-t-2 border-t-slate-300 shadow-[inset_0_1px_0_rgba(0,0,0,0.03)]'

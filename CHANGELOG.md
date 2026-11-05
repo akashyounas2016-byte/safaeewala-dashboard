@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(alerts): Sidebar → Alerts collects every alert; ticker, AI banner and header-bell lists removed from the screens (R-ALERT-01)
+- feat(daily sheet): white Jobs header; rows white unless a colour was chosen (UX-96)
+- feat(clients): KPI cards in the Daily Job Sheet style, new order, every card filters cards and widgets; Recent Bookings audit fixes (UX-97)
+- feat(client profile): actions in the header, full-width content, widgets below, Review Requests removed; Upcoming / Job Sheet Summary audit fixes (UX-98)
 - fix(sheets): an Excel block colour shows on the Daily Job Sheet; a colour change alone is saved (R-SYNC-11)
 - feat(bookings): Add New Booking opens the Add Job form; the job-sheet row is that entry (R-SYNC-12)
 - feat(clients): in-house / outsourced crew and visits on cards, expand arrow, widgets follow the selected KPI card (UX-95)

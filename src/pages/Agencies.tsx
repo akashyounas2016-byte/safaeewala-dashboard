@@ -16,7 +16,6 @@ import type { Agency, AgencyContactPerson, AgencyDocument, AgencyDocumentCategor
 import { formatDate, isThirdPartyEmployee, isParentCompanyEmployee, slugifyAgencyName, staffOfAgency } from '@/lib/utils'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { cleanClientNameFromAddress, employeeMatchesStaff, splitStaffNames, isBogusJob } from '@/lib/clientDataSync'
-import { buildAgencyNotifications } from '@/lib/agencyAlerts'
 import { todayDubai } from '@/lib/dubaiTime'
 import { docSrc, docKind, useDocUrls } from '@/lib/docStorage'
 
@@ -546,11 +545,7 @@ export function Agencies() {
     navigate(`/agencies/${encodeURIComponent(slug)}`)
   }
 
-  const agencyNotifications = useMemo(
-    () => buildAgencyNotifications(agencies, employees, handleOpenAgency),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [agencies, employees]
-  )
+  // R-ALERT-01: agency alerts are in Sidebar → Alerts (lib/alerts → agencyAlerts)
 
   // ── Search & Filter State ──
   const [search, setSearch] = useState('')
@@ -708,7 +703,6 @@ export function Agencies() {
         statusChip="Vendor Management"
         actionLabel="Add New Agency"
         onAction={handleOpenAddModal}
-        notifications={agencyNotifications}
       />
 
       {/* ── KPI Stat Cards (Clickable Quick Filters) ── */}

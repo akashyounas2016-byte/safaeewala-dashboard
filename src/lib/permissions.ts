@@ -15,6 +15,7 @@ export const ROLE_META: Record<AppRole, { label: string; desc: string; badge: st
 /** Every screen that can be allowed or blocked, with the routes that belong to it */
 export const APP_MODULES = [
   { key: 'Overview',        paths: ['/'] },
+  { key: 'Alerts',          paths: ['/alerts'] }, // R-ALERT-01
   { key: 'Bookings',        paths: ['/bookings'] },
   { key: 'Daily Job Sheet', paths: ['/daily-job-sheet'] },
   { key: 'Fluent Forms',    paths: ['/fluent-forms', '/whatsapp-crm', '/marketing', '/feedback'] },
@@ -57,7 +58,7 @@ export type RolePerms = Record<PermRole, ModuleKey[]>
 export const DEFAULT_ROLE_PERMS: RolePerms = {
   manager:    ALL_MODULE_KEYS.filter(k => k !== 'Settings'),
   employee:   ['Overview', 'Bookings', 'Attendance', 'My Duties'],
-  supervisor: ['Overview', 'Bookings', 'Daily Job Sheet', 'Attendance', 'Drivers', 'My Duties'],
+  supervisor: ['Overview', 'Alerts', 'Bookings', 'Daily Job Sheet', 'Attendance', 'Drivers', 'My Duties'],
   driver:     ['My Duties'], // R-SEC-05: field staff see their own duties only, unless the admin adds screens
   cleaner:    ['My Duties'],
 }
@@ -86,12 +87,22 @@ export function moduleForPath(pathname: string): ModuleKey | null {
 }
 
 /** Clean stored permissions: keep only known screens */
+/** Screens added after permissions could first be saved; a save older than them gets their defaults (R-ALERT-01) */
+const ADDED_LATER: ModuleKey[] = ['Alerts']
+
 export function normalizeRolePerms(stored: unknown): RolePerms {
   const out = Object.fromEntries(PERM_ROLES.map(r => [r.key, [...DEFAULT_ROLE_PERMS[r.key]]])) as RolePerms
   if (stored && typeof stored === 'object') {
+    // The screens that existed when the admin saved: a screen added since then follows its default, so a
+    // saved setting never hides a new screen by accident (a screen the admin switched off stays off)
+    const saved = (stored as Record<string, unknown>)._modules
+    const known = Array.isArray(saved) ? saved as string[] : ALL_MODULE_KEYS.filter(k => !ADDED_LATER.includes(k))
     for (const { key: role } of PERM_ROLES) {
       const list = (stored as Record<string, unknown>)[role]
-      if (Array.isArray(list)) out[role] = list.filter((k): k is ModuleKey => ALL_MODULE_KEYS.includes(k as ModuleKey))
+      if (!Array.isArray(list)) continue
+      const kept = list.filter((k): k is ModuleKey => ALL_MODULE_KEYS.includes(k as ModuleKey))
+      const added = DEFAULT_ROLE_PERMS[role].filter(k => !known.includes(k) && !kept.includes(k))
+      out[role] = [...kept, ...added]
     }
   }
   return out

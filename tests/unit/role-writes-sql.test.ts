@@ -8,7 +8,9 @@ const eq = (a: unknown, b: unknown, m: string) => {
 const sql = fs.readFileSync('supabase/migrations/2026-11-02_role_based_writes.sql', 'utf8')
 const manager = JSON.parse(/when me\.role = 'manager' then '(\[[^']+\])'/.exec(sql)![1])
 const employee = JSON.parse(/else '(\[[^']+\])'::jsonb/.exec(sql)![1])
-eq(manager, DEFAULT_ROLE_PERMS.manager, 'manager default screens match the app')
+// Screens that write no table (Alerts, R-ALERT-01) are not in the database rule
+const NO_TABLE = ['Alerts']
+eq(manager, DEFAULT_ROLE_PERMS.manager.filter(k => !NO_TABLE.includes(k)), 'manager default screens match the app')
 eq(employee, DEFAULT_ROLE_PERMS.employee, 'employee default screens match the app')
 const used = Array.from(sql.matchAll(/array\[([^\]]+)\]/g)).flatMap(m => m[1].split(',').map(s => s.trim().replace(/'/g, '')))
 eq(used.filter(m => !(ALL_MODULE_KEYS as string[]).includes(m)), [], 'every screen named in the SQL exists in the app')
