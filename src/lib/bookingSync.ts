@@ -1,4 +1,5 @@
-import type { Booking, DailyJob } from '@/types'
+import type { Booking, Client, DailyJob, Employee } from '@/types'
+import { cleanClientNameFromAddress, getDayNameFromDate, staffNameToCrew } from '@/lib/clientDataSync'
 import { addHoursToTime } from '@/lib/utils'
 import { addDays } from '@/lib/dubaiTime'
 
@@ -112,4 +113,44 @@ export function nextOccurrence(b: Booking): Omit<Booking, 'id' | 'created_at'> |
   const { id: _id, created_at: _c, received_amount: _r, pending_due: _p, is_partially_paid: _pp, is_sheet_synced: _s, job_sheet_id: _j, ...rest } = b
   void _id; void _c; void _r; void _p; void _pp; void _s; void _j
   return { ...rest, scheduled_date: date, status: 'confirmed', ...(anchorDay ? { recurrence_day: anchorDay } : {}) }
+}
+
+/**
+ * R-SYNC-12: a new booking is entered in the Add Job form (same fields as the job sheets). The booking is
+ * built from that entry, and its job-sheet row keeps the entry exactly (address, area, cleaners, money).
+ */
+export function bookingFromJobEntry(
+  j: Omit<DailyJob, 'id' | 'created_at'>,
+  clients: Pick<Client, 'id' | 'full_name' | 'building_name' | 'area' | 'phone' | 'whatsapp'>[],
+  employees: Employee[],
+): Omit<Booking, 'id' | 'created_at'> & { recurring_days?: string[] } {
+  const addr = (j.address || '').trim()
+  const key = addr.toLowerCase()
+  // same test as the Add Job form uses to call a client registered
+  const client = clients.find(c =>
+    c.full_name?.toLowerCase().trim() === key ||
+    c.building_name?.toLowerCase().trim() === key ||
+    `${c.full_name} (${c.building_name || c.area})`.toLowerCase().trim() === key)
+  const monthly = j.payment_mode === 'Monthly'
+  return {
+    client_id: client?.id || '',
+    client_name: client?.full_name || cleanClientNameFromAddress(addr) || addr,
+    client_phone: client?.whatsapp || client?.phone || '',
+    service_address: addr,
+    service_type: j.service || 'Standard / General Cleaning',
+    status: 'confirmed',
+    frequency: monthly ? 'monthly' : 'once',
+    scheduled_date: j.date,
+    scheduled_time: j.start_time,
+    end_time: j.end_time,
+    duration_hours: num(j.duty_hours),
+    material: j.material || 'No',
+    total_amount: num(j.charges),
+    received_amount: num(j.received),
+    assigned_crew: staffNameToCrew(j.staff_name, employees),
+    notes: (j.remarks || '').trim(),
+    source: 'manual',
+    ...(j.row_color ? { row_color: j.row_color } : {}),
+    ...(monthly ? { recurring_days: [getDayNameFromDate(j.date)] } : {}),
+  }
 }

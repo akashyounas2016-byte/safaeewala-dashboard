@@ -73,6 +73,8 @@ export interface Client {
   service_mode?: 'general' | 'biweekly' | 'monthly'
   /** R-CLI-02: chosen weekdays every other week, and how many months */
   biweekly_plan?: import('@/lib/biweekly').BiWeeklyPlan
+  /** R-SCHED-08: Contract Status of a Monthly / Bi-Weekly client; false = Off (no visits sync). Missing = On */
+  contract_active?: boolean
   total_bookings: number
   total_spent: number
   last_service?: string

@@ -25,6 +25,7 @@ import { confirmAsync, notify } from '@/lib/notify'
 import { findDuplicateClient, isUaeMobile } from '@/lib/validation'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import { BiWeeklyScheduleCard, emptyBiWeeklyPlan } from '@/components/clients/BiWeeklyScheduleCard'
+import { ContractStatusToggle } from '@/components/clients/ContractStatusToggle'
 import type { BiWeeklyPlan, ClientServiceMode } from '@/lib/biweekly'
 
 export interface ClientModalFormProps {
@@ -59,6 +60,7 @@ export function ClientModalForm({
   const startMode = (): ClientServiceMode => (isMonthly ? 'monthly' : seed?.service_mode === 'biweekly' ? 'biweekly' : seed?.service_mode === 'monthly' ? 'monthly' : 'general')
   const [mode, setMode] = useState<ClientServiceMode>(startMode)
   const [plan, setPlan] = useState<BiWeeklyPlan>(() => seed?.biweekly_plan ?? emptyBiWeeklyPlan())
+  const [contractOn, setContractOn] = useState(() => seed?.contract_active !== false) // R-SCHED-08
   const [monthlyPrefill, setMonthlyPrefill] = useState<Partial<Client> | undefined>(undefined)
   const formRef = useRef<HTMLFormElement>(null)
   const monthlyEdit = isMonthly && isEdit // an existing monthly client keeps its Profile / 7-Day Schedule tabs
@@ -70,6 +72,7 @@ export function ClientModalForm({
       setActiveTab('profile')
       setMode(startMode())
       setPlan(seed?.biweekly_plan ?? emptyBiWeeklyPlan())
+      setContractOn(seed?.contract_active !== false)
       setMonthlyPrefill(undefined)
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -174,9 +177,11 @@ export function ClientModalForm({
       if (!requireFields(e.currentTarget, [{ name: 'biweekly_days', label: 'Bi-Weekly days (tick at least one)', ok: plan.days.length > 0 }])) return
       patch.service_mode = 'biweekly'
       patch.biweekly_plan = plan
+      if (!contractOn || seed?.contract_active === false) patch.contract_active = contractOn // R-SCHED-08 (sent only when Off or turned back On)
       if (!cleaner) patch.preferred_cleaner = Array.from(new Set(plan.days.map(d => plan.day_schedules[d]?.cleaner).filter(Boolean))).join(', ')
     } else {
       patch.service_mode = monthlyEdit ? 'monthly' : 'general'
+      if (monthlyEdit && (!contractOn || seed?.contract_active === false)) patch.contract_active = contractOn // R-SCHED-08
       if (seed?.biweekly_plan) patch.biweekly_plan = null as unknown as undefined // no longer bi-weekly
     }
 
@@ -444,6 +449,7 @@ export function ClientModalForm({
           </div>
 
           {/* R-CLI-02: Bi-Weekly — days like the monthly schedule, and the contract duration */}
+          {(mode === 'biweekly' || monthlyEdit) && <ContractStatusToggle on={contractOn} onChange={setContractOn} />}
           {mode === 'biweekly' && <div data-field="biweekly_days"><BiWeeklyScheduleCard plan={plan} onChange={setPlan} cleaners={activeCleanersList} /></div>}
 
           {/* ── Card 3: Financial Balances & Service Remarks ── */}

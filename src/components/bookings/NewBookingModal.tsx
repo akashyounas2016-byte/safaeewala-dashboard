@@ -5,7 +5,7 @@ import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
 import { Time12hPicker, parseTimeToMinutes } from '@/components/common/Time12hPicker'
 import { useData } from '@/store/DataContext'
-import type { Booking, BookingFrequency, BookingStatus, Client, MaterialType } from '@/types'
+import type { Booking, BookingFrequency, BookingStatus, Client, DailyJob, MaterialType } from '@/types'
 import {
   ROW_COLOR_PRESETS,
   formatTime12h,
@@ -17,6 +17,8 @@ import { notify } from '@/lib/notify'
 import { useRequiredFields } from '@/lib/requiredFields'
 import { RequiredBanner } from '@/components/common/RequiredBanner'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
+import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
+import { bookingFromJobEntry } from '@/lib/bookingSync'
 import {
   Users,
   Clock,
@@ -37,7 +39,7 @@ import {
 export interface NewBookingModalProps {
   open: boolean
   onClose: () => void
-  onAdd: (booking: Omit<Booking, 'id' | 'created_at'> & { recurring_days?: string[] }) => void
+  onAdd: (booking: Omit<Booking, 'id' | 'created_at'> & { recurring_days?: string[]; job_entry?: Omit<DailyJob, 'id' | 'created_at'> }) => void
   initialBooking?: Booking | null
   onUpdate?: (id: string, patch: Partial<Booking>) => void
 }
@@ -482,6 +484,52 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
     }
 
     onClose()
+  }
+
+  // R-SYNC-12: a new booking uses the Add Job form of the job sheets, so both hold the same fields
+  if (!initialBooking) {
+    return (
+      <Modal
+        open={open}
+        onClose={onClose}
+        title="Add New Booking"
+        size="2xl"
+        className="max-w-6xl w-full max-h-[96vh] min-h-[86vh]"
+        headerActions={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-[12px] transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="add-job-entry-form"
+              className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-[12.5px] shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <Plus size={15} className="stroke-[3]" />
+              <span>Save Booking</span>
+            </button>
+          </div>
+        }
+      >
+        {open && (
+          <AddJobForm
+            employees={employees.filter(e => e.status !== 'inactive')}
+            clients={clients}
+            onClose={onClose}
+            initial={{ date: todayDubai() }}
+            onSave={j => {
+              onAdd({ ...bookingFromJobEntry(j, clients, employees), job_entry: j })
+              notify.success('Booking saved and added to the Daily Job Sheet')
+              onClose()
+            }}
+          />
+        )}
+      </Modal>
+    )
   }
 
   return (

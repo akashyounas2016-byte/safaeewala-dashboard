@@ -49,10 +49,10 @@ import {
   STAFF_COLOR_PALETTES,
   ALL_COLUMNS,
   mergeColumnOrder,
+  rowColorOf,
   DEFAULT_VISIBLE_COLUMNS,
   type ColumnConfig,
   type StaffPalette,
-  ROW_COLOR_PRESETS,
 } from '@/components/dailyJobSheet/jobSheetUtils'
 import { PaymentBadge, AddressCell } from '@/components/dailyJobSheet/JobSheetBadges'
 import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
@@ -3906,7 +3906,7 @@ export function DailyJobSheet() {
                   // Cleaner unique color palette & custom row color preset
                   const staffKey = (job.staff_name || '').trim().toLowerCase()
                   const palette = staffColorMap.get(staffKey) || STAFF_COLOR_PALETTES[0]
-                  const customColorPreset = job.row_color ? ROW_COLOR_PRESETS.find(p => p.id === job.row_color) : null
+                  const customColorPreset = rowColorOf(job.row_color) // R-SYNC-11: Daily preset or Excel block colour
 
                   // Detect first shift of this staff in the visible list for clear separation
                   const prevRow = idx > 0 ? displayedRows[idx - 1] : null
@@ -3921,8 +3921,8 @@ export function DailyJobSheet() {
 
                   let dynamicRowBg = '#ffffff'
                   const teamBg = teamBgOf(job.id)
-                  if (customColorPreset && customColorPreset.circleColor) {
-                    dynamicRowBg = customColorPreset.circleColor
+                  if (customColorPreset) {
+                    dynamicRowBg = customColorPreset.bg
                   } else if (teamBg) {
                     dynamicRowBg = teamBg // UX-71: one light colour per team project
                   } else if (isProjectRow && filterColors.Project && filterColors.Project !== DEFAULT_CATEGORY_ROW_COLORS.Project) {

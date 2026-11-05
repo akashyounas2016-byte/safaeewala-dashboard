@@ -76,6 +76,17 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `clientDataSync.ts → busyJobOf, findMonthlyScheduleClashes, syncMonthlySchedulesToDailyJobs`; `AddMonthlyClientModalForm.tsx`; `NewBookingModal.tsx`.
 - **Status:** Active · Since: 2026-11-04
 
+### R-SCHED-08 — Contract Status toggle on Monthly and Bi-Weekly clients
+- **Rule:** *"Monthly aur Bi-Weekly clients ki profile ya 'Edit Client' pop-up mein ek 'Contract Status' toggle … 'On' hone ki soorat mein client ka data Daily Job Sheet par automatically synchronize hota rahay. Contract 'Off' hotay hi sync foran ruk jaye aur unki entries Daily Job Sheet par display na hon."*
+  - The toggle is in Edit Client (Bi-Weekly mode, and the Profile tab of a monthly client) and in the Monthly client form. New clients start On.
+  - **Off:** no visit of the client syncs (monthly and Bi-Weekly). On save, the client's synced visits **from today on** with no money received leave the Daily Job Sheet (a before-delete copy is kept, BAK-5). Past visits stay, because salaries, OT and history use them.
+  - **On again:** visits sync from the next sync (opening the day on the sheet).
+  - The card on Clients shows *Contract off*.
+  - Works next to R-SCHED-05 (contracts in Monthly Clients → Contracts): either one switched off stops the sync.
+  - The field is sent only when a contract is Off or turned back On, so client saves keep working before the migration runs.
+- **Code:** `ContractStatusToggle.tsx`; `ClientModalForm`, `AddMonthlyClientModalForm`; `clientDataSync.ts → contractOffJobs`, checked in `getScheduledMonthlyShiftsForDate`; `DataContext → updateClient`; migration `2026-11-05_client_contract_active.sql`.
+- **Status:** Active once the migration has run · Since: 2026-11-05
+
 ---
 
 ## ATT — Attendance
@@ -233,8 +244,20 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ### R-SYNC-11 — A job's row colour is saved in the cloud
 - **Rule:** The row colour chosen in Add Job or the Excel Job Sheet is saved with the job, so every device shows it. Before 2026-11-03 `daily_jobs` had no `row_color` column and the outbox dropped the field: the colour stayed in one browser only.
-- **Code:** `syncQueue.ts → DAILY_JOBS_COLUMNS`; migration `2026-11-03_daily_jobs_split_and_color.sql`.
-- **Status:** Active once the migration has run · Since: 2026-11-03
+  - *"Excel Job Sheet mein kisi block ka color change aur save karne ke baad, woh Daily Job Sheet par update nahi hota."* (2026-11-05) Two causes, both fixed:
+    - The Excel Save compared rows without the colour, so a colour change alone said *Nothing to save*. `row_color` is now a saved field.
+    - The Excel sheet stores a block palette key (`emerald`, `sky` …) or a custom hex; the Daily Job Sheet only read its own preset ids. Both sheets now read every kind (`rowColorOf`).
+- **Code:** `syncQueue.ts → DAILY_JOBS_COLUMNS`; `excelSheet/rows.ts → SAVED_FIELDS`; `jobSheetUtils.ts → rowColorOf`; migration `2026-11-03_daily_jobs_split_and_color.sql`.
+- **Status:** Active once the migration has run · Since: 2026-11-03 (both-way colours since 2026-11-05)
+
+### R-SYNC-12 — Add New Booking uses the Add Job form
+- **Rule:** *"Add New Booking' par click karne par wahi pop-up khulna chahiye jo 'Add Job' ke doran Daily ya Excel Job Sheet par show hota hai, taake dono sections ka data format aur fields bilkul same rahe."*
+  - A new booking (Bookings, Overview) opens the Add Job form of the job sheets, with its fields, checks and clash test.
+  - The booking is built from that entry: client by address (the same test the form uses), cleaners → employee ids (R-SYNC-02), date, times, money, mode (Monthly → monthly booking), remarks, colour.
+  - The booking's job-sheet row is the entry itself (address, area, cleaners, split money), not a copy rebuilt from the booking.
+  - Editing an existing booking keeps the booking form (status, frequency, recurring days).
+- **Code:** `NewBookingModal.tsx`; `bookingSync.ts → bookingFromJobEntry`; `DataContext → addBooking (job_entry), createJobForBooking`.
+- **Status:** Active · Since: 2026-11-05
 
 ### R-SYNC-04 — Staff are matched by whole words
 - **Rule:** An employee matches a job's `staff_name` by normalised full name or whole-word match — "Rupa" must not match "Rupak".

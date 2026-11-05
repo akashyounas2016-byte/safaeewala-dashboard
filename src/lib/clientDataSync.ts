@@ -1234,6 +1234,18 @@ export function isMonthlyContractStopped(client: Pick<Client, 'full_name'>, cont
   return own.length > 0 && !own.some(c => c.status === 'active')
 }
 
+/**
+ * R-SCHED-08: the synced visits that leave the Daily Job Sheet when a client's contract is switched Off —
+ * the client's scheduled visits from today on with no money received. Past visits stay (salaries, history).
+ */
+export function contractOffJobs(client: Client, dailyJobs: DailyJob[], today: string): DailyJob[] {
+  return dailyJobs.filter(j =>
+    (j.date || '').split('T')[0] >= today &&
+    cleanNum(j.received) === 0 &&
+    (j.payment_mode === 'Monthly' || /\((?:Monthly|Bi-Weekly) Schedule\)/i.test(j.remarks || '')) &&
+    jobMatchesClient(j, client))
+}
+
 /** Address of a scheduled visit: "<building> Apt <n> - <client name>", never with "(Monthly)" */
 export function scheduledAddressOf(client: Client): string {
   const bldg = (client.building_name || '').trim()
@@ -1329,6 +1341,7 @@ export function getScheduledMonthlyShiftsForDate(
       return
     }
     if (isMonthlyContractStopped(client, contracts)) return // R-SCHED-05: contract switched off
+    if (client.contract_active === false) return // R-SCHED-08: Contract Status Off on the client
 
     const { cleanerName, startTime, endTime, durationHours } = getClientShiftDetailsForDay(client, dayName)
 
@@ -1371,6 +1384,7 @@ export function getScheduledMonthlyShiftsForDate(
   // R-SCHED-07: Bi-Weekly clients — the day's time and cleaner from their plan, inside the contract dates
   clients.forEach(client => {
     if (client.service_mode !== 'biweekly' || clientMap.has(client.id)) return
+    if (client.contract_active === false) return // R-SCHED-08
     const visit = biweeklyVisitOn(client.biweekly_plan, dateStr)
     if (!visit) return
     const matchedJob = jobsOnDate.find(j => jobMatchesClient(j, client))

@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency } from '../types'
 import { supabase } from '@/lib/supabase'
-import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded } from '@/lib/clientDataSync'
+import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry, sanitizeOutboxPayload } from '@/lib/syncQueue'
 import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
@@ -30,7 +30,8 @@ interface DataStore {
   inventory: InventoryItem[]
   loading:   boolean
 
-  addBooking:      (b: Omit<Booking, 'id' | 'created_at'>) => void
+  /** job_entry: the Add Job form entry the booking came from (R-SYNC-12) */
+  addBooking:      (b: Omit<Booking, 'id' | 'created_at'> & { job_entry?: Omit<DailyJob, 'id' | 'created_at'> }) => void
   updateBooking:   (id: string, patch: Partial<Booking>) => void
   deleteBooking:   (id: string) => void
   pushBookingToDailyJob: (bookingId: string) => void
@@ -512,9 +513,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // ── Booking ↔ job-sheet helpers (R-SYNC-03, BJ-02…BJ-09) ──
   /** Add the job-sheet row of a booking (saved through the outbox) */
-  function createJobForBooking(b: Booking, area?: string): DailyJob {
+  function createJobForBooking(b: Booking, area?: string, entry?: Omit<DailyJob, 'id' | 'created_at'>): DailyJob {
     const clientArea = area || clients.find(c => c.id === b.client_id)?.area
-    const job: DailyJob = { ...jobFromBooking(b, crewToStaffName(b.assigned_crew, allEmployees), clientArea), id: uid(), created_at: now() }
+    // R-SYNC-12: a booking entered in the Add Job form keeps that entry as its job-sheet row
+    const base = entry ? { ...entry, booking_id: b.id } : jobFromBooking(b, crewToStaffName(b.assigned_crew, allEmployees), clientArea)
+    const job: DailyJob = { ...base, id: uid(), created_at: now() }
     setDailyJobs(p => {
       const next = [job, ...p]
       safeLocalStorageSet('safaeewala_daily_jobs', next)
@@ -597,7 +600,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     attendanceMarks, saveAttendanceMarks,
 
     /* ── Bookings ── */
-    addBooking: (b) => {
+    addBooking: (input) => {
+      const { job_entry: jobEntry, ...b } = input as typeof input & { job_entry?: Omit<DailyJob, 'id' | 'created_at'> }
       // Resolve client_id: link to existing client by name or create a new one
       const matchedClient = clients.find(
         c => c.full_name.toLowerCase().trim() === b.client_name.toLowerCase().trim()
@@ -643,7 +647,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       dbInsert('bookings', row)
       logAudit('created', 'booking', row.id, b.client_name, `${b.service_type} · ${b.scheduled_date}`)
       // Every booking has its job-sheet row (R-SYNC-03)
-      createJobForBooking(row, matchedClient?.area)
+      createJobForBooking(row, matchedClient?.area, jobEntry)
     },
     updateBooking: (id, patch) => {
       const booking = bookings.find(b => b.id === id)
@@ -706,6 +710,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       logAudit('created', 'client', row.id, c.full_name)
     },
     updateClient: (id, patch) => {
+      // R-SCHED-08: switching the contract Off takes the client's synced visits from today on off the sheet
+      const before = allClients.find(c => c.id === id)
+      if (before && patch.contract_active === false && before.contract_active !== false) {
+        const off = contractOffJobs({ ...before, ...patch }, dailyJobs, todayDubai())
+        if (off.length) {
+          saveDeletionSnapshot(`Contract off · ${before.full_name}`, { dailyJobs: off })
+          off.forEach(j => removeJobRow(j.id))
+        }
+      }
       setClients(p => {
         const exists = p.some(c => c.id === id)
         if (exists) {

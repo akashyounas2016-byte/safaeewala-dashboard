@@ -5,7 +5,7 @@ import {
   Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign,
   Heart, Award, CheckCircle, Trash2, ExternalLink, ArrowUpDown, RotateCcw, X, Filter, Clock,
   Save, Check, ChevronDown, UserCheck, Edit2, LayoutGrid, List, ChevronUp, AlertCircle, Sparkles,
-  Wallet, CalendarCheck, Plus
+  Wallet, CalendarCheck, Plus, Building2, Handshake
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -21,6 +21,7 @@ import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
 import { ClientModalForm } from '@/components/clients/ClientModalForm'
 import { ClientCardShell, CleanerStack, WeekStrip, MoneyStrip, CardAction } from '@/components/clients/ClientCardParts'
+import { clientCrewMix } from '@/lib/clientCrew'
 import { confirmAsync } from '@/lib/notify'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
 import { todayDubai, calendarDate } from '@/lib/dubaiTime'
@@ -416,6 +417,24 @@ export function Clients() {
     return [...base].sort((a, b) => (b.last_service || b.created_at || '').localeCompare(a.last_service || a.created_at || ''))
   })()
 
+  // UX-95: a selected KPI card (Monthly, Due, VIP …) scopes the widgets below to those clients
+  const scopeClients = filterType ? filtered : clients
+  const scopeIds = new Set(scopeClients.map(c => c.id))
+  const scopeNames = new Set(scopeClients.map(c => c.full_name.toLowerCase().trim()))
+  const scopeDue = filterType ? clientsWithDue.filter(x => scopeIds.has(x.client.id)) : clientsWithDue
+  const scopeBookings = filterType
+    ? bookings.filter(b => scopeIds.has(b.client_id) || scopeNames.has((b.client_name || '').toLowerCase().trim()))
+    : bookings
+  const scopeMonthly = !filterType ? monthlyCount
+    : filterType === 'monthly' ? scopeClients.length
+    : scopeClients.filter(c => isMonthlyClient(c, dailyJobs, allMonthlySummaries)).length
+  const scopeActive = scopeClients.filter(c => c.last_service && new Date(c.last_service) > new Date('2026-01-01')).length
+  const scopeVip = scopeClients.filter(c => c.total_spent > 2000).length
+  const scopeRepeat = scopeClients.filter(c => c.total_bookings > 1).length
+  const scopeRepeatRate = scopeClients.length > 0 ? Math.round((scopeRepeat / scopeClients.length) * 100) : 0
+  const scopeInactive = scopeClients.filter(c => !c.last_service || (Date.now() - new Date(c.last_service).getTime()) > 60 * 86400000).length
+  const SCOPE_LABEL: Record<string, string> = { active: 'Active clients', monthly: 'Monthly clients', due: 'Clients with a due balance', vip: 'VIP clients', repeat: 'Repeat clients', inactive: 'At-risk clients' }
+
   interface KpiCardItem {
     label: string
     value: string | number
@@ -480,9 +499,9 @@ export function Clients() {
     )
   }
 
-  const topClients = [...clients].sort((a, b) => b.total_spent - a.total_spent).slice(0, 5)
+  const topClients = [...scopeClients].sort((a, b) => b.total_spent - a.total_spent).slice(0, 5)
 
-  const areaCounts = clients.reduce((acc, c) => {
+  const areaCounts = scopeClients.reduce((acc, c) => {
     acc[c.area] = (acc[c.area] || 0) + 1
     return acc
   }, {} as Record<string, number>)
@@ -560,11 +579,11 @@ export function Clients() {
         <h3 className="text-[15px] font-bold text-[#111827]">Recent Bookings</h3>
         <span className="text-[11px] text-slate-400">Latest activity</span>
       </div>
-      {bookings.length === 0 ? (
+      {scopeBookings.length === 0 ? (
         <p className="text-[12px] text-slate-400 text-center py-4">No bookings yet</p>
       ) : (
         <div className="space-y-3">
-          {[...bookings]
+          {[...scopeBookings]
             .sort((a, b) => b.created_at.localeCompare(a.created_at))
             .slice(0, 5)
             .map((b, idx) => {
@@ -605,10 +624,10 @@ export function Clients() {
           <p className="text-[11px] text-slate-400">Clients with unpaid dues</p>
         </div>
         <span className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-0.5 rounded-full">
-          {clientsWithDue.length} Client{clientsWithDue.length !== 1 ? 's' : ''}
+          {scopeDue.length} Client{scopeDue.length !== 1 ? 's' : ''}
         </span>
       </div>
-      {clientsWithDue.length === 0 ? (
+      {scopeDue.length === 0 ? (
         <div className="py-8 text-center text-slate-400 my-auto">
           <CheckCircle size={28} className="mx-auto text-emerald-500 mb-2" />
           <p className="text-[12px] font-semibold text-slate-700">All Accounts Settled</p>
@@ -616,7 +635,7 @@ export function Clients() {
         </div>
       ) : (
         <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[280px] pr-1">
-          {clientsWithDue
+          {scopeDue
             .sort((a, b) => b.due - a.due)
             .slice(0, 5)
             .map(({ client: c, due }, idx) => {
@@ -656,25 +675,25 @@ export function Clients() {
             })}
         </div>
       )}
-      {clientsWithDue.length > 5 && (
+      {scopeDue.length > 5 && (
         <button
           type="button"
-          onClick={() => setFilterType('due')}
+          onClick={() => setFilterType('due')} // UX-95
           className="mt-3 pt-2 border-t border-slate-100 text-[11.5px] font-bold text-emerald-600 hover:text-emerald-700 text-center w-full block transition-colors cursor-pointer"
         >
-          View all {clientsWithDue.length} clients with due balance →
+          View all {scopeDue.length} clients with due balance →
         </button>
       )}
     </div>
   )
 
   const renderClientRetentionWidget = () => {
-    const total = clients.length || 1
-    const singleVisit = clients.filter(c => (c.total_bookings || 0) <= 1).length
+    const total = scopeClients.length || 1
+    const singleVisit = scopeClients.filter(c => (c.total_bookings || 0) <= 1).length
     const segments = [
-      { label: 'Monthly Recurring', count: monthlyCount, pct: Math.round((monthlyCount / total) * 100), color: 'bg-teal-500' },
-      { label: 'Repeat Regulars (2+)', count: repeatClients, pct: Math.round((repeatClients / total) * 100), color: 'bg-emerald-500' },
-      { label: 'VIP Clients (2k+)', count: vipClients, pct: Math.round((vipClients / total) * 100), color: 'bg-amber-500' },
+      { label: 'Monthly Recurring', count: scopeMonthly, pct: Math.round((scopeMonthly / total) * 100), color: 'bg-teal-500' },
+      { label: 'Repeat Regulars (2+)', count: scopeRepeat, pct: Math.round((scopeRepeat / total) * 100), color: 'bg-emerald-500' },
+      { label: 'VIP Clients (2k+)', count: scopeVip, pct: Math.round((scopeVip / total) * 100), color: 'bg-amber-500' },
       { label: 'Single-Visit / New', count: singleVisit, pct: Math.round((singleVisit / total) * 100), color: 'bg-blue-400' },
     ]
 
@@ -686,7 +705,7 @@ export function Clients() {
             <p className="text-[11px] text-slate-400">Portfolio breakdown & retention</p>
           </div>
           <span className="text-[11px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-            {repeatRate}% Retention
+            {scopeRepeatRate}% Retention
           </span>
         </div>
 
@@ -720,8 +739,8 @@ export function Clients() {
         </div>
 
         <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-          <span>Active in 2026: <strong className="text-slate-800">{activeClients}</strong></span>
-          <span>At-Risk / Dormant: <strong className="text-orange-600">{inactiveClientsCount}</strong></span>
+          <span>Active in 2026: <strong className="text-slate-800">{scopeActive}</strong></span>
+          <span>At-Risk / Dormant: <strong className="text-orange-600">{scopeInactive}</strong></span>
         </div>
       </div>
     )
@@ -1205,6 +1224,7 @@ export function Clients() {
               const totalVisits  = Math.max(c.total_bookings, liveBookings.length)
               const cleanersOf   = (c.preferred_cleaner || '').split(',').map(s => s.trim()).filter(Boolean)
               const phone        = c.whatsapp || c.phone
+              const crew         = clientCrewMix(c, dailyJobs, employees) // UX-95
               return (
               <ClientCardShell key={c.id} lead={cleanersOf[0]} monthly={isMonthly} onClick={() => setSelected(c)}>
                 <div className="space-y-2.5 min-w-0">
@@ -1221,6 +1241,9 @@ export function Clients() {
                       <span className={`text-[9.5px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${isMonthly ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
                         {isMonthly ? 'Monthly' : 'Standard'}
                       </span>
+                      {(isMonthly || c.service_mode === 'biweekly') && c.contract_active === false && (
+                        <span className="text-[9.5px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider bg-rose-100 text-rose-700 border border-rose-200" title="Contract Status Off: no visits sync (R-SCHED-08)">Contract off</span>
+                      )}
                       <SourceOriginTag source={resolveClientSource(c, bookings)} />
                     </div>
                   </div>
@@ -1239,6 +1262,22 @@ export function Clients() {
                     {c.last_service && <span className="flex items-center gap-1"><Calendar size={11} />{formatDate(c.last_service)}</span>}
                     {c.pet_info && <span className="text-[10.5px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 rounded-full font-bold">Pet</span>}
                     {c.total_spent > 2000 && <span className="text-[10.5px] bg-purple-50 text-purple-700 border border-purple-200 px-1.5 rounded-full font-bold">VIP</span>}
+                  </div>
+
+                  {/* UX-95: who works here — in-house and outsourced cleaners, plus visits */}
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-2.5 py-1.5" title={crew.inHouse.join(', ') || 'No in-house cleaner yet'}>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1"><Building2 size={10} className="text-emerald-600" />In-house</p>
+                      <p className="text-[15px] font-black text-[#111827] leading-tight">{crew.inHouse.length}</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-2.5 py-1.5" title={crew.outsourced.join(', ') || 'No outsourced cleaner yet'}>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1"><Handshake size={10} className="text-indigo-600" />Outsourced</p>
+                      <p className="text-[15px] font-black text-[#111827] leading-tight">{crew.outsourced.length}</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-2.5 py-1.5">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1"><CalendarCheck size={10} className="text-sky-600" />Visits</p>
+                      <p className="text-[15px] font-black text-[#111827] leading-tight">{totalVisits}</p>
+                    </div>
                   </div>
 
                   <MoneyStrip billed={c.total_spent} received={Math.max(0, c.total_spent - outstanding)} due={outstanding} />
@@ -1264,10 +1303,15 @@ export function Clients() {
               <button
                 type="button"
                 onClick={() => setShowAllClientCards(prev => !prev)}
-                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 hover:bg-slate-100/90 text-slate-600 hover:text-slate-900 border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all duration-200 cursor-pointer text-[12px] font-semibold"
+                aria-expanded={showAllClientCards}
+                className="group inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 hover:bg-slate-100/90 text-slate-600 hover:text-slate-900 border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all duration-200 cursor-pointer text-[12px] font-semibold"
               >
-                <span>{showAllClientCards ? 'Show Less' : `View All (${filtered.length})`}</span>
-                {showAllClientCards ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                <span>{showAllClientCards ? 'Show less' : `Show ${filtered.length - CLIENT_CARDS_PREVIEW} more clients`}</span>
+                {/* UX-95: the same expand arrow as More Client Metrics */}
+                <span className="relative flex items-center justify-center w-5 h-5 rounded-full bg-slate-200/70 group-hover:bg-slate-300/80 text-slate-700 transition-colors">
+                  {!showAllClientCards && <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />}
+                  {showAllClientCards ? <ChevronUp size={13} /> : <ChevronDown size={13} className="animate-bounce" />}
+                </span>
               </button>
             </div>
           )}
@@ -1282,6 +1326,12 @@ export function Clients() {
 
         {/* ── Widgets below the cards, like the table view ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+        {filterType && (
+          <div className="md:col-span-2 lg:col-span-3 flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-[12.5px] text-emerald-900">
+            <span>Widgets show <b>{SCOPE_LABEL[filterType] || 'the selected clients'}</b> only · {scopeClients.length} client{scopeClients.length === 1 ? '' : 's'}</span>
+            <button type="button" onClick={() => setFilterType(null)} className="font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer">Show all clients</button>
+          </div>
+        )}
           {renderTopClientsWidget()}
           {renderOutstandingDuesWidget()}
           {renderClientRetentionWidget()}

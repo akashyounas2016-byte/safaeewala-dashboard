@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(sheets): an Excel block colour shows on the Daily Job Sheet; a colour change alone is saved (R-SYNC-11)
+- feat(bookings): Add New Booking opens the Add Job form; the job-sheet row is that entry (R-SYNC-12)
+- feat(clients): in-house / outsourced crew and visits on cards, expand arrow, widgets follow the selected KPI card (UX-95)
+- feat(clients): Contract Status toggle for Monthly / Bi-Weekly clients; Off stops the sync and clears synced visits from today on (R-SCHED-08) — needs `2026-11-05_client_contract_active.sql`
 - feat(daily sheet): V1 colours, crew timeline with clashes / jobs without a cleaner, Driver and Status columns synced from Drivers and My Duties (UX-94)
 - feat(settings): Nightly database backup card on the Backup tab, fed by /api/backup-status (UX-93, R-OPS-04)
 - feat(clients): card grid limited to 4 rows with a View All button (UX-92)

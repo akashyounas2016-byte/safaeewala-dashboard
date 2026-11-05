@@ -1,5 +1,6 @@
 import type { PaymentMode, MaterialType } from '@/types'
 import { todayDubai } from '@/lib/dubaiTime'
+import { BLOCK_PALETTES, makeHexPalette } from '@/lib/excelSheet/palettes'
 
 export const MATERIALS: MaterialType[] = ['No', 'Yes', 'Sofa', 'Ladder', 'Sofa Seat']
 export const PAYMENT_MODES: PaymentMode[] = ['Cash', 'Online', 'Pending', 'Monthly', 'Above']
@@ -498,4 +499,17 @@ export function mergeColumnOrder(saved: string[]): string[] {
     order.splice(before ? order.indexOf(before.id) + 1 : 0, 0, c.id)
   })
   return order
+}
+
+/**
+ * R-SYNC-11: the colour of a row, whichever sheet set it. The Daily Job Sheet stores a ROW_COLOR_PRESETS id;
+ * the Excel Job Sheet stores a block palette key (emerald, sky …) or a custom hex. Both show on both sheets.
+ */
+export function rowColorOf(rowColor?: string | null): { bg: string; borderLeft: string } | null {
+  const id = String(rowColor || '').trim()
+  if (!id || id === 'default') return null
+  const preset = ROW_COLOR_PRESETS.find(p => p.id === id)
+  if (preset?.circleColor) return { bg: preset.circleColor, borderLeft: preset.borderLeft }
+  const block = BLOCK_PALETTES[id] || (/^#[0-9a-f]{3,8}$/i.test(id) ? makeHexPalette(id) : null)
+  return block ? { bg: block.solidBg, borderLeft: block.borderLeft } : null
 }

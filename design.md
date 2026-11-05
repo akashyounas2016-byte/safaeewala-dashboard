@@ -138,6 +138,11 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
   - Daily Job Sheet (UX-86): the same issue flag next to the cleaner's name; Remarks no longer show the sync note.
   - Sidebar settings (UX-89): each item has 👁 **Shown / Hidden** next to Favorite and Up / Down. Hidden items leave the menu and stay in the settings. The bottom *Customize Items Sequence* button is gone; the sliders button at the top opens the settings. Up / Down move the item itself (they moved the wrong item when the role hid some screens).
   - Clients (UX-90): cards use the full width, three per row; Top Clients, Pending Balances, Client Distribution, Top Locations and Recent Bookings sit below the cards, as in the table view.
+  - Clients (UX-95, owner prompt 2026-11-05):
+    - Each card shows three tiles: **In-house** and **Outsourced** cleaners (preferred cleaners and everyone in the client's job history; outsourced = an agency that is not Safaeewala, `isParentCompanyEmployee`; hover lists the names) and **Visits**.
+    - Under the cards, the expand arrow of *More Client Metrics* (bouncing chevron): *Show N more clients* / *Show less*.
+    - A selected KPI card (Monthly, Due, VIP, Repeat, Active, At-risk) scopes the widgets below — Top Clients, Pending Balances, Client Distribution, Top Locations, Recent Bookings — to those clients, with a green note and *Show all clients*.
+    - Monthly / Bi-Weekly cards with the contract Off show a red *Contract off* tag (R-SCHED-08).
   - Daily Job Sheet in the V1 colours (UX-94, owner prompt 2026-11-05: *"color scheme ko V1 ke mutabiq update krein … neche wale widgets ka style pehle jaisa"*):
     - Header and the Jobs bar: solid forest `#0F1F19` instead of the gradient. KPI cards: white with a thin border; the coloured icon carries the meaning. Column header: `#FAFBF9`, grey labels.
     - **Crew timeline** under the KPI cards (single day only): one lane per cleaner, jobs as blocks (Monthly green, other jobs blue, the part after 8 PM orange, clash = red border, no cleaner = dashed amber). Available and absent / on-leave lanes follow R-ATT-01. A click on a block opens Edit Job. Hide / Show is remembered per browser.

@@ -9,6 +9,7 @@ import type { Client, Employee } from '@/types'
 import { useData } from '@/store/DataContext'
 import { findMonthlyScheduleClashes } from '@/lib/clientDataSync'
 import { notify } from '@/lib/notify'
+import { ContractStatusToggle } from '@/components/clients/ContractStatusToggle'
 import { addHoursToTime, subtractHoursFromTime, calcDurationFromTimes, formatTime12h } from '@/lib/utils'
 
 export const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -40,6 +41,7 @@ export function AddMonthlyClientModalForm({
   prefill,
 }: AddMonthlyClientModalFormProps) {
   const seedClient: Partial<Client> | null | undefined = initialClient ?? prefill
+  const [contractOn, setContractOn] = useState(() => seedClient?.contract_active !== false) // R-SCHED-08
   // ── 7-Day Specific Schedule State ──
   const [daySchedules, setDaySchedules] = useState<Record<string, {
     enabled: boolean
@@ -316,11 +318,14 @@ export function AddMonthlyClientModalForm({
       duration_hours: firstDuration,
       day_cleaner_assignments: finalAssignments,
       day_schedules: finalDaySchedules,
+      // R-SCHED-08: sent only when Off or turned back On, so saves work before the column exists
+      ...(!contractOn || seedClient?.contract_active === false ? { contract_active: contractOn } : {}),
     })
   }
 
   return (
     <form id="add-monthly-client-form" className="space-y-4" onSubmit={handleSubmit}>
+      <ContractStatusToggle on={contractOn} onChange={setContractOn} />
 
       {/* ── Client Basic Details (Compact 2 rows) ── */}
       <div className="space-y-3">

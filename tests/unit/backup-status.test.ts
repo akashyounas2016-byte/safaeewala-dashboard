@@ -22,4 +22,4 @@ eq(/write_status true/.test(src('scripts/backup/db-backup.sh')) && /write_status
 eq(/<BackupStatusCard \/>/.test(src('src/pages/Settings.tsx')), true, 'card shown on the Backup tab')
 
 const clients = src('src/pages/Clients.tsx')
-eq(/const CLIENT_CARDS_PREVIEW = 12/.test(clients) && /View All \(/.test(clients), true, 'Clients: 4 rows of 3, then View All')
+eq(/const CLIENT_CARDS_PREVIEW = 12/.test(clients) && /more clients/.test(clients), true, 'Clients: 4 rows of 3, then the expand arrow (UX-95)')
