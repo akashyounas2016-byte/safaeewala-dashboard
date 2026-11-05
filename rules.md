@@ -377,7 +377,8 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - The header shows jobs, hours, done / total and cash to collect, at full page width like the other screens.
   - The office sees the progress live on the Dispatch board.
 - **Data:** `public.job_checkins`: one row per job and cleaner. A field login writes only its own rows; office roles write any. Migration `2026-11-04_job_checkins.sql`. Until it runs, the buttons are disabled and a note says why.
-- **Code:** `src/lib/jobCheckins.ts`, `MyDuties.tsx → DutyCard`.
+  - The Daily Job Sheet shows this progress in its **Status** column, and the driver of each site (R-DRV-01) in its **Driver** column (UX-94).
+- **Code:** `src/lib/jobCheckins.ts`, `MyDuties.tsx → DutyCard`; `src/lib/crewTimeline.ts → jobStatusLabel, driverNameForJob`.
 - **Status:** In code · needs the migration · Since: 2026-11-05
 
 ---

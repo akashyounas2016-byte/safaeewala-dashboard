@@ -112,15 +112,13 @@ export const JobSheetKPIs: React.FC<JobSheetKPIsProps> = ({
       label: 'NET TOTAL',
       sublabel: 'Net bottom line in hand',
       value: `AED ${netTotal.toLocaleString()}`,
-      valueColor: 'text-white drop-shadow-xs',
-      labelColor: 'text-white/95',
-      sublabelColor: 'text-emerald-100',
-      bg: netTotal >= 0
-        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30'
-        : 'bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/30',
-      border: netTotal >= 0 ? 'border-2 border-emerald-400/90' : 'border-2 border-rose-400/90',
+      valueColor: netTotal >= 0 ? 'text-[#0B6B4F]' : 'text-rose-700',
+      labelColor: netTotal >= 0 ? 'text-emerald-800' : 'text-rose-700',
+      sublabelColor: 'text-slate-500',
+      bg: '',
+      border: '',
       icon: DollarSign,
-      iconBg: 'bg-white/20 text-white ring-1 ring-white/30 backdrop-blur-xs shadow-xs',
+      iconBg: netTotal >= 0 ? 'bg-[#0E5A47] text-white shadow-md shadow-emerald-700/25' : 'bg-rose-600 text-white shadow-md shadow-rose-500/25',
       tooltip: 'Click to view Financial Breakdown & Summary',
       onClick: () => {
         onScrollTo('bottom-panels-section')
@@ -231,7 +229,7 @@ export const JobSheetKPIs: React.FC<JobSheetKPIsProps> = ({
               type="button"
               onClick={c.onClick}
               title={c.tooltip}
-              className={`group relative rounded-[22px] ${c.border} ${c.bg} p-4 sm:p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg active:scale-[0.98] cursor-pointer flex flex-col justify-between text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1`}
+              className={`group relative rounded-[16px] bg-white hover:bg-[#FAFBF9] border border-[#E2E5E0] hover:border-[#C9D2CC] shadow-[0_1px_2px_rgba(20,32,27,0.04)] p-4 sm:p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] cursor-pointer flex flex-col justify-between text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1`}
             >
               <div className="flex items-start justify-between gap-2 mb-2 w-full">
                 <span className={`text-[11px] font-bold tracking-wider uppercase truncate ${c.labelColor}`}>
@@ -267,7 +265,7 @@ export const JobSheetKPIs: React.FC<JobSheetKPIsProps> = ({
               type="button"
               onClick={c.onClick}
               title={c.tooltip}
-              className={`group relative rounded-[22px] ${c.border} ${c.bg} p-4 sm:p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg active:scale-[0.98] cursor-pointer flex flex-col justify-between text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1`}
+              className={`group relative rounded-[16px] bg-white hover:bg-[#FAFBF9] border border-[#E2E5E0] hover:border-[#C9D2CC] shadow-[0_1px_2px_rgba(20,32,27,0.04)] p-4 sm:p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] cursor-pointer flex flex-col justify-between text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1`}
             >
               <div className="flex items-start justify-between gap-2 mb-2 w-full">
                 <span className={`text-[11px] font-bold tracking-wider uppercase truncate ${c.labelColor}`}>

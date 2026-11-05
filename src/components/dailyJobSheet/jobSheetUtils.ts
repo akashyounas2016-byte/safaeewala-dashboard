@@ -404,6 +404,8 @@ export const ALL_COLUMNS: ColumnConfig[] = [
   { id: 'ot_hours',     label: 'OT Hrs' },
   { id: 'material',     label: 'Material' },
   { id: 'payment_mode', label: 'Payment Mode' },
+  { id: 'driver',       label: 'Driver' },   // UX-94: from the Drivers day plan
+  { id: 'status',       label: 'Status' },   // UX-94: from My Duties check-ins
   { id: 'remarks',      label: 'Remarks' },
   { id: 'actions',      label: 'Actions' },
 ]
@@ -421,6 +423,8 @@ export const DEFAULT_VISIBLE_COLUMNS: Record<string, boolean> = {
   ot_hours:     true,
   material:     true,
   payment_mode: true,
+  driver:       true,
+  status:       true,
   remarks:      true,
   actions:      true,
 }
@@ -481,3 +485,17 @@ export const ROW_COLOR_PRESETS: RowColorPreset[] = [
   { id: 'rose', label: 'Pale Blush', circleColor: '#fae5e8', rowBg: 'bg-[#fae5e8] hover:bg-[#f6cbd1]', borderLeft: 'border-l-[5px] border-l-[#ad1f34]' },
   { id: 'c40', label: 'Light Red', circleColor: '#ffb8bb', rowBg: 'bg-[#ffb8bb] hover:bg-[#ff999e]', borderLeft: 'border-l-[5px] border-l-[#b8141d]' },
 ]
+
+/**
+ * A saved column order plus any column added since, each new one placed right after the column
+ * that precedes it in ALL_COLUMNS (so Driver / Status land before Remarks, not at the end) — UX-94.
+ */
+export function mergeColumnOrder(saved: string[]): string[] {
+  const order = saved.filter(id => ALL_COLUMNS.some(c => c.id === id))
+  ALL_COLUMNS.forEach((c, i) => {
+    if (order.includes(c.id)) return
+    const before = ALL_COLUMNS.slice(0, i).reverse().find(p => order.includes(p.id))
+    order.splice(before ? order.indexOf(before.id) + 1 : 0, 0, c.id)
+  })
+  return order
+}

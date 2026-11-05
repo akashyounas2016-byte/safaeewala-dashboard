@@ -48,6 +48,7 @@ import {
   addDaysToYMD,
   STAFF_COLOR_PALETTES,
   ALL_COLUMNS,
+  mergeColumnOrder,
   DEFAULT_VISIBLE_COLUMNS,
   type ColumnConfig,
   type StaffPalette,
@@ -72,6 +73,11 @@ import {
 import { GoogleDriveWebhookModal } from '@/components/dailyJobSheet/GoogleDriveWebhookModal'
 import { MonthlyScheduleSyncModal } from '@/components/dailyJobSheet/MonthlyScheduleSyncModal'
 import { JobSheetKPIs } from '@/components/dailyJobSheet/JobSheetKPIs'
+import { CrewTimeline } from '@/components/dailyJobSheet/CrewTimeline'
+import { buildCrewTimeline, driverNameForJob, jobStatusLabel } from '@/lib/crewTimeline'
+import { buildRouteSites } from '@/lib/driverRoutes'
+import { useDayPlan } from '@/lib/driverPlans'
+import { useJobCheckins } from '@/lib/jobCheckins'
 import { ExpensesAndDriversPanel } from '@/components/dailyJobSheet/ExpensesAndDriversPanel'
 import { ReconciliationWidgets } from '@/components/dailyJobSheet/ReconciliationWidgets'
 import { EditJobModal } from '@/components/dailyJobSheet/EditJobModal'
@@ -527,11 +533,7 @@ export function DailyJobSheet() {
       const saved = localStorage.getItem('safaeewala_daily_job_col_order')
       if (saved) {
         const parsed = JSON.parse(saved) as string[]
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const validSaved = parsed.filter(id => ALL_COLUMNS.some(c => c.id === id))
-          const missing = ALL_COLUMNS.filter(c => !validSaved.includes(c.id)).map(c => c.id)
-          return [...validSaved, ...missing]
-        }
+        if (Array.isArray(parsed) && parsed.length > 0) return mergeColumnOrder(parsed)
       }
     } catch {}
     return ALL_COLUMNS.map(c => c.id)
@@ -979,6 +981,19 @@ export function DailyJobSheet() {
       date: selectedDate,
       attendance: mark,
     }))
+
+  // UX-94: crew timeline (V1) and the Driver / Status columns, synced from Drivers and My Duties
+  const [driverPlan] = useDayPlan(selectedDate)
+  const jobCheckins = useJobCheckins(selectedDate)
+  const routeSites = useMemo(() => buildRouteSites(dailyJobs, selectedDate), [dailyJobs, selectedDate])
+  const crewTimeline = useMemo(() => buildCrewTimeline(
+    dailyJobs.filter(j => (j.date || '').split('T')[0] === selectedDate),
+    allKnownCleaners,
+    name => {
+      const m = attendanceMarkFor(name, selectedDate)
+      return m?.status === 'absent' ? 'absent' : m?.status === 'on_leave' ? 'leave' : undefined
+    },
+  ), [dailyJobs, selectedDate, allKnownCleaners, attendanceMarks, employees]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Unique staff list for color mapping (alphabetically consistent)
   const uniqueStaffList = useMemo(() => {
@@ -1782,7 +1797,7 @@ export function DailyJobSheet() {
     return (
       <th
         key={id}
-        className="sticky top-0 bg-slate-100 z-30 text-left px-3 py-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.07em] whitespace-nowrap border-b border-[#E4E8EC]"
+        className="sticky top-0 bg-[#FAFBF9] z-30 text-left px-3 py-3 text-[10.5px] font-bold text-[#5B6660] uppercase tracking-[0.06em] whitespace-nowrap border-b border-[#E2E5E0]"
       >
         {label}
       </th>
@@ -1872,6 +1887,16 @@ export function DailyJobSheet() {
     }
     if (id === 'ot_hours') {
       return <td key={id} className="px-3 py-3 text-slate-300 font-medium whitespace-nowrap">—</td>
+    }
+    if (id === 'status') {
+      // UX-94 / R-ATT-01: no job = Available; only a mark makes a cleaner absent
+      return (
+        <td key={id} className="px-3 py-3 whitespace-nowrap">
+          <span className={`inline-flex items-center gap-1.5 text-[12px] font-bold ${away ? (onLeave ? 'text-[#8A5300]' : 'text-[#B42318]') : 'text-[#5B6660]'}`}>
+            <span className="w-2 h-2 rounded-full bg-current" />{away ? awayLabel : 'Available'}
+          </span>
+        </td>
+      )
     }
     return <td key={id} className="px-3 py-3 text-slate-400 font-medium whitespace-nowrap">—</td>
   }
@@ -2466,6 +2491,29 @@ export function DailyJobSheet() {
           </td>
         )
 
+      case 'driver': {
+        const driver = driverNameForJob(originalIdOf(job), routeSites, driverPlan, employees)
+        return (
+          <td key={id} className="px-3 py-3 whitespace-nowrap">
+            {driver
+              ? <span className="font-semibold text-slate-800">{driver}</span>
+              : <span className="text-slate-400" title="Assign a driver in Drivers">—</span>}
+          </td>
+        )
+      }
+
+      case 'status': {
+        const st = jobStatusLabel(originalIdOf(job), splitStaffNames(job.staff_name || ''), jobCheckins.rows)
+        const tone = st.tone === 'done' ? 'text-[#0B6B4F]' : st.tone === 'active' ? 'text-[#1D4ED8]' : st.tone === 'issue' ? 'text-[#B42318]' : 'text-[#5B6660]'
+        return (
+          <td key={id} className="px-3 py-3 whitespace-nowrap">
+            <span className={`inline-flex items-center gap-1.5 text-[12px] font-bold ${tone}`}>
+              <span className="w-2 h-2 rounded-full bg-current" />{st.label}
+            </span>
+          </td>
+        )
+      }
+
       case 'remarks':
         return (
           <td key={id} className={`px-3 py-3 max-w-[140px] truncate ${isMonthly ? 'text-emerald-900 font-medium' : 'text-slate-600'}`} title={splitSyncNote(job.remarks).text}>
@@ -2602,11 +2650,8 @@ export function DailyJobSheet() {
       )}
 
       {/* ── Single Merged Hero Header (Green Gradient matching Clients & Fluent Forms) ── */}
-      <section className="gradient-card rounded-[24px] px-6 sm:px-7 py-4 sm:py-5 text-white shadow-[0_8px_32px_rgba(15,23,42,0.25)] ring-1 ring-black/10 relative z-30">
-        {/* Isolated Glow Container (overflow-hidden keeps glow inside rounded card while letting popups overflow) */}
-        <div className="absolute inset-0 rounded-[24px] overflow-hidden pointer-events-none">
-          <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
-        </div>
+      {/* UX-94: V1 colours — solid forest header */}
+      <section className="bg-[#0F1F19] rounded-[24px] px-6 sm:px-7 py-4 sm:py-5 text-white shadow-[0_4px_20px_rgba(15,31,25,0.18)] relative z-30">
 
         <div className="relative z-10 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
           {/* Left: Title + Scope Tag + Live Subtitle */}
@@ -2637,7 +2682,7 @@ export function DailyJobSheet() {
             <div className="flex flex-wrap items-center gap-2 text-white/80 text-[13px]">
               <span>{isDateRange ? `${fmtDate(effectiveStartDate)} – ${fmtDate(effectiveEndDate)}` : fmtDate(selectedDate)}</span>
               <span className="text-white/40 hidden sm:inline">·</span>
-              <span className="text-emerald-300 font-semibold">{jobsCount} Active Jobs</span>
+              <span className="text-[#3FB68B] font-semibold">{jobsCount} Active Jobs</span>
               <span className="text-white/40 hidden sm:inline">·</span>
               <span className="text-white/95">{staffOnDuty} Staff on Duty</span>
             </div>
@@ -3136,6 +3181,15 @@ export function DailyJobSheet() {
         }}
       />
 
+      {/* ── Crew timeline + issues (UX-94, V1 design) ── */}
+      {!isDateRange && (
+        <CrewTimeline
+          timeline={crewTimeline}
+          canEdit={!isDayClosed(selectedDate)}
+          onOpenJob={job => { if (!blockIfClosed(job.date)) setEditJob(job) }}
+        />
+      )}
+
       {/* ── Hidden rows notice (AUD-44: review instead of auto-delete) ── */}
       {hiddenRowsInRange.length > 0 && (
         <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3 rounded-2xl border border-amber-200 bg-amber-50 text-[12.5px] text-amber-900">
@@ -3155,7 +3209,7 @@ export function DailyJobSheet() {
 
       {/* ── Jobs Table ── */}
       <div id="jobs-table-section" ref={jobsTableRef} className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden scroll-mt-6">
-        <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#0f172a] px-5 py-3.5 border-b border-slate-800 text-white flex items-center justify-between flex-wrap gap-3 relative z-30 shadow-xs">
+        <div className="bg-[#0F1F19] px-5 py-3.5 border-b border-[#0F1F19] text-white flex items-center justify-between flex-wrap gap-3 relative z-30 shadow-xs">
           <div className="flex items-center gap-2.5 flex-wrap">
             <h3 className="text-[16px] font-black tracking-tight text-white flex items-center gap-2">
               <Briefcase size={16} className="text-sky-400" />
@@ -3825,8 +3879,8 @@ export function DailyJobSheet() {
               className="w-full text-[12px] border-collapse relative"
               style={{ minWidth: Math.max(500, activeColumns.length * 80) }}
             >
-              <thead className="sticky top-0 z-30 shadow-[0_2px_4px_rgba(0,0,0,0.06)] bg-slate-100">
-                <tr className="bg-slate-100 border-b border-[#E4E8EC]">
+              <thead className="sticky top-0 z-30 shadow-[0_2px_4px_rgba(0,0,0,0.06)] bg-[#FAFBF9]">
+                <tr className="bg-[#FAFBF9] border-b border-[#E2E5E0]">
                   {activeColumns.map(col => renderHeaderCell(col.id))}
                 </tr>
               </thead>
@@ -3836,10 +3890,8 @@ export function DailyJobSheet() {
                     const away = isAwayMark(row.attendance)
                     const leave = row.attendance?.status === 'on_leave'
                     return (
-                      <tr key={row.id} className={`transition-colors border-l-[5px] border-t ${
-                        !away ? 'bg-sky-50/70 hover:bg-sky-100/70 border-l-sky-500 border-t-sky-200'
-                        : leave ? 'bg-amber-50/70 hover:bg-amber-100/70 border-l-amber-500 border-t-amber-200'
-                        : 'bg-rose-50/70 hover:bg-rose-100/70 border-l-rose-500 border-t-rose-200'}`}>
+                      <tr key={row.id} className={`transition-colors border-l-[5px] border-t bg-white hover:bg-[#FAFBF9] border-t-[#EEF0EC] ${
+                        !away ? 'border-l-sky-500' : leave ? 'border-l-amber-500' : 'border-l-rose-500'}`}>
                         {activeColumns.map(col => renderNilCell(col.id, row))}
                       </tr>
                     )
