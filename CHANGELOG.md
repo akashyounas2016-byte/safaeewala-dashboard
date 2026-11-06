@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(employees): Health Score uses the Dubai date — from midnight to 04:00 today's absences were left out (R-EMP-03)
+
 - feat(whatsapp): nine WhatsApp tabs — Inbox, Jobs, Deals, Broadcast, Analytics, Automation, Keyword Trigger, Templates, Settings; setup never blocks a tab (R-WA-02)
 - feat(whatsapp): server automation (welcome, away with business hours, keyword replies), broadcasts, template create / delete, number register + subscribe (R-WA-02)
 - feat(inbox): one Inbox for WhatsApp + Facebook + Instagram (GHL) (R-INBOX-01)

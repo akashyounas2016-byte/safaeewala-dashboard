@@ -1,5 +1,6 @@
 import type { DailyJob, Employee } from '@/types'
 import { daysUntil } from '@/lib/utils'
+import { addDays, todayDubai } from '@/lib/dubaiTime'
 import type { AttendanceOverride } from '@/lib/attendance'
 
 export interface HealthComponent {
@@ -20,11 +21,9 @@ const WINDOW_DAYS = 90          // attendance look-back
 const ACTIVITY_DAYS = 30        // recent activity look-back
 const EXPECTED_WORK_DAYS = 22   // working days expected in ACTIVITY_DAYS
 
-const isoDaysAgo = (n: number) => {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  return d.toISOString().split('T')[0]
-}
+// Dubai calendar dates (owner decision: Asia/Dubai). toISOString() was UTC, so from midnight to 04:00
+// Dubai "today" was still yesterday and today's absences were left out of the score (R-EMP-03).
+const isoDaysAgo = (n: number) => addDays(todayDubai(), -n)
 
 const isWorkedShift = (j: DailyJob) => (Number(j.duty_hours) || 0) > 0 || (Number(j.charges) || 0) > 0
 
