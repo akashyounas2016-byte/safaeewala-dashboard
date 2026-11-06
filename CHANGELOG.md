@@ -8,7 +8,7 @@
 
 - feat(analytics, reports): one set of figures incl. monthly-contract revenue; Analytics redesigned as an organised grid with new insights; Reports outstanding counts partial payments (R-FIN-07, UX-106)
 - feat(payments): Pending merged into Payments — one hub with cards and tabs, Advances tab; /pending redirects (R-FIN-08)
-- fix(settings): no made-up account values; Notifications say nothing is sent; Billing backup text; all headers in the Daily Job Sheet colour (UX-107)
+- fix(settings): no made-up account values; Notifications say nothing is sent; Billing backup text; Stripe and Zoho Books removed from Integrations; all headers in the Daily Job Sheet colour (UX-107)
 
 - fix(ui audit): Esc closes popups; Clients table delete asks; Bookings card time; no "0d left" for missing document dates; React render warning from the sync banner (UX-105)
 

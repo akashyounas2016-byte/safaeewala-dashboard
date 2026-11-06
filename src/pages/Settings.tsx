@@ -484,22 +484,7 @@ const integrations: IntegrationInfo[] = [
     ],
     envVars: ['RESEND_API_KEY'],
   },
-  {
-    name: 'Stripe',
-    desc: 'Online payment processing',
-    logo: '💳',
-    status: 'not_connected',
-    docsUrl: 'https://stripe.com/docs',
-    note: 'Stripe is available in UAE. You need a UAE bank account and business registration.',
-    steps: [
-      'Create a Stripe account at stripe.com (UAE is supported)',
-      'Complete business verification with your DED license and bank details',
-      'Get your publishable key and secret key from the Stripe dashboard',
-      'Add keys to your VPS environment variables',
-      'Contact your developer to add payment form and webhook handler',
-    ],
-    envVars: ['VITE_STRIPE_PUBLISHABLE_KEY', 'STRIPE_SECRET_KEY'],
-  },
+  // UX-107: Stripe and Zoho Books removed (not used; owner approval 2026-11-06)
   {
     name: 'Google Calendar',
     desc: 'Crew schedule sync',
@@ -515,22 +500,6 @@ const integrations: IntegrationInfo[] = [
       'This requires backend OAuth flow — contact your developer',
     ],
     envVars: ['VITE_GOOGLE_CLIENT_ID'],
-  },
-  {
-    name: 'Zoho Books',
-    desc: 'UAE VAT-compliant accounting sync',
-    logo: '📊',
-    status: 'not_connected',
-    docsUrl: 'https://www.zoho.com/books/api/v3',
-    note: 'Zoho Books requires an active subscription and API credentials from Zoho Developer Portal.',
-    steps: [
-      'Subscribe to Zoho Books at zoho.com/books',
-      'Go to Zoho Developer Portal (api-console.zoho.com)',
-      'Create a Self Client application to get client ID and secret',
-      'Authorize your organization and get OAuth tokens',
-      'Contact your developer to implement the sync logic',
-    ],
-    envVars: ['ZOHO_CLIENT_ID', 'ZOHO_CLIENT_SECRET'],
   },
   {
     name: 'PostHog',
