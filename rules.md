@@ -590,6 +590,26 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `Invoices.tsx` (Void modal), `receivables.ts → invoiceBalance, invoicedJobIds`, `Invoice.status 'void'`.
 - **Status:** Active · Since: 2026-11-05
 
+### R-FIN-07 — Reports and Analytics show the same figures
+- **Rule:** *"Reports and Analytics screens ka mukammal audit kiya jaye taake verify ho sakay ke data fully synchronized aur accurate hai."* (2026-11-06)
+  - One formula for both screens (`lib/businessMetrics.ts`), months in Dubai time:
+    - **Revenue** = job-sheet charges + bookings without a job-sheet row (completed / live) + **monthly-contract payments**. Monthly visits carry no charges on the sheet, so before this monthly revenue was missing on both screens.
+    - **Collected** = received on job rows (R-FIN-03) + received on bookings without a row + pending recoveries + monthly-contract payments.
+    - **Gross profit** = revenue − daily expenses (before salaries, which the CRM does not hold).
+    - **Outstanding** = job dues (the Pending formula) + the unpaid part of sent / overdue invoices. Before, Reports counted the full total of an invoice that was partly paid.
+  - Invoice collection rate = paid / issued invoices (drafts and void left out).
+- **Code:** `src/lib/businessMetrics.ts`; `Reports.tsx`, `BusinessAnalytics.tsx`.
+- **Status:** Active · Since: 2026-11-06
+
+### R-FIN-08 — Payments is the one money screen (Pending merged in)
+- **Rule:** *"'Pending' ke alag option ko khatam kar ke isay 'Payments' module mein mukammal tor par merge kar diya jaye. Tamam maali maamlaat … ab sirf Payments screen par hi show hona chahiye."* (2026-11-06)
+  - Sidebar → Payments has one header, five cards (Outstanding, Collected this month, Pending recovered, Monthly contracts, Advance balance — each opens its tab) and the tabs Outstanding · By Client · Recovered · Monthly Contracts · Advances · Cash Book · Staff Collections · All Payments.
+  - The Pending screen's lists and actions work unchanged inside those tabs; the separate Pending item is gone from the sidebar. Old links (`/pending?tab=…`, `/payments?tab=pending`) open the same tab.
+  - Permissions: a role allowed the old Pending screen reaches it inside Payments. The "Pending" permission stays because the database write rules still name it.
+  - Advances tab: clients' credit balances and the advances recorded on the Daily Job Sheet.
+- **Code:** `src/pages/PaymentsHub.tsx`; `PendingPayments` / `PaymentProcessing` (`embedded`); `App.tsx → PendingRedirect`; `permissions.ts`.
+- **Status:** Active · Since: 2026-11-06
+
 ### R-FIN-04 — Invoice numbers
 - **Rule:** One scheme: `SAF-<year>-<NNNN>`, next = highest of the year + 1; `addInvoice` replaces any missing, legacy or duplicate number.
   - The year is the Dubai year (INV-A02).

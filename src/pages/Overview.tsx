@@ -782,7 +782,7 @@ export function Overview() {
             {[
               { icon: CalendarPlus, label: 'New Booking',     sub: 'Create customer appointment', bg: 'bg-emerald-100', color: 'text-emerald-600', hover: 'hover:bg-emerald-50', action: () => setShowNewBooking(true) },
               { icon: FileText,     label: 'Daily Job Sheet', sub: 'Record staff shifts & cash',   bg: 'bg-teal-100',    color: 'text-teal-600',    hover: 'hover:bg-teal-50',    action: () => navigate('/daily-jobs') },
-              { icon: UserCheck,    label: 'Pending Dues',    sub: 'Recover uncollected cash',     bg: 'bg-rose-100',    color: 'text-rose-600',    hover: 'hover:bg-rose-50',    action: () => navigate('/pending') },
+              { icon: UserCheck,    label: 'Pending Dues',    sub: 'Recover uncollected cash',     bg: 'bg-rose-100',    color: 'text-rose-600',    hover: 'hover:bg-rose-50',    action: () => navigate('/payments?tab=outstanding') },
               { icon: ShoppingCart, label: 'Purchase Order',  sub: 'Restock cleaning supplies',    bg: 'bg-purple-100',  color: 'text-purple-600',  hover: 'hover:bg-purple-50',  action: () => navigate('/inventory') },
             ].map(action => (
               <button key={action.label}
@@ -831,7 +831,7 @@ export function Overview() {
       {/* ── Ops Alert Cards ── */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
         <div
-          onClick={() => navigate('/pending')}
+          onClick={() => navigate('/payments?tab=outstanding')}
           className="bg-red-50 border border-red-100 rounded-3xl p-6 cursor-pointer hover:shadow-md transition-all hover:border-red-300 group"
         >
           <div className="flex items-center justify-between mb-4">

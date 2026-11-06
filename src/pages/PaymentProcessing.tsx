@@ -103,7 +103,8 @@ export interface PendingRecordItem {
   paymentMode?: string
 }
 
-export function PaymentProcessing() {
+/** R-FIN-08: `embedded` = one tab of the Payments screen (monthly contracts or all payments) */
+export function PaymentProcessing({ embedded = false, tab }: { embedded?: boolean; tab?: 'monthly' | 'history' } = {}) {
   const { dailyJobs, updateDailyJob, clients, invoices } = useData()
   const navigate = useNavigate()
 
@@ -111,7 +112,8 @@ export function PaymentProcessing() {
   const initialTab = (searchParams.get('tab') as 'pending' | 'monthly' | 'history') || 'pending'
 
   // ── Tab State: 'pending' | 'monthly' | 'history' ──
-  const [activeTab, setActiveTab] = useState<'pending' | 'monthly' | 'history'>(initialTab)
+  const [activeTab, setActiveTab] = useState<'pending' | 'monthly' | 'history'>(embedded && tab ? tab : initialTab)
+  useEffect(() => { if (embedded && tab) setActiveTab(tab) }, [embedded, tab])
 
   // ── Monthly Client Payments (Synced with safaeewala_monthly_client_payments) ──
   const [monthlyPayments, setMonthlyPayments] = useState<MonthlyClientPayment[]>(() => {
@@ -684,6 +686,18 @@ export function PaymentProcessing() {
   return (
     <div className="space-y-6">
 
+      {embedded && (
+        <div className="flex items-center justify-end gap-2 flex-wrap">
+          <button type="button" onClick={handleExportExcel} className="h-10 px-4 rounded-xl bg-white border border-[#E2E5E0] text-slate-800 font-semibold text-[12.5px] flex items-center gap-2 cursor-pointer hover:bg-slate-50">
+            <FileSpreadsheet size={14} /> Export Excel
+          </button>
+          <button type="button" onClick={() => setShowRecordMonthlyModal(true)} className="h-10 px-4 rounded-xl bg-[#0F1F19] text-white font-bold text-[12.5px] flex items-center gap-2 cursor-pointer hover:bg-[#1a2f27]">
+            <Plus size={14} /> Record Payment
+          </button>
+        </div>
+      )}
+
+      {!embedded && (<>
       {/* ── Page Hero ── */}
       <PageHero
         title="Payments Management"
@@ -861,7 +875,7 @@ export function PaymentProcessing() {
           {activeTab === 'pending' ? (
             <button
               type="button"
-              onClick={() => navigate('/pending')}
+              onClick={() => navigate('/payments?tab=outstanding')}
               className="inline-flex items-center gap-1.5 text-[12px] font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 px-3.5 py-1.5 rounded-xl border border-amber-200 transition-colors cursor-pointer"
             >
               <span>Detailed Pending Hub</span>
@@ -879,6 +893,8 @@ export function PaymentProcessing() {
           ) : null}
         </div>
       </div>
+
+      </>)}
 
       {/* ──────────────────────────────────────────────────────────── */}
       {/* TAB 1: PENDING AMOUNTS CONTENT                              */}

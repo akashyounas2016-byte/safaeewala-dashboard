@@ -46,7 +46,6 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { to: '/inventory',        label: 'Inventory',         icon: Package,                             category: 'Finance & Operations' },
   { to: '/expenses',         label: 'Expenses',          icon: TrendingDown,                        category: 'Finance & Operations' },
   { to: '/payments',         label: 'Payments',          icon: CreditCard,                          category: 'Finance & Operations' },
-  { to: '/pending',          label: 'Pending',           icon: Clock,                               category: 'Finance & Operations' },
 
   // ── Operations ──
   { to: '/reports',          label: 'Reports',           icon: BarChart3,                           category: 'Operations' },

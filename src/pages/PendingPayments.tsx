@@ -76,7 +76,8 @@ export interface UnifiedPendingRecord {
   paymentMode?: string
 }
 
-export function PendingPayments() {
+/** R-FIN-08: `embedded` = shown inside Payments (its header, cards and tab bar come from the Payments screen) */
+export function PendingPayments({ embedded = false }: { embedded?: boolean } = {}) {
   const { dailyJobs, invoices, updateInvoice, clients } = useData()
   const [searchParams] = useSearchParams()
 
@@ -666,6 +667,18 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
         </div>
       )}
 
+      {embedded && (
+        <div className="flex items-center justify-end gap-2 flex-wrap">
+          <button type="button" onClick={handleExportExcel} className="h-10 px-4 rounded-xl bg-white border border-[#E2E5E0] text-slate-800 font-semibold text-[12.5px] flex items-center gap-2 cursor-pointer hover:bg-slate-50">
+            <Download size={14} /> Export Report
+          </button>
+          <button type="button" onClick={() => setShowAddModal(true)} className="h-10 px-4 rounded-xl bg-[#0F1F19] text-white font-bold text-[12.5px] flex items-center gap-2 cursor-pointer hover:bg-[#1a2f27]">
+            + Record Manual Pending
+          </button>
+        </div>
+      )}
+
+      {!embedded && (<>
       {/* Page Hero Header */}
       <PageHero
         title="Pending Payments & Recoveries"
@@ -776,6 +789,8 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
           </div>
         </div>
       </div>
+
+      </>)}
 
       {/* ── Date Preset Filter Bar (Quick Pills & Dropdown Engine) ── */}
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center justify-between flex-wrap gap-3">
@@ -941,6 +956,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
         </div>
       )}
 
+      {!embedded && (<>
       {/* ── Segmented Tabs ── */}
       <div className="flex items-center justify-between flex-wrap gap-3 bg-white p-2 rounded-2xl border border-[#E4E8EC] shadow-xs">
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -999,6 +1015,8 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
           </Button>
         </div>
       </div>
+
+      </>)}
 
       {/* ── Toolbar: Search & Multi-Filters ── */}
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4 flex items-center justify-between flex-wrap gap-3">

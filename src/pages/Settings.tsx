@@ -1160,7 +1160,7 @@ export function Settings() {
             <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
               <div className="px-6 py-4 border-b border-[#E4E8EC]">
                 <h3 className="text-[15px] font-bold text-[#111827]">Notification Preferences</h3>
-                <p className="text-[12px] text-slate-500 mt-1">Settings are saved instantly to Supabase. Sending requires WhatsApp or Resend integration.</p>
+                <p className="text-[12px] text-slate-500 mt-1">Your choices are saved. <b className="text-amber-700">Nothing is sent yet</b> — sending needs an email or WhatsApp service, which is not connected. In-app alerts are in Sidebar → Alerts.</p>
               </div>
               <div className="p-6">
                 <div className="space-y-0 divide-y divide-[#E4E8EC]">
@@ -1212,7 +1212,7 @@ export function Settings() {
                         { item: 'File storage',        limit: '1 GB',            used: 'Included' },
                         { item: 'API requests',        limit: '500K / month',    used: 'Included' },
                         { item: 'Auth users',          limit: '50,000 users',    used: 'Included' },
-                        { item: 'Automated backups',   limit: 'Not included',    used: 'Pro plan only' },
+                        { item: 'Database backups',    limit: 'Nightly on the VPS', used: 'Included' }, // R-OPS-04
                       ].map(b => (
                         <div key={b.item} className="flex justify-between py-2.5 border-b border-[#E4E8EC]">
                           <span className="text-slate-600">{b.item}</span>
@@ -1252,7 +1252,7 @@ export function Settings() {
                   <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                     <p className="text-[13px] font-semibold text-blue-800 mb-1">When to upgrade</p>
                     <p className="text-[12px] text-blue-700">
-                      Upgrade to Supabase Pro ($25/mo) when you need automated daily backups, more than 500MB database, or advanced features.
+                      Upgrade to Supabase Pro ($25/mo) when the database grows past 500 MB or you need point-in-time recovery. Daily backups already run on the VPS (Settings → Backup).
                       Your current free tier is more than sufficient for a growing cleaning business.
                     </p>
                   </div>
@@ -1845,15 +1845,13 @@ export function Settings() {
               </div>
               <div>
                 <p className="text-[15px] font-bold text-[#111827]">{profileName}</p>
-                <p className="text-[12px] text-slate-500 mt-0.5">Owner · Admin</p>
+                <p className="text-[12px] text-slate-500 mt-0.5 capitalize">{currentUser?.role || '—'}</p>
               </div>
             </div>
             <div className="space-y-2">
               {[
                 { label: 'Email',      value: userEmail || '—' },
-                { label: 'Role',       value: 'Owner' },
-                { label: '2FA',        value: 'Not enabled' },
-                { label: 'Last login', value: 'Today' },
+                { label: 'Role',       value: currentUser?.role ? currentUser.role[0].toUpperCase() + currentUser.role.slice(1) : '—' },
               ].map(({ label, value }) => (
                 <div key={label} className="flex justify-between py-1.5 border-b border-[#E4E8EC] last:border-0">
                   <span className="text-[12px] text-slate-500">{label}</span>

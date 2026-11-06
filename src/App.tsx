@@ -50,7 +50,7 @@ const Employees              = lazyWithRetry(() => import('@/pages/Employees').t
 const EmployeeProfile        = lazyWithRetry(() => import('@/pages/EmployeeProfile').then(m => ({ default: m.EmployeeProfile })))
 const Agencies               = lazyWithRetry(() => import('@/pages/Agencies').then(m => ({ default: m.Agencies })))
 const AgencyProfile          = lazyWithRetry(() => import('@/pages/AgencyProfile').then(m => ({ default: m.AgencyProfile })))
-const PaymentProcessing      = lazyWithRetry(() => import('@/pages/PaymentProcessing').then(m => ({ default: m.PaymentProcessing })))
+const PaymentsHub            = lazyWithRetry(() => import('@/pages/PaymentsHub').then(m => ({ default: m.PaymentsHub })))
 const CustomerFeedback       = lazyWithRetry(() => import('@/pages/CustomerFeedback').then(m => ({ default: m.CustomerFeedback })))
 const MarketingDashboard     = lazyWithRetry(() => import('@/pages/MarketingDashboard').then(m => ({ default: m.MarketingDashboard })))
 const BusinessAnalytics      = lazyWithRetry(() => import('@/pages/BusinessAnalytics').then(m => ({ default: m.BusinessAnalytics })))
@@ -64,7 +64,6 @@ const Alerts                 = lazyWithRetry(() => import('@/pages/Alerts').then
 const Settings               = lazyWithRetry(() => import('@/pages/Settings').then(m => ({ default: m.Settings })))
 const DailyJobSheet          = lazyWithRetry(() => import('@/pages/DailyJobSheet').then(m => ({ default: m.DailyJobSheet })))
 const JobSheetSpreadsheet     = lazyWithRetry(() => import('@/pages/JobSheetSpreadsheet').then(m => ({ default: m.JobSheetSpreadsheet })))
-const PendingPayments        = lazyWithRetry(() => import('@/pages/PendingPayments').then(m => ({ default: m.PendingPayments })))
 const Attendance             = lazyWithRetry(() => import('@/pages/Attendance').then(m => ({ default: m.Attendance })))
 const Drivers                = lazyWithRetry(() => import('@/pages/Drivers').then(m => ({ default: m.Drivers })))
 const MyDuties               = lazyWithRetry(() => import('@/pages/MyDuties').then(m => ({ default: m.MyDuties })))
@@ -100,6 +99,13 @@ function AuthMessage({ icon, title, text, onSignOut }: { icon: string; title: st
 const IDLE_SIGN_OUT_MINUTES = 120
 
 /** Login is required everywhere, localhost included — the database only answers signed-in users (SEC-01, DEC-014) */
+/** R-FIN-08: old /pending links open the same tab inside Payments */
+function PendingRedirect() {
+  const { search } = useLocation()
+  const tab = new URLSearchParams(search).get('tab') || 'outstanding'
+  return <Navigate to={`/payments?tab=${encodeURIComponent(tab)}`} replace />
+}
+
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { status, user, signOut } = useAuth()
   // Screens read payments / attendance from localStorage on mount, so bring the cloud copy in
@@ -204,7 +210,7 @@ function AppRoutes() {
                 <Route path="agencies"   element={<Agencies />} />
                 <Route path="agencies/:id" element={<AgencyProfile />} />
                 <Route path="subscriptions" element={<Navigate to="/monthly-clients" replace />} />
-                <Route path="payments" element={<PaymentProcessing />} />
+                <Route path="payments" element={<PaymentsHub />} /> {/* R-FIN-08: Pending lives inside Payments */}
                 <Route path="feedback" element={<CustomerFeedback />} />
                 <Route path="marketing" element={<MarketingDashboard />} />
                 <Route path="analytics" element={<BusinessAnalytics />} />
@@ -213,7 +219,7 @@ function AppRoutes() {
                 <Route path="invoices"   element={<Invoices />} />
                 <Route path="inventory"  element={<Inventory />} />
                 <Route path="expenses"   element={<Expenses />} />
-                <Route path="pending"    element={<PendingPayments />} />
+                <Route path="pending"    element={<PendingRedirect />} />
                 <Route path="reports"    element={<Reports />} />
                 <Route path="alerts"     element={<Alerts />} />
                 <Route path="settings"   element={<Settings />} />

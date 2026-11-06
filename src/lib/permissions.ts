@@ -29,8 +29,8 @@ export const APP_MODULES = [
   { key: 'Invoices',        paths: ['/invoices', '/monthly-invoices'] },
   { key: 'Inventory',       paths: ['/inventory'] },
   { key: 'Expenses',        paths: ['/expenses'] },
-  { key: 'Payments',        paths: ['/payments'] },
-  { key: 'Pending',         paths: ['/pending'] },
+  { key: 'Payments',        paths: ['/payments', '/pending'] }, // R-FIN-08: Pending is a tab of Payments
+  { key: 'Pending',         paths: [] }, // kept: the database write rules (role_based_writes.sql) still name it
   { key: 'Reports',         paths: ['/reports'] },
   { key: 'Analytics',       paths: ['/analytics'] },
   { key: 'Settings',        paths: ['/settings'] },
@@ -113,13 +113,16 @@ export function canAccessModule(role: AppRole | undefined, perms: RolePerms, mod
   if (!role) return false
   if (role === 'admin') return true
   const column = permRoleOf(role, staffRole)
-  return !!column && perms[column].includes(module)
+  if (!column) return false
+  // R-FIN-08: a role allowed the old Pending screen keeps reaching it inside Payments
+  if (module === 'Payments' && perms[column].includes('Pending')) return true
+  return perms[column].includes(module)
 }
 
 /** First screen a user may open (for redirects) */
 export function firstAllowedPath(role: AppRole | undefined, perms: RolePerms, staffRole?: string | null): string | null {
-  const m = APP_MODULES.find(x => canAccessModule(role, perms, x.key, staffRole))
-  return m ? m.paths[0] : null
+  const m = APP_MODULES.find(x => x.paths.length > 0 && canAccessModule(role, perms, x.key, staffRole))
+  return m ? (m.paths[0] as string) : null
 }
 
 // ── Login IDs and passwords (same rules as the server, webhookServer.cjs) ──

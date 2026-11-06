@@ -250,7 +250,7 @@ export function EmployeeProfile() {
       </div>
 
       {/* ── Employee Dark Hero & Health Status Single Header (CRM Signature Dark Slate-Teal) ── */}
-      <div className="relative rounded-[24px] bg-gradient-to-br from-[#021f24] via-[#062c32] to-[#02181b] text-white border border-teal-800/60 shadow-[0_14px_45px_rgba(4,47,46,0.35)] p-6 sm:p-7 overflow-hidden">
+      <div className="relative rounded-[24px] bg-[#0F1F19] text-white border border-teal-800/60 shadow-[0_14px_45px_rgba(4,47,46,0.35)] p-6 sm:p-7 overflow-hidden">
         {/* Ambient Glow Effects (Teal & Emerald) */}
         <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-teal-400/15 blur-3xl pointer-events-none" />
         <div className="absolute -left-20 -bottom-20 w-80 h-80 rounded-full bg-emerald-400/15 blur-3xl pointer-events-none" />

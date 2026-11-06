@@ -7,7 +7,11 @@ import {
 import { TrendingUp, Target, Award, Users, Download, DollarSign, CheckCircle, Percent, Calendar, FileSpreadsheet } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
-import { getEmployeeDailyJobsHistory, isBogusJob, getEmployeeMonthlySalary, formatMonthlySalary } from '@/lib/clientDataSync'
+import { getEmployeeDailyJobsHistory, isBogusJob, getEmployeeMonthlySalary, formatMonthlySalary, loadPendingReceipts } from '@/lib/clientDataSync'
+import { KpiCard } from '@/components/ui/KpiCard'
+import { lastMonths, monthlyFigures, outstandingNow, bookingsWithoutRow, type MonthlyPaymentLike } from '@/lib/businessMetrics'
+import { safeLocalStorageGet } from '@/lib/storageUtils'
+import { todayDubai } from '@/lib/dubaiTime'
 
 function exportCSV(filename: string, rows: string[][]) {
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -28,59 +32,36 @@ const avatarColors = [
 ]
 
 export function Reports() {
-  const { bookings, clients, employees, invoices, dailyJobs } = useData()
+  const { bookings, clients, employees, invoices, dailyJobs, dailyExpenses } = useData()
   const [dateRange, setDateRange] = useState('6m')
 
   // Payroll period — default to current month
-  const [payPeriod, setPayPeriod] = useState(() => {
-    const d = new Date()
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  })
-  // Build last 6 months as options
-  const payPeriodOptions = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date()
-    d.setDate(1)
-    d.setMonth(d.getMonth() - i)
-    const key   = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    return { key, label }
-  })
-
-  const now = new Date()
-  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  // R-FIN-07: months in Dubai time; figures from lib/businessMetrics (same as Analytics)
+  const [payPeriod, setPayPeriod] = useState(() => todayDubai().slice(0, 7))
+  const payPeriodOptions = lastMonths(6).reverse().map(m => ({ key: m.key, label: m.label }))
+  const thisMonth = todayDubai().slice(0, 7)
+  const monthlyPayments = safeLocalStorageGet<MonthlyPaymentLike[]>('safaeewala_monthly_client_payments', [])
+  const pendingReceipts = loadPendingReceipts()
+  const metricsInput = { dailyJobs, bookings, clients, dailyExpenses, invoices, monthlyPayments, pendingReceipts }
 
   /* ── Work done (AUD-05): job-sheet rows + bookings that have no job-sheet row yet ── */
-  const linkedBookingIds = new Set(dailyJobs.map(j => j.booking_id).filter(Boolean))
   const workItems = [
     ...dailyJobs.filter(j => !isBogusJob(j)).map(j => ({
       date: j.date || '',
       amount: Number(j.charges) || 0,
       service: j.service || 'General Cleaning',
     })),
-    ...bookings
-      .filter(b => !linkedBookingIds.has(b.id) && (b.status === 'completed' || b.status === 'in_progress'))
+    ...bookingsWithoutRow(bookings, dailyJobs)
       .map(b => ({ date: b.scheduled_date || '', amount: b.total_amount || 0, service: b.service_type || 'General Cleaning' })),
   ]
   const thisMonthWork = workItems.filter(w => w.date.startsWith(thisMonth))
 
   /* ── Monthly revenue data ── */
   const sliceCount = dateRange === '3m' ? 3 : dateRange === '6m' ? 6 : dateRange === '1y' ? 12 : 24
-  const months = Array.from({ length: sliceCount }, (_, i) => {
-    const d = new Date()
-    d.setDate(1)
-    d.setMonth(d.getMonth() - (sliceCount - 1 - i))
-    return {
-      month: d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-      key:   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
-      revenue: 0,
-      target: 0,
-      jobs: 0,
-    }
-  })
-  workItems.forEach(w => {
-    const m = months.find(m => m.key === w.date.slice(0, 7))
-    if (m) { m.revenue += w.amount; m.jobs++ }
-  })
+  // Revenue includes monthly-contract payments (R-FIN-07); jobs = job rows + bookings without a row
+  const months = monthlyFigures(metricsInput, lastMonths(sliceCount)).map(m => ({
+    month: m.short + ' ' + m.key.slice(2, 4), key: m.key, revenue: m.revenue, target: 0, jobs: m.jobs,
+  }))
 
   // Dynamic target: 110% of average monthly revenue (min AED 5,000)
   const nonZeroRevs = months.map(m => m.revenue).filter(r => r > 0)
@@ -93,20 +74,22 @@ export function Reports() {
   const completedBookings  = bookings.filter(b => b.status === 'completed')
   const cancelledBookings  = bookings.filter(b => b.status === 'cancelled')
   const activeBookings     = bookings.filter(b => b.status !== 'cancelled')
-  const thisMonthRevenue   = thisMonthWork.reduce((s, w) => s + w.amount, 0)
-  const totalRevenue       = workItems.reduce((s, w) => s + w.amount, 0)
+  const thisMonthFig       = monthlyFigures(metricsInput, lastMonths(1))[0]
+  const thisMonthRevenue   = thisMonthFig.revenue
+  const totalRevenue       = months.reduce((s, m) => s + m.revenue, 0)
   const completionRate     = activeBookings.length > 0
     ? Math.round((completedBookings.length / activeBookings.length) * 100) : 0
   const avgJobValue        = workItems.length > 0
     ? Math.round(totalRevenue / workItems.length) : 0
-  const thisMonthNewClients = clients.filter(c => c.created_at.startsWith(thisMonth)).length
+  const thisMonthNewClients = thisMonthFig.newClients
   const repeatClients      = clients.filter(c => c.total_bookings > 1).length
   const repeatRate         = clients.length > 0 ? Math.round((repeatClients / clients.length) * 100) : 0
-  const pendingCollection  = invoices
-    .filter(i => i.status === 'sent' || i.status === 'overdue')
-    .reduce((s, i) => s + i.total, 0)
-  const paidInvoices       = invoices.filter(i => i.status === 'paid').length
-  const collectionRate     = invoices.length > 0 ? Math.round((paidInvoices / invoices.length) * 100) : 0
+  // Outstanding = job dues + unpaid part of open invoices (partial payments counted); drafts / void left out
+  const outstanding        = outstandingNow(metricsInput)
+  const pendingCollection  = outstanding.total
+  const issuedInvoices     = invoices.filter(i => i.status === 'sent' || i.status === 'overdue' || i.status === 'paid')
+  const paidInvoices       = issuedInvoices.filter(i => i.status === 'paid').length
+  const collectionRate     = issuedInvoices.length > 0 ? Math.round((paidInvoices / issuedInvoices.length) * 100) : 0
   const cancellationRate   = bookings.length > 0
     ? ((cancelledBookings.length / bookings.length) * 100).toFixed(1) : '0'
 
@@ -208,7 +191,7 @@ function formatReportRole(role: string | undefined): string {
         statusChip={completionRate >= 80 ? 'On Track' : 'Needs Attention'}
         actionLabel="Export CSV"
         onAction={handleExport}
-        searchPlaceholder="Search reports…"
+        showSearch={false}
       />
 
       {/* ── Date Range bar ── */}
@@ -231,31 +214,15 @@ function formatReportRole(role: string | undefined): string {
       </div>
 
       {/* ── KPI Cards (all real) ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'This Month Revenue',  actual: `AED ${thisMonthRevenue.toLocaleString()}`,      sub: 'Completed + live jobs',  good: thisMonthRevenue > 0,  icon: DollarSign,  iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', badge: thisMonthJobs > 0 ? `${thisMonthJobs} jobs` : 'No jobs yet' },
-          { label: 'Completion Rate',     actual: `${completionRate}%`,                             sub: 'Completed / not cancelled', good: completionRate >= 80, icon: CheckCircle, iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    badge: `${completedBookings.length} done` },
-          { label: 'Avg Job Value',       actual: avgJobValue > 0 ? `AED ${avgJobValue.toLocaleString()}` : '—', sub: 'Per job (job sheet + bookings)', good: avgJobValue > 0, icon: Target, iconBg: 'bg-amber-50', iconColor: 'text-amber-600', badge: `${workItems.length} jobs` },
-          { label: 'Repeat Client Rate',  actual: `${repeatRate}%`,                                sub: 'Clients with 2+ bookings', good: repeatRate >= 50,    icon: Users,       iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  badge: `${repeatClients} clients` },
-          { label: 'Invoice Collection',  actual: `${collectionRate}%`,                            sub: 'Paid / total invoices',    good: collectionRate >= 90, icon: Percent,     iconBg: 'bg-teal-50',    iconColor: 'text-teal-600',    badge: `${paidInvoices} paid` },
-          { label: 'Pending Collection',  actual: `AED ${pendingCollection.toLocaleString()}`,     sub: 'Sent + overdue invoices',  good: pendingCollection === 0, icon: Award,  iconBg: 'bg-rose-50',    iconColor: 'text-rose-600',    badge: pendingCollection > 0 ? 'Outstanding' : 'All clear' },
-          { label: 'New Clients (MTD)',   actual: thisMonthNewClients,                              sub: 'Joined this month',        good: thisMonthNewClients > 0, icon: TrendingUp, iconBg: 'bg-orange-50', iconColor: 'text-orange-600', badge: `${clients.length} total` },
-          { label: 'Cancellation Rate',   actual: `${cancellationRate}%`,                          sub: 'Of all bookings',          good: Number(cancellationRate) < 5, icon: Calendar, iconBg: 'bg-slate-100', iconColor: 'text-slate-600', badge: `${cancelledBookings.length} cancelled` },
-        ].map(k => (
-          <div key={k.label} className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all">
-            <div className="flex items-start justify-between mb-4">
-              <div className={`w-9 h-9 rounded-2xl ${k.iconBg} flex items-center justify-center`}>
-                <k.icon size={16} className={k.iconColor} />
-              </div>
-              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${k.good ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-700'}`}>
-                {k.badge}
-              </span>
-            </div>
-            <p className="text-2xl font-bold text-[#111827] tracking-tight">{k.actual}</p>
-            <p className="text-[12px] font-semibold text-[#111827] mt-1">{k.label}</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">{k.sub}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <KpiCard label="This Month Revenue" value={`AED ${thisMonthRevenue.toLocaleString()}`} sub="Jobs + bookings + monthly contracts" icon={DollarSign} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" chip={thisMonthFig.jobs > 0 ? `${thisMonthFig.jobs} jobs` : 'No jobs yet'} chipTone={thisMonthRevenue > 0 ? 'up' : 'plain'} />
+        <KpiCard label="Completion Rate" value={`${completionRate}%`} sub="Completed / not cancelled bookings" icon={CheckCircle} labelColor="text-blue-700" iconSolid="bg-[#2563eb] shadow-blue-500/25" chip={`${completedBookings.length} done`} chipTone={completionRate >= 80 ? 'up' : 'warn'} />
+        <KpiCard label="Avg Job Value" value={avgJobValue > 0 ? `AED ${avgJobValue.toLocaleString()}` : '—'} sub="Per job (job sheet + bookings)" icon={Target} labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25" chip={`${workItems.length} jobs`} />
+        <KpiCard label="Repeat Client Rate" value={`${repeatRate}%`} sub="Clients with 2+ bookings" icon={Users} labelColor="text-purple-700" iconSolid="bg-[#7c3aed] shadow-purple-500/25" chip={`${repeatClients} clients`} chipTone={repeatRate >= 50 ? 'up' : 'plain'} />
+        <KpiCard label="Invoice Collection" value={`${collectionRate}%`} sub="Paid / issued invoices" icon={Percent} labelColor="text-teal-700" iconSolid="bg-[#0d9488] shadow-teal-500/25" chip={`${paidInvoices} paid of ${issuedInvoices.length}`} chipTone={collectionRate >= 90 ? 'up' : 'warn'} />
+        <KpiCard label="Outstanding" value={`AED ${pendingCollection.toLocaleString()}`} sub={`Jobs AED ${outstanding.jobs.toLocaleString()} · invoices AED ${outstanding.invoices.toLocaleString()}`} icon={Award} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25" chip={pendingCollection > 0 ? 'To collect' : 'All clear'} chipTone={pendingCollection > 0 ? 'warn' : 'up'} />
+        <KpiCard label="New Clients (MTD)" value={thisMonthNewClients} sub="Joined this month" icon={TrendingUp} labelColor="text-orange-700" iconSolid="bg-[#ea580c] shadow-orange-500/25" chip={`${clients.length} total`} />
+        <KpiCard label="Cancellation Rate" value={`${cancellationRate}%`} sub="Of all bookings" icon={Calendar} labelColor="text-slate-700" iconSolid="bg-[#475569] shadow-slate-500/25" chip={`${cancelledBookings.length} cancelled`} chipTone={Number(cancellationRate) < 5 ? 'up' : 'warn'} />
       </div>
 
       {/* ── Charts + sidebar ── */}

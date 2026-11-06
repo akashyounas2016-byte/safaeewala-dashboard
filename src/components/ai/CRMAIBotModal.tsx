@@ -495,7 +495,7 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
                             type="button"
                             onClick={() => {
                               onClose()
-                              navigate('/pending')
+                              navigate('/payments?tab=outstanding')
                             }}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-[11.5px] font-bold shadow-2xs cursor-pointer transition-colors"
                           >

@@ -2795,7 +2795,7 @@ export function JobSheetSpreadsheet() {
       )}
 
       {/* ── Professional Executive Gradient Header (Sleek Slate & Deep Emerald Luxury) ── */}
-      <header className="bg-gradient-to-r from-slate-950 via-[#072d1f] to-slate-950 border-b border-emerald-500/30 text-white px-5 sm:px-6 py-5 min-h-[86px] flex items-center justify-between shadow-xl shrink-0 relative z-30">
+      <header className="bg-[#0F1F19] border-b border-emerald-500/20 text-white px-5 sm:px-6 py-5 min-h-[86px] flex items-center justify-between shadow-xl shrink-0 relative z-30">
         {/* Sophisticated Glow effect matching executive dashboard */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute right-10 -top-10 w-96 h-96 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none" />
