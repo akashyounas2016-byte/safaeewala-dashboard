@@ -338,6 +338,11 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `ClientModalForm.tsx` (`chooseMode`, `modeSelect`), `BiWeeklyScheduleCard.tsx`, `src/lib/biweekly.ts`, `AddMonthlyClientModalForm` (`prefill`).
 - **Status:** Active · Since: 2026-11-04
 
+### R-CLI-07 — Active client = served in the last 60 days
+- **Rule:** found in the full CRM audit (2026-11-06). *Active Clients* counted every client served after a fixed date (2026-01-01), so it never went down. Active now means a last service within the last 60 days (Dubai date); *At-Risk (>60d)* is the other side.
+- **Code:** `Clients.tsx → isRecentClient`.
+- **Status:** Active · Since: 2026-11-06
+
 ---
 
 ## DATA — Data hygiene
@@ -470,6 +475,12 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - A field that already has a value is never overwritten. The message says how many were added, filled in and skipped.
   - Before, such rows were skipped, so the profiles saved from the Daily Job Sheet (name only, R-EMP-06) could not be completed from Excel.
 - **Code:** `src/lib/employeeImport.ts → blankFieldsFromImport`; Employees → Import.
+- **Status:** Active · Since: 2026-11-06
+
+### R-EMP-08 — A deleted name can be used again
+- **Rule:** found in the full CRM audit (2026-11-06). Deleting an employee keeps the name on a "deleted" list so job-sheet history does not bring them back (AUD-17).
+  - Adding an employee with that name (Add Employee or Import) takes it off the list, so the new person's job-sheet rows are linked to them again. Before, rows under the name stayed unlinked.
+- **Code:** `DataContext.tsx → addEmployee`.
 - **Status:** Active · Since: 2026-11-06
 
 ---
@@ -672,6 +683,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Cleaners and drivers get no alerts (R-SEC-05). Roles & Access has an **Alerts** column; a permissions save made before Alerts existed gives it to the roles that get it by default.
 - **Code:** `src/lib/alerts.ts`, `src/store/useAlerts.ts`, `src/pages/Alerts.tsx`; `Sidebar.tsx`, `Layout.tsx`, `PageHero.tsx`; `permissions.ts → normalizeRolePerms`.
 - **Status:** Active · Since: 2026-11-05
+
+### R-ALERT-02 — A schedule must not name a cleaner who is not an employee
+- **Rule:** found in the full CRM audit (2026-11-06): after employees were deleted, a monthly schedule still named one of them and the monthly sync kept adding visits under that name, with no warning.
+  - A monthly / Bi-Weekly client whose schedule (preferred cleaner or a day's cleaner) names someone not on the Employees list gets a high alert in Sidebar → Alerts, with a link to Monthly Clients. Contracts switched off are skipped.
+  - The schedule itself is not changed (R-SCHED-01..03): the user picks the new cleaner.
+- **Code:** `src/lib/alerts.ts → scheduleCleanerAlerts`, `useAlerts`.
+- **Status:** Active · Since: 2026-11-06
 
 ## OPS — Operating process
 

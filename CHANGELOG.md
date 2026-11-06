@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(audit): alert when a schedule names a cleaner who is not an employee (R-ALERT-02); a re-added name is linked again (R-EMP-08); Active Clients = last 60 days, not a fixed date (R-CLI-07)
+
 - feat(bookings): KPI cards in the Daily Job Sheet style, 5 a row; Avg Shift Duty and Staff Allocated removed (UX-104)
 
 - feat(daily sheet): Crew timeline hides cleaners with no job; axis 09:00–23:00 (UX-103)

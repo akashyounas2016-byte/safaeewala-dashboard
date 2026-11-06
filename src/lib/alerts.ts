@@ -2,7 +2,8 @@ import type { AppNotification } from '@/store/NotificationContext'
 import type { DetectedIssue } from '@/lib/crmAIBot'
 import type { TimelineIssue } from '@/lib/crewTimeline'
 import type { BackupHealth } from '@/lib/backupStatus'
-import type { Agency, Booking, Employee } from '@/types'
+import type { Agency, Booking, Client, Employee } from '@/types'
+import { employeeMatchesStaff, splitStaffNames } from '@/lib/clientDataSync'
 import { buildAgencyNotifications } from '@/lib/agencyAlerts'
 import { daysUntil, formatDate } from '@/lib/utils'
 
@@ -107,6 +108,28 @@ export function agencyAlerts(agencies: Agency[], employees: Employee[]): CrmAler
     id: `agency-${n.id}`, source: 'staff' as const, severity: HERO_SEVERITY[n.tone || 'info'],
     title: n.title, message: n.detail || '', actionUrl: `/agencies/${a.id}`, actionLabel: 'Open agency',
   })))
+}
+
+/**
+ * R-ALERT-02: a monthly / Bi-Weekly schedule that names a cleaner who is not an employee (deleted or
+ * misspelt). The monthly sync keeps adding visits for that name, so the schedule needs a new cleaner.
+ */
+export function scheduleCleanerAlerts(clients: Client[], employees: Employee[]): CrmAlert[] {
+  const out: CrmAlert[] = []
+  clients.forEach(c => {
+    if (c.contract_active === false || !(c.service_days || []).length) return
+    const names = new Set<string>()
+    ;[c.preferred_cleaner, ...Object.values(c.day_cleaner_assignments || {})].forEach(v => splitStaffNames(String(v || '')).forEach(n => names.add(n)))
+    const missing = [...names].filter(n => !employees.some(e => employeeMatchesStaff(e, n)))
+    if (missing.length === 0) return
+    out.push({
+      id: `sched-cleaner-${c.id}-${missing.join('|').toLowerCase()}`, source: 'staff', severity: 'high',
+      title: `Schedule uses a cleaner who is not an employee: ${c.full_name}`,
+      message: `${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not on the Employees list (deleted or spelt differently). Visits keep being added under ${missing.length === 1 ? 'this name' : 'these names'} — pick a cleaner in the schedule.`,
+      actionUrl: '/monthly-clients', actionLabel: 'Open Monthly Clients',
+    })
+  })
+  return out
 }
 
 /** Pending bookings and today's bookings without a cleaner (was the Bookings header bell) */

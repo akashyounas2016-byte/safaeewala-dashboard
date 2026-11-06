@@ -4,7 +4,7 @@ import { useNotifications } from '@/store/NotificationContext'
 import { analyzeCRMHealth } from '@/lib/crmAIBot'
 import { buildCrewTimeline } from '@/lib/crewTimeline'
 import { backupHealth, type BackupStatus } from '@/lib/backupStatus'
-import { agencyAlerts, bookingAlerts, buildAlerts, employeeDocAlerts, type CrmAlert } from '@/lib/alerts'
+import { agencyAlerts, bookingAlerts, scheduleCleanerAlerts, buildAlerts, employeeDocAlerts, type CrmAlert } from '@/lib/alerts'
 import { todayDubai } from '@/lib/dubaiTime'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 
@@ -53,7 +53,7 @@ export function useAlerts(enabled = true): {
       sheetIssues: sheet.issues,
       today,
       backup: backup ? { health: backupHealth(backup, new Date()), message: backup.message } : null,
-      extra: [...employeeDocAlerts(employees), ...agencyAlerts(agencies, employees), ...bookingAlerts(bookings, today)],
+      extra: [...employeeDocAlerts(employees), ...agencyAlerts(agencies, employees), ...bookingAlerts(bookings, today), ...scheduleCleanerAlerts(clients, employees)],
     })
   }, [enabled, notifications, bookings, clients, dailyJobs, employees, agencies, today, backup])
 

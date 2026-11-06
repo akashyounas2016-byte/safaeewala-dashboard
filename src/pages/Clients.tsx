@@ -24,7 +24,7 @@ import { ClientCardShell, CleanerStack, WeekStrip, MoneyStrip, CardAction } from
 import { clientCrewMix } from '@/lib/clientCrew'
 import { confirmAsync } from '@/lib/notify'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
-import { todayDubai, calendarDate } from '@/lib/dubaiTime'
+import { todayDubai, calendarDate, addDays } from '@/lib/dubaiTime'
 
 export type ClientDatePreset = 'all' | '7days' | '30days' | '3months' | '6months' | '1year' | 'custom'
 
@@ -314,7 +314,10 @@ export function Clients() {
 
   const totalSpent    = clients.reduce((s, c) => s + c.total_spent, 0)
   const avgLtv        = Math.round(totalSpent / (clients.length || 1))
-  const activeClients = clients.filter(c => c.last_service && new Date(c.last_service) > new Date('2026-01-01')).length
+  // R-CLI-07: active = served in the last 60 days (At-Risk is the other side); was a fixed 2026-01-01 cutoff
+  const activeSince = addDays(todayDubai(), -60)
+  const isRecentClient = (c: { last_service?: string }) => !!c.last_service && String(c.last_service).slice(0, 10) >= activeSince
+  const activeClients = clients.filter(c => isRecentClient(c)).length
   const vipClients    = clients.filter(c => c.total_spent > 2000).length
   const repeatClients = clients.filter(c => c.total_bookings > 1).length
   const repeatRate    = clients.length > 0 ? Math.round((repeatClients / clients.length) * 100) : 0
@@ -379,7 +382,7 @@ export function Clients() {
       const matchArea = areaFilter === 'all' || c.area === areaFilter
       const isClientMonthly = isMonthlyClient(c, dailyJobs, allMonthlySummaries)
       const matchFilter = !filterType || (
-        filterType === 'active' ? (c.last_service && new Date(c.last_service) > new Date('2026-01-01')) :
+        filterType === 'active' ? (isRecentClient(c)) :
         filterType === 'vip' ? c.total_spent > 2000 :
         filterType === 'repeat' ? c.total_bookings > 1 :
         filterType === 'monthly' ? isClientMonthly :
@@ -440,7 +443,7 @@ export function Clients() {
   const scopeMonthly = !filterType ? monthlyCount
     : filterType === 'monthly' ? scopeClients.length
     : scopeClients.filter(c => isMonthlyClient(c, dailyJobs, allMonthlySummaries)).length
-  const scopeActive = scopeClients.filter(c => c.last_service && new Date(c.last_service) > new Date('2026-01-01')).length
+  const scopeActive = scopeClients.filter(c => isRecentClient(c)).length
   const scopeVip = scopeClients.filter(c => c.total_spent > 2000).length
   const scopeRepeat = scopeClients.filter(c => c.total_bookings > 1).length
   const scopeRepeatRate = scopeClients.length > 0 ? Math.round((scopeRepeat / scopeClients.length) * 100) : 0

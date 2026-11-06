@@ -755,6 +755,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addEmployee: (e) => {
       const row = { ...e, id: uid(), created_at: now() }
       setEmployees(p => [row, ...p])
+      // R-EMP-08: a name deleted before (AUD-17) is in use again — job-sheet rows under it belong to this employee
+      const nameKey = normalizeStaffName(e.full_name)
+      if (nameKey && deletedStaffKeys.includes(nameKey)) setDeletedStaffKeys(prev => {
+        const next = prev.filter(k => k !== nameKey)
+        safeLocalStorageSet('safaeewala_deleted_staff', next)
+        return next
+      })
       dbInsert('employees', row)
       docsToStorage('employees', row.id, row)
       logAudit('created', 'employee', row.id, e.full_name, e.role)
