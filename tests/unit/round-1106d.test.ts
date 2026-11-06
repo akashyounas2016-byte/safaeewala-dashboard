@@ -21,3 +21,8 @@ const ex = src('src/pages/Expenses.tsx')
 eq((ex.match(/<KpiCard /g) || []).length, 6, 'Expenses: six Daily Job Sheet style cards')
 eq(/<Widget title="Profit & Loss"/.test(ex) && !/>Expense Ratio</.test(ex), true, 'Expense Ratio card moved into a Profit & Loss widget')
 eq(/Number\(b\.received_amount\) \|\| 0\), 0\) \/\/ R-FIN-07/.test(ex), true, 'collections count received on bookings, like Payments')
+
+// Delivery check: no invented marketing figures (R-DATA-03)
+const mk = src('src/pages/MarketingDashboard.tsx')
+eq(/retentionMetrics|Summer Promotion|87%|churn/i.test(mk), false, 'Marketing shows no made-up campaign / retention numbers')
+eq(/Marketing is not connected yet/.test(mk), true, 'Marketing says it is not connected')
