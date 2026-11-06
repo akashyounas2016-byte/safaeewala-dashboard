@@ -767,6 +767,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `scripts/backup/db-backup.sh`, `scripts/backup/README.md`, `webhookServer.cjs → /api/backup-status`, `src/lib/backupStatus.ts`, `src/components/settings/BackupStatusCard.tsx`; [prod.md §7](prod.md).
 - **Status:** Active (VPS cron since 2026-11-05; first run and a test restore checked) · Google Drive copy pending (owner login) · Since: 2026-11-05
 
+### R-OPS-05 — CRM on the company subdomain, hidden from search engines
+- **Rule:** *"kiya me main website ki subdomain pr ye sab chala skta?"* and *"kya me iske liye crawler ko rok skta hn take google ki search me ye crm na aye?"* (2026-11-06)
+  - The CRM answers on **https://crm.safaeewala.com**: Cloudflare DNS (A record `crm` → 187.77.116.14, **DNS only / grey cloud**, so Traefik's Let's Encrypt certificate works and Meta's webhook reaches the VPS directly). The old `crm.srv1646539.hstgr.cloud` keeps working.
+  - The main website (`safaeewala.com`, `www`, email) is not touched. Never change the nameservers in Hostinger — DNS lives in Cloudflare.
+  - Every response carries `X-Robots-Tag: noindex, nofollow` and `index.html` has `<meta name="robots" content="noindex, nofollow">`. No `robots.txt` block: a blocked page cannot be read, so Google would never see the noindex.
+- **Code:** `docker-compose.yml` (Traefik rule), `webhookServer.cjs` (ALLOWED_ORIGINS), `nginx.conf`, `index.html`; [prod.md §8](prod.md).
+- **Status:** Code ready · live after the next deploy; Supabase Auth redirect URL to be added by the owner · Since: 2026-11-06
+
 ---
 
 ## Known issues (rules not yet fully honoured)

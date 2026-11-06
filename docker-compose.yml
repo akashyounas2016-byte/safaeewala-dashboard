@@ -27,7 +27,7 @@ services:
       - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.safaeewala-crm.rule=Host(`crm.srv1646539.hstgr.cloud`) || Host(`safaeewala.srv1646539.hstgr.cloud`)"
+      - "traefik.http.routers.safaeewala-crm.rule=Host(`crm.srv1646539.hstgr.cloud`) || Host(`safaeewala.srv1646539.hstgr.cloud`) || Host(`crm.safaeewala.com`)"
       - "traefik.http.routers.safaeewala-crm.entrypoints=websecure"
       - "traefik.http.routers.safaeewala-crm.tls.certresolver=letsencrypt"
       - "traefik.http.services.safaeewala-crm.loadbalancer.server.port=80"

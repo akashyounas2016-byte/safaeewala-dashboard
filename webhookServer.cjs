@@ -507,6 +507,7 @@ async function handleAdminUsers(req, res, pathname) {
 const ALLOWED_ORIGINS = new Set([
   'https://crm.srv1646539.hstgr.cloud',
   'https://safaeewala.srv1646539.hstgr.cloud',
+  'https://crm.safaeewala.com', // R-OPS-05: company subdomain (Cloudflare DNS only → VPS)
   'http://localhost:5058',
   'http://localhost:5059',
   ...String(process.env.EXTRA_ALLOWED_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean),

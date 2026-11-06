@@ -108,4 +108,4 @@ There are **two** ways code reaches production. Both need the owner's permission
 5. Meta app → WhatsApp → Configuration → Webhook: URL `https://<crm domain>/api/whatsapp/webhook`, the same verify token, subscribe to **messages**.
 6. Send a message from a phone to the business number → it appears in Sidebar → WhatsApp.
 
-Domain: today `https://crm.srv1646539.hstgr.cloud`. A company subdomain (e.g. `crm.<company domain>`) needs an A record to 187.77.116.14, the host added to the Traefik rule in `docker-compose.yml` and to `ALLOWED_ORIGINS` / `EXTRA_ALLOWED_ORIGINS`, and then the webhook URL changed in Meta.
+Domain (R-OPS-05): `https://crm.safaeewala.com` — Cloudflare A record `crm` → 187.77.116.14, **DNS only (grey cloud)**; Traefik rule and `ALLOWED_ORIGINS` already include it. Supabase → Authentication → URL Configuration → add `https://crm.safaeewala.com/**` to Redirect URLs. The old `https://crm.srv1646539.hstgr.cloud` still works. Use `https://crm.safaeewala.com/api/whatsapp/webhook` in Meta.
