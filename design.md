@@ -139,6 +139,7 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
   - Sidebar settings (UX-89): each item has 👁 **Shown / Hidden** next to Favorite and Up / Down. Hidden items leave the menu and stay in the settings. The bottom *Customize Items Sequence* button is gone; the sliders button at the top opens the settings. Up / Down move the item itself (they moved the wrong item when the role hid some screens).
   - Clients (UX-90): cards use the full width, three per row; Top Clients, Pending Balances, Client Distribution, Top Locations and Recent Bookings sit below the cards, as in the table view.
   - Round 2026-11-06:
+    - Bookings KPI cards (UX-104): the Daily Job Sheet card style (white, coloured label, solid icon tile, chip). 5 a row — Total Bookings · Scheduled · Live Now · Pending · Completed; *More Booking Metrics*: Monthly Clients · Total Workload · Billed Revenue · Cleaners on Duty · Uncollected Dues. Avg Shift Duty and Staff Allocated removed. Every card except the totals filters the list.
     - Crew timeline (UX-103): cleaners with no job are not shown (they still appear as suggestions under a job without a cleaner); the axis runs 09:00–23:00 and widens only for a job outside it.
     - Daily Job Sheet (UX-99): the Jobs widget has a Show / Hide button like the Crew timeline (remembered per browser).
     - Client Profile (UX-100): no *Repeat Client* tag next to *Monthly*.

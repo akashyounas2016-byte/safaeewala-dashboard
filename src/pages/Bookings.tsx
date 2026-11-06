@@ -922,251 +922,65 @@ export function Bookings() {
         showSearch={false}
       />
 
-      {/* ── KPI Summary Cards (Row 1 + View All Expandable Row 2) ── */}
-      <div className="space-y-3">
-        {/* ROW 1: Essential Operational Metrics & Monthly Clients */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
-          {[
-            {
-              label: 'Total Bookings',
-              value: counts.total,
-              sub: `${totalScheduledHours}h total duty`,
-              icon: Briefcase,
-              iconColor: 'text-teal-700',
-              iconBg: 'bg-teal-50',
-              badge: `AED ${totalWorkloadValue.toLocaleString()}`,
-              badgeColor: 'bg-teal-50 text-teal-800 border-teal-200/80',
-              filterKey: 'all',
-            },
-            {
-              label: 'Scheduled',
-              value: counts.confirmed,
-              sub: 'Confirmed upcoming jobs',
-              icon: CalendarIcon,
-              iconColor: 'text-teal-600',
-              iconBg: 'bg-teal-50',
-              badge: `${counts.total > 0 ? Math.round((counts.confirmed / counts.total) * 100) : 0}% of Total`,
-              badgeColor: 'bg-teal-50 text-teal-800 border-teal-200/80',
-              filterKey: 'confirmed',
-            },
-            {
-              label: 'Live Now',
-              value: counts.in_progress,
-              sub: 'Cleaners on site today',
-              icon: TrendingUp,
-              iconColor: 'text-cyan-600',
-              iconBg: 'bg-cyan-50',
-              badge: counts.in_progress > 0 ? 'Active Shifts' : 'Standby',
-              badgeColor: counts.in_progress > 0 ? 'bg-cyan-100 text-cyan-800 border-cyan-300 animate-pulse' : 'bg-slate-50 text-slate-600 border-slate-200',
-              filterKey: 'in_progress',
-            },
-            {
-              label: 'Pending',
-              value: counts.pending,
-              sub: 'Awaiting confirmation',
-              icon: AlertCircle,
-              iconColor: 'text-amber-500',
-              iconBg: 'bg-amber-50',
-              badge: counts.pending > 0 ? `${counts.pending} Action Needed` : 'All Clear',
-              badgeColor: counts.pending > 0 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
-              filterKey: 'pending',
-            },
-            {
-              label: 'Completed',
-              value: counts.completed,
-              sub: `AED ${completedRevenue.toLocaleString()} billed`,
-              icon: CheckCircle2,
-              iconColor: 'text-emerald-600',
-              iconBg: 'bg-emerald-50',
-              badge: `${counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0}% Done`,
-              badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200/80',
-              filterKey: 'completed',
-            },
-            {
-              label: 'Monthly Clients',
-              value: monthlyBookingsInScope,
-              sub: `${totalRegisteredMonthly} registered contracts`,
-              icon: Repeat,
-              iconColor: 'text-teal-700',
-              iconBg: 'bg-teal-50',
-              badge: 'Job Sheet Synced',
-              badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200/80',
-              filterKey: 'monthly',
-            },
-          ].map(card => {
-            const isActive = statusFilter === card.filterKey && card.filterKey !== 'all'
-            return (
-              <div
-                key={card.label}
-                onClick={() => {
-                  if (card.filterKey === 'all') {
-                    setStatusFilter('all')
-                  } else {
-                    setStatusFilter(statusFilter === card.filterKey ? 'all' : card.filterKey)
-                  }
-                }}
-                className={`rounded-[22px] border transition-all p-4 cursor-pointer relative overflow-hidden flex flex-col justify-between ${
-                  isActive
-                    ? 'bg-teal-50/70 border-teal-500 shadow-md ring-2 ring-teal-500/20'
-                    : 'bg-white border-teal-100/90 shadow-[0_4px_20px_rgba(13,148,136,0.04)] hover:shadow-md hover:border-teal-300'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2.5">
-                  <div className={`w-9 h-9 rounded-xl ${card.iconBg} border border-teal-100 flex items-center justify-center shrink-0`}>
-                    <card.icon size={17} className={card.iconColor} />
-                  </div>
-                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border truncate max-w-[110px] ${card.badgeColor}`}>
-                    {card.badge}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-2xl font-black text-slate-900 tracking-tight">{card.value}</p>
-                  <div className="flex items-center justify-between mt-0.5">
-                    <p className="text-[12px] font-bold text-slate-800">{card.label}</p>
-                    {isActive && (
-                      <span className="text-[9.5px] font-black text-teal-800 uppercase tracking-wider bg-teal-100 px-1.5 py-0.5 rounded-md">
-                        Filtered
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5 truncate">{card.sub}</p>
+      {/* ── KPI Summary Cards — UX-104: Daily Job Sheet card style, 5 a row (Avg Shift Duty and Staff Allocated removed) ── */}
+      {(() => {
+        type BookingKpi = { label: string; value: string | number; sub: string; icon: typeof Briefcase; labelColor: string; iconSolid: string; badge: string; badgeTone: 'up' | 'warn' | 'plain'; filterKey: string }
+        const uncollected = filtered.reduce((sum, b) => sum + (Number(b.pending_due) || (b.status !== 'completed' ? Number(b.total_amount) || 0 : 0)), 0)
+        const uncollectedShifts = filtered.filter(b => b.status !== 'completed' || Number(b.pending_due) > 0).length
+        const row1: BookingKpi[] = [
+          { label: 'Total Bookings', value: counts.total, sub: `${totalScheduledHours}h total duty`, icon: Briefcase, labelColor: 'text-blue-700', iconSolid: 'bg-[#2563eb] shadow-blue-500/25', badge: `AED ${totalWorkloadValue.toLocaleString()}`, badgeTone: 'up', filterKey: 'all' },
+          { label: 'Scheduled', value: counts.confirmed, sub: 'Confirmed upcoming jobs', icon: CalendarIcon, labelColor: 'text-teal-700', iconSolid: 'bg-[#0d9488] shadow-teal-500/25', badge: `${counts.total > 0 ? Math.round((counts.confirmed / counts.total) * 100) : 0}% of total`, badgeTone: 'up', filterKey: 'confirmed' },
+          { label: 'Live Now', value: counts.in_progress, sub: 'Cleaners on site today', icon: TrendingUp, labelColor: 'text-cyan-700', iconSolid: 'bg-[#0891b2] shadow-cyan-500/25', badge: counts.in_progress > 0 ? 'Active shifts' : 'Standby', badgeTone: counts.in_progress > 0 ? 'up' : 'plain', filterKey: 'in_progress' },
+          { label: 'Pending', value: counts.pending, sub: 'Awaiting confirmation', icon: AlertCircle, labelColor: 'text-amber-700', iconSolid: 'bg-[#d97706] shadow-amber-500/25', badge: counts.pending > 0 ? `${counts.pending} action needed` : 'All clear', badgeTone: counts.pending > 0 ? 'warn' : 'up', filterKey: 'pending' },
+          { label: 'Completed', value: counts.completed, sub: `AED ${completedRevenue.toLocaleString()} billed`, icon: CheckCircle2, labelColor: 'text-emerald-700', iconSolid: 'bg-[#059669] shadow-emerald-500/25', badge: `${counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0}% done`, badgeTone: 'up', filterKey: 'completed' },
+        ]
+        const row2: BookingKpi[] = [
+          { label: 'Monthly Clients', value: monthlyBookingsInScope, sub: `${totalRegisteredMonthly} registered contracts`, icon: Repeat, labelColor: 'text-teal-700', iconSolid: 'bg-[#0f766e] shadow-teal-500/25', badge: 'Job sheet synced', badgeTone: 'up', filterKey: 'monthly' },
+          { label: 'Total Workload', value: `AED ${totalWorkloadValue.toLocaleString()}`, sub: 'Total booked value', icon: Briefcase, labelColor: 'text-indigo-700', iconSolid: 'bg-[#4f46e5] shadow-indigo-500/25', badge: `${counts.total} orders`, badgeTone: 'plain', filterKey: 'all' },
+          { label: 'Billed Revenue', value: `AED ${completedRevenue.toLocaleString()}`, sub: 'Completed shift dues', icon: CheckCircle2, labelColor: 'text-purple-700', iconSolid: 'bg-[#7c3aed] shadow-purple-500/25', badge: `${counts.completed} completed`, badgeTone: 'up', filterKey: 'completed' },
+          { label: 'Cleaners on Duty', value: uniqueCleanersOnDuty, sub: 'Active roster on shifts', icon: User, labelColor: 'text-sky-700', iconSolid: 'bg-[#0284c7] shadow-sky-500/25', badge: 'Active staff', badgeTone: 'plain', filterKey: 'all' },
+          { label: 'Uncollected Dues', value: `AED ${uncollected.toLocaleString()}`, sub: `${uncollectedShifts} shifts pending payment`, icon: Wallet, labelColor: 'text-rose-700', iconSolid: 'bg-[#e11d48] shadow-rose-500/25', badge: `${uncollectedShifts} pending`, badgeTone: uncollectedShifts > 0 ? 'warn' : 'up', filterKey: 'confirmed' },
+        ]
+        const renderKpi = (card: BookingKpi) => {
+          const isActive = statusFilter === card.filterKey && card.filterKey !== 'all'
+          return (
+            <button key={card.label} type="button" aria-pressed={isActive}
+              onClick={() => setStatusFilter(card.filterKey === 'all' || isActive ? 'all' : card.filterKey)}
+              className={`group relative text-left rounded-[16px] p-4 sm:p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer flex flex-col justify-between w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1 ${
+                isActive ? 'bg-emerald-50/50 border-2 border-emerald-500 shadow-[0_1px_2px_rgba(20,32,27,0.04)]' : 'bg-white hover:bg-[#FAFBF9] border border-[#E2E5E0] hover:border-[#C9D2CC] shadow-[0_1px_2px_rgba(20,32,27,0.04)]'
+              }`}>
+              <div className="flex items-start justify-between gap-2 mb-2 w-full">
+                <span className={`text-[11px] font-bold tracking-wider uppercase leading-[1.3] line-clamp-2 break-words min-w-0 ${card.labelColor}`}>{card.label}</span>
+                <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0 text-white shadow-md transition-transform duration-200 group-hover:scale-105 ${card.iconSolid}`}>
+                  <card.icon size={18} strokeWidth={2.2} />
                 </div>
               </div>
-            )
-          })}
-        </div>
-
-        {/* View All Toggle Button */}
-        <div className="flex items-center justify-center pt-0.5">
-          <button
-            type="button"
-            onClick={() => setShowAllCards(prev => !prev)}
-            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-teal-50/80 hover:bg-teal-100 border border-teal-200/80 text-teal-900 text-[11.5px] font-bold shadow-2xs transition-all cursor-pointer group"
-          >
-            <span>{showAllCards ? 'Collapse Cards' : 'View All Metrics & Cards'}</span>
-            <ChevronDown
-              size={13}
-              className={`transform transition-transform duration-200 text-teal-700 group-hover:text-teal-900 ${
-                showAllCards ? 'rotate-180' : ''
-              }`}
-            />
-          </button>
-        </div>
-
-        {/* ROW 2: Expanded Operational Metrics (Rendered when showAllCards is true) */}
-        {showAllCards && (
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5 animate-in fade-in slide-in-from-top-2 duration-200">
-            {[
-              {
-                label: 'Staff Allocated',
-                value: `${counts.total - unassignedCount} / ${counts.total}`,
-                sub: unassignedCount > 0 ? `${unassignedCount} jobs unassigned` : '100% staff allocated',
-                icon: Users,
-                iconColor: unassignedCount > 0 ? 'text-amber-600' : 'text-purple-600',
-                iconBg: unassignedCount > 0 ? 'bg-amber-50' : 'bg-purple-50',
-                badge: unassignedCount > 0 ? `${unassignedCount} Unassigned` : '100% Allocated',
-                badgeColor: unassignedCount > 0 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
-                filterKey: 'unassigned',
-              },
-              {
-                label: 'Total Workload',
-                value: `AED ${totalWorkloadValue.toLocaleString()}`,
-                sub: 'Total booked value',
-                icon: Briefcase,
-                iconColor: 'text-indigo-600',
-                iconBg: 'bg-indigo-50',
-                badge: `${counts.total} Orders`,
-                badgeColor: 'bg-indigo-50 text-indigo-800 border-indigo-200',
-                filterKey: 'all',
-              },
-              {
-                label: 'Billed Revenue',
-                value: `AED ${completedRevenue.toLocaleString()}`,
-                sub: 'Completed shift dues',
-                icon: CheckCircle2,
-                iconColor: 'text-emerald-600',
-                iconBg: 'bg-emerald-50',
-                badge: `${counts.completed} Paid`,
-                badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-                filterKey: 'completed',
-              },
-              {
-                label: 'Cleaners on Duty',
-                value: uniqueCleanersOnDuty,
-                sub: 'Active roster on shifts',
-                icon: User,
-                iconColor: 'text-teal-600',
-                iconBg: 'bg-teal-50',
-                badge: 'Active Staff',
-                badgeColor: 'bg-teal-50 text-teal-800 border-teal-200',
-                filterKey: 'all',
-              },
-              {
-                label: 'Avg Shift Duty',
-                value: `${avgShiftDuration}h`,
-                sub: 'Average duty hours',
-                icon: Clock,
-                iconColor: 'text-blue-600',
-                iconBg: 'bg-blue-50',
-                badge: `${totalScheduledHours}h Total`,
-                badgeColor: 'bg-blue-50 text-blue-800 border-blue-200',
-                filterKey: 'all',
-              },
-              {
-                label: 'Uncollected Dues',
-                value: `AED ${filtered.reduce((sum, b) => sum + (Number(b.pending_due) || (b.status !== 'completed' ? Number(b.total_amount) || 0 : 0)), 0).toLocaleString()}`,
-                sub: `${filtered.filter(b => b.status !== 'completed' || Number(b.pending_due) > 0).length} shifts pending payment`,
-                icon: Wallet,
-                iconColor: 'text-amber-600',
-                iconBg: 'bg-amber-50',
-                badge: `${filtered.filter(b => b.status !== 'completed' || Number(b.pending_due) > 0).length} Pending`,
-                badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
-                filterKey: 'confirmed',
-              },
-            ].map(card => {
-              const isActive = statusFilter === card.filterKey && card.filterKey !== 'all'
-              return (
-                <div
-                  key={card.label}
-                  onClick={() => {
-                    if (card.filterKey === 'all') {
-                      setStatusFilter('all')
-                    } else {
-                      setStatusFilter(statusFilter === card.filterKey ? 'all' : card.filterKey)
-                    }
-                  }}
-                  className={`rounded-[22px] border transition-all p-4 cursor-pointer relative overflow-hidden flex flex-col justify-between ${
-                    isActive
-                      ? 'bg-teal-50/70 border-teal-500 shadow-md ring-2 ring-teal-500/20'
-                      : 'bg-white border-teal-100/90 shadow-[0_4px_20px_rgba(13,148,136,0.04)] hover:shadow-md hover:border-teal-300'
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-2.5">
-                    <div className={`w-9 h-9 rounded-xl ${card.iconBg} border border-teal-100 flex items-center justify-center shrink-0`}>
-                      <card.icon size={17} className={card.iconColor} />
-                    </div>
-                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border truncate max-w-[110px] ${card.badgeColor}`}>
-                      {card.badge}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-black text-slate-900 tracking-tight">{card.value}</p>
-                    <div className="flex items-center justify-between mt-0.5">
-                      <p className="text-[12px] font-bold text-slate-800">{card.label}</p>
-                      {isActive && (
-                        <span className="text-[9.5px] font-black text-teal-800 uppercase tracking-wider bg-teal-100 px-1.5 py-0.5 rounded-md">
-                          Filtered
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-0.5 truncate">{card.sub}</p>
-                  </div>
-                </div>
-              )
-            })}
+              <div className="w-full">
+                <p className="text-[23px] sm:text-[26px] font-black tracking-tight leading-tight truncate text-[#111827]">{card.value}</p>
+                <p className="text-[11px] sm:text-[11.5px] font-medium mt-1 truncate text-slate-500">{card.sub}</p>
+                <span className={`inline-block mt-1.5 text-[10.5px] font-bold px-2 py-0.5 rounded-full truncate max-w-full ${card.badgeTone === 'warn' ? 'bg-amber-50 text-amber-700' : card.badgeTone === 'up' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                  {isActive ? 'Filtered' : card.badge}
+                </span>
+              </div>
+            </button>
+          )
+        }
+        return (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5">{row1.map(renderKpi)}</div>
+            <div className="flex items-center justify-center pt-0.5">
+              <button type="button" onClick={() => setShowAllCards(prev => !prev)}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white hover:bg-[#FAFBF9] border border-[#E2E5E0] text-[#14201B] text-[11.5px] font-bold shadow-2xs transition-all cursor-pointer group">
+                <span>{showAllCards ? 'Collapse Cards' : `More Booking Metrics (${row2.length})`}</span>
+                <ChevronDown size={13} className={`transform transition-transform duration-200 text-slate-500 ${showAllCards ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+            {showAllCards && (
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5 animate-in fade-in slide-in-from-top-2 duration-200">{row2.map(renderKpi)}</div>
+            )}
           </div>
-        )}
-      </div>
+        )
+      })()}
 
       {/* ── Filters + Unified Toolbar (Two Organized Rows) ── */}
       <div className="bg-white rounded-[22px] border border-teal-200/80 shadow-[0_4px_24px_rgba(13,148,136,0.05)] p-4 space-y-3">

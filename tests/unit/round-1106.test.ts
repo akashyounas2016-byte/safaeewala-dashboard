@@ -42,3 +42,12 @@ eq(/More staff metrics \(4\)/.test(em), true, 'behind an expand arrow')
 eq(/Daily Sheet Synced/.test(em), false, '"Daily Sheet Synced" text removed')
 eq(/title="Synced with the Daily Job Sheet"/.test(em), true, 'icon beside the status instead')
 eq(/STAFF_CARD_LIMIT = 6/.test(em) && /View All \(\{filtered\.length\}\)/.test(em), true, '3 rows of cards, then View All')
+
+// UX-104: Bookings cards in the Daily Job Sheet style, 5 a row, Avg Shift Duty / Staff Allocated removed
+const bk = src('src/pages/Bookings.tsx')
+const bkKpi = bk.slice(bk.indexOf('UX-104'), bk.indexOf('const renderKpi'))
+const bkOrder = Array.from(bkKpi.matchAll(/\{ label: '([^']+)', value:/g)).map(m => m[1])
+eq(bkOrder, ['Total Bookings', 'Scheduled', 'Live Now', 'Pending', 'Completed', 'Monthly Clients', 'Total Workload', 'Billed Revenue', 'Cleaners on Duty', 'Uncollected Dues'], 'Bookings: two rows of 5')
+eq(/label: '(Avg Shift Duty|Staff Allocated)'/.test(bk), false, 'Avg Shift Duty and Staff Allocated removed')
+eq((bk.match(/xl:grid-cols-5 gap-3\.5/g) || []).length, 2, 'Bookings: 5 a row')
+eq(/line-clamp-2/.test(bk) && /iconSolid/.test(bk), true, 'Bookings cards use the Daily Job Sheet style')

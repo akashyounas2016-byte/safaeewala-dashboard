@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(bookings): KPI cards in the Daily Job Sheet style, 5 a row; Avg Shift Duty and Staff Allocated removed (UX-104)
+
 - feat(daily sheet): Crew timeline hides cleaners with no job; axis 09:00–23:00 (UX-103)
 
 - fix(money): collected = the received amount only; a Cash row with nothing received no longer shows in Driver Payment Received / Total Collected (R-FIN-03)
