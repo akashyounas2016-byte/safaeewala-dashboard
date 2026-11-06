@@ -6,7 +6,7 @@ import {
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
   CreditCard, TrendingUp, Globe, Clock, LogOut, ChevronLeft, Building2,
   CalendarDays, Star, SlidersHorizontal, ArrowUp, ArrowDown, RotateCcw, Sparkles, Truck, Navigation, Eye, EyeOff, Bell,
-  Megaphone, MessageCircle,
+  Megaphone, MessageCircle, Inbox as InboxIcon,
 } from 'lucide-react'
 import { useWhatsAppUnread } from '@/store/useWhatsAppUnread'
 import { useAlerts } from '@/store/useAlerts'
@@ -35,6 +35,7 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { to: '/bookings',         label: 'Bookings',          icon: CalendarCheck,                              category: 'Workspace' },
   { to: '/daily-job-sheet',  label: 'Daily Job Sheet',   icon: ClipboardList,   adminOnly: true,    category: 'Workspace' },
   { to: '/fluent-forms',     label: 'Fluent Forms',      icon: Globe,                               category: 'Workspace' },
+  { to: '/inbox',            label: 'Inbox',             icon: InboxIcon,                           category: 'Workspace' }, // R-INBOX-01
   { to: '/whatsapp-crm',     label: 'WhatsApp',          icon: MessageCircle,                       category: 'Workspace' }, // R-WA-01
   { to: '/marketing',        label: 'Marketing',         icon: Megaphone,                           category: 'Workspace' }, // owner request 2026-11-06
   { to: '/clients',          label: 'Clients',           icon: Users,                               category: 'Workspace' },
@@ -176,8 +177,8 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
   const { isField: isFieldLogin } = useFieldStaff()
   const { alerts: openAlerts } = useAlerts(!isFieldLogin)
   const waUnread = useWhatsAppUnread(!isFieldLogin) // R-WA-01
-  const badgeOf = (to: string) => (to === '/fluent-forms' ? fluentUnreadCount : to === '/alerts' ? openAlerts.length : to === '/whatsapp-crm' ? waUnread : undefined)
-  const badgeTitleOf = (to: string) => (to === '/alerts' ? `${openAlerts.length} open alert${openAlerts.length === 1 ? '' : 's'}` : to === '/whatsapp-crm' ? `${waUnread} unread WhatsApp message${waUnread === 1 ? '' : 's'}` : undefined)
+  const badgeOf = (to: string) => (to === '/fluent-forms' ? fluentUnreadCount : to === '/alerts' ? openAlerts.length : to === '/whatsapp-crm' || to === '/inbox' ? waUnread : undefined)
+  const badgeTitleOf = (to: string) => (to === '/alerts' ? `${openAlerts.length} open alert${openAlerts.length === 1 ? '' : 's'}` : to === '/whatsapp-crm' || to === '/inbox' ? `${waUnread} unread WhatsApp message${waUnread === 1 ? '' : 's'}` : undefined)
 
   // ── Customizer Modal State ──
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)

@@ -335,6 +335,14 @@ export function Bookings() {
     setSearchParams(p => { p.delete('booking'); p.delete('edit'); return p }, { replace: true })
   }, [linkedBookingId, bookings, setSearchParams])
   const [editingBookingForModal, setEditingBookingForModal] = useState<Booking | null>(null)
+  // R-WA-02: /bookings?new=1&client=<id>&name=&phone= (WhatsApp → Jobs) opens a new booking for that client
+  const [bookingPrefill, setBookingPrefill] = useState<{ clientId?: string; name?: string; phone?: string } | null>(null)
+  useEffect(() => {
+    if (searchParams.get('new') !== '1') return
+    setBookingPrefill({ clientId: searchParams.get('client') || undefined, name: searchParams.get('name') || undefined, phone: searchParams.get('phone') || undefined })
+    setEditingBookingForModal(null); setShowModal(true)
+    setSearchParams(p => { ['new', 'client', 'name', 'phone'].forEach(k => p.delete(k)); return p }, { replace: true })
+  }, [searchParams, setSearchParams])
   const [invoiceBooking, setInvoiceBooking] = useState<Booking | null>(null)
   const [paymentBooking, setPaymentBooking] = useState<Booking | null>(null)
   // E2E-20/21 (R-BK-01): "Mark as Completed" stores the status on the booking / job row — every device sees it —
@@ -2013,9 +2021,11 @@ export function Bookings() {
         onClose={() => {
           setShowModal(false)
           setEditingBookingForModal(null)
+          setBookingPrefill(null)
         }}
         onAdd={addBooking}
         initialBooking={editingBookingForModal}
+        prefill={bookingPrefill}
         onUpdate={(id, patch) => {
           handleUpdateBookingFromModal(id, patch)
         }}

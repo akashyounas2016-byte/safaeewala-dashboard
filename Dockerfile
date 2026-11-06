@@ -22,6 +22,7 @@ COPY dist /usr/share/nginx/html
 WORKDIR /app
 COPY webhookServer.cjs /app/webhookServer.cjs
 COPY whatsappServer.cjs /app/whatsappServer.cjs
+COPY ghlServer.cjs /app/ghlServer.cjs
 COPY entrypoint.sh /app/entrypoint.sh
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh && mkdir -p /data
 

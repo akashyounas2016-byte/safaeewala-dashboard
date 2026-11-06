@@ -42,6 +42,8 @@ export interface NewBookingModalProps {
   onAdd: (booking: Omit<Booking, 'id' | 'created_at'> & { recurring_days?: string[]; job_entry?: Omit<DailyJob, 'id' | 'created_at'> }) => void
   initialBooking?: Booking | null
   onUpdate?: (id: string, patch: Partial<Booking>) => void
+  /** R-WA-02: a new booking started from a WhatsApp chat — the client is filled in */
+  prefill?: { clientId?: string; name?: string; phone?: string } | null
 }
 
 /* ─── Default Cleaning Services ─── */
@@ -97,7 +99,20 @@ const DEFAULT_PRESET_MATERIALS = [
 
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate }: NewBookingModalProps) {
+/**
+ * R-WA-02: a booking started from a WhatsApp chat. New bookings use the Add Job form, which knows the client by
+ * address: a CRM client brings their building and area; anyone else is noted in the remarks with their number.
+ */
+export function prefillJob(prefill: NewBookingModalProps['prefill'], clients: { id: string; full_name: string; building_name?: string; area?: string }[]): Partial<DailyJob> {
+  const base: Partial<DailyJob> = { date: todayDubai() }
+  if (!prefill) return base
+  const c = prefill.clientId ? clients.find(cl => cl.id === prefill.clientId) : undefined
+  if (c?.building_name) return { ...base, address: c.building_name, area: c.area || '' }
+  const who = [c?.full_name || prefill.name, prefill.phone].filter(Boolean).join(' ')
+  return who ? { ...base, remarks: `WhatsApp enquiry — ${who}` } : base
+}
+
+export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate, prefill }: NewBookingModalProps) {
   const { clients, employees, dailyJobs, bookings } = useData()
 
   // ── Form State ──
@@ -520,7 +535,7 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
             employees={employees.filter(e => e.status !== 'inactive')}
             clients={clients}
             onClose={onClose}
-            initial={{ date: todayDubai() }}
+            initial={prefillJob(prefill, clients)}
             onSave={j => {
               onAdd({ ...bookingFromJobEntry(j, clients, employees), job_entry: j })
               notify.success('Booking saved and added to the Daily Job Sheet')

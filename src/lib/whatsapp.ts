@@ -55,7 +55,7 @@ export function templateBody(t: WaTemplate, params: string[] = []): string {
 }
 export const templateParamCount = (t: WaTemplate) => new Set((t.components.find(c => c.type === 'BODY')?.text || '').match(/\{\{\d+\}\}/g) || []).size
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
+export async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } })
   const data = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error((data as { error?: string }).error || `Request failed (${r.status})`)

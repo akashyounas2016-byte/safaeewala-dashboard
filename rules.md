@@ -737,7 +737,32 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Security: Meta's webhook is accepted only with a valid `X-Hub-Signature-256` (app secret) and verified with the verify token; the tables are read by admins / managers (or a role given the WhatsApp screen) and written only by the server. Cleaners and drivers do not see WhatsApp.
   - Facebook and Instagram stay in GHL for now.
 - **Code:** `whatsappServer.cjs` (wired in `webhookServer.cjs`); `src/lib/whatsapp.ts`; `src/pages/WhatsAppCRM.tsx`; `src/store/useWhatsAppUnread.ts`; migration `2026-11-06_whatsapp_inbox.sql`; setup in prod.md §8.
-- **Status:** Built · waiting for the migration and the Meta keys on the VPS · Since: 2026-11-06
+- **Status:** Built · inbox migration run 2026-11-06 · waiting for the Meta keys on the VPS · Since: 2026-11-06
+
+### R-WA-02 — WhatsApp CRM modules as tabs, never blocked by setup
+- **Rule:** *"WhatsApp screen ke interface ko is tarah design kiya jaye ke 'WhatsApp Not Connected Yet' ya 'Setup Needed' ke messages ki wajah se features block na hon … Inbox, Jobs, Deals, Broadcast, Analytics, Automation, Keyword Trigger, Templates, aur Settings … tabs ya navigation ki surat mein."* (2026-11-07)
+  - Sidebar → WhatsApp has nine tabs (`?tab=`). Every tab opens before the Meta keys or a database step are done; a missing step shows as a small strip (keys) or a note inside the one tab that needs it (database). No full-screen setup wall.
+  - **Inbox:** the chats (R-WA-01). The chat header has **Booking** (opens the normal booking form for that client) and **Deal** (adds the chat to Deals).
+  - **Jobs:** the CRM's own bookings of clients who chat on WhatsApp (matched by client id or the last 9 digits of the phone) and the chats of the last 30 days without a booking, with **Book**. No second job list. A new booking uses the Add Job form (R-SYNC-12): a CRM client brings their building and area; anyone else goes into the remarks as "WhatsApp enquiry — name +number".
+  - **Deals:** pipeline New lead → Contacted → Quote sent → Won / Lost, value in AED, drag between columns; open pipeline, won, win rate = won ÷ (won + lost).
+  - **Broadcast:** one approved template to many numbers (CRM clients by service type, or pasted numbers; `{name}` in a value = each client's name). Needs a tick that the people agreed to get WhatsApp messages. The server sends one by one (4 per second) and shows progress; at most 1000 numbers.
+  - **Analytics:** from stored messages only: chats, received, sent, median team reply time (automatic and failed messages do not count as a reply), chats waiting for a reply, delivered / read %, messages per day (Dubai).
+  - **Automation:** welcome message (first message of a new chat), away message outside business hours (Dubai, at most once per 12 h per chat), business hours. **Keyword Trigger:** a word in the client's message → an instant reply (contains / exact, case-insensitive); the first matching trigger wins, and a keyword reply replaces the welcome / away message. Automatic replies are free (the client just opened the 24-hour window) and are marked "Automatic reply" in the chat.
+  - **Templates:** every template of the WhatsApp account with its review status; create one (Utility / Marketing, examples for each {{n}}) and delete one at Meta.
+  - **Settings:** connection checklist, webhook URL, the number as Meta sees it (name review, quality), and **Connect** (admin): registers the number with a 6-digit PIN and subscribes the WhatsApp account to the app — no terminal needed.
+- **Code:** `src/pages/WhatsAppCRM.tsx`, `src/components/whatsapp/*`, `src/lib/whatsappModules.ts`, `whatsappServer.cjs` (automation, broadcast, templates, phone, connect), migration `2026-11-07_whatsapp_modules.sql`.
+- **Status:** Built · waiting for the migration `2026-11-07_whatsapp_modules.sql` and the Meta keys · Since: 2026-11-07
+
+## INBOX — One inbox for every channel
+
+### R-INBOX-01 — WhatsApp, Facebook and Instagram on one screen
+- **Rule:** *"CRM ke main dashboard mein ek centralized 'Inbox' module shamil kiya jaye … GHL sub-account ke zariye Facebook aur Instagram messages, aur alag se chalne wale WhatsApp CRM ke chats ko merge karke display kiya jaye."* (2026-11-07)
+  - Sidebar → **Inbox** (own screen permission): one list, newest first, with a channel badge and filters All / WhatsApp / Facebook / Instagram.
+  - WhatsApp chats come from the CRM's own WhatsApp (R-WA-01) and open the same chat as the WhatsApp screen. Facebook and Instagram chats come from the GHL sub-account through GHL's API with the existing `GHL_API_KEY` / `GHL_LOCATION_ID`, and are answered from the CRM (sent by GHL on the same channel). GHL is never used for WhatsApp.
+  - GHL has no live feed for us: the list refreshes every 30 s and an open Facebook / Instagram chat every 15 s.
+  - A channel that is not connected is named in a note; the others keep working.
+- **Code:** `src/pages/Inbox.tsx`, `src/lib/ghlInbox.ts`, `ghlServer.cjs` (wired in `webhookServer.cjs`, shipped by the Dockerfile and deploy).
+- **Status:** Built · needs the GHL key with the Conversations scopes on the VPS (not tested against GHL yet) · Since: 2026-11-07
 
 ## OPS — Operating process
 

@@ -599,6 +599,9 @@ function rateLimited(req, pathname) {
 // R-WA-01: WhatsApp Cloud API (webhook + CRM endpoints) — whatsappServer.cjs
 const { createWhatsApp } = require(path.join(__dirname, 'whatsappServer.cjs'));
 const whatsapp = createWhatsApp({ supa, supabaseUrl: SUPABASE_URL, serviceHeaders, sendJson, readJson, activeUserFrom });
+// R-INBOX-01: Facebook + Instagram through the GHL sub-account — ghlServer.cjs
+const { createGhl } = require(path.join(__dirname, 'ghlServer.cjs'));
+const ghl = createGhl({ sendJson, readJson, activeUserFrom });
 
 const server = http.createServer((req, res) => {
   // CORS Headers
@@ -694,6 +697,7 @@ function saveLeadToCloud(lead) {
 
 function routeApi(req, res, parsedUrl, pathname) {
   if (whatsapp.route(req, res, parsedUrl, pathname)) return; // R-WA-01
+  if (ghl.route(req, res, parsedUrl, pathname)) return; // R-INBOX-01
   if (pathname === '/api/ghl/status' && req.method === 'GET') {
     return sendJson(res, 200, { configured: Boolean(GHL_API_KEY), locationId: Boolean(GHL_LOCATION_ID) });
   }

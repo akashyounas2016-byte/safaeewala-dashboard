@@ -107,5 +107,10 @@ There are **two** ways code reaches production. Both need the owner's permission
 4. VPS `/var/www/safaeewala/.env` (never in git, never in chat): `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_WABA_ID`, `WHATSAPP_APP_SECRET` (App settings → Basic), `WHATSAPP_VERIFY_TOKEN` (any long random text). Then `docker compose up -d`.
 5. Meta app → WhatsApp → Configuration → Webhook: URL `https://<crm domain>/api/whatsapp/webhook`, the same verify token, subscribe to **messages**.
 6. Send a message from a phone to the business number → it appears in Sidebar → WhatsApp.
+7. (R-WA-02) Supabase → SQL editor: run `supabase/migrations/2026-11-07_whatsapp_modules.sql` (Deals, Broadcast, Automation, Keyword Trigger, business hours).
+8. If the number is not registered / the app gets no messages: WhatsApp → Settings → **Connect** (admin; a 6-digit PIN registers the number, and the WhatsApp account is subscribed to the app).
+
+### Facebook + Instagram in the Inbox (R-INBOX-01)
+GHL → sub-account → Settings → Private Integrations → the integration whose key is `GHL_API_KEY` must have the scopes conversations.readonly, conversations.write, conversations/message.readonly, conversations/message.write (plus contacts.readonly). `GHL_API_KEY` and `GHL_LOCATION_ID` in the VPS .env, then `docker compose up -d`. Facebook / Instagram stay connected inside GHL.
 
 Domain (R-OPS-05): `https://crm.safaeewala.com` — Cloudflare A record `crm` → 187.77.116.14, **DNS only (grey cloud)**; Traefik rule and `ALLOWED_ORIGINS` already include it. Supabase → Authentication → URL Configuration → add `https://crm.safaeewala.com/**` to Redirect URLs. The old `https://crm.srv1646539.hstgr.cloud` still works. Use `https://crm.safaeewala.com/api/whatsapp/webhook` in Meta.

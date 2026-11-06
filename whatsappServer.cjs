@@ -87,6 +87,31 @@ const STATUS_RANK = { sent: 1, delivered: 2, read: 3, failed: 4 }
 const statusAdvances = (current, next) => (STATUS_RANK[next] || 0) > (STATUS_RANK[current] || 0)
 const windowOpen = (lastInboundAt, now = Date.now()) => Boolean(lastInboundAt) && now - new Date(lastInboundAt).getTime() < WINDOW_MS
 
+// ── R-WA-02: automation helpers (pure, tested) ──
+/** Dubai weekday (0 = Sunday) and "HH:MM" */
+function dubaiClock(date = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dubai', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date).map(p => [p.type, p.value]))
+  return { day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday), time: `${parts.hour}:${parts.minute}` }
+}
+/** hours = { days: [0..6], from: "09:00", to: "20:00" } — no hours saved means always open */
+function withinHours(hours, date = new Date()) {
+  if (!hours || !Array.isArray(hours.days) || !hours.from || !hours.to) return true
+  const { day, time } = dubaiClock(date)
+  return hours.days.includes(day) && time >= hours.from && time < hours.to
+}
+/** First enabled keyword rule that matches the text (case-insensitive) */
+function matchKeyword(rules, text) {
+  const t = String(text || '').trim().toLowerCase()
+  if (!t) return null
+  return (rules || []).find(r => r.kind === 'keyword' && r.enabled && (r.keywords || []).some(k => {
+    const w = String(k || '').trim().toLowerCase()
+    if (!w) return false
+    return r.match === 'exact' ? t === w : t.includes(w)
+  })) || null
+}
+/** "{name}" in a broadcast value becomes the recipient's name */
+const fillName = (params, name) => (params || []).map(p => String(p).replace(/\{name\}/gi, name || 'there'))
+
 function readRaw(req, max) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = []
@@ -121,7 +146,44 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
       return found
     }
     const [created] = await supa('/rest/v1/wa_conversations', { method: 'POST', headers: { Prefer: 'return=representation' }, body: { wa_id: waId, name, client_id: await matchClient(waId).catch(() => null) } })
-    return created
+    return { ...created, isNew: true }
+  }
+
+  // R-WA-02: rules and hours are read at most every 30 s (they change rarely; the webhook is hot)
+  let cache = { at: 0, rules: [], hours: null }
+  async function automation() {
+    if (Date.now() - cache.at < 30000) return cache
+    try {
+      const rules = await supa('/rest/v1/wa_rules?select=*&order=created_at.asc')
+      const [h] = await supa('/rest/v1/wa_settings?key=eq.hours&select=value')
+      cache = { at: Date.now(), rules: rules || [], hours: h ? h.value : null }
+    } catch { cache = { at: Date.now(), rules: [], hours: null } } // tables not created yet: no automation
+    return cache
+  }
+  const invalidate = () => { cache.at = 0 }
+
+  async function autoReply(conv, rule) {
+    const sent = await sendOut(conv, { email: 'automation' }, { type: 'text', text: { body: rule.reply } }, { type: 'text', body: rule.reply, rule_id: rule.id })
+    const next = (rule.fire_count || 0) + 1
+    await supa(`/rest/v1/wa_rules?id=eq.${rule.id}`, { method: 'PATCH', body: { fire_count: next, last_fired_at: new Date().toISOString() } })
+    rule.fire_count = next // keep the cached copy in step
+    return sent
+  }
+
+  /** Keyword reply first; otherwise a welcome for a new chat; and an away note outside business hours (once per 12 h per chat) */
+  async function runAutomation(conv, m) {
+    const { rules, hours } = await automation()
+    if (!rules.length) return
+    const kw = m.type === 'text' || m.type === 'button' || m.type === 'interactive' ? matchKeyword(rules, m.body) : null
+    if (kw) { await autoReply(conv, kw); return }
+    const welcome = rules.find(r => r.kind === 'welcome' && r.enabled)
+    if (conv.isNew && welcome) await autoReply(conv, welcome)
+    const away = rules.find(r => r.kind === 'away' && r.enabled)
+    if (away && !withinHours(hours)) {
+      const since = new Date(Date.now() - 12 * 3600 * 1000).toISOString()
+      const recent = await supa(`/rest/v1/wa_messages?conversation_id=eq.${conv.id}&rule_id=eq.${away.id}&created_at=gt.${q(since)}&select=id&limit=1`)
+      if (!recent || !recent.length) await autoReply(conv, away)
+    }
   }
 
   async function saveMedia(messageRowId, conversationId, mediaId, mime) {
@@ -151,6 +213,7 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
       last_message_at: m.at, last_inbound_at: m.at, last_direction: 'in', last_message_preview: previewOf(m.type, m.body), unread_count: (conv.unread_count || 0) + 1,
     } })
     if (m.mediaId) saveMedia(row.id, conv.id, m.mediaId, m.mediaMime).catch(err => console.warn('[WhatsApp] media not saved:', err.message))
+    await runAutomation(conv, m).catch(err => console.warn('[WhatsApp] automation:', err.message))
   }
 
   async function storeStatus(s) {
@@ -237,8 +300,97 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
       return run(async () => {
         await staffUser(req)
         if (!env().wabaId) return sendJson(res, 200, { templates: [] })
-        const data = await graph(`/${env().wabaId}/message_templates?fields=name,language,status,category,components&limit=200`)
-        sendJson(res, 200, { templates: (data.data || []).filter(t => t.status === 'APPROVED') })
+        const data = await graph(`/${env().wabaId}/message_templates?fields=name,language,status,category,components,rejected_reason&limit=200`)
+        const all = parsedUrl.searchParams.get('all') === '1' // R-WA-02: the Templates tab shows pending / rejected too
+        sendJson(res, 200, { templates: (data.data || []).filter(t => all || t.status === 'APPROVED') })
+      }), true
+    }
+    // R-WA-02: create a template (Meta reviews it) / delete one
+    if (pathname === '/api/whatsapp/templates' && req.method === 'POST') {
+      return run(async () => {
+        await staffUser(req); const body = await readJson(req)
+        if (!env().wabaId) throw Object.assign(new Error('WHATSAPP_WABA_ID is not set on the server.'), { status: 400 })
+        const name = String(body.name || '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
+        const text = String(body.body || '').trim()
+        if (!name || !text) throw Object.assign(new Error('Name and message text are required.'), { status: 400 })
+        if (!['UTILITY', 'MARKETING'].includes(body.category)) throw Object.assign(new Error('Choose Utility or Marketing.'), { status: 400 })
+        const count = new Set(text.match(/\{\{\d+\}\}/g) || []).size
+        const examples = (Array.isArray(body.examples) ? body.examples : []).map(String)
+        if (examples.length < count || examples.slice(0, count).some(x => !x.trim())) throw Object.assign(new Error('Give an example for every {{n}} value — Meta needs them for review.'), { status: 400 })
+        const component = { type: 'BODY', text, ...(count ? { example: { body_text: [examples.slice(0, count)] } } : {}) }
+        const created = await graph(`/${env().wabaId}/message_templates`, { method: 'POST', body: { name, category: body.category, language: String(body.language || 'en'), components: [component] } })
+        sendJson(res, 200, { id: created.id, status: created.status, name })
+      }), true
+    }
+    if (pathname === '/api/whatsapp/templates' && req.method === 'DELETE') {
+      return run(async () => {
+        await staffUser(req)
+        const name = parsedUrl.searchParams.get('name') || ''
+        if (!name || !env().wabaId) throw Object.assign(new Error('Template name missing.'), { status: 400 })
+        await graph(`/${env().wabaId}/message_templates?name=${q(name)}`, { method: 'DELETE' })
+        sendJson(res, 200, { ok: true })
+      }), true
+    }
+    // R-WA-02: Settings — the number as Meta sees it, and whether our app gets its messages
+    if (pathname === '/api/whatsapp/phone' && req.method === 'GET') {
+      return run(async () => {
+        await staffUser(req)
+        const e = env()
+        const phone = await graph(`/${e.phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,name_status,code_verification_status,platform_type,throughput`)
+        const subs = e.wabaId ? await graph(`/${e.wabaId}/subscribed_apps`).catch(() => null) : null
+        sendJson(res, 200, { phone, subscribed: subs ? (subs.data || []).length > 0 : null })
+      }), true
+    }
+    // R-WA-02: register the number on the Cloud API (6-digit PIN) and subscribe the WhatsApp account to our app
+    if (pathname === '/api/whatsapp/connect' && req.method === 'POST') {
+      return run(async () => {
+        const user = await staffUser(req)
+        if (user.role !== 'admin') throw Object.assign(new Error('Only an admin can connect the number.'), { status: 403 })
+        const body = await readJson(req); const e = env(); const done = []
+        const pin = String(body.pin || '').trim()
+        if (pin) {
+          if (!/^\d{6}$/.test(pin)) throw Object.assign(new Error('The PIN has 6 digits.'), { status: 400 })
+          await graph(`/${e.phoneNumberId}/register`, { method: 'POST', body: { messaging_product: 'whatsapp', pin } }); done.push('registered')
+        }
+        if (e.wabaId) { await graph(`/${e.wabaId}/subscribed_apps`, { method: 'POST' }); done.push('subscribed') }
+        sendJson(res, 200, { ok: true, done })
+      }), true
+    }
+    // R-WA-02: Broadcast — an approved template to many numbers, sent one by one in the background
+    if (pathname === '/api/whatsapp/broadcast' && req.method === 'POST') {
+      return run(async () => {
+        const user = await staffUser(req); const body = await readJson(req)
+        const name = String(body.name || '').trim() || `Broadcast ${new Date().toISOString().slice(0, 10)}`
+        if (!body.templateName || !body.language) throw Object.assign(new Error('Choose an approved template.'), { status: 400 })
+        const seen = new Set()
+        const recipients = (Array.isArray(body.recipients) ? body.recipients : [])
+          .map(r => ({ waId: normalizeWaId(r.to), name: r.name ? String(r.name) : null }))
+          .filter(r => r.waId.length >= 8 && !seen.has(r.waId) && seen.add(r.waId))
+        if (!recipients.length) throw Object.assign(new Error('Add at least one valid number.'), { status: 400 })
+        if (recipients.length > 1000) throw Object.assign(new Error('At most 1000 numbers per broadcast.'), { status: 400 })
+        const params = Array.isArray(body.params) ? body.params.map(String) : []
+        const [bc] = await supa('/rest/v1/wa_broadcasts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: {
+          name, template_name: body.templateName, language: body.language, params, total: recipients.length, created_by: user.email || user.id,
+        } })
+        const rows = await supa('/rest/v1/wa_broadcast_recipients', { method: 'POST', headers: { Prefer: 'return=representation' }, body: recipients.map(r => ({ broadcast_id: bc.id, wa_id: r.waId, name: r.name })) })
+        sendJson(res, 200, { id: bc.id, total: recipients.length })
+        let sent = 0; let failed = 0
+        for (const row of rows || []) {
+          try {
+            const conv = await conversationFor(row.wa_id, row.name)
+            const filled = fillName(params, row.name)
+            const template = { name: body.templateName, language: { code: body.language }, ...(filled.length ? { components: [{ type: 'body', parameters: filled.map(text => ({ type: 'text', text })) }] } : {}) }
+            const preview = String(body.preview || `Template: ${body.templateName}`).replace(/\{name\}/gi, row.name || 'there')
+            const msg = await sendOut(conv, user, { type: 'template', template }, { type: 'template', body: preview, template_name: body.templateName })
+            await supa(`/rest/v1/wa_broadcast_recipients?id=eq.${row.id}`, { method: 'PATCH', body: { status: 'sent', wa_message_id: msg?.wa_message_id || null } }); sent++
+          } catch (err) {
+            failed++
+            await supa(`/rest/v1/wa_broadcast_recipients?id=eq.${row.id}`, { method: 'PATCH', body: { status: 'failed', error: String(err.message).slice(0, 300) } }).catch(() => {})
+          }
+          await supa(`/rest/v1/wa_broadcasts?id=eq.${bc.id}`, { method: 'PATCH', body: { sent, failed } }).catch(() => {})
+          await new Promise(r => setTimeout(r, 250)) // stay well under Meta's per-second limit
+        }
+        await supa(`/rest/v1/wa_broadcasts?id=eq.${bc.id}`, { method: 'PATCH', body: { status: sent ? 'done' : 'failed', finished_at: new Date().toISOString() } }).catch(() => {})
       }), true
     }
     if (pathname === '/api/whatsapp/read' && req.method === 'POST') {
@@ -271,7 +423,7 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
     return true
   }
 
-  return { handleWebhook, route }
+  return { handleWebhook, route, invalidate }
 }
 
-module.exports = { createWhatsApp, normalizeWaId, verifySignature, parseWebhook, statusAdvances, windowOpen, previewOf, configured }
+module.exports = { createWhatsApp, normalizeWaId, verifySignature, parseWebhook, statusAdvances, windowOpen, previewOf, configured, withinHours, matchKeyword, fillName, dubaiClock }

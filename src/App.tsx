@@ -43,6 +43,7 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
 const Overview               = lazyWithRetry(() => import('@/pages/Overview').then(m => ({ default: m.Overview })))
 const Bookings               = lazyWithRetry(() => import('@/pages/Bookings').then(m => ({ default: m.Bookings })))
 const FluentFormsLeads       = lazyWithRetry(() => import('@/pages/FluentFormsLeads').then(m => ({ default: m.FluentFormsLeads })))
+const Inbox                  = lazyWithRetry(() => import('@/pages/Inbox').then(m => ({ default: m.Inbox })))
 const WhatsAppCRM            = lazyWithRetry(() => import('@/pages/WhatsAppCRM').then(m => ({ default: m.WhatsAppCRM })))
 const Clients                = lazyWithRetry(() => import('@/pages/Clients').then(m => ({ default: m.Clients })))
 const ClientProfile          = lazyWithRetry(() => import('@/pages/ClientProfile').then(m => ({ default: m.ClientProfile })))
@@ -202,6 +203,7 @@ function AppRoutes() {
                 <Route index element={<Overview />} />
                 <Route path="bookings"   element={<Bookings />} />
                 <Route path="fluent-forms" element={<FluentFormsLeads />} />
+                <Route path="inbox" element={<Inbox />} />
                 <Route path="whatsapp-crm" element={<WhatsAppCRM />} />
                 <Route path="clients"    element={<Clients />} />
                 <Route path="clients/:id" element={<ClientProfile />} />

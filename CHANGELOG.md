@@ -6,6 +6,11 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(whatsapp): nine WhatsApp tabs — Inbox, Jobs, Deals, Broadcast, Analytics, Automation, Keyword Trigger, Templates, Settings; setup never blocks a tab (R-WA-02)
+- feat(whatsapp): server automation (welcome, away with business hours, keyword replies), broadcasts, template create / delete, number register + subscribe (R-WA-02)
+- feat(inbox): one Inbox for WhatsApp + Facebook + Instagram (GHL) (R-INBOX-01)
+- feat(bookings): /bookings?new=1&client=&name=&phone= opens a new booking for a WhatsApp client (R-WA-02)
+
 - feat(ops): CRM on https://crm.safaeewala.com (Traefik + allowed origins); noindex header and meta so search engines leave it out (R-OPS-05)
 
 - feat(whatsapp): WhatsApp inbox in the CRM on the Meta Cloud API — receive text / media / statuses through a signed webhook, send text in the 24-hour window or approved templates, client linking, unread badge, Client Profile button (R-WA-01)
