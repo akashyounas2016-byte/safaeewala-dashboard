@@ -26,3 +26,4 @@ eq(/Number\(b\.received_amount\) \|\| 0\), 0\) \/\/ R-FIN-07/.test(ex), true, 'c
 const mk = src('src/pages/MarketingDashboard.tsx')
 eq(/retentionMetrics|Summer Promotion|87%|churn/i.test(mk), false, 'Marketing shows no made-up campaign / retention numbers')
 eq(/Marketing is not connected yet/.test(mk), true, 'Marketing says it is not connected')
+eq(/to: '\/marketing',\s+label: 'Marketing'/.test(src('src/components/layout/Sidebar.tsx')), true, 'Marketing is in the sidebar (owner request)')

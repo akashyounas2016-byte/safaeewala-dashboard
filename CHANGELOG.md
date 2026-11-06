@@ -6,7 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
-- fix(marketing): no made-up campaign / retention numbers — the screen says it is not connected (R-DATA-03)
+- fix(marketing): no made-up campaign / retention numbers — the screen says it is not connected; Marketing added to the sidebar (R-DATA-03)
 
 - feat(payments): All Payments lists booking payments; Delete on every payment row (R-FIN-09)
 - feat(monthly clients): Wide grid view with widgets at the bottom (UX-110)
