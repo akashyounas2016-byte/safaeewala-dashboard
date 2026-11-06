@@ -23,6 +23,7 @@ import { todayDubai, addDays, calendarDate } from '@/lib/dubaiTime'
 import { confirmAsync, notify } from '@/lib/notify'
 import { cleanerShare } from '@/lib/chargeSplit'
 import { findMark } from '@/lib/attendance'
+import { blankFieldsFromImport } from '@/lib/employeeImport'
 
 /* ─── Excel import/export helpers ─── */
 function toISODate(val: any): string {
@@ -1135,14 +1136,22 @@ export function Employees() {
                   // EMP-01: skip people already on the list (same name, phone or Emirates ID)
                   const norm = (v?: string) => String(v || '').replace(/\s+/g, ' ').trim().toLowerCase()
                   const digits = (v?: string) => String(v || '').replace(/\D/g, '')
-                  const isKnown = (r: (typeof rows)[number], list: { full_name: string; phone?: string; emirates_id?: string }[]) => list.some(e =>
+                  const findKnown = <E extends { full_name: string; phone?: string; emirates_id?: string }>(r: (typeof rows)[number], list: E[]) => list.find(e =>
                     norm(e.full_name) === norm(r.full_name) ||
                     (digits(r.phone).length >= 7 && digits(e.phone).endsWith(digits(r.phone).slice(-9))) ||
                     (digits(r.emirates_id).length >= 10 && digits(e.emirates_id) === digits(r.emirates_id)))
                   const added: typeof rows = []
-                  rows.forEach(r => { if (!isKnown(r, [...employees, ...added])) { addEmployee(r); added.push(r) } })
-                  const skipped = rows.length - added.length
-                  notify.success(`Imported ${added.length} employee${added.length === 1 ? '' : 's'}${skipped ? ` · ${skipped} already on the list, skipped` : ''}`)
+                  let filled = 0
+                  rows.forEach(r => {
+                    if (findKnown(r, added)) return
+                    const known = findKnown(r, employees)
+                    if (!known) { addEmployee(r); added.push(r); return }
+                    // R-EMP-07: an employee already on the list gets the file's details in the fields that are still empty
+                    const patch = blankFieldsFromImport(known, r)
+                    if (Object.keys(patch).length > 0) { updateEmployee(known.id, patch); filled++ }
+                  })
+                  const skipped = rows.length - added.length - filled
+                  notify.success(`Imported ${added.length} new employee${added.length === 1 ? '' : 's'}${filled ? ` · ${filled} existing filled in` : ''}${skipped ? ` · ${skipped} already complete, skipped` : ''}`)
                 } finally {
                   setImporting(false)
                   e.target.value = ''

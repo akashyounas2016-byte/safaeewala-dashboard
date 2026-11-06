@@ -257,9 +257,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const fromServer = <T extends { id: string }>(table: string, cacheKey: string, server: T[]): T[] => {
       const saved = safeLocalStorageGet<T[]>(cacheKey, [])
       if (readFailed.has(table)) return server.length > 0 ? withPending(table, server) : saved
-      // Server rows overlayed with local pending outbox changes (AUD-03)
-      if (server.length > 0) return withPending(table, server)
-      return saved.length > 0 ? withPending(table, saved) : []
+      // Server rows overlayed with local pending outbox changes (AUD-03). R-SYNC-13: a good read is the
+      // truth even when it is empty — an old browser copy must not bring back rows deleted in Supabase.
+      return applyOutbox(table, server)
     }
     // Server rows + local changes still waiting in the outbox (AUD-03)
     const withPending = <T extends { id: string }>(table: string, rows: T[]) =>
@@ -773,7 +773,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
         return p
       })
-      dbUpdate('employees', id, patch)
+      // R-SYNC-13: a field cleared in the form is sent as null — left out, Supabase kept the old value and it came back on reload
+      dbUpdate('employees', id, Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, v === undefined ? null : v])))
       docsToStorage('employees', id, patch)
     },
     deleteEmployee: (id) => {
@@ -783,6 +784,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (saved || !id.startsWith('emp-dj-')) dbDelete('employees', id) // R-EMP-06: registered job-sheet staff are real rows
       // Keep the deleted person from re-appearing as a job-sheet-only employee (AUD-17)
       if (e) forgetStaffNames(staffKeysOf(e))
+      if (e) saveDeletionSnapshot(`Employee ${e.full_name}`, { employees: [e] }) // R-SYNC-13: a wrong delete can be restored
       if (e) logAudit('deleted', 'employee', id, e.full_name)
     },
 

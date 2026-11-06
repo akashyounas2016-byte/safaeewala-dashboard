@@ -33,9 +33,23 @@ export interface SyncStatus {
   lastError?: string
 }
 
+const FAILED_KEY = 'safaeewala_sync_failed'
+/** R-SYNC-13: room for a long offline day; a change pushed out or given up is kept in FAILED_KEY and reported, never silently lost */
+export const OUTBOX_CAP = 300
+export const MAX_TRIES = 30
+/** No connection / timeout: the change is fine, the network is not — such tries do not count */
+export const isTransientError = (message?: string) => /fetch|network|timeout|timed out|load failed|offline|ECONN|503|502|504/i.test(message || '')
+const keepFailed = (entries: OutboxEntry[], why: string) => {
+  if (entries.length === 0) return
+  const prev = safeLocalStorageGet<OutboxEntry[]>(FAILED_KEY, [])
+  safeLocalStorageSet(FAILED_KEY, [...prev, ...entries.map(e => ({ ...e, lastError: `${why}: ${e.lastError || ''}` }))].slice(-200))
+  entries.forEach(e => reportError(new Error(`${e.op} ${e.table}/${e.rowId} not saved to Supabase (${why}): ${e.lastError || ''}`), 'sync'))
+}
+
 const readOutbox = () => safeLocalStorageGet<OutboxEntry[]>(OUTBOX_KEY, [])
 const writeOutbox = (list: OutboxEntry[]) => {
-  const capped = list.length > 50 ? list.slice(-50) : list
+  const capped = list.length > OUTBOX_CAP ? list.slice(-OUTBOX_CAP) : list
+  if (capped.length < list.length) keepFailed(list.slice(0, list.length - OUTBOX_CAP), 'outbox full')
   safeLocalStorageSet(OUTBOX_KEY, capped)
   const last = [...capped].reverse().find(e => e.lastError)
   window.dispatchEvent(new CustomEvent<SyncStatus>(SYNC_STATUS_EVENT, {
@@ -183,8 +197,9 @@ export async function flushOutbox(): Promise<void> {
       const idx = list.findIndex(e => e.key === entry.key && e.at === entry.at)
       if (idx < 0) continue
       if (error) {
-        list[idx] = { ...list[idx], tries: list[idx].tries + 1, lastError: error }
-        if (list[idx].tries > 5) list.splice(idx, 1)
+        // R-SYNC-13: an offline / timeout try does not count; a real rejection is given up after MAX_TRIES and kept + reported
+        list[idx] = { ...list[idx], tries: list[idx].tries + (isTransientError(error) ? 0 : 1), lastError: error }
+        if (list[idx].tries > MAX_TRIES) keepFailed(list.splice(idx, 1), 'gave up')
       } else {
         list.splice(idx, 1)
       }
@@ -216,6 +231,7 @@ export function applyOutbox<T extends { id: string }>(table: string, rows: T[]):
 /** Retry on reconnect and every minute while something is pending */
 export function startOutboxRetry(): () => void {
   const tick = () => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return // R-SYNC-13: wait for the connection
     if (readOutbox().length > 0) void flushOutbox()
     retryCloudState()
   }

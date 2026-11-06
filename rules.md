@@ -259,6 +259,17 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `NewBookingModal.tsx`; `bookingSync.ts → bookingFromJobEntry`; `DataContext → addBooking (job_entry), createJobForBooking`.
 - **Status:** Active · Since: 2026-11-05
 
+### R-SYNC-13 — A change is never lost on the way to Supabase
+- **Rule:** *"Verify karein ke employees screen ka data Supabase ke sath live synchronized ho aur kisi bhi qism ka sync ya data loss issue na ho."* (Employees go-live audit, 2026-11-06)
+  - A change that cannot reach Supabase waits in the outbox. While the device is offline nothing is retried, and a try that fails on the network or a timeout does not count.
+  - A change Supabase really rejects is retried 30 times (about 30 minutes online), then kept in `safaeewala_sync_failed` and reported. Before, it was dropped after 5 tries, so 6 minutes offline lost the change.
+  - The outbox holds 300 changes; a change pushed out of a full outbox is kept and reported the same way (it was 50, dropped silently).
+  - A table read that worked is the truth, even when it is empty: the browser's old copy is used only when the read failed. An old copy no longer brings back rows that were deleted in Supabase.
+  - Employees: a field cleared in the form is saved as empty (null). Before, it was left out, Supabase kept the old value, and it came back on the next load.
+  - Deleting an employee keeps a copy in Settings → Backup → Before-delete copies, so a wrong delete can be restored.
+- **Code:** `src/lib/syncQueue.ts` (`isTransientError`, `MAX_TRIES`, `OUTBOX_CAP`); `DataContext.tsx → fromServer, updateEmployee`.
+- **Status:** Active · Since: 2026-11-06
+
 ### R-SYNC-04 — Staff are matched by whole words
 - **Rule:** An employee matches a job's `staff_name` by normalised full name or whole-word match — "Rupa" must not match "Rupak".
 - **Code:** `clientDataSync.ts → employeeMatchesStaff`.
@@ -443,6 +454,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Deleting a registered job-sheet cleaner deletes the cloud row too.
 - **Code:** `src/lib/staffRegistry.ts`, the R-EMP-06 effect in `DataContext.tsx`.
 - **Status:** Active · Since: 2026-11-04
+
+### R-EMP-07 — Excel import completes existing employees
+- **Rule:** *"system mein pehle se maujood imported data … ko clean karke sirf real employee profiles maintain karne ka tareeqa"* (Employees go-live audit, 2026-11-06)
+  - Importing an employee who is already on the list (same name, phone or Emirates ID) fills that employee's empty fields from the file: phone, email, nationality, Emirates ID, pay, salary, visa / work permit / passport expiry, end date, agency.
+  - A field that already has a value is never overwritten. The message says how many were added, filled in and skipped.
+  - Before, such rows were skipped, so the profiles saved from the Daily Job Sheet (name only, R-EMP-06) could not be completed from Excel.
+- **Code:** `src/lib/employeeImport.ts → blankFieldsFromImport`; Employees → Import.
+- **Status:** Active · Since: 2026-11-06
 
 ---
 

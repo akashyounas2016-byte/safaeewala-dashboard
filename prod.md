@@ -88,6 +88,11 @@ There are **two** ways code reaches production. Both need the owner's permission
 - Chunk-load failures after a deploy auto-reload once (`lazyWithRetry` in `App.tsx`).
 - Audit trail: Supabase `audit_log` (created / updated / deleted / status changes).
 
+### Go-live: from imported data to real employees (audit 2026-11-06)
+- Duty hours, OT hours and shifts on Employees are not stored on the employee: they are worked out from the Daily Job Sheet rows (`daily_jobs`). Removing the imported job rows sets them to zero.
+- Order matters: R-EMP-06 saves every cleaner named on the sheet as an employee. Clear the job rows first, then the employees, or the names come back from the sheet.
+- Steps: (1) check that last night's backup is OK (Settings → Backup); (2) Daily Job Sheet → Delete All Data (a copy is kept in Settings → Backup → Before-delete copies); (3) Employees: delete the profiles that are not real staff, and complete the real ones by hand or with Import (R-EMP-07 fills empty fields); (4) reload every open browser once.
+
 ## 7. Database backup (R-OPS-04)
 
 - Nightly at 02:00 Dubai (cron `0 22 * * *` UTC): `/opt/safaeewala-backup/db-backup.sh` → `/var/backups/safaeewala`, kept 30 days, with an off-site copy via rclone when `BACKUP_RCLONE_REMOTE` is set.

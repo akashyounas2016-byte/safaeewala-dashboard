@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(sync): changes are no longer dropped after 5 failed tries or offline; an empty cloud table is not refilled from the browser; a cleared employee field is saved as empty (R-SYNC-13)
+- feat(employees): Excel import fills the empty fields of employees already on the list (R-EMP-07)
+- docs(prod): go-live steps for clearing imported jobs and keeping real employees
+
 - feat(alerts): Sidebar → Alerts collects every alert; ticker, AI banner and header-bell lists removed from the screens (R-ALERT-01)
 - feat(daily sheet): white Jobs header; rows white unless a colour was chosen (UX-96)
 - feat(clients): KPI cards in the Daily Job Sheet style, new order, every card filters cards and widgets; Recent Bookings audit fixes (UX-97)
