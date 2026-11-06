@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(layout): AI Bot moved from the floating button to Sidebar → AI Bot (under Alerts) (UX-112)
+- feat(inbox): Inbox redesign — no header, full height, wider chat list with clear platform tabs, minimalist (UX-113)
+
 - fix(employees): Health Score uses the Dubai date — from midnight to 04:00 today's absences were left out (R-EMP-03)
 
 - feat(whatsapp): nine WhatsApp tabs — Inbox, Jobs, Deals, Broadcast, Analytics, Automation, Keyword Trigger, Templates, Settings; setup never blocks a tab (R-WA-02)

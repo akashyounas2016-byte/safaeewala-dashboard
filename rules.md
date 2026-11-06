@@ -708,7 +708,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Tabs by priority and source; each alert links to where it is fixed. *Dismiss* hides it in this browser; *Dismissed* shows and restores them.
   - The sidebar item shows the number of open alerts.
   - Removed from the screens: the alert ticker and the AI Bot discrepancy banner above every page, and the alert lists of the Employees, Agencies and Bookings header bells (the bell now only opens Alerts).
-  - Kept: the sync banner (unsaved changes / sync errors must stay in view), the floating AI Bot button (the chat), and inline page notices that confirm an action (import done, delete done).
+  - Kept: the sync banner (unsaved changes / sync errors must stay in view), the AI Bot (since UX-112 a Sidebar item under Alerts, not a floating button), and inline page notices that confirm an action (import done, delete done).
   - Cleaners and drivers get no alerts (R-SEC-05). Roles & Access has an **Alerts** column; a permissions save made before Alerts existed gives it to the roles that get it by default.
 - **Code:** `src/lib/alerts.ts`, `src/store/useAlerts.ts`, `src/pages/Alerts.tsx`; `Sidebar.tsx`, `Layout.tsx`, `PageHero.tsx`; `permissions.ts → normalizeRolePerms`.
 - **Status:** Active · Since: 2026-11-05
@@ -762,7 +762,8 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - GHL has no live feed for us: the list refreshes every 30 s and an open Facebook / Instagram chat every 15 s.
   - A channel that is not connected is named in a note; the others keep working.
 - **Code:** `src/pages/Inbox.tsx`, `src/lib/ghlInbox.ts`, `ghlServer.cjs` (wired in `webhookServer.cjs`, shipped by the Dockerfile and deploy).
-- **Status:** Built · needs the GHL key with the Conversations scopes on the VPS (not tested against GHL yet) · Since: 2026-11-07
+- **Status:** Live 2026-11-07 (Facebook / Instagram chats read through GHL; replying not yet tried on a real chat) · Since: 2026-11-07
+- **UX-113 (2026-11-07):** *"Inbox screen ko top se shuru karein aur iska maujooda header remove kar dein … Left sidebar ko mazeed width dein taake platform tabs (WhatsApp, Facebook, Instagram) wazeh nazar aein … professional aur minimalist look."* No page header: the Inbox starts at the top and fills the screen. The chat list is 360–420 px wide with four platform tabs (All · WhatsApp · Facebook · Instagram, icon + count, coloured underline), an "unread" toggle, search, and the setup notes in one quiet line at the bottom.
 
 ## OPS — Operating process
 

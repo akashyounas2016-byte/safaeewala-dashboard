@@ -1,4 +1,4 @@
-import { useState, useMemo, type ElementType } from 'react'
+import { Fragment, useState, useMemo, type ElementType } from 'react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
@@ -6,8 +6,9 @@ import {
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
   CreditCard, TrendingUp, Globe, Clock, LogOut, ChevronLeft, Building2,
   CalendarDays, Star, SlidersHorizontal, ArrowUp, ArrowDown, RotateCcw, Sparkles, Truck, Navigation, Eye, EyeOff, Bell,
-  Megaphone, MessageCircle, Inbox as InboxIcon,
+  Megaphone, MessageCircle, Inbox as InboxIcon, Bot,
 } from 'lucide-react'
+import { useLayout } from './Layout'
 import { useWhatsAppUnread } from '@/store/useWhatsAppUnread'
 import { useAlerts } from '@/store/useAlerts'
 import { useAuth, useRolePerms } from '@/store/UserContext'
@@ -160,6 +161,28 @@ function NavItem({ to, label, icon: Icon, onClose, tag, badge, badgeTitle, onCli
         </>
       )}
     </NavLink>
+  )
+}
+
+/** UX-112: the AI Bot is a sidebar item (not a page): it opens the same AI Bot window as before */
+function AIBotNavItem({ onClose }: { onClose: () => void }) {
+  const { openAIBot, aiIssueCount = 0, aiHighIssues = 0 } = useLayout()
+  return (
+    <button
+      type="button"
+      onClick={() => { onClose(); openAIBot() }}
+      className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-[14px] font-medium transition-all duration-150 group nav-inactive cursor-pointer text-left"
+      title="Safaeewala AI Bot: chat, OT reports, revenue analysis, duplicate check"
+    >
+      <Bot size={16} className="shrink-0 text-[#64748b] group-hover:text-[#34d399]" />
+      <span className="flex-1 truncate">AI Bot</span>
+      {aiIssueCount > 0 ? (
+        <span title={`${aiIssueCount} finding${aiIssueCount === 1 ? '' : 's'}${aiHighIssues ? `, ${aiHighIssues} high` : ''}`}
+          className={cn('inline-flex items-center justify-center px-2 py-0.5 min-w-[20px] h-5 rounded-full text-[11px] font-black shrink-0', aiHighIssues ? 'bg-rose-500 text-white' : 'bg-white/10 text-slate-300')}>
+          {aiIssueCount > 99 ? '99+' : aiIssueCount}
+        </span>
+      ) : <span className="text-[10px] font-bold text-emerald-300/80 shrink-0">100%</span>}
+    </button>
   )
 }
 
@@ -384,9 +407,11 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
             <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-2 px-3 font-semibold">
               Workspace
             </p>
+            {!isFieldLogin && !workspaceNav.some(i => i.to === '/alerts') && <AIBotNavItem onClose={onClose} />}
             {workspaceNav.map(item => {
               const isFluent = item.to === '/fluent-forms'
               return (
+                <Fragment key={item.to}>
                 <NavItem
                   key={item.to}
                   {...item}
@@ -397,6 +422,8 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
                   onClick={isFluent ? () => markFluentFormsAsRead() : undefined}
                   onClose={onClose}
                 />
+                {item.to === '/alerts' && !isFieldLogin && <AIBotNavItem onClose={onClose} />}
+                </Fragment>
               )
             })}
           </>

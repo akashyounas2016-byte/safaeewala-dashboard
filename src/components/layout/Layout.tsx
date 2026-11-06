@@ -17,6 +17,9 @@ export const LayoutContext = createContext<{
   openMenu: () => void
   /** R-ALERT-01: Alerts → AI Bot findings open the AI Bot */
   openAIBot: () => void
+  /** UX-112: AI Bot findings, shown on the AI Bot item in the sidebar */
+  aiIssueCount?: number
+  aiHighIssues?: number
   toggleSidebar?: () => void
   isSidebarCollapsed?: boolean
 }>({ openMenu: () => {}, openAIBot: () => {} })
@@ -59,6 +62,8 @@ export function Layout() {
       value={{
         openMenu: () => setSidebarOpen(true),
         openAIBot: () => setShowAIBot(true),
+        aiIssueCount: issueCount,
+        aiHighIssues: highIssues.length,
         toggleSidebar: handleToggleSidebar,
         isSidebarCollapsed: sidebarCollapsed,
       }}
@@ -133,33 +138,7 @@ export function Layout() {
             </div>
           </main>
 
-          {/* ── Persistent Floating AI Bot Trigger Button ── */}
-          {!showAIBot && !isField && (
-            <button
-              type="button"
-              onClick={() => setShowAIBot(true)}
-              className="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-gradient-to-r from-[#0B1215] via-[#064e3b] to-[#0d8a72] text-white font-bold text-[12.5px] shadow-[0_10px_30px_rgba(6,78,59,0.35)] border border-[#0d8a72]/40 hover:border-emerald-400/60 hover:scale-105 active:scale-95 transition-all cursor-pointer group"
-              title="Safaeewala AI Bot: Click to open interactive chat, OT reports, revenue analysis & duplicate check"
-            >
-              <div className="relative flex items-center justify-center">
-                <Bot size={18} className="text-emerald-300 group-hover:rotate-12 transition-transform" />
-                {highIssues.length > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping" />
-                )}
-              </div>
-              <span className="tracking-wide">AI Bot</span>
-              {issueCount > 0 ? (
-                <span className="bg-rose-500 text-white text-[11px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs">
-                  {issueCount}
-                </span>
-              ) : (
-                <span className="bg-emerald-500/30 text-emerald-200 text-[10.5px] font-extrabold px-2 py-0.5 rounded-full border border-emerald-400/20">
-                  100%
-                </span>
-              )}
-            </button>
-          )}
-
+          {/* UX-112: the AI Bot opens from Sidebar → AI Bot (the floating button bottom-right was removed) */}
           {/* ── AI Bot Draggable Floating Window / Chat Pop-up ── */}
           <CRMAIBotModal
             open={showAIBot && !isField}
