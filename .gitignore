@@ -34,3 +34,6 @@ dist-ssr
 # Local server secrets for npm run api:local (never commit)
 server.local.env
 .local-api-data/
+
+# Separate WhatsApp CRM prototype (has its own .env) — never commit
+*.zip
