@@ -270,6 +270,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/syncQueue.ts` (`isTransientError`, `MAX_TRIES`, `OUTBOX_CAP`); `DataContext.tsx → fromServer, updateEmployee`.
 - **Status:** Active · Since: 2026-11-06
 
+### R-SYNC-14 — The Excel Job Sheet saves by itself
+- **Rule:** *"Excel Job Sheet par 'Add Job' ke doran yellow save button aksar kaam nahi karta, jiss se page refresh karne par data zaya ho jata hai … auto-save ka mechanism (maslan har 3 seconds baad) … ya manual save button."* (2026-11-06)
+  - Both: changes save by themselves 3 seconds after the last change, and the Save button / Ctrl+S still save at once.
+  - Auto-save waits while a cell is being typed in or the Add Job form is open.
+  - Auto-save never asks a question. When a change double-books a cleaner, or rows were changed on another screen, it stops and shows the reason in red next to the title; the user presses Save to decide. These two cases were why Save often seemed to do nothing.
+  - The header shows *Auto-save on* when everything is saved. The local draft and the leave warning (UX-34) stay.
+- **Code:** `JobSheetSpreadsheet.tsx → handleSaveAll('auto' | 'manual')`, the auto-save effect.
+- **Status:** Active · Since: 2026-11-06
+
 ### R-SYNC-04 — Staff are matched by whole words
 - **Rule:** An employee matches a job's `staff_name` by normalised full name or whole-word match — "Rupa" must not match "Rupak".
 - **Code:** `clientDataSync.ts → employeeMatchesStaff`.
@@ -556,7 +565,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Status:** Active
 
 ### R-FIN-03 — Revenue is counted once
-- **Rule:** A booking that has a job-sheet row (`booking_id`) is counted only through that row. **Collected** revenue (Overview) = `received`, else `charges` for paid-on-site rows; `Monthly` rows count only via monthly client payments and `Pending` rows only via recoveries. **Billed / work** revenue (Reports) = job-sheet `charges` + bookings without a row.
+- **Rule:** A booking that has a job-sheet row (`booking_id`) is counted only through that row. **Collected** revenue (Overview, Driver Payment Received, Cash Book) = the `received` amount only. A Cash / Online row with nothing received is pending, not collected (*"pending amount honay ke bawajood 'Driver Payment Received' mein 1000 show ho rahe hain … pending payments ghalti se received mein appear na hon"*, 2026-11-06; before, its charges counted as collected). `Monthly` rows count via monthly client payments and `Pending` rows via recoveries. **Billed / work** revenue (Reports) = job-sheet `charges` + bookings without a row.
 - **Code:** `Overview.tsx → jobCollected, bookingsWithoutJobRow`; `Reports.tsx → workItems`.
 - **Status:** Active · Since: 2026-10-27 (AUD-01, AUD-05)
 

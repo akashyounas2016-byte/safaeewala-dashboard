@@ -56,8 +56,8 @@ eq(/pickedCategory\('Monthly'\)/.test(djs) && !/filterColors\.Monthly \|\| '#d1f
 // UX-97: Clients KPI cards order and filters
 const cl = src('src/pages/Clients.tsx')
 const order = Array.from(cl.matchAll(/\{ label: '([^']+)',\s+value:/g)).map(m => m[1])
-eq(order.slice(0, 6), ['Total Clients', 'Active Clients', 'Monthly Clients', 'New This Month', 'VIP Clients', 'Total Bookings'], 'first row with the swapped cards')
-eq(order.slice(6, 12), ['Total Revenue', 'Avg Lifetime', 'Due Balance', 'At-Risk (>60d)', 'Repeat Rate', 'Advance Balance'], 'second row')
+eq(order.slice(0, 6), ['Total Clients', 'Active Clients', 'Monthly Clients', 'New This Month', 'VIP Clients', 'Total Bookings'], 'card order (Total Bookings now opens row 2, UX-101)')
+eq(order.slice(6, 10), ['Total Revenue', 'Avg Lifetime', 'Due Balance', 'Advance Balance'], 'second row (At-Risk / Repeat Rate removed by UX-101)')
 eq(/filterType === 'new' \?/.test(cl) && /filterType === 'booked' \?/.test(cl), true, 'New This Month / Total Bookings cards filter')
 eq(/\/bookings\?booking=/.test(cl) && /not on sheet/.test(cl), true, 'Recent Bookings opens the booking and flags a missing sheet row')
 eq(/searchParams\.get\('booking'\)/.test(src('src/pages/Bookings.tsx')), true, 'Bookings opens ?booking=<id>')

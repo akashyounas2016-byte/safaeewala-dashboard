@@ -20,7 +20,7 @@ check('valid free proposal kept', ensureInvoiceNumber(`SAF-${y}-0005`, [{ invoic
 
 // AUD-24 / AUD-30
 const job = (o: any) => ({ id: 'j', charges: 200, received: 0, payment_mode: 'Cash', staff_name: 'A', ...o }) as any
-check('cash job with no received counts as collected', jobCollected(job({})) === 200)
+check('R-FIN-03: cash job with nothing received is pending, not collected', jobCollected(job({})) === 0)
 check('pending job not counted as collected', jobCollected(job({ payment_mode: 'Pending' })) === 0)
 check('monthly job not counted as collected', jobCollected(job({ payment_mode: 'Monthly' })) === 0)
 check('received amount wins', jobCollected(job({ payment_mode: 'Pending', received: 150 })) === 150)

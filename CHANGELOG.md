@@ -6,6 +6,12 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(money): collected = the received amount only; a Cash row with nothing received no longer shows in Driver Payment Received / Total Collected (R-FIN-03)
+- feat(excel sheet): auto-save 3 s after the last change; clash / remote-change reason shown instead of a silent stop (R-SYNC-14)
+- feat(daily sheet): Jobs Show / Hide (UX-99); feat(client profile): no Repeat tag on Monthly (UX-100)
+- feat(clients, daily sheet): 5 cards a row, At-Risk / Repeat Rate removed, long titles wrap (UX-101)
+- feat(employees): Agency Staff / Available / Absentees / On Leave cards behind an arrow, sync icon by the status, 3 rows + View All (UX-102)
+
 - fix(sync): changes are no longer dropped after 5 failed tries or offline; an empty cloud table is not refilled from the browser; a cleared employee field is saved as empty (R-SYNC-13)
 - feat(employees): Excel import fills the empty fields of employees already on the list (R-EMP-07)
 - docs(prod): go-live steps for clearing imported jobs and keeping real employees

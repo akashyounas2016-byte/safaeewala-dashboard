@@ -299,16 +299,12 @@ export function calcClientOpeningPending(client: Client, receipts: DailyPendingR
 }
 
 /**
- * Money collected for a job-sheet row (AUD-01, R-FIN-03): the received amount, else the charges for
- * paid-on-site rows. Monthly rows are collected through monthly client payments and Pending rows
- * through recoveries, so counting their charges here would count them twice.
+ * Money collected for a job-sheet row (AUD-01, R-FIN-03): only the amount entered in Received.
+ * A Cash / Online row with nothing received is still pending (it shows in Today Pending), so its
+ * charges are not counted as collected — they were, and showed in Driver Payment Received (2026-11-06).
  */
 export function jobCollected(j: DailyJob): number {
-  const rec = cleanNum(j.received)
-  if (rec > 0) return rec
-  const mode = String(j.payment_mode).toLowerCase()
-  if (mode === 'pending' || mode === 'monthly') return 0
-  return cleanNum(j.charges)
+  return cleanNum(j.received)
 }
 
 /**

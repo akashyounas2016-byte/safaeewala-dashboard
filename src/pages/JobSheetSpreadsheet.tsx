@@ -412,6 +412,7 @@ export function JobSheetSpreadsheet() {
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [showThreeDotMenu, setShowThreeDotMenu] = useState(false)
   const [showAddJobModal, setShowAddJobModal] = useState(false)
+  const [autoSaveBlocked, setAutoSaveBlocked] = useState<string | null>(null) // R-SYNC-14
   const [editingRowState, setEditingRowState] = useState<{ row: DailyJob; index: number } | null>(null)
   const [quickClientState, setQuickClientState] = useState<{ open: boolean; rowIdx: number | null; name: string }>({ open: false, rowIdx: null, name: '' })
   const quickClientRegisteredRef = useRef(false)
@@ -2151,17 +2152,21 @@ export function JobSheetSpreadsheet() {
 
   // Save All — writes only rows added, edited or removed in this grid (AUD-49, UX-33).
   // Rows outside the grid are never touched; rows changed elsewhere since loading ask first.
-  const handleSaveAll = async () => {
-    const rows = commitCellEdit()
+  /** R-SYNC-14: 'auto' = the 3-second auto-save — it never asks a question; what needs the user waits for Save */
+  const handleSaveAll = async (mode: 'manual' | 'auto' = 'manual') => {
+    const auto = mode === 'auto'
+    const rows = auto ? gridRows : commitCellEdit()
     const gridIds = new Set(rows.map(r => r.id))
     const added = rows.filter(r => !loadedSnapshot.has(r.id) && !isBlankNewRow(r))
     const edited = rows.filter(r => { const o = loadedSnapshot.get(r.id); return o && !sameJobRow(o, r) })
     const removed = Array.from(loadedSnapshot.values()).filter(o => !gridIds.has(o.id))
     if (added.length + edited.length + removed.length === 0) {
+      if (auto) return
       setLoadedSnapshot(new Map(rows.map(r => [r.id, r]))) // nothing left to save — the button shows "Saved"
       showToast('Nothing to save')
       return
     }
+    setAutoSaveBlocked(null)
 
     // A job with several cleaners is shown as one grid row per cleaner (ensureThreeRowsPerStaff).
     // Those rows are not jobs of their own: saving them one by one cut the other cleaners off the job
@@ -2176,6 +2181,7 @@ export function JobSheetSpreadsheet() {
     // R-JOB-01: nothing is saved while a changed row double-books a cleaner (paste, fill down, …)
     const saveClash = findClashAmong(rows, [...added, ...edited.filter(r => timingChanged(loadedSnapshot.get(r.id), r))])
     if (saveClash) {
+      if (auto) { setAutoSaveBlocked(`Not saved — time clash: ${clashMessage(saveClash)}`); return }
       showClash(saveClash)
       return
     }
@@ -2190,6 +2196,7 @@ export function JobSheetSpreadsheet() {
       ...Array.from(splitJobIds).filter(id => !live.has(id)).map(id => ({ id })),
     ]
     if (changedElsewhere.length > 0) {
+      if (auto) { setAutoSaveBlocked(`Not saved — ${changedElsewhere.length} row(s) changed on another screen. Press Save to choose.`); return }
       const ok = await confirmAsync({
         title: 'Changed on another screen',
         message: `${changedElsewhere.length} row(s) were changed or deleted somewhere else after you opened this sheet. Save your version over them?`,
@@ -2299,8 +2306,17 @@ export function JobSheetSpreadsheet() {
     setDraftOffer(null)
     setRemoteConflict(false)
     const parts = [added.length && `${added.length} added`, edited.length && `${edited.length} updated`, removed.length && `${removed.length} deleted`].filter(Boolean)
-    showToast(`✓ Saved: ${parts.join(', ')}`)
+    showToast(`✓ ${auto ? 'Auto-saved' : 'Saved'}: ${parts.join(', ')}`)
   }
+
+  // R-SYNC-14: auto-save 3 seconds after the last change (not while a cell is being typed in or the Add Job form is open)
+  const saveRef = useRef(handleSaveAll)
+  useEffect(() => { saveRef.current = handleSaveAll })
+  useEffect(() => {
+    if (!hasUnsavedChanges || editingCell || showAddJobModal) return
+    const t = window.setTimeout(() => { void saveRef.current('auto') }, 3000)
+    return () => window.clearTimeout(t)
+  }, [gridRows, hasUnsavedChanges, editingCell, showAddJobModal])
 
   // Keyboard: Undo/Redo/Save/Esc + Excel keys (arrows, Tab, Enter/F2, Delete, Ctrl+D, type to edit) — UX-36.
   // The listener reads the latest handler through a ref, so Save never works on stale data.
@@ -2820,6 +2836,10 @@ export function JobSheetSpreadsheet() {
                     ● {pendingChanges.count} unsaved change{pendingChanges.count === 1 ? '' : 's'}
                   </span>
                 )}
+                {!hasUnsavedChanges && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/15 text-white/90">Auto-save on</span>}
+                {hasUnsavedChanges && autoSaveBlocked && (
+                  <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-rose-500 text-white max-w-[420px] truncate" title={autoSaveBlocked}>{autoSaveBlocked}</span>
+                )}
               </div>
             </div>
           </div>
@@ -2942,13 +2962,13 @@ export function JobSheetSpreadsheet() {
           {/* ── Save All Button ── */}
           <button
             type="button"
-            onClick={handleSaveAll}
+            onClick={() => { void handleSaveAll() }}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-black text-[12.5px] transition-all cursor-pointer shadow-sm ${
               hasUnsavedChanges
                 ? 'bg-amber-400 hover:bg-amber-300 text-amber-950 shadow-amber-900/40 ring-2 ring-white/90 animate-pulse'
                 : 'bg-white text-emerald-950 hover:bg-emerald-50 border border-white/80'
             }`}
-            title="Save and synchronize back to main Daily Job Sheet (Ctrl+S)"
+            title={autoSaveBlocked || 'Changes save by themselves 3 seconds after you stop typing. Save now (Ctrl+S)'}
           >
             <Save size={14} className={hasUnsavedChanges ? 'text-amber-950' : 'text-emerald-800'} />
             <span>{hasUnsavedChanges ? `Save ${pendingChanges.count} change${pendingChanges.count === 1 ? '' : 's'}` : 'Saved'}</span>

@@ -460,24 +460,22 @@ export function Clients() {
     filter: ClientFilter | 'all' | null
   }
 
-  // UX-97: first row Total · Active · Monthly · New This Month · VIP · Total Bookings
-  // (Due Balance ↔ New This Month and Repeat Rate ↔ Total Bookings swapped, owner request 2026-11-05)
+  // UX-101: 5 cards a row. First row Total · Active · Monthly · New This Month · VIP;
+  // second row Total Bookings · Total Revenue · Avg Lifetime · Due Balance · Advance (At-Risk and Repeat Rate removed, 2026-11-06)
   const primaryCards: KpiCardItem[] = [
     { label: 'Total Clients',   value: clients.length, sub: 'Registered accounts', icon: Users, labelColor: 'text-blue-700', iconSolid: 'bg-[#2563eb] shadow-blue-500/25', delta: clientDeltaLabel, deltaUp: newThisMonth >= 0, filter: 'all' },
     { label: 'Active Clients',  value: activeClients, sub: 'Recent bookings', icon: TrendingUp, labelColor: 'text-emerald-700', iconSolid: 'bg-[#059669] shadow-emerald-500/25', delta: `${activeClients} active`, deltaUp: activeClients > 0, filter: 'active' },
     { label: 'Monthly Clients', value: monthlyCount, sub: 'Recurring contracts', icon: Star, labelColor: 'text-teal-700', iconSolid: 'bg-[#0d9488] shadow-teal-500/25', delta: `${monthlyCount} recurring`, deltaUp: monthlyCount > 0, filter: 'monthly' },
     { label: 'New This Month',  value: newThisMonth, sub: 'Joined this month', icon: Sparkles, labelColor: 'text-indigo-700', iconSolid: 'bg-[#4f46e5] shadow-indigo-500/25', delta: clientDeltaLabel, deltaUp: newThisMonth >= newLastMonth, filter: 'new' },
     { label: 'VIP Clients',     value: vipClients, sub: 'AED 2k+ spend', icon: Award, labelColor: 'text-amber-700', iconSolid: 'bg-[#d97706] shadow-amber-500/25', delta: vipClients > 0 ? `${vipClients} VIP` : '0 VIP', deltaUp: vipClients > 0, filter: 'vip' },
-    { label: 'Total Bookings',  value: totalBookingsAll, sub: 'Completed visits', icon: CalendarCheck, labelColor: 'text-sky-700', iconSolid: 'bg-[#0284c7] shadow-sky-500/25', delta: 'All records', deltaUp: true, filter: 'booked' },
   ]
 
-  // Second row (More Client Metrics): Due Balance and Repeat Rate moved here
+  // Second row (More Client Metrics)
   const secondaryCards: KpiCardItem[] = [
+    { label: 'Total Bookings',  value: totalBookingsAll, sub: 'Completed visits', icon: CalendarCheck, labelColor: 'text-sky-700', iconSolid: 'bg-[#0284c7] shadow-sky-500/25', delta: 'All records', deltaUp: true, filter: 'booked' },
     { label: 'Total Revenue',   value: `AED ${(totalSpent / 1000).toFixed(1)}k`, sub: `AED ${totalSpent.toLocaleString()} lifetime`, icon: CheckCircle, labelColor: 'text-purple-700', iconSolid: 'bg-[#7c3aed] shadow-purple-500/25', delta: 'All time', deltaUp: true, filter: 'paying' },
     { label: 'Avg Lifetime',    value: `AED ${avgLtv.toLocaleString()}`, sub: 'Per client average', icon: DollarSign, labelColor: 'text-cyan-700', iconSolid: 'bg-[#0891b2] shadow-cyan-500/25', delta: 'Per Client', deltaUp: true, filter: 'paying' },
     { label: 'Due Balance',     value: `AED ${totalOutstanding.toLocaleString()}`, sub: 'Pending collections', icon: AlertCircle, labelColor: 'text-rose-700', iconSolid: 'bg-[#e11d48] shadow-rose-500/25', delta: `${clientsWithDue.length} owe`, deltaUp: false, filter: 'due' },
-    { label: 'At-Risk (>60d)',  value: inactiveClientsCount, sub: 'No visits in 60+ days', icon: Clock, labelColor: 'text-orange-700', iconSolid: 'bg-[#ea580c] shadow-orange-500/25', delta: `${inactiveClientsCount} dormant`, deltaUp: false, filter: 'inactive' },
-    { label: 'Repeat Rate',     value: `${repeatRate}%`, sub: '2+ service visits', icon: Heart, labelColor: 'text-pink-700', iconSolid: 'bg-[#db2777] shadow-pink-500/25', delta: `${repeatClients} repeat`, deltaUp: repeatRate > 0, filter: 'repeat' },
     { label: 'Advance Balance', value: `AED ${totalAdvanceAmount.toLocaleString()}`, sub: 'Client credits / deposits', icon: Wallet, labelColor: 'text-emerald-700', iconSolid: 'bg-[#047857] shadow-emerald-500/25', delta: 'Deposits', deltaUp: true, filter: 'advance' },
   ]
 
@@ -497,7 +495,8 @@ export function Clients() {
         }`}
       >
         <div className="flex items-start justify-between gap-2 mb-2 w-full">
-          <span className={`text-[11px] font-bold tracking-wider uppercase truncate ${card.labelColor}`}>{card.label}</span>
+          {/* UX-101: a long title wraps to a 2nd line beside the icon — the card does not grow */}
+          <span className={`text-[11px] font-bold tracking-wider uppercase leading-[1.3] line-clamp-2 break-words min-w-0 ${card.labelColor}`}>{card.label}</span>
           <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0 text-white shadow-md transition-transform duration-200 group-hover:scale-105 ${card.iconSolid}`}>
             <card.icon size={18} strokeWidth={2.2} />
           </div>
@@ -956,7 +955,7 @@ export function Clients() {
 
       {/* ── KPI Summary Cards: Single Row of 6 Cards ── */}
       <div className="space-y-3">
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5">
           {primaryCards.map(renderCard)}
         </div>
 
@@ -984,7 +983,7 @@ export function Clients() {
 
         {/* ── Expanded Drawer: Secondary Row of 6 cards ── */}
         {showAllCards && (
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5 animate-in fade-in slide-in-from-top-2 duration-300">
             {secondaryCards.map(renderCard)}
           </div>
         )}

@@ -759,7 +759,7 @@ export function ClientProfile() {
                   VIP
                 </span>
               )}
-              {totalServices >= 2 && (
+              {totalServices >= 2 && !isClientMonthly && ( // UX-100: Monthly already says it repeats
                 <span className="text-[11px] bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 px-2.5 py-0.5 rounded-full font-bold">
                   Repeat Client
                 </span>

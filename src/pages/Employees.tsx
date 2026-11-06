@@ -5,7 +5,7 @@ import {
   Search, AlertTriangle, Phone, Shield, Users, UserCheck, Star,
   TrendingUp, Trash2, CheckCircle, CheckCircle2, Upload, Download, FileSpreadsheet,
   Clock, ExternalLink, FileText, Calendar, RotateCcw, X, Filter,
-  Flame, Zap, Briefcase, ArrowUpDown, LayoutGrid, List, ChevronRight, ChevronDown,
+  Flame, Zap, Briefcase, ArrowUpDown, LayoutGrid, List, ChevronRight, ChevronDown, ChevronUp, UserX, Plane, Coffee,
   DollarSign, Award, Sparkles, Building2, MapPin, Eye, EyeOff, Pencil, Check, Paperclip
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -312,7 +312,10 @@ export function Employees() {
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<'all' | 'cleaner' | 'supervisor' | 'crew_lead' | 'ducting' | 'technical' | 'store_cleaner' | 'driver'>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'on_leave'>('all')
-  const [workFilter, setWorkFilter] = useState<'all' | 'has_ot' | 'high_ot' | 'working_today'>('all')
+  const [workFilter, setWorkFilter] = useState<'all' | 'has_ot' | 'high_ot' | 'working_today' | 'available' | 'absent' | 'leave'>('all')
+  // UX-102: second row of cards behind an arrow; the card grid shows 3 rows until View All
+  const [showMoreCards, setShowMoreCards] = useState(false)
+  const [showAllStaffCards, setShowAllStaffCards] = useState(false)
   const [expiryFilter, setExpiryFilter] = useState(false)
   const [datePreset, setDatePreset] = useState<EmployeeDatePreset>('all')
   const [customStartDate, setCustomStartDate] = useState('')
@@ -554,6 +557,12 @@ export function Employees() {
   }).length
 
   const activeCount = agencyScopedEmployees.filter(e => e.status === 'active').length
+  // UX-102 (R-ATT-01): today's picture — available (no job, not marked), absent (marked), on leave
+  const todayCodes = agencyScopedEmployees.map(e => getTodayStatus(e).code)
+  const availableTodayCount = todayCodes.filter(c => c === 'available').length
+  const absentTodayCount = todayCodes.filter(c => c === 'absent').length
+  const leaveTodayCount = todayCodes.filter(c => c === 'leave').length
+  const agencyStaffCount = employees.filter(isThirdPartyEmployee).length
   const crewLeads = agencyScopedEmployees.filter(e => e.role === 'crew_lead').length
   const autoSyncedCount = agencyScopedEmployees.filter(e => e.id.startsWith('emp-dj-')).length
 
@@ -597,6 +606,8 @@ export function Employees() {
         matchWork = (st?.otHours ?? 0) >= 10
       } else if (workFilter === 'working_today') {
         matchWork = todaySt.code === 'working' || todaySt.code === 'scheduled'
+      } else if (workFilter === 'available' || workFilter === 'absent' || workFilter === 'leave') {
+        matchWork = todaySt.code === workFilter // UX-102, R-ATT-01: available = no job today, absent only when marked
       }
 
       const matchExpiry = !expiryFilter || (() => {
@@ -685,9 +696,11 @@ export function Employees() {
     </>
   )
 
+  const STAFF_CARD_LIMIT = 6 // UX-102: 3 rows of 2
   const renderEmployeeCards = () => (
+    <>
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {filtered.map((emp, idx) => {
+      {(showAllStaffCards ? filtered : filtered.slice(0, STAFF_CARD_LIMIT)).map((emp, idx) => {
         const safeDay = (d: string | undefined) => d ? daysUntil(d) : Infinity
         const minDays = Math.min(safeDay(emp.visa_expiry), safeDay(emp.work_permit_expiry), safeDay(emp.passport_expiry))
         const hasAlert = isFinite(minDays) && minDays < 90
@@ -744,7 +757,16 @@ export function Employees() {
                   </div>
                 </div>
 
-                <StatusBadge status={emp.status} />
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <StatusBadge status={emp.status} />
+                  {/* UX-102: the old daily-sheet text label became this icon beside the status */}
+                  {isJobSheetStaff && (
+                    <span title="Synced with the Daily Job Sheet" aria-label="Synced with the Daily Job Sheet"
+                      className="w-6 h-6 rounded-full bg-teal-50 border border-teal-200 text-teal-700 flex items-center justify-center">
+                      <FileSpreadsheet size={12} />
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Live Today Status Pill */}
@@ -897,11 +919,6 @@ export function Employees() {
                     +{emp.skills.length - 3}
                   </span>
                 )}
-                {isJobSheetStaff && (
-                  <span className="text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200/80 px-2 py-0.5 rounded-md ml-auto">
-                    Daily Sheet Synced
-                  </span>
-                )}
               </div>
             </div>
 
@@ -937,6 +954,15 @@ export function Employees() {
         )
       })}
     </div>
+    {filtered.length > STAFF_CARD_LIMIT && (
+      <div className="mt-4 text-center">
+        <button type="button" onClick={() => setShowAllStaffCards(v => !v)}
+          className="inline-flex items-center gap-1.5 text-[12.5px] font-bold text-teal-800 bg-white hover:bg-teal-50 border border-teal-200 px-4 py-2 rounded-xl cursor-pointer transition-colors">
+          {showAllStaffCards ? <>Show less <ChevronUp size={14} /></> : <>View All ({filtered.length}) <ChevronDown size={14} /></>}
+        </button>
+      </div>
+    )}
+    </>
   )
 
   const renderEmployeeTable = () => (
@@ -1329,6 +1355,58 @@ export function Employees() {
         </div>
 
       </div>
+
+      {/* UX-102: more staff cards behind the arrow */}
+      <div className="flex justify-center -mt-1">
+        <button type="button" onClick={() => setShowMoreCards(v => !v)} aria-expanded={showMoreCards}
+          className="inline-flex items-center gap-1.5 text-[12px] font-bold text-slate-600 hover:text-teal-800 bg-white border border-slate-200 hover:border-teal-300 px-3.5 py-1.5 rounded-full cursor-pointer transition-colors">
+          {showMoreCards ? <>Hide staff metrics <ChevronUp size={14} /></> : <>More staff metrics (4) <ChevronDown size={14} /></>}
+        </button>
+      </div>
+      {showMoreCards && (
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <button type="button" onClick={() => handleAgencyFilterChange(agencyFilter === 'third_party' ? 'all' : 'third_party')}
+          aria-pressed={agencyFilter === 'third_party'}
+          className={`text-left bg-white rounded-[24px] border p-4.5 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] transition-all cursor-pointer ${agencyFilter === 'third_party' ? 'border-violet-500 ring-2 ring-violet-500/10' : 'border-slate-200/80 hover:border-violet-300'}`}>
+          <div className="flex items-start justify-between mb-3">
+            <div className="w-10 h-10 rounded-2xl bg-violet-50 text-violet-600 flex items-center justify-center"><Building2 size={18} /></div>
+          </div>
+          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{agencyStaffCount}</p>
+          <p className="text-[12px] font-bold text-slate-800 mt-0.5">Agency Staff</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">From {dynamicAgencies.length} agenc{dynamicAgencies.length === 1 ? 'y' : 'ies'}</p>
+        </button>
+        <button type="button" onClick={() => { setWorkFilter(workFilter === 'available' ? 'all' : 'available'); setStatusFilter('all'); setExpiryFilter(false) }}
+          aria-pressed={workFilter === 'available'}
+          className={`text-left bg-white rounded-[24px] border p-4.5 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] transition-all cursor-pointer ${workFilter === 'available' ? 'border-sky-500 ring-2 ring-sky-500/10' : 'border-slate-200/80 hover:border-sky-300'}`}>
+          <div className="flex items-start justify-between mb-3">
+            <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center"><Coffee size={18} /></div>
+          </div>
+          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{availableTodayCount}</p>
+          <p className="text-[12px] font-bold text-slate-800 mt-0.5">Available Staff</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">No job today — standby (not absent)</p>
+        </button>
+        <button type="button" onClick={() => { setWorkFilter(workFilter === 'absent' ? 'all' : 'absent'); setStatusFilter('all'); setExpiryFilter(false) }}
+          aria-pressed={workFilter === 'absent'}
+          className={`text-left bg-white rounded-[24px] border p-4.5 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] transition-all cursor-pointer ${workFilter === 'absent' ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-slate-200/80 hover:border-rose-300'}`}>
+          <div className="flex items-start justify-between mb-3">
+            <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center"><UserX size={18} /></div>
+          </div>
+          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{absentTodayCount}</p>
+          <p className="text-[12px] font-bold text-slate-800 mt-0.5">Absentees</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">Marked absent today</p>
+        </button>
+        <button type="button" onClick={() => { setWorkFilter(workFilter === 'leave' ? 'all' : 'leave'); setStatusFilter('all'); setExpiryFilter(false) }}
+          aria-pressed={workFilter === 'leave'}
+          className={`text-left bg-white rounded-[24px] border p-4.5 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] transition-all cursor-pointer ${workFilter === 'leave' ? 'border-indigo-500 ring-2 ring-indigo-500/10' : 'border-slate-200/80 hover:border-indigo-300'}`}>
+          <div className="flex items-start justify-between mb-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center"><Plane size={18} /></div>
+          </div>
+          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{leaveTodayCount}</p>
+          <p className="text-[12px] font-bold text-slate-800 mt-0.5">On Leave</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">On leave today</p>
+        </button>
+      </div>
+      )}
 
       {/* ── Unified Filter & Control Bar (Consolidated Single Row) ── */}
       <div className="bg-white rounded-[24px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-3.5 space-y-2.5">

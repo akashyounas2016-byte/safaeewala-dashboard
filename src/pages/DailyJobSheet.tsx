@@ -343,6 +343,9 @@ export function DailyJobSheet() {
 
   // Pagination & View All state
   const [pageSize, setPageSize]       = useState<number | 'all'>(10)
+  // UX-99: Jobs section Show / Hide, remembered per browser like the Crew timeline
+  const [jobsCollapsed, setJobsCollapsed] = useState(() => safeLocalStorageGet<boolean>('safaeewala_jobs_section_collapsed', false))
+  const toggleJobs = () => setJobsCollapsed(v => { safeLocalStorageSet('safaeewala_jobs_section_collapsed', !v); return !v })
   const [currentPage, setCurrentPage] = useState<number>(1)
   const [selectedLetter, setSelectedLetter] = useState<string>('ALL')
 
@@ -1303,7 +1306,8 @@ export function DailyJobSheet() {
       }
     })
 
-    return summary
+    // R-FIN-03: only money really received — a staff with nothing collected is not listed
+    return Object.fromEntries(Object.entries(summary).filter(([, amt]) => amt > 0))
   }, [todayJobs, todayPendingRcvdItems, todayAdvanceItems, employees])
 
   // 3 items display logic for bottom widgets (Sirf Expense Log aur Driver Staff Summary widgets mein teen rows dikhayen)
@@ -3646,7 +3650,7 @@ export function DailyJobSheet() {
             </button>
 
             {/* View All / Page size selector */}
-            <div className="flex items-center">
+            <div className={`flex items-center ${jobsCollapsed ? 'hidden' : ''}`}>
               <select
                 value={pageSize}
                 onChange={e => setPageSize(e.target.value === 'all' ? 'all' : Number(e.target.value))}
@@ -3659,8 +3663,14 @@ export function DailyJobSheet() {
                 <option value="all">View All ({totalRows} entries)</option>
               </select>
             </div>
+            <button type="button" onClick={toggleJobs} aria-expanded={!jobsCollapsed}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-[#D5DAD3] text-[12px] text-[#14201B] font-bold hover:bg-[#FAFBF9] cursor-pointer">
+              {jobsCollapsed ? <><ChevronDown size={13} /> Show</> : <><ChevronUp size={13} /> Hide</>}
+            </button>
           </div>
         </div>
+        {/* UX-99: the Jobs list can be hidden like the Crew timeline */}
+        {!jobsCollapsed && (<>
 
         {/* ── Table Container / Project Teams Columnar Board ── */}
         {paymentFilter === 'Project' && projectBoardView === 'board' ? (
@@ -4103,6 +4113,7 @@ export function DailyJobSheet() {
             </div>
           )}
         </div>
+        </>)}
       </div>
 
       {/* ── Bottom panels ── */}

@@ -232,7 +232,7 @@ export const JobSheetKPIs: React.FC<JobSheetKPIsProps> = ({
               className={`group relative rounded-[16px] bg-white hover:bg-[#FAFBF9] border border-[#E2E5E0] hover:border-[#C9D2CC] shadow-[0_1px_2px_rgba(20,32,27,0.04)] p-4 sm:p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] cursor-pointer flex flex-col justify-between text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1`}
             >
               <div className="flex items-start justify-between gap-2 mb-2 w-full">
-                <span className={`text-[11px] font-bold tracking-wider uppercase truncate ${c.labelColor}`}>
+                <span className={`text-[11px] font-bold tracking-wider uppercase leading-[1.3] line-clamp-2 break-words min-w-0 ${c.labelColor}`}>{/* UX-101 */}
                   {c.label}
                 </span>
                 <div
@@ -268,7 +268,7 @@ export const JobSheetKPIs: React.FC<JobSheetKPIsProps> = ({
               className={`group relative rounded-[16px] bg-white hover:bg-[#FAFBF9] border border-[#E2E5E0] hover:border-[#C9D2CC] shadow-[0_1px_2px_rgba(20,32,27,0.04)] p-4 sm:p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] cursor-pointer flex flex-col justify-between text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1`}
             >
               <div className="flex items-start justify-between gap-2 mb-2 w-full">
-                <span className={`text-[11px] font-bold tracking-wider uppercase truncate ${c.labelColor}`}>
+                <span className={`text-[11px] font-bold tracking-wider uppercase leading-[1.3] line-clamp-2 break-words min-w-0 ${c.labelColor}`}>{/* UX-101 */}
                   {c.label}
                 </span>
                 <div
