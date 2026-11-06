@@ -30,7 +30,9 @@ eq(t.lanes.find(l => l.name === 'Grace')?.blocks.map(b => b.clash), [true, true]
 eq(t.lanes.find(l => l.name === 'Maria')?.blocks[0].clash, false, 'a job without overlap is not a clash')
 eq(t.issues.map(i => i.kind).sort(), ['clash', 'open'], 'issues: one clash and one job without a cleaner')
 eq(t.lanes.find(l => l.name === 'Rina')?.hours, 4.5, 'lane hours add up')
-eq([t.startMin / 60, t.endMin / 60], [7, 22], 'axis 07:00–22:00 by default')
+eq([t.startMin / 60, t.endMin / 60], [8, 23], 'axis 09:00–23:00, widened to 08:00 for the 8 AM job (UX-103)')
+eq([buildCrewTimeline([], [], () => undefined).startMin / 60, buildCrewTimeline([], [], () => undefined).endMin / 60], [9, 23], 'empty day: 09:00–23:00')
+eq(readFileSync('src/components/dailyJobSheet/CrewTimeline.tsx', 'utf8').includes("lanes.filter(l => l.state !== 'available').map"), true, 'UX-103: available cleaners hidden from the timeline')
 eq(t.lanes.find(l => l.name === 'Maria')?.blocks[0].monthly, true, 'Monthly jobs get the monthly colour')
 
 const pos = blockPosition(8 * 60, 12 * 60, 7 * 60, 22 * 60)

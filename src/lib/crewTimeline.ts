@@ -48,8 +48,9 @@ export interface CrewTimeline {
 /** 8 PM: every minute after it is overtime (R-OT-01 scenario 1) */
 export const OT_FROM_MIN = 20 * 60
 
-const DAY_START = 7 * 60
-const DAY_END = 22 * 60
+// UX-103: the axis runs 09:00–23:00 (a job outside it still widens the axis so it is never cut off)
+const DAY_START = 9 * 60
+const DAY_END = 23 * 60
 const lower = (s: string) => s.trim().toLowerCase()
 const addressOf = (j: DailyJob) => (j.address || '').trim() || 'No address'
 const span = (j: DailyJob): [number, number] | null => {

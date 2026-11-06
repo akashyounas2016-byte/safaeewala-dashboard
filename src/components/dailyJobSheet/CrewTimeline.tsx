@@ -110,7 +110,8 @@ export function CrewTimeline({ timeline, onOpenJob, canEdit }: { timeline: Timel
                 </div>
               </div>
 
-              {lanes.map(l => {
+              {/* UX-103: cleaners with no job ("Available · no job assigned") are not drawn; they are still offered for open jobs */}
+              {lanes.filter(l => l.state !== 'available').map(l => {
                 const st = STATE_TEXT[l.state]
                 const idle = l.blocks.length === 0
                 return (

@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(daily sheet): Crew timeline hides cleaners with no job; axis 09:00–23:00 (UX-103)
+
 - fix(money): collected = the received amount only; a Cash row with nothing received no longer shows in Driver Payment Received / Total Collected (R-FIN-03)
 - feat(excel sheet): auto-save 3 s after the last change; clash / remote-change reason shown instead of a silent stop (R-SYNC-14)
 - feat(daily sheet): Jobs Show / Hide (UX-99); feat(client profile): no Repeat tag on Monthly (UX-100)
