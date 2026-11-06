@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(payments): All Payments lists booking payments; Delete on every payment row (R-FIN-09)
+- feat(monthly clients): Wide grid view with widgets at the bottom (UX-110)
+- feat(expenses): Daily Job Sheet style cards, Profit & Loss widget; collections counted like Payments (UX-111, R-FIN-07)
+
 - feat(alerts): AI findings link straight to the booking (edit form), its job and the client (R-ALERT-03)
 - feat(client profile): ⋮ menu with Delete Profile; short card labels; Service History cards and columns can be hidden / reordered (UX-108)
 - feat(employees): 10 cards, 5 a row, Daily Job Sheet style (UX-109)

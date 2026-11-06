@@ -17,6 +17,7 @@ import { Pager } from '@/components/common/Pager'
 import { usePagination } from '@/hooks/usePagination'
 import { STANDARD_PRESETS, DEFAULT_FINANCE_PRESET, rangeForPreset, inRange, type StandardPreset } from '@/lib/datePresets'
 import { notify, confirmAsync } from '@/lib/notify'
+import { bookingsWithoutRow } from '@/lib/businessMetrics'
 import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem, Client } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { formatDate } from '@/lib/utils'
@@ -105,7 +106,7 @@ export interface PendingRecordItem {
 
 /** R-FIN-08: `embedded` = one tab of the Payments screen (monthly contracts or all payments) */
 export function PaymentProcessing({ embedded = false, tab }: { embedded?: boolean; tab?: 'monthly' | 'history' } = {}) {
-  const { dailyJobs, updateDailyJob, clients, invoices } = useData()
+  const { dailyJobs, updateDailyJob, clients, invoices, bookings, deleteBooking } = useData()
   const navigate = useNavigate()
 
   const [searchParams] = useSearchParams()
@@ -290,12 +291,22 @@ export function PaymentProcessing({ embedded = false, tab }: { embedded?: boolea
       id: string
       date: string
       client: string
-      type: 'Daily Job' | 'Monthly Contract' | 'Recovery'
+      type: 'Daily Job' | 'Monthly Contract' | 'Recovery' | 'Booking'
       method: string
       amount: number
       reference?: string
       notes?: string
     }> = []
+
+    // R-FIN-09: money received on bookings that have no job-sheet row (counted in "Collected", so listed here too)
+    bookingsWithoutRow(bookings, dailyJobs).forEach(b => {
+      const rec = cleanNum(b.received_amount)
+      if (rec <= 0) return
+      records.push({
+        id: `bk-${b.id}`, date: b.scheduled_date || '', client: b.client_name || 'Client', type: 'Booking',
+        method: 'Booking', amount: rec, reference: b.service_type || undefined, notes: b.notes || undefined,
+      })
+    })
 
     // Completed / collected from Daily Jobs
     dailyJobs.forEach(j => {
@@ -359,7 +370,7 @@ export function PaymentProcessing({ embedded = false, tab }: { embedded?: boolea
         )
       })
       .sort((a, b) => b.date.localeCompare(a.date))
-  }, [dailyJobs, monthlyPayments, pendingRcvdList, historySearch, historyMethod])
+  }, [dailyJobs, bookings, monthlyPayments, pendingRcvdList, historySearch, historyMethod])
   const historyPager = usePagination(paymentHistoryRecords, 30) // UX-03
 
   // ── Global Stats Calculations ──
@@ -486,11 +497,33 @@ export function PaymentProcessing({ embedded = false, tab }: { embedded?: boolea
     })
   }
 
+  // R-FIN-09: remove a payment entered by mistake (asks first)
+  const handleDeleteHistory = async (record: { id: string; client: string; type: string; amount: number }) => {
+    const what = record.type === 'Daily Job' ? 'The job stays on the Daily Job Sheet with nothing received (it becomes pending).'
+      : record.type === 'Recovery' ? 'The amount becomes pending again.'
+      : record.type === 'Booking' ? 'This deletes the booking itself.'
+      : 'The monthly-contract payment is removed.'
+    const ok = await confirmAsync({ title: 'Delete payment', message: `Delete AED ${record.amount.toLocaleString()} (${record.type}) for ${record.client}? ${what}`, confirmLabel: 'Delete', tone: 'danger' })
+    if (!ok) return
+    if (record.type === 'Monthly Contract') {
+      setMonthlyPayments(prev => prev.filter(p => `mp-${p.id}` !== record.id))
+    } else if (record.type === 'Recovery') {
+      const next = pendingRcvdList.filter(p => `rc-${p.id}` !== record.id)
+      safeLocalStorageSet('safaeewala_daily_pending_rcvd_items', next)
+      setPendingRcvdList(next)
+    } else if (record.type === 'Daily Job') {
+      updateDailyJob(record.id.replace(/^dj-rec-/, ''), { received: 0 })
+    } else if (record.type === 'Booking') {
+      deleteBooking(record.id.replace(/^bk-/, ''))
+    }
+    notify.success('Payment deleted')
+  }
+
   const handleOpenEditHistory = (record: {
     id: string
     date: string
     client: string
-    type: 'Daily Job' | 'Monthly Contract' | 'Recovery'
+    type: 'Daily Job' | 'Monthly Contract' | 'Recovery' | 'Booking'
     method: string
     amount: number
     reference?: string
@@ -498,9 +531,11 @@ export function PaymentProcessing({ embedded = false, tab }: { embedded?: boolea
   }) => {
     // Recoveries are receipts against older jobs — they are managed on the Pending screen
     if (record.type === 'Recovery') {
-      notify.error('This is a recovery of an earlier pending amount. Edit or remove it from the Pending screen (Recovered tab).')
+      notify.error('This is a recovery of an earlier pending amount. Edit it on Payments → Recovered, or delete it here.')
       return
     }
+    // R-FIN-09: a booking payment is edited on the booking itself
+    if (record.type === 'Booking') { navigate(`/bookings?booking=${encodeURIComponent(record.id.replace(/^bk-/, ''))}&edit=1`); return }
     if (record.id.startsWith('dj-rec-')) {
       const rawJobId = record.id.replace('dj-rec-', '')
       const matchedJob = dailyJobs.find(j => j.id === rawJobId)
@@ -1341,7 +1376,9 @@ export function PaymentProcessing({ embedded = false, tab }: { embedded?: boolea
                                 ? 'bg-teal-50 text-teal-700 border border-teal-200'
                                 : item.type === 'Recovery'
                                   ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                                  : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                  : item.type === 'Booking'
+                                    ? 'bg-violet-50 text-violet-700 border border-violet-200'
+                                    : 'bg-blue-50 text-blue-700 border border-blue-200'
                             }`}
                           >
                             {item.type}
@@ -1386,6 +1423,15 @@ export function PaymentProcessing({ embedded = false, tab }: { embedded?: boolea
                             >
                               <User size={12} className="text-teal-600" />
                               <span>Profile</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { void handleDeleteHistory(item) }}
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                              title="Delete payment"
+                              aria-label={`Delete payment of ${item.client}`}
+                            >
+                              <Trash2 size={14} />
                             </button>
                           </div>
                         </td>

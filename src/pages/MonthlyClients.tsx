@@ -9,7 +9,7 @@ import {
   ChevronDown, RotateCw, Plus, Edit2, Save, X, Power,
   Briefcase, CreditCard, CheckCircle2, PauseCircle, PlayCircle,
   Sparkles, Printer, Send, MessageCircle, FileSpreadsheet, Check, UserCheck,
-  LayoutGrid, List,
+  LayoutGrid, List, Grid3x3,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -219,10 +219,11 @@ export function MonthlyClients() {
   const [showBookingModal, setShowBookingModal] = useState(false)
   const [bookingClient, setBookingClient] = useState<{ name: string; phone: string } | null>(null)
 
-  // ── View Mode: 'grid' | 'table' ──
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>(() => {
-    return safeLocalStorageGet('monthly_clients_view_mode', 'grid')
+  // ── View Mode: 'grid' | 'table' | 'wide' (UX-110: full-width cards, widgets at the bottom) ──
+  const [viewMode, setViewMode] = useState<'grid' | 'table' | 'wide'>(() => {
+    return safeLocalStorageGet<'grid' | 'table' | 'wide'>('monthly_clients_view_mode', 'grid')
   })
+  const wide = viewMode === 'wide'
 
   useEffect(() => {
     safeLocalStorageSet('monthly_clients_view_mode', viewMode)
@@ -1860,6 +1861,17 @@ export function MonthlyClients() {
                 >
                   <List size={15} />
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('wide')}
+                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                    viewMode === 'wide' ? 'bg-white text-teal-700 shadow-xs font-bold' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                  title="Wide Grid (3–4 cards a row, widgets below)"
+                  aria-label="Wide grid view"
+                >
+                  <Grid3x3 size={15} />
+                </button>
               </div>
 
               {/* Result counter */}
@@ -1897,11 +1909,11 @@ export function MonthlyClients() {
             </div>
           ) : (
             /* ── GRID CARD VIEW (2 cols cards + 1 col widgets sidebar) ── */
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
-              {/* Left 2 Cols: Monthly Clients List */}
-              <div className="xl:col-span-2 space-y-4">
+            <div className={wide ? 'space-y-6' : 'grid grid-cols-1 xl:grid-cols-3 gap-6 items-start'}>
+              {/* Left 2 Cols: Monthly Clients List (full width in the wide view) */}
+              <div className={wide ? 'space-y-4' : 'xl:col-span-2 space-y-4'}>
                 {/* Monthly Client Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className={wide ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4' : 'grid grid-cols-1 md:grid-cols-2 gap-4'}>
                   {filteredSummaries.map((c) => {
                     const matchedContract = contractsByClientName.get(c.name.toLowerCase().trim())
                     const clientPaymentsList = paymentsByClient.get(c.name.trim().toLowerCase()) || []
@@ -1946,7 +1958,7 @@ export function MonthlyClients() {
                           <MoneyStrip billed={c.totalCharges} received={totalClientReceived} due={clientBalanceDue} />
                         </div>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-2.5 border-t border-slate-100">
+                        <div className={`grid grid-cols-2 ${wide ? "" : "sm:grid-cols-4"} gap-1.5 pt-2.5 border-t border-slate-100`}>
                           <CardAction tone="teal" icon={<FileText size={12} />} label="Invoice" title="Simple or detailed invoice for a date range" onClick={() => handleOpenCreateInvoice(c)} />
                           <CardAction tone="emerald" icon={<CreditCard size={12} />} label="Payment" onClick={() => handleOpenRecordPayment(c.name, clientBalanceDue > 0 ? clientBalanceDue : undefined)} />
                           <CardAction tone="slate" icon={<Phone size={12} />} label="Profile" title="Contact details, edit and 7-day schedule" onClick={() => navigate(`/clients/${c.id}`)} />
@@ -1970,8 +1982,8 @@ export function MonthlyClients() {
                 )}
               </div>
 
-              {/* Right Sidebar Widgets */}
-              <div className="space-y-5">
+              {/* Right Sidebar Widgets (bottom row in the wide view) */}
+              <div className={wide ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-start' : 'space-y-5'}>
                 {renderTopChargesWidget()}
                 {renderOTLeadersWidget()}
                 {renderAreaDensityWidget()}

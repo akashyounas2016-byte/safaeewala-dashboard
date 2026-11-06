@@ -610,6 +610,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/pages/PaymentsHub.tsx`; `PendingPayments` / `PaymentProcessing` (`embedded`); `App.tsx → PendingRedirect`; `permissions.ts`.
 - **Status:** Active · Since: 2026-11-06
 
+### R-FIN-09 — Every payment in the history can be traced and deleted
+- **Rule:** *"Payment section mein 590 amount aur specific clients … ki payments show ho rahi hain. Is data ka source investigate kiya jaye aur in entries ko remove karne ke liye 'Delete' ka option shamil kiya jaye."* (2026-11-06)
+  - Found: the AED 590 "collected this month" was a completed booking (test1234, 1 Nov) with AED 590 received and no job-sheet row; it was counted but not listed. The three Monthly Contract payments (Oct 27 / 29) were entered with Record Payment.
+  - Payments → All Payments now lists money received on bookings without a job-sheet row (type *Booking*), so every amount in *Collected* has a row.
+  - Every row has **Delete** (asks first, says what happens): Monthly Contract → payment removed; Recovery → removed, the due is pending again; Daily Job → received set to 0, the job stays; Booking → the booking is deleted. *Edit* on a Booking row opens the booking form.
+  - Expenses counts the same collections as Payments (received on bookings, not their total — R-FIN-07).
+- **Code:** `PaymentProcessing.tsx → paymentHistoryRecords, handleDeleteHistory`; `Expenses.tsx → periodRevenue`.
+- **Status:** Active · Since: 2026-11-06
+
 ### R-FIN-04 — Invoice numbers
 - **Rule:** One scheme: `SAF-<year>-<NNNN>`, next = highest of the year + 1; `addInvoice` replaces any missing, legacy or duplicate number.
   - The year is the Dubai year (INV-A02).

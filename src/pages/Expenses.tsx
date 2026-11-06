@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
+import { KpiCard, Widget } from '@/components/ui/KpiCard'
 import { useData } from '@/store/DataContext'
 import { notify, confirmAsync } from '@/lib/notify'
 import type { DailyExpense, DailyPendingReceivedItem } from '@/types'
@@ -395,7 +396,7 @@ export function Expenses() {
     const linked = new Set(dailyJobs.map(j => j.booking_id).filter(Boolean))
     const bookingRev = bookings
       .filter(b => !linked.has(b.id) && (b.status === 'completed' || b.status === 'in_progress') && isDateInRange(b.scheduled_date))
-      .reduce((s, b) => s + (b.total_amount || 0), 0)
+      .reduce((s, b) => s + (Number(b.received_amount) || 0), 0) // R-FIN-07: received, not the booking total
     return jobRev + monthlyRev + recoveries + bookingRev
   }, [dailyJobs, bookings, activeRange])
 
@@ -496,109 +497,22 @@ export function Expenses() {
         showSearch={false}
       />
 
-      {/* ── Executive KPI Cards (6 Financial & Operational Cards) ── */}
+      {/* ── UX-111: KPI cards in the Daily Job Sheet style, equal height (the tall Expense Ratio card became the Profit & Loss widget) ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
-        {/* Card 1: Total Expenses */}
-        <div title="All expenses in the period (Daily Job Sheet + office)" className="bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-slate-300 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Expenses</span>
-            <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
-              <TrendingDown size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-[22px] font-extrabold text-slate-900">AED {totalExpenses.toLocaleString()}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">{filteredExpenses.length} records ({activeRange.label})</p>
-          </div>
-        </div>
-
-        {/* Card 2: Job Sheet Field Expenses */}
-        <div title="Expenses recorded on the Daily Job Sheet" className="bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-amber-200 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Job Sheet Ops</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Truck size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-[22px] font-extrabold text-amber-900">AED {jobSheetExpensesTotal.toLocaleString()}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">Field fuel, parking & drivers</p>
-          </div>
-        </div>
-
-        {/* Card 3: Office & Admin Expenses */}
-        <div title="Expenses entered directly (office / admin)" className="bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-purple-200 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Office & Admin</span>
-            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-              <Building2 size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-[22px] font-extrabold text-purple-900">AED {officeExpensesTotal.toLocaleString()}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">Facilities, tools & supplies</p>
-          </div>
-        </div>
-
-        {/* Card 4: Top Category */}
-        <div title="Category with the highest spend in the period" className="bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-blue-200 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Top Category</span>
-            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-              <PieChart size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-[18px] font-extrabold text-blue-900 truncate" title={topCategory?.category || 'None'}>
-              {topCategory?.category || 'None'}
-            </p>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              {topCategory ? `AED ${topCategory.amount.toLocaleString()} (${totalExpenses > 0 ? Math.round((topCategory.amount / totalExpenses) * 100) : 0}%)` : 'No data'}
-            </p>
-          </div>
-        </div>
-
-        {/* Card 5: Daily Average Expense */}
-        <div title="Total expenses ÷ days that have expenses" className="bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-teal-200 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Daily Average</span>
-            <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
-              <Calendar size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-[22px] font-extrabold text-teal-900">AED {avgDailyExpense.toLocaleString()}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">Across {activeExpenseDays} active days</p>
-          </div>
-        </div>
-
-        {/* Card 6: Revenue Ratio & Profit */}
-        <div title="Collected money (job sheet, recoveries, monthly payments, bookings without a job row) against expenses, in-house payroll and paid agency payouts" className="bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-emerald-200 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Expense Ratio</span>
-            <div className={`w-9 h-9 rounded-xl ${profit >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'} flex items-center justify-center`}>
-              <DollarSign size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-[22px] font-extrabold text-emerald-700">{expenseRatio}%</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Collected − Expenses: <strong className={profit >= 0 ? 'text-emerald-700' : 'text-red-600'}>AED {profit.toLocaleString()}</strong>
-            </p>
-            {/* Full picture: collected − expenses − payroll − agency payouts (UX-14) */}
-            <div className="mt-2 space-y-0.5 text-[11px]">
-              <div className="flex justify-between text-slate-500"><span>Collected</span><span>AED {Math.round(periodRevenue).toLocaleString()}</span></div>
-              <div className="flex justify-between text-slate-500"><span>− Expenses</span><span>AED {Math.round(totalExpenses).toLocaleString()}</span></div>
-              <div className="flex justify-between text-slate-500" title="In-house staff monthly salaries, prorated to the period">
-                <span>− Payroll</span><span>{periodDays ? `AED ${periodPayroll.toLocaleString()}` : 'pick a period'}</span>
-              </div>
-              <div className="flex justify-between text-slate-500"><span>− Agency payouts</span><span>AED {Math.round(periodAgencyPayouts).toLocaleString()}</span></div>
-              <div className={`flex justify-between font-black pt-0.5 border-t border-slate-100 ${netAfterPayroll >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                <span>Net</span><span>{periodDays ? `AED ${Math.round(netAfterPayroll).toLocaleString()}` : '—'}</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <KpiCard label="Total Expenses" value={`AED ${totalExpenses.toLocaleString()}`} sub={`${filteredExpenses.length} records · ${activeRange.label}`} icon={TrendingDown}
+          labelColor="text-slate-700" iconSolid="bg-[#475569] shadow-slate-500/25" chip="Job sheet + office" title="All expenses in the period (Daily Job Sheet + office)" />
+        <KpiCard label="Job Sheet Ops" value={`AED ${jobSheetExpensesTotal.toLocaleString()}`} sub="Fuel, parking & drivers" icon={Truck}
+          labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25" chip={totalExpenses > 0 ? `${Math.round((jobSheetExpensesTotal / totalExpenses) * 100)}% of spend` : '0% of spend'} chipTone="warn" title="Expenses recorded on the Daily Job Sheet" />
+        <KpiCard label="Office & Admin" value={`AED ${officeExpensesTotal.toLocaleString()}`} sub="Facilities, tools & supplies" icon={Building2}
+          labelColor="text-purple-700" iconSolid="bg-[#7c3aed] shadow-purple-500/25" chip={totalExpenses > 0 ? `${Math.round((officeExpensesTotal / totalExpenses) * 100)}% of spend` : '0% of spend'} title="Expenses entered directly (office / admin)" />
+        <KpiCard label="Top Category" value={topCategory?.category || 'None'} sub={topCategory ? `AED ${topCategory.amount.toLocaleString()}` : 'No data'} icon={PieChart}
+          labelColor="text-blue-700" iconSolid="bg-[#2563eb] shadow-blue-500/25" chip={topCategory && totalExpenses > 0 ? `${Math.round((topCategory.amount / totalExpenses) * 100)}% of spend` : '—'} title="Category with the highest spend in the period" />
+        <KpiCard label="Daily Average" value={`AED ${avgDailyExpense.toLocaleString()}`} sub={`Across ${activeExpenseDays} active days`} icon={Calendar}
+          labelColor="text-teal-700" iconSolid="bg-[#0d9488] shadow-teal-500/25" chip="Per active day" title="Total expenses ÷ days that have expenses" />
+        <KpiCard label="Net Profit" value={periodDays ? `AED ${Math.round(netAfterPayroll).toLocaleString()}` : `AED ${profit.toLocaleString()}`}
+          sub={periodDays ? 'Collected − expenses − payroll − payouts' : 'Collected − expenses (pick a period for payroll)'} icon={DollarSign}
+          labelColor={(periodDays ? netAfterPayroll : profit) >= 0 ? 'text-emerald-700' : 'text-red-700'} iconSolid={(periodDays ? netAfterPayroll : profit) >= 0 ? 'bg-[#059669] shadow-emerald-500/25' : 'bg-[#dc2626] shadow-red-500/25'}
+          chip={`Expense ratio ${expenseRatio}%`} chipTone={expenseRatio <= 50 ? 'up' : 'warn'} title="Full breakdown in the Profit & Loss widget" />
       </div>
 
       {/* ── Monthly category budgets (UX-13) ── */}
@@ -1009,6 +923,22 @@ export function Expenses() {
 
         {/* Analytics & Category Breakdown Sidebar (1 Column on XL) */}
         <div className="space-y-6">
+          {/* UX-111: Profit & Loss (was the tall Expense Ratio card) */}
+          <Widget title="Profit & Loss" note={`${activeRange.label} · same collections as Payments`} icon={DollarSign}>
+            <div className="space-y-2 text-[12.5px]">
+              <div className="flex justify-between"><span className="text-slate-600">Collected</span><b className="text-emerald-700">AED {Math.round(periodRevenue).toLocaleString()}</b></div>
+              <div className="flex justify-between"><span className="text-slate-600">− Expenses</span><b>AED {Math.round(totalExpenses).toLocaleString()}</b></div>
+              <div className="flex justify-between" title="In-house staff monthly salaries, prorated to the period"><span className="text-slate-600">− Payroll (in-house)</span><b>{periodDays ? `AED ${periodPayroll.toLocaleString()}` : 'pick a period'}</b></div>
+              <div className="flex justify-between"><span className="text-slate-600">− Agency payouts</span><b>AED {Math.round(periodAgencyPayouts).toLocaleString()}</b></div>
+              <div className={`flex justify-between pt-2 border-t border-slate-100 text-[14px] font-black ${netAfterPayroll >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                <span>Net</span><span>{periodDays ? `AED ${Math.round(netAfterPayroll).toLocaleString()}` : '—'}</span>
+              </div>
+              <div className="pt-1">
+                <div className="flex justify-between text-[11.5px] text-slate-500 mb-1"><span>Expense ratio</span><span className="font-bold text-slate-800">{expenseRatio}% of collections</span></div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden"><div className={`h-full rounded-full ${expenseRatio <= 50 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, expenseRatio)}%` }} /></div>
+              </div>
+            </div>
+          </Widget>
 
           {/* By Category Breakdown */}
           <div className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
