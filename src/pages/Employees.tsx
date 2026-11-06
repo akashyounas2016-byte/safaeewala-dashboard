@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
+import { KpiCard } from '@/components/ui/KpiCard'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee, matchesAgencyFilter } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
@@ -1209,203 +1210,46 @@ export function Employees() {
         onAction={handleOpenAddModal}
       />
 
-      {/* ── KPI Cards: Focused on Employees' Real Work, Duty Hours & OT ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-
-        {/* Card 1: Total Staff */}
-        <div
-          onClick={() => { setStatusFilter('all'); setRoleFilter('all'); handleAgencyFilterChange('all'); setWorkFilter('all'); setExpiryFilter(false); setSearch('') }}
-          className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] hover:border-slate-300 transition-all cursor-pointer group"
-        >
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-2xl bg-slate-100 group-hover:bg-teal-50 text-slate-700 group-hover:text-teal-700 flex items-center justify-center transition-colors">
-              <Users size={18} />
-            </div>
-            <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200/60">
-              {crewLeads} Leads
-            </span>
-          </div>
-          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{agencyScopedEmployees.length}</p>
-          <p className="text-[12px] font-bold text-slate-800 mt-0.5">
-            {agencyFilter === 'third_party' || agencyFilter === 'third-party' ? 'Supplied Cleaners' : agencyFilter === 'parent_company' ? 'Parent Fleet Staff' : 'Total Staff'}
-          </p>
-          <p className="text-[11px] text-slate-500 mt-0.5">{autoSyncedCount} auto-synced roster</p>
-        </div>
-
-        {/* Card 2: Active on Duty Today */}
-        <div
-          onClick={() => { setWorkFilter('working_today'); setStatusFilter('all'); setRoleFilter('all'); setExpiryFilter(false) }}
-          className={`bg-white rounded-[24px] border transition-all cursor-pointer group p-4.5 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] ${
-            workFilter === 'working_today' ? 'border-emerald-500 ring-2 ring-emerald-500/10' : 'border-slate-200/80 hover:border-emerald-300'
-          }`}
-        >
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <UserCheck size={18} />
-            </div>
-            <span className="flex items-center gap-1 text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Live
-            </span>
-          </div>
-          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{summaryMetrics.activeWorkingTodayCount}</p>
-          <p className="text-[12px] font-bold text-slate-800 mt-0.5">Working Today</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">{activeCount} available staff</p>
-        </div>
-
-        {/* Card 3: Total Regular Duty Hours */}
-        <div
-          onClick={() => { setSortBy('duty_desc'); setWorkFilter('all') }}
-          className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] hover:border-teal-300 transition-all cursor-pointer group"
-        >
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center">
-              <Briefcase size={18} />
-            </div>
-            <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200/80">
-              {summaryMetrics.totalShifts} Shifts
-            </span>
-          </div>
-          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{summaryMetrics.totalDutyHours} <span className="text-sm font-semibold text-slate-500">hrs</span></p>
-          <p className="text-[12px] font-bold text-slate-800 mt-0.5">Duty Hours</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">Avg {summaryMetrics.avgDutyPerStaff}h per cleaner</p>
-        </div>
-
-        {/* Card 4: Total Overtime (OT) — NUMAYA / PROMINENT HIGHLIGHT */}
-        <div
-          onClick={() => { setWorkFilter(workFilter === 'has_ot' ? 'all' : 'has_ot'); setSortBy('ot_desc') }}
-          className={`rounded-[24px] border transition-all cursor-pointer p-4.5 shadow-[0_4px_20px_rgba(217,119,6,0.08)] hover:shadow-[0_8px_30px_rgba(217,119,6,0.18)] ${
-            workFilter === 'has_ot'
-              ? 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-400 ring-2 ring-amber-400/20'
-              : 'bg-white border-amber-300 hover:border-amber-400'
-          }`}
-        >
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-xs shadow-amber-500/30">
-              <Flame size={19} className="animate-pulse" />
-            </div>
-            <span className="text-[10.5px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
-              <Zap size={10} className="fill-amber-600 text-amber-600" />
-              {summaryMetrics.otRatio}% OT Ratio
-            </span>
-          </div>
-          <p className="text-2xl font-black text-amber-950 tracking-tight">+{summaryMetrics.totalOTHours} <span className="text-sm font-bold text-amber-800">hrs</span></p>
-          <p className="text-[12px] font-extrabold text-amber-900 mt-0.5">Total Overtime (OT)</p>
-          <p className="text-[11px] text-amber-700/90 font-medium mt-0.5">{summaryMetrics.staffWithOTCount} staff clocked OT</p>
-        </div>
-
-        {/* Card 5: Total Combined Hours */}
-        <div
-          onClick={() => { setSortBy('duty_desc') }}
-          className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-4.5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] hover:border-indigo-300 transition-all cursor-pointer group"
-        >
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <Clock size={18} />
-            </div>
-            <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/70">
-              Workload
-            </span>
-          </div>
-          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{summaryMetrics.totalWorkHours} <span className="text-sm font-semibold text-slate-500">hrs</span></p>
-          <p className="text-[12px] font-bold text-slate-800 mt-0.5">Total Logged Time</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">Duty + Overtime combined</p>
-        </div>
-
-        {/* Card 6: Document Expiry (Clickable Filter) */}
-        <div
+      {/* ── UX-109: 5 cards a row in the Daily Job Sheet style; the 2nd row opens with the arrow ── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5">
+        <KpiCard label={agencyFilter === 'third_party' || agencyFilter === 'third-party' ? 'Supplied Cleaners' : agencyFilter === 'parent_company' ? 'Parent Fleet Staff' : 'Total Staff'}
+          value={agencyScopedEmployees.length} sub={`${autoSyncedCount} from the job sheet`} icon={Users} labelColor="text-blue-700" iconSolid="bg-[#2563eb] shadow-blue-500/25"
+          chip={`${crewLeads} leads`} onClick={() => { setStatusFilter('all'); setRoleFilter('all'); handleAgencyFilterChange('all'); setWorkFilter('all'); setExpiryFilter(false); setSearch('') }} />
+        <KpiCard label="Working Today" value={summaryMetrics.activeWorkingTodayCount} sub={`${activeCount} active staff`} icon={UserCheck} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25"
+          chip="Live" chipTone="up" active={workFilter === 'working_today'} onClick={() => { setWorkFilter(workFilter === 'working_today' ? 'all' : 'working_today'); setStatusFilter('all'); setRoleFilter('all'); setExpiryFilter(false) }} />
+        <KpiCard label="Duty Hours" value={`${summaryMetrics.totalDutyHours}h`} sub={`Avg ${summaryMetrics.avgDutyPerStaff}h per cleaner`} icon={Briefcase} labelColor="text-teal-700" iconSolid="bg-[#0d9488] shadow-teal-500/25"
+          chip={`${summaryMetrics.totalShifts} shifts`} onClick={() => { setSortBy('duty_desc'); setWorkFilter('all') }} />
+        <KpiCard label="Total OT" value={`+${summaryMetrics.totalOTHours}h`} sub={`${summaryMetrics.staffWithOTCount} staff with OT`} icon={Flame} labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25"
+          chip={`${summaryMetrics.otRatio}% of duty`} chipTone={summaryMetrics.totalOTHours > 0 ? 'warn' : 'plain'} active={workFilter === 'has_ot'} onClick={() => { setWorkFilter(workFilter === 'has_ot' ? 'all' : 'has_ot'); setSortBy('ot_desc') }} />
+        <KpiCard label="Document Expiry" value={expiringCount} sub="Visa / permit / passport < 90 days" icon={Shield} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25"
+          chip={expiryFilter ? 'Filtered' : expiringCount > 0 ? `${expiringCount} to renew` : 'All valid'} chipTone={expiringCount > 0 ? 'warn' : 'up'} active={expiryFilter}
           onClick={() => {
             const next = !expiryFilter
             setExpiryFilter(next)
-            if (next) {
-              setRoleFilter('all')
-              setWorkFilter('all')
-              setStatusFilter('all')
-            }
-            setTimeout(() => {
-              document.getElementById('employees-list-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            }, 80)
-          }}
-          className={`rounded-[24px] border transition-all cursor-pointer p-4.5 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] ${
-            expiryFilter
-              ? 'bg-rose-50/90 border-rose-400 ring-2 ring-rose-400/30'
-              : expiringCount > 0 ? 'bg-white border-amber-300 hover:border-amber-400' : 'bg-white border-slate-200/80 hover:border-emerald-300'
-          }`}
-          title="Click to view cleaners with expiring documents (<90 days)"
-        >
-          <div className="flex items-start justify-between mb-3">
-            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
-              expiryFilter ? 'bg-rose-500 text-white shadow-xs shadow-rose-500/30' :
-              expiringCount > 0 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'
-            }`}>
-              <Shield size={18} />
-            </div>
-            <span className={`text-[10.5px] font-extrabold px-2 py-0.5 rounded-full ${
-              expiryFilter ? 'bg-rose-600 text-white' :
-              expiringCount > 0 ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-            }`}>
-              {expiryFilter ? 'Active Filter' : expiringCount > 0 ? `${expiringCount} Pending` : '100% OK'}
-            </span>
-          </div>
-          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{expiringCount}</p>
-          <p className="text-[12px] font-bold text-slate-800 mt-0.5">Document Expiry</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            {expiryFilter ? 'Showing filtered list below' : 'Click to filter expiring (<90d)'}
-          </p>
-        </div>
-
+            if (next) { setRoleFilter('all'); setWorkFilter('all'); setStatusFilter('all') }
+            setTimeout(() => document.getElementById('employees-list-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
+          }} />
       </div>
 
-      {/* UX-102: more staff cards behind the arrow */}
       <div className="flex justify-center -mt-1">
         <button type="button" onClick={() => setShowMoreCards(v => !v)} aria-expanded={showMoreCards}
-          className="inline-flex items-center gap-1.5 text-[12px] font-bold text-slate-600 hover:text-teal-800 bg-white border border-slate-200 hover:border-teal-300 px-3.5 py-1.5 rounded-full cursor-pointer transition-colors">
-          {showMoreCards ? <>Hide staff metrics <ChevronUp size={14} /></> : <>More staff metrics (4) <ChevronDown size={14} /></>}
+          className="inline-flex items-center gap-1.5 text-[12px] font-bold text-slate-600 hover:text-slate-900 bg-white border border-[#E2E5E0] hover:border-[#C9D2CC] px-3.5 py-1.5 rounded-full cursor-pointer transition-colors">
+          {showMoreCards ? <>Hide staff metrics <ChevronUp size={14} /></> : <>More staff metrics (5) <ChevronDown size={14} /></>}
         </button>
       </div>
       {showMoreCards && (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <button type="button" onClick={() => handleAgencyFilterChange(agencyFilter === 'third_party' ? 'all' : 'third_party')}
-          aria-pressed={agencyFilter === 'third_party'}
-          className={`text-left bg-white rounded-[24px] border p-4.5 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] transition-all cursor-pointer ${agencyFilter === 'third_party' ? 'border-violet-500 ring-2 ring-violet-500/10' : 'border-slate-200/80 hover:border-violet-300'}`}>
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-2xl bg-violet-50 text-violet-600 flex items-center justify-center"><Building2 size={18} /></div>
-          </div>
-          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{agencyStaffCount}</p>
-          <p className="text-[12px] font-bold text-slate-800 mt-0.5">Agency Staff</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">From {dynamicAgencies.length} agenc{dynamicAgencies.length === 1 ? 'y' : 'ies'}</p>
-        </button>
-        <button type="button" onClick={() => { setWorkFilter(workFilter === 'available' ? 'all' : 'available'); setStatusFilter('all'); setExpiryFilter(false) }}
-          aria-pressed={workFilter === 'available'}
-          className={`text-left bg-white rounded-[24px] border p-4.5 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] transition-all cursor-pointer ${workFilter === 'available' ? 'border-sky-500 ring-2 ring-sky-500/10' : 'border-slate-200/80 hover:border-sky-300'}`}>
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center"><Coffee size={18} /></div>
-          </div>
-          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{availableTodayCount}</p>
-          <p className="text-[12px] font-bold text-slate-800 mt-0.5">Available Staff</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">No job today — standby (not absent)</p>
-        </button>
-        <button type="button" onClick={() => { setWorkFilter(workFilter === 'absent' ? 'all' : 'absent'); setStatusFilter('all'); setExpiryFilter(false) }}
-          aria-pressed={workFilter === 'absent'}
-          className={`text-left bg-white rounded-[24px] border p-4.5 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] transition-all cursor-pointer ${workFilter === 'absent' ? 'border-rose-500 ring-2 ring-rose-500/10' : 'border-slate-200/80 hover:border-rose-300'}`}>
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center"><UserX size={18} /></div>
-          </div>
-          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{absentTodayCount}</p>
-          <p className="text-[12px] font-bold text-slate-800 mt-0.5">Absentees</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">Marked absent today</p>
-        </button>
-        <button type="button" onClick={() => { setWorkFilter(workFilter === 'leave' ? 'all' : 'leave'); setStatusFilter('all'); setExpiryFilter(false) }}
-          aria-pressed={workFilter === 'leave'}
-          className={`text-left bg-white rounded-[24px] border p-4.5 shadow-[0_4px_20px_rgba(15,23,42,0.03)] hover:shadow-[0_8px_30px_rgba(15,23,42,0.07)] transition-all cursor-pointer ${workFilter === 'leave' ? 'border-indigo-500 ring-2 ring-indigo-500/10' : 'border-slate-200/80 hover:border-indigo-300'}`}>
-          <div className="flex items-start justify-between mb-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center"><Plane size={18} /></div>
-          </div>
-          <p className="text-2xl font-black text-[#0f172a] tracking-tight">{leaveTodayCount}</p>
-          <p className="text-[12px] font-bold text-slate-800 mt-0.5">On Leave</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">On leave today</p>
-        </button>
-      </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5">
+          <KpiCard label="Total Logged Time" value={`${summaryMetrics.totalWorkHours}h`} sub="Duty hours, OT inside them" icon={Clock} labelColor="text-indigo-700" iconSolid="bg-[#4f46e5] shadow-indigo-500/25"
+            chip="Workload" onClick={() => setSortBy('duty_desc')} />
+          <KpiCard label="Agency Staff" value={agencyStaffCount} sub={`From ${dynamicAgencies.length} agenc${dynamicAgencies.length === 1 ? 'y' : 'ies'}`} icon={Building2} labelColor="text-violet-700" iconSolid="bg-[#7c3aed] shadow-violet-500/25"
+            chip="Outsourced" active={agencyFilter === 'third_party'} onClick={() => handleAgencyFilterChange(agencyFilter === 'third_party' ? 'all' : 'third_party')} />
+          <KpiCard label="Available Staff" value={availableTodayCount} sub="No job today — standby, not absent" icon={Coffee} labelColor="text-sky-700" iconSolid="bg-[#0284c7] shadow-sky-500/25"
+            chip="Standby" active={workFilter === 'available'} onClick={() => { setWorkFilter(workFilter === 'available' ? 'all' : 'available'); setStatusFilter('all'); setExpiryFilter(false) }} />
+          <KpiCard label="Absentees" value={absentTodayCount} sub="Marked absent today" icon={UserX} labelColor="text-red-700" iconSolid="bg-[#dc2626] shadow-red-500/25"
+            chip={absentTodayCount > 0 ? 'Absent' : 'None'} chipTone={absentTodayCount > 0 ? 'down' : 'up'} active={workFilter === 'absent'} onClick={() => { setWorkFilter(workFilter === 'absent' ? 'all' : 'absent'); setStatusFilter('all'); setExpiryFilter(false) }} />
+          <KpiCard label="On Leave" value={leaveTodayCount} sub="On leave today" icon={Plane} labelColor="text-purple-700" iconSolid="bg-[#9333ea] shadow-purple-500/25"
+            chip="Leave" active={workFilter === 'leave'} onClick={() => { setWorkFilter(workFilter === 'leave' ? 'all' : 'leave'); setStatusFilter('all'); setExpiryFilter(false) }} />
+        </div>
       )}
 
       {/* ── Unified Filter & Control Bar (Consolidated Single Row) ── */}

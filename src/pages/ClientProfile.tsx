@@ -1,15 +1,17 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { copyText } from '@/lib/clipboard'
 import { formatClientAddress } from '@/lib/clientAddress'
-import { useParams, Link, useSearchParams } from 'react-router-dom'
+import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { confirmAsync, notify } from '@/lib/notify'
 import {
   ArrowLeft, Phone, Mail, MapPin, Calendar, Star, MessageCircle,
   Copy, CheckCircle, User, Clock, ExternalLink, Pencil, FileText, Search,
   Wallet, DollarSign, TrendingUp, AlertCircle, Plus, Download, Check, X,
   Tag, FileSpreadsheet, RotateCcw, Filter, AlertTriangle, ShieldCheck,
-  CreditCard, ChevronRight, Receipt, Trash2, Save, ChevronDown, Users
+  CreditCard, ChevronRight, Receipt, Trash2, Save, ChevronDown, Users, MoreVertical
 } from 'lucide-react'
 import { useData } from '@/store/DataContext'
+import { LayoutCustomizer, useLayout, type LayoutItem } from '@/components/ui/LayoutCustomizer'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
@@ -130,9 +132,33 @@ function persistReview(bookingId: string) {
 }
 
 /* ─── Main component ─── */
+const HISTORY_CARD_ITEMS: LayoutItem[] = [
+  { id: 'charges', label: 'Charges' }, { id: 'received', label: 'Received' }, { id: 'ot', label: 'OT' },
+  { id: 'pending', label: 'Pending' }, { id: 'advance', label: 'Advance' }, { id: 'adjustment', label: 'Adjustment' },
+]
+const HISTORY_COLUMN_ITEMS: LayoutItem[] = [
+  { id: 'date', label: 'Date', locked: true }, { id: 'cleaner', label: 'Cleaner' }, { id: 'timing', label: 'Timing' },
+  { id: 'duty', label: 'Duty' }, { id: 'ot', label: 'OT' }, { id: 'charges', label: 'Charges' }, { id: 'received', label: 'Received' },
+  { id: 'pending', label: 'Pending' }, { id: 'advance', label: 'Advance' }, { id: 'adjustment', label: 'Adjustment' },
+  { id: 'mode', label: 'Mode' }, { id: 'material', label: 'Material' }, { id: 'remarks', label: 'Service & Remarks' }, { id: 'action', label: 'Action' },
+]
+
 export function ClientProfile() {
   const { id } = useParams<{ id: string }>()
-  const { clients, bookings, employees, invoices, dailyJobs, updateClient, addClient } = useData()
+  const { clients, bookings, employees, invoices, dailyJobs, updateClient, addClient, deleteClient } = useData()
+  // UX-108: Service History cards / columns — shown, hidden and order per browser
+  const historyCards = useLayout('safaeewala_client_history_cards', HISTORY_CARD_ITEMS)
+  // UX-108: ⋮ menu next to Edit Profile with Delete Profile
+  const navigateTo = useNavigate()
+  const [heroMenuOpen, setHeroMenuOpen] = useState(false)
+  const heroMenuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!heroMenuOpen) return
+    const onDown = (e: MouseEvent) => { if (heroMenuRef.current && !heroMenuRef.current.contains(e.target as Node)) setHeroMenuOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [heroMenuOpen])
+  const historyCols = useLayout('safaeewala_client_history_columns', HISTORY_COLUMN_ITEMS)
 
   const [searchParams] = useSearchParams()
   const initialTab = searchParams.get('tab') as 'job_sheet' | 'financial_history' | 'bookings' | 'info' | null
@@ -741,6 +767,28 @@ export function ClientProfile() {
           >
             <Pencil size={13} /> Edit Profile
           </button>
+          <div className="relative" ref={heroMenuRef}>
+            <button type="button" onClick={() => setHeroMenuOpen(v => !v)} aria-label="More actions" aria-expanded={heroMenuOpen}
+              className="w-9 h-9 flex items-center justify-center rounded-xl border border-white/25 bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer">
+              <MoreVertical size={15} />
+            </button>
+            {heroMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl border border-[#E2E5E0] shadow-xl py-1.5 z-50">
+                <button type="button"
+                  onClick={async () => {
+                    setHeroMenuOpen(false)
+                    const ok = await confirmAsync({ title: 'Delete client', message: `Delete "${client.full_name}"? Their jobs stay in the Daily Job Sheet.`, confirmLabel: 'Delete', tone: 'danger' })
+                    if (!ok) return
+                    deleteClient(client.id)
+                    notify.success(`${client.full_name} deleted`)
+                    navigateTo('/clients')
+                  }}
+                  className="w-full flex items-center gap-2 px-3.5 py-2 text-[13px] font-semibold text-red-600 hover:bg-red-50 cursor-pointer">
+                  <Trash2 size={14} /> Delete Profile
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="relative z-10 flex flex-col sm:flex-row items-start gap-5 sm:pr-[300px]">
@@ -800,22 +848,22 @@ export function ClientProfile() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-5 border-t border-teal-800/50">
           <div className="text-center p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.07] transition-all">
             <p className="text-[17px] font-black text-white tracking-tight">AED {totalDJCharges.toLocaleString()}</p>
-            <p className="text-[11px] font-bold text-slate-300 mt-1">Total Charges</p>
+            <p className="text-[11px] font-bold text-slate-300 mt-1 whitespace-nowrap">Charges</p>
             <p className="text-[10px] text-slate-400 mt-0.5">Total billed amount</p>
           </div>
           <div className="text-center p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 hover:bg-emerald-950/60 transition-all">
             <p className="text-[17px] font-black text-emerald-400 tracking-tight">AED {totalDJReceived.toLocaleString()}</p>
-            <p className="text-[11px] font-bold text-emerald-200 mt-1">Total Received</p>
+            <p className="text-[11px] font-bold text-emerald-200 mt-1 whitespace-nowrap">Received</p>
             <p className="text-[10px] text-emerald-400/80 mt-0.5">Cash & online paid</p>
           </div>
           <div className="text-center p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 hover:bg-amber-950/60 transition-all">
             <p className="text-[17px] font-black text-amber-400 tracking-tight">{totalDJOTHours}h OT</p>
-            <p className="text-[11px] font-bold text-amber-200 mt-1">Total Overtime</p>
+            <p className="text-[11px] font-bold text-amber-200 mt-1 whitespace-nowrap">OT</p>
             <p className="text-[10px] text-amber-400/80 mt-0.5">Logged shift overtime</p>
           </div>
           <div className="text-center p-3.5 rounded-2xl bg-rose-950/40 border border-rose-500/30 hover:bg-rose-950/60 transition-all">
             <p className="text-[17px] font-black text-rose-400 tracking-tight">AED {totalDJPending.toLocaleString()}</p>
-            <p className="text-[11px] font-bold text-rose-200 mt-1">Pending Amount</p>
+            <p className="text-[11px] font-bold text-rose-200 mt-1 whitespace-nowrap">Pending</p>
             <p className="text-[10px] text-rose-400/80 mt-0.5">Outstanding dues</p>
           </div>
           <div className="text-center p-3.5 rounded-2xl bg-teal-950/40 border border-teal-500/30 hover:bg-teal-950/60 transition-all">
@@ -827,7 +875,7 @@ export function ClientProfile() {
                 </span>
               )}
             </div>
-            <p className="text-[11px] font-bold text-teal-200 mt-1">Advance Amount</p>
+            <p className="text-[11px] font-bold text-teal-200 mt-1 whitespace-nowrap">Advance</p>
             <p className="text-[10px] text-teal-400/80 mt-0.5">
               {totalServiceDeductedFromAdvance > 0 ? `AED ${totalServiceDeductedFromAdvance.toLocaleString()} deducted [ADJ]` : 'Available advance credit'}
             </p>
@@ -839,7 +887,7 @@ export function ClientProfile() {
               </span>
               <p className="text-[17px] font-black text-indigo-300 tracking-tight">AED {totalDJAdjustment.toLocaleString()}</p>
             </div>
-            <p className="text-[11px] font-bold text-indigo-200 mt-1">Adjustment Amount</p>
+            <p className="text-[11px] font-bold text-indigo-200 mt-1 whitespace-nowrap">Adjustment</p>
             <p className="text-[10px] text-indigo-400/80 mt-0.5">
               {totalServiceDeductedFromAdvance > 0 ? `Includes AED ${totalServiceDeductedFromAdvance.toLocaleString()} adv deductions` : 'Discounts & waivers'}
             </p>
@@ -937,45 +985,40 @@ export function ClientProfile() {
                 </div>
               </div>
 
-              {/* Financial & OT summary strip */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 p-4 bg-[#f8fafc] border-b border-[#E4E8EC] text-center">
-                <div className="p-2.5 bg-white rounded-xl border border-[#E4E8EC] shadow-2xs">
-                  <p className="text-[10px] uppercase font-bold text-slate-400">Total Charges</p>
-                  <p className="text-[15px] font-extrabold text-purple-700">AED {totalDJCharges.toLocaleString()}</p>
-                </div>
-                <div className="p-2.5 bg-white rounded-xl border border-[#E4E8EC] shadow-2xs">
-                  <p className="text-[10px] uppercase font-bold text-slate-400">Total Received</p>
-                  <p className="text-[15px] font-extrabold text-emerald-700">AED {totalDJReceived.toLocaleString()}</p>
-                </div>
-                <div className="p-2.5 bg-white rounded-xl border border-[#E4E8EC] shadow-2xs">
-                  <p className="text-[10px] uppercase font-bold text-slate-400">Total Overtime</p>
-                  <p className="text-[15px] font-extrabold text-amber-600">{totalDJOTHours}h OT</p>
-                </div>
-                <div className="p-2.5 bg-white rounded-xl border border-red-200 shadow-2xs bg-red-50/30">
-                  <p className="text-[10px] uppercase font-bold text-red-500">Pending Amount</p>
-                  <p className="text-[15px] font-extrabold text-red-600">AED {totalDJPending.toLocaleString()}</p>
-                </div>
-                <div className="p-2.5 bg-white rounded-xl border border-emerald-200 shadow-2xs bg-emerald-50/30">
-                  <div className="flex items-center justify-center gap-1 mb-0.5">
-                    <p className="text-[10px] uppercase font-bold text-emerald-600">Advance Amount</p>
-                    {matchedAdvanceWidgetItems.length > 0 && (
-                      <span className="text-[8.5px] font-extrabold bg-amber-100 text-amber-800 px-1 py-0.2 rounded">
-                        {matchedAdvanceWidgetItems.length} Widget
-                      </span>
+              {/* UX-108: short one-line card labels; cards and columns can be hidden / reordered (Customize) */}
+              {(() => {
+                const cardDefs: Record<string, { label: string; value: string; box: string; text: string; labelText: string }> = {
+                  charges:    { label: 'Charges',    value: `AED ${totalDJCharges.toLocaleString()}`,    box: 'border-[#E4E8EC] bg-white',          text: 'text-purple-700',  labelText: 'text-slate-400' },
+                  received:   { label: 'Received',   value: `AED ${totalDJReceived.toLocaleString()}`,   box: 'border-[#E4E8EC] bg-white',          text: 'text-emerald-700', labelText: 'text-slate-400' },
+                  ot:         { label: 'OT',         value: `${totalDJOTHours}h`,                        box: 'border-[#E4E8EC] bg-white',          text: 'text-amber-600',   labelText: 'text-slate-400' },
+                  pending:    { label: 'Pending',    value: `AED ${totalDJPending.toLocaleString()}`,    box: 'border-red-200 bg-red-50/30',        text: 'text-red-600',     labelText: 'text-red-500' },
+                  advance:    { label: 'Advance',    value: `AED ${netRemainingAdvance.toLocaleString()}`, box: 'border-emerald-200 bg-emerald-50/30', text: 'text-emerald-700', labelText: 'text-emerald-600' },
+                  adjustment: { label: 'Adjustment', value: `AED ${totalDJAdjustment.toLocaleString()}`, box: 'border-indigo-200 bg-indigo-50/40',  text: 'text-indigo-700',  labelText: 'text-indigo-700' },
+                }
+                return (
+                  <div className="p-4 bg-[#f8fafc] border-b border-[#E4E8EC] space-y-2">
+                    <div className="flex justify-end">
+                      <LayoutCustomizer sections={[
+                        { title: 'Cards', items: HISTORY_CARD_ITEMS, layout: historyCards },
+                        { title: 'Columns', items: HISTORY_COLUMN_ITEMS, layout: historyCols },
+                      ]} />
+                    </div>
+                    {historyCards.visible.length > 0 && (
+                      <div className="grid gap-2.5 text-center" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(120px, 1fr))` }}>
+                        {historyCards.visible.map(id => {
+                          const c = cardDefs[id]
+                          return (
+                            <div key={id} className={`p-2.5 rounded-xl border shadow-2xs ${c.box}`}>
+                              <p className={`text-[10px] uppercase font-bold whitespace-nowrap ${c.labelText}`}>{c.label}</p>
+                              <p className={`text-[15px] font-extrabold whitespace-nowrap ${c.text}`}>{c.value}</p>
+                            </div>
+                          )
+                        })}
+                      </div>
                     )}
                   </div>
-                  <p className="text-[15px] font-extrabold text-emerald-700">AED {netRemainingAdvance.toLocaleString()}</p>
-                </div>
-                <div className="p-2.5 bg-white rounded-xl border border-indigo-200 shadow-2xs bg-indigo-50/40">
-                  <div className="flex items-center justify-between gap-1 mb-0.5">
-                    <p className="text-[10px] uppercase font-bold text-indigo-700">Adjustment Amount</p>
-                    <span className="bg-indigo-700 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase">
-                      ADJ
-                    </span>
-                  </div>
-                  <p className="text-[15px] font-extrabold text-indigo-700">AED {totalDJAdjustment.toLocaleString()}</p>
-                </div>
-              </div>
+                )
+              })()}
 
               {filteredDailyJobs.length === 0 ? (
                 <div className="py-16 text-center">
@@ -989,138 +1032,66 @@ export function ClientProfile() {
                     Any new job entries logged with this address or client name in Daily Job Sheet will automatically be aggregated here.
                   </p>
                 </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-[12px]">
-                    <thead className="bg-[#f8fafc] border-b border-[#E4E8EC] text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                      <tr>
-                        <th className="py-3 px-4">Date</th>
-                        <th className="py-3 px-3">Cleaner</th>
-                        <th className="py-3 px-3">Timing</th>
-                        <th className="py-3 px-2 text-center">Duty</th>
-                        <th className="py-3 px-2 text-center">Total OT</th>
-                        <th className="py-3 px-3 text-right">Total Charges</th>
-                        <th className="py-3 px-3 text-right">Total Received</th>
-                        <th className="py-3 px-3 text-right">Pending Amount</th>
-                        <th className="py-3 px-3 text-right">Advance Amount</th>
-                        <th className="py-3 px-3 text-center">Adjustment Amount</th>
-                        <th className="py-3 px-3">Mode</th>
-                        <th className="py-3 px-3">Material</th>
-                        <th className="py-3 px-4">Service & Remarks</th>
-                        <th className="py-3 px-3 text-center">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#E4E8EC]">
-                      {filteredDailyJobs.map(job => {
-                        return (
-                          <tr key={job.id} className="hover:bg-purple-50/30 transition-colors">
-                            <td className="py-3 px-4 font-bold text-slate-800 whitespace-nowrap">
-                              {job.date ? formatDate(job.date) : '—'}
-                            </td>
-                            <td className="py-3 px-3 font-semibold text-slate-700 whitespace-nowrap">
-                              {job.staff_name || '—'}
-                            </td>
-                            <td className="py-3 px-3 text-slate-500 whitespace-nowrap">
-                              {formatTimeOnly(job.start_time)} - {formatTimeOnly(job.end_time)}
-                            </td>
-                            <td className="py-3 px-2 text-center font-bold text-slate-700">
-                              {cleanNum(job.duty_hours) ? `${cleanNum(job.duty_hours)}h` : '—'}
-                            </td>
-                            <td className="py-3 px-2 text-center">
-                              {job.otHours > 0 ? (
-                                <span className="inline-block bg-amber-100 text-amber-800 font-extrabold px-2 py-0.5 rounded-full text-[10.5px] border border-amber-200">
-                                  {job.otHours}h OT
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">0h</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-3 text-right font-extrabold text-purple-700 whitespace-nowrap">
-                              AED {job.cleanCharges.toLocaleString()}
-                            </td>
-                            <td className="py-3 px-3 text-right font-semibold text-emerald-700 whitespace-nowrap">
-                              AED {job.cleanReceived.toLocaleString()}
-                            </td>
-                            <td className="py-3 px-3 text-right font-bold whitespace-nowrap">
-                              {job.pending > 0 ? (
-                                <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-600 border border-red-200">
-                                  AED {job.pending.toLocaleString()}
-                                </span>
-                              ) : (
-                                <span className="text-slate-300 font-medium">—</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-3 text-right font-bold whitespace-nowrap">
-                              {job.advance > 0 ? (
-                                <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                  AED {job.advance.toLocaleString()}
-                                </span>
-                              ) : (
-                                <span className="text-slate-300 font-medium">—</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-3 text-center whitespace-nowrap">
-                              {job.adjustment > 0 ? (
-                                <span className="inline-flex items-center gap-1.5 font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full text-[11px] shadow-2xs">
-                                  <span className="bg-indigo-700 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase">
-                                    ADJ
-                                  </span>
-                                  <span>AED {job.adjustment.toLocaleString()}</span>
-                                  {job.isAdvanceDeducted && (
-                                    <span className="text-[8.5px] bg-purple-100 text-purple-700 px-1 py-0.2 rounded font-extrabold">
-                                      From Adv
-                                    </span>
-                                  )}
-                                </span>
-                              ) : (
-                                <span className="text-slate-300 font-medium">—</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-3 whitespace-nowrap">
-                              <div className="flex items-center gap-1">
-                                <PaymentModeBadge mode={job.isAdvanceDeducted ? 'Advance' : job.payment_mode} />
-                                {job.isAdvanceDeducted && (
-                                  <span className="bg-indigo-700 text-white text-[8.5px] font-black px-1.5 py-0.2 rounded uppercase" title="Deducted from Advance (Adjustment)">
-                                    ADJ
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
-                              {job.material || 'No'}
-                            </td>
-                            <td className="py-3 px-4 text-slate-600 max-w-[220px] truncate" title={job.remarks || job.service}>
-                              {job.service && <span className="font-semibold text-slate-700 mr-1.5">{job.service}</span>}
-                              {job.remarks || (!job.service ? '—' : '')}
-                            </td>
-                            <td className="py-3 px-3 text-center whitespace-nowrap">
-                              {job.isAdvanceDeducted ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
-                                  <Check size={10} className="text-emerald-600" /> Settled [ADJ]
-                                </span>
-                              ) : job.pending > 0 && netRemainingAdvance > 0 ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeductJobFromAdvance(job)}
-                                  className="inline-flex items-center gap-1 text-[10.5px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-lg transition-colors cursor-pointer shadow-2xs"
-                                  title="Deduct service charges from client advance balance and tag with ADJ"
-                                >
-                                  <span className="bg-indigo-700 text-white text-[8px] font-black px-1 py-0.2 rounded">
-                                    ADJ
-                                  </span>
-                                  <span>Deduct Adv</span>
-                                </button>
-                              ) : (
-                                <span className="text-slate-300 font-medium">—</span>
-                              )}
-                            </td>
+              ) : (() => {
+                type Row = (typeof filteredDailyJobs)[number]
+                const dash = <span className="text-slate-300 font-medium">—</span>
+                const cols: Record<string, { th: string; head: string; td: string; cell: (job: Row) => React.ReactNode }> = {
+                  date:      { th: 'Date', head: 'py-3 px-4', td: 'py-3 px-4 font-bold text-slate-800 whitespace-nowrap', cell: j => (j.date ? formatDate(j.date) : '—') },
+                  cleaner:   { th: 'Cleaner', head: 'py-3 px-3', td: 'py-3 px-3 font-semibold text-slate-700 whitespace-nowrap', cell: j => j.staff_name || '—' },
+                  timing:    { th: 'Timing', head: 'py-3 px-3', td: 'py-3 px-3 text-slate-500 whitespace-nowrap', cell: j => `${formatTimeOnly(j.start_time)} - ${formatTimeOnly(j.end_time)}` },
+                  duty:      { th: 'Duty', head: 'py-3 px-2 text-center', td: 'py-3 px-2 text-center font-bold text-slate-700', cell: j => (cleanNum(j.duty_hours) ? `${cleanNum(j.duty_hours)}h` : '—') },
+                  ot:        { th: 'OT', head: 'py-3 px-2 text-center', td: 'py-3 px-2 text-center', cell: j => (j.otHours > 0
+                    ? <span className="inline-block bg-amber-100 text-amber-800 font-extrabold px-2 py-0.5 rounded-full text-[10.5px] border border-amber-200">{j.otHours}h OT</span>
+                    : <span className="text-slate-400">0h</span>) },
+                  charges:   { th: 'Charges', head: 'py-3 px-3 text-right', td: 'py-3 px-3 text-right font-extrabold text-purple-700 whitespace-nowrap', cell: j => `AED ${j.cleanCharges.toLocaleString()}` },
+                  received:  { th: 'Received', head: 'py-3 px-3 text-right', td: 'py-3 px-3 text-right font-semibold text-emerald-700 whitespace-nowrap', cell: j => `AED ${j.cleanReceived.toLocaleString()}` },
+                  pending:   { th: 'Pending', head: 'py-3 px-3 text-right', td: 'py-3 px-3 text-right font-bold whitespace-nowrap', cell: j => (j.pending > 0
+                    ? <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-600 border border-red-200">AED {j.pending.toLocaleString()}</span> : dash) },
+                  advance:   { th: 'Advance', head: 'py-3 px-3 text-right', td: 'py-3 px-3 text-right font-bold whitespace-nowrap', cell: j => (j.advance > 0
+                    ? <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">AED {j.advance.toLocaleString()}</span> : dash) },
+                  adjustment:{ th: 'Adjustment', head: 'py-3 px-3 text-center', td: 'py-3 px-3 text-center whitespace-nowrap', cell: j => (j.adjustment > 0 ? (
+                    <span className="inline-flex items-center gap-1.5 font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full text-[11px] shadow-2xs">
+                      <span className="bg-indigo-700 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase">ADJ</span>
+                      <span>AED {j.adjustment.toLocaleString()}</span>
+                      {j.isAdvanceDeducted && <span className="text-[8.5px] bg-purple-100 text-purple-700 px-1 py-0.2 rounded font-extrabold">From Adv</span>}
+                    </span>) : dash) },
+                  mode:      { th: 'Mode', head: 'py-3 px-3', td: 'py-3 px-3 whitespace-nowrap', cell: j => (
+                    <div className="flex items-center gap-1">
+                      <PaymentModeBadge mode={j.isAdvanceDeducted ? 'Advance' : j.payment_mode} />
+                      {j.isAdvanceDeducted && <span className="bg-indigo-700 text-white text-[8.5px] font-black px-1.5 py-0.2 rounded uppercase" title="Deducted from Advance (Adjustment)">ADJ</span>}
+                    </div>) },
+                  material:  { th: 'Material', head: 'py-3 px-3', td: 'py-3 px-3 text-slate-600 whitespace-nowrap', cell: j => j.material || 'No' },
+                  remarks:   { th: 'Service & Remarks', head: 'py-3 px-4', td: 'py-3 px-4 text-slate-600 max-w-[220px] truncate', cell: j => (<>
+                    {j.service && <span className="font-semibold text-slate-700 mr-1.5">{j.service}</span>}
+                    {j.remarks || (!j.service ? '—' : '')}
+                  </>) },
+                  action:    { th: 'Action', head: 'py-3 px-3 text-center', td: 'py-3 px-3 text-center whitespace-nowrap', cell: j => (j.isAdvanceDeducted ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full"><Check size={10} className="text-emerald-600" /> Settled [ADJ]</span>
+                  ) : j.pending > 0 && netRemainingAdvance > 0 ? (
+                    <button type="button" onClick={() => handleDeductJobFromAdvance(j)}
+                      className="inline-flex items-center gap-1 text-[10.5px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                      title="Deduct service charges from client advance balance and tag with ADJ">
+                      <span className="bg-indigo-700 text-white text-[8px] font-black px-1 py-0.2 rounded">ADJ</span><span>Deduct Adv</span>
+                    </button>
+                  ) : dash) },
+                }
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-[12px]">
+                      <thead className="bg-[#f8fafc] border-b border-[#E4E8EC] text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                        <tr>{historyCols.visible.map(id => <th key={id} className={`${cols[id].head} whitespace-nowrap`}>{cols[id].th}</th>)}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E4E8EC]">
+                        {filteredDailyJobs.map(job => (
+                          <tr key={job.id} className="hover:bg-purple-50/30 transition-colors" title={cols.remarks && job.remarks ? job.remarks : undefined}>
+                            {historyCols.visible.map(id => <td key={id} className={cols[id].td}>{cols[id].cell(job)}</td>)}
                           </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })()}
             </div>
           )}
 

@@ -285,6 +285,15 @@ export function DailyJobSheet() {
   const [addJobStaff, setAddJobStaff]       = useState('')
   const openAddJob = (staff = '') => { setAddJobStaff(staff); setShowAddJob(true) }
   const [editJob, setEditJob]               = useState<DailyJob | null>(null)
+  // R-ALERT-03: ?job=<id> (from Alerts) opens that job for editing
+  const linkedJobId = searchParams.get('job')
+  useEffect(() => {
+    if (!linkedJobId) return
+    const hit = dailyJobs.find(j => j.id === linkedJobId)
+    if (!hit) return
+    setEditJob(hit)
+    setSearchParams(p => { p.delete('job'); return p }, { replace: true })
+  }, [linkedJobId, dailyJobs, setSearchParams])
   const [showAddExpense, setShowAddExpense] = useState(false)
   const [editExpense, setEditExpense]       = useState<DailyExpense | null>(null)
   const [editingDriverStaff, setEditingDriverStaff] = useState<{ name: string; currentAmount: number } | null>(null)

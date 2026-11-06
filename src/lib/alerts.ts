@@ -26,6 +26,8 @@ export interface CrmAlert {
   actionLabel?: string
   /** AI Bot findings open the AI Bot (move to Pending etc.) */
   opensAIBot?: boolean
+  /** R-ALERT-03: direct links to the record itself, so the issue is fixed where it is */
+  links?: { label: string; url: string }[]
 }
 
 export const SOURCE_LABEL: Record<AlertSource, string> = {
@@ -34,9 +36,21 @@ export const SOURCE_LABEL: Record<AlertSource, string> = {
 
 const RANK: Record<AlertSeverity, number> = { high: 0, medium: 1, low: 2 }
 
+/** R-ALERT-03: the booking (opened for editing), its job-sheet row, or the client */
+export function aiIssueLinks(i: DetectedIssue, jobs: { id: string; booking_id?: string; date?: string }[] = []): { label: string; url: string }[] {
+  if (i.entityType === 'client') return [{ label: 'Open client', url: `/clients/${encodeURIComponent(i.entityId)}` }]
+  const bookingId = i.bookingId || i.entityId
+  const links = [{ label: 'Edit booking', url: `/bookings?booking=${encodeURIComponent(bookingId)}&edit=1` }]
+  const row = jobs.find(j => j.booking_id === bookingId)
+  if (row) links.push({ label: 'Open job', url: `/daily-job-sheet?date=${String(row.date || '').slice(0, 10)}&job=${encodeURIComponent(row.id)}` })
+  return links
+}
+
 export function buildAlerts(input: {
   notifications: AppNotification[]
   aiIssues: DetectedIssue[]
+  /** job-sheet rows, to link an AI finding about a booking to its row (R-ALERT-03) */
+  jobs?: { id: string; booking_id?: string; date?: string }[]
   sheetIssues: TimelineIssue[]
   today: string
   backup?: { health: BackupHealth; message?: string } | null
@@ -51,7 +65,7 @@ export function buildAlerts(input: {
   input.aiIssues.forEach(i => out.push({
     id: `ai-${i.id}`, source: 'ai', severity: i.severity,
     title: i.title, message: [i.description, i.recommendation].filter(Boolean).join(' '),
-    opensAIBot: true, actionLabel: 'Review in AI Bot',
+    opensAIBot: true, actionLabel: 'Review in AI Bot', links: aiIssueLinks(i, input.jobs),
   }))
   input.sheetIssues.forEach(i => out.push({
     id: `sheet-${input.today}-${i.kind}-${i.job.id}-${i.staff.toLowerCase()}`, source: 'sheet',

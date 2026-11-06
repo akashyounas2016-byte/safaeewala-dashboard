@@ -329,8 +329,10 @@ export function Bookings() {
     if (!linkedBookingId) return
     const hit = bookings.find(b => b.id === linkedBookingId)
     if (!hit) return
-    setSelectedBooking(hit)
-    setSearchParams(p => { p.delete('booking'); return p }, { replace: true })
+    // R-ALERT-03: &edit=1 (from Alerts) opens the booking for editing
+    if (searchParams.get('edit') === '1') { setEditingBookingForModal(hit); setShowModal(true) }
+    else setSelectedBooking(hit)
+    setSearchParams(p => { p.delete('booking'); p.delete('edit'); return p }, { replace: true })
   }, [linkedBookingId, bookings, setSearchParams])
   const [editingBookingForModal, setEditingBookingForModal] = useState<Booking | null>(null)
   const [invoiceBooking, setInvoiceBooking] = useState<Booking | null>(null)

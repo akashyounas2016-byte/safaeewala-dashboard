@@ -37,8 +37,8 @@ eq(/line-clamp-2/.test(cl) && /line-clamp-2/.test(src('src/components/dailyJobSh
 
 // UX-102: Employees
 const em = src('src/pages/Employees.tsx')
-eq(['Agency Staff', 'Available Staff', 'Absentees', 'On Leave'].every(l => em.includes(`>${l}</p>`)), true, 'four new cards')
-eq(/More staff metrics \(4\)/.test(em), true, 'behind an expand arrow')
+eq(['Agency Staff', 'Available Staff', 'Absentees', 'On Leave'].every(l => em.includes(`label="${l}"`)), true, 'four new cards (KpiCard since UX-109)')
+eq(/More staff metrics \(5\)/.test(em), true, 'behind an expand arrow (5 since UX-109)')
 eq(/Daily Sheet Synced/.test(em), false, '"Daily Sheet Synced" text removed')
 eq(/title="Synced with the Daily Job Sheet"/.test(em), true, 'icon beside the status instead')
 eq(/STAFF_CARD_LIMIT = 6/.test(em) && /View All \(\{filtered\.length\}\)/.test(em), true, '3 rows of cards, then View All')

@@ -139,6 +139,8 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
   - Sidebar settings (UX-89): each item has 👁 **Shown / Hidden** next to Favorite and Up / Down. Hidden items leave the menu and stay in the settings. The bottom *Customize Items Sequence* button is gone; the sliders button at the top opens the settings. Up / Down move the item itself (they moved the wrong item when the role hid some screens).
   - Clients (UX-90): cards use the full width, three per row; Top Clients, Pending Balances, Client Distribution, Top Locations and Recent Bookings sit below the cards, as in the table view.
   - Round 2026-11-06:
+    - Client Profile (UX-108): a ⋮ menu next to Edit Profile with **Delete Profile** (asks first, then back to Clients). Header and Service History cards use short one-line labels (Charges, Received, OT, Pending, Advance, Adjustment). Service History has **Customize**: every card and column (Date stays) can be hidden or moved up / down; remembered per browser (`components/ui/LayoutCustomizer.tsx`).
+    - Employees cards (UX-109): 10 cards, 5 a row, Daily Job Sheet style (KpiCard): Total Staff · Working Today · Duty Hours · Total OT · Document Expiry; *More staff metrics (5)*: Total Logged Time · Agency Staff · Available Staff · Absentees · On Leave.
     - Shared cards (UX-106): `components/ui/KpiCard.tsx` (KpiCard + Widget) carry the Daily Job Sheet card and widget style; Analytics, Reports and Payments use them.
       - Analytics: 5 KPI cards · revenue/collections/expenses chart + revenue mix · team performance + busiest days · top areas, clients, key insights · month-by-month table.
       - Payments: one header, 5 cards that open their tab, one tab bar (dark active tab).

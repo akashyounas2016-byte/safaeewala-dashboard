@@ -711,6 +711,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/alerts.ts → scheduleCleanerAlerts`, `useAlerts`.
 - **Status:** Active · Since: 2026-11-06
 
+### R-ALERT-03 — An AI finding links to the record that needs fixing
+- **Rule:** *"Alerts section mein AI-generated notifications ke sath 'Review in AI Bot' ke ilawa direct link ya redirection button shamil kiya jaye … us specific booking ya job par redirect kar day."* (2026-11-06)
+  - A finding about a booking has **Edit booking** (Bookings opens that booking in the edit form, `/bookings?booking=<id>&edit=1`) and, when the booking has a job-sheet row, **Open job** (the Daily Job Sheet opens that day with the job in the edit form, `?date=…&job=<id>`).
+  - A finding about a client has **Open client**. *Review in AI Bot* stays.
+- **Code:** `lib/alerts.ts → aiIssueLinks`; `Alerts.tsx`; `Bookings.tsx` (`edit=1`); `DailyJobSheet.tsx` (`job`).
+- **Status:** Active · Since: 2026-11-06
+
 ## OPS — Operating process
 
 ### R-OPS-01 — No browser automation without permission

@@ -50,6 +50,7 @@ export function useAlerts(enabled = true): {
     return buildAlerts({
       notifications,
       aiIssues: analyzeCRMHealth(bookings, clients).issues,
+      jobs: dailyJobs,
       sheetIssues: sheet.issues,
       today,
       backup: backup ? { health: backupHealth(backup, new Date()), message: backup.message } : null,

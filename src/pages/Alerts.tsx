@@ -45,7 +45,13 @@ export function Alerts() {
           </div>
           {a.message && <p className="text-[12.5px] text-slate-600 mt-1">{a.message}</p>}
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+          {/* R-ALERT-03: straight to the booking / job / client to fix it there */}
+          {(a.links || []).map(l => (
+            <Link key={l.url} to={l.url} className="inline-flex items-center gap-1 text-[12px] font-bold px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white">
+              {l.label} <ArrowRight size={12} />
+            </Link>
+          ))}
           {a.opensAIBot ? (
             <button type="button" onClick={openAIBot}
               className="inline-flex items-center gap-1 text-[12px] font-bold px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white cursor-pointer">
