@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(ui audit): Esc closes popups; Clients table delete asks; Bookings card time; no "0d left" for missing document dates; React render warning from the sync banner (UX-105)
+
 - fix(audit): alert when a schedule names a cleaner who is not an employee (R-ALERT-02); a re-added name is linked again (R-EMP-08); Active Clients = last 60 days, not a fixed date (R-CLI-07)
 
 - feat(bookings): KPI cards in the Daily Job Sheet style, 5 a row; Avg Shift Duty and Staff Allocated removed (UX-104)

@@ -52,9 +52,10 @@ const writeOutbox = (list: OutboxEntry[]) => {
   if (capped.length < list.length) keepFailed(list.slice(0, list.length - OUTBOX_CAP), 'outbox full')
   safeLocalStorageSet(OUTBOX_KEY, capped)
   const last = [...capped].reverse().find(e => e.lastError)
-  window.dispatchEvent(new CustomEvent<SyncStatus>(SYNC_STATUS_EVENT, {
-    detail: { pending: capped.length, lastError: last?.lastError },
-  }))
+  // UX-105: told after the current render — a write made inside a React state update otherwise updated
+  // the sync banner while another component was rendering (React warning on Clients / Employees)
+  const detail = { pending: capped.length, lastError: last?.lastError }
+  queueMicrotask(() => window.dispatchEvent(new CustomEvent<SyncStatus>(SYNC_STATUS_EVENT, { detail })))
 }
 
 export function getSyncStatus(): SyncStatus {

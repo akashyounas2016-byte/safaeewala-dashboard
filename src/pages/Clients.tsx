@@ -901,7 +901,11 @@ export function Clients() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => deleteClient(c.id)}
+                        onClick={async () => {
+                          // UX-105: the table asks first, like the cards (it deleted at once)
+                          const ok = await confirmAsync({ title: 'Delete client', message: `Delete "${c.full_name}"? Their jobs stay in the Daily Job Sheet.`, confirmLabel: 'Delete', tone: 'danger' })
+                          if (ok) deleteClient(c.id)
+                        }}
                         className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
                         title="Delete client"
                       >

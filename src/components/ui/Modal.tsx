@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 import { X } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
 interface ModalProps {
@@ -16,6 +16,9 @@ interface ModalProps {
   /** Buttons pinned under the scrolling body (e.g. Cancel / Save) */
   footer?: React.ReactNode
 }
+
+// UX-105: Esc closes only the popup on top (a popup opened from another popup)
+const openStack: symbol[] = []
 
 const sizes = {
   sm: 'max-w-sm',
@@ -37,6 +40,21 @@ export function Modal({ open, onClose, title, children, size = 'md', lockScroll 
       document.body.style.overflow = ''
     }
   }, [open, lockScroll])
+
+  const closeRef = useRef(onClose)
+  useEffect(() => { closeRef.current = onClose })
+  useEffect(() => {
+    if (!open) return
+    const me = Symbol('modal')
+    openStack.push(me)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || openStack[openStack.length - 1] !== me) return
+      e.stopPropagation()
+      closeRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey); openStack.splice(openStack.indexOf(me), 1) }
+  }, [open])
 
   // Ensure scroll is unlocked when component unmounts
   useEffect(() => {

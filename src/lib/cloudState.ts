@@ -69,7 +69,8 @@ const readMeta = (): Meta => {
 }
 const writeMeta = (meta: Meta) => {
   try { localStorage.setItem(META_KEY, JSON.stringify(meta)) } catch { /* quota — meta is rebuilt next pull */ }
-  window.dispatchEvent(new CustomEvent<CloudStateStatus>(CLOUD_STATE_EVENT, { detail: getCloudStateStatus() }))
+  // UX-105: after the current render (a save inside a React state update warned in the sync banner)
+  queueMicrotask(() => window.dispatchEvent(new CustomEvent<CloudStateStatus>(CLOUD_STATE_EVENT, { detail: getCloudStateStatus() })))
 }
 const setKeyMeta = (key: string, patch: KeyMeta) => {
   const meta = readMeta()

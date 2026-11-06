@@ -21,3 +21,16 @@ eq(/R-EMP-08[\s\S]{0,200}deletedStaffKeys\.includes\(nameKey\)/.test(dc), true, 
 const cp = readFileSync('src/pages/Clients.tsx', 'utf8')
 eq(/new Date\('2026-01-01'\)/.test(cp), false, 'no fixed date in Active Clients')
 eq(/const activeSince = addDays\(todayDubai\(\), -60\)/.test(cp), true, 'active = served in the last 60 days')
+
+// UX-105: Bookings card time "2026-11-06T09:00 AM" was shown raw
+import { formatTime } from '@/lib/utils'
+eq([formatTime('2026-11-06T09:00 AM'), formatTime('2026-11-06T12:00 PM'), formatTime('2026-11-06T14:30'), formatTime('09:00')], ['09:00 AM', '12:00 PM', '02:30 PM', '09:00 AM'], 'date + time shows the time only')
+
+// UX-105: UI audit fixes
+import { daysUntil } from '@/lib/utils'
+eq([daysUntil(''), daysUntil(undefined), daysUntil('not a date')], [Infinity, Infinity, Infinity], 'no expiry date = nothing expiring (was 0 = today)')
+eq(daysUntil('2000-01-01') < 0, true, 'a past date is still expired')
+const modal = readFileSync('src/components/ui/Modal.tsx', 'utf8')
+eq(/e\.key !== 'Escape' \|\| openStack\[openStack\.length - 1\] !== me/.test(modal), true, 'Esc closes the popup on top')
+eq(/queueMicrotask\(\(\) => window\.dispatchEvent/.test(readFileSync('src/lib/syncQueue.ts', 'utf8') + readFileSync('src/lib/cloudState.ts', 'utf8')), true, 'sync events after the render')
+eq(/confirmAsync\(\{ title: 'Delete client'/.test(cp.slice(cp.indexOf('UX-105'))), true, 'Clients table asks before deleting')

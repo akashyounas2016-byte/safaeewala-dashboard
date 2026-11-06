@@ -38,6 +38,11 @@ export function formatTime12h(val: unknown): string {
   const str = String(val).trim()
   if (!str || str === '—' || str === '-') return '—'
 
+  // UX-105: "2026-11-06T09:00 AM" (date + a 12h time, as the Bookings card builds it) — the date part is dropped,
+  // the word boundary before the hour failed after "T" and the raw text was shown
+  const dated = str.match(/^\d{4}-\d{2}-\d{2}[T ](\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM))$/i)
+  if (dated) return formatTime12h(dated[1])
+
   // Already 12h format e.g. "09:00 AM" or "2:30 pm"
   const ampmMatch = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)\b/i)
   if (ampmMatch) {
@@ -98,10 +103,12 @@ export function getInitials(name: string) {
 }
 
 export function daysUntil(date: string | Date | null | undefined) {
-  if (!date) return 0
+  // UX-105: no date recorded = nothing to expire (was 0 = 'expires today', so every new employee without
+  // documents was counted under Document Expiry and Compliance alerts)
+  if (!date) return Infinity
   const now = new Date()
   const target = new Date(date)
-  if (isNaN(target.getTime())) return 0
+  if (isNaN(target.getTime())) return Infinity
   const diff = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
   return diff
 }
