@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(whatsapp): WhatsApp inbox in the CRM on the Meta Cloud API — receive text / media / statuses through a signed webhook, send text in the 24-hour window or approved templates, client linking, unread badge, Client Profile button (R-WA-01)
+- fix(server): "Bearer " was not stripped from the token when the service key is missing (regex typo)
+- chore(deploy): whatsappServer.cjs shipped with every deploy; release backup tolerates a new file
+
 - fix(marketing): no made-up campaign / retention numbers — the screen says it is not connected; Marketing added to the sidebar (R-DATA-03)
 
 - feat(payments): All Payments lists booking payments; Delete on every payment row (R-FIN-09)

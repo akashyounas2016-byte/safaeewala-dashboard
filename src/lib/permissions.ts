@@ -18,7 +18,8 @@ export const APP_MODULES = [
   { key: 'Alerts',          paths: ['/alerts'] }, // R-ALERT-01
   { key: 'Bookings',        paths: ['/bookings'] },
   { key: 'Daily Job Sheet', paths: ['/daily-job-sheet'] },
-  { key: 'Fluent Forms',    paths: ['/fluent-forms', '/whatsapp-crm', '/marketing', '/feedback'] },
+  { key: 'Fluent Forms',    paths: ['/fluent-forms', '/marketing', '/feedback'] },
+  { key: 'WhatsApp',        paths: ['/whatsapp-crm'] }, // R-WA-01
   { key: 'Clients',         paths: ['/clients'] },
   { key: 'Monthly Clients', paths: ['/monthly-clients', '/subscriptions'] },
   { key: 'Employees',       paths: ['/employees'] },
@@ -88,7 +89,7 @@ export function moduleForPath(pathname: string): ModuleKey | null {
 
 /** Clean stored permissions: keep only known screens */
 /** Screens added after permissions could first be saved; a save older than them gets their defaults (R-ALERT-01) */
-const ADDED_LATER: ModuleKey[] = ['Alerts']
+const ADDED_LATER: ModuleKey[] = ['Alerts', 'WhatsApp']
 
 export function normalizeRolePerms(stored: unknown): RolePerms {
   const out = Object.fromEntries(PERM_ROLES.map(r => [r.key, [...DEFAULT_ROLE_PERMS[r.key]]])) as RolePerms

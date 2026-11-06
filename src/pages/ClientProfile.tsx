@@ -767,6 +767,13 @@ export function ClientProfile() {
           >
             <Pencil size={13} /> Edit Profile
           </button>
+          {(client.whatsapp || client.phone) && (
+            <button type="button" onClick={() => navigateTo(`/whatsapp-crm?phone=${encodeURIComponent(client.whatsapp || client.phone || '')}&name=${encodeURIComponent(client.full_name || '')}`)}
+              title="Open the WhatsApp chat with this client (R-WA-01)"
+              className="flex items-center gap-2 text-[13px] font-semibold px-4 py-2 rounded-xl border border-white/25 bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer">
+              <MessageCircle size={13} /> WhatsApp
+            </button>
+          )}
           <div className="relative" ref={heroMenuRef}>
             <button type="button" onClick={() => setHeroMenuOpen(v => !v)} aria-label="More actions" aria-expanded={heroMenuOpen}
               className="w-9 h-9 flex items-center justify-center rounded-xl border border-white/25 bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer">

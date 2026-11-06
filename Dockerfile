@@ -21,6 +21,7 @@ COPY dist /usr/share/nginx/html
 # Copy webhook microservice and startup entrypoint
 WORKDIR /app
 COPY webhookServer.cjs /app/webhookServer.cjs
+COPY whatsappServer.cjs /app/whatsappServer.cjs
 COPY entrypoint.sh /app/entrypoint.sh
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh && mkdir -p /data
 

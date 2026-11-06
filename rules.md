@@ -727,6 +727,18 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `lib/alerts.ts → aiIssueLinks`; `Alerts.tsx`; `Bookings.tsx` (`edit=1`); `DailyJobSheet.tsx` (`job`).
 - **Status:** Active · Since: 2026-11-06
 
+## WA — WhatsApp
+
+### R-WA-01 — WhatsApp runs inside the CRM (Meta Cloud API, no GHL)
+- **Rule:** *"WhatsApp ka mukammal nizaam mere is CRM me shift kiya jaye … pehle whatsapp k sare feature and coding ko merge kro, agar language ya framework ka issue he to new code likho."* (2026-11-06) The Lovable prototype (zip) used a mock WhatsApp adapter and another framework, so this is new code in the CRM's own stack.
+  - Sidebar → **WhatsApp**: chats on the business number, newest first, unread count on the sidebar item. A chat shows the client's name when the number matches a CRM client (phone or WhatsApp field), with a link to the profile; Client Profile has a **WhatsApp** button that opens or starts the chat.
+  - Receive: text, photos, voice notes, videos, documents, stickers, locations, button replies and reactions. Media is saved to the private Storage bucket `whatsapp-media` and shown through 5-minute signed links.
+  - Send: free text only within 24 hours of the client's last message (Meta rule); after that only an **approved template** (with its {{1}}… values). Delivery ticks: sent ✓, delivered ✓✓, read (blue); failures show Meta's reason. Opening a chat marks it read on the phone too.
+  - Security: Meta's webhook is accepted only with a valid `X-Hub-Signature-256` (app secret) and verified with the verify token; the tables are read by admins / managers (or a role given the WhatsApp screen) and written only by the server. Cleaners and drivers do not see WhatsApp.
+  - Facebook and Instagram stay in GHL for now.
+- **Code:** `whatsappServer.cjs` (wired in `webhookServer.cjs`); `src/lib/whatsapp.ts`; `src/pages/WhatsAppCRM.tsx`; `src/store/useWhatsAppUnread.ts`; migration `2026-11-06_whatsapp_inbox.sql`; setup in prod.md §8.
+- **Status:** Built · waiting for the migration and the Meta keys on the VPS · Since: 2026-11-06
+
 ## OPS — Operating process
 
 ### R-OPS-01 — No browser automation without permission

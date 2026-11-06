@@ -98,3 +98,14 @@ There are **two** ways code reaches production. Both need the owner's permission
 - Nightly at 02:00 Dubai (cron `0 22 * * *` UTC): `/opt/safaeewala-backup/db-backup.sh` → `/var/backups/safaeewala`, kept 30 days, with an off-site copy via rclone when `BACKUP_RCLONE_REMOTE` is set.
 - Needs `SUPABASE_DB_URL` (Session pooler connection string) in `/var/www/safaeewala/.env`.
 - Last result: `/var/backups/safaeewala/last-status.txt`. Setup and restore steps: [scripts/backup/README.md](scripts/backup/README.md).
+
+## 8. WhatsApp (R-WA-01)
+
+1. Supabase → SQL editor: run `supabase/migrations/2026-11-06_whatsapp_inbox.sql` (tables, read rules, realtime, private bucket).
+2. Meta Business Manager (verified) → WhatsApp → add the business number (it must not be connected to GHL or another provider).
+3. Business settings → System users → create one, give it the WhatsApp account and the app, generate a **permanent** token with `whatsapp_business_messaging` and `whatsapp_business_management`.
+4. VPS `/var/www/safaeewala/.env` (never in git, never in chat): `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_WABA_ID`, `WHATSAPP_APP_SECRET` (App settings → Basic), `WHATSAPP_VERIFY_TOKEN` (any long random text). Then `docker compose up -d`.
+5. Meta app → WhatsApp → Configuration → Webhook: URL `https://<crm domain>/api/whatsapp/webhook`, the same verify token, subscribe to **messages**.
+6. Send a message from a phone to the business number → it appears in Sidebar → WhatsApp.
+
+Domain: today `https://crm.srv1646539.hstgr.cloud`. A company subdomain (e.g. `crm.<company domain>`) needs an A record to 187.77.116.14, the host added to the Traefik rule in `docker-compose.yml` and to `ALLOWED_ORIGINS` / `EXTRA_ALLOWED_ORIGINS`, and then the webhook URL changed in Meta.

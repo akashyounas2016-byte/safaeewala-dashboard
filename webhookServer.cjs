@@ -537,7 +537,7 @@ async function activeUserFrom(req) {
  * missing. The profile is read with the user's own token (RLS lets a user read their own profile).
  */
 async function signedInWithPublicKey(req) {
-  const token = String(req.headers.authorization || '').replace(/^Bearers+/i, '');
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!token || !PUBLIC_KEY) return null;
   const headers = { apikey: PUBLIC_KEY, Authorization: `Bearer ${token}` };
   const ur = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers });
@@ -595,6 +595,10 @@ function rateLimited(req, pathname) {
   return b.count > (sensitive ? RATE_LIMIT_SENSITIVE : RATE_LIMIT);
 }
 
+// R-WA-01: WhatsApp Cloud API (webhook + CRM endpoints) — whatsappServer.cjs
+const { createWhatsApp } = require(path.join(__dirname, 'whatsappServer.cjs'));
+const whatsapp = createWhatsApp({ supa, supabaseUrl: SUPABASE_URL, serviceHeaders, sendJson, readJson, activeUserFrom });
+
 const server = http.createServer((req, res) => {
   // CORS Headers
   const origin = req.headers.origin;
@@ -621,6 +625,12 @@ const server = http.createServer((req, res) => {
   if (rateLimited(req, pathname)) {
     res.setHeader('Retry-After', '60');
     return sendJson(res, 429, { error: 'Too many requests — try again in a minute' });
+  }
+
+  // R-WA-01: Meta calls this without a sign-in; it is checked by the verify token / signature instead
+  if (pathname === '/api/whatsapp/webhook') {
+    whatsapp.handleWebhook(req, res, parsedUrl).catch(err => { if (!res.headersSent) sendJson(res, 500, { error: err.message }); });
+    return;
   }
 
   // User management (admin only)
@@ -682,6 +692,7 @@ function saveLeadToCloud(lead) {
 }
 
 function routeApi(req, res, parsedUrl, pathname) {
+  if (whatsapp.route(req, res, parsedUrl, pathname)) return; // R-WA-01
   if (pathname === '/api/ghl/status' && req.method === 'GET') {
     return sendJson(res, 200, { configured: Boolean(GHL_API_KEY), locationId: Boolean(GHL_LOCATION_ID) });
   }
