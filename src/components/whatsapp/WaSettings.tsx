@@ -3,6 +3,8 @@ import { CheckCircle2, Circle, Copy, Link2, Loader2, Phone, PlugZap, Users, Bell
 import { notify } from '@/lib/notify'
 import { waConnect, waPhone, type WaPhoneInfo } from '@/lib/whatsappModules'
 import { loadAssignment, loadLists, saveAssignment, type AssignmentSetting, type WaAgent } from '@/lib/whatsappCrm'
+import { NotificationsSettings, QuickRepliesSettings, SettingsIcons, TagsSettings } from './WaSettingsMore'
+import { loadGhlTags } from '@/lib/inboxSettings'
 import { btnGhost, btnPrimary, inputCls } from './WaShared'
 
 function Step({ done, children }: { done: boolean; children: React.ReactNode }) {
@@ -52,6 +54,8 @@ function TeamAssignment({ agents }: { agents: WaAgent[] }) {
 export function WaSettings({ configured, tablesReady, modulesReady, agents = [] }: { configured: boolean; tablesReady: boolean; modulesReady: boolean; crmOn?: boolean | null; agents?: WaAgent[] }) {
   const [crmReady, setCrmReady] = useState<boolean | null>(null)
   useEffect(() => { loadLists().then(l => setCrmReady(l !== null)).catch(() => setCrmReady(false)) }, [])
+  const [tagsReady, setTagsReady] = useState<boolean | null>(null)
+  useEffect(() => { loadGhlTags().then(t => setTagsReady(t !== null)).catch(() => setTagsReady(false)) }, [])
   const hook = `${window.location.origin}/api/whatsapp/webhook`
   const [info, setInfo] = useState<WaPhoneInfo | null | 'loading'>(configured ? 'loading' : null)
   const [pin, setPin] = useState('')
@@ -75,6 +79,7 @@ export function WaSettings({ configured, tablesReady, modulesReady, agents = [] 
           <Step done={tablesReady}>Database: <code className="bg-slate-100 px-1 rounded">2026-11-06_whatsapp_inbox.sql</code> run in Supabase.</Step>
           <Step done={modulesReady}>Database: <code className="bg-slate-100 px-1 rounded">2026-11-07_whatsapp_modules.sql</code> run (Deals, Broadcast, Automation, Keyword Trigger).</Step>
           <Step done={Boolean(crmReady)}>Database: <code className="bg-slate-100 px-1 rounded">2026-11-07_whatsapp_crm_more.sql</code> run (status, assignment, notes, contact lists, retarget).</Step>
+          <Step done={Boolean(tagsReady)}>Database: <code className="bg-slate-100 px-1 rounded">2026-11-07_inbox_tags_notifications.sql</code> run (tags on Facebook / Instagram chats, client notifications).</Step>
           <Step done={configured}>VPS <code className="bg-slate-100 px-1 rounded">.env</code>: the five <code className="bg-slate-100 px-1 rounded">WHATSAPP_*</code> keys, then restart.</Step>
           <Step done={Boolean(p?.display_phone_number)}>Number added in Meta and visible here.</Step>
           <Step done={info !== 'loading' && Boolean(info?.subscribed)}>WhatsApp account subscribed to the app (button below).</Step>
@@ -116,6 +121,18 @@ export function WaSettings({ configured, tablesReady, modulesReady, agents = [] 
       <section className="bg-white border border-[#E2E5E0] rounded-[22px] p-5 space-y-2">
         <p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><BellOff size={17} className="text-red-500" /> Opt-out (STOP)</p>
         <p className="text-[12.5px] text-slate-600">A client who writes <b>STOP</b> (or UNSUBSCRIBE) is marked "Opted out", gets one confirmation, and every campaign skips the number. <b>START</b> subscribes again. The list is in Broadcasts → Contacts List → Unsubscribers. Chats themselves keep working.</p>
+      </section>
+      <section className="bg-white border border-[#E2E5E0] rounded-[22px] p-5 space-y-3 xl:col-span-2">
+        <p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><SettingsIcons.BellRing size={17} className="text-emerald-600" /> Notifications to clients</p>
+        <NotificationsSettings configured={configured} />
+      </section>
+      <section className="bg-white border border-[#E2E5E0] rounded-[22px] p-5 space-y-3">
+        <p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><SettingsIcons.TagsIcon size={17} className="text-violet-600" /> Tags</p>
+        <TagsSettings />
+      </section>
+      <section className="bg-white border border-[#E2E5E0] rounded-[22px] p-5 space-y-3">
+        <p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><SettingsIcons.MessageSquareText size={17} className="text-sky-600" /> Saved replies</p>
+        <QuickRepliesSettings />
       </section>
     </div>
   )

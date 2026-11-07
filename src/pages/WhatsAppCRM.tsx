@@ -12,6 +12,8 @@ import { loadConversations, subscribeWhatsApp, waStart, waStatus, type WaConvers
 import { loadRules } from '@/lib/whatsappModules'
 import { waAgents, type WaAgent } from '@/lib/whatsappCrm'
 import { WaInbox } from '@/components/whatsapp/WaInbox'
+import { Facebook, Instagram } from '@/components/whatsapp/GhlChat'
+import { ghlStatus } from '@/lib/ghlInbox'
 import { WaJobs } from '@/components/whatsapp/WaJobs'
 import { WaDeals } from '@/components/whatsapp/WaDeals'
 import { WaBroadcast } from '@/components/whatsapp/WaBroadcast'
@@ -49,6 +51,8 @@ export function WhatsAppCRM() {
   const setTab = useCallback((t: ModuleKey) => setParams(p => { p.set('tab', t); return p }, { replace: true }), [setParams])
 
   const [loading, setLoading] = useState(true)
+  const [ghlOn, setGhlOn] = useState(false)
+  useEffect(() => { void ghlStatus().then(setGhlOn).catch(() => setGhlOn(false)) }, [])
   const [configured, setConfigured] = useState(false)
   const [tablesReady, setTablesReady] = useState(false)
   const [modulesReady, setModulesReady] = useState(false)
@@ -133,14 +137,15 @@ export function WhatsAppCRM() {
     <div className={`bg-white border border-[#E6E8E6] rounded-[20px] overflow-hidden flex ${focusMode ? 'h-full' : 'h-[calc(100dvh-7rem)] sm:h-[calc(100dvh-3.5rem)] -mt-1 sm:-mt-2 lg:-mt-4'} min-h-[540px]`}>
       {/* module rail */}
       <nav aria-label="WhatsApp modules" className="w-[64px] lg:w-[220px] shrink-0 border-r border-[#ECEEEC] bg-[#FAFBFA] flex flex-col">
-        <div className="h-16 px-3 lg:px-4 flex items-center gap-2.5 border-b border-[#ECEEEC] shrink-0">
-          <span className="w-9 h-9 rounded-xl bg-[#0F1F19] text-emerald-300 flex items-center justify-center shrink-0"><MessageCircle size={18} /></span>
-          <span className="hidden lg:block min-w-0">
-            <span className="block text-[14px] font-bold text-[#0F1F19] leading-tight">WhatsApp CRM</span>
-            <span className={`flex items-center gap-1 text-[11px] font-semibold ${configured ? 'text-emerald-600' : 'text-amber-600'}`}>
-              {configured ? <CircleCheck size={11} /> : <CircleAlert size={11} />}{loading ? 'Checking…' : configured ? 'Connected' : 'Not connected'}
+        {/* R-INBOX-03: minimalist header — which platforms are connected (none blocks the screen) */}
+        <div className="h-16 px-3 lg:px-4 flex items-center justify-center lg:justify-start gap-3 border-b border-[#ECEEEC] shrink-0">
+          {([['WhatsApp', MessageCircle, configured], ['Facebook', Facebook, ghlOn], ['Instagram', Instagram, ghlOn]] as const).map(([label, Icon, on]) => (
+            <span key={label} title={`${label}: ${loading ? 'checking…' : on ? 'connected' : 'not connected'}`} className={`relative ${on ? 'text-slate-600' : 'text-slate-300'} ${label !== 'WhatsApp' ? 'hidden lg:inline-flex' : 'inline-flex'}`}>
+              <Icon size={17} />
+              <span className={`absolute -bottom-0.5 -right-1 w-2 h-2 rounded-full ring-2 ring-[#FAFBFA] ${loading ? 'bg-slate-300' : on ? 'bg-emerald-500' : 'bg-amber-400'}`} />
             </span>
-          </span>
+          ))}
+          <span className="hidden lg:block text-[11px] font-semibold text-slate-400 ml-auto">{loading ? '' : [configured, ghlOn].filter(Boolean).length === 0 ? 'Not connected' : configured && ghlOn ? 'All connected' : 'Partly connected'}</span>
         </div>
         <ul className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {MODULES.map(m => {
@@ -219,7 +224,7 @@ export function WhatsAppCRM() {
             clientName={clientName} activeId={activeId} setActiveId={setActiveId} refresh={() => void refreshConvs()} />
         ) : (
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-[#FBFCFB]">
-            {tab === 'jobs' && <WaJobs convs={convs} onOpenChat={openChat} />}
+            {tab === 'jobs' && <WaJobs convs={convs} onOpenChat={openChat} canSend={configured} />}
             {tab === 'deals' && <WaDeals onOpenChat={openChat} agents={agents} />}
             {tab === 'broadcast' && <WaBroadcast canSend={configured && !loading} />}
             {tab === 'analytics' && (tablesReady ? <WaAnalytics agents={agents} /> : <p className="text-center text-[13px] text-slate-500 py-10">Analytics starts once the inbox database step is done.</p>)}

@@ -8,12 +8,13 @@ import { formatWaNumber, type WaConversation } from '@/lib/whatsapp'
 import { toWaId } from '@/lib/whatsappModules'
 import { aed } from './WaShared'
 import { timeOf } from './WaChat'
+import { WaJobsNotify } from './WaJobsNotify'
 
 /**
  * R-WA-02 Jobs: the CRM's own bookings for clients who chat on WhatsApp — no second job list.
  * New jobs are made with the normal booking form (opened with the client filled in).
  */
-export function WaJobs({ convs, onOpenChat }: { convs: WaConversation[]; onOpenChat: (conversationId: string) => void }) {
+export function WaJobs({ convs, onOpenChat, canSend = false }: { convs: WaConversation[]; onOpenChat: (conversationId: string) => void; canSend?: boolean }) {
   const { bookings } = useData()
   const today = todayDubai()
 
@@ -89,6 +90,7 @@ export function WaJobs({ convs, onOpenChat }: { convs: WaConversation[]; onOpenC
           </ul>
         )}
       </section>
+      <WaJobsNotify canSend={canSend} />
     </div>
   )
 }

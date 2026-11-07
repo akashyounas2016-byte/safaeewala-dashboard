@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { MessageCircle, Search, Database, UserCircle2, Layers, Info } from 'lucide-react'
+import { MessageCircle, Search, Database, UserCircle2, Layers, Info, SlidersHorizontal, X } from 'lucide-react'
+import { notify } from '@/lib/notify'
+import { loadGhlTags, saveGhlTags, tagSummary } from '@/lib/inboxSettings'
+import { TagChip, useTagDefs } from './Tags'
 import { formatWaNumber, type ChatStatus, type WaConversation } from '@/lib/whatsapp'
 import { ghlConversations, ghlStatus, type GhlConversation, type InboxChannel } from '@/lib/ghlInbox'
 import { CHAT_STATUSES, filterChats, type WaAgent } from '@/lib/whatsappCrm'
@@ -19,7 +22,9 @@ const PLATFORMS: { key: Platform; label: string; icon: typeof Layers | typeof Fa
   { key: 'facebook', label: 'Facebook', icon: Facebook },
   { key: 'instagram', label: 'Instagram', icon: Instagram },
 ]
-type Item = { key: string; channel: InboxChannel; id: string; name: string; preview: string; out: boolean; at: string | null; unread: number; wa?: WaConversation; ghl?: GhlConversation }
+type Item = { key: string; channel: InboxChannel; id: string; name: string; preview: string; out: boolean; at: string | null; unread: number; tags: string[]; wa?: WaConversation; ghl?: GhlConversation }
+type Filters = { unread: boolean; tag: string; status: ChatStatus | ''; who: 'all' | 'mine' | 'unassigned'; optedOut: boolean }
+const NO_FILTERS: Filters = { unread: false, tag: '', status: '', who: 'all', optedOut: false }
 
 export function WaInbox({ convs, tablesReady, configured, crmOn, agents, me, clientName, activeId, setActiveId, refresh }: {
   convs: WaConversation[]
@@ -42,6 +47,17 @@ export function WaInbox({ convs, tablesReady, configured, crmOn, agents, me, cli
   const [search, setSearch] = useState('')
   const [ghl, setGhl] = useState<GhlConversation[]>([])
   const [ghlState, setGhlState] = useState<'loading' | 'ok' | 'off' | 'error'>('loading')
+  const tagDefs = useTagDefs()
+  const [ghlTags, setGhlTags] = useState<Record<string, string[]> | null>({})
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS)
+  const [filterOpen, setFilterOpen] = useState(false)
+  useEffect(() => { void loadGhlTags().then(setGhlTags).catch(() => setGhlTags(null)) }, [])
+  const setTagsFor = async (ref: string, tags: string[]) => {
+    if (ghlTags === null) { notify.error('Tags on Facebook / Instagram chats need the database step 2026-11-07_inbox_tags_notifications.sql'); return }
+    setGhlTags(m => ({ ...(m || {}), [ref]: tags }))
+    try { await saveGhlTags(ref, tags) } catch (e) { notify.error((e as Error).message) }
+  }
+  const filterCount = Object.entries(filters).filter(([k, v]) => (k === 'who' ? v !== 'all' : Boolean(v))).length
 
   const refreshGhl = useCallback(async () => { try { setGhl(await ghlConversations()); setGhlState('ok') } catch { setGhlState('error') } }, [])
   useEffect(() => { void ghlStatus().then(ok => { if (ok) void refreshGhl(); else setGhlState('off') }).catch(() => setGhlState('off')) }, [refreshGhl])
@@ -57,14 +73,22 @@ export function WaInbox({ convs, tablesReady, configured, crmOn, agents, me, cli
     const qy = search.trim().toLowerCase()
     const wa = (crmFilters ? filterChats(waAll, status, who, me) : waAll).map(c => ({
       key: `wa:${c.id}`, channel: 'whatsapp' as const, id: c.id, name: clientName(c.client_id) || c.name || formatWaNumber(c.wa_id),
-      preview: c.last_message_preview || '', out: c.last_direction === 'out', at: c.last_message_at, unread: c.unread_count || 0, wa: c,
+      preview: c.last_message_preview || '', out: c.last_direction === 'out', at: c.last_message_at, unread: c.unread_count || 0, tags: c.tags || [], wa: c,
     }))
-    const gh = ghlAll.map(c => ({ key: `ghl:${c.id}`, channel: c.channel, id: c.id, name: c.name, preview: c.preview, out: c.lastDirection === 'out', at: c.lastMessageAt, unread: c.unread, ghl: c }))
+    const gh = ghlAll.map(c => ({ key: `ghl:${c.id}`, channel: c.channel, id: c.id, name: c.name, preview: c.preview, out: c.lastDirection === 'out', at: c.lastMessageAt, unread: c.unread, tags: (ghlTags || {})[`ghl:${c.id}`] || [], ghl: c }))
     return ([...wa, ...gh] as Item[])
-      .filter(i => (platform === 'all' || i.channel === platform) && (!qy || `${i.name} ${i.preview} ${(i.wa?.tags || []).join(' ')} ${i.wa?.wa_id || ''}`.toLowerCase().includes(qy)))
-      .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))
-  }, [waAll, ghlAll, platform, crmFilters, status, who, me, search, clientName])
+      .filter(i => (platform === 'all' || i.channel === platform) && (!qy || `${i.name} ${i.preview} ${i.tags.join(' ')} ${i.wa?.wa_id || ''}`.toLowerCase().includes(qy)))
+      .filter(i => (!filters.unread || i.unread > 0) && (!filters.tag || i.tags.some(t => t.toLowerCase() === filters.tag.toLowerCase()))
+        && (!filters.status || (i.wa && (i.wa.status || 'open') === filters.status)) && (!filters.optedOut || Boolean(i.wa?.unsubscribed))
+        && (filters.who === 'all' || (i.wa && (filters.who === 'mine' ? i.wa.assigned_to === me : !i.wa.assigned_to))))
+      // R-INBOX-03: unread chats always on top, then newest first
+      .sort((a, b) => (Number(b.unread > 0) - Number(a.unread > 0)) || String(b.at || '').localeCompare(String(a.at || '')))
+  }, [waAll, ghlAll, ghlTags, platform, crmFilters, status, who, me, search, clientName, filters])
 
+  const summary = useMemo(() => tagSummary([
+    ...waAll.filter(() => platform === 'all' || platform === 'whatsapp').map(c => ({ unread: c.unread_count || 0, status: c.status, tags: c.tags || [] })),
+    ...ghlAll.filter(c => platform === 'all' || c.channel === platform).map(c => ({ unread: c.unread, tags: (ghlTags || {})[`ghl:${c.id}`] || [] })),
+  ]), [waAll, ghlAll, ghlTags, platform])
   const counts = useMemo(() => ({ all: waAll.length + ghlAll.length, whatsapp: waAll.length, facebook: ghlAll.filter(c => c.channel === 'facebook').length, instagram: ghlAll.filter(c => c.channel === 'instagram').length }), [waAll, ghlAll])
   const unread = (ch: Platform) => (ch === 'all' || ch === 'whatsapp' ? waAll.reduce((s, c) => s + (c.unread_count || 0), 0) : 0) + (ch === 'whatsapp' ? 0 : ghlAll.filter(c => ch === 'all' || c.channel === ch).reduce((s, c) => s + c.unread, 0))
   const statusCounts = useMemo(() => Object.fromEntries(CHAT_STATUSES.map(s => [s.key, waAll.filter(c => (c.status || 'open') === s.key).length])) as Record<ChatStatus, number>, [waAll])
@@ -120,9 +144,44 @@ export function WaInbox({ convs, tablesReady, configured, crmOn, agents, me, cli
               ))}
             </div>
           )}
-          <div className="flex items-center gap-2 bg-[#F4F5F4] rounded-xl px-3 h-9 focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-100">
-            <Search size={14} className="text-slate-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, number, message, tag" className="bg-transparent outline-none text-[13px] flex-1" />
+          <div className="flex gap-1.5">
+            <div className="flex items-center gap-2 bg-[#F4F5F4] rounded-xl px-3 h-9 flex-1 min-w-0 focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-100">
+              <Search size={14} className="text-slate-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, number, message, tag" className="bg-transparent outline-none text-[13px] flex-1 min-w-0" />
+            </div>
+            <div className="relative">
+              <button type="button" onClick={() => setFilterOpen(o => !o)} aria-label="Filters" aria-expanded={filterOpen} className={`h-9 px-2.5 rounded-xl flex items-center gap-1 text-[12px] font-semibold cursor-pointer ${filterCount ? 'bg-[#0F1F19] text-white' : 'bg-[#F4F5F4] text-slate-600 hover:bg-slate-200'}`}>
+                <SlidersHorizontal size={14} />{filterCount > 0 && filterCount}
+              </button>
+              {filterOpen && (
+                <>
+                  <button type="button" aria-label="Close filters" className="fixed inset-0 z-20 cursor-default" onClick={() => setFilterOpen(false)} />
+                  <div className="absolute right-0 top-10 z-30 w-64 bg-white border border-[#E6E8E6] rounded-xl shadow-xl p-3 space-y-2.5 text-[12.5px]">
+                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={filters.unread} onChange={e => setFilters(f => ({ ...f, unread: e.target.checked }))} /> Unread only</label>
+                    <label className="block"><span className="text-[11px] font-bold text-slate-500">Tag</span>
+                      <select value={filters.tag} onChange={e => setFilters(f => ({ ...f, tag: e.target.value }))} className="mt-0.5 w-full rounded-lg border border-[#E6E8E6] px-2 py-1.5"><option value="">Any tag</option>{tagDefs.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}</select>
+                    </label>
+                    <label className="block"><span className="text-[11px] font-bold text-slate-500">WhatsApp status</span>
+                      <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value as ChatStatus | '' }))} className="mt-0.5 w-full rounded-lg border border-[#E6E8E6] px-2 py-1.5"><option value="">Any status</option>{CHAT_STATUSES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}</select>
+                    </label>
+                    <label className="block"><span className="text-[11px] font-bold text-slate-500">Assigned</span>
+                      <select value={filters.who} onChange={e => setFilters(f => ({ ...f, who: e.target.value as Filters['who'] }))} className="mt-0.5 w-full rounded-lg border border-[#E6E8E6] px-2 py-1.5"><option value="all">Everyone</option><option value="mine">Mine</option><option value="unassigned">Unassigned</option></select>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={filters.optedOut} onChange={e => setFilters(f => ({ ...f, optedOut: e.target.checked }))} /> Opted out (STOP)</label>
+                    <button type="button" onClick={() => setFilters(NO_FILTERS)} className="w-full py-1.5 rounded-lg border border-[#E6E8E6] font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer">Clear filters</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+          {/* R-INBOX-03: summary — unread, pending and every tag in use; click to filter */}
+          <div className="flex gap-1 flex-wrap">
+            <button type="button" onClick={() => setFilters(f => ({ ...f, unread: !f.unread }))} className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border cursor-pointer ${filters.unread ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>Unread {summary.unread}</button>
+            {summary.pending > 0 && <button type="button" onClick={() => setFilters(f => ({ ...f, status: f.status === 'pending' ? '' : 'pending' }))} className={`text-[11px] font-semibold px-2 py-0.5 rounded-md border cursor-pointer ${filters.status === 'pending' ? 'bg-amber-500 text-white border-amber-500' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>Pending {summary.pending}</button>}
+            {Object.entries(summary.tags).sort((a, b) => b[1] - a[1]).map(([t, n]) => (
+              <button key={t} type="button" onClick={() => setFilters(f => ({ ...f, tag: f.tag === t ? '' : t }))} className={`cursor-pointer rounded-md ${filters.tag === t ? 'ring-2 ring-slate-400' : ''}`}><TagChip name={`${t} ${n}`} defsList={[...tagDefs.map(d => ({ ...d, name: `${d.name} ${summary.tags[d.name] ?? ''}` }))]} /></button>
+            ))}
+            {filterCount > 0 && <button type="button" onClick={() => setFilters(NO_FILTERS)} className="text-[11px] font-semibold text-slate-500 flex items-center gap-0.5 cursor-pointer"><X size={11} />Clear</button>}
           </div>
         </div>
         <ul className="flex-1 overflow-y-auto">
@@ -151,13 +210,13 @@ export function WaInbox({ convs, tablesReady, configured, crmOn, agents, me, cli
                       <span className={`text-[12px] truncate ${i.unread ? 'text-slate-700' : 'text-slate-400'}`}>{i.out ? 'You: ' : ''}{i.preview}</span>
                       {i.unread > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">{i.unread}</span>}
                     </span>
-                    {(isDemo || owner || i.wa?.unsubscribed || (i.wa?.tags || []).length > 0 || (i.wa?.status && i.wa.status !== 'open')) && (
+                    {(isDemo || owner || i.wa?.unsubscribed || i.tags.length > 0 || (i.wa?.status && i.wa.status !== 'open')) && (
                       <span className="flex items-center gap-1 mt-1 flex-wrap">
                         {isDemo && <span className="text-[9.5px] font-black tracking-wider text-violet-700 bg-violet-50 px-1.5 rounded">DEMO</span>}
                         {i.wa?.status && i.wa.status !== 'open' && <span className={`text-[10px] font-semibold px-1.5 rounded ${CHAT_STATUSES.find(s => s.key === i.wa!.status)?.tone}`}>{CHAT_STATUSES.find(s => s.key === i.wa!.status)?.label}</span>}
                         {owner && <span className="text-[10px] font-semibold text-slate-500 flex items-center gap-0.5"><UserCircle2 size={10} />{owner}</span>}
                         {i.wa?.unsubscribed && <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 rounded">Opted out</span>}
-                        {(i.wa?.tags || []).slice(0, 2).map(t => <span key={t} className="text-[10px] font-semibold text-violet-700 bg-violet-50 px-1.5 rounded">{t}</span>)}
+                        {i.tags.slice(0, 3).map(t => <TagChip key={t} name={t} defsList={tagDefs} />)}
                       </span>
                     )}
                   </span>
@@ -175,7 +234,7 @@ export function WaInbox({ convs, tablesReady, configured, crmOn, agents, me, cli
       <section className={`relative flex flex-col min-h-0 ${active ? 'flex' : 'hidden md:flex'}`}>
         {activeWa ? <WaChat key={activeWa.id} conv={activeWa} clientName={clientName(activeWa.client_id)} canSend={configured} onBack={() => setActiveId(null)} onChanged={refresh}
             crm={crmOn || isDemoId(activeWa.id) ? { agents, me } : undefined} />
-          : activeGhl ? <GhlChat key={activeGhl.id} conv={activeGhl} onBack={() => setActiveId(null)} onChanged={() => void refreshGhl()} />
+          : activeGhl ? <GhlChat key={activeGhl.id} conv={activeGhl} onBack={() => setActiveId(null)} onChanged={() => void refreshGhl()} tags={(ghlTags || {})[`ghl:${activeGhl.id}`] || []} onTags={tags => void setTagsFor(`ghl:${activeGhl.id}`, tags)} />
           : (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 bg-[#FAFBFA]">
               <span className="w-14 h-14 rounded-2xl bg-white border border-[#ECEEEC] flex items-center justify-center text-slate-300"><MessageCircle size={26} /></span>

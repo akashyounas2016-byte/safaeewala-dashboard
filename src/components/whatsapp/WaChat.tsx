@@ -10,6 +10,8 @@ import {
 import { saveDeal } from '@/lib/whatsappModules'
 import type { WaAgent } from '@/lib/whatsappCrm'
 import { ChatCrmBar } from './WaChatCrm'
+import { Composer } from './Composer'
+import { waSendMedia } from '@/lib/inboxSettings'
 import { demo, isDemoId, useInboxDemo } from '@/lib/inboxDemo'
 
 /** R-WA-01 / R-WA-02: one WhatsApp chat — messages, reply window, composer, templates, and quick Booking / Deal */
@@ -150,19 +152,12 @@ export function WaChat({ conv, clientName, canSend, onBack, onChanged, crm }: {
         ))}
         <div ref={bottomRef} />
       </div>
-      <footer className="p-3 border-t border-[#E2E5E0] flex items-end gap-2">
-        <button type="button" onClick={openTemplates} disabled={!canSend} title="Send an approved template" className="h-10 px-3 rounded-xl border border-[#E2E5E0] text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-40">
-          <FileText size={14} /> Template
-        </button>
-        <textarea value={text} onChange={e => setText(e.target.value)} disabled={!open || (!canSend && !isDemo)} rows={1}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() } }}
-          placeholder={isDemo ? 'Type a DEMO reply — stays in this browser' : !canSend ? 'Sending starts once the Meta keys are on the server (Settings tab)' : open ? 'Type a message — Enter to send, Shift+Enter for a new line' : 'Window closed — use a template'}
-          className="flex-1 resize-none max-h-32 min-h-10 rounded-xl border border-[#E2E5E0] px-3 py-2.5 text-[13px] outline-none focus:border-emerald-500 disabled:bg-slate-50" />
-        <button type="button" onClick={() => void send()} disabled={!open || !text.trim() || sending || (!canSend && !isDemo)} aria-label="Send"
-          className="h-10 w-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center disabled:opacity-40 cursor-pointer shrink-0">
-          {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-        </button>
-      </footer>
+      {/* R-INBOX-03: attachment, templates + saved replies, emoji */}
+      <Composer text={text} setText={setText} onSend={() => void send()} sending={sending}
+        disabled={!open || (!canSend && !isDemo)} canAttach={!isDemo}
+        onAttach={async (file, caption) => { await waSendMedia(conv.id, file, caption); setMsgs(await loadMessages(conv.id)); onChanged() }}
+        onOpenTemplates={canSend && !isDemo ? () => void openTemplates() : undefined}
+        placeholder={isDemo ? 'Type a DEMO reply — stays in this browser' : !canSend ? 'Sending starts once the Meta keys are on the server (Settings)' : open ? 'Type a message — Enter to send, Shift+Enter for a new line' : 'Window closed — use a template (📄 icon)'} />
 
       <Modal open={pickTemplate} onClose={() => setPickTemplate(false)} title="Send a template" size="lg">
         {templates === null ? <div className="py-8 text-center"><Loader2 className="mx-auto animate-spin text-slate-400" /></div>

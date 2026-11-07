@@ -75,7 +75,7 @@ async function ghl(path, { method = 'GET', body } = {}) {
 
 const INBOX_PATHS = /^\/api\/ghl\/(conversations|messages\/[^/]+|send|read)$/
 
-function createGhl({ sendJson, readJson, activeUserFrom }) {
+function createGhl({ sendJson, readJson, activeUserFrom, supabaseUrl = '', serviceHeaders = () => ({}) }) {
   const q = encodeURIComponent
   async function staffUser(req) {
     const user = await activeUserFrom(req)
@@ -108,12 +108,28 @@ function createGhl({ sendJson, readJson, activeUserFrom }) {
     }
     if (pathname === '/api/ghl/send' && req.method === 'POST') {
       return run(async () => {
-        await staffUser(req); const body = await readJson(req)
+        await staffUser(req); const body = await readJson(req, 23 * 1024 * 1024)
         const text = String(body.text || '').trim()
         const type = sendTypeOf(body.channel)
-        if (!text) throw Object.assign(new Error('Type a message.'), { status: 400 })
+        if (!text && !body.file) throw Object.assign(new Error('Type a message.'), { status: 400 })
         if (!type || !body.contactId) throw Object.assign(new Error('Only Facebook and Instagram chats can be answered here.'), { status: 400 })
-        const sent = await ghl('/conversations/messages', { method: 'POST', body: { type, contactId: String(body.contactId), message: text } })
+        // R-INBOX-03: a photo / file goes to the private bucket; GHL gets a 7-day link to attach
+        const attachments = []
+        if (body.file) {
+          const buf = Buffer.from(String(body.file.base64 || ''), 'base64')
+          if (!buf.length || buf.length > 16 * 1024 * 1024) throw Object.assign(new Error('A file can be at most 16 MB.'), { status: 413 })
+          if (!supabaseUrl) throw Object.assign(new Error('File storage is not set up on the server.'), { status: 503 })
+          const mime = String(body.file.mime || 'application/octet-stream')
+          const ext = (String(body.file.name || '').split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin'
+          const objectPath = `ghl/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+          const up = await fetch(`${supabaseUrl}/storage/v1/object/whatsapp-media/${objectPath}`, { method: 'POST', headers: { ...serviceHeaders({ 'Content-Type': mime }), 'x-upsert': 'true' }, body: buf })
+          if (!up.ok) throw Object.assign(new Error('The file could not be stored.'), { status: 502 })
+          const sg = await fetch(`${supabaseUrl}/storage/v1/object/sign/whatsapp-media/${objectPath}`, { method: 'POST', headers: serviceHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ expiresIn: 7 * 24 * 3600 }) })
+          const sj = await sg.json().catch(() => ({}))
+          if (!sg.ok) throw Object.assign(new Error('The file link could not be made.'), { status: 502 })
+          attachments.push(`${supabaseUrl}/storage/v1${sj.signedURL || sj.signedUrl}`)
+        }
+        const sent = await ghl('/conversations/messages', { method: 'POST', body: { type, contactId: String(body.contactId), message: text, ...(attachments.length ? { attachments } : {}) } })
         sendJson(res, 200, { ok: true, id: sent.messageId || sent.id || null })
       }), true
     }

@@ -789,6 +789,29 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/components/whatsapp/WaInbox.tsx`, `GhlChat.tsx`, `src/lib/inboxDemo.ts`, `src/lib/inboxBackup.ts`, `src/pages/WhatsAppCRM.tsx` (⋮ menu), `src/pages/Inbox.tsx` (redirect), `whatsappServer.cjs → /api/whatsapp/delete-all`.
 - **Status:** Built · Since: 2026-11-07
 
+### R-INBOX-03 — Conversations: one module, tags, filters, a richer message bar
+- **Rule:** *"Sidebar se 'Inbox' aur 'WhatsApp' options ko khatam kar ke 'Conversations' ke naam se aik single module … 'WhatsApp CRM' heading ko hata kar ek minimalist header … 'Tags' (maslan Upcoming Job, Booked Job) … custom tags … header mein tamam tags ki summary … unread messages automatically sab se top par … filter dropdown … File/Image Attachment icon, Template selector icon, aur Smiley/Emoji picker."* and *"demo data whatsapp ka dalna he just insta and facebook to already chal rahe hen."* (2026-11-07)
+  - Sidebar → **Conversations** (`/conversations`, `/inbox` and `/whatsapp-crm` open it). The module rail starts with a minimal connection header (WhatsApp / Facebook / Instagram icons with a green or amber dot) instead of a title; nothing is blocked when a platform is not connected.
+  - **Tags** on every chat (WhatsApp, Facebook, Instagram): a shared list with colours — defaults Upcoming Job, Booked Job, Quote Sent, Follow-up, Complaint, VIP — plus custom tags made in any chat or in Settings → Tags. WhatsApp tags are stored on the chat; Facebook / Instagram tags in `inbox_chat_tags`.
+  - Above the list: a summary — Unread, Pending and each tag in use with its count; a click filters. Unread chats always come first, then newest. A filter button beside search: unread only, tag, WhatsApp status, assigned (everyone / mine / unassigned), opted out.
+  - Message bar on every chat: 📎 photo / file (up to 16 MB; WhatsApp through Meta with a copy in the private bucket; Facebook / Instagram through GHL with a 7-day link), 📄 approved WhatsApp templates + **saved replies** (Settings → Saved replies), 😊 emoji, Send.
+  - Demo data (R-INBOX-02) is WhatsApp only now.
+- **Code:** `src/components/whatsapp/WaInbox.tsx`, `Composer.tsx`, `Tags.tsx`, `WaSettingsMore.tsx`, `src/lib/inboxSettings.ts`, `whatsappServer.cjs → /api/whatsapp/send-media`, `ghlServer.cjs` (attachments), migration `2026-11-07_inbox_tags_notifications.sql`.
+- **Status:** Built · Since: 2026-11-07
+
+### R-WA-04 — Automatic client notifications, each with its own switch
+- **Rule:** *"ye feature add krna start kro lekin inko off krne k toggles b hone chaheye jese me reminder, auto message off b kr skta hon."* (2026-11-07 — the audit's top picks: booking messages, "team on the way", payment reminder)
+  - Settings → **Notifications to clients**: a **master switch** (off = no automatic message at all: notifications, welcome / away / keyword / fallback replies, deal-stage rules; campaigns and typed replies still work) and one switch + approved template + values per notification:
+    - **Booking confirmation** — new bookings saved after the switch was turned on (never old ones).
+    - **Day-before reminder** — tomorrow's bookings (not cancelled / completed), from a set time (default 18:00 Dubai).
+    - **Team on the way** — when a cleaner taps "On my way" (job check-in), to the client of that job (its booking, else the client of the building); also by hand from Conversations → Jobs → Today's jobs.
+    - **Feedback request** — bookings completed today or yesterday, from a set time (default 10:00).
+    - **Payment reminder** — by hand only: Conversations → Jobs → Unpaid jobs (job sheet rows of the last 60 days with charges above received) → Remind, after a confirmation; at most once a day per job.
+  - Template values: {name} {date} {time} {service} {address} {amount} {balance} {cleaner}. The server checks every minute, sends at most 30 per minute, and logs each one in `wa_notification_log` (one per booking / job and kind — never twice).
+  - Nothing is sent until Meta is connected and a template is chosen.
+- **Code:** `whatsappServer.cjs` (runNotifications, /api/whatsapp/notify), `src/components/whatsapp/WaSettingsMore.tsx`, `WaJobsNotify.tsx`, `src/lib/inboxSettings.ts`.
+- **Status:** Built · not tested against Meta (no keys yet) · Since: 2026-11-07
+
 ## OPS — Operating process
 
 ### R-OPS-01 — No browser automation without permission

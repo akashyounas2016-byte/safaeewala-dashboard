@@ -204,6 +204,7 @@ function AppRoutes() {
                 <Route path="bookings"   element={<Bookings />} />
                 <Route path="fluent-forms" element={<FluentFormsLeads />} />
                 <Route path="inbox" element={<Inbox />} />
+                <Route path="conversations" element={<Inbox />} />
                 <Route path="whatsapp-crm" element={<WhatsAppCRM />} />
                 <Route path="clients"    element={<Clients />} />
                 <Route path="clients/:id" element={<ClientProfile />} />

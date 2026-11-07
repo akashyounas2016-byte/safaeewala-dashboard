@@ -601,7 +601,7 @@ const { createWhatsApp } = require(path.join(__dirname, 'whatsappServer.cjs'));
 const whatsapp = createWhatsApp({ supa, supabaseUrl: SUPABASE_URL, serviceHeaders, sendJson, readJson, activeUserFrom });
 // R-INBOX-01: Facebook + Instagram through the GHL sub-account — ghlServer.cjs
 const { createGhl } = require(path.join(__dirname, 'ghlServer.cjs'));
-const ghl = createGhl({ sendJson, readJson, activeUserFrom });
+const ghl = createGhl({ sendJson, readJson, activeUserFrom, supabaseUrl: SUPABASE_URL, serviceHeaders });
 
 const server = http.createServer((req, res) => {
   // CORS Headers

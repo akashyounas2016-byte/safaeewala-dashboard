@@ -15,7 +15,7 @@ eq([windowOpen({ last_inbound_at: new Date().toISOString() }), windowOpen({ last
 
 eq(moduleForPath('/whatsapp-crm'), 'WhatsApp', 'WhatsApp is its own screen permission')
 eq(normalizeRolePerms({ manager: ['Overview'], _modules: ['Overview', 'Alerts'] }).manager.includes('WhatsApp'), true, 'managers get WhatsApp by default (saved before it existed)')
-eq(/to: '\/whatsapp-crm',\s+label: 'Inbox & WhatsApp'/.test(src('src/components/layout/Sidebar.tsx')), true, 'sidebar item with unread badge')
+eq(/to: '\/whatsapp-crm',\s+label: 'Conversations'/.test(src('src/components/layout/Sidebar.tsx')), true, 'sidebar item with unread badge')
 eq(/whatsapp-crm\?phone=/.test(src('src/pages/ClientProfile.tsx')), true, 'Client Profile opens the chat')
 
 const server = src('webhookServer.cjs')

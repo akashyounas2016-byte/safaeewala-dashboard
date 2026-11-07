@@ -159,6 +159,38 @@ function buildTemplateComponents({ header, body, examples = [], footer, buttons 
   if (b.length) out.push({ type: 'BUTTONS', buttons: b.map(text => ({ type: 'QUICK_REPLY', text })) })
   return out
 }
+// ── R-WA-04 helpers (pure, tested) ──
+/** Dubai calendar date, offset by whole days */
+function dubaiDate(offsetDays = 0, now = Date.now()) {
+  return new Date(now + offsetDays * 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' })
+}
+/** Template values: {name} {date} {time} {service} {address} {amount} {balance} {cleaner} from the job */
+function fillTokens(params, ctx) {
+  return (params || []).map(p => String(p).replace(/\{(\w+)\}/g, (m, k) => (ctx[k] !== undefined && ctx[k] !== null && ctx[k] !== '' ? String(ctx[k]) : m === '{name}' ? 'there' : '-')))
+}
+/** Template values from a booking row */
+function jobContext(b) {
+  if (!b) return {}
+  const total = Number(b.total_amount) || 0; const paid = Number(b.received_amount) || 0
+  const d = b.scheduled_date ? new Date(`${b.scheduled_date}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', timeZone: 'UTC' }) : ''
+  return { date: d, time: b.scheduled_time || '', service: b.service_type || '', address: b.service_address || '', amount: total ? `AED ${total}` : '', balance: total - paid > 0 ? `AED ${total - paid}` : '' }
+}
+/** WhatsApp message type for a file */
+function mediaKind(mime) {
+  const m = String(mime || '').toLowerCase()
+  if (/^image\/(jpeg|png)$/.test(m)) return 'image'
+  if (/^video\/(mp4|3gpp)$/.test(m)) return 'video'
+  if (/^audio\//.test(m)) return 'audio'
+  return 'document'
+}
+/** The notifications that are switched on and have a template (master switch off = none) */
+function activeNotifications(settings) {
+  if (!settings || settings.master === false) return {}
+  const out = {}
+  for (const k of ['confirm', 'reminder', 'on_way', 'feedback', 'payment']) if (settings[k] && settings[k].enabled && settings[k].template) out[k] = settings[k]
+  return out
+}
+
 /** A deal-stage rule fires when the deal moves into its "to" stage (from its "from" stage, or from any stage) */
 const stageRuleMatches = (rule, from, to) => rule.kind === 'deal_stage' && rule.enabled && rule.to_stage === to && (!rule.from_stage || rule.from_stage === from)
 
@@ -200,15 +232,15 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
   }
 
   // R-WA-02: rules and hours are read at most every 30 s (they change rarely; the webhook is hot)
-  let cache = { at: 0, rules: [], hours: null, assignment: null }
+  let cache = { at: 0, rules: [], hours: null, assignment: null, notifications: null }
   async function automation() {
     if (Date.now() - cache.at < 30000) return cache
     try {
       const rules = await supa('/rest/v1/wa_rules?select=*&order=created_at.asc')
-      const settings = await supa('/rest/v1/wa_settings?key=in.(hours,assignment)&select=key,value')
+      const settings = await supa('/rest/v1/wa_settings?key=in.(hours,assignment,notifications)&select=key,value')
       const val = k => (settings || []).find(s => s.key === k)?.value || null
-      cache = { at: Date.now(), rules: rules || [], hours: val('hours'), assignment: val('assignment') }
-    } catch { cache = { at: Date.now(), rules: [], hours: null, assignment: null } } // tables not created yet: no automation
+      cache = { at: Date.now(), rules: rules || [], hours: val('hours'), assignment: val('assignment'), notifications: val('notifications') }
+    } catch { cache = { at: Date.now(), rules: [], hours: null, assignment: null, notifications: null } } // tables not created yet: no automation
     return cache
   }
   /** R-WA-03: a note on the chat's history (assignment / status); quiet when the table is missing */
@@ -240,8 +272,9 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
 
   /** Keyword reply first; otherwise a welcome for a new chat; and an away note outside business hours (once per 12 h per chat) */
   async function runAutomation(conv, m) {
-    const { rules, hours } = await automation()
+    const { rules, hours, notifications } = await automation()
     if (!rules.length) return
+    if (notifications && notifications.master === false) return // R-WA-04: master switch pauses every automatic message
     const kw = m.type === 'text' || m.type === 'button' || m.type === 'interactive' ? matchKeyword(rules, m.body) : null
     if (kw) { await autoReply(conv, kw); return }
     const welcome = rules.find(r => r.kind === 'welcome' && r.enabled)
@@ -397,6 +430,94 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
     return retargetPick(recips, { repliedWaIds, statusByWamid }, rule)
   }
 
+  // ── R-WA-04: automatic client notifications (each with its own on/off, plus a master switch) ──
+  /** Send one notification template once per (kind, ref): the log row is claimed first, so two ticks never double-send */
+  async function notify(kind, ref, phone, name, ctx, cfg, by = 'automation') {
+    const waId = normalizeWaId(phone)
+    if (waId.length < 8) return 'no-number'
+    const claim = await supa('/rest/v1/wa_notification_log?on_conflict=kind,ref', { method: 'POST', headers: { Prefer: 'resolution=ignore-duplicates,return=representation' }, body: { kind, ref: String(ref), wa_id: waId, sent_by: by } })
+    if (!claim || !claim.length) return 'already'
+    try {
+      const conv = await conversationFor(waId, name || null)
+      const values = fillTokens(cfg.params || [], { name, ...ctx })
+      const template = { name: cfg.template, language: { code: cfg.language || 'en' }, ...(values.length ? { components: [{ type: 'body', parameters: values.map(text => ({ type: 'text', text })) }] } : {}) }
+      await sendOut(conv, { email: by }, { type: 'template', template }, { type: 'template', body: `${({ confirm: 'Booking confirmation', reminder: 'Booking reminder', on_way: 'Team on the way', feedback: 'Feedback request', payment: 'Payment reminder' })[kind] || kind}: ${cfg.template}`, template_name: cfg.template })
+      return 'sent'
+    } catch (err) {
+      await supa(`/rest/v1/wa_notification_log?id=eq.${claim[0].id}`, { method: 'PATCH', body: { status: 'failed', error: String(err.message).slice(0, 300) } }).catch(() => {})
+      return 'failed'
+    }
+  }
+
+  /** Phone + name + template values for a booking (and the job sheet row that belongs to it) */
+  async function bookingContacts(bookings) {
+    const clients = await supa('/rest/v1/clients?select=id,full_name,phone,whatsapp,building_name') || []
+    return bookings.map(b => {
+      const c = clients.find(x => x.id === b.client_id)
+      return { ref: b.id, phone: b.client_phone || c?.whatsapp || c?.phone || '', name: b.client_name || c?.full_name || '', ctx: jobContext(b) }
+    })
+  }
+
+  let running = false
+  /** Called every minute by the server: confirmations, day-before reminders, "on the way", feedback requests */
+  async function runNotifications(now = Date.now()) {
+    if (running) return { skipped: true }
+    running = true
+    const sent = []
+    try {
+      const { notifications } = await automation()
+      const on = activeNotifications(notifications)
+      if (!Object.keys(on).length) return { sent }
+      const today = dubaiDate(0, now); const tomorrow = dubaiDate(1, now); const yesterday = dubaiDate(-1, now)
+      const { time } = dubaiClock(new Date(now))
+      const cols = 'id,client_id,client_name,client_phone,service_address,service_type,status,scheduled_date,scheduled_time,end_time,total_amount,received_amount,created_at'
+      let budget = 30 // per minute, well under Meta's limits
+      const run = async (kind, list) => {
+        for (const x of list) {
+          if (budget <= 0) return
+          const r = await notify(kind, x.ref, x.phone, x.name, x.ctx, on[kind])
+          if (r === 'sent' || r === 'failed') { budget--; sent.push(`${kind}:${x.ref}:${r}`) }
+        }
+      }
+      if (on.confirm && on.confirm.since) {
+        // only bookings made after the switch was turned on — never a flood of old bookings
+        const rows = await supa(`/rest/v1/bookings?scheduled_date=gte.${today}&select=${cols}&limit=300`) || []
+        const fresh = rows.filter(b => String(b.created_at || '') >= on.confirm.since && !/cancel/i.test(b.status || ''))
+        await run('confirm', await bookingContacts(fresh))
+      }
+      if (on.reminder && time >= (on.reminder.hour || '18:00')) {
+        const rows = await supa(`/rest/v1/bookings?scheduled_date=eq.${tomorrow}&select=${cols}&limit=300`) || []
+        await run('reminder', await bookingContacts(rows.filter(b => !/cancel|complet/i.test(b.status || ''))))
+      }
+      if (on.feedback && time >= (on.feedback.hour || '10:00')) {
+        const rows = await supa(`/rest/v1/bookings?scheduled_date=in.(${yesterday},${today})&status=eq.completed&select=${cols}&limit=300`) || []
+        const jobsDone = await supa(`/rest/v1/daily_jobs?date=in.(${yesterday},${today})&status=eq.completed&booking_id=not.is.null&select=booking_id&limit=500`).catch(() => []) || []
+        const more = jobsDone.length ? await supa(`/rest/v1/bookings?id=in.(${[...new Set(jobsDone.map(j => j.booking_id))].map(q).join(',')})&select=${cols}`) || [] : []
+        const all = [...new Map([...rows, ...more].map(b => [b.id, b])).values()]
+        await run('feedback', await bookingContacts(all))
+      }
+      if (on.on_way) {
+        const since = new Date(now - 45 * 60000).toISOString()
+        const checks = await supa(`/rest/v1/job_checkins?status=eq.on_way&on_way_at=gt.${q(since)}&select=job_id,cleaner`).catch(() => []) || []
+        if (checks.length) {
+          const jobIds = [...new Set(checks.map(c => c.job_id))]
+          const jobs = await supa(`/rest/v1/daily_jobs?id=in.(${jobIds.map(q).join(',')})&select=id,booking_id,address,area,start_time,service,date`) || []
+          const bIds = jobs.map(j => j.booking_id).filter(Boolean)
+          const bookings = bIds.length ? await supa(`/rest/v1/bookings?id=in.(${bIds.map(q).join(',')})&select=${cols}`) || [] : []
+          const clients = await supa('/rest/v1/clients?select=id,full_name,phone,whatsapp,building_name') || []
+          const list = jobs.map(j => {
+            const b = bookings.find(x => x.id === j.booking_id)
+            const c = (b && clients.find(x => x.id === b.client_id)) || clients.find(x => x.building_name && j.address && x.building_name.trim().toLowerCase() === String(j.address).trim().toLowerCase())
+            const cleaner = checks.filter(k => k.job_id === j.id).map(k => k.cleaner).join(', ')
+            return { ref: j.id, phone: b?.client_phone || c?.whatsapp || c?.phone || '', name: b?.client_name || c?.full_name || '', ctx: { ...jobContext(b || { scheduled_date: j.date, scheduled_time: j.start_time, service_type: j.service, service_address: j.address }), cleaner } }
+          })
+          await run('on_way', list)
+        }
+      }
+      return { sent }
+    } finally { running = false }
+  }
+
   // R-WA-03: scheduled campaigns go out within a minute of their time (checked by the server, not a browser)
   if (scheduler) {
     const tick = async () => {
@@ -409,6 +530,7 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
           if (claimed && claimed.length) await sendBroadcast({ ...bc, status: 'sending' })
         }
       } catch { /* tables not created yet */ }
+      await runNotifications().catch(err => console.warn('[WhatsApp] notifications:', err.message))
     }
     setInterval(() => void tick(), 60000).unref()
   }
@@ -426,6 +548,54 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
     const run = fn => fn().catch(err => sendJson(res, err.status || 500, { error: err.message || 'Server error' }))
     if (pathname === '/api/whatsapp/status' && req.method === 'GET') {
       return run(async () => { await staffUser(req); sendJson(res, 200, { configured: configured(), templates: Boolean(env().wabaId) }) }), true
+    }
+    // R-WA-04: a notification sent by hand (payment reminder, "on the way") — uses the template set for that kind;
+    // payment reminders at most once a day per job
+    if (pathname === '/api/whatsapp/notify' && req.method === 'POST') {
+      return run(async () => {
+        const user = await staffUser(req); const body = await readJson(req)
+        if (!configured()) throw Object.assign(new Error('WhatsApp is not set up on the server yet.'), { status: 503 })
+        const { notifications } = await automation()
+        const cfg = activeNotifications(notifications)[body.kind]
+        if (!cfg) throw Object.assign(new Error('This notification is switched off or has no template (Settings → Notifications).'), { status: 400 })
+        const ref = body.kind === 'payment' ? `${body.ref}:${dubaiDate(0)}` : String(body.ref || '')
+        if (!ref) throw Object.assign(new Error('Which job?'), { status: 400 })
+        const r = await notify(body.kind, ref, body.to, body.name || '', body.values || {}, cfg, user.email || user.id)
+        if (r === 'already') throw Object.assign(new Error(body.kind === 'payment' ? 'A payment reminder already went to this client today.' : 'Already sent for this job.'), { status: 409 })
+        if (r === 'no-number') throw Object.assign(new Error('No WhatsApp number for this client.'), { status: 400 })
+        if (r === 'failed') throw Object.assign(new Error('Meta did not accept the message — see the chat for the reason.'), { status: 502 })
+        sendJson(res, 200, { ok: true })
+      }), true
+    }
+    // R-INBOX-03: send a photo / file (up to 16 MB) inside the 24-hour window; a copy is kept in the private bucket
+    if (pathname === '/api/whatsapp/send-media' && req.method === 'POST') {
+      return run(async () => {
+        const user = await staffUser(req); const body = await readJson(req, 23 * 1024 * 1024)
+        if (!configured()) throw Object.assign(new Error('WhatsApp is not set up on the server yet.'), { status: 503 })
+        const buf = Buffer.from(String(body.base64 || ''), 'base64')
+        if (!buf.length) throw Object.assign(new Error('Choose a file.'), { status: 400 })
+        if (buf.length > 16 * 1024 * 1024) throw Object.assign(new Error('A file can be at most 16 MB.'), { status: 413 })
+        const conv = await conversationFromBody(body)
+        if (!windowOpen(conv.last_inbound_at)) throw Object.assign(new Error('More than 24 hours since the client last wrote — send an approved template first.'), { status: 409 })
+        const mime = String(body.mime || 'application/octet-stream')
+        const kind = mediaKind(mime)
+        const filename = String(body.filename || 'file').replace(/[^\w. -]/g, '_').slice(0, 100)
+        const e = env()
+        const form = new FormData()
+        form.append('messaging_product', 'whatsapp'); form.append('type', mime)
+        form.append('file', new Blob([buf], { type: mime }), filename)
+        const up = await fetch(`${e.graph}/${e.phoneNumberId}/media`, { method: 'POST', headers: { Authorization: `Bearer ${e.token}` }, body: form })
+        const upJson = await up.json().catch(() => ({}))
+        if (!up.ok || !upJson.id) throw Object.assign(new Error(upJson?.error?.message || 'Meta did not accept the file.'), { status: 400 })
+        const caption = String(body.caption || '').slice(0, 1024)
+        const payload = { id: upJson.id, ...(caption && kind !== 'audio' ? { caption } : {}), ...(kind === 'document' ? { filename } : {}) }
+        const row = await sendOut(conv, user, { type: kind, [kind]: payload }, { type: kind, body: caption || null, media_mime: mime, media_name: filename })
+        const ext = (filename.includes('.') ? filename.split('.').pop() : mime.split('/')[1] || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin'
+        const objectPath = `${conv.id}/${row.id}.${ext}`
+        const st = await fetch(`${supabaseUrl}/storage/v1/object/whatsapp-media/${objectPath}`, { method: 'POST', headers: { ...serviceHeaders({ 'Content-Type': mime }), 'x-upsert': 'true' }, body: buf })
+        if (st.ok) await supa(`/rest/v1/wa_messages?id=eq.${row.id}`, { method: 'PATCH', body: { media_path: objectPath } })
+        sendJson(res, 200, { ...row, media_path: st.ok ? objectPath : null })
+      }), true
     }
     // R-WA-03: the people a chat or deal can be given to (admins and managers) — works before Meta is connected
     if (pathname === '/api/whatsapp/agents' && req.method === 'GET') {
@@ -591,8 +761,8 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
         const user = await staffUser(req); const body = await readJson(req)
         const [deal] = await supa(`/rest/v1/wa_deals?id=eq.${q(body.dealId || '')}&select=*`)
         if (!deal) throw Object.assign(new Error('Deal not found'), { status: 404 })
-        const { rules } = await automation()
-        const hits = rules.filter(r => stageRuleMatches(r, body.from || null, deal.stage))
+        const { rules, notifications } = await automation()
+        const hits = notifications && notifications.master === false ? [] : rules.filter(r => stageRuleMatches(r, body.from || null, deal.stage))
         let fired = 0
         for (const rule of hits) {
           const notes = []
@@ -646,7 +816,7 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
     return true
   }
 
-  return { handleWebhook, route, invalidate }
+  return { handleWebhook, route, invalidate, runNotifications }
 }
 
-module.exports = { createWhatsApp, normalizeWaId, verifySignature, parseWebhook, statusAdvances, windowOpen, previewOf, configured, withinHours, matchKeyword, fillName, dubaiClock, optOutWord, nextAgent, retargetPick, stageRuleMatches, buildTemplateComponents }
+module.exports = { createWhatsApp, normalizeWaId, verifySignature, parseWebhook, statusAdvances, windowOpen, previewOf, configured, withinHours, matchKeyword, fillName, dubaiClock, optOutWord, nextAgent, retargetPick, stageRuleMatches, buildTemplateComponents, dubaiDate, fillTokens, mediaKind, activeNotifications, jobContext }

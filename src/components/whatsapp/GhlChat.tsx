@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MessageCircle, Loader2, Send, ArrowLeft, RefreshCw } from 'lucide-react'
+import { MessageCircle, Loader2, ArrowLeft, RefreshCw } from 'lucide-react'
 import { notify } from '@/lib/notify'
 import { ghlMessages, ghlRead, ghlSend, type GhlConversation, type GhlMessage } from '@/lib/ghlInbox'
 import { demo, isDemoId, useInboxDemo } from '@/lib/inboxDemo'
 import { timeOf } from './WaChat'
+import { Composer } from './Composer'
+import { TagPicker } from './Tags'
+import { ghlSendFile } from '@/lib/inboxSettings'
 
 /** lucide has no brand icons: two small plain marks for the channel badges */
 export const Facebook = ({ size = 14 }: { size?: number }) => (
@@ -19,7 +22,7 @@ export const CHANNEL = {
 } as const
 
 /** R-INBOX-01: a Facebook / Instagram chat from the GHL sub-account (DEMO chats stay in this browser) */
-export function GhlChat({ conv, onBack, onChanged }: { conv: GhlConversation; onBack: () => void; onChanged: () => void }) {
+export function GhlChat({ conv, onBack, onChanged, tags, onTags }: { conv: GhlConversation; onBack: () => void; onChanged: () => void; tags?: string[]; onTags?: (next: string[]) => void }) {
   const isDemo = isDemoId(conv.id)
   const demoState = useInboxDemo()
   const [remote, setRemote] = useState<GhlMessage[] | null>(null)
@@ -58,6 +61,7 @@ export function GhlChat({ conv, onBack, onChanged }: { conv: GhlConversation; on
         </div>
         {!isDemo && <button type="button" onClick={() => void load()} className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer" title="Refresh"><RefreshCw size={15} /></button>}
       </header>
+      {onTags && <div className="px-5 py-2 border-b border-[#ECEEEC] shrink-0"><TagPicker tags={tags || []} onChange={onTags} /></div>}
       <div className="flex-1 overflow-y-auto bg-[#F7F8F7] px-5 py-4 space-y-2">
         {msgs === null ? <Loader2 className="mx-auto animate-spin text-slate-300" /> : msgs.length === 0 ? <p className="text-center text-[12px] text-slate-400 py-6">No messages.</p> : msgs.map(m => (
           <div key={m.id} className={`flex ${m.direction === 'out' ? 'justify-end' : 'justify-start'}`}>
@@ -70,13 +74,10 @@ export function GhlChat({ conv, onBack, onChanged }: { conv: GhlConversation; on
         ))}
         <div ref={bottomRef} />
       </div>
-      <footer className="p-3 border-t border-[#ECEEEC] flex items-end gap-2 shrink-0">
-        <textarea value={text} onChange={e => setText(e.target.value)} rows={1} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() } }}
-          placeholder={`Reply on ${ch.label}…`} className="flex-1 resize-none max-h-32 min-h-10 rounded-xl bg-[#F4F5F4] px-3.5 py-2.5 text-[13px] outline-none focus:bg-white focus:ring-2 focus:ring-blue-200" />
-        <button type="button" onClick={() => void send()} disabled={!text.trim() || sending} aria-label="Send" className="h-10 w-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center disabled:opacity-30 cursor-pointer shrink-0">
-          {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-        </button>
-      </footer>
+      {/* R-INBOX-03: attachment, saved replies, emoji */}
+      <Composer text={text} setText={setText} onSend={() => void send()} sending={sending} disabled={false} accent="blue" canAttach={!isDemo}
+        onAttach={async (file, caption) => { await ghlSendFile(conv, file, caption); await load(); onChanged() }}
+        placeholder={`Reply on ${ch.label}…`} />
     </>
   )
 }

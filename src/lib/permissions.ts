@@ -20,7 +20,7 @@ export const APP_MODULES = [
   { key: 'Daily Job Sheet', paths: ['/daily-job-sheet'] },
   { key: 'Fluent Forms',    paths: ['/fluent-forms', '/marketing', '/feedback'] },
   { key: 'Inbox',           paths: ['/inbox'] }, // R-INBOX-01: WhatsApp + Facebook + Instagram
-  { key: 'WhatsApp',        paths: ['/whatsapp-crm'] }, // R-WA-01
+  { key: 'WhatsApp',        paths: ['/whatsapp-crm', '/conversations'] }, // R-WA-01; R-INBOX-03: Sidebar → Conversations
   { key: 'Clients',         paths: ['/clients'] },
   { key: 'Monthly Clients', paths: ['/monthly-clients', '/subscriptions'] },
   { key: 'Employees',       paths: ['/employees'] },

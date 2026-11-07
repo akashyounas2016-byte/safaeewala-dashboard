@@ -36,7 +36,7 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { to: '/bookings',         label: 'Bookings',          icon: CalendarCheck,                              category: 'Workspace' },
   { to: '/daily-job-sheet',  label: 'Daily Job Sheet',   icon: ClipboardList,   adminOnly: true,    category: 'Workspace' },
   { to: '/fluent-forms',     label: 'Fluent Forms',      icon: Globe,                               category: 'Workspace' },
-  { to: '/whatsapp-crm',     label: 'Inbox & WhatsApp',  icon: MessageCircle,                       category: 'Workspace' }, // R-WA-01, R-INBOX-02: one screen for WhatsApp + Facebook + Instagram
+  { to: '/whatsapp-crm',     label: 'Conversations',     icon: MessageCircle,                       category: 'Workspace' }, // R-WA-01, R-INBOX-02: one screen for WhatsApp + Facebook + Instagram
   { to: '/marketing',        label: 'Marketing',         icon: Megaphone,                           category: 'Workspace' }, // owner request 2026-11-06
   { to: '/clients',          label: 'Clients',           icon: Users,                               category: 'Workspace' },
   { to: '/monthly-clients',  label: 'Monthly Clients',   icon: TrendingUp,                          category: 'Workspace' },

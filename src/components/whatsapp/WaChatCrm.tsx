@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { StickyNote, X, Send, Tag, UserCircle2, History, BellOff } from 'lucide-react'
+import { StickyNote, X, Send, UserCircle2, History, BellOff } from 'lucide-react'
 import { notify } from '@/lib/notify'
 import { useAuth } from '@/store/UserContext'
 import type { ChatStatus, WaConversation } from '@/lib/whatsapp'
 import { CHAT_STATUSES, addNote as addNoteDb, loadNotes, updateChat as updateChatDb, type WaAgent, type WaNote } from '@/lib/whatsappCrm'
 import { demo, isDemoId, useInboxDemo } from '@/lib/inboxDemo'
 import { timeOf } from './WaChat'
+import { TagPicker } from './Tags'
 
 /**
  * R-WA-03: the team bar of a chat — status, assignee, tags, opt-out — and the notes drawer
@@ -22,7 +23,6 @@ export function ChatCrmBar({ conv, agents, me, onChanged }: { conv: WaConversati
   const [remoteNotes, setNotes] = useState<WaNote[] | null>(null)
   const notes = isDemo ? demoState.notes[conv.id] || [] : remoteNotes
   const [text, setText] = useState('')
-  const [tagText, setTagText] = useState('')
   const nameOf = (id: string | null | undefined) => (id ? agents.find(a => a.id === id)?.name || 'Agent' : 'Nobody')
 
   const reload = useCallback(() => (isDemo ? Promise.resolve() : loadNotes(conv.id).then(setNotes).catch(() => setNotes([]))), [conv.id, isDemo])
@@ -41,13 +41,6 @@ export function ChatCrmBar({ conv, agents, me, onChanged }: { conv: WaConversati
     void change({ status: s, snoozed_until: until }, { kind: 'status', body: `Status: ${CHAT_STATUSES.find(x => x.key === s)?.label}${s === 'snoozed' ? ' (24 h — opens again when the client writes)' : ''}` })
   }
   const assign = (id: string) => void change({ assigned_to: id || null }, { kind: 'assign', body: `Assigned to ${nameOf(id || null)}` })
-  const addTag = () => {
-    const t = tagText.trim().toLowerCase()
-    if (!t) return
-    setTagText('')
-    if ((conv.tags || []).includes(t)) return
-    void change({ tags: [...(conv.tags || []), t] })
-  }
   const post = async () => {
     if (!text.trim()) return
     try { await addNote(conv.id, 'note', text.trim(), author); setText(''); void reload() } catch (e) { notify.error((e as Error).message) }
@@ -68,17 +61,7 @@ export function ChatCrmBar({ conv, agents, me, onChanged }: { conv: WaConversati
             {agents.filter(a => a.id !== me).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </label>
-        <span className="flex items-center gap-1 flex-wrap">
-          {(conv.tags || []).map(t => (
-            <span key={t} className="flex items-center gap-0.5 text-[11px] font-semibold text-violet-700 bg-violet-50 pl-1.5 pr-0.5 rounded">
-              {t}<button type="button" onClick={() => void change({ tags: (conv.tags || []).filter(x => x !== t) })} className="p-0.5 cursor-pointer" aria-label={`Remove ${t}`}><X size={10} /></button>
-            </span>
-          ))}
-          <span className="flex items-center gap-1 text-slate-400">
-            <Tag size={12} />
-            <input value={tagText} onChange={e => setTagText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addTag() }} placeholder="Add tag" className="w-20 outline-none bg-transparent text-[12px]" />
-          </span>
-        </span>
+        <TagPicker tags={conv.tags || []} onChange={tags => void change({ tags })} />
         <span className="flex-1" />
         {conv.unsubscribed && (
           <button type="button" onClick={() => void change({ unsubscribed: false }, { kind: 'status', body: 'Opt-out removed by staff' })} title="The client wrote STOP — campaigns skip this number. Click to undo (only if the client asked)."

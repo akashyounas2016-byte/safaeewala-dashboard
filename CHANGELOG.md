@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(conversations): one "Conversations" module — minimal connection header, tags with custom colours on every chat, tag summary, unread first, filter dropdown; message bar with attachment, templates + saved replies, emoji; demo data WhatsApp only (R-INBOX-03)
+- feat(whatsapp): client notifications with switches — booking confirmation, day-before reminder, team on the way, feedback request, payment reminder (by hand) — and a master switch for every automatic message (R-WA-04)
+
 - feat(inbox): Inbox merged into the WhatsApp CRM — one sidebar item, platform switcher All / WhatsApp / Facebook / Instagram; ⋮ menu with local demo data, Backup to Google Drive, Delete all conversations (admin) (R-INBOX-02)
 
 - feat(whatsapp): rest of the WhatsApp CRM prototype — chat status / assignment / tags / team notes, round-robin, STOP opt-out, contact lists, scheduled + retarget campaigns, deal owner / close date / activity, deal-stage automations, fallback reply, template header / footer / buttons, agent leaderboard (R-WA-03)

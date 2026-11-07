@@ -4,7 +4,7 @@ import type { GhlConversation, GhlMessage } from '@/lib/ghlInbox'
 import type { WaNote } from '@/lib/whatsappCrm'
 
 /**
- * R-INBOX-02: DEMO chats for trying the unified inbox without real clients.
+ * R-INBOX-02: DEMO WhatsApp chats for trying the inbox before Meta is connected (Facebook / Instagram are live).
  * Off by default; switched on per browser (⋮ → Demo data). Lives only in this browser's memory —
  * never written to Supabase, GHL or Meta, never counted in Analytics, never sent anywhere. Ids start with "demo-".
  */
@@ -14,14 +14,12 @@ export const isDemoId = (id: string | null | undefined) => Boolean(id && id.star
 const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString()
 function seed() {
   const wa: WaConversation[] = [
-    { id: 'demo-wa-1', wa_id: '971500000101', name: 'DEMO · Sara (Marina)', client_id: null, last_message_at: ago(4), last_message_preview: 'Can the team come at 10 tomorrow?', last_direction: 'in', last_inbound_at: ago(4), unread_count: 2, created_at: ago(300), status: 'open', assigned_to: null, snoozed_until: null, tags: ['deep clean'], unsubscribed: false },
-    { id: 'demo-wa-2', wa_id: '971500000102', name: 'DEMO · Omar (JVC villa)', client_id: null, last_message_at: ago(55), last_message_preview: 'Price for 4 hours with materials?', last_direction: 'in', last_inbound_at: ago(55), unread_count: 1, created_at: ago(900), status: 'pending', assigned_to: null, snoozed_until: null, tags: ['quote'], unsubscribed: false },
-    { id: 'demo-wa-3', wa_id: '971500000103', name: 'DEMO · Priya (monthly)', client_id: null, last_message_at: ago(60 * 26), last_message_preview: 'Thank you, the cleaner was great!', last_direction: 'out', last_inbound_at: ago(60 * 27), unread_count: 0, created_at: ago(60 * 72), status: 'resolved', assigned_to: null, snoozed_until: null, tags: [], unsubscribed: false },
+    { id: 'demo-wa-1', wa_id: '971500000101', name: 'DEMO · Sara (Marina)', client_id: null, last_message_at: ago(4), last_message_preview: 'Can the team come at 10 tomorrow?', last_direction: 'in', last_inbound_at: ago(4), unread_count: 2, created_at: ago(300), status: 'open', assigned_to: null, snoozed_until: null, tags: ['Upcoming Job'], unsubscribed: false },
+    { id: 'demo-wa-2', wa_id: '971500000102', name: 'DEMO · Omar (JVC villa)', client_id: null, last_message_at: ago(55), last_message_preview: 'Price for 4 hours with materials?', last_direction: 'in', last_inbound_at: ago(55), unread_count: 1, created_at: ago(900), status: 'pending', assigned_to: null, snoozed_until: null, tags: ['Quote Sent'], unsubscribed: false },
+    { id: 'demo-wa-3', wa_id: '971500000103', name: 'DEMO · Priya (monthly)', client_id: null, last_message_at: ago(60 * 26), last_message_preview: 'Thank you, the cleaner was great!', last_direction: 'out', last_inbound_at: ago(60 * 27), unread_count: 0, created_at: ago(60 * 72), status: 'resolved', assigned_to: null, snoozed_until: null, tags: ['Booked Job', 'VIP'], unsubscribed: false },
   ]
-  const ghl: GhlConversation[] = [
-    { id: 'demo-fb-1', contactId: 'demo', name: 'DEMO · Ahmed (Facebook)', channel: 'facebook', lastMessageAt: ago(12), preview: 'Do you do sofa shampoo?', lastDirection: 'in', unread: 1 },
-    { id: 'demo-ig-1', contactId: 'demo', name: 'DEMO · Lina (Instagram)', channel: 'instagram', lastMessageAt: ago(140), preview: 'Saw your post — move-out cleaning price?', lastDirection: 'in', unread: 0 },
-  ]
+  // owner: Facebook and Instagram are live already — demo chats are WhatsApp only
+  const ghl: GhlConversation[] = []
   const msg = (conversation_id: string, direction: 'in' | 'out', body: string, min: number, status = direction === 'in' ? 'received' : 'read'): WaMessage =>
     ({ id: `demo-m-${conversation_id}-${min}`, conversation_id, wa_message_id: null, direction, type: 'text', body, media_path: null, media_mime: null, media_name: null, template_name: null, status, error: null, sent_by: direction === 'out' ? 'demo' : null, created_at: ago(min) })
   const waMsgs: Record<string, WaMessage[]> = {
@@ -29,11 +27,7 @@ function seed() {
     'demo-wa-2': [msg('demo-wa-2', 'in', 'Price for 4 hours with materials?', 55)],
     'demo-wa-3': [msg('demo-wa-3', 'in', 'Thank you, the cleaner was great!', 60 * 27), msg('demo-wa-3', 'out', 'Happy to hear that, see you next week!', 60 * 26)],
   }
-  const g = (id: string, direction: 'in' | 'out', body: string, min: number, channel: string): GhlMessage => ({ id: `demo-g-${id}-${min}`, direction, body, at: ago(min), channel, attachments: [], status: null })
-  const ghlMsgs: Record<string, GhlMessage[]> = {
-    'demo-fb-1': [g('fb1', 'in', 'Hello! Do you do sofa shampoo?', 12, 'facebook')],
-    'demo-ig-1': [g('ig1', 'in', 'Saw your post — move-out cleaning price?', 140, 'instagram'), g('ig1', 'out', 'Hi Lina! A 2-bed move-out is from AED 450. Which area?', 130, 'instagram')],
-  }
+  const ghlMsgs: Record<string, GhlMessage[]> = {}
   return { wa, ghl, waMsgs, ghlMsgs, notes: {} as Record<string, WaNote[]> }
 }
 
