@@ -780,6 +780,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Status:** Live 2026-11-07 (Facebook / Instagram chats read through GHL; replying not yet tried on a real chat) · Since: 2026-11-07
 - **UX-113 (2026-11-07):** *"Inbox screen ko top se shuru karein aur iska maujooda header remove kar dein … Left sidebar ko mazeed width dein taake platform tabs (WhatsApp, Facebook, Instagram) wazeh nazar aein … professional aur minimalist look."* No page header: the Inbox starts at the top and fills the screen. The chat list is 360–420 px wide with four platform tabs (All · WhatsApp · Facebook · Instagram, icon + count, coloured underline), an "unread" toggle, search, and the setup notes in one quiet line at the bottom.
 
+### R-INBOX-02 — One screen for the inbox and the WhatsApp CRM; demo data; delete all; Drive backup
+- **Rule:** *"WhatsApp CRM aur Inbox modules ko yakja karne ke liye ek unified interface … WhatsApp sidebar aur platform switcher (All, WhatsApp, Facebook, Instagram) dono barqarar rahein. Testing ke liye local dummy data … jo Supabase par sync na ho … three-dots menu … 'Delete All Conversations' aur Google Drive par 'Backup'."* (2026-11-07)
+  - Sidebar → **Inbox & WhatsApp** is the only item; `/inbox` opens it. Its first module, Inbox, has the platform switcher All · WhatsApp · Facebook · Instagram (counts and unread per platform). On the WhatsApp platform the status tabs and Everyone / Mine / Unassigned of R-WA-03 apply.
+  - **Demo data** (⋮ → Show demo data): 3 WhatsApp, 1 Facebook and 1 Instagram sample chat, named "DEMO · …" and marked DEMO. Off by default, switched per browser (plain localStorage, not cloud-synced). Replies, status, assignment, tags and notes on demo chats change only in this browser's memory — nothing goes to Supabase, Meta or GHL, nothing shows in Analytics or backups, and a reload starts them fresh. *Exception to R-DATA-03 asked by the owner for testing.*
+  - **Backup to Google Drive** (⋮): one JSON file with every WhatsApp chat, message and team note plus the Facebook / Instagram chat list (their messages stay in GHL). Sent through the n8n Drive webhook of Settings → Backup when set, else Google sign-in when `VITE_GOOGLE_CLIENT_ID` is set, else downloaded with a note that Drive is not connected. The nightly database backup (R-OPS-04) covers these tables too.
+  - **Delete all conversations** (⋮, admins only): deletes every WhatsApp chat in the CRM with its messages, team notes and media files, after typing DELETE; offers "Make a backup first". Facebook / Instagram chats are in GHL and are not deleted; deals and campaign results stay without the chat link.
+- **Code:** `src/components/whatsapp/WaInbox.tsx`, `GhlChat.tsx`, `src/lib/inboxDemo.ts`, `src/lib/inboxBackup.ts`, `src/pages/WhatsAppCRM.tsx` (⋮ menu), `src/pages/Inbox.tsx` (redirect), `whatsappServer.cjs → /api/whatsapp/delete-all`.
+- **Status:** Built · Since: 2026-11-07
+
 ## OPS — Operating process
 
 ### R-OPS-01 — No browser automation without permission

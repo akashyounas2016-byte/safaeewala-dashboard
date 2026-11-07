@@ -10,6 +10,7 @@ import {
 import { saveDeal } from '@/lib/whatsappModules'
 import type { WaAgent } from '@/lib/whatsappCrm'
 import { ChatCrmBar } from './WaChatCrm'
+import { demo, isDemoId, useInboxDemo } from '@/lib/inboxDemo'
 
 /** R-WA-01 / R-WA-02: one WhatsApp chat — messages, reply window, composer, templates, and quick Booking / Deal */
 export const timeOf = (iso: string | null) => {
@@ -61,7 +62,10 @@ export function WaChat({ conv, clientName, canSend, onBack, onChanged, crm }: {
   /** R-WA-03: status, assignment, tags and team notes (once the CRM columns exist) */
   crm?: { agents: WaAgent[]; me: string | null }
 }) {
-  const [msgs, setMsgs] = useState<WaMessage[]>([])
+  const isDemo = isDemoId(conv.id) // R-INBOX-02: a DEMO chat lives in this browser only
+  const demoState = useInboxDemo()
+  const [remoteMsgs, setMsgs] = useState<WaMessage[]>([])
+  const msgs = isDemo ? demoState.waMsgs[conv.id] || [] : remoteMsgs
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [templates, setTemplates] = useState<WaTemplate[] | null>(null)
@@ -74,6 +78,7 @@ export function WaChat({ conv, clientName, canSend, onBack, onChanged, crm }: {
   const title = clientName || conv.name || formatWaNumber(conv.wa_id)
 
   useEffect(() => {
+    if (isDemo) { if (conv.unread_count) demo.readWa(conv.id); return }
     let alive = true
     void loadMessages(conv.id).then(m => { if (alive) setMsgs(m) }).catch(e => notify.error((e as Error).message))
     if (conv.unread_count && canSend) void waMarkRead(conv.id).then(onChanged).catch(() => {})
@@ -82,9 +87,10 @@ export function WaChat({ conv, clientName, canSend, onBack, onChanged, crm }: {
   }, [conv.id]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { bottomRef.current?.scrollIntoView({ block: 'end' }) }, [msgs.length])
 
-  const open = windowOpen(conv)
+  const open = isDemo || windowOpen(conv)
   const send = async () => {
     if (!text.trim()) return
+    if (isDemo) { demo.sendWa(conv.id, text.trim()); setText(''); return }
     setSending(true)
     try { await waSendText(conv.id, text.trim()); setText(''); setMsgs(await loadMessages(conv.id)); onChanged() }
     catch (e) { notify.error((e as Error).message) } finally { setSending(false) }
@@ -100,6 +106,7 @@ export function WaChat({ conv, clientName, canSend, onBack, onChanged, crm }: {
     catch (e) { notify.error((e as Error).message) } finally { setSending(false) }
   }
   const addDeal = async () => {
+    if (isDemo) return notify.error('This is a DEMO chat — deals are made from real chats only')
     try {
       await saveDeal({ title: deal.title.trim() || `${title} — enquiry`, value: Number(deal.value) || 0, stage: 'new', conversation_id: conv.id, client_id: conv.client_id, contact_name: title, wa_id: conv.wa_id })
       notify.success('Deal added — see the Deals tab')
@@ -120,6 +127,7 @@ export function WaChat({ conv, clientName, canSend, onBack, onChanged, crm }: {
         <button type="button" onClick={() => setDealOpen(true)} title="Add to the Deals pipeline" className="flex items-center gap-1 text-[12px] font-bold px-2.5 py-1.5 rounded-xl border border-[#E2E5E0] hover:bg-slate-50 cursor-pointer"><Handshake size={13} /> Deal</button>
         {conv.client_id && <Link to={`/clients/${conv.client_id}`} className="flex items-center gap-1 text-[12px] font-bold px-2.5 py-1.5 rounded-xl border border-[#E2E5E0] hover:bg-slate-50">Profile <ExternalLink size={12} /></Link>}
       </header>
+      {isDemo && <p className="px-4 py-1 text-[11px] font-bold bg-violet-50 text-violet-700 shrink-0">DEMO chat — only in this browser, nothing is sent or saved</p>}
       {crm && <ChatCrmBar conv={conv} agents={crm.agents} me={crm.me} onChanged={onChanged} />}
       <div className={`px-4 py-1.5 text-[11.5px] font-semibold flex items-center gap-1.5 ${open ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
         <Clock size={12} />
@@ -146,11 +154,11 @@ export function WaChat({ conv, clientName, canSend, onBack, onChanged, crm }: {
         <button type="button" onClick={openTemplates} disabled={!canSend} title="Send an approved template" className="h-10 px-3 rounded-xl border border-[#E2E5E0] text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-40">
           <FileText size={14} /> Template
         </button>
-        <textarea value={text} onChange={e => setText(e.target.value)} disabled={!open || !canSend} rows={1}
+        <textarea value={text} onChange={e => setText(e.target.value)} disabled={!open || (!canSend && !isDemo)} rows={1}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() } }}
-          placeholder={!canSend ? 'Sending starts once the Meta keys are on the server (Settings tab)' : open ? 'Type a message — Enter to send, Shift+Enter for a new line' : 'Window closed — use a template'}
+          placeholder={isDemo ? 'Type a DEMO reply — stays in this browser' : !canSend ? 'Sending starts once the Meta keys are on the server (Settings tab)' : open ? 'Type a message — Enter to send, Shift+Enter for a new line' : 'Window closed — use a template'}
           className="flex-1 resize-none max-h-32 min-h-10 rounded-xl border border-[#E2E5E0] px-3 py-2.5 text-[13px] outline-none focus:border-emerald-500 disabled:bg-slate-50" />
-        <button type="button" onClick={() => void send()} disabled={!open || !text.trim() || sending || !canSend} aria-label="Send"
+        <button type="button" onClick={() => void send()} disabled={!open || !text.trim() || sending || (!canSend && !isDemo)} aria-label="Send"
           className="h-10 w-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center disabled:opacity-40 cursor-pointer shrink-0">
           {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
         </button>

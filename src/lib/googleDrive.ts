@@ -34,10 +34,10 @@ export async function authorizeGoogleDrive(): Promise<string> {
 
 export function getAccessToken() { return _accessToken }
 
-export async function uploadToDrive(blob: Blob, filename: string, token: string): Promise<string> {
+export async function uploadToDrive(blob: Blob, filename: string, token: string, mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): Promise<string> {
   const metadata = {
     name: filename,
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    mimeType,
   }
   const form = new FormData()
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }))

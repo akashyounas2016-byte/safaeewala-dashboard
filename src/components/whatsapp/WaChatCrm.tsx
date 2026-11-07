@@ -3,7 +3,8 @@ import { StickyNote, X, Send, Tag, UserCircle2, History, BellOff } from 'lucide-
 import { notify } from '@/lib/notify'
 import { useAuth } from '@/store/UserContext'
 import type { ChatStatus, WaConversation } from '@/lib/whatsapp'
-import { CHAT_STATUSES, addNote, loadNotes, updateChat, type WaAgent, type WaNote } from '@/lib/whatsappCrm'
+import { CHAT_STATUSES, addNote as addNoteDb, loadNotes, updateChat as updateChatDb, type WaAgent, type WaNote } from '@/lib/whatsappCrm'
+import { demo, isDemoId, useInboxDemo } from '@/lib/inboxDemo'
 import { timeOf } from './WaChat'
 
 /**
@@ -14,12 +15,17 @@ export function ChatCrmBar({ conv, agents, me, onChanged }: { conv: WaConversati
   const { user } = useAuth()
   const author = user?.full_name || user?.email || 'Staff'
   const [open, setOpen] = useState(false)
-  const [notes, setNotes] = useState<WaNote[] | null>(null)
+  const isDemo = isDemoId(conv.id) // R-INBOX-02: DEMO chats change only in this browser
+  const demoState = useInboxDemo()
+  const updateChat = (id: string, patch: Parameters<typeof updateChatDb>[1]) => (isDemo ? Promise.resolve(demo.patchWa(id, patch)) : updateChatDb(id, patch))
+  const addNote = (id: string, kind: WaNote['kind'], body: string, by: string) => (isDemo ? Promise.resolve(demo.addNote(id, kind, body, by)) : addNoteDb(id, kind, body, by))
+  const [remoteNotes, setNotes] = useState<WaNote[] | null>(null)
+  const notes = isDemo ? demoState.notes[conv.id] || [] : remoteNotes
   const [text, setText] = useState('')
   const [tagText, setTagText] = useState('')
   const nameOf = (id: string | null | undefined) => (id ? agents.find(a => a.id === id)?.name || 'Agent' : 'Nobody')
 
-  const reload = useCallback(() => loadNotes(conv.id).then(setNotes).catch(() => setNotes([])), [conv.id])
+  const reload = useCallback(() => (isDemo ? Promise.resolve() : loadNotes(conv.id).then(setNotes).catch(() => setNotes([]))), [conv.id, isDemo])
   useEffect(() => { if (open) void reload() }, [open, reload])
 
   const change = async (patch: Parameters<typeof updateChat>[1], history?: { kind: WaNote['kind']; body: string }) => {

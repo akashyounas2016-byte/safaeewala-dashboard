@@ -13,7 +13,8 @@ const sidebar = src('src/components/layout/Sidebar.tsx')
 eq(/function AIBotNavItem/.test(sidebar) && /openAIBot\(\)/.test(sidebar), true, 'Sidebar → AI Bot opens the same window')
 eq(/item\.to === '\/alerts' && !isFieldLogin && <AIBotNavItem/.test(sidebar), true, 'AI Bot sits under Alerts, hidden for cleaners / drivers')
 
-const inbox = src('src/pages/Inbox.tsx')
-eq(/PageHero/.test(inbox), false, 'Inbox has no page header')
-eq(/md:grid-cols-\[minmax\(360px,420px\)_1fr\]/.test(inbox), true, 'wider chat list (360–420 px)')
+// R-INBOX-02: the inbox now lives in the WhatsApp CRM (WaInbox); UX-113's wide list + platform tabs kept there
+const inbox = src('src/components/whatsapp/WaInbox.tsx')
+eq(/PageHero/.test(inbox) || /PageHero/.test(src('src/pages/WhatsAppCRM.tsx')), false, 'Inbox has no page header')
+eq(/md:grid-cols-\[minmax\(320px,380px\)_1fr\]/.test(inbox), true, 'wide chat list (320–380 px beside the module rail)')
 eq(/role="tablist" aria-label="Platforms"/.test(inbox) && ["'All'", "'WhatsApp'", "'Facebook'", "'Instagram'"].every(l => inbox.includes(`label: ${l}`)), true, 'platform tabs All / WhatsApp / Facebook / Instagram')

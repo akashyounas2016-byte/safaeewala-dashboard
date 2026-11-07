@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { MessageCircle, Loader2, Inbox as InboxIcon, CalendarCheck, Handshake, Megaphone, BarChart3, Bot, KeyRound, FileText, Settings2, Maximize2, PanelLeftOpen, CircleCheck, CircleAlert } from 'lucide-react'
+import { MessageCircle, Loader2, Inbox as InboxIcon, CalendarCheck, Handshake, Megaphone, BarChart3, Bot, KeyRound, FileText, Settings2, Maximize2, PanelLeftOpen, CircleCheck, CircleAlert, MoreVertical, FlaskConical, CloudUpload, Trash2 } from 'lucide-react'
+import { Modal } from '@/components/ui/Modal'
+import { demo, useInboxDemo } from '@/lib/inboxDemo'
+import { backupInbox, waDeleteAll } from '@/lib/inboxBackup'
 import { useLayout } from '@/components/layout/Layout'
 import { useData } from '@/store/DataContext'
 import { useAuth } from '@/store/UserContext'
@@ -24,7 +27,7 @@ import { WaSettings } from '@/components/whatsapp/WaSettings'
  * shows inside the module that needs it.
  */
 const MODULES = [
-  { key: 'inbox', label: 'Inbox', icon: InboxIcon, note: 'Chats on the business number' },
+  { key: 'inbox', label: 'Inbox', icon: InboxIcon, note: 'WhatsApp, Facebook and Instagram in one place' },
   { key: 'jobs', label: 'Jobs', icon: CalendarCheck, note: 'Bookings of WhatsApp clients' },
   { key: 'deals', label: 'Deals', icon: Handshake, note: 'Sales pipeline' },
   { key: 'broadcast', label: 'Broadcasts', icon: Megaphone, note: 'Contact lists and campaigns' },
@@ -51,7 +54,14 @@ export function WhatsAppCRM() {
   const [modulesReady, setModulesReady] = useState(false)
   const [convs, setConvs] = useState<WaConversation[]>([])
   const [agents, setAgents] = useState<WaAgent[]>([])
+  /** "wa:<id>" or "ghl:<id>" — R-INBOX-02 */
   const [activeId, setActiveId] = useState<string | null>(null)
+  const demoState = useInboxDemo()
+  const [menu, setMenu] = useState(false)
+  const [delOpen, setDelOpen] = useState(false)
+  const [delText, setDelText] = useState('')
+  const [busy, setBusy] = useState<'backup' | 'delete' | null>(null)
+  const isAdmin = user?.role === 'admin'
 
   const clientName = useCallback((id: string | null) => (id ? clients.find(c => c.id === id)?.full_name || null : null), [clients])
   const refreshConvs = useCallback(async () => {
@@ -88,13 +98,35 @@ export function WhatsAppCRM() {
     const phone = params.get('phone')
     if (!phone || loading) return
     if (configured && tablesReady) {
-      waStart(phone, params.get('name') || undefined).then(({ id }) => { setActiveId(id); void refreshConvs() }).catch(e => notify.error((e as Error).message))
+      waStart(phone, params.get('name') || undefined).then(({ id }) => { setActiveId(`wa:${id}`); void refreshConvs() }).catch(e => notify.error((e as Error).message))
     } else notify.error('WhatsApp is not connected yet — see Settings')
     setParams(p => { p.delete('phone'); p.delete('name'); p.set('tab', 'inbox'); return p }, { replace: true })
   }, [params, loading, configured, tablesReady, setParams, refreshConvs])
 
-  const openChat = useCallback((id: string) => { setActiveId(id); setTab('inbox') }, [setTab])
-  const unreadTotal = useMemo(() => convs.reduce((s, c) => s + (c.unread_count || 0), 0), [convs])
+  const openChat = useCallback((id: string) => { setActiveId(`wa:${id}`); setTab('inbox') }, [setTab])
+  const unreadTotal = useMemo(() => convs.reduce((s, c) => s + (c.unread_count || 0), 0) + (demoState.on ? demoState.wa.reduce((s, c) => s + c.unread_count, 0) : 0), [convs, demoState])
+
+  // R-INBOX-02: ⋮ menu
+  const runBackup = async () => {
+    setMenu(false); setBusy('backup')
+    try {
+      const r = await backupInbox()
+      const what = `${r.counts.whatsapp_chats} WhatsApp chats, ${r.counts.whatsapp_messages} messages, ${r.counts.facebook_instagram_chats} Facebook / Instagram chats`
+      if (r.where === 'download') notify.success(`Google Drive is not connected (Settings → Backup), so the backup was downloaded: ${what}`)
+      else notify.success(`Backup sent to Google Drive: ${what}`)
+      return true
+    } catch (e) { notify.error(`Backup failed: ${(e as Error).message}`); return false } finally { setBusy(null) }
+  }
+  const runDelete = async () => {
+    if (delText !== 'DELETE') return
+    setBusy('delete')
+    try {
+      const r = tablesReady ? await waDeleteAll() : { deleted: 0, files: 0 }
+      if (demoState.on) demo.clear()
+      notify.success(`Deleted ${r.deleted} WhatsApp chats${r.files ? ` and ${r.files} files` : ''}${demoState.on ? ' (and the demo chats)' : ''}`)
+      setDelOpen(false); setDelText(''); setActiveId(null); void refreshConvs()
+    } catch (e) { notify.error((e as Error).message) } finally { setBusy(null) }
+  }
   const crmOn = convs.length > 0 ? convs.some(c => c.status !== undefined) : true
 
   return (
@@ -147,6 +179,33 @@ export function WhatsAppCRM() {
               <CircleAlert size={13} /> Sending off — connect in Settings
             </button>
           )}
+          {demoState.on && <span className="hidden sm:inline text-[10.5px] font-black tracking-wider text-violet-700 bg-violet-50 px-2 py-1 rounded-lg">DEMO DATA ON</span>}
+          <div className="relative">
+            <button type="button" onClick={() => setMenu(m => !m)} aria-label="More" aria-expanded={menu} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer">
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <MoreVertical size={16} />}
+            </button>
+            {menu && (
+              <>
+                <button type="button" aria-label="Close menu" className="fixed inset-0 z-30 cursor-default" onClick={() => setMenu(false)} />
+                <div role="menu" className="absolute right-0 top-10 z-40 w-72 bg-white border border-[#E6E8E6] rounded-xl shadow-xl p-1.5">
+                  <button type="button" role="menuitem" onClick={() => { demo.setOn(!demoState.on); setMenu(false); setActiveId(null) }} className="w-full flex items-start gap-2.5 px-3 py-2.5 rounded-lg hover:bg-slate-50 text-left cursor-pointer">
+                    <FlaskConical size={15} className="text-violet-600 mt-0.5" />
+                    <span><span className="block text-[13px] font-semibold">{demoState.on ? 'Hide demo data' : 'Show demo data'}</span><span className="block text-[11px] text-slate-500">Sample WhatsApp / Facebook / Instagram chats for testing — only in this browser, never saved to Supabase</span></span>
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => void runBackup()} disabled={!tablesReady} className="w-full flex items-start gap-2.5 px-3 py-2.5 rounded-lg hover:bg-slate-50 text-left cursor-pointer disabled:opacity-40">
+                    <CloudUpload size={15} className="text-sky-600 mt-0.5" />
+                    <span><span className="block text-[13px] font-semibold">Backup to Google Drive</span><span className="block text-[11px] text-slate-500">All WhatsApp chats, messages and notes + the Facebook / Instagram chat list</span></span>
+                  </button>
+                  {isAdmin && (
+                    <button type="button" role="menuitem" onClick={() => { setMenu(false); setDelOpen(true) }} className="w-full flex items-start gap-2.5 px-3 py-2.5 rounded-lg hover:bg-red-50 text-left cursor-pointer">
+                      <Trash2 size={15} className="text-red-600 mt-0.5" />
+                      <span><span className="block text-[13px] font-semibold text-red-600">Delete all conversations</span><span className="block text-[11px] text-slate-500">Every WhatsApp chat in the CRM, with messages, notes and media</span></span>
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
           <button type="button" onClick={() => setFocusMode?.(!focusMode)}
             className={`flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg cursor-pointer ${focusMode ? 'bg-[#0F1F19] text-white hover:bg-[#1c3a2f]' : 'border border-[#E6E8E6] text-slate-600 hover:bg-slate-50'}`}>
             {focusMode ? <><PanelLeftOpen size={14} /> Back to Sidebar</> : <><Maximize2 size={14} /> Full screen</>}
@@ -171,6 +230,24 @@ export function WhatsAppCRM() {
           </div>
         )}
       </div>
+      <Modal open={delOpen} onClose={() => { setDelOpen(false); setDelText('') }} title="Delete all conversations">
+        <div className="space-y-3 text-[13px]">
+          <p className="text-slate-700">This deletes <b>every WhatsApp chat in the CRM</b> — {convs.length} chats with all their messages, team notes and photos / voice notes. It cannot be undone.</p>
+          <p className="text-slate-500 text-[12px]">Facebook and Instagram chats live in GHL and are not deleted. Deals and campaign results stay (their chat link is removed).</p>
+          <button type="button" onClick={() => void runBackup()} disabled={busy !== null || !tablesReady} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-sky-200 text-sky-700 font-semibold hover:bg-sky-50 cursor-pointer disabled:opacity-40">
+            {busy === 'backup' ? <Loader2 size={14} className="animate-spin" /> : <CloudUpload size={14} />} Make a backup first
+          </button>
+          <label className="block text-[12px] font-semibold text-slate-600">Type <b>DELETE</b> to confirm
+            <input value={delText} onChange={e => setDelText(e.target.value)} className="mt-1 w-full rounded-xl border border-[#E2E5E0] px-3 py-2 text-[13px] outline-none focus:border-red-400" autoComplete="off" />
+          </label>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => { setDelOpen(false); setDelText('') }} className="px-4 py-2 rounded-xl border border-[#E2E5E0] font-semibold cursor-pointer">Cancel</button>
+            <button type="button" onClick={() => void runDelete()} disabled={delText !== 'DELETE' || busy !== null} className="px-4 py-2 rounded-xl bg-red-600 text-white font-bold disabled:opacity-30 cursor-pointer flex items-center gap-1.5">
+              {busy === 'delete' ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Delete all
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

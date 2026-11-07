@@ -116,3 +116,29 @@ eq(/Back to Sidebar/.test(page) && /Full screen/.test(page) && /aria-label="What
 eq(['Contacts List', 'Create Campaign', 'Campaign List', 'Retarget Campaign'].every(l => src('src/components/whatsapp/WaBroadcast.tsx').includes(`label: '${l}'`)), true, 'Broadcasts: Contacts List · Create Campaign · Campaign List · Retarget Campaign')
 const sql = src('supabase/migrations/2026-11-07_whatsapp_crm_more.sql')
 eq(/grant update \(status, assigned_to, snoozed_until, tags, unsubscribed, unread_count\) on public\.wa_conversations/.test(sql), true, 'staff may change only the CRM columns of a chat')
+
+// ── R-INBOX-02: Delete all (admin, typed confirmation), DEMO data stays local ──
+{
+  const store: Record<string, Row[]> = { wa_conversations: [{ id: 'c1' }, { id: 'c2' }] }
+  const removed: string[] = []
+  const fakeSupa = async (p: string, opts: { method?: string; body?: Row } = {}) => {
+    if (p.startsWith('/storage/v1/object/list/')) return opts.body?.prefix === 'c1' ? [{ name: 'm1.jpg' }, { name: 'm2.ogg' }] : []
+    if (p === '/storage/v1/object/whatsapp-media' && opts.method === 'DELETE') { removed.push(...((opts.body?.prefixes as string[]) || [])); return [] }
+    if (p.startsWith('/rest/v1/wa_conversations') && opts.method === 'DELETE') { store.wa_conversations = []; return [] }
+    if (p.startsWith('/rest/v1/wa_conversations')) return store.wa_conversations
+    return []
+  }
+  let who = { id: 'u1', email: 'm@x', role: 'manager' }
+  let reqBody: Row = {}
+  const api2 = wa.createWhatsApp({ supa: fakeSupa, supabaseUrl: 'https://x', serviceHeaders: () => ({}), sendJson, readJson: async () => reqBody, activeUserFrom: async () => who, scheduler: false })
+  const del = async (b: Row) => { reqBody = b; const res = fakeRes(); api2.route(fakeReq('POST'), res, new URL('https://x/api/whatsapp/delete-all'), '/api/whatsapp/delete-all'); await new Promise(r => setTimeout(r, 50)); return res }
+  eq([(await del({ confirm: 'DELETE' })).status, store.wa_conversations.length], [403, 2], 'Delete all: a manager is refused')
+  who = { id: 'u2', email: 'a@x', role: 'admin' }
+  eq([(await del({ confirm: 'yes' })).status, store.wa_conversations.length], [400, 2], 'Delete all: needs the word DELETE')
+  const ok = await del({ confirm: 'DELETE' })
+  eq([ok.status, JSON.parse(ok.body), store.wa_conversations.length, removed], [200, { deleted: 2, files: 2 }, 0, ['c1/m1.jpg', 'c1/m2.ogg']], 'Delete all: chats and their media files removed')
+}
+const demoSrc = src('src/lib/inboxDemo.ts')
+eq(/supabase|fetch\(|\bcall\(/.test(demoSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')), false, 'DEMO data never talks to Supabase, GHL or Meta')
+eq(/safeLocalStorageSet/.test(demoSrc), false, 'the demo switch is not cloud-synced (plain localStorage)')
+eq(/demo/i.test(src('src/lib/inboxBackup.ts').replace(/\/\*[\s\S]*?\*\//g, '')), false, 'backups contain real data only (no demo chats)')

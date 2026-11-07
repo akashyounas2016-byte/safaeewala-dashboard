@@ -435,6 +435,26 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
         sendJson(res, 200, { agents: (rows || []).map(r => ({ id: r.id, name: r.full_name || r.login_id || 'User', role: r.role })) })
       }), true
     }
+    // R-INBOX-02: delete every WhatsApp chat in the CRM (messages, notes and media go with them) — admin only,
+    // typed confirmation. Facebook / Instagram chats live in GHL and are not touched. Works before Meta is connected.
+    if (pathname === '/api/whatsapp/delete-all' && req.method === 'POST') {
+      return run(async () => {
+        const user = await staffUser(req)
+        if (user.role !== 'admin') throw Object.assign(new Error('Only an admin can delete all conversations.'), { status: 403 })
+        const body = await readJson(req)
+        if (body.confirm !== 'DELETE') throw Object.assign(new Error('Type DELETE to confirm.'), { status: 400 })
+        const convs = await supa('/rest/v1/wa_conversations?select=id') || []
+        let files = 0
+        for (const c of convs) {
+          const objs = await supa('/storage/v1/object/list/whatsapp-media', { method: 'POST', body: { prefix: c.id, limit: 1000 } }).catch(() => []) || []
+          const paths = objs.filter(o => o && o.name).map(o => `${c.id}/${o.name}`)
+          if (paths.length) { await supa('/storage/v1/object/whatsapp-media', { method: 'DELETE', body: { prefixes: paths } }).catch(() => {}); files += paths.length }
+        }
+        if (convs.length) await supa('/rest/v1/wa_conversations?id=not.is.null', { method: 'DELETE' })
+        console.log(`[WhatsApp] all conversations deleted by ${user.email || user.id}: ${convs.length} chats, ${files} files`)
+        sendJson(res, 200, { deleted: convs.length, files })
+      }), true
+    }
     if (!configured()) { sendJson(res, 503, { error: 'WhatsApp is not set up on the server yet.' }); return true }
     if (pathname === '/api/whatsapp/send' && req.method === 'POST') {
       return run(async () => {

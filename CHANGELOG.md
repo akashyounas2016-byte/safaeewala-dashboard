@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(inbox): Inbox merged into the WhatsApp CRM — one sidebar item, platform switcher All / WhatsApp / Facebook / Instagram; ⋮ menu with local demo data, Backup to Google Drive, Delete all conversations (admin) (R-INBOX-02)
+
 - feat(whatsapp): rest of the WhatsApp CRM prototype — chat status / assignment / tags / team notes, round-robin, STOP opt-out, contact lists, scheduled + retarget campaigns, deal owner / close date / activity, deal-stage automations, fallback reply, template header / footer / buttons, agent leaderboard (R-WA-03)
 - feat(whatsapp): new layout — module rail, title bar, Full screen with Back to Sidebar (UX-114)
 
