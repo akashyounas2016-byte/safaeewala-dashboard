@@ -657,6 +657,37 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
         sendJson(res, 200, { templates: (data.data || []).filter(t => all || t.status === 'APPROVED') })
       }), true
     }
+    // R-WA-05: a template from the CRM's template builder goes to Meta for review (components built by the builder)
+    if (pathname === '/api/whatsapp/templates/submit' && req.method === 'POST') {
+      return run(async () => {
+        await staffUser(req); const body = await readJson(req, 256 * 1024)
+        if (!env().wabaId) throw Object.assign(new Error('WHATSAPP_WABA_ID is not set on the server.'), { status: 400 })
+        const name = String(body.name || '')
+        if (!/^[a-z0-9_]{1,512}$/.test(name)) throw Object.assign(new Error('Name: small letters, numbers and _ only.'), { status: 400 })
+        if (!['UTILITY', 'MARKETING', 'AUTHENTICATION'].includes(body.category)) throw Object.assign(new Error('Choose a category.'), { status: 400 })
+        const components = Array.isArray(body.components) ? body.components.filter(c => c && typeof c === 'object' && typeof c.type === 'string') : []
+        if (!components.some(c => c.type === 'BODY')) throw Object.assign(new Error('The template has no body.'), { status: 400 })
+        const created = await graph(`/${env().wabaId}/message_templates`, { method: 'POST', body: { name, category: body.category, language: String(body.language || 'en'), components } })
+        sendJson(res, 200, { id: created.id, status: created.status || 'PENDING' })
+      }), true
+    }
+    // R-WA-05: a sample image / video / document for a template header or carousel card → Meta upload handle
+    // (Resumable Upload API; needs WHATSAPP_APP_ID — the Meta app's id)
+    if (pathname === '/api/whatsapp/template-media' && req.method === 'POST') {
+      return run(async () => {
+        await staffUser(req); const body = await readJson(req, 23 * 1024 * 1024)
+        const appId = process.env.WHATSAPP_APP_ID || ''
+        if (!appId) throw Object.assign(new Error('WHATSAPP_APP_ID is not set on the server (Meta app → App settings → Basic → App ID).'), { status: 400 })
+        const buf = Buffer.from(String(body.base64 || ''), 'base64')
+        if (!buf.length || buf.length > 16 * 1024 * 1024) throw Object.assign(new Error('A sample file can be at most 16 MB.'), { status: 413 })
+        const e = env()
+        const session = await graph(`/${appId}/uploads?file_name=${q(String(body.name || 'sample'))}&file_length=${buf.length}&file_type=${q(String(body.mime || 'image/jpeg'))}`, { method: 'POST' })
+        const up = await fetch(`${e.graph}/${session.id}`, { method: 'POST', headers: { Authorization: `OAuth ${e.token}`, file_offset: '0' }, body: buf })
+        const uj = await up.json().catch(() => ({}))
+        if (!up.ok || !uj.h) throw Object.assign(new Error(uj?.error?.message || 'Meta did not accept the sample file.'), { status: 400 })
+        sendJson(res, 200, { handle: uj.h })
+      }), true
+    }
     // R-WA-02: create a template (Meta reviews it) / delete one
     if (pathname === '/api/whatsapp/templates' && req.method === 'POST') {
       return run(async () => {

@@ -29,7 +29,7 @@ const STATUS_TONE: Record<string, string> = { scheduled: 'bg-sky-50 text-sky-700
 /** Template picker + values, shared by Create and Retarget */
 function TemplateFields({ templates, tpl, setTpl, params, setParams }: { templates: WaTemplate[] | null; tpl: WaTemplate | null; setTpl: (t: WaTemplate | null) => void; params: string[]; setParams: (p: string[]) => void }) {
   if (templates === null) return <Loader2 className="animate-spin text-slate-300" />
-  if (!templates.length) return <p className="text-[12.5px] text-slate-500">No approved templates — create one in Templates first.</p>
+  if (!templates.length) return <p className="text-[12.5px] text-slate-500">No approved templates — create one in Settings → Templates first.</p>
   return (
     <div className="space-y-2">
       <select value={tpl ? `${tpl.name}|${tpl.language}` : ''} onChange={e => { const t = templates.find(x => `${x.name}|${x.language}` === e.target.value) || null; setTpl(t); setParams(t ? Array(templateParamCount(t)).fill('') : []) }} className={inputCls}>

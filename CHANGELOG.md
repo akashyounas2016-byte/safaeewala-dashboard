@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(conversations): Automation, Keyword Trigger and Templates moved into Settings, which now has tabs (Users, Notifications, Tags, Templates, Replies, Automation, Keyword Trigger, Connection) (R-INBOX-04)
+- feat(templates): template builder with 8 types and live preview; templates saved in the CRM as drafts, submitted to Meta for review; All Templates list with status tabs and filters (R-WA-05)
+
 - feat(conversations): one "Conversations" module — minimal connection header, tags with custom colours on every chat, tag summary, unread first, filter dropdown; message bar with attachment, templates + saved replies, emoji; demo data WhatsApp only (R-INBOX-03)
 - feat(whatsapp): client notifications with switches — booking confirmation, day-before reminder, team on the way, feedback request, payment reminder (by hand) — and a master switch for every automatic message (R-WA-04)
 

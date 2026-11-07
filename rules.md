@@ -812,6 +812,21 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `whatsappServer.cjs` (runNotifications, /api/whatsapp/notify), `src/components/whatsapp/WaSettingsMore.tsx`, `WaJobsNotify.tsx`, `src/lib/inboxSettings.ts`.
 - **Status:** Built · not tested against Meta (no keys yet) · Since: 2026-11-07
 
+### R-INBOX-04 — Conversations → Settings with tabs
+- **Rule:** *"Conversations module ke sidebar se 'Keyword Trigger', 'Automation', aur 'Template' options ko mukammal taur par hata diya jaye aur setting me as a tab add kiya jae … Settings screen … top par … Users, Notifications, Tags, Templates, aur Replies … tamam widgets aur modules ko inhi relevant tabs ke andar."* (2026-11-07)
+  - Module rail: Inbox · Jobs · Deals · Broadcasts · Analytics · Settings.
+  - Settings tabs (`?tab=settings&s=…`): **Users** (conversation assignment, agents) · **Notifications** · **Tags** · **Templates** · **Replies** (saved replies) · **Automation** (welcome, away, hours, deal-stage rules) · **Keyword Trigger** (incl. fallback) · **Connection** (checklist, business number, opt-out). Old links (`?tab=templates|automation|keywords`) open the matching tab.
+- **Status:** Built · Since: 2026-11-07
+
+### R-WA-05 — Template builder; templates made in the CRM
+- **Rule:** *"Templates screen par 'Add New Template' ka option … 'Templates are read from Meta' … khatam kar ke manual entry … proper format ya template builder"* and *"Create Template pop-up ko … 'SafaeeWala' … references aur attached screenshot ke mutabiq"* (2026-11-07 — the reference is the WhatsApp CRM prototype's Templates screen; no folder of that name exists, the zip prototype is used)
+  - All Templates: status tabs All · Favorites · Approved · Rejected · Pending · Paused · Draft · Disabled · Pending Deletion; search, category, type, sort; table Name · Category · Language · Status · Type · Created · Updated · Actions (edit / view, duplicate as draft, delete — at Meta too once submitted); favourites; Refresh brings Meta's review results in and adds templates made in Meta.
+  - Create Template: step 1 one of 8 types (Custom Message, Flows, Appointment Reminder, Limited Time Offer, Carousel, Catalog, Multi-product, Call Permission — each starts with cleaning-business wording), step 2 name, category, language, header (none / text / image / video / document / location), body with bold / italic / strike and "Add variable", sample values, footer, buttons (quick reply, link, call, copy code), plus the type's own fields (offer text, Flow ID, catalog button, carousel cards); live WhatsApp preview on the right; the checks Meta applies are listed before review.
+  - **Save draft** works without Meta (table `wa_templates`); **Submit for review** sends it to Meta when WhatsApp is connected. Media samples (header, carousel cards) need `WHATSAPP_APP_ID` on the server. Flows need a Flow ID from Meta; Catalog / Multi-product need a catalog on the WhatsApp account; Call Permission needs WhatsApp calling.
+  - Sending still uses approved templates only (Meta's rule).
+- **Code:** `src/lib/templateBuilder.ts`, `src/components/whatsapp/TemplateBuilder.tsx`, `WaTemplates.tsx`, `whatsappServer.cjs` (/templates/submit, /template-media), migration `2026-11-07_wa_templates.sql`.
+- **Status:** Built · Meta submission not tested (no keys yet) · Since: 2026-11-07
+
 ## OPS — Operating process
 
 ### R-OPS-01 — No browser automation without permission

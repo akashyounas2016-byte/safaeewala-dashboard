@@ -161,7 +161,7 @@ export function WaChat({ conv, clientName, canSend, onBack, onChanged, crm }: {
 
       <Modal open={pickTemplate} onClose={() => setPickTemplate(false)} title="Send a template" size="lg">
         {templates === null ? <div className="py-8 text-center"><Loader2 className="mx-auto animate-spin text-slate-400" /></div>
-          : templates.length === 0 ? <p className="text-[13px] text-slate-500 py-6 text-center">No approved templates yet. Create one in the Templates tab — Meta reviews it, usually within minutes.</p>
+          : templates.length === 0 ? <p className="text-[13px] text-slate-500 py-6 text-center">No approved templates yet. Create one in Settings → Templates — Meta reviews it, usually within minutes.</p>
           : !chosen ? (
             <ul className="space-y-2">
               {templates.map(t => (

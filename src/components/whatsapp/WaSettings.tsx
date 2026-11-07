@@ -5,6 +5,10 @@ import { waConnect, waPhone, type WaPhoneInfo } from '@/lib/whatsappModules'
 import { loadAssignment, loadLists, saveAssignment, type AssignmentSetting, type WaAgent } from '@/lib/whatsappCrm'
 import { NotificationsSettings, QuickRepliesSettings, SettingsIcons, TagsSettings } from './WaSettingsMore'
 import { loadGhlTags } from '@/lib/inboxSettings'
+import { loadTemplates } from '@/lib/templateBuilder'
+import { useSearchParams } from 'react-router-dom'
+import { WaTemplates } from './WaTemplates'
+import { WaAutomation, WaKeywords } from './WaAutomation'
 import { btnGhost, btnPrimary, inputCls } from './WaShared'
 
 function Step({ done, children }: { done: boolean; children: React.ReactNode }) {
@@ -51,10 +55,12 @@ function TeamAssignment({ agents }: { agents: WaAgent[] }) {
   )
 }
 
-export function WaSettings({ configured, tablesReady, modulesReady, agents = [] }: { configured: boolean; tablesReady: boolean; modulesReady: boolean; crmOn?: boolean | null; agents?: WaAgent[] }) {
+function ConnectionPanel({ configured, tablesReady, modulesReady }: { configured: boolean; tablesReady: boolean; modulesReady: boolean }) {
   const [crmReady, setCrmReady] = useState<boolean | null>(null)
   useEffect(() => { loadLists().then(l => setCrmReady(l !== null)).catch(() => setCrmReady(false)) }, [])
   const [tagsReady, setTagsReady] = useState<boolean | null>(null)
+  const [tplReady, setTplReady] = useState<boolean | null>(null)
+  useEffect(() => { loadTemplates().then(t => setTplReady(t !== null)).catch(() => setTplReady(false)) }, [])
   useEffect(() => { loadGhlTags().then(t => setTagsReady(t !== null)).catch(() => setTagsReady(false)) }, [])
   const hook = `${window.location.origin}/api/whatsapp/webhook`
   const [info, setInfo] = useState<WaPhoneInfo | null | 'loading'>(configured ? 'loading' : null)
@@ -80,6 +86,7 @@ export function WaSettings({ configured, tablesReady, modulesReady, agents = [] 
           <Step done={modulesReady}>Database: <code className="bg-slate-100 px-1 rounded">2026-11-07_whatsapp_modules.sql</code> run (Deals, Broadcast, Automation, Keyword Trigger).</Step>
           <Step done={Boolean(crmReady)}>Database: <code className="bg-slate-100 px-1 rounded">2026-11-07_whatsapp_crm_more.sql</code> run (status, assignment, notes, contact lists, retarget).</Step>
           <Step done={Boolean(tagsReady)}>Database: <code className="bg-slate-100 px-1 rounded">2026-11-07_inbox_tags_notifications.sql</code> run (tags on Facebook / Instagram chats, client notifications).</Step>
+          <Step done={Boolean(tplReady)}>Database: <code className="bg-slate-100 px-1 rounded">2026-11-07_wa_templates.sql</code> run (template builder).</Step>
           <Step done={configured}>VPS <code className="bg-slate-100 px-1 rounded">.env</code>: the five <code className="bg-slate-100 px-1 rounded">WHATSAPP_*</code> keys, then restart.</Step>
           <Step done={Boolean(p?.display_phone_number)}>Number added in Meta and visible here.</Step>
           <Step done={info !== 'loading' && Boolean(info?.subscribed)}>WhatsApp account subscribed to the app (button below).</Step>
@@ -114,26 +121,63 @@ export function WaSettings({ configured, tablesReady, modulesReady, agents = [] 
           </div>
         </div>
       </section>
-      <section className="bg-white border border-[#E2E5E0] rounded-[22px] p-5 space-y-3">
-        <p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><Users size={17} className="text-emerald-600" /> Team — conversation assignment</p>
-        <TeamAssignment agents={agents} />
-      </section>
       <section className="bg-white border border-[#E2E5E0] rounded-[22px] p-5 space-y-2">
         <p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><BellOff size={17} className="text-red-500" /> Opt-out (STOP)</p>
         <p className="text-[12.5px] text-slate-600">A client who writes <b>STOP</b> (or UNSUBSCRIBE) is marked "Opted out", gets one confirmation, and every campaign skips the number. <b>START</b> subscribes again. The list is in Broadcasts → Contacts List → Unsubscribers. Chats themselves keep working.</p>
       </section>
-      <section className="bg-white border border-[#E2E5E0] rounded-[22px] p-5 space-y-3 xl:col-span-2">
-        <p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><SettingsIcons.BellRing size={17} className="text-emerald-600" /> Notifications to clients</p>
-        <NotificationsSettings configured={configured} />
-      </section>
-      <section className="bg-white border border-[#E2E5E0] rounded-[22px] p-5 space-y-3">
-        <p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><SettingsIcons.TagsIcon size={17} className="text-violet-600" /> Tags</p>
-        <TagsSettings />
-      </section>
-      <section className="bg-white border border-[#E2E5E0] rounded-[22px] p-5 space-y-3">
-        <p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><SettingsIcons.MessageSquareText size={17} className="text-sky-600" /> Saved replies</p>
-        <QuickRepliesSettings />
-      </section>
+    </div>
+  )
+}
+
+/**
+ * R-INBOX-04: Settings with tabs — Users, Notifications, Tags, Templates, Replies, Automation, Keyword Trigger,
+ * Connection. Automation, Keyword Trigger and Templates moved here from the module rail.
+ */
+const SETTINGS_TABS = [
+  { key: 'users', label: 'Users' }, { key: 'notifications', label: 'Notifications' }, { key: 'tags', label: 'Tags' },
+  { key: 'templates', label: 'Templates' }, { key: 'replies', label: 'Replies' }, { key: 'automation', label: 'Automation' },
+  { key: 'keywords', label: 'Keyword Trigger' }, { key: 'connection', label: 'Connection' },
+] as const
+export type SettingsTab = (typeof SETTINGS_TABS)[number]['key']
+
+export function WaSettings({ configured, tablesReady, modulesReady, agents = [] }: { configured: boolean; tablesReady: boolean; modulesReady: boolean; crmOn?: boolean | null; agents?: WaAgent[] }) {
+  const [params, setParams] = useSearchParams()
+  const tab: SettingsTab = SETTINGS_TABS.find(t => t.key === params.get('s'))?.key || 'users'
+  const card = 'bg-white border border-[#E2E5E0] rounded-[22px] p-5 space-y-3'
+  return (
+    <div className="space-y-4">
+      <nav aria-label="Settings" className="flex gap-1 overflow-x-auto border-b border-[#ECEEEC] -mt-1">
+        {SETTINGS_TABS.map(t => (
+          <button key={t.key} type="button" onClick={() => setParams(p => { p.set('s', t.key); return p }, { replace: true })} aria-current={tab === t.key ? 'page' : undefined}
+            className={`relative px-3.5 py-2.5 text-[13px] whitespace-nowrap cursor-pointer ${tab === t.key ? 'font-bold text-[#0F1F19]' : 'font-semibold text-slate-500 hover:text-slate-800'}`}>
+            {t.label}{tab === t.key && <span className="absolute left-2 right-2 -bottom-px h-[2.5px] rounded-full bg-emerald-600" />}
+          </button>
+        ))}
+      </nav>
+      {tab === 'users' && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <section className={card}>
+            <p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><Users size={17} className="text-emerald-600" /> Team — conversation assignment</p>
+            <TeamAssignment agents={agents} />
+          </section>
+          <section className={card}>
+            <p className="text-[15px] font-bold text-[#111827]">Agents</p>
+            <p className="text-[12px] text-slate-500">Admins and managers can open Conversations and be given chats. Logins are managed in the CRM's main Settings → Users.</p>
+            {agents.length === 0 ? <p className="text-[12.5px] text-slate-400">No agents found.</p> : (
+              <ul className="divide-y divide-slate-100 border border-[#ECEEEC] rounded-xl">
+                {agents.map(a => <li key={a.id} className="px-3 py-2 flex items-center gap-2 text-[12.5px]"><span className="w-7 h-7 rounded-full bg-emerald-50 text-emerald-700 font-bold flex items-center justify-center">{a.name.slice(0, 1).toUpperCase()}</span><span className="flex-1 font-semibold">{a.name}</span><span className="text-slate-400 capitalize">{a.role}</span></li>)}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
+      {tab === 'notifications' && <section className={card}><p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><SettingsIcons.BellRing size={17} className="text-emerald-600" /> Notifications to clients</p><NotificationsSettings configured={configured} /></section>}
+      {tab === 'tags' && <section className={card}><p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><SettingsIcons.TagsIcon size={17} className="text-violet-600" /> Tags</p><TagsSettings /></section>}
+      {tab === 'templates' && <WaTemplates key={String(configured)} canSend={configured} />}
+      {tab === 'replies' && <section className={card}><p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><SettingsIcons.MessageSquareText size={17} className="text-sky-600" /> Saved replies</p><QuickRepliesSettings /></section>}
+      {tab === 'automation' && <WaAutomation canSend={configured} />}
+      {tab === 'keywords' && <WaKeywords />}
+      {tab === 'connection' && <ConnectionPanel configured={configured} tablesReady={tablesReady} modulesReady={modulesReady} />}
     </div>
   )
 }

@@ -1,130 +1,154 @@
-import { useCallback, useEffect, useState } from 'react'
-import { FileText, Loader2, Plus, RefreshCw, Trash2, Search, X } from 'lucide-react'
-import { Modal } from '@/components/ui/Modal'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Plus, RefreshCw, Search, Star, Pencil, Copy, Trash2, Loader2, Filter, FileText } from 'lucide-react'
 import { notify } from '@/lib/notify'
-import { templateBody } from '@/lib/whatsapp'
-import { waCreateTemplate, waDeleteTemplate, waTemplatesAll, type WaTemplateFull } from '@/lib/whatsappModules'
-import { btnGhost, btnPrimary, inputCls } from './WaShared'
+import { waDeleteTemplate, waTemplatesAll } from '@/lib/whatsappModules'
+import {
+  STATUS_TABS, TEMPLATE_TYPES, deleteTemplateRow, formFromMeta, loadTemplates, saveTemplate, typeMeta, type Category, type WaTemplateRow,
+} from '@/lib/templateBuilder'
+import { TemplateBuilder } from './TemplateBuilder'
+import { MigrationNote } from './WaShared'
 
-const TONE: Record<string, string> = { APPROVED: 'bg-emerald-50 text-emerald-700', PENDING: 'bg-amber-50 text-amber-700', REJECTED: 'bg-red-50 text-red-600', PAUSED: 'bg-slate-100 text-slate-600', DISABLED: 'bg-slate-100 text-slate-600' }
+const TONE: Record<string, string> = {
+  APPROVED: 'bg-emerald-50 text-emerald-700', PENDING: 'bg-amber-50 text-amber-700', REJECTED: 'bg-red-50 text-red-600', DRAFT: 'bg-slate-100 text-slate-600',
+  PAUSED: 'bg-sky-50 text-sky-700', DISABLED: 'bg-slate-100 text-slate-500', PENDING_DELETION: 'bg-rose-50 text-rose-600',
+}
+const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Dubai' })
 
-/** R-WA-02 Templates: list every template of the WhatsApp account, create one for Meta's review, delete one */
+/**
+ * R-WA-05: All Templates — made here with the template builder (drafts work without Meta) or imported from Meta.
+ * Refresh brings Meta's review results in (and templates made in Meta). Drafts are submitted from the builder.
+ */
 export function WaTemplates({ canSend }: { canSend: boolean }) {
-  const [list, setList] = useState<WaTemplateFull[] | 'loading' | 'off'>('loading')
-  const [form, setForm] = useState<{ name: string; category: 'UTILITY' | 'MARKETING'; language: string; body: string; examples: string[]; header: string; footer: string; buttons: string[] } | null>(null)
+  const [rows, setRows] = useState<WaTemplateRow[] | null | 'loading'>('loading')
+  const [tab, setTab] = useState<string>('all')
   const [search, setSearch] = useState('')
-  const [statusF, setStatusF] = useState('all')
-  const [catF, setCatF] = useState('all')
-  const [busy, setBusy] = useState(false)
+  const [cat, setCat] = useState('all')
+  const [type, setType] = useState('all')
+  const [sort, setSort] = useState('updated')
+  const [builder, setBuilder] = useState<{ row: WaTemplateRow | null } | null>(null)
+  const [syncing, setSyncing] = useState(false)
 
-  const refresh = useCallback(() => {
-    if (!canSend) { setList('off'); return }
-    setList('loading')
-    waTemplatesAll().then(setList).catch(e => { notify.error((e as Error).message); setList([]) })
-  }, [canSend])
-  useEffect(() => { refresh() }, [refresh])
+  const reload = useCallback(() => loadTemplates().then(setRows).catch(e => { notify.error((e as Error).message); setRows([]) }), [])
+  useEffect(() => { void reload() }, [reload])
 
-  const count = form ? new Set(form.body.match(/\{\{\d+\}\}/g) || []).size : 0
-  const create = async () => {
-    if (!form) return
-    setBusy(true)
-    try { const r = await waCreateTemplate({ ...form, examples: form.examples.slice(0, count), buttons: form.buttons.filter(b => b.trim()) }); notify.success(`"${r.name}" sent to Meta for review (${r.status?.toLowerCase() || 'pending'})`); setForm(null); refresh() }
-    catch (e) { notify.error((e as Error).message) } finally { setBusy(false) }
+  /** Meta's statuses → our rows; templates made in Meta are added to the list */
+  const sync = useCallback(async (quiet = false) => {
+    if (!canSend) { if (!quiet) notify.error('Refresh reads Meta — it works once the Meta keys are on the server'); return }
+    const local = await loadTemplates()
+    if (local === null) return
+    setSyncing(true)
+    try {
+      const meta = await waTemplatesAll()
+      let added = 0; let changed = 0
+      for (const m of meta) {
+        const mine = local.find(r => r.name === m.name && r.language === m.language)
+        if (mine) {
+          if (mine.status !== m.status || (mine.rejected_reason || null) !== (m.rejected_reason || null)) {
+            await saveTemplate({ id: mine.id, name: mine.name, language: mine.language, category: mine.category, type: mine.type, form: mine.form, status: m.status, rejected_reason: m.rejected_reason && m.rejected_reason !== 'NONE' ? m.rejected_reason : null }); changed++
+          }
+        } else {
+          await saveTemplate({ name: m.name, language: m.language, category: (m.category as Category) || 'UTILITY', type: 'custom_message', form: formFromMeta(m), status: m.status, created_by: 'Meta' }); added++
+        }
+      }
+      if (!quiet) notify.success(added || changed ? `Updated from Meta: ${changed} changed, ${added} added` : 'Up to date with Meta')
+      await reload()
+    } catch (e) { if (!quiet) notify.error((e as Error).message) } finally { setSyncing(false) }
+  }, [canSend, reload])
+  useEffect(() => { void sync(true) }, [sync])
+
+  const list = useMemo(() => {
+    if (!Array.isArray(rows)) return [] as WaTemplateRow[]
+    const qy = search.trim().toLowerCase()
+    return rows
+      .filter(r => (tab === 'all' || (tab === 'favorites' ? r.favorite : r.status === tab)) && (cat === 'all' || r.category === cat) && (type === 'all' || r.type === type)
+        && (!qy || `${r.name} ${r.form?.body || ''}`.toLowerCase().includes(qy)))
+      .sort((a, b) => (sort === 'name' ? a.name.localeCompare(b.name) : sort === 'created' ? b.created_at.localeCompare(a.created_at) : b.updated_at.localeCompare(a.updated_at)))
+  }, [rows, tab, cat, type, search, sort])
+  const count = (id: string) => (Array.isArray(rows) ? rows.filter(r => (id === 'all' ? true : id === 'favorites' ? r.favorite : r.status === id)).length : 0)
+
+  const fav = async (r: WaTemplateRow) => { try { await saveTemplate({ ...r, favorite: !r.favorite }); void reload() } catch (e) { notify.error((e as Error).message) } }
+  const duplicate = async (r: WaTemplateRow) => {
+    try { await saveTemplate({ name: `${r.name}_copy`.slice(0, 500), language: r.language, category: r.category, type: r.type, form: r.form, status: 'DRAFT', created_by: 'Copy' }); notify.success('Copied as a draft'); void reload() }
+    catch (e) { notify.error((e as Error).message) }
   }
-  const remove = async (t: WaTemplateFull) => {
-    if (!window.confirm(`Delete the template "${t.name}" (all languages) at Meta?`)) return
-    try { await waDeleteTemplate(t.name); refresh() } catch (e) { notify.error((e as Error).message) }
+  const remove = async (r: WaTemplateRow) => {
+    const atMeta = r.status !== 'DRAFT'
+    if (!window.confirm(atMeta ? `Delete "${r.name}" here and at Meta (all its languages)?` : `Delete the draft "${r.name}"?`)) return
+    try {
+      if (atMeta) { if (!canSend) throw new Error('Deleting at Meta needs the Meta keys on the server'); await waDeleteTemplate(r.name) }
+      await deleteTemplateRow(r.id); void reload()
+    } catch (e) { notify.error((e as Error).message) }
   }
+
+  if (rows === 'loading') return <div className="p-10 text-center"><Loader2 className="mx-auto animate-spin text-slate-300" /></div>
+  const noTable = rows === null // never block: the screen and the builder open; saving needs the database step
 
   return (
     <div className="space-y-4">
-      <div className="bg-white border border-[#E2E5E0] rounded-[22px] p-5 flex flex-wrap items-center gap-4">
-        <span className="w-11 h-11 rounded-2xl bg-[#0284c7] text-white flex items-center justify-center"><FileText size={20} /></span>
-        <div className="flex-1 min-w-[220px]">
-          <p className="text-[15px] font-bold text-[#111827]">Message templates</p>
-          <p className="text-[12px] text-slate-500">Needed to write first, or after 24 hours, and for broadcasts. Meta reviews each new template — usually within minutes.</p>
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="mr-auto">
+          <h2 className="text-[22px] font-bold text-[#111827]">All Templates</h2>
+          <p className="text-[13px] text-slate-500">View, search and manage all your WhatsApp message templates</p>
         </div>
-        <button type="button" onClick={refresh} disabled={!canSend} className={btnGhost}><RefreshCw size={14} /> Refresh</button>
-        <button type="button" onClick={() => setForm({ name: '', category: 'UTILITY', language: 'en', body: '', examples: [], header: '', footer: '', buttons: [] })} disabled={!canSend} title={canSend ? '' : 'Needs the Meta keys on the server'} className={btnPrimary}><Plus size={14} /> New template</button>
+        <button type="button" onClick={() => void sync()} disabled={syncing} title={canSend ? 'Get review results from Meta' : 'Works once Meta is connected'} className="h-10 w-10 rounded-xl border border-[#E2E5E0] bg-white flex items-center justify-center hover:bg-slate-50 cursor-pointer disabled:opacity-50" aria-label="Refresh from Meta">
+          <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+        </button>
+        <button type="button" onClick={() => setBuilder({ row: null })} className="h-10 px-4 rounded-xl bg-[#0F1F19] text-white text-[13px] font-bold flex items-center gap-1.5 cursor-pointer hover:bg-[#1c3a2f]"><Plus size={15} /> New Template</button>
       </div>
-      {Array.isArray(list) && list.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <div className="flex items-center gap-2 bg-white border border-[#E6E8E6] rounded-xl px-3 h-9 flex-1 min-w-[200px] max-w-sm">
-            <Search size={14} className="text-slate-400" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search templates" className="flex-1 outline-none text-[13px] bg-transparent" />
-          </div>
-          <select value={statusF} onChange={e => setStatusF(e.target.value)} className="h-9 rounded-xl border border-[#E6E8E6] bg-white px-2.5 text-[12.5px] font-semibold text-slate-600" aria-label="Status">
-            <option value="all">All statuses</option>{['APPROVED', 'PENDING', 'REJECTED', 'PAUSED'].map(x => <option key={x} value={x}>{x.toLowerCase()}</option>)}
-          </select>
-          <select value={catF} onChange={e => setCatF(e.target.value)} className="h-9 rounded-xl border border-[#E6E8E6] bg-white px-2.5 text-[12.5px] font-semibold text-slate-600" aria-label="Category">
-            <option value="all">All categories</option>{['UTILITY', 'MARKETING', 'AUTHENTICATION'].map(x => <option key={x} value={x}>{x.toLowerCase()}</option>)}
-          </select>
-        </div>
-      )}
-      {list === 'off' ? <div className="bg-white border border-[#E2E5E0] rounded-[22px] p-8 text-center text-[12.5px] text-slate-500">Templates are read from Meta — they show here once the Meta keys are on the server (Settings tab).</div>
-        : list === 'loading' ? <div className="p-10 text-center"><Loader2 className="mx-auto animate-spin text-slate-400" /></div>
-        : list.length === 0 ? <div className="bg-white border border-[#E2E5E0] rounded-[22px] p-8 text-center text-[12.5px] text-slate-400">No templates yet.</div>
-        : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
-            {list.filter(t => (statusF === 'all' || t.status === statusF) && (catF === 'all' || t.category === catF) && (!search.trim() || `${t.name} ${templateBody(t)}`.toLowerCase().includes(search.trim().toLowerCase()))).map(t => (
-              <article key={`${t.name}-${t.language}`} className="bg-white border border-[#E2E5E0] rounded-[18px] p-4 space-y-2">
-                <div className="flex items-center gap-2">
-                  <p className="text-[13.5px] font-bold text-[#111827] flex-1 truncate">{t.name}</p>
-                  <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full ${TONE[t.status] || TONE.PAUSED}`}>{t.status.toLowerCase()}</span>
-                </div>
-                <p className="text-[11px] text-slate-400">{t.language} · {t.category.toLowerCase()}</p>
-                <div className="bg-[#F4F6F3] rounded-xl p-2.5 space-y-1">
-                  {t.components.find(c => c.type === 'HEADER')?.text && <p className="text-[12.5px] font-bold">{t.components.find(c => c.type === 'HEADER')?.text}</p>}
-                  <p className="text-[12.5px] text-slate-700 whitespace-pre-wrap line-clamp-5">{templateBody(t)}</p>
-                  {t.components.find(c => c.type === 'FOOTER')?.text && <p className="text-[11px] text-slate-400">{t.components.find(c => c.type === 'FOOTER')?.text}</p>}
-                  {(t.components.find(c => c.type === 'BUTTONS') as { buttons?: { text: string }[] } | undefined)?.buttons?.map(b => <span key={b.text} className="inline-block mr-1 mt-1 text-[11px] font-semibold text-sky-700 bg-white border border-sky-100 rounded-lg px-2 py-0.5">{b.text}</span>)}
-                </div>
-                {t.status === 'REJECTED' && t.rejected_reason && <p className="text-[11.5px] text-red-600">Reason: {t.rejected_reason}</p>}
-                <div className="flex justify-end"><button type="button" onClick={() => void remove(t)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-600 cursor-pointer" title="Delete"><Trash2 size={13} /></button></div>
-              </article>
-            ))}
-          </div>
-        )}
-      <Modal open={!!form} onClose={() => setForm(null)} title="New template" size="lg">
-        {form && (
-          <div className="space-y-3">
-            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Name (small letters and _ only), e.g. booking_reminder" className={inputCls} />
-            <div className="grid grid-cols-2 gap-2">
-              <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value as 'UTILITY' | 'MARKETING' })} className={inputCls}>
-                <option value="UTILITY">Utility — bookings, reminders, payments (cheaper)</option>
-                <option value="MARKETING">Marketing — offers, promotions</option>
-              </select>
-              <select value={form.language} onChange={e => setForm({ ...form, language: e.target.value })} className={inputCls}>
-                <option value="en">English</option><option value="ar">Arabic</option><option value="ur">Urdu</option><option value="hi">Hindi</option>
-              </select>
-            </div>
-            <input value={form.header} onChange={e => setForm({ ...form, header: e.target.value.slice(0, 60) })} placeholder="Header (optional, max 60), e.g. Booking confirmed" className={inputCls} />
-            <textarea value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} rows={5} placeholder={'Hi {{1}}, your cleaning is confirmed for {{2}}. Reply here if anything changes. — Safaeewala'} className={inputCls} />
-            {count > 0 && (
-              <div className="space-y-2">
-                <p className="text-[12px] font-bold text-slate-600">Example values (Meta needs them for review)</p>
-                {Array.from({ length: count }, (_, i) => (
-                  <input key={i} value={form.examples[i] || ''} onChange={e => { const ex = [...form.examples]; ex[i] = e.target.value; setForm({ ...form, examples: ex }) }} placeholder={`Example for {{${i + 1}}}`} className={inputCls} />
-                ))}
-              </div>
+
+      {noTable && <MigrationNote file="2026-11-07_wa_templates.sql" />}
+      <div className="flex gap-2 overflow-x-auto pb-1 border-b border-[#ECEEEC]">
+        {STATUS_TABS.map(t => (
+          <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`px-3.5 py-1.5 mb-2 rounded-full border text-[12.5px] whitespace-nowrap cursor-pointer ${tab === t.id ? 'border-[#0F1F19] bg-white font-bold text-[#0F1F19]' : 'border-[#E6E8E6] text-slate-500 hover:text-slate-800'}`}>
+            {t.label}{count(t.id) > 0 && <span className="ml-1 text-slate-400">{count(t.id)}</span>}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <div className="flex items-center gap-2 bg-white border border-[#E6E8E6] rounded-xl px-3 h-10 flex-1 min-w-[220px]"><Search size={15} className="text-slate-400" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search templates..." className="flex-1 outline-none text-[13px] bg-transparent" /></div>
+        <select value={cat} onChange={e => setCat(e.target.value)} className="h-10 rounded-xl border border-[#E6E8E6] bg-white px-3 text-[13px]" aria-label="Category"><option value="all">All Categories</option><option value="UTILITY">Utility</option><option value="MARKETING">Marketing</option><option value="AUTHENTICATION">Authentication</option></select>
+        <select value={type} onChange={e => setType(e.target.value)} className="h-10 rounded-xl border border-[#E6E8E6] bg-white px-3 text-[13px]" aria-label="Type"><option value="all">All Types</option>{TEMPLATE_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select>
+        <label className="h-10 rounded-xl border border-[#E6E8E6] bg-white pl-3 flex items-center gap-1.5 text-[12.5px] text-slate-600"><Filter size={14} />
+          <select value={sort} onChange={e => setSort(e.target.value)} className="h-full pr-2 bg-transparent outline-none" aria-label="Sort"><option value="updated">Last updated</option><option value="created">Newest first</option><option value="name">Name A–Z</option></select>
+        </label>
+      </div>
+
+      <div className="bg-white border border-[#E6E8E6] rounded-[16px] overflow-x-auto">
+        <table className="w-full text-[12.5px] min-w-[860px]">
+          <thead className="text-left text-[11px] uppercase tracking-wider text-slate-400 bg-[#FAFBFA] border-b border-[#ECEEEC]">
+            <tr>{['', 'Template name', 'Category', 'Language', 'Status', 'Type', 'Created', 'Updated', 'Actions'].map((h, i) => <th key={i} className={`px-4 py-3 font-semibold ${h === 'Actions' ? 'text-right' : ''}`}>{h}</th>)}</tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {list.length === 0 && (
+              <tr><td colSpan={9} className="py-14 text-center">
+                <span className="mx-auto w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-3"><FileText size={22} /></span>
+                <p className="text-[13.5px] text-slate-500 mb-3">{(rows || []).length ? 'No templates match.' : 'No templates yet'}</p>
+                {!(rows || []).length && <button type="button" onClick={() => setBuilder({ row: null })} className="mx-auto h-10 px-4 rounded-xl bg-[#0F1F19] text-white text-[13px] font-bold flex items-center gap-1.5 cursor-pointer"><Plus size={15} /> Create your first template</button>}
+              </td></tr>
             )}
-            <input value={form.footer} onChange={e => setForm({ ...form, footer: e.target.value.slice(0, 60) })} placeholder="Footer (optional, max 60), e.g. Safaeewala Cleaning — Dubai" className={inputCls} />
-            <div className="space-y-2">
-              <p className="text-[12px] font-bold text-slate-600">Quick-reply buttons (optional, up to 3)</p>
-              {form.buttons.map((b, i) => (
-                <div key={i} className="flex gap-2">
-                  <input value={b} onChange={e => setForm({ ...form, buttons: form.buttons.map((x, j) => (j === i ? e.target.value.slice(0, 25) : x)) })} placeholder={['Confirm', 'Reschedule', 'Call me'][i]} className={inputCls} />
-                  <button type="button" onClick={() => setForm({ ...form, buttons: form.buttons.filter((_, j) => j !== i) })} className="p-2 rounded-lg hover:bg-slate-100 cursor-pointer" aria-label="Remove button"><X size={14} /></button>
-                </div>
-              ))}
-              {form.buttons.length < 3 && <button type="button" onClick={() => setForm({ ...form, buttons: [...form.buttons, ''] })} className={btnGhost}><Plus size={13} /> Button</button>}
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setForm(null)} className={btnGhost}>Cancel</button>
-              <button type="button" onClick={() => void create()} disabled={busy || !form.name.trim() || !form.body.trim()} className={btnPrimary}>{busy && <Loader2 size={14} className="animate-spin" />} Send for review</button>
-            </div>
-          </div>
-        )}
-      </Modal>
+            {list.map(r => (
+              <tr key={r.id} className="hover:bg-[#FAFBFA]">
+                <td className="pl-4 py-3 w-8"><button type="button" onClick={() => void fav(r)} aria-label={r.favorite ? 'Unfavourite' : 'Favourite'} className="cursor-pointer"><Star size={15} className={r.favorite ? 'fill-amber-400 text-amber-400' : 'text-slate-300 hover:text-amber-400'} /></button></td>
+                <td className="px-4 py-3"><button type="button" onClick={() => setBuilder({ row: r })} className="font-semibold text-[#111827] hover:underline cursor-pointer text-left">{r.name}</button><p className="text-[11px] text-slate-400 truncate max-w-[260px]">{r.form?.body}</p>{r.status === 'REJECTED' && r.rejected_reason && <p className="text-[11px] text-red-600">Reason: {r.rejected_reason}</p>}</td>
+                <td className="px-4 py-3 capitalize">{r.category.toLowerCase()}</td>
+                <td className="px-4 py-3">{r.language}</td>
+                <td className="px-4 py-3"><span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${TONE[r.status] || TONE.DRAFT}`}>{r.status.toLowerCase().replace('_', ' ')}</span></td>
+                <td className="px-4 py-3">{typeMeta(r.type).label}</td>
+                <td className="px-4 py-3 whitespace-nowrap">{day(r.created_at)}</td>
+                <td className="px-4 py-3 whitespace-nowrap">{day(r.updated_at)}</td>
+                <td className="px-4 py-3 text-right whitespace-nowrap">
+                  <button type="button" onClick={() => setBuilder({ row: r })} title={r.status === 'DRAFT' || r.status === 'REJECTED' ? 'Edit / submit' : 'View'} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"><Pencil size={14} /></button>
+                  <button type="button" onClick={() => void duplicate(r)} title="Duplicate as a draft" className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"><Copy size={14} /></button>
+                  <button type="button" onClick={() => void remove(r)} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50 text-red-600 cursor-pointer"><Trash2 size={14} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {!canSend && <p className="text-[12px] text-slate-500">Templates can be made and saved as drafts now. "Submit for review" and Refresh start once the Meta keys are on the server.</p>}
+      {builder && <TemplateBuilder initial={builder.row} canSubmit={canSend} onClose={() => setBuilder(null)} onSaved={() => { setBuilder(null); void reload() }} />}
     </div>
   )
 }

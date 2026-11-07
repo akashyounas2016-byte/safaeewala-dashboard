@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { MessageCircle, Loader2, Inbox as InboxIcon, CalendarCheck, Handshake, Megaphone, BarChart3, Bot, KeyRound, FileText, Settings2, Maximize2, PanelLeftOpen, CircleCheck, CircleAlert, MoreVertical, FlaskConical, CloudUpload, Trash2 } from 'lucide-react'
+import { MessageCircle, Loader2, Inbox as InboxIcon, CalendarCheck, Handshake, Megaphone, BarChart3, Settings2, Maximize2, PanelLeftOpen, CircleCheck, CircleAlert, MoreVertical, FlaskConical, CloudUpload, Trash2 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { demo, useInboxDemo } from '@/lib/inboxDemo'
 import { backupInbox, waDeleteAll } from '@/lib/inboxBackup'
@@ -18,8 +18,6 @@ import { WaJobs } from '@/components/whatsapp/WaJobs'
 import { WaDeals } from '@/components/whatsapp/WaDeals'
 import { WaBroadcast } from '@/components/whatsapp/WaBroadcast'
 import { WaAnalytics } from '@/components/whatsapp/WaAnalytics'
-import { WaAutomation, WaKeywords } from '@/components/whatsapp/WaAutomation'
-import { WaTemplates } from '@/components/whatsapp/WaTemplates'
 import { WaSettings } from '@/components/whatsapp/WaSettings'
 
 /**
@@ -34,10 +32,7 @@ const MODULES = [
   { key: 'deals', label: 'Deals', icon: Handshake, note: 'Sales pipeline' },
   { key: 'broadcast', label: 'Broadcasts', icon: Megaphone, note: 'Contact lists and campaigns' },
   { key: 'analytics', label: 'Analytics', icon: BarChart3, note: 'Volumes, reply time, agents' },
-  { key: 'automation', label: 'Automations', icon: Bot, note: 'Welcome, away, deal-stage rules' },
-  { key: 'keywords', label: 'Keyword Trigger', icon: KeyRound, note: 'Instant replies to words' },
-  { key: 'templates', label: 'Templates', icon: FileText, note: 'Approved message templates' },
-  { key: 'settings', label: 'Settings', icon: Settings2, note: 'Connection, team, hours' },
+  { key: 'settings', label: 'Settings', icon: Settings2, note: 'Users, notifications, tags, templates, replies, automation' },
 ] as const
 type ModuleKey = (typeof MODULES)[number]['key']
 
@@ -46,6 +41,9 @@ export function WhatsAppCRM() {
   const { user } = useAuth()
   const { focusMode, setFocusMode } = useLayout()
   const [params, setParams] = useSearchParams()
+  // R-INBOX-04: Automation, Keyword Trigger and Templates live in Settings now — old links still land there
+  const moved = ({ templates: 'templates', automation: 'automation', keywords: 'keywords' } as Record<string, string>)[params.get('tab') || '']
+  useEffect(() => { if (moved) setParams(p => { p.set('tab', 'settings'); p.set('s', moved); return p }, { replace: true }) }, [moved, setParams])
   const tab: ModuleKey = (MODULES.find(t => t.key === params.get('tab'))?.key) || 'inbox'
   const mod = MODULES.find(m => m.key === tab)!
   const setTab = useCallback((t: ModuleKey) => setParams(p => { p.set('tab', t); return p }, { replace: true }), [setParams])
@@ -228,9 +226,6 @@ export function WhatsAppCRM() {
             {tab === 'deals' && <WaDeals onOpenChat={openChat} agents={agents} />}
             {tab === 'broadcast' && <WaBroadcast canSend={configured && !loading} />}
             {tab === 'analytics' && (tablesReady ? <WaAnalytics agents={agents} /> : <p className="text-center text-[13px] text-slate-500 py-10">Analytics starts once the inbox database step is done.</p>)}
-            {tab === 'automation' && <WaAutomation canSend={configured} />}
-            {tab === 'keywords' && <WaKeywords />}
-            {tab === 'templates' && <WaTemplates key={String(configured)} canSend={configured} />}
             {tab === 'settings' && <WaSettings configured={configured} tablesReady={tablesReady} modulesReady={modulesReady} crmOn={crmOn && convs.length > 0 ? true : null} agents={agents} />}
           </div>
         )}

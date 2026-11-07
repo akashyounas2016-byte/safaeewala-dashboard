@@ -108,7 +108,10 @@ eq([db.wa_rules.find(r => r.id === 'kw')?.fire_count, db.wa_messages.filter(m =>
 
 // ── wiring ──
 const page = src('src/pages/WhatsAppCRM.tsx')
-eq(['Inbox', 'Jobs', 'Deals', 'Broadcasts', 'Analytics', 'Automations', 'Keyword Trigger', 'Templates', 'Settings'].every(l => page.includes(`label: '${l}'`)), true, 'all nine WhatsApp modules in the module rail')
+// R-INBOX-04: Automation, Keyword Trigger and Templates moved from the rail into Settings tabs
+eq(['Inbox', 'Jobs', 'Deals', 'Broadcasts', 'Analytics', 'Settings'].every(l => page.includes(`label: '${l}'`)) && !["'Automations'", "'Keyword Trigger'", "'Templates'"].some(l => page.includes(`label: ${l}`)), true, 'module rail: Inbox, Jobs, Deals, Broadcasts, Analytics, Settings')
+const settingsSrc = src('src/components/whatsapp/WaSettings.tsx')
+eq(['Users', 'Notifications', 'Tags', 'Templates', 'Replies', 'Automation', 'Keyword Trigger', 'Connection'].every(l => settingsSrc.includes(`label: '${l}'`)), true, 'Settings tabs: Users · Notifications · Tags · Templates · Replies · Automation · Keyword Trigger · Connection')
 eq(/SetupPanel/.test(page), false, 'no full-screen setup wall: the setup state is a strip + a Settings tab')
 eq([
   prefillJob({ clientId: 'c1', phone: '+971500000000' }, [{ id: 'c1', full_name: 'Sara', building_name: 'Marina Tower', area: 'Dubai Marina' }]),

@@ -25,6 +25,7 @@ services:
       - WHATSAPP_WABA_ID=${WHATSAPP_WABA_ID:-}
       - WHATSAPP_APP_SECRET=${WHATSAPP_APP_SECRET:-}
       - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-}
+      - WHATSAPP_APP_ID=${WHATSAPP_APP_ID:-}   # R-WA-05: only for media samples in templates
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.safaeewala-crm.rule=Host(`crm.srv1646539.hstgr.cloud`) || Host(`safaeewala.srv1646539.hstgr.cloud`) || Host(`crm.safaeewala.com`)"
