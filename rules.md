@@ -753,6 +753,21 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/pages/WhatsAppCRM.tsx`, `src/components/whatsapp/*`, `src/lib/whatsappModules.ts`, `whatsappServer.cjs` (automation, broadcast, templates, phone, connect), migration `2026-11-07_whatsapp_modules.sql`.
 - **Status:** Built · waiting for the migration `2026-11-07_whatsapp_modules.sql` and the Meta keys · Since: 2026-11-07
 
+### R-WA-03 — The rest of the WhatsApp CRM prototype, and a WhatsApp-first layout (UX-114)
+- **Rule:** *"Root folder mein rakhi 'Safai Wala WhatsApp CRM' zip file ka mukammal audit karein aur us mein maujood tamam ahem functionalities aur options ko current CRM mein integrate karein … layout aur header ko completely redesign … 'Full Screen' mode ka toggle … 'Back to Sidebar' ka option."* (2026-11-07)
+  - **Audit result:** the prototype's Inbox assignment / status / notes, Broadcast contact lists / schedule / retarget, Deal owner / close date / activity, deal-stage Automations, Auto-reply fallback + round-robin distribution, Template header / footer / buttons, and the agent leaderboard were missing; they are now in the CRM. Left out on purpose: its Jobs (services / visits / invoices — the CRM's own Bookings and Daily Job Sheet already do this, R-WA-02), multi-business / invitations (the CRM has one business and its own users), AI draft (Lovable AI only) and "simulate inbound" (a test button).
+  - **Layout (UX-114):** the WhatsApp screen is one card: a module rail on the left (Inbox, Jobs, Deals, Broadcasts, Analytics, Automations, Keyword Trigger, Templates, Settings; icons only on narrow screens), the module title bar on top, and **Full screen** (hides the CRM sidebar and page padding) with **Back to Sidebar**. Leaving the WhatsApp screen always brings the sidebar back.
+  - **Inbox:** status tabs Open · Pending · Snoozed · Resolved · All, and Everyone · Mine · Unassigned. In a chat: status, assign to an admin / manager, tags, and **Notes** (team notes + assignment / status history; never sent to the client). A resolved or snoozed chat opens again when the client writes.
+  - **Assignment:** Settings → Team: Manual, or Round-robin among chosen agents (each new chat goes to the next one).
+  - **Opt-out:** a client writing STOP / UNSUBSCRIBE is marked "Opted out", gets one confirmation, and every campaign skips the number; START subscribes again. Staff can undo it only when the client asks.
+  - **Broadcasts:** Contacts List (lists from CRM clients, WhatsApp chats or pasted numbers; tags; All List · All Contacts · Unsubscribers), Create Campaign (lists / clients / pasted; send now or **schedule** — the server sends it within a minute of the time), Campaign List (status, progress, recipients with their result, cancel a scheduled one), **Retarget Campaign** (people of an earlier campaign who didn't reply / didn't read / didn't get it).
+  - **Deals:** owner, expected close (late ones in red), search, owner filter, activity log (notes, stage moves, automations).
+  - **Automations:** deal stage rules — when a deal moves to a stage (optionally from a stage): send a template to the contact (`{name}` = the contact) and / or log a note. **Keyword Trigger:** fallback reply when no keyword matched and nothing else went out (once per 12 h per chat).
+  - **Templates:** header (text), body, footer, up to 3 quick-reply buttons; search, status and category filters.
+  - **Analytics:** agent leaderboard (messages sent per person; automatic replies left out).
+- **Code:** `src/pages/WhatsAppCRM.tsx`, `src/components/whatsapp/*` (WaInbox, WaChatCrm, WaBroadcast, …), `src/lib/whatsappCrm.ts`, `src/components/layout/Layout.tsx` (focus mode), `whatsappServer.cjs` (opt-out, round-robin, fallback, scheduled / retarget campaigns, deal-stage, agents, template components), migration `2026-11-07_whatsapp_crm_more.sql`.
+- **Status:** Built · waiting for the migration `2026-11-07_whatsapp_crm_more.sql` and the Meta keys · Since: 2026-11-07
+
 ## INBOX — One inbox for every channel
 
 ### R-INBOX-01 — WhatsApp, Facebook and Instagram on one screen

@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(whatsapp): rest of the WhatsApp CRM prototype — chat status / assignment / tags / team notes, round-robin, STOP opt-out, contact lists, scheduled + retarget campaigns, deal owner / close date / activity, deal-stage automations, fallback reply, template header / footer / buttons, agent leaderboard (R-WA-03)
+- feat(whatsapp): new layout — module rail, title bar, Full screen with Back to Sidebar (UX-114)
+
 - feat(layout): AI Bot moved from the floating button to Sidebar → AI Bot (under Alerts) (UX-112)
 - feat(inbox): Inbox redesign — no header, full height, wider chat list with clear platform tabs, minimalist (UX-113)
 

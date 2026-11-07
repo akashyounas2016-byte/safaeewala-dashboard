@@ -1,20 +1,22 @@
 import { useEffect, useState } from 'react'
-import { MessageCircle, ArrowDownLeft, ArrowUpRight, Timer, CheckCheck, Eye, Bot, AlertCircle, Loader2, BarChart3 } from 'lucide-react'
+import { MessageCircle, ArrowDownLeft, ArrowUpRight, Timer, CheckCheck, Eye, Bot, AlertCircle, Loader2, BarChart3, Trophy } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { KpiCard, Widget } from '@/components/ui/KpiCard'
 import { notify } from '@/lib/notify'
 import { loadMessagesSince, waAnalytics } from '@/lib/whatsappModules'
+import { agentLeaderboard, type WaAgent } from '@/lib/whatsappCrm'
 
 /** R-WA-02 Analytics: from the stored messages only — nothing estimated */
-export function WaAnalytics() {
+export function WaAnalytics({ agents = [] }: { agents?: WaAgent[] }) {
   const [days, setDays] = useState(30)
   const [data, setData] = useState<ReturnType<typeof waAnalytics> | null>(null)
+  const [board, setBoard] = useState<ReturnType<typeof agentLeaderboard>>([])
 
   useEffect(() => {
     let alive = true
     setData(null)
     const since = new Date(Date.now() - days * 86400000).toISOString()
-    loadMessagesSince(since).then(m => { if (alive) setData(waAnalytics(m, days)) }).catch(e => { notify.error((e as Error).message); if (alive) setData(waAnalytics([], days)) })
+    loadMessagesSince(since).then(m => { if (alive) { setData(waAnalytics(m, days)); setBoard(agentLeaderboard(m)) } }).catch(e => { notify.error((e as Error).message); if (alive) setData(waAnalytics([], days)) })
     return () => { alive = false }
   }, [days])
 
@@ -52,6 +54,24 @@ export function WaAnalytics() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+          </Widget>
+          {/* R-WA-03: agent leaderboard — messages sent by each person (automatic replies left out) */}
+          <Widget title="Agent leaderboard" note="Messages sent by each person" icon={Trophy}>
+            {board.length === 0 ? <p className="p-6 text-center text-[12.5px] text-slate-400">No messages sent by the team in this period.</p> : (
+              <ol className="divide-y divide-slate-100">
+                {board.map((b, i) => {
+                  const pct = Math.round((b.sent / board[0].sent) * 100)
+                  return (
+                    <li key={b.sender} className="px-5 py-3 flex items-center gap-3">
+                      <span className={`w-7 h-7 rounded-full text-[12px] font-bold flex items-center justify-center shrink-0 ${i === 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{i + 1}</span>
+                      <span className="w-48 truncate text-[13px] font-semibold text-[#111827]" title={b.sender}>{agents.find(a => a.name === b.sender)?.name || b.sender}</span>
+                      <span className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden"><span className="block h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }} /></span>
+                      <span className="w-20 text-right text-[12.5px] font-bold">{b.sent}{b.failed ? <span className="text-red-500 font-semibold"> · {b.failed} failed</span> : ''}</span>
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
           </Widget>
         </>
       )}

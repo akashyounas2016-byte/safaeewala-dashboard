@@ -8,6 +8,8 @@ import {
   waSendTemplate, waSendText, waTemplates, windowEndsAt, windowOpen, type WaConversation, type WaMessage, type WaTemplate,
 } from '@/lib/whatsapp'
 import { saveDeal } from '@/lib/whatsappModules'
+import type { WaAgent } from '@/lib/whatsappCrm'
+import { ChatCrmBar } from './WaChatCrm'
 
 /** R-WA-01 / R-WA-02: one WhatsApp chat — messages, reply window, composer, templates, and quick Booking / Deal */
 export const timeOf = (iso: string | null) => {
@@ -49,13 +51,15 @@ function MediaBlock({ m }: { m: WaMessage }) {
   return <a href={url} target="_blank" rel="noreferrer" className="text-[12.5px] font-bold text-emerald-800 underline">{m.media_name || 'Open document'}</a>
 }
 
-export function WaChat({ conv, clientName, canSend, onBack, onChanged }: {
+export function WaChat({ conv, clientName, canSend, onBack, onChanged, crm }: {
   conv: WaConversation
   clientName: string | null
   /** false while the Meta keys are not on the server: the chat can be read, not answered */
   canSend: boolean
   onBack: () => void
   onChanged: () => void
+  /** R-WA-03: status, assignment, tags and team notes (once the CRM columns exist) */
+  crm?: { agents: WaAgent[]; me: string | null }
 }) {
   const [msgs, setMsgs] = useState<WaMessage[]>([])
   const [text, setText] = useState('')
@@ -116,6 +120,7 @@ export function WaChat({ conv, clientName, canSend, onBack, onChanged }: {
         <button type="button" onClick={() => setDealOpen(true)} title="Add to the Deals pipeline" className="flex items-center gap-1 text-[12px] font-bold px-2.5 py-1.5 rounded-xl border border-[#E2E5E0] hover:bg-slate-50 cursor-pointer"><Handshake size={13} /> Deal</button>
         {conv.client_id && <Link to={`/clients/${conv.client_id}`} className="flex items-center gap-1 text-[12px] font-bold px-2.5 py-1.5 rounded-xl border border-[#E2E5E0] hover:bg-slate-50">Profile <ExternalLink size={12} /></Link>}
       </header>
+      {crm && <ChatCrmBar conv={conv} agents={crm.agents} me={crm.me} onChanged={onChanged} />}
       <div className={`px-4 py-1.5 text-[11.5px] font-semibold flex items-center gap-1.5 ${open ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
         <Clock size={12} />
         {open ? `Reply window open until ${windowEndsAt(conv)!.toLocaleTimeString('en-AE', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' })} — free-text replies allowed`

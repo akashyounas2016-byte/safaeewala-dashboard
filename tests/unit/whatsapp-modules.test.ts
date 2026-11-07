@@ -80,7 +80,7 @@ const supa = async (p: string, opts: { method?: string; body?: Row } = {}) => {
   const params = new URLSearchParams(qs || '')
   const rows = db[base] || []
   const filters = [...params.entries()].filter(([k]) => !['select', 'order', 'limit', 'on_conflict'].includes(k))
-  const match = (r: Row) => filters.every(([k, v]) => (v.startsWith('gt.') ? String(r[k]) > v.slice(3) : String(r[k]) === v.replace(/^eq\./, '')))
+  const match = (r: Row) => filters.every(([k, v]) => (v.startsWith('gt.') ? String(r[k]) > v.slice(3) : v.startsWith('in.(') ? v.slice(4, -1).split(',').includes(String(r[k])) : String(r[k]) === v.replace(/^eq\./, '')))
   if (!opts.method || opts.method === 'GET') return rows.filter(match)
   if (opts.method === 'POST') { const row = { id: `id-${++n}`, unread_count: 0, ...(opts.body as Row) }; rows.push(row); db[base] = rows; return [row] }
   if (opts.method === 'PATCH') { rows.filter(match).forEach(r => Object.assign(r, opts.body)); return [] }
@@ -108,7 +108,7 @@ eq([db.wa_rules.find(r => r.id === 'kw')?.fire_count, db.wa_messages.filter(m =>
 
 // ── wiring ──
 const page = src('src/pages/WhatsAppCRM.tsx')
-eq(['Inbox', 'Jobs', 'Deals', 'Broadcast', 'Analytics', 'Automation', 'Keyword Trigger', 'Templates', 'Settings'].every(l => page.includes(`label: '${l}'`)), true, 'all nine WhatsApp modules are tabs')
+eq(['Inbox', 'Jobs', 'Deals', 'Broadcasts', 'Analytics', 'Automations', 'Keyword Trigger', 'Templates', 'Settings'].every(l => page.includes(`label: '${l}'`)), true, 'all nine WhatsApp modules in the module rail')
 eq(/SetupPanel/.test(page), false, 'no full-screen setup wall: the setup state is a strip + a Settings tab')
 eq([
   prefillJob({ clientId: 'c1', phone: '+971500000000' }, [{ id: 'c1', full_name: 'Sara', building_name: 'Marina Tower', area: 'Dubai Marina' }]),

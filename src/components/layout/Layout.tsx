@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useMemo } from 'react'
+import { createContext, useCallback, useContext, useState, useMemo } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Menu, Bot, ChevronRight } from 'lucide-react'
@@ -22,6 +22,9 @@ export const LayoutContext = createContext<{
   aiHighIssues?: number
   toggleSidebar?: () => void
   isSidebarCollapsed?: boolean
+  /** UX-114: full-screen mode for a page (WhatsApp) — no sidebar, no page padding; "Back to Sidebar" turns it off */
+  focusMode?: boolean
+  setFocusMode?: (on: boolean) => void
 }>({ openMenu: () => {}, openAIBot: () => {} })
 export const useLayout = () => useContext(LayoutContext)
 
@@ -36,6 +39,13 @@ export function Layout() {
     }
   })
   const [showAIBot, setShowAIBot]     = useState(false)
+  const [focusMode, setFocusMode]     = useState(false)
+  // full screen belongs to one page: leaving it brings the sidebar back
+  const [focusPath, setFocusPath]     = useState<string | null>(null)
+  if (focusMode && focusPath !== null && focusPath !== location.pathname) { setFocusMode(false); setFocusPath(null) }
+  // stable, so a page can turn full screen off when it unmounts without turning it off on every render
+  const pathname = location.pathname
+  const enterFocus = useCallback((on: boolean) => { setFocusMode(on); setFocusPath(on ? pathname : null) }, [pathname])
 
   const handleToggleSidebar = () => {
     setSidebarCollapsed(prev => {
@@ -66,18 +76,20 @@ export function Layout() {
         aiHighIssues: highIssues.length,
         toggleSidebar: handleToggleSidebar,
         isSidebarCollapsed: sidebarCollapsed,
+        focusMode,
+        setFocusMode: enterFocus,
       }}
     >
       <div className="flex h-screen w-screen overflow-hidden bg-[#f4f7f6]">
-        <Sidebar
+        {!focusMode && <Sidebar
           open={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           collapsed={sidebarCollapsed}
           onToggleCollapse={handleToggleSidebar}
-        />
+        />}
 
         {/* Floating Expand Sidebar Button (Shown when sidebar is collapsed on desktop) */}
-        {sidebarCollapsed && (
+        {sidebarCollapsed && !focusMode && (
           <button
             type="button"
             onClick={handleToggleSidebar}
@@ -96,7 +108,7 @@ export function Layout() {
 
         <div className="flex flex-col flex-1 min-w-0 bg-[#f0f4f3]">
           {/* Mobile-only top bar (hamburger + logo) */}
-          <div className="lg:hidden flex items-center justify-between px-4 h-14 bg-[#0B1215] border-b border-white/10 shrink-0">
+          <div className={`${focusMode ? 'hidden' : 'lg:hidden flex'} items-center justify-between px-4 h-14 bg-[#0B1215] border-b border-white/10 shrink-0`}>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(true)}
@@ -125,7 +137,7 @@ export function Layout() {
           </div>
 
           <main id="main-content-scroll" className="flex-1 overflow-y-auto bg-[#f0f4f3] scroll-smooth overscroll-y-auto">
-            <div className={`max-w-[1440px] mx-auto pt-4 sm:pt-6 lg:pt-8 pb-[calc(2.5rem+env(safe-area-inset-bottom))] ${isField ? 'px-3 sm:px-6 lg:px-8' : 'px-4 sm:px-6 lg:px-8'}`}>
+            <div className={focusMode ? 'h-full p-2 sm:p-3' : `max-w-[1440px] mx-auto pt-4 sm:pt-6 lg:pt-8 pb-[calc(2.5rem+env(safe-area-inset-bottom))] ${isField ? 'px-3 sm:px-6 lg:px-8' : 'px-4 sm:px-6 lg:px-8'}`}>
               {/* R-ALERT-01: notifications and AI Bot alerts live in Sidebar → Alerts, not on every screen */}
               <SyncStatusBanner />
               <Toaster position="top-right" richColors closeButton />

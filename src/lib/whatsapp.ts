@@ -12,7 +12,14 @@ export interface WaConversation {
   last_inbound_at: string | null
   unread_count: number
   created_at: string
+  /** R-WA-03 (after 2026-11-07_whatsapp_crm_more.sql) */
+  status?: ChatStatus
+  assigned_to?: string | null
+  snoozed_until?: string | null
+  tags?: string[]
+  unsubscribed?: boolean
 }
+export type ChatStatus = 'open' | 'pending' | 'resolved' | 'snoozed'
 export interface WaMessage {
   id: string
   conversation_id: string

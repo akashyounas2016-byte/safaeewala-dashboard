@@ -112,6 +112,56 @@ function matchKeyword(rules, text) {
 /** "{name}" in a broadcast value becomes the recipient's name */
 const fillName = (params, name) => (params || []).map(p => String(p).replace(/\{name\}/gi, name || 'there'))
 
+// ── R-WA-03 helpers (pure, tested) ──
+/** A client writing STOP / UNSUBSCRIBE opts out of campaigns; START / SUBSCRIBE opts back in */
+function optOutWord(text) {
+  const t = String(text || '').trim().toLowerCase().replace(/[.!]+$/, '')
+  if (['stop', 'unsubscribe', 'stop all', 'band karo'].includes(t)) return 'stop'
+  if (['start', 'subscribe', 'unstop'].includes(t)) return 'start'
+  return null
+}
+/** Round-robin: the agent after the last one assigned (agents = profile ids in order) */
+function nextAgent(agents, last) {
+  const list = (agents || []).filter(Boolean)
+  if (!list.length) return null
+  const i = list.indexOf(last)
+  return list[(i + 1) % list.length]
+}
+/**
+ * Retarget: which recipients of an earlier campaign get the new one.
+ * no_reply = sent, but the person has not written since the campaign; not_read = sent, never read; failed = not delivered.
+ */
+function retargetPick(recipients, { repliedWaIds, statusByWamid }, rule) {
+  return (recipients || []).filter(r => {
+    if (rule === 'failed') return r.status === 'failed'
+    if (r.status !== 'sent') return false
+    if (rule === 'no_reply') return !repliedWaIds.has(r.wa_id)
+    if (rule === 'not_read') return statusByWamid.get(r.wa_message_id) !== 'read'
+    return false
+  })
+}
+/** R-WA-03: Meta template components — optional text header (60), body with examples, optional footer (60), up to 3 quick-reply buttons (25) */
+function buildTemplateComponents({ header, body, examples = [], footer, buttons }) {
+  const out = []
+  const h = String(header || '').trim()
+  if (h) {
+    if (h.length > 60 || /\{\{\d+\}\}/.test(h)) throw Object.assign(new Error('The header has at most 60 characters and no {{n}} values.'), { status: 400 })
+    out.push({ type: 'HEADER', format: 'TEXT', text: h })
+  }
+  out.push({ type: 'BODY', text: body, ...(examples.length ? { example: { body_text: [examples] } } : {}) })
+  const f = String(footer || '').trim()
+  if (f) {
+    if (f.length > 60) throw Object.assign(new Error('The footer has at most 60 characters.'), { status: 400 })
+    out.push({ type: 'FOOTER', text: f })
+  }
+  const b = (Array.isArray(buttons) ? buttons : []).map(x => String(x || '').trim()).filter(Boolean)
+  if (b.length > 3 || b.some(x => x.length > 25)) throw Object.assign(new Error('At most 3 buttons, 25 characters each.'), { status: 400 })
+  if (b.length) out.push({ type: 'BUTTONS', buttons: b.map(text => ({ type: 'QUICK_REPLY', text })) })
+  return out
+}
+/** A deal-stage rule fires when the deal moves into its "to" stage (from its "from" stage, or from any stage) */
+const stageRuleMatches = (rule, from, to) => rule.kind === 'deal_stage' && rule.enabled && rule.to_stage === to && (!rule.from_stage || rule.from_stage === from)
+
 function readRaw(req, max) {
   return new Promise((resolve, reject) => {
     let size = 0; const chunks = []
@@ -129,7 +179,7 @@ async function graph(path, { method = 'GET', body } = {}) {
   return data
 }
 
-function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson, activeUserFrom }) {
+function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson, activeUserFrom, scheduler = true }) {
   const q = encodeURIComponent
 
   async function matchClient(waId) {
@@ -150,15 +200,33 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
   }
 
   // R-WA-02: rules and hours are read at most every 30 s (they change rarely; the webhook is hot)
-  let cache = { at: 0, rules: [], hours: null }
+  let cache = { at: 0, rules: [], hours: null, assignment: null }
   async function automation() {
     if (Date.now() - cache.at < 30000) return cache
     try {
       const rules = await supa('/rest/v1/wa_rules?select=*&order=created_at.asc')
-      const [h] = await supa('/rest/v1/wa_settings?key=eq.hours&select=value')
-      cache = { at: Date.now(), rules: rules || [], hours: h ? h.value : null }
-    } catch { cache = { at: Date.now(), rules: [], hours: null } } // tables not created yet: no automation
+      const settings = await supa('/rest/v1/wa_settings?key=in.(hours,assignment)&select=key,value')
+      const val = k => (settings || []).find(s => s.key === k)?.value || null
+      cache = { at: Date.now(), rules: rules || [], hours: val('hours'), assignment: val('assignment') }
+    } catch { cache = { at: Date.now(), rules: [], hours: null, assignment: null } } // tables not created yet: no automation
     return cache
+  }
+  /** R-WA-03: a note on the chat's history (assignment / status); quiet when the table is missing */
+  const chatNote = (conversationId, kind, body, author) =>
+    supa('/rest/v1/wa_notes', { method: 'POST', body: { conversation_id: conversationId, kind, body, author } }).catch(() => {})
+
+  /** R-WA-03: a new chat goes to the next agent when the assignment mode is round-robin */
+  async function autoAssign(conv) {
+    const { assignment } = await automation()
+    if (!assignment || assignment.mode !== 'round_robin') return null
+    const agent = nextAgent(assignment.agents, assignment.last)
+    if (!agent) return null
+    await supa(`/rest/v1/wa_conversations?id=eq.${conv.id}`, { method: 'PATCH', body: { assigned_to: agent } })
+    const next = { ...assignment, last: agent }
+    await supa('/rest/v1/wa_settings?on_conflict=key', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: { key: 'assignment', value: next, updated_at: new Date().toISOString() } })
+    cache.assignment = next
+    await chatNote(conv.id, 'assign', `Assigned to ${agent} (round-robin)`, 'automation')
+    return agent
   }
   const invalidate = () => { cache.at = 0 }
 
@@ -177,13 +245,18 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
     const kw = m.type === 'text' || m.type === 'button' || m.type === 'interactive' ? matchKeyword(rules, m.body) : null
     if (kw) { await autoReply(conv, kw); return }
     const welcome = rules.find(r => r.kind === 'welcome' && r.enabled)
-    if (conv.isNew && welcome) await autoReply(conv, welcome)
-    const away = rules.find(r => r.kind === 'away' && r.enabled)
-    if (away && !withinHours(hours)) {
-      const since = new Date(Date.now() - 12 * 3600 * 1000).toISOString()
-      const recent = await supa(`/rest/v1/wa_messages?conversation_id=eq.${conv.id}&rule_id=eq.${away.id}&created_at=gt.${q(since)}&select=id&limit=1`)
-      if (!recent || !recent.length) await autoReply(conv, away)
+    let replied = false
+    if (conv.isNew && welcome) { await autoReply(conv, welcome); replied = true }
+    const since = new Date(Date.now() - 12 * 3600 * 1000).toISOString()
+    const sentRecently = async rule => {
+      const recent = await supa(`/rest/v1/wa_messages?conversation_id=eq.${conv.id}&rule_id=eq.${rule.id}&created_at=gt.${q(since)}&select=id&limit=1`)
+      return Boolean(recent && recent.length)
     }
+    const away = rules.find(r => r.kind === 'away' && r.enabled)
+    if (away && !withinHours(hours) && !(await sentRecently(away))) { await autoReply(conv, away); replied = true }
+    // R-WA-03: no keyword matched and nothing else was sent → the fallback reply (once every 12 h per chat)
+    const fallback = rules.find(r => r.kind === 'fallback' && r.enabled && r.reply)
+    if (!replied && fallback && m.type === 'text' && !(await sentRecently(fallback))) await autoReply(conv, fallback)
   }
 
   async function saveMedia(messageRowId, conversationId, mediaId, mime) {
@@ -209,10 +282,21 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
     })
     const row = rows && rows[0]
     if (!row) return // Meta sent the same message again
-    await supa(`/rest/v1/wa_conversations?id=eq.${conv.id}`, { method: 'PATCH', body: {
-      last_message_at: m.at, last_inbound_at: m.at, last_direction: 'in', last_message_preview: previewOf(m.type, m.body), unread_count: (conv.unread_count || 0) + 1,
-    } })
+    const patch = { last_message_at: m.at, last_inbound_at: m.at, last_direction: 'in', last_message_preview: previewOf(m.type, m.body), unread_count: (conv.unread_count || 0) + 1 }
+    // R-WA-03 (only once the columns exist): a resolved / snoozed chat opens again; STOP / START change the opt-out
+    const hasCrm = 'status' in conv
+    if (hasCrm && (conv.status === 'resolved' || conv.status === 'snoozed')) { patch.status = 'open'; patch.snoozed_until = null }
+    const opt = hasCrm && m.type === 'text' ? optOutWord(m.body) : null
+    if (opt) patch.unsubscribed = opt === 'stop'
+    await supa(`/rest/v1/wa_conversations?id=eq.${conv.id}`, { method: 'PATCH', body: patch })
     if (m.mediaId) saveMedia(row.id, conv.id, m.mediaId, m.mediaMime).catch(err => console.warn('[WhatsApp] media not saved:', err.message))
+    if (hasCrm && conv.isNew && !conv.assigned_to) await autoAssign(conv).catch(err => console.warn('[WhatsApp] assign:', err.message))
+    if (opt) {
+      await chatNote(conv.id, 'status', opt === 'stop' ? 'Client opted out of campaigns (STOP)' : 'Client opted in again (START)', 'automation')
+      const text = opt === 'stop' ? 'You will not get offers from Safaeewala on WhatsApp any more. Reply START to subscribe again.' : 'Welcome back — you will get Safaeewala updates again.'
+      await sendOut(conv, { email: 'automation' }, { type: 'text', text: { body: text } }, { type: 'text', body: text }).catch(err => console.warn('[WhatsApp] opt-out reply:', err.message))
+      return // no other automatic reply to STOP / START
+    }
     await runAutomation(conv, m).catch(err => console.warn('[WhatsApp] automation:', err.message))
   }
 
@@ -259,6 +343,76 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
     return row
   }
 
+  /** R-WA-03: send the pending recipients of a campaign one by one; opted-out clients are skipped */
+  async function sendBroadcast(bc) {
+    if (bc.status === 'scheduled') await supa(`/rest/v1/wa_broadcasts?id=eq.${bc.id}`, { method: 'PATCH', body: { status: 'sending' } })
+    const rows = await supa(`/rest/v1/wa_broadcast_recipients?broadcast_id=eq.${bc.id}&status=eq.pending&select=*&order=created_at.asc&limit=1000`)
+    const sender = { email: bc.created_by || 'campaign' }
+    const params = Array.isArray(bc.params) ? bc.params : []
+    let sent = bc.sent || 0; let failed = bc.failed || 0
+    for (const row of rows || []) {
+      try {
+        const conv = await conversationFor(row.wa_id, row.name)
+        if (conv.unsubscribed) {
+          await supa(`/rest/v1/wa_broadcast_recipients?id=eq.${row.id}`, { method: 'PATCH', body: { status: 'skipped', error: 'Opted out (STOP)' } })
+          continue
+        }
+        const filled = fillName(params, row.name)
+        const template = { name: bc.template_name, language: { code: bc.language }, ...(filled.length ? { components: [{ type: 'body', parameters: filled.map(text => ({ type: 'text', text })) }] } : {}) }
+        const preview = String(bc.preview || `Template: ${bc.template_name}`).replace(/\{name\}/gi, row.name || 'there')
+        const msg = await sendOut(conv, sender, { type: 'template', template }, { type: 'template', body: preview, template_name: bc.template_name })
+        await supa(`/rest/v1/wa_broadcast_recipients?id=eq.${row.id}`, { method: 'PATCH', body: { status: 'sent', wa_message_id: msg?.wa_message_id || null } }); sent++
+      } catch (err) {
+        failed++
+        await supa(`/rest/v1/wa_broadcast_recipients?id=eq.${row.id}`, { method: 'PATCH', body: { status: 'failed', error: String(err.message).slice(0, 300) } }).catch(() => {})
+      }
+      await supa(`/rest/v1/wa_broadcasts?id=eq.${bc.id}`, { method: 'PATCH', body: { sent, failed } }).catch(() => {})
+      await new Promise(r => setTimeout(r, 250)) // stay well under Meta's per-second limit
+    }
+    await supa(`/rest/v1/wa_broadcasts?id=eq.${bc.id}`, { method: 'PATCH', body: { status: sent ? 'done' : 'failed', finished_at: new Date().toISOString() } }).catch(() => {})
+  }
+
+  /** R-WA-03: recipients of an earlier campaign that match the retarget rule */
+  async function retargetRecipients(sourceId, rule) {
+    const [src] = await supa(`/rest/v1/wa_broadcasts?id=eq.${q(sourceId)}&select=id,created_at`)
+    if (!src) throw Object.assign(new Error('That campaign was not found.'), { status: 404 })
+    const recips = await supa(`/rest/v1/wa_broadcast_recipients?broadcast_id=eq.${src.id}&select=wa_id,name,status,wa_message_id&limit=1000`) || []
+    const repliedWaIds = new Set(); const statusByWamid = new Map()
+    const chunks = (arr, n = 80) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, i * n + n))
+    if (rule === 'no_reply') {
+      for (const part of chunks(recips.map(r => r.wa_id))) {
+        const convs = await supa(`/rest/v1/wa_conversations?wa_id=in.(${part.map(q).join(',')})&select=id,wa_id`) || []
+        if (!convs.length) continue
+        const ins = await supa(`/rest/v1/wa_messages?conversation_id=in.(${convs.map(c => c.id).join(',')})&direction=eq.in&created_at=gt.${q(src.created_at)}&select=conversation_id`) || []
+        const byId = new Map(convs.map(c => [c.id, c.wa_id]))
+        ins.forEach(m => repliedWaIds.add(byId.get(m.conversation_id)))
+      }
+    }
+    if (rule === 'not_read') {
+      for (const part of chunks(recips.map(r => r.wa_message_id).filter(Boolean))) {
+        const msgs = await supa(`/rest/v1/wa_messages?wa_message_id=in.(${part.map(x => `"${x}"`).map(q).join(',')})&select=wa_message_id,status`) || []
+        msgs.forEach(m => statusByWamid.set(m.wa_message_id, m.status))
+      }
+    }
+    return retargetPick(recips, { repliedWaIds, statusByWamid }, rule)
+  }
+
+  // R-WA-03: scheduled campaigns go out within a minute of their time (checked by the server, not a browser)
+  if (scheduler) {
+    const tick = async () => {
+      if (!configured()) return
+      try {
+        const due = await supa(`/rest/v1/wa_broadcasts?status=eq.scheduled&scheduled_at=lte.${q(new Date().toISOString())}&select=*&limit=5`) || []
+        for (const bc of due) {
+          // claim it first, so two ticks never send the same campaign
+          const claimed = await supa(`/rest/v1/wa_broadcasts?id=eq.${bc.id}&status=eq.scheduled`, { method: 'PATCH', headers: { Prefer: 'return=representation' }, body: { status: 'sending' } })
+          if (claimed && claimed.length) await sendBroadcast({ ...bc, status: 'sending' })
+        }
+      } catch { /* tables not created yet */ }
+    }
+    setInterval(() => void tick(), 60000).unref()
+  }
+
   async function conversationFromBody(body) {
     if (body.conversationId) { const [c] = await supa(`/rest/v1/wa_conversations?id=eq.${q(body.conversationId)}&select=*`); if (c) return c }
     const waId = normalizeWaId(body.to)
@@ -272,6 +426,14 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
     const run = fn => fn().catch(err => sendJson(res, err.status || 500, { error: err.message || 'Server error' }))
     if (pathname === '/api/whatsapp/status' && req.method === 'GET') {
       return run(async () => { await staffUser(req); sendJson(res, 200, { configured: configured(), templates: Boolean(env().wabaId) }) }), true
+    }
+    // R-WA-03: the people a chat or deal can be given to (admins and managers) — works before Meta is connected
+    if (pathname === '/api/whatsapp/agents' && req.method === 'GET') {
+      return run(async () => {
+        await staffUser(req)
+        const rows = await supa("/rest/v1/profiles?role=in.(admin,manager)&status=eq.active&select=id,full_name,login_id,role&order=full_name.asc")
+        sendJson(res, 200, { agents: (rows || []).map(r => ({ id: r.id, name: r.full_name || r.login_id || 'User', role: r.role })) })
+      }), true
     }
     if (!configured()) { sendJson(res, 503, { error: 'WhatsApp is not set up on the server yet.' }); return true }
     if (pathname === '/api/whatsapp/send' && req.method === 'POST') {
@@ -317,8 +479,8 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
         const count = new Set(text.match(/\{\{\d+\}\}/g) || []).size
         const examples = (Array.isArray(body.examples) ? body.examples : []).map(String)
         if (examples.length < count || examples.slice(0, count).some(x => !x.trim())) throw Object.assign(new Error('Give an example for every {{n}} value — Meta needs them for review.'), { status: 400 })
-        const component = { type: 'BODY', text, ...(count ? { example: { body_text: [examples.slice(0, count)] } } : {}) }
-        const created = await graph(`/${env().wabaId}/message_templates`, { method: 'POST', body: { name, category: body.category, language: String(body.language || 'en'), components: [component] } })
+        const components = buildTemplateComponents({ header: body.header, body: text, examples: examples.slice(0, count), footer: body.footer, buttons: body.buttons })
+        const created = await graph(`/${env().wabaId}/message_templates`, { method: 'POST', body: { name, category: body.category, language: String(body.language || 'en'), components } })
         sendJson(res, 200, { id: created.id, status: created.status, name })
       }), true
     }
@@ -356,41 +518,82 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
         sendJson(res, 200, { ok: true, done })
       }), true
     }
-    // R-WA-02: Broadcast — an approved template to many numbers, sent one by one in the background
+    // R-WA-02 / R-WA-03: Campaign — an approved template to many numbers: now, at a set time, or again to the
+    // people of an earlier campaign who did not reply / read / get it (retarget)
     if (pathname === '/api/whatsapp/broadcast' && req.method === 'POST') {
       return run(async () => {
         const user = await staffUser(req); const body = await readJson(req)
-        const name = String(body.name || '').trim() || `Broadcast ${new Date().toISOString().slice(0, 10)}`
+        const name = String(body.name || '').trim() || `Campaign ${new Date().toISOString().slice(0, 10)}`
         if (!body.templateName || !body.language) throw Object.assign(new Error('Choose an approved template.'), { status: 400 })
+        let input = Array.isArray(body.recipients) ? body.recipients : []
+        if (body.retargetOf) {
+          if (!['no_reply', 'not_read', 'failed'].includes(body.retargetRule)) throw Object.assign(new Error('Choose who to retarget.'), { status: 400 })
+          input = (await retargetRecipients(String(body.retargetOf), body.retargetRule)).map(r => ({ to: r.wa_id, name: r.name }))
+        }
         const seen = new Set()
-        const recipients = (Array.isArray(body.recipients) ? body.recipients : [])
+        const recipients = input
           .map(r => ({ waId: normalizeWaId(r.to), name: r.name ? String(r.name) : null }))
           .filter(r => r.waId.length >= 8 && !seen.has(r.waId) && seen.add(r.waId))
-        if (!recipients.length) throw Object.assign(new Error('Add at least one valid number.'), { status: 400 })
-        if (recipients.length > 1000) throw Object.assign(new Error('At most 1000 numbers per broadcast.'), { status: 400 })
+        if (!recipients.length) throw Object.assign(new Error(body.retargetOf ? 'Nobody in that campaign matches — nothing to send.' : 'Add at least one valid number.'), { status: 400 })
+        if (recipients.length > 1000) throw Object.assign(new Error('At most 1000 numbers per campaign.'), { status: 400 })
+        const at = body.scheduledAt ? new Date(body.scheduledAt) : null
+        if (at && (Number.isNaN(at.getTime()) || at.getTime() < Date.now() - 60000)) throw Object.assign(new Error('Choose a time in the future.'), { status: 400 })
         const params = Array.isArray(body.params) ? body.params.map(String) : []
-        const [bc] = await supa('/rest/v1/wa_broadcasts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: {
+        const row = {
           name, template_name: body.templateName, language: body.language, params, total: recipients.length, created_by: user.email || user.id,
-        } })
-        const rows = await supa('/rest/v1/wa_broadcast_recipients', { method: 'POST', headers: { Prefer: 'return=representation' }, body: recipients.map(r => ({ broadcast_id: bc.id, wa_id: r.waId, name: r.name })) })
-        sendJson(res, 200, { id: bc.id, total: recipients.length })
-        let sent = 0; let failed = 0
-        for (const row of rows || []) {
-          try {
-            const conv = await conversationFor(row.wa_id, row.name)
-            const filled = fillName(params, row.name)
-            const template = { name: body.templateName, language: { code: body.language }, ...(filled.length ? { components: [{ type: 'body', parameters: filled.map(text => ({ type: 'text', text })) }] } : {}) }
-            const preview = String(body.preview || `Template: ${body.templateName}`).replace(/\{name\}/gi, row.name || 'there')
-            const msg = await sendOut(conv, user, { type: 'template', template }, { type: 'template', body: preview, template_name: body.templateName })
-            await supa(`/rest/v1/wa_broadcast_recipients?id=eq.${row.id}`, { method: 'PATCH', body: { status: 'sent', wa_message_id: msg?.wa_message_id || null } }); sent++
-          } catch (err) {
-            failed++
-            await supa(`/rest/v1/wa_broadcast_recipients?id=eq.${row.id}`, { method: 'PATCH', body: { status: 'failed', error: String(err.message).slice(0, 300) } }).catch(() => {})
-          }
-          await supa(`/rest/v1/wa_broadcasts?id=eq.${bc.id}`, { method: 'PATCH', body: { sent, failed } }).catch(() => {})
-          await new Promise(r => setTimeout(r, 250)) // stay well under Meta's per-second limit
+          ...(at ? { status: 'scheduled', scheduled_at: at.toISOString() } : {}),
+          ...(body.preview ? { preview: String(body.preview).slice(0, 2000) } : {}),
+          ...(body.retargetOf ? { retarget_of: body.retargetOf, retarget_rule: body.retargetRule } : {}),
         }
-        await supa(`/rest/v1/wa_broadcasts?id=eq.${bc.id}`, { method: 'PATCH', body: { status: sent ? 'done' : 'failed', finished_at: new Date().toISOString() } }).catch(() => {})
+        const [bc] = await supa('/rest/v1/wa_broadcasts', { method: 'POST', headers: { Prefer: 'return=representation' }, body: row })
+        await supa('/rest/v1/wa_broadcast_recipients', { method: 'POST', body: recipients.map(r => ({ broadcast_id: bc.id, wa_id: r.waId, name: r.name })) })
+        sendJson(res, 200, { id: bc.id, total: recipients.length, scheduled: Boolean(at) })
+        if (!at) await sendBroadcast({ ...bc, preview: body.preview || bc.preview })
+      }), true
+    }
+    if (pathname === '/api/whatsapp/broadcast/cancel' && req.method === 'POST') {
+      return run(async () => {
+        await staffUser(req); const body = await readJson(req)
+        await supa(`/rest/v1/wa_broadcasts?id=eq.${q(body.id || '')}&status=eq.scheduled`, { method: 'PATCH', body: { status: 'cancelled', finished_at: new Date().toISOString() } })
+        sendJson(res, 200, { ok: true })
+      }), true
+    }
+    if (pathname === '/api/whatsapp/retarget-preview' && req.method === 'POST') {
+      return run(async () => {
+        await staffUser(req); const body = await readJson(req)
+        const list = await retargetRecipients(String(body.retargetOf || ''), body.retargetRule)
+        sendJson(res, 200, { count: list.length })
+      }), true
+    }
+    // R-WA-03: a deal moved to another stage → the matching deal-stage rules send their template and log a note
+    if (pathname === '/api/whatsapp/deal-stage' && req.method === 'POST') {
+      return run(async () => {
+        const user = await staffUser(req); const body = await readJson(req)
+        const [deal] = await supa(`/rest/v1/wa_deals?id=eq.${q(body.dealId || '')}&select=*`)
+        if (!deal) throw Object.assign(new Error('Deal not found'), { status: 404 })
+        const { rules } = await automation()
+        const hits = rules.filter(r => stageRuleMatches(r, body.from || null, deal.stage))
+        let fired = 0
+        for (const rule of hits) {
+          const notes = []
+          if (rule.template_name && deal.wa_id) {
+            try {
+              const conv = await conversationFor(deal.wa_id, deal.contact_name || null)
+              if (conv.unsubscribed) notes.push(`Template "${rule.template_name}" not sent — the client opted out (STOP)`)
+              else {
+                const filled = fillName(rule.params || [], deal.contact_name)
+                const template = { name: rule.template_name, language: { code: rule.language || 'en' }, ...(filled.length ? { components: [{ type: 'body', parameters: filled.map(text => ({ type: 'text', text })) }] } : {}) }
+                await sendOut(conv, { email: 'automation' }, { type: 'template', template }, { type: 'template', body: `Template: ${rule.template_name}`, template_name: rule.template_name, rule_id: rule.id })
+                notes.push(`Sent template "${rule.template_name}"`)
+              }
+            } catch (err) { notes.push(`Template "${rule.template_name}" failed: ${err.message}`) }
+          } else if (rule.template_name) notes.push(`Template "${rule.template_name}" not sent — the deal has no WhatsApp number`)
+          if (rule.note) notes.push(rule.note)
+          for (const n of notes) await supa('/rest/v1/wa_deal_events', { method: 'POST', body: { deal_id: deal.id, kind: 'automation', body: `${rule.name || 'Automation'}: ${n}`, author: 'automation' } }).catch(() => {})
+          await supa(`/rest/v1/wa_rules?id=eq.${rule.id}`, { method: 'PATCH', body: { fire_count: (rule.fire_count || 0) + 1, last_fired_at: new Date().toISOString() } }).catch(() => {})
+          fired++
+        }
+        sendJson(res, 200, { fired, by: user.email || user.id })
       }), true
     }
     if (pathname === '/api/whatsapp/read' && req.method === 'POST') {
@@ -426,4 +629,4 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
   return { handleWebhook, route, invalidate }
 }
 
-module.exports = { createWhatsApp, normalizeWaId, verifySignature, parseWebhook, statusAdvances, windowOpen, previewOf, configured, withinHours, matchKeyword, fillName, dubaiClock }
+module.exports = { createWhatsApp, normalizeWaId, verifySignature, parseWebhook, statusAdvances, windowOpen, previewOf, configured, withinHours, matchKeyword, fillName, dubaiClock, optOutWord, nextAgent, retargetPick, stageRuleMatches, buildTemplateComponents }

@@ -25,8 +25,11 @@ export interface WaDeal {
   created_by: string | null
   created_at: string
   updated_at: string
+  /** R-WA-03 */
+  owner?: string | null
+  expected_close?: string | null
 }
-export type RuleKind = 'welcome' | 'away' | 'keyword'
+export type RuleKind = 'welcome' | 'away' | 'keyword' | 'fallback' | 'deal_stage'
 export interface WaRule {
   id: string
   kind: RuleKind
@@ -38,6 +41,13 @@ export interface WaRule {
   fire_count: number
   last_fired_at: string | null
   created_at: string
+  /** R-WA-03: deal-stage rules */
+  template_name?: string | null
+  language?: string | null
+  params?: string[]
+  from_stage?: DealStage | null
+  to_stage?: DealStage | null
+  note?: string | null
 }
 export interface BusinessHours { days: number[]; from: string; to: string }
 export const DEFAULT_HOURS: BusinessHours = { days: [1, 2, 3, 4, 5, 6], from: '08:00', to: '20:00' }
@@ -47,14 +57,20 @@ export interface WaBroadcast {
   template_name: string
   language: string
   params: string[]
-  status: 'sending' | 'done' | 'failed'
+  status: 'scheduled' | 'sending' | 'done' | 'failed' | 'cancelled'
   total: number
   sent: number
   failed: number
   created_by: string | null
   created_at: string
   finished_at: string | null
+  /** R-WA-03 */
+  scheduled_at?: string | null
+  retarget_of?: string | null
+  retarget_rule?: RetargetRule | null
+  preview?: string | null
 }
+export type RetargetRule = 'no_reply' | 'not_read' | 'failed'
 export interface WaTemplateFull extends WaTemplate { status: string; rejected_reason?: string }
 export interface WaPhoneInfo {
   phone: { display_phone_number?: string; verified_name?: string; quality_rating?: string; name_status?: string; code_verification_status?: string; platform_type?: string }
@@ -105,13 +121,13 @@ export function parseRecipients(text: string) {
 }
 
 export const waTemplatesAll = () => call<{ templates: WaTemplateFull[] }>('/api/whatsapp/templates?all=1').then(r => r.templates)
-export const waCreateTemplate = (t: { name: string; category: 'UTILITY' | 'MARKETING'; language: string; body: string; examples: string[] }) =>
+export const waCreateTemplate = (t: { name: string; category: 'UTILITY' | 'MARKETING'; language: string; body: string; examples: string[]; header?: string; footer?: string; buttons?: string[] }) =>
   call<{ id: string; status: string; name: string }>('/api/whatsapp/templates', { method: 'POST', body: JSON.stringify(t) })
 export const waDeleteTemplate = (name: string) => call<{ ok: boolean }>(`/api/whatsapp/templates?name=${encodeURIComponent(name)}`, { method: 'DELETE' })
 export const waPhone = () => call<WaPhoneInfo>('/api/whatsapp/phone')
 export const waConnect = (pin?: string) => call<{ ok: boolean; done: string[] }>('/api/whatsapp/connect', { method: 'POST', body: JSON.stringify({ pin }) })
-export const waBroadcast = (b: { name: string; templateName: string; language: string; params: string[]; preview: string; recipients: { to: string; name?: string }[] }) =>
-  call<{ id: string; total: number }>('/api/whatsapp/broadcast', { method: 'POST', body: JSON.stringify(b) })
+export const waBroadcast = (b: { name: string; templateName: string; language: string; params: string[]; preview: string; recipients?: { to: string; name?: string }[]; scheduledAt?: string; retargetOf?: string; retargetRule?: RetargetRule }) =>
+  call<{ id: string; total: number; scheduled?: boolean }>('/api/whatsapp/broadcast', { method: 'POST', body: JSON.stringify(b) })
 
 /** Table reads: null = the table is not created yet (run 2026-11-07_whatsapp_modules.sql) */
 async function readTable<T>(table: string, order: string, ascending = false): Promise<T[] | null> {

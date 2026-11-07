@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Bot, Clock, Hand, KeyRound, Loader2, Plus, Trash2, Pencil } from 'lucide-react'
+import { Bot, Clock, Hand, KeyRound, Loader2, Plus, Trash2, Pencil, Handshake, MessageSquareDashed, ArrowRight } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { notify } from '@/lib/notify'
-import { DEFAULT_HOURS, deleteRule, loadHours, loadRules, saveHours, saveRule, type BusinessHours, type RuleKind, type WaRule } from '@/lib/whatsappModules'
+import { DEAL_STAGES, DEFAULT_HOURS, deleteRule, loadHours, loadRules, saveHours, saveRule, type BusinessHours, type DealStage, type RuleKind, type WaRule } from '@/lib/whatsappModules'
+import { templateBody, templateParamCount, waTemplates, type WaTemplate } from '@/lib/whatsapp'
 import { MigrationNote, btnGhost, btnPrimary, inputCls } from './WaShared'
 import { timeOf } from './WaChat'
 
@@ -49,8 +50,83 @@ function FixedRule({ kind, rule, onSaved, icon: Icon, title, note }: { kind: Rul
   )
 }
 
-/** R-WA-02 Automation: welcome message, away message, business hours */
-export function WaAutomation() {
+/** R-WA-03: deal moves into a stage → send a template to the contact and / or log a note on the deal */
+function DealStageRules({ rules, refresh, canSend }: { rules: WaRule[]; refresh: () => void; canSend: boolean }) {
+  const list = rules.filter(r => r.kind === 'deal_stage')
+  const [templates, setTemplates] = useState<WaTemplate[] | null>(null)
+  const [edit, setEdit] = useState<{ id?: string; name: string; from_stage: DealStage | ''; to_stage: DealStage; template: string; params: string[]; note: string; enabled: boolean } | null>(null)
+  useEffect(() => { if (edit && templates === null && canSend) void waTemplates().then(setTemplates).catch(() => setTemplates([])) }, [edit, templates, canSend])
+  const key = (t: { name: string; language: string }) => `${t.name}|${t.language}`
+  const tpl = templates?.find(t => key(t) === edit?.template) || null
+  const label = (k: string | null | undefined) => DEAL_STAGES.find(s => s.key === k)?.label || 'Any stage'
+
+  const save = async () => {
+    if (!edit) return
+    if (!edit.template && !edit.note.trim()) return notify.error('Choose a template, a note, or both')
+    try {
+      await saveRule({
+        ...(edit.id ? { id: edit.id } : {}), kind: 'deal_stage', name: edit.name.trim() || `${label(edit.from_stage || null)} → ${label(edit.to_stage)}`, reply: '', enabled: edit.enabled,
+        from_stage: edit.from_stage || null, to_stage: edit.to_stage, template_name: tpl?.name || null, language: tpl?.language || null, params: edit.params, note: edit.note.trim() || null,
+      })
+      setEdit(null); refresh()
+    } catch (e) { notify.error(/check constraint|template_name|to_stage|schema cache/i.test((e as Error).message) ? 'Deal-stage rules need the database step 2026-11-07_whatsapp_crm_more.sql' : (e as Error).message) }
+  }
+  const remove = (r: WaRule) => { if (window.confirm(`Delete "${r.name}"?`)) void deleteRule(r.id).then(refresh).catch(e => notify.error((e as Error).message)) }
+
+  return (
+    <section className="bg-white border border-[#E2E5E0] rounded-[22px] p-5 space-y-3">
+      <div className="flex items-start gap-3">
+        <span className="w-10 h-10 rounded-2xl bg-[#0284c7] text-white flex items-center justify-center shrink-0"><Handshake size={18} /></span>
+        <div className="flex-1 min-w-0"><p className="text-[14.5px] font-bold text-[#111827]">Deal stage rules</p><p className="text-[12px] text-slate-500">When a deal moves to a stage: send the client a template (e.g. Quote sent → follow-up) and / or log a note on the deal.</p></div>
+        <button type="button" onClick={() => setEdit({ name: '', from_stage: '', to_stage: 'quoted', template: '', params: [], note: '', enabled: true })} className={btnPrimary}><Plus size={14} /> Rule</button>
+      </div>
+      {list.length === 0 ? <p className="text-[12.5px] text-slate-400">No deal stage rules yet.</p> : (
+        <ul className="divide-y divide-slate-100">
+          {list.map(r => (
+            <li key={r.id} className="py-2.5 flex items-center gap-3 text-[12.5px]">
+              <span className="flex-1 min-w-0">
+                <span className="font-bold block truncate">{r.name}</span>
+                <span className="text-slate-500 flex items-center gap-1 flex-wrap">{label(r.from_stage)} <ArrowRight size={11} /> {label(r.to_stage)}{r.template_name && <> · template <b>{r.template_name}</b></>}{r.note && <> · note</>} · ran {r.fire_count}×</span>
+              </span>
+              <Toggle on={r.enabled} onChange={v => void saveRule({ ...r, enabled: v }).then(refresh).catch(e => notify.error((e as Error).message))} label={`${r.name} on or off`} />
+              <button type="button" onClick={() => setEdit({ id: r.id, name: r.name, from_stage: r.from_stage || '', to_stage: r.to_stage || 'quoted', template: r.template_name ? `${r.template_name}|${r.language}` : '', params: r.params || [], note: r.note || '', enabled: r.enabled })} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer" title="Edit"><Pencil size={13} /></button>
+              <button type="button" onClick={() => remove(r)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-600 cursor-pointer" title="Delete"><Trash2 size={13} /></button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Modal open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Edit deal stage rule' : 'New deal stage rule'}>
+        {edit && (
+          <div className="space-y-3">
+            <input value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value })} placeholder="Name, e.g. Quote sent — follow up" className={inputCls} />
+            <div className="grid grid-cols-2 gap-2">
+              <select value={edit.from_stage} onChange={e => setEdit({ ...edit, from_stage: e.target.value as DealStage | '' })} className={inputCls} aria-label="From stage">
+                <option value="">From any stage</option>{DEAL_STAGES.map(s => <option key={s.key} value={s.key}>From {s.label}</option>)}
+              </select>
+              <select value={edit.to_stage} onChange={e => setEdit({ ...edit, to_stage: e.target.value as DealStage })} className={inputCls} aria-label="To stage">
+                {DEAL_STAGES.map(s => <option key={s.key} value={s.key}>To {s.label}</option>)}
+              </select>
+            </div>
+            {canSend ? (templates === null ? <Loader2 className="animate-spin text-slate-300" /> : (
+              <>
+                <select value={edit.template} onChange={e => { const t = templates.find(x => key(x) === e.target.value); setEdit({ ...edit, template: e.target.value, params: t ? Array(templateParamCount(t)).fill('{name}') : [] }) }} className={inputCls}>
+                  <option value="">No template</option>{templates.map(t => <option key={key(t)} value={key(t)}>Send template: {t.name} · {t.language}</option>)}
+                </select>
+                {tpl && edit.params.map((v, i) => <input key={i} value={v} onChange={e => setEdit({ ...edit, params: edit.params.map((x, j) => (j === i ? e.target.value : x)) })} placeholder={`Value for {{${i + 1}}} — {name} = the deal's contact`} className={inputCls} />)}
+                {tpl && <div className="bg-[#F4F6F3] rounded-xl p-3 text-[12.5px] whitespace-pre-wrap">{templateBody(tpl, edit.params)}</div>}
+              </>
+            )) : <p className="text-[12px] text-slate-500">Templates show once the Meta keys are on the server; a note works already.</p>}
+            <input value={edit.note} onChange={e => setEdit({ ...edit, note: e.target.value })} placeholder="Activity note on the deal (optional), e.g. Follow up in 2 days" className={inputCls} />
+            <div className="flex justify-end gap-2"><button type="button" onClick={() => setEdit(null)} className={btnGhost}>Cancel</button><button type="button" onClick={() => void save()} className={btnPrimary}>Save</button></div>
+          </div>
+        )}
+      </Modal>
+    </section>
+  )
+}
+
+/** R-WA-02 Automation: welcome message, away message, business hours; R-WA-03 deal stage rules */
+export function WaAutomation({ canSend = false }: { canSend?: boolean }) {
   const { rules, refresh } = useRules()
   const [hours, setHours] = useState<BusinessHours | null | undefined | 'loading'>('loading')
   useEffect(() => { loadHours().then(h => setHours(h === null ? DEFAULT_HOURS : h)).catch(() => setHours(DEFAULT_HOURS)) }, [])
@@ -71,6 +147,7 @@ export function WaAutomation() {
         <FixedRule kind="welcome" rule={rules.find(r => r.kind === 'welcome')} onSaved={refresh} icon={Hand} title="Welcome message" note="Sent once, to the first message of a new chat." />
         <FixedRule kind="away" rule={rules.find(r => r.kind === 'away')} onSaved={refresh} icon={Clock} title="Away message" note="Sent outside business hours — at most once every 12 hours per chat." />
       </div>
+      <DealStageRules rules={rules} refresh={refresh} canSend={canSend} />
       <section className="bg-white border border-[#E2E5E0] rounded-[22px] p-5 space-y-3">
         <p className="text-[14.5px] font-bold text-[#111827]">Business hours <span className="text-[12px] font-semibold text-slate-400">· Dubai time · used by the away message</span></p>
         <div className="flex flex-wrap gap-2">
@@ -110,6 +187,8 @@ export function WaKeywords() {
 
   return (
     <div className="space-y-4">
+      <FixedRule kind="fallback" rule={rules.find(r => r.kind === 'fallback')} onSaved={refresh} icon={MessageSquareDashed} title="Fallback reply"
+        note="When no keyword matches (and no welcome / away message went out), e.g. 'Thanks! Our team will reply shortly.' At most once every 12 hours per chat." />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-[12.5px] text-slate-500">Example: a client writes "price" or "rates" → the price list goes out at once. Upper / lower case does not matter. The first matching trigger wins.</p>
         <button type="button" onClick={() => setEdit({ name: '', keywords: '', match: 'contains', reply: '', enabled: true })} className={btnPrimary}><Plus size={14} /> New trigger</button>
