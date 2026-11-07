@@ -13,6 +13,22 @@ const PREFIX = 'storage:'
 export const isStoredDoc = (v?: string) => Boolean(v && v.startsWith(PREFIX))
 export const isInlineDoc = (v?: string) => Boolean(v && v.startsWith('data:'))
 
+/**
+ * R-SYNC-15: a record without its inline files (photos / PDFs as data: URLs) — what goes to the database, the
+ * server and the browser cache. The files go to Storage first and their paths are written afterwards; sending
+ * them inline made the first save several MB, which failed, did not fit the outbox, and the employee was lost.
+ */
+export function withoutInlineDocs<T extends object>(rec: T, fileFields: readonly string[] = []): T {
+  const r = rec as Record<string, unknown>
+  let out: Record<string, unknown> | null = null
+  const set = (k: string, v: unknown) => { out = out || { ...r }; out[k] = v }
+  if (Array.isArray(r.documents) && r.documents.some(d => isInlineDoc((d as { file_data?: string })?.file_data))) {
+    set('documents', (r.documents as { file_data?: string }[]).map(d => (isInlineDoc(d?.file_data) ? { ...d, file_data: '' } : d)))
+  }
+  for (const k of fileFields) if (typeof r[k] === 'string' && isInlineDoc(r[k] as string)) set(k, null)
+  return (out || rec) as T
+}
+
 const signed = new Map<string, { url: string; until: number }>()
 const loading = new Set<string>()
 const listeners = new Set<() => void>()

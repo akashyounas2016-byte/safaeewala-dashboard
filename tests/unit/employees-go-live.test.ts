@@ -26,7 +26,7 @@ failing.delete('employees')
 // cleared fields are sent as null
 db.employees = [{ id: 'TEST-e2', full_name: 'TEST Mina', visa_expiry: '2027-01-01' }]
 const dc = readFileSync('src/store/DataContext.tsx', 'utf8')
-eq(/dbUpdate\('employees', id, Object\.fromEntries\(Object\.entries\(patch\)\.map\(\(\[k, v\]\) => \[k, v === undefined \? null : v\]\)\)\)/.test(dc), true, 'updateEmployee sends a cleared field as null')
+eq(/dbUpdate\('employees', id, withoutInlineDocs\(Object\.fromEntries\(Object\.entries\(patch\)\.map\(\(\[k, v\]\) => \[k, v === undefined \? null : v\]\)\), EMP_FILE_FIELDS\)\)/.test(dc), true, 'updateEmployee sends a cleared field as null (files left out, R-SYNC-15)')
 dbUpdate('employees', 'TEST-e2', { visa_expiry: null })
 await tick()
 eq(db.employees.find(r => r.id === 'TEST-e2')?.visa_expiry ?? null, null, 'null clears the value in Supabase')

@@ -14,7 +14,7 @@ import { jobFromBooking, jobPatchFromBookingPatch, bookingPatchFromJobPatch, nex
 import { describeJobChange } from '@/lib/auditLog'
 import { recalculateAllRowsOT } from '@/components/dailyJobSheet/jobSheetUtils'
 import { subscribeTables, applyRowChange } from '@/lib/realtime'
-import { uploadInlineDocs, isInlineDoc } from '@/lib/docStorage'
+import { uploadInlineDocs, isInlineDoc, withoutInlineDocs } from '@/lib/docStorage'
 import { useAuth } from '@/store/UserContext'
 import { saveDeletionSnapshot } from '@/lib/snapshots'
 import { staffToRegister } from '@/lib/staffRegistry'
@@ -186,7 +186,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // Auto-persist employees to localStorage
   useEffect(() => {
     if (employees.length > 0) {
-      safeLocalStorageSet('safaeewala_employees', employees)
+      safeLocalStorageSet('safaeewala_employees', employees.map(e => withoutInlineDocs(e, EMP_FILE_FIELDS))) // R-SYNC-15: no MB-sized photos in the cache
     }
   }, [employees])
 
@@ -342,29 +342,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const fieldDocs = kind === 'employees' ? EMP_FILE_FIELDS.map(k => ({ id: '__' + k, name: k, file_data: typeof r[k] === 'string' ? r[k] as string : undefined })) : []
     const docs = [...(r.documents || []), ...fieldDocs]
     if (!docs.some(d => isInlineDoc(d?.file_data))) return
+    const inline = docs.filter(d => d?.id && isInlineDoc(d.file_data)).length
     void uploadInlineDocs(`${kind}/${id}`, docs).then(done => {
+      // R-SYNC-15: the record is saved without the files — say so when a file did not reach Storage
+      if (done.size < inline) notify.error(`${inline - done.size} document${inline - done.size > 1 ? 's' : ''} could not be uploaded — open the ${kind === 'employees' ? 'employee' : 'agency'} and attach ${inline - done.size > 1 ? 'them' : 'it'} again.`)
       if (done.size === 0) return
+      // R-SYNC-15: the paths are matched against the saved record itself (not the screen's copy, which a live
+      // update from the cloud may already have replaced) and written once, outside any state update
       const swap = <D extends { id?: string; file_data?: string }>(list?: D[]) =>
         (list || []).map(d => { const u = d.id ? done.get(d.id) : undefined; return u && d.file_data === u.from ? { ...d, file_data: u.to } : d })
+      const documents = Array.isArray(r.documents) ? swap(r.documents) : undefined
+      const fields: Record<string, string> = {}
+      if (kind === 'employees') EMP_FILE_FIELDS.forEach(k => { const u = done.get('__' + k); if (u && r[k] === u.from) fields[k] = u.to })
+      const saved = withoutInlineDocs({ ...(documents ? { documents } : {}), ...fields }, kind === 'employees' ? EMP_FILE_FIELDS : [])
+      if (!Object.keys(saved).length) return
       if (kind === 'employees') {
-        setEmployees(p => p.map(e => {
-          if (e.id !== id) return e
-          const fields: Record<string, string> = {}
-          EMP_FILE_FIELDS.forEach(k => { const u = done.get('__' + k); if (u && (e as unknown as Record<string, unknown>)[k] === u.from) fields[k] = u.to })
-          const documents = swap(e.documents)
-          dbUpdate('employees', id, { documents, ...fields })
-          return { ...e, documents, ...fields }
-        }))
+        dbUpdate('employees', id, saved)
+        setEmployees(p => p.map(e => (e.id === id ? ({ ...e, ...saved } as Employee) : e)))
       } else {
+        dbUpdate('agencies', id, saved)
+        fetch('/api/agencies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch: saved }) }).catch(() => {})
         setAgencies(p => {
-          const next = p.map(a => {
-            if (a.id !== id) return a
-            const documents = swap(a.documents)
-            dbUpdate('agencies', id, { documents })
-            fetch('/api/agencies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, patch: { documents } }) }).catch(() => {})
-            return { ...a, documents }
-          })
-          safeLocalStorageSet('safaeewala_agencies', next)
+          const next = p.map(x => (x.id === id ? ({ ...x, ...saved } as Agency) : x))
+          safeLocalStorageSet('safaeewala_agencies', next.map(x => withoutInlineDocs(x)))
           return next
         })
       }
@@ -453,7 +453,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setEmployees(p => {
         const have = new Set(p.map(e => e.id))
         const next = [...rows.filter(e => !have.has(e.id)), ...p]
-        safeLocalStorageSet('safaeewala_employees', next)
+        safeLocalStorageSet('safaeewala_employees', next.map(e => withoutInlineDocs(e, EMP_FILE_FIELDS)))
         return next
       })
       rows.forEach(e => logAudit('created', 'employee', e.id, e.full_name, 'Registered from Daily Job Sheet'))
@@ -762,7 +762,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         safeLocalStorageSet('safaeewala_deleted_staff', next)
         return next
       })
-      dbInsert('employees', row)
+      dbInsert('employees', withoutInlineDocs(row, EMP_FILE_FIELDS)) // R-SYNC-15: files go to Storage, not in this request
       docsToStorage('employees', row.id, row)
       logAudit('created', 'employee', row.id, e.full_name, e.role)
     },
@@ -775,13 +775,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const discovered = allEmployees.find(e => e.id === id)
         if (discovered) {
           const newSaved = { ...discovered, ...patch }
-          dbInsert('employees', newSaved)
+          dbInsert('employees', withoutInlineDocs(newSaved, EMP_FILE_FIELDS))
           return [newSaved, ...p]
         }
         return p
       })
       // R-SYNC-13: a field cleared in the form is sent as null — left out, Supabase kept the old value and it came back on reload
-      dbUpdate('employees', id, Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, v === undefined ? null : v])))
+      dbUpdate('employees', id, withoutInlineDocs(Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, v === undefined ? null : v])), EMP_FILE_FIELDS)) // R-SYNC-15
       docsToStorage('employees', id, patch)
     },
     deleteEmployee: (id) => {
@@ -800,30 +800,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const row: Agency = { ...a, id: uid(), created_at: now() }
       setAgencies(p => {
         const next = [row, ...p]
-        safeLocalStorageSet('safaeewala_agencies', next)
+        safeLocalStorageSet('safaeewala_agencies', next.map(x => withoutInlineDocs(x))) // R-SYNC-15
         fetch('/api/agencies', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: row.id, patch: row }) // only this agency (K-03)
+          body: JSON.stringify({ id: row.id, patch: withoutInlineDocs(row) }) // only this agency (K-03); files go to Storage
         }).catch(() => {})
         return next
       })
-      dbInsert('agencies', row)
+      dbInsert('agencies', withoutInlineDocs(row))
       docsToStorage('agencies', row.id, row)
       logAudit('created', 'agency', row.id, a.name)
     },
     updateAgency: (id, patch) => {
       setAgencies(p => {
         const next = p.map(a => a.id === id ? { ...a, ...patch } : a)
-        safeLocalStorageSet('safaeewala_agencies', next)
+        safeLocalStorageSet('safaeewala_agencies', next.map(x => withoutInlineDocs(x))) // R-SYNC-15
         fetch('/api/agencies', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, patch }) // only this agency — a stale tab can no longer overwrite the list (K-03)
+          body: JSON.stringify({ id, patch: withoutInlineDocs(patch) }) // only this agency — a stale tab can no longer overwrite the list (K-03)
         }).catch(() => {})
         return next
       })
-      dbUpdate('agencies', id, patch)
+      dbUpdate('agencies', id, withoutInlineDocs(patch))
       docsToStorage('agencies', id, patch)
       // Renaming an agency keeps staff that were linked by name (AUD-13)
       const before = agencies.find(a => a.id === id)

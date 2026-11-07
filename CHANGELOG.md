@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(employees, agencies): adding an employee with document photos lost it after a reload — files now go to Storage and only their paths are saved (R-SYNC-15)
+
 - feat(conversations): Automation, Keyword Trigger and Templates moved into Settings, which now has tabs (Users, Notifications, Tags, Templates, Replies, Automation, Keyword Trigger, Connection) (R-INBOX-04)
 - feat(templates): template builder with 8 types and live preview; templates saved in the CRM as drafts, submitted to Meta for review; All Templates list with status tabs and filters (R-WA-05)
 

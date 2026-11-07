@@ -727,6 +727,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `lib/alerts.ts → aiIssueLinks`; `Alerts.tsx`; `Bookings.tsx` (`edit=1`); `DailyJobSheet.tsx` (`job`).
 - **Status:** Active · Since: 2026-11-06
 
+### R-SYNC-15 — Files never travel inside a save
+- **Rule:** owner report 2026-11-07: *"vps pr 1 employee add kiya he hogya us k bd mazeed nhi ho rahe. refresh kro to profile nhi show hrhi"*. Cause: the document photos (EID, passport, visa, permit) were sent inside the first save as text — with phone photos several MB, twice (the document list and the eid_file / … fields). The request failed, did not fit the browser's outbox (quota), and the employee was lost on reload; the files reached Storage but had no row to attach to.
+  - An employee or agency is saved first without its files; the files go to Storage, then their paths are written to the record (matched against the saved record, not the screen's copy). The browser cache and the agencies server copy never hold the photos.
+  - A file that does not upload is reported ("N documents could not be uploaded — open the employee and attach them again"); the employee is saved anyway.
+- **Code:** `src/lib/docStorage.ts` (withoutInlineDocs), `src/store/DataContext.tsx` (addEmployee, updateEmployee, addAgency, updateAgency, docsToStorage).
+- **Status:** Fixed · Since: 2026-11-07
+
 ## WA — WhatsApp
 
 ### R-WA-01 — WhatsApp runs inside the CRM (Meta Cloud API, no GHL)
