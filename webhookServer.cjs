@@ -564,6 +564,9 @@ async function authorizeApi(req, pathname, parsedUrl) {
     const given = req.headers['x-webhook-secret'] || parsedUrl.searchParams.get('secret') || '';
     if (given && safeEqual(given, WEBHOOK_SECRET)) return { ok: true };
   }
+  // SEC-04: Fluent Forms cannot sign in. Until FLUENT_WEBHOOK_SECRET is set, a lead is accepted (write-only),
+  // also when the service key IS set — that combination returned 401 and every website lead was lost.
+  if (isLeadWebhook && !WEBHOOK_SECRET) return { ok: true };
   if (!authConfigured()) {
     if (isLeadWebhook && WEBHOOK_SECRET) return { ok: false, status: 401, error: 'Webhook secret required' };
     // Write-only calls that cannot carry a sign-in: Fluent Forms sending a lead (until a secret is set)

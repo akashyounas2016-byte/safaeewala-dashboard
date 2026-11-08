@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(leads): website leads were refused with 401 since the service key was set on the VPS (2026-11-05) — the webhook accepts leads again until FLUENT_WEBHOOK_SECRET is set (SEC-04)
 - fix(leads): the property type is shown as the customer picked it on the website form — Flat was shown as Apartment (R-LEAD-01)
 
 - fix(employees, agencies): adding an employee with document photos lost it after a reload — files now go to Storage and only their paths are saved (R-SYNC-15)
