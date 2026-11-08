@@ -730,6 +730,50 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/duties.ts → isFieldStaff, dutyKindOf, cleanerDuties`; `src/store/useFieldStaff.ts`; `App.tsx → ModuleGate`; `Sidebar.tsx`; `Layout.tsx`; `MyDuties.tsx`.
 - **Status:** Active · Since: 2026-11-03
 
+## MKT / CMP / AI — Marketing, Complaints, AI Bot (2026-11-09)
+
+### R-MKT-01 — Marketing: client base, Offers, Campaigns
+- **Rule:** *"Marketing screen ko cleaning business ke mutabiq enhance karein; is mein 'Offers' aur 'Campaigns' ki tabs … inactive aur first-time clients ki base ko track karne ka feature."*
+  - **Client base:** six segment cards. A card filters the list.
+    - Segments: Inactive (served before, nothing in the last 60 days, same as R-CLI-07), First-time (one visit), Repeat (2+), Active (≤ 60 days), Never booked, All.
+    - Synced from the Daily Job Sheet and Bookings (the store's clients). Only clients with a phone number count.
+    - Per group: search, Copy numbers, CSV, "Campaign for this group". Per client: open the profile, open a WhatsApp chat.
+  - **Offers:** title, % / AED / free hours / none, promo code, for which segment, services, valid from–to, terms, on / off. "Live" = on and inside the dates. "Use in campaign" fills a campaign.
+  - **Campaigns:**
+    - Fields: name, segment (with its client count), offer, channel, message with `{name}`, status (draft · scheduled · running · done · cancelled), dates, budget, bookings and revenue won (typed in), with ROI.
+    - The CSV gives every number with its personalised message. WhatsApp campaigns are sent from Conversations → Broadcasts with an approved template (Meta's rule).
+  - No invented figures (R-DATA-03): every number comes from clients or from saved offers / campaigns.
+  - **Own screen:** Marketing in Settings → Roles & Access (it was under Fluent Forms).
+  - **Database:** tables `marketing_offers`, `marketing_campaigns` (migration `2026-11-09_marketing_complaints.sql`). Until the migration runs, the client base works and a note asks for it.
+- **Code:** `src/lib/marketing.ts`, `src/pages/MarketingDashboard.tsx`.
+- **Status:** Built · waiting for the migration · Since: 2026-11-09
+
+### R-CMP-01 — Complaints module
+- **Rule:** *"sidebar mein 'Complaints' ka alag module … Fluent Forms ya Facebook se aane wali shikayat aur unka status centralized tor par manage."*
+  - **Sidebar → Complaints** (own screen permission). One list, newest first, with:
+    - Fields: reference CMP-0001…, client (linked when the number matches), phone, source (Fluent Forms · Facebook · Instagram · WhatsApp · phone · email · other), category, priority, cleaner, job date, assignee, resolution.
+    - Status: Open → In progress → Resolved → Closed. It is changed in the row; Resolved / Closed asks for the resolution first and records when it was resolved.
+  - **Cards:** Open, High priority, Over 2 days, Resolved, Average resolve time. Filters: search, status, source, Reset.
+  - **To review:** website leads with complaint words (complaint, damage, late, no-show, rude, refund, shikayat …) and WhatsApp / Facebook / Instagram chats tagged "Complaint". Each has "Add as complaint". One source message makes one complaint.
+  - The lead detail popup in Fluent Forms has a **Complaint** button.
+  - **Database:** table `complaints` (same migration).
+- **Code:** `src/lib/complaints.ts`, `src/pages/Complaints.tsx`, `FluentFormsLeads.tsx`.
+- **Status:** Built · waiting for the migration · Since: 2026-11-09
+
+### R-AI-01 — AI Bot hub
+- **Rule:** *"AI Bot ke liye ek dedicated, full-width screen … 'central brain' … tamam modules (Booking, Employee, Financials, Operations) ka mukammal access … data retrieve … OT details ya cleaner info … operational tasks execute … direct yahan se nayi booking."*
+  - **Owner's choice (2026-11-09):** build the hub first; the AI model comes later.
+  - **Sidebar → AI Bot opens `/ai-bot`:**
+    - Quick actions: New booking (the Add Job popup, saved here), Daily Job Sheet, New invoice, New complaint, Win-back campaign, Attendance, Full data check (the old AI Bot window).
+    - Eight live cards: jobs today, working, available, OT this month, unpaid invoices, open complaints, low stock, document alerts.
+    - **Ask the CRM:** OT, revenue, pending, duplicates and staff use the existing rules (`askCRMAIBot`). A cleaner's name gives their month (jobs, duty, OT), today's and next jobs. "book / new booking" opens the booking form. A chip says "AI model: not connected".
+    - One search across cleaners, clients, bookings and invoices.
+    - Cleaner card: this month, today, next jobs, document dates. The month's Duty & OT table appears when no cleaner is open.
+    - The data-health line opens the full data check.
+  - **Next step:** a Claude model over the same data and actions, with "Confirm" before anything is saved. It starts when the owner puts the API key in the VPS .env.
+- **Code:** `src/lib/aiHub.ts`, `src/pages/AIBot.tsx`, `Sidebar.tsx → AIBotNavItem`.
+- **Status:** Built (no AI model yet) · Since: 2026-11-09
+
 ## ALERT — Alerts
 
 ### R-ALERT-01 — Every alert in one place: Sidebar → Alerts

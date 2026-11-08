@@ -25,5 +25,5 @@ eq(/Number\(b\.received_amount\) \|\| 0\), 0\) \/\/ R-FIN-07/.test(ex), true, 'c
 // Delivery check: no invented marketing figures (R-DATA-03)
 const mk = src('src/pages/MarketingDashboard.tsx')
 eq(/retentionMetrics|Summer Promotion|87%|churn/i.test(mk), false, 'Marketing shows no made-up campaign / retention numbers')
-eq(/Marketing is not connected yet/.test(mk), true, 'Marketing says it is not connected')
+eq(/segmentCounts\(clients\)/.test(mk) && /loadOffers\(\)/.test(mk), true, 'Marketing figures come from real data: client segments + saved offers / campaigns (R-MKT-01)')
 eq(/to: '\/marketing',\s+label: 'Marketing'/.test(src('src/components/layout/Sidebar.tsx')), true, 'Marketing is in the sidebar (owner request)')

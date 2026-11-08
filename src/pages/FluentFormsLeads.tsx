@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { copyText } from '@/lib/clipboard'
 import {
   Globe, Send, Search, Filter, ExternalLink, Calendar, Phone,
@@ -149,6 +150,7 @@ function getDaysAgoLocalDate(days: number): string {
 
 export function FluentFormsLeads() {
   const { bookings, addBooking, clients } = useData()
+  const navigate = useNavigate()
   const { openMenu } = useLayout()
 
   const [leads, setLeads]               = useState<FluentFormLead[]>([])
@@ -2088,6 +2090,20 @@ export function FluentFormsLeads() {
                 >
                   <Pencil size={14} className="mr-1.5 text-indigo-600" />
                   Edit Submission
+                </Button>
+                {/* R-CMP-01: a website message that is a complaint goes to the Complaints module */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 border-rose-200 text-rose-700 hover:bg-rose-50 font-bold"
+                  onClick={() => {
+                    const l = selectedLead
+                    const p = new URLSearchParams({ new: '1', source: 'fluent_forms', ref: l.id, name: l.client_name || '', phone: l.phone || '', text: l.message || l.service || '' })
+                    setSelectedLead(null)
+                    navigate(`/complaints?${p.toString()}`)
+                  }}
+                >
+                  Complaint
                 </Button>
                 {selectedLead.status !== 'converted' && (
                   <Button

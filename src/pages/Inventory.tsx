@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
+import { KpiCard } from '@/components/ui/KpiCard'
 import { useData } from '@/store/DataContext'
 import { notify } from '@/lib/notify'
 import type { InventoryItem } from '@/types'
@@ -125,40 +126,20 @@ export function Inventory() {
         </div>
       )}
 
-      {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {[
-          { label: 'Total Items',   value: inventory.length,              sub: 'All categories', icon: Boxes,     iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '',   deltaUp: true  },
-          { label: 'Low Stock',     value: lowStock.length,                   sub: 'Need reorder',   icon: AlertTriangle, iconBg: 'bg-amber-50', iconColor: 'text-amber-600', delta: lowStock.length > 0 ? '!' : 'OK', deltaUp: lowStock.length === 0 },
-          { label: 'Critical',      value: criticalStock.length,              sub: 'Below minimum',  icon: RefreshCw, iconBg: 'bg-red-50',     iconColor: 'text-red-600',     delta: criticalStock.length > 0 ? '!!' : 'OK', deltaUp: criticalStock.length === 0 },
-          { label: 'Stock Value',   value: `AED ${(totalValue/1000).toFixed(1)}k`, sub: 'Total inventory', icon: DollarSign, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: '', deltaUp: true },
-          { label: 'Suppliers',     value: suppliers.length,                  sub: 'Active vendors', icon: Truck,     iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: '', deltaUp: true },
-          { label: 'Categories',    value: categories.length,                 sub: 'Item types',     icon: BarChart3, iconBg: 'bg-slate-100',  iconColor: 'text-slate-600',   delta: '',  deltaUp: true  },
-        ].map(card => (
-          <div key={card.label} title={KPI_SOURCES[card.label]} className="bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all">
-            <div className="flex items-start justify-between mb-4">
-              <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center`}>
-                <card.icon size={18} className={card.iconColor} />
-              </div>
-              {/* Only real, data-backed chips — no invented trends (AUD-32, AUD-35) */}
-              {card.delta && (
-                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${card.deltaUp ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                  {card.delta}
-                </span>
-              )}
-            </div>
-            <p className="text-2xl font-bold text-[#111827] tracking-tight">{card.value}</p>
-            <p className="text-[12px] font-semibold text-[#111827] mt-1">{card.label}</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">{card.sub}</p>
-          </div>
-        ))}
+      {/* ── KPI Cards (UX-116: Daily Job Sheet cards) ── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+        <KpiCard label="Total Items" value={inventory.length} sub="All categories" icon={Boxes} labelColor="text-blue-700" iconSolid="bg-[#2563eb] shadow-blue-500/25" title={KPI_SOURCES['Total Items']} active={!lowOnly && categoryFilter === 'all'} onClick={() => { setLowOnly(false); setCategoryFilter('all') }} />
+        <KpiCard label="Low Stock" value={lowStock.length} sub="Need reorder" icon={AlertTriangle} labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25" chip={lowStock.length > 0 ? 'Reorder' : 'OK'} chipTone={lowStock.length > 0 ? 'warn' : 'up'} title={KPI_SOURCES['Low Stock']} active={lowOnly} onClick={() => setLowOnly(v => !v)} />
+        <KpiCard label="Critical" value={criticalStock.length} sub="Below minimum" icon={RefreshCw} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25" chip={criticalStock.length > 0 ? 'Order now' : 'OK'} chipTone={criticalStock.length > 0 ? 'down' : 'up'} title={KPI_SOURCES['Critical']} />
+        <KpiCard label="Stock Value" value={`AED ${(totalValue / 1000).toFixed(1)}k`} sub="Total inventory" icon={DollarSign} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" title={KPI_SOURCES['Stock Value']} />
+        <KpiCard label="Suppliers" value={suppliers.length} sub="Active vendors" icon={Truck} labelColor="text-violet-700" iconSolid="bg-[#7c3aed] shadow-violet-500/25" title={KPI_SOURCES['Suppliers']} />
+        <KpiCard label="Categories" value={categories.length} sub="Item types" icon={BarChart3} labelColor="text-slate-700" iconSolid="bg-[#475569] shadow-slate-500/25" title={KPI_SOURCES['Categories']} />
       </div>
 
-      {/* ── Main: Table + Sidebar ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      {/* ── Main: search, categories and items at full width (UX-116) ── */}
+      <div className="space-y-6">
 
-        {/* ── Left: Filters + Table ── */}
-        <div className="xl:col-span-2 space-y-4">
+        <div className="space-y-4">
 
           {/* Toolbar */}
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4">
@@ -191,7 +172,7 @@ export function Inventory() {
                 <thead>
                   <tr className="border-b border-[#E4E8EC] bg-slate-50">
                     {['Item', 'Category', 'Location', 'In Stock', 'Min', 'Stock Level', 'Unit Cost', 'Value', ''].map(h => (
-                      <th key={h} className="text-left px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.07em] whitespace-nowrap">
+                      <th key={h} className="text-left px-3 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.07em] whitespace-nowrap">
                         {h}
                       </th>
                     ))}
@@ -202,7 +183,7 @@ export function Inventory() {
                     const level = stockLevel(item)
                     return (
                       <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3.5">
+                        <td className="px-3 py-3">
                           <div className="flex items-center gap-2.5">
                             <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
                               <Package size={14} className="text-slate-500" />
@@ -213,17 +194,17 @@ export function Inventory() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5">
+                        <td className="px-3 py-3">
                           <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{item.category}</span>
                         </td>
-                        <td className="px-4 py-3.5 text-[12px] text-slate-500">{item.location}</td>
-                        <td className="px-4 py-3.5">
+                        <td className="px-3 py-3 text-[12px] text-slate-500">{item.location}</td>
+                        <td className="px-3 py-3">
                           <span className={`text-[13px] font-bold ${level.textColor}`}>
                             {item.current_stock} {item.unit}
                           </span>
                         </td>
-                        <td className="px-4 py-3.5 text-[12px] text-slate-400">{item.min_stock} {item.unit}</td>
-                        <td className="px-4 py-3.5">
+                        <td className="px-3 py-3 text-[12px] text-slate-400">{item.min_stock} {item.unit}</td>
+                        <td className="px-3 py-3">
                           <div className="flex items-center gap-2">
                             <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                               <div className={`h-full rounded-full ${level.barColor}`} style={{ width: level.width }} />
@@ -231,11 +212,11 @@ export function Inventory() {
                             <span className={`text-[11px] font-semibold ${level.textColor}`}>{level.label}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5 text-[12px] text-slate-600">AED {item.unit_cost.toLocaleString()}</td>
-                        <td className="px-4 py-3.5">
+                        <td className="px-3 py-3 text-[12px] text-slate-600">AED {item.unit_cost.toLocaleString()}</td>
+                        <td className="px-3 py-3">
                           <span className="text-[13px] font-bold text-[#111827]">AED {(item.current_stock * item.unit_cost).toLocaleString()}</span>
                         </td>
-                        <td className="px-4 py-3.5">
+                        <td className="px-3 py-3">
                           <div className="flex items-center gap-1.5">
                             <button
                               onClick={() => setReceiving(item)}
@@ -276,8 +257,8 @@ export function Inventory() {
           </div>
         </div>
 
-        {/* ── Right sidebar ── */}
-        <div className="space-y-5">
+        {/* ── Bottom: Inventory Health · Suppliers · Restock Queue in one row (UX-116) ── */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
 
           {/* Inventory Health by Category */}
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">

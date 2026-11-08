@@ -15,10 +15,13 @@ export const ROLE_META: Record<AppRole, { label: string; desc: string; badge: st
 /** Every screen that can be allowed or blocked, with the routes that belong to it */
 export const APP_MODULES = [
   { key: 'Overview',        paths: ['/'] },
+  { key: 'AI Bot',          paths: ['/ai-bot'] }, // R-AI-01
   { key: 'Alerts',          paths: ['/alerts'] }, // R-ALERT-01
   { key: 'Bookings',        paths: ['/bookings'] },
   { key: 'Daily Job Sheet', paths: ['/daily-job-sheet'] },
-  { key: 'Fluent Forms',    paths: ['/fluent-forms', '/marketing', '/feedback'] },
+  { key: 'Fluent Forms',    paths: ['/fluent-forms', '/feedback'] },
+  { key: 'Marketing',       paths: ['/marketing'] }, // R-MKT-01: own screen (was under Fluent Forms)
+  { key: 'Complaints',      paths: ['/complaints'] }, // R-CMP-01
   { key: 'Inbox',           paths: ['/inbox'] }, // R-INBOX-01: WhatsApp + Facebook + Instagram
   { key: 'WhatsApp',        paths: ['/whatsapp-crm', '/conversations'] }, // R-WA-01; R-INBOX-03: Sidebar → Conversations
   { key: 'Clients',         paths: ['/clients'] },
@@ -90,7 +93,7 @@ export function moduleForPath(pathname: string): ModuleKey | null {
 
 /** Clean stored permissions: keep only known screens */
 /** Screens added after permissions could first be saved; a save older than them gets their defaults (R-ALERT-01) */
-const ADDED_LATER: ModuleKey[] = ['Alerts', 'WhatsApp', 'Inbox']
+const ADDED_LATER: ModuleKey[] = ['Alerts', 'WhatsApp', 'Inbox', 'Marketing', 'Complaints', 'AI Bot']
 
 export function normalizeRolePerms(stored: unknown): RolePerms {
   const out = Object.fromEntries(PERM_ROLES.map(r => [r.key, [...DEFAULT_ROLE_PERMS[r.key]]])) as RolePerms

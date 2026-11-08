@@ -10,7 +10,7 @@ const layout = src('src/components/layout/Layout.tsx')
 eq(/fixed bottom-6 right-6/.test(layout), false, 'no floating AI Bot button bottom-right')
 eq(/<CRMAIBotModal/.test(layout) && /aiIssueCount: issueCount/.test(layout), true, 'the AI Bot window stays; its findings count goes to the sidebar')
 const sidebar = src('src/components/layout/Sidebar.tsx')
-eq(/function AIBotNavItem/.test(sidebar) && /openAIBot\(\)/.test(sidebar), true, 'Sidebar → AI Bot opens the same window')
+eq(/function AIBotNavItem/.test(sidebar) && /to="\/ai-bot"/.test(sidebar), true, 'Sidebar → AI Bot opens the AI Bot hub (R-AI-01)')
 eq(/item\.to === '\/alerts' && !isFieldLogin && <AIBotNavItem/.test(sidebar), true, 'AI Bot sits under Alerts, hidden for cleaners / drivers')
 
 // R-INBOX-02: the inbox now lives in the WhatsApp CRM (WaInbox); UX-113's wide list + platform tabs kept there

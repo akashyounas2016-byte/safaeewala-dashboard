@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
+import { KpiCard } from '@/components/ui/KpiCard'
 import { formatDate } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { Invoice, Client } from '@/types'
@@ -225,20 +226,9 @@ export function Invoices() {
         title="Invoices"
         subtitle={`${dateFilteredInvoices.length} invoices ${activeDateRange.label !== 'All Time' ? `(${activeDateRange.label})` : ''} · AED ${totalPaid.toLocaleString()} collected · AED ${totalOverdue.toLocaleString()} overdue`}
         statusChip={overdueInvoices.length > 0 ? `${overdueInvoices.length} Overdue` : 'All Clear'}
-        actions={
-          <button
-            type="button"
-            onClick={() => navigate('/monthly-invoices')}
-            className="h-11 px-4 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-[13px] backdrop-blur-sm transition-all shrink-0 flex items-center justify-center gap-2 cursor-pointer"
-            title="Switch to Monthly Invoices & Statements"
-          >
-            <CalendarCheck size={14} />
-            <span>Monthly Invoices</span>
-          </button>
-        }
         actionLabel="New Invoice"
         onAction={() => setShowModal(true)}
-        searchPlaceholder="Search invoices…"
+        showSearch={false}
       />
 
       {/* ── Invoice Modules Navigation Tabs ── */}
@@ -281,40 +271,17 @@ export function Invoices() {
         </div>
       </div>
 
-      {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        {[
-          { label: 'Total Invoices', value: dateFilteredInvoices.length,                   sub: activeDateRange.label, icon: FileText,    iconBg: 'bg-slate-100',  iconColor: 'text-slate-600',   delta: `${dateFilteredInvoices.length}`, deltaUp: true  },
-          { label: 'Paid',           value: `AED ${(totalPaid/1000).toFixed(1)}k`,         sub: `${paidCount} invoices · vs previous period`, icon: CheckCircle, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600', delta: paidTrend.delta, deltaUp: paidTrend.up  },
-          { label: 'Pending',        value: `AED ${(totalPending/1000).toFixed(1)}k`,      sub: 'Awaiting payment', icon: Clock,       iconBg: 'bg-blue-50',    iconColor: 'text-blue-600',    delta: '', deltaUp: true },
-          { label: 'Overdue',        value: `AED ${(totalOverdue/1000).toFixed(1)}k`,      sub: `${overdueInvoices.length} overdue`, icon: AlertCircle, iconBg: 'bg-red-50', iconColor: 'text-red-600', delta: overdueInvoices.length > 0 ? '!' : '', deltaUp: false },
-          { label: 'VAT Collected',  value: `AED ${(totalVat/1000).toFixed(1)}k`,          sub: 'From paid invoices', icon: Percent,   iconBg: 'bg-purple-50',  iconColor: 'text-purple-600',  delta: '5%',   deltaUp: true  },
-          { label: 'Collection',     value: `${collectionRate}%`,                          sub: 'Payment rate',   icon: TrendingUp,  iconBg: 'bg-amber-50',   iconColor: 'text-amber-600',   delta: '',  deltaUp: true  },
-        ].map(card => {
-          let action: (() => void) | null = null
-          if (card.label === 'Total Invoices') action = () => setStatusFilter('all')
-          else if (card.label === 'Paid') action = () => setStatusFilter('paid')
-          else if (card.label === 'Pending') action = () => setStatusFilter('sent')
-          else if (card.label === 'Overdue') action = () => setStatusFilter('overdue')
-          return (
-          <div key={card.label} title={KPI_SOURCES[card.label]} onClick={action ?? undefined} className={`bg-white rounded-[24px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5 hover:shadow-[0_8px_30px_rgba(15,23,42,0.10)] transition-all ${action ? 'cursor-pointer' : ''}`}>
-            <div className="flex items-start justify-between mb-4">
-              <div className={`w-10 h-10 rounded-2xl ${card.iconBg} flex items-center justify-center`}>
-                <card.icon size={18} className={card.iconColor} />
-              </div>
-              {/* Only real, data-backed chips — no invented trends (AUD-32, AUD-35) */}
-              {card.delta && (
-                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${card.deltaUp ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
-                  {card.delta}
-                </span>
-              )}
-            </div>
-            <p className="text-xl font-bold text-[#111827] tracking-tight">{card.value}</p>
-            <p className="text-[12px] font-semibold text-[#111827] mt-1">{card.label}</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">{card.sub}</p>
-          </div>
-          )
-        })}
+      {/* ── KPI Cards (UX-115: Daily Job Sheet cards, 5 in a row; VAT is in the UAE VAT Summary) ── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+        <KpiCard label="Total Invoices" value={dateFilteredInvoices.length} sub={activeDateRange.label} icon={FileText} labelColor="text-slate-700" iconSolid="bg-[#475569] shadow-slate-500/25"
+          title={KPI_SOURCES['Total Invoices']} active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
+        <KpiCard label="Paid" value={`AED ${(totalPaid / 1000).toFixed(1)}k`} sub={`${paidCount} invoices`} icon={CheckCircle} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25"
+          chip={paidTrend.delta ? `${paidTrend.delta} vs previous` : undefined} chipTone={paidTrend.up ? 'up' : 'down'} title={KPI_SOURCES['Paid']} active={statusFilter === 'paid'} onClick={() => setStatusFilter('paid')} />
+        <KpiCard label="Pending" value={`AED ${(totalPending / 1000).toFixed(1)}k`} sub="Awaiting payment" icon={Clock} labelColor="text-blue-700" iconSolid="bg-[#2563eb] shadow-blue-500/25"
+          title={KPI_SOURCES['Pending']} active={statusFilter === 'sent'} onClick={() => setStatusFilter('sent')} />
+        <KpiCard label="Overdue" value={`AED ${(totalOverdue / 1000).toFixed(1)}k`} sub={`${overdueInvoices.length} overdue`} icon={AlertCircle} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25"
+          chip={overdueInvoices.length > 0 ? 'Needs follow-up' : undefined} chipTone="down" title={KPI_SOURCES['Overdue']} active={statusFilter === 'overdue'} onClick={() => setStatusFilter('overdue')} />
+        <KpiCard label="Collection" value={`${collectionRate}%`} sub="Payment rate" icon={TrendingUp} labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25" title={KPI_SOURCES['Collection']} />
       </div>
 
       {/* ── Main: Table + Sidebar ── */}
@@ -323,105 +290,42 @@ export function Invoices() {
         {/* ── Left: Filters + Table ── */}
         <div className="xl:col-span-2 space-y-4">
 
-          {/* Toolbar */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 space-y-3">
-            {/* Top Row: Search & Status Filter */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
+          {/* Toolbar — UX-115: search, status, date and reset in one row */}
+          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-3">
+            <div className="flex items-center gap-2 flex-wrap lg:flex-nowrap">
+              <div className="relative flex-1 min-w-[180px]">
                 <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search by client or invoice number…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="w-full text-[13px] pl-10 pr-8 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 focus:bg-white placeholder-slate-400 transition-colors"
-                />
-                {search && (
-                  <button
-                    type="button"
-                    onClick={() => setSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
+                <input type="text" placeholder="Search client or invoice number…" value={search} onChange={e => setSearch(e.target.value)}
+                  className="w-full h-10 text-[13px] pl-10 pr-3 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 focus:bg-white placeholder-slate-400" />
               </div>
-              <select
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-                className="text-[13px] font-medium px-3.5 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer"
-              >
-                <option value="all">All Status</option>
+              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} aria-label="Status"
+                className="h-10 text-[13px] font-medium px-3 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer">
+                <option value="all">All Statuses</option>
                 <option value="paid">Paid</option>
                 <option value="sent">Pending</option>
                 <option value="overdue">Overdue</option>
                 <option value="void">Void</option>
                 <option value="draft">Draft</option>
               </select>
-            </div>
-
-            {/* Bottom Row: Dynamic Date Filters */}
-            <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 flex items-center gap-1">
-                  <Calendar size={12} className="text-emerald-600" /> Date:
-                </span>
-                {STANDARD_PRESETS.map(preset => {
-                  const active = datePreset === preset.id
-                  return (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => setDatePreset(preset.id as InvoiceDatePreset)}
-                      className={`px-3 py-1 rounded-xl text-[12px] font-bold transition-all cursor-pointer ${
-                        active
-                          ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/25'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  )
-                })}
+              <div className="relative">
+                <Calendar size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 pointer-events-none" />
+                <select value={datePreset} onChange={e => setDatePreset(e.target.value as InvoiceDatePreset)} aria-label="Date"
+                  className="h-10 text-[13px] font-medium pl-8 pr-3 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-400 text-slate-700 cursor-pointer">
+                  {STANDARD_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
               </div>
-
-              {/* Custom Date Inputs & Reset button */}
-              <div className="flex items-center gap-2 shrink-0">
-                {datePreset === 'custom' && (
-                  <div className="flex items-center gap-1.5 bg-[#f8fafc] border border-emerald-300 rounded-xl px-2.5 py-1 animate-in fade-in duration-150">
-                    <span className="text-[11px] font-bold text-emerald-700">From:</span>
-                    <input
-                      type="date"
-                      value={customStartDate}
-                      onChange={e => setCustomStartDate(e.target.value)}
-                      className="text-[12px] px-1.5 py-0.5 bg-white border border-[#E4E8EC] rounded-lg focus:outline-none focus:border-emerald-500 font-medium"
-                    />
-                    <span className="text-[11px] font-bold text-emerald-700">To:</span>
-                    <input
-                      type="date"
-                      value={customEndDate}
-                      onChange={e => setCustomEndDate(e.target.value)}
-                      className="text-[12px] px-1.5 py-0.5 bg-white border border-[#E4E8EC] rounded-lg focus:outline-none focus:border-emerald-500 font-medium"
-                    />
-                  </div>
-                )}
-
-                {datePreset !== 'all' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDatePreset('all')
-                      setCustomStartDate('')
-                      setCustomEndDate('')
-                    }}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11.5px] font-bold text-slate-500 hover:text-emerald-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
-                    title="Reset date filter to All Time"
-                  >
-                    <RotateCcw size={11} />
-                    <span>Reset</span>
-                  </button>
-                )}
-              </div>
+              {datePreset === 'custom' && (
+                <div className="flex items-center gap-1.5">
+                  <input type="date" value={customStartDate} onChange={e => setCustomStartDate(e.target.value)} aria-label="From" className="h-10 text-[12.5px] px-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500" />
+                  <span className="text-slate-400 text-[12px]">–</span>
+                  <input type="date" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)} aria-label="To" className="h-10 text-[12.5px] px-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500" />
+                </div>
+              )}
+              <button type="button" title="Reset filters" aria-label="Reset filters"
+                onClick={() => { setSearch(''); setStatusFilter('all'); setDatePreset(DEFAULT_FINANCE_PRESET); setCustomStartDate(''); setCustomEndDate('') }}
+                className="h-10 px-3 inline-flex items-center gap-1.5 rounded-xl border border-[#E4E8EC] text-[12.5px] font-bold text-slate-600 hover:text-emerald-700 hover:bg-slate-50 cursor-pointer shrink-0">
+                <RotateCcw size={14} /> <span className="hidden xl:inline">Reset</span>
+              </button>
             </div>
           </div>
 

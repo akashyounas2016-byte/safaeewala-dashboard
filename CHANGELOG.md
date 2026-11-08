@@ -6,6 +6,13 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(ai-bot): Sidebar → AI Bot opens a full-width hub — quick actions (new booking here), live cards from every module, Ask the CRM (rules over your data; cleaner by name; "new booking"), one search, cleaner card, month Duty & OT; AI model later (R-AI-01)
+- feat(marketing): client base by segment (inactive, first-time, repeat, active, never booked) synced from jobs + bookings, Offers and Campaigns tabs; own screen permission (R-MKT-01)
+- feat(complaints): new Complaints module — status, priority, assignee, resolution; "To review" from website messages and chats tagged Complaint; Complaint button on a lead (R-CMP-01)
+- feat(invoices): header without search / Monthly Invoices; 5 DJS cards (no VAT card); search · status · date · Reset in one row (UX-115)
+- feat(inventory): DJS cards; full-width list; Inventory Health · Suppliers · Restock Queue in one row at the bottom (UX-116)
+- db: `2026-11-09_marketing_complaints.sql` — to run in Supabase
+
 - feat(conversations): leaner layout — rail 184 px, connection status under the icons links to Settings → Connection, no Inbox title row, no Full screen in the header; "Book Job" in every chat header opens the Add Job popup prefilled; Templates table without Updated, fixed widths (R-INBOX-06)
 
 - fix(employees, alerts): document alerts start 30 days before expiry on every screen (some used 90 / 60); a typo year (0227) shows "date looks wrong" instead of "expired 657168 days ago", and the employee form refuses it (R-EMP-04)

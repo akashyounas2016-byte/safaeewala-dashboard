@@ -6,7 +6,7 @@ import {
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
   CreditCard, TrendingUp, Globe, Clock, LogOut, ChevronLeft, Building2,
   CalendarDays, Star, SlidersHorizontal, ArrowUp, ArrowDown, RotateCcw, Sparkles, Truck, Navigation, Eye, EyeOff, Bell,
-  Megaphone, MessageCircle, Bot,
+  Megaphone, MessageCircle, Bot, MessageSquareWarning,
 } from 'lucide-react'
 import { useLayout } from './Layout'
 import { useWhatsAppUnread } from '@/store/useWhatsAppUnread'
@@ -38,6 +38,7 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { to: '/fluent-forms',     label: 'Fluent Forms',      icon: Globe,                               category: 'Workspace' },
   { to: '/whatsapp-crm',     label: 'Conversations',     icon: MessageCircle,                       category: 'Workspace' }, // R-WA-01, R-INBOX-02: one screen for WhatsApp + Facebook + Instagram
   { to: '/marketing',        label: 'Marketing',         icon: Megaphone,                           category: 'Workspace' }, // owner request 2026-11-06
+  { to: '/complaints',       label: 'Complaints',        icon: MessageSquareWarning,                category: 'Workspace' }, // R-CMP-01
   { to: '/clients',          label: 'Clients',           icon: Users,                               category: 'Workspace' },
   { to: '/monthly-clients',  label: 'Monthly Clients',   icon: TrendingUp,                          category: 'Workspace' },
   { to: '/employees',        label: 'Employees',         icon: UserCheck,                           category: 'Workspace' },
@@ -163,14 +164,14 @@ function NavItem({ to, label, icon: Icon, onClose, tag, badge, badgeTitle, onCli
   )
 }
 
-/** UX-112: the AI Bot is a sidebar item (not a page): it opens the same AI Bot window as before */
+/** R-AI-01: Sidebar → AI Bot opens the full-width AI Bot hub (/ai-bot); the data-check window opens from there */
 function AIBotNavItem({ onClose }: { onClose: () => void }) {
-  const { openAIBot, aiIssueCount = 0, aiHighIssues = 0 } = useLayout()
+  const { aiIssueCount = 0, aiHighIssues = 0 } = useLayout()
   return (
-    <button
-      type="button"
-      onClick={() => { onClose(); openAIBot() }}
-      className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-[14px] font-medium transition-all duration-150 group nav-inactive cursor-pointer text-left"
+    <NavLink
+      to="/ai-bot"
+      onClick={onClose}
+      className={({ isActive }) => cn('w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-[14px] font-medium transition-all duration-150 group cursor-pointer text-left', isActive ? 'nav-active' : 'nav-inactive')}
       title="Safaeewala AI Bot: chat, OT reports, revenue analysis, duplicate check"
     >
       <Bot size={16} className="shrink-0 text-[#64748b] group-hover:text-[#34d399]" />
@@ -181,7 +182,7 @@ function AIBotNavItem({ onClose }: { onClose: () => void }) {
           {aiIssueCount > 99 ? '99+' : aiIssueCount}
         </span>
       ) : <span className="text-[10px] font-bold text-emerald-300/80 shrink-0">100%</span>}
-    </button>
+    </NavLink>
   )
 }
 
