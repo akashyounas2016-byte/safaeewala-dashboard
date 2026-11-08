@@ -3,7 +3,7 @@ import {
   Flame, Clock, Zap, UserCheck, Shield, AlertTriangle, CheckCircle
 } from 'lucide-react'
 import type { Employee } from '@/types'
-import { daysUntil } from '@/lib/utils'
+import { daysUntil, DOC_ALERT_DAYS } from '@/lib/utils'
 
 /* ─── Avatar Palette & Component ─── */
 const avatarColors = [
@@ -231,7 +231,7 @@ export function ComplianceWidget({
         {agencyScopedEmployees
           .filter(e => {
             const days = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry))
-            return days < 90
+            return days <= DOC_ALERT_DAYS // R-EMP-04
           })
           .slice(0, 4)
           .map((emp, idx) => {

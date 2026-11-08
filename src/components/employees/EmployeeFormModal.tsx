@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { isWrongDocDate } from '@/lib/utils'
 import {
   UserCheck, Briefcase, CreditCard, Shield, Car, Sparkles, Search, Check, FileText, FileCheck
 } from 'lucide-react'
@@ -127,6 +128,12 @@ function EmployeeFormModalContent({
     ]
     for (const [from, to, label] of datePairs) {
       const a = str(from), b = str(to)
+      // R-EMP-04: a typo year (0227 for 2027) is stopped here instead of becoming an "expired" alert
+      const wrong = [a, b].find(d => d && isWrongDocDate(d))
+      if (wrong) {
+        notify.error(`${label}: the date ${wrong} has a wrong year — please correct it (e.g. 2027).`)
+        return
+      }
       if (a && b && a > b) {
         notify.error(`${label}: issue date cannot be after the expiry date.`)
         return

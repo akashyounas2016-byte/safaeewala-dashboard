@@ -14,7 +14,7 @@ import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { KpiCard } from '@/components/ui/KpiCard'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
-import { formatDate, daysUntil, isParentCompanyEmployee, isThirdPartyEmployee, matchesAgencyFilter } from '@/lib/utils'
+import { formatDate, daysUntil, DOC_ALERT_DAYS, isParentCompanyEmployee, isThirdPartyEmployee, matchesAgencyFilter } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { Employee, DailyJob, EmployeeRole, Agency, EmployeeDocument } from '@/types'
 import { getAssignableClients, getEmployeeDailyJobsHistory, calcCleanerOTHours, getEmployeeMonthlySalary, formatMonthlySalary, splitStaffNames, MONTHLY_WORK_HOURS } from '@/lib/clientDataSync'
@@ -192,13 +192,12 @@ function ExpiryIndicator({ date, label }: { date: string | undefined | null; lab
   const days = daysUntil(date)
   let bg = 'bg-emerald-50/80 border-emerald-200'; let text = 'text-emerald-800'
   if (days < 0)        { bg = 'bg-rose-50 border-rose-200';   text = 'text-rose-800'   }
-  else if (days < 30)  { bg = 'bg-rose-50 border-rose-200';   text = 'text-rose-800'   }
-  else if (days < 90)  { bg = 'bg-amber-50 border-amber-200'; text = 'text-amber-800' }
+  else if (days <= DOC_ALERT_DAYS)  { bg = 'bg-amber-50 border-amber-200'; text = 'text-amber-800' }
   return (
     <div className={`rounded-xl p-3 text-center border ${bg}`}>
       <p className={`text-[11px] font-bold ${text}`}>{label}</p>
       <p className={`text-[11px] mt-0.5 ${text} font-medium`}>{formatDate(date)}</p>
-      {days < 90 && (
+      {days <= DOC_ALERT_DAYS && (
         <span className={`inline-block text-[10px] font-extrabold px-1.5 py-0.2 rounded-md mt-1 ${days < 0 ? 'bg-rose-600 text-white' : 'bg-amber-600 text-white'}`}>
           {days < 0 ? 'EXPIRED' : `${days}d remaining`}
         </span>
@@ -554,7 +553,7 @@ export function Employees() {
 
   const expiringCount = agencyScopedEmployees.filter(e => {
     const soonest = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry), daysUntil(e.passport_expiry))
-    return soonest < 90
+    return soonest <= DOC_ALERT_DAYS // R-EMP-04
   }).length
 
   const activeCount = agencyScopedEmployees.filter(e => e.status === 'active').length
@@ -613,7 +612,7 @@ export function Employees() {
 
       const matchExpiry = !expiryFilter || (() => {
         const soonest = Math.min(daysUntil(e.visa_expiry), daysUntil(e.work_permit_expiry), daysUntil(e.passport_expiry))
-        return soonest < 90
+        return soonest <= DOC_ALERT_DAYS // R-EMP-04
       })()
 
       return matchSearch && matchRole && matchStatus && matchWork && matchExpiry
@@ -704,7 +703,7 @@ export function Employees() {
       {(showAllStaffCards ? filtered : filtered.slice(0, STAFF_CARD_LIMIT)).map((emp, idx) => {
         const safeDay = (d: string | undefined) => d ? daysUntil(d) : Infinity
         const minDays = Math.min(safeDay(emp.visa_expiry), safeDay(emp.work_permit_expiry), safeDay(emp.passport_expiry))
-        const hasAlert = isFinite(minDays) && minDays < 90
+        const hasAlert = isFinite(minDays) && minDays <= DOC_ALERT_DAYS
         const st = staffJobStats.get(emp.id)
         const shiftsCount = st?.shifts ?? 0
         const dutyHours = st?.dutyHours ?? 0
@@ -885,7 +884,7 @@ export function Employees() {
                     <Shield size={12} className="text-slate-400 shrink-0" />
                     <span>Visa: {formatDate(emp.visa_expiry)}</span>
                   </div>
-                  {daysUntil(emp.visa_expiry) < 90 && (
+                  {daysUntil(emp.visa_expiry) <= DOC_ALERT_DAYS && (
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${daysUntil(emp.visa_expiry) < 0 ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'}`}>
                       {daysUntil(emp.visa_expiry) < 0 ? 'EXPIRED' : `${daysUntil(emp.visa_expiry)}d left`}
                     </span>
@@ -1094,9 +1093,9 @@ export function Employees() {
                   {isColVisible('visa') && (
                     <td className="py-3 px-3">
                       {emp.visa_expiry ? (
-                        <span className={`text-[11px] font-bold ${visaDays < 30 ? 'text-rose-600' : visaDays < 90 ? 'text-amber-600' : 'text-slate-600'}`}>
+                        <span className={`text-[11px] font-bold ${visaDays < 0 ? 'text-rose-600' : visaDays <= DOC_ALERT_DAYS ? 'text-amber-600' : 'text-slate-600'}`}>
                           {formatDate(emp.visa_expiry)}
-                          {visaDays < 90 && <span className="ml-1 text-[10px]">({visaDays}d)</span>}
+                          {visaDays <= DOC_ALERT_DAYS && <span className="ml-1 text-[10px]">({visaDays}d)</span>}
                         </span>
                       ) : (
                         <span className="text-slate-400 text-[11px]">Not set</span>
@@ -1221,7 +1220,7 @@ export function Employees() {
           chip={`${summaryMetrics.totalShifts} shifts`} onClick={() => { setSortBy('duty_desc'); setWorkFilter('all') }} />
         <KpiCard label="Total OT" value={`+${summaryMetrics.totalOTHours}h`} sub={`${summaryMetrics.staffWithOTCount} staff with OT`} icon={Flame} labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25"
           chip={`${summaryMetrics.otRatio}% of duty`} chipTone={summaryMetrics.totalOTHours > 0 ? 'warn' : 'plain'} active={workFilter === 'has_ot'} onClick={() => { setWorkFilter(workFilter === 'has_ot' ? 'all' : 'has_ot'); setSortBy('ot_desc') }} />
-        <KpiCard label="Document Expiry" value={expiringCount} sub="Visa / permit / passport < 90 days" icon={Shield} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25"
+        <KpiCard label="Document Expiry" value={expiringCount} sub="Visa / permit / passport ≤ 30 days" icon={Shield} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25"
           chip={expiryFilter ? 'Filtered' : expiringCount > 0 ? `${expiringCount} to renew` : 'All valid'} chipTone={expiringCount > 0 ? 'warn' : 'up'} active={expiryFilter}
           onClick={() => {
             const next = !expiryFilter
@@ -1550,7 +1549,7 @@ export function Employees() {
             </div>
             <div>
               <p className="font-extrabold text-rose-950 leading-tight">
-                🛡️ Showing Cleaners & Staff with Document Expiry alerts (&lt;90 days or Expired)
+                🛡️ Showing Cleaners & Staff with Document Expiry alerts (≤30 days or Expired)
               </p>
               <p className="text-[11.5px] text-rose-800 font-medium mt-0.5">
                 Displaying {filtered.length} staff member{filtered.length === 1 ? '' : 's'} requiring Visa, Passport, or Work Permit renewal.

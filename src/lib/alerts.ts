@@ -5,7 +5,7 @@ import type { BackupHealth } from '@/lib/backupStatus'
 import type { Agency, Booking, Client, Employee } from '@/types'
 import { employeeMatchesStaff, splitStaffNames } from '@/lib/clientDataSync'
 import { buildAgencyNotifications } from '@/lib/agencyAlerts'
-import { daysUntil, formatDate } from '@/lib/utils'
+import { daysUntil, formatDate, isWrongDocDate, DOC_ALERT_DAYS } from '@/lib/utils'
 
 /**
  * R-ALERT-01: every alert of the CRM in one list, for Sidebar → Alerts. Main screens no longer carry
@@ -102,8 +102,18 @@ export function employeeDocAlerts(employees: Employee[]): CrmAlert[] {
     docs.forEach(([field, label]) => {
       const date = e[field] as string | undefined
       if (!date) return
+      // R-EMP-04: an impossible year (0227 typed for 2027) asks for a fix instead of "expired 657168 days ago"
+      if (isWrongDocDate(date)) {
+        out.push({
+          id: `emp-${e.id}-${String(field)}-wrong`, source: 'staff', severity: 'medium',
+          title: `${e.full_name}: ${label} date looks wrong`,
+          message: `The expiry date reads "${String(date).slice(0, 10)}" — open the profile and fix the year`,
+          actionUrl: `/employees/${e.id}`, actionLabel: 'Open employee',
+        })
+        return
+      }
       const days = daysUntil(date)
-      if (days > 30) return
+      if (days > DOC_ALERT_DAYS) return
       out.push({
         id: `emp-${e.id}-${String(field)}`, source: 'staff', severity: days < 0 ? 'high' : 'medium',
         title: `${e.full_name}: ${label} ${days < 0 ? 'expired' : 'expiring'}`,

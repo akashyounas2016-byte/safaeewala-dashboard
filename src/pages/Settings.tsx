@@ -1144,7 +1144,7 @@ export function Settings() {
                   <Toggle label="Payment received"     description="Notify when a payment is confirmed"                checked={notif.payment_received}     onChange={v => toggleNotif('payment_received', v)} />
                   <p className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.1em] py-3">Operational Alerts</p>
                   <Toggle label="Low stock alert"         description="Alert when inventory falls below minimum"       checked={notif.low_stock}            onChange={v => toggleNotif('low_stock', v)} />
-                  <Toggle label="Document expiry warning" description="Warn 90 days before staff documents expire"     checked={notif.document_expiry}      onChange={v => toggleNotif('document_expiry', v)} />
+                  <Toggle label="Document expiry warning" description="Warn 30 days before staff documents expire"     checked={notif.document_expiry}      onChange={v => toggleNotif('document_expiry', v)} />
                   <Toggle label="New client review"       description="Notify when a client leaves a review"           checked={notif.new_review}           onChange={v => toggleNotif('new_review', v)} />
                 </div>
               </div>

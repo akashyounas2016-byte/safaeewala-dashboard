@@ -1,8 +1,8 @@
 import type { Agency, Employee } from '@/types'
 import type { HeroNotification } from '@/components/layout/PageHero'
-import { daysUntil, formatDate, staffOfAgency } from '@/lib/utils'
+import { daysUntil, formatDate, staffOfAgency, isWrongDocDate, DOC_ALERT_DAYS } from '@/lib/utils'
 
-const ALERT_WINDOW_DAYS = 30       // documents / contracts expiring within this many days
+const ALERT_WINDOW_DAYS = DOC_ALERT_DAYS // R-EMP-04: documents / contracts expiring within this many days
 const PAYOUT_GAP_DAYS = 35         // no salary payout for this long = payment alert
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
@@ -43,6 +43,10 @@ export function buildAgencyNotifications(
     ]
     docs.forEach(([date, label]) => {
       if (!date) return
+      if (isWrongDocDate(date)) { // R-EMP-04: a typo year asks for a fix, it is not "expired"
+        push({ id: `${agency.id}-${label}-wrong`, title: `${agency.name}: ${label} date looks wrong`, detail: `Expiry reads "${String(date).slice(0, 10)}" — fix the year`, tone: 'warning', onClick: open }, 20)
+        return
+      }
       const days = daysUntil(date)
       if (days > ALERT_WINDOW_DAYS) return
       push({

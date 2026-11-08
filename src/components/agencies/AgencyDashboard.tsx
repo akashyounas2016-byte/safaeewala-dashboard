@@ -13,7 +13,7 @@ import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
 import type { Agency, Employee, DailyJob, AgencySalaryPayout, AgencyDocument, AgencyDocumentCategory, AgencyContactPerson } from '@/types'
-import { formatDate, formatCurrency, daysUntil, isParentCompanyEmployee } from '@/lib/utils'
+import { formatDate, formatCurrency, daysUntil, DOC_ALERT_DAYS, isParentCompanyEmployee } from '@/lib/utils'
 import { getEmployeeDailyJobsHistory, employeeMatchesStaff, jobChargeShare, shiftSalaryCost, formatMonthlySalary } from '@/lib/clientDataSync'
 import { generateCertificateDataUrl } from '@/lib/agencyCertificates'
 import { todayDubai } from '@/lib/dubaiTime'
@@ -1137,7 +1137,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
 
                       // Visa expiry alerts
                       const visaDays = emp.visa_expiry ? daysUntil(emp.visa_expiry) : null
-                      const visaValid = visaDays !== null && visaDays > 60
+                      const visaValid = visaDays !== null && visaDays > DOC_ALERT_DAYS
 
                       return (
                         <tr
@@ -1280,7 +1280,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                 const totalDuty = history.reduce((acc, j) => acc + (Number(j.duty_hours) || 0), 0)
 
                 const visaDays = emp.visa_expiry ? daysUntil(emp.visa_expiry) : null
-                const visaValid = visaDays !== null && visaDays > 60
+                const visaValid = visaDays !== null && visaDays > DOC_ALERT_DAYS
 
                 return (
                   <div
@@ -3522,7 +3522,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
         const cleanerRevenue = Math.round(history.reduce((acc, j) => acc + jobChargeShare(j), 0))
         const todayJob = dailyJobs.find(j => j.date === todayStr && employeeMatchesStaff(profileStaff, j.staff_name))
         const visaDays = profileStaff.visa_expiry ? daysUntil(profileStaff.visa_expiry) : null
-        const visaValid = visaDays !== null && visaDays > 60
+        const visaValid = visaDays !== null && visaDays > DOC_ALERT_DAYS
 
         return (
           <Modal

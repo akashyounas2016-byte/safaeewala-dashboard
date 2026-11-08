@@ -8,7 +8,7 @@ import {
   Flame
 } from 'lucide-react'
 import { useData } from '@/store/DataContext'
-import { formatDate, daysUntil } from '@/lib/utils'
+import { formatDate, daysUntil, DOC_ALERT_DAYS } from '@/lib/utils'
 import type { PaymentMode, EmployeeDocument, EmployeeDocumentCategory } from '@/types'
 import { EmployeeDocumentPreviewModal } from '@/components/employees/EmployeeDocumentField'
 import {
@@ -101,13 +101,12 @@ function ExpiryCard({ date, label }: { date: string | undefined | null; label: s
   const days = daysUntil(date)
   let bg = 'bg-emerald-50'; let text = 'text-emerald-700'
   if (days < 0)        { bg = 'bg-red-50';   text = 'text-red-700'   }
-  else if (days < 30)  { bg = 'bg-red-50';   text = 'text-red-700'   }
-  else if (days < 90)  { bg = 'bg-amber-50'; text = 'text-amber-700' }
+  else if (days <= DOC_ALERT_DAYS)  { bg = 'bg-amber-50'; text = 'text-amber-700' }
   return (
     <div className={`rounded-xl p-3 text-center border border-[#E4E8EC] ${bg}`}>
       <p className={`text-[11px] font-bold ${text}`}>{label}</p>
       <p className={`text-[11px] mt-0.5 ${text}`}>{formatDate(date)}</p>
-      {days < 90 && <p className={`text-[10.5px] font-extrabold mt-0.5 ${text}`}>{days < 0 ? 'EXPIRED' : `${days}d left`}</p>}
+      {days <= DOC_ALERT_DAYS && <p className={`text-[10.5px] font-extrabold mt-0.5 ${text}`}>{days < 0 ? 'EXPIRED' : `${days}d left`}</p>}
     </div>
   )
 }

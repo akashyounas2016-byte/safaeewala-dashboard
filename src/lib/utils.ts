@@ -102,6 +102,21 @@ export function getInitials(name: string) {
     .slice(0, 2)
 }
 
+/** R-EMP-04: documents are flagged this many days before they expire (was 90 on some screens) */
+export const DOC_ALERT_DAYS = 30
+
+/**
+ * R-EMP-04: a document date with an impossible year (a typo like 0227 for 2027) — shown as "check the date",
+ * never as expired thousands of days ago. Plausible = years 1950–2100.
+ */
+export function isWrongDocDate(date: string | Date | null | undefined): boolean {
+  if (!date) return false
+  const t = new Date(date)
+  if (isNaN(t.getTime())) return true
+  const y = t.getFullYear()
+  return y < 1950 || y > 2100
+}
+
 export function daysUntil(date: string | Date | null | undefined) {
   // UX-105: no date recorded = nothing to expire (was 0 = 'expires today', so every new employee without
   // documents was counted under Document Expiry and Compliance alerts)
@@ -109,6 +124,7 @@ export function daysUntil(date: string | Date | null | undefined) {
   const now = new Date()
   const target = new Date(date)
   if (isNaN(target.getTime())) return Infinity
+  if (isWrongDocDate(target)) return Infinity // R-EMP-04: a typo year is not "expired"; alerts ask to fix it
   const diff = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
   return diff
 }

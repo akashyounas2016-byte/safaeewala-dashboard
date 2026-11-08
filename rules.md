@@ -475,7 +475,12 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ### R-EMP-04 — Document expiry alerts
 - **Rule:** Employee bell lists Visa, Passport, Work Permit, EID, Medical Insurance, Driving License and contract end dates that are expired or ≤ 30 days away (inactive staff excluded), most urgent first.
-- **Code:** `Employees.tsx → employeeNotifications`.
+  - **2026-11-09 audit** — *"agar documents ki expiry date abi baqi hai, to alert trigger nahi hona chahiye … sirf … 1 maheenay pehlay activate hon, aur 90 days pehlay se … band karein."*
+    - **One window:** 30 days (`DOC_ALERT_DAYS`) everywhere: Alerts, the Employees KPI and filter, the badges, the widget, the profile and the agency staff checks. The Employees screens used 90 days and the agency "valid" mark used 60.
+    - **Expired** = red; **≤ 30 days** = amber; more than 30 days = no alert.
+    - **Wrong year** (outside 1950–2100, e.g. 0227 typed for 2027): never counted as expired. Alerts show one medium "date looks wrong — fix the year" item. The employee form refuses to save such a date.
+    - The Misbah case was a Work Permit saved as 0227-08-04, shown as "expired 657168 days ago". It was the only wrong date in the data on 2026-11-09.
+- **Code:** `utils.ts → DOC_ALERT_DAYS, isWrongDocDate, daysUntil`, `alerts.ts → employeeDocAlerts`, `agencyAlerts.ts`, `EmployeeFormModal.tsx`, `Employees.tsx`, `EmployeeWidgets.tsx`, `EmployeeProfile.tsx`, `AgencyDashboard.tsx`.
 - **Status:** Active
 
 ### R-EMP-05 — Driver-only fields

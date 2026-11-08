@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(employees, alerts): document alerts start 30 days before expiry on every screen (some used 90 / 60); a typo year (0227) shows "date looks wrong" instead of "expired 657168 days ago", and the employee form refuses it (R-EMP-04)
+
 - feat(leads): "Confirmation" is now "Booking" — opens the Add Job form filled from the lead (date, time, area, address, remarks; new client popup with name + number), amount left empty (R-LEAD-02)
 - feat(conversations): Templates is its own module between Broadcasts and Analytics, with tabs Templates · Quick replies · Automation · Keyword Triggers; Settings keeps Users · Notifications · Tags · Connection (R-INBOX-05)
 - feat(templates): "Save as quick reply" in the template builder — an internal template sent as ordinary text, no Meta review (R-WA-06)
