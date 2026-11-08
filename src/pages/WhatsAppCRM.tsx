@@ -28,7 +28,7 @@ import { WaTemplatesHub } from '@/components/whatsapp/WaTemplatesHub'
  * shows inside the module that needs it.
  */
 const MODULES = [
-  { key: 'inbox', label: 'Inbox', icon: InboxIcon, note: 'WhatsApp, Facebook and Instagram in one place' },
+  { key: 'inbox', label: 'Inbox', icon: InboxIcon, note: '' },
   { key: 'jobs', label: 'Jobs', icon: CalendarCheck, note: 'Bookings of WhatsApp clients' },
   { key: 'deals', label: 'Deals', icon: Handshake, note: 'Sales pipeline' },
   { key: 'broadcast', label: 'Broadcasts', icon: Megaphone, note: 'Contact lists and campaigns' },
@@ -136,19 +136,56 @@ export function WhatsAppCRM() {
   }
   const crmOn = convs.length > 0 ? convs.some(c => c.status !== undefined) : true
 
+  const menuPanel = (
+    <>
+      <button type="button" aria-label="Close menu" className="fixed inset-0 z-30 cursor-default" onClick={() => setMenu(false)} />
+      <div role="menu" className="absolute left-0 top-9 z-40 w-72 bg-white border border-[#E6E8E6] rounded-xl shadow-xl p-1.5">
+        <button type="button" role="menuitem" onClick={() => { demo.setOn(!demoState.on); setMenu(false); setActiveId(null) }} className="w-full flex items-start gap-2.5 px-3 py-2.5 rounded-lg hover:bg-slate-50 text-left cursor-pointer">
+          <FlaskConical size={15} className="text-violet-600 mt-0.5" />
+          <span><span className="block text-[13px] font-semibold">{demoState.on ? 'Hide demo data' : 'Show demo data'}</span><span className="block text-[11px] text-slate-500">Sample WhatsApp chats for testing — only in this browser, never saved to Supabase</span></span>
+        </button>
+        <button type="button" role="menuitem" onClick={() => void runBackup()} disabled={!tablesReady} className="w-full flex items-start gap-2.5 px-3 py-2.5 rounded-lg hover:bg-slate-50 text-left cursor-pointer disabled:opacity-40">
+          <CloudUpload size={15} className="text-sky-600 mt-0.5" />
+          <span><span className="block text-[13px] font-semibold">Backup to Google Drive</span><span className="block text-[11px] text-slate-500">All WhatsApp chats, messages and notes + the Facebook / Instagram chat list</span></span>
+        </button>
+        {isAdmin && (
+          <button type="button" role="menuitem" onClick={() => { setMenu(false); setDelOpen(true) }} className="w-full flex items-start gap-2.5 px-3 py-2.5 rounded-lg hover:bg-red-50 text-left cursor-pointer">
+            <Trash2 size={15} className="text-red-600 mt-0.5" />
+            <span><span className="block text-[13px] font-semibold text-red-600">Delete all conversations</span><span className="block text-[11px] text-slate-500">Every WhatsApp chat in the CRM, with messages, notes and media</span></span>
+          </button>
+        )}
+      </div>
+    </>
+  )
+
   return (
     <div className={`bg-white border border-[#E6E8E6] rounded-[20px] overflow-hidden flex ${focusMode ? 'h-full' : 'h-[calc(100dvh-7rem)] sm:h-[calc(100dvh-3.5rem)] -mt-1 sm:-mt-2 lg:-mt-4'} min-h-[540px]`}>
       {/* module rail */}
-      <nav aria-label="WhatsApp modules" className="w-[64px] lg:w-[220px] shrink-0 border-r border-[#ECEEEC] bg-[#FAFBFA] flex flex-col">
-        {/* R-INBOX-03: minimalist header — which platforms are connected (none blocks the screen) */}
-        <div className="h-16 px-3 lg:px-4 flex items-center justify-center lg:justify-start gap-3 border-b border-[#ECEEEC] shrink-0">
-          {([['WhatsApp', MessageCircle, configured], ['Facebook', Facebook, ghlOn], ['Instagram', Instagram, ghlOn]] as const).map(([label, Icon, on]) => (
-            <span key={label} title={`${label}: ${loading ? 'checking…' : on ? 'connected' : 'not connected'}`} className={`relative ${on ? 'text-slate-600' : 'text-slate-300'} ${label !== 'WhatsApp' ? 'hidden lg:inline-flex' : 'inline-flex'}`}>
-              <Icon size={17} />
-              <span className={`absolute -bottom-0.5 -right-1 w-2 h-2 rounded-full ring-2 ring-[#FAFBFA] ${loading ? 'bg-slate-300' : on ? 'bg-emerald-500' : 'bg-amber-400'}`} />
-            </span>
-          ))}
-          <span className="hidden lg:block text-[11px] font-semibold text-slate-400 ml-auto">{loading ? '' : [configured, ghlOn].filter(Boolean).length === 0 ? 'Not connected' : configured && ghlOn ? 'All connected' : 'Partly connected'}</span>
+      <nav aria-label="WhatsApp modules" className="w-[64px] lg:w-[184px] shrink-0 border-r border-[#ECEEEC] bg-[#FAFBFA] flex flex-col">
+        {/* R-INBOX-03 / R-INBOX-06: platform icons and ⋮ on the first row; the connection status under them opens Settings → Connection */}
+        <div className="px-3 pt-3 pb-2 border-b border-[#ECEEEC] shrink-0 space-y-1.5">
+          <div className="flex items-center justify-center lg:justify-start gap-3">
+            {([['WhatsApp', MessageCircle, configured], ['Facebook', Facebook, ghlOn], ['Instagram', Instagram, ghlOn]] as const).map(([label, Icon, on]) => (
+              <span key={label} title={`${label}: ${loading ? 'checking…' : on ? 'connected' : 'not connected'}`} className={`relative ${on ? 'text-slate-600' : 'text-slate-300'} ${label !== 'WhatsApp' ? 'hidden lg:inline-flex' : 'inline-flex'}`}>
+                <Icon size={17} />
+                <span className={`absolute -bottom-0.5 -right-1 w-2 h-2 rounded-full ring-2 ring-[#FAFBFA] ${loading ? 'bg-slate-300' : on ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+              </span>
+            ))}
+            <div className="relative hidden lg:block ml-auto">
+              <button type="button" onClick={() => setMenu(m => !m)} aria-label="More" aria-expanded={menu} className="p-1.5 rounded-lg text-slate-500 hover:bg-white cursor-pointer">
+                {busy ? <Loader2 size={15} className="animate-spin" /> : <MoreVertical size={15} />}
+              </button>
+              {menu && menuPanel}
+            </div>
+          </div>
+          {!loading && (
+            <button type="button" onClick={() => setParams(p => { p.set('tab', 'settings'); p.set('s', 'connection'); return p }, { replace: true })} title="Open Settings → Connection"
+              className={`hidden lg:flex items-center gap-1 text-[11px] font-semibold hover:underline cursor-pointer ${configured && ghlOn ? 'text-emerald-700' : 'text-amber-700'}`}>
+              {configured && ghlOn ? <CircleCheck size={11} /> : <CircleAlert size={11} />}
+              {[configured, ghlOn].filter(Boolean).length === 0 ? 'Not connected' : configured && ghlOn ? 'All connected' : 'Partly connected'}
+            </button>
+          )}
+          {demoState.on && <span className="hidden lg:inline-block text-[10px] font-black tracking-wider text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded">DEMO DATA ON</span>}
         </div>
         <ul className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {MODULES.map(m => {
@@ -176,49 +213,16 @@ export function WhatsAppCRM() {
 
       {/* module */}
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="h-16 px-4 sm:px-6 border-b border-[#ECEEEC] flex items-center gap-3 shrink-0">
-          <mod.icon size={18} className="text-emerald-600 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <h1 className="text-[16px] font-bold text-[#0F1F19] leading-tight truncate">{mod.label}</h1>
-            <p className="text-[11.5px] text-slate-400 truncate">{mod.note}</p>
-          </div>
-          {!loading && !configured && tab !== 'settings' && (
-            <button type="button" onClick={() => setTab('settings')} className="hidden sm:flex items-center gap-1.5 text-[11.5px] font-semibold text-amber-700 bg-amber-50 px-2.5 py-1.5 rounded-lg cursor-pointer">
-              <CircleAlert size={13} /> Sending off — connect in Settings
-            </button>
-          )}
-          {demoState.on && <span className="hidden sm:inline text-[10.5px] font-black tracking-wider text-violet-700 bg-violet-50 px-2 py-1 rounded-lg">DEMO DATA ON</span>}
-          <div className="relative">
-            <button type="button" onClick={() => setMenu(m => !m)} aria-label="More" aria-expanded={menu} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer">
-              {busy ? <Loader2 size={16} className="animate-spin" /> : <MoreVertical size={16} />}
-            </button>
-            {menu && (
-              <>
-                <button type="button" aria-label="Close menu" className="fixed inset-0 z-30 cursor-default" onClick={() => setMenu(false)} />
-                <div role="menu" className="absolute right-0 top-10 z-40 w-72 bg-white border border-[#E6E8E6] rounded-xl shadow-xl p-1.5">
-                  <button type="button" role="menuitem" onClick={() => { demo.setOn(!demoState.on); setMenu(false); setActiveId(null) }} className="w-full flex items-start gap-2.5 px-3 py-2.5 rounded-lg hover:bg-slate-50 text-left cursor-pointer">
-                    <FlaskConical size={15} className="text-violet-600 mt-0.5" />
-                    <span><span className="block text-[13px] font-semibold">{demoState.on ? 'Hide demo data' : 'Show demo data'}</span><span className="block text-[11px] text-slate-500">Sample WhatsApp / Facebook / Instagram chats for testing — only in this browser, never saved to Supabase</span></span>
-                  </button>
-                  <button type="button" role="menuitem" onClick={() => void runBackup()} disabled={!tablesReady} className="w-full flex items-start gap-2.5 px-3 py-2.5 rounded-lg hover:bg-slate-50 text-left cursor-pointer disabled:opacity-40">
-                    <CloudUpload size={15} className="text-sky-600 mt-0.5" />
-                    <span><span className="block text-[13px] font-semibold">Backup to Google Drive</span><span className="block text-[11px] text-slate-500">All WhatsApp chats, messages and notes + the Facebook / Instagram chat list</span></span>
-                  </button>
-                  {isAdmin && (
-                    <button type="button" role="menuitem" onClick={() => { setMenu(false); setDelOpen(true) }} className="w-full flex items-start gap-2.5 px-3 py-2.5 rounded-lg hover:bg-red-50 text-left cursor-pointer">
-                      <Trash2 size={15} className="text-red-600 mt-0.5" />
-                      <span><span className="block text-[13px] font-semibold text-red-600">Delete all conversations</span><span className="block text-[11px] text-slate-500">Every WhatsApp chat in the CRM, with messages, notes and media</span></span>
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-          <button type="button" onClick={() => setFocusMode?.(!focusMode)}
-            className={`flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg cursor-pointer ${focusMode ? 'bg-[#0F1F19] text-white hover:bg-[#1c3a2f]' : 'border border-[#E6E8E6] text-slate-600 hover:bg-slate-50'}`}>
-            {focusMode ? <><PanelLeftOpen size={14} /> Back to Sidebar</> : <><Maximize2 size={14} /> Full screen</>}
-          </button>
-        </header>
+        {/* R-INBOX-06: the Inbox starts at the top — no title row; other modules keep a slim title */}
+        {tab !== 'inbox' && (
+          <header className="h-14 px-4 sm:px-6 border-b border-[#ECEEEC] flex items-center gap-3 shrink-0">
+            <mod.icon size={18} className="text-emerald-600 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <h1 className="text-[16px] font-bold text-[#0F1F19] leading-tight truncate">{mod.label}</h1>
+              <p className="text-[11.5px] text-slate-400 truncate">{mod.note}</p>
+            </div>
+          </header>
+        )}
 
         {loading && (tab === 'inbox' || tab === 'jobs' || tab === 'analytics' || tab === 'settings' || tab === 'templates') ? (
           <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-slate-300" /></div>

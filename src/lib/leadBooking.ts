@@ -46,6 +46,25 @@ function plusHours(t: string, hours: number): string {
 const digits = (p?: string) => String(p || '').replace(/\D/g, '')
 
 /**
+ * R-INBOX-06: "Book Job" in a chat — today, 09:00–01:00, the client's building when the chat is linked to a
+ * client (or the number matches one); otherwise the remarks name the chat and saving registers the client.
+ */
+export function chatToJob(
+  chat: { clientId?: string | null; name?: string; phone?: string; channel: string },
+  clients: { id: string; full_name: string; phone?: string; whatsapp?: string; building_name?: string; area?: string }[],
+): Partial<DailyJob> {
+  const tail = digits(chat.phone).slice(-8)
+  const c = (chat.clientId ? clients.find(x => x.id === chat.clientId) : undefined)
+    || (tail.length >= 7 ? clients.find(x => [x.phone, x.whatsapp].some(p => digits(p).endsWith(tail))) : undefined)
+  const who = [String(chat.name || '').replace(/^DEMO · /, ''), chat.phone].filter(Boolean).join(' ')
+  return {
+    date: todayDubai(), start_time: '09:00 AM', end_time: '01:00 PM',
+    address: c?.building_name || '', area: c?.area || '',
+    remarks: `${chat.channel} enquiry${who ? ` — ${who}` : ''}`,
+  }
+}
+
+/**
  * The Add Job form filled from a lead: a known client (same phone / name) brings their building; anyone else
  * gets the form's location as the address, so saving opens "Add New Client" with name, number and area filled.
  * The amount stays empty — no invented price.

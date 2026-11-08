@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { MessageCircle, Loader2, ArrowLeft, RefreshCw } from 'lucide-react'
+import { BookJobButton } from './BookJobButton'
 import { notify } from '@/lib/notify'
 import { ghlMessages, ghlRead, ghlSend, type GhlConversation, type GhlMessage } from '@/lib/ghlInbox'
 import { demo, isDemoId, useInboxDemo } from '@/lib/inboxDemo'
@@ -60,6 +61,7 @@ export function GhlChat({ conv, onBack, onChanged, tags, onTags }: { conv: GhlCo
           <p className={`text-[11.5px] flex items-center gap-1 ${ch.text}`}><ch.icon size={11} /> {ch.label}{isDemo ? ' · demo, not sent anywhere' : ''}</p>
         </div>
         {!isDemo && <button type="button" onClick={() => void load()} className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer" title="Refresh"><RefreshCw size={15} /></button>}
+        <BookJobButton name={conv.name} channel={ch.label} disabled={isDemo} />{/* R-INBOX-06 */}
       </header>
       {onTags && <div className="px-5 py-2 border-b border-[#ECEEEC] shrink-0"><TagPicker tags={tags || []} onChange={onTags} /></div>}
       <div className="flex-1 overflow-y-auto bg-[#F7F8F7] px-5 py-4 space-y-2">

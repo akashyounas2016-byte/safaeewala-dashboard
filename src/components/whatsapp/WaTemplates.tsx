@@ -115,13 +115,13 @@ export function WaTemplates({ canSend }: { canSend: boolean }) {
       </div>
 
       <div className="bg-white border border-[#E6E8E6] rounded-[16px] overflow-x-auto">
-        <table className="w-full text-[12.5px] min-w-[860px]">
+        <table className="w-full text-[12.5px] table-fixed">
           <thead className="text-left text-[11px] uppercase tracking-wider text-slate-400 bg-[#FAFBFA] border-b border-[#ECEEEC]">
-            <tr>{['', 'Template name', 'Category', 'Language', 'Status', 'Type', 'Created', 'Updated', 'Actions'].map((h, i) => <th key={i} className={`px-4 py-3 font-semibold ${h === 'Actions' ? 'text-right' : ''}`}>{h}</th>)}</tr>
+            <tr>{([['', 'w-9'], ['Template name', 'w-[26%]'], ['Category', 'w-[11%]'], ['Language', 'w-[9%]'], ['Status', 'w-[12%]'], ['Type', ''], ['Created', 'w-[12%]'], ['Actions', 'w-[108px]']] as const).map(([h, w], i) => <th key={i} className={`px-3 py-3 font-semibold ${w} ${h === 'Actions' ? 'text-right' : ''}`}>{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {list.length === 0 && (
-              <tr><td colSpan={9} className="py-14 text-center">
+              <tr><td colSpan={8} className="py-14 text-center">
                 <span className="mx-auto w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-3"><FileText size={22} /></span>
                 <p className="text-[13.5px] text-slate-500 mb-3">{(rows || []).length ? 'No templates match.' : 'No templates yet'}</p>
                 {!(rows || []).length && <button type="button" onClick={() => setBuilder({ row: null })} className="mx-auto h-10 px-4 rounded-xl bg-[#0F1F19] text-white text-[13px] font-bold flex items-center gap-1.5 cursor-pointer"><Plus size={15} /> Create your first template</button>}
@@ -130,14 +130,13 @@ export function WaTemplates({ canSend }: { canSend: boolean }) {
             {list.map(r => (
               <tr key={r.id} className="hover:bg-[#FAFBFA]">
                 <td className="pl-4 py-3 w-8"><button type="button" onClick={() => void fav(r)} aria-label={r.favorite ? 'Unfavourite' : 'Favourite'} className="cursor-pointer"><Star size={15} className={r.favorite ? 'fill-amber-400 text-amber-400' : 'text-slate-300 hover:text-amber-400'} /></button></td>
-                <td className="px-4 py-3"><button type="button" onClick={() => setBuilder({ row: r })} className="font-semibold text-[#111827] hover:underline cursor-pointer text-left">{r.name}</button><p className="text-[11px] text-slate-400 truncate max-w-[260px]">{r.form?.body}</p>{r.status === 'REJECTED' && r.rejected_reason && <p className="text-[11px] text-red-600">Reason: {r.rejected_reason}</p>}</td>
-                <td className="px-4 py-3 capitalize">{r.category.toLowerCase()}</td>
-                <td className="px-4 py-3">{r.language}</td>
-                <td className="px-4 py-3"><span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${TONE[r.status] || TONE.DRAFT}`}>{r.status.toLowerCase().replace('_', ' ')}</span></td>
-                <td className="px-4 py-3">{typeMeta(r.type).label}</td>
-                <td className="px-4 py-3 whitespace-nowrap">{day(r.created_at)}</td>
-                <td className="px-4 py-3 whitespace-nowrap">{day(r.updated_at)}</td>
-                <td className="px-4 py-3 text-right whitespace-nowrap">
+                <td className="px-3 py-3 min-w-0"><button type="button" onClick={() => setBuilder({ row: r })} title={r.name} className="block w-full truncate font-semibold text-[#111827] hover:underline cursor-pointer text-left">{r.name}</button><p className="text-[11px] text-slate-400 truncate">{r.form?.body}</p>{r.status === 'REJECTED' && r.rejected_reason && <p className="text-[11px] text-red-600">Reason: {r.rejected_reason}</p>}</td>
+                <td className="px-3 py-3 capitalize">{r.category.toLowerCase()}</td>
+                <td className="px-3 py-3">{r.language}</td>
+                <td className="px-3 py-3"><span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${TONE[r.status] || TONE.DRAFT}`}>{r.status.toLowerCase().replace('_', ' ')}</span></td>
+                <td className="px-3 py-3">{typeMeta(r.type).label}</td>
+                <td className="px-3 py-3 whitespace-nowrap">{day(r.created_at)}</td>
+                <td className="px-3 py-3 text-right whitespace-nowrap">
                   <button type="button" onClick={() => setBuilder({ row: r })} title={r.status === 'DRAFT' || r.status === 'REJECTED' ? 'Edit / submit' : 'View'} className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"><Pencil size={14} /></button>
                   <button type="button" onClick={() => void duplicate(r)} title="Duplicate as a draft" className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"><Copy size={14} /></button>
                   <button type="button" onClick={() => void remove(r)} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50 text-red-600 cursor-pointer"><Trash2 size={14} /></button>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Send, FileText, Check, CheckCheck, AlertCircle, Clock, Image as ImageIcon, Mic, Video, Paperclip, ExternalLink, ArrowLeft, Loader2, CalendarPlus, Handshake, Bot } from 'lucide-react'
+import { Send, FileText, Check, CheckCheck, AlertCircle, Clock, Image as ImageIcon, Mic, Video, Paperclip, ExternalLink, ArrowLeft, Loader2, Handshake, Bot } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { notify } from '@/lib/notify'
 import {
@@ -10,6 +10,7 @@ import {
 import { saveDeal } from '@/lib/whatsappModules'
 import type { WaAgent } from '@/lib/whatsappCrm'
 import { ChatCrmBar } from './WaChatCrm'
+import { BookJobButton } from './BookJobButton'
 import { Composer } from './Composer'
 import { waSendMedia } from '@/lib/inboxSettings'
 import { demo, isDemoId, useInboxDemo } from '@/lib/inboxDemo'
@@ -115,7 +116,6 @@ export function WaChat({ conv, clientName, canSend, onBack, onChanged, crm }: {
       setDealOpen(false); setDeal({ title: '', value: '' })
     } catch (e) { notify.error(/wa_deals|schema cache/i.test((e as Error).message) ? 'Deals need the database step: run 2026-11-07_whatsapp_modules.sql' : (e as Error).message) }
   }
-  const bookingLink = `/bookings?new=1${conv.client_id ? `&client=${encodeURIComponent(conv.client_id)}` : ''}&name=${encodeURIComponent(clientName || conv.name || '')}&phone=${encodeURIComponent('+' + conv.wa_id)}`
 
   return (
     <>
@@ -125,7 +125,7 @@ export function WaChat({ conv, clientName, canSend, onBack, onChanged, crm }: {
           <p className="text-[14.5px] font-bold text-[#111827] truncate">{title}</p>
           <p className="text-[11.5px] text-slate-500">{formatWaNumber(conv.wa_id)}{conv.name && clientName ? ` · ${conv.name}` : ''}</p>
         </div>
-        <Link to={bookingLink} title="New booking for this client" className="flex items-center gap-1 text-[12px] font-bold px-2.5 py-1.5 rounded-xl border border-[#E2E5E0] hover:bg-slate-50"><CalendarPlus size={13} /> Booking</Link>
+        <BookJobButton clientId={conv.client_id} name={title} phone={'+' + conv.wa_id} channel="WhatsApp" disabled={isDemo} />
         <button type="button" onClick={() => setDealOpen(true)} title="Add to the Deals pipeline" className="flex items-center gap-1 text-[12px] font-bold px-2.5 py-1.5 rounded-xl border border-[#E2E5E0] hover:bg-slate-50 cursor-pointer"><Handshake size={13} /> Deal</button>
         {conv.client_id && <Link to={`/clients/${conv.client_id}`} className="flex items-center gap-1 text-[12px] font-bold px-2.5 py-1.5 rounded-xl border border-[#E2E5E0] hover:bg-slate-50">Profile <ExternalLink size={12} /></Link>}
       </header>

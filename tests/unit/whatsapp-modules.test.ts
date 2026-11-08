@@ -123,7 +123,11 @@ eq([
   prefillJob({ clientId: 'c1', phone: '+971500000000' }, [{ id: 'c1', full_name: 'Sara', building_name: 'Marina Tower', area: 'Dubai Marina' }]),
   prefillJob({ name: 'Omar', phone: '+971509998888' }, []).remarks,
 ], [{ date: prefillJob(null, []).date, address: 'Marina Tower', area: 'Dubai Marina' }, 'WhatsApp enquiry — Omar +971509998888'], 'booking from a chat: CRM client → building + area; anyone else → remarks with the number')
-eq(/prefill=\{bookingPrefill\}/.test(src('src/pages/Bookings.tsx')) && /bookings\?new=1/.test(src('src/components/whatsapp/WaChat.tsx')), true, 'Jobs: a booking is made with the normal booking form, client filled in')
+eq(/prefill=\{bookingPrefill\}/.test(src('src/pages/Bookings.tsx')) && /<BookJobButton clientId=\{conv\.client_id\}/.test(src('src/components/whatsapp/WaChat.tsx')) && /<BookJobButton/.test(src('src/components/whatsapp/GhlChat.tsx')), true, 'Book Job in every chat header opens the Add Job popup, client filled in (R-INBOX-06)')
+// R-INBOX-06: Inbox has no title row; the status under the icons opens Settings → Connection; no Full screen in the header
+const waPage = src('src/pages/WhatsAppCRM.tsx')
+eq(/tab !== 'inbox' && \(/.test(waPage) && /p\.set\('s', 'connection'\)/.test(waPage) && !/<\/> Back to Sidebar<\/> : <><Maximize2 size=\{14\} \/> Full screen/.test(waPage) && /lg:w-\[184px\]/.test(waPage), true, 'Conversations layout: no Inbox title, clickable status, rail 184px, header Full screen removed')
+eq(/'Updated'/.test(src('src/components/whatsapp/WaTemplates.tsx')), false, 'Templates table: no Updated column')
 eq([moduleForPath('/inbox'), normalizeRolePerms({ manager: ['Overview'], _modules: ['Overview', 'Alerts', 'WhatsApp'] }).manager.includes('Inbox')], ['Inbox', true], 'Inbox is its own screen; managers get it by default')
 eq(/to: '\/whatsapp-crm',\s+label: 'Conversations'/.test(src('src/components/layout/Sidebar.tsx')) && !/to: '\/inbox'/.test(src('src/components/layout/Sidebar.tsx')) && /path="inbox"/.test(src('src/App.tsx')) && /Navigate to="\/whatsapp-crm\?tab=inbox"/.test(src('src/pages/Inbox.tsx')), true, 'R-INBOX-02: one sidebar item; old /inbox links land in the WhatsApp CRM inbox')
 eq(/ghlServer\.cjs/.test(src('Dockerfile')) && /whatsappServer\.cjs ghlServer\.cjs/.test(src('.github/workflows/deploy.yml')) && /ghl\.route\(req, res, parsedUrl, pathname\)/.test(src('webhookServer.cjs')), true, 'ghlServer.cjs ships with every deploy and is wired')

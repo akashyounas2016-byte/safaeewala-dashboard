@@ -873,6 +873,21 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/components/whatsapp/WaTemplatesHub.tsx`, `src/pages/WhatsAppCRM.tsx`, `WaSettings.tsx`.
 - **Status:** Built · Since: 2026-11-09 · Replaces the tab list of R-INBOX-04.
 
+### R-INBOX-06 — Leaner Conversations layout; Book Job in every chat
+- **Rule:** *"Conversations screen ke inner sidebar ki width kam ki jaye … 'Partially Connected' status ko icons ke nechay dusri row mein … clickable … settings par redirect … 'WhatsApp, Facebook, and Instagram in one place' wali heading … remove … 'Full Screen' button hata dein … har chat header mein refresh icon ke sath ek 'Book Job' ka button … Daily Job Sheet ka booking pop-up pre-filled data ke sath."* and *"Template tab … 'Updated' column … hata diya jaye … 'Template Name' column ki width ko kam."* (2026-11-09)
+  - **Module rail:** 184 px wide on desktop (was 220).
+    - First row: the platform icons, with the ⋮ menu (demo data, Drive backup, delete all).
+    - Second row: All / Partly / Not connected, a link to Settings → Connection. "DEMO DATA ON" also shows here.
+    - Full screen stays at the bottom of the rail.
+  - **Inbox:** no title row; the platform tabs and chats start at the top. Other modules keep a slim title (no buttons).
+  - **Book Job:** green, in every chat header: on WhatsApp chats it replaced the "Booking" link, and on Facebook / Instagram chats it sits next to Refresh. It opens the Daily Job Sheet's Add Job popup in place.
+    - Prefilled: today, 09:00–01:00 PM, and the building and area of the linked client (or of the client with the same number). Remarks name the channel, name and number.
+    - Saving an unknown address opens Add New Client with the name and number filled in.
+    - Off on demo chats.
+  - **Templates table:** no Updated column. Fixed column widths with the name truncated (full name on hover), so the table fits without sideways scrolling.
+- **Code:** `src/pages/WhatsAppCRM.tsx`, `BookJobButton.tsx`, `WaChat.tsx`, `GhlChat.tsx`, `src/lib/leadBooking.ts → chatToJob`, `WaTemplates.tsx`.
+- **Status:** Built · Since: 2026-11-09
+
 ### R-WA-06 — Internal templates (quick replies) need no Meta review
 - **Rule:** *"main templates apne CRM ke andar banaun jo mere liye internal templates ki tarah kaam karein, lekin jab inhein WhatsApp par bheja jaye to yeh aam text ke taur par jayen."* (2026-11-09)
   - In the template builder, **Save as quick reply** saves the text (text header + body + footer) as a quick reply. A quick reply has no Meta review and is sent as ordinary text from the message bar. Body formatting is kept: \*bold\*, \_italic\_, \~strike\~.

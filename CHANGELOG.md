@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(conversations): leaner layout — rail 184 px, connection status under the icons links to Settings → Connection, no Inbox title row, no Full screen in the header; "Book Job" in every chat header opens the Add Job popup prefilled; Templates table without Updated, fixed widths (R-INBOX-06)
+
 - fix(employees, alerts): document alerts start 30 days before expiry on every screen (some used 90 / 60); a typo year (0227) shows "date looks wrong" instead of "expired 657168 days ago", and the employee form refuses it (R-EMP-04)
 
 - feat(leads): "Confirmation" is now "Booking" — opens the Add Job form filled from the lead (date, time, area, address, remarks; new client popup with name + number), amount left empty (R-LEAD-02)
