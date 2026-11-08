@@ -40,6 +40,7 @@ Browser ──HTTPS──► Supabase (PostgreSQL): bookings, clients, employees
 | `VPS_HOST`, `VPS_USER`, SSH key | GitHub repo secrets | CI deploy |
 
 - `.env` is git-ignored; copy `.env.example` and fill values. Never paste values into docs, commits or chat (R-SEC-02).
+- **Pending (owner: later) — Fluent Forms webhook secret (SEC-04).** Set `FLUENT_WEBHOOK_SECRET` in the VPS `.env`. Then, in WordPress, change the WebHook feed of **every** form: Fluent Forms has no global setting. Change `http://187.77.116.14:8080/api/webhook/fluent-forms` to `https://crm.safaeewala.com/api/webhook/fluent-forms?secret=…`. Do both on the same day: once the secret is set, a form with the old URL gets 401.
 
 ## 4. Deploy paths
 
