@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { notify } from '@/lib/notify'
 import { useAuth } from '@/store/UserContext'
-import { fileToBase64 } from '@/lib/inboxSettings'
+import { fileToBase64, loadQuickReplies, saveQuickReplies } from '@/lib/inboxSettings'
 import {
   LANGUAGES, TEMPLATE_TYPES, buildComponents, cleanName, extractVars, fillPreview, presetFor, saveTemplate, typeMeta, validateTemplate,
   waSubmitTemplate, waTemplateMedia, type ButtonKind, type Category, type HeaderKind, type TButton, type TCard, type TemplateForm, type TemplateType, type WaTemplateRow,
@@ -132,6 +132,11 @@ function SampleUpload({ fileName, onDone, accept }: { fileName?: string; onDone:
   )
 }
 
+/** R-WA-06: the text a quick reply gets from the builder — text header, body, footer */
+export function quickReplyText(form: Pick<TemplateForm, 'header' | 'body' | 'footer'>): string {
+  return [form.header.kind === 'text' ? (form.header.text || '').trim() : '', form.body.trim(), (form.footer || '').trim()].filter(Boolean).join('\n\n')
+}
+
 /**
  * R-WA-05: Create Template — step 1 choose one of 8 types, step 2 the form with a live preview on the right.
  * "Save draft" works without Meta; "Submit for review" sends it to Meta when WhatsApp is connected.
@@ -143,7 +148,7 @@ export function TemplateBuilder({ initial, canSubmit, onClose, onSaved }: { init
   const [language, setLanguage] = useState(initial?.language || 'en')
   const [category, setCategory] = useState<Category>(initial?.category || 'UTILITY')
   const [form, setForm] = useState<TemplateForm | null>(initial?.form || null)
-  const [busy, setBusy] = useState<'draft' | 'submit' | null>(null)
+  const [busy, setBusy] = useState<'draft' | 'submit' | 'reply' | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
   const locked = Boolean(initial && initial.status !== 'DRAFT' && initial.status !== 'REJECTED')
 
@@ -183,6 +188,23 @@ export function TemplateBuilder({ initial, canSubmit, onClose, onSaved }: { init
         notify.success(`"${row.name}" sent to Meta for review`)
       } else notify.success('Draft saved')
       onSaved()
+    } catch (e) { notify.error((e as Error).message) } finally { setBusy(null) }
+  }
+
+  // R-WA-06: an internal template — saved as a quick reply, sent as ordinary text, no Meta review.
+  // Ordinary text only reaches a client who wrote in the last 24 hours (WhatsApp rule).
+  const saveAsReply = async () => {
+    if (!form) return
+    const text = quickReplyText(form)
+    if (!text) return notify.error('Write the message first')
+    if (/\{\{\d+\}\}/.test(text)) return notify.error('Replace {{1}}-style variables with words — a quick reply is sent exactly as written')
+    setBusy('reply')
+    try {
+      const list = (await loadQuickReplies()) || []
+      const title = name.trim() || text.slice(0, 30)
+      await saveQuickReplies([...list.filter(r => r.title !== title), { title, text }])
+      notify.success(`Saved as quick reply "${title}" — pick it in a chat from the message bar`)
+      onClose()
     } catch (e) { notify.error((e as Error).message) } finally { setBusy(null) }
   }
 
@@ -325,6 +347,8 @@ export function TemplateBuilder({ initial, canSubmit, onClose, onSaved }: { init
               )}
               <div className="flex flex-wrap justify-end gap-2 pt-1">
                 <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl border border-[#E2E5E0] text-[13px] font-semibold cursor-pointer">Cancel</button>
+                <button type="button" onClick={() => void saveAsReply()} disabled={busy !== null} title="Internal: no Meta review, sent as ordinary text (only to clients who wrote in the last 24 hours)"
+                  className="px-4 py-2 rounded-xl border border-emerald-600 text-emerald-700 text-[13px] font-bold cursor-pointer disabled:opacity-40 flex items-center gap-1.5">{busy === 'reply' && <Loader2 size={14} className="animate-spin" />} Save as quick reply</button>
                 {!locked && <button type="button" onClick={() => void save(false)} disabled={busy !== null} className="px-4 py-2 rounded-xl border border-[#0F1F19] text-[13px] font-bold cursor-pointer disabled:opacity-40 flex items-center gap-1.5">{busy === 'draft' && <Loader2 size={14} className="animate-spin" />} Save draft</button>}
                 {!locked && (
                   <button type="button" onClick={() => void save(true)} disabled={busy !== null || !canSubmit || errors.length > 0} title={canSubmit ? '' : 'Needs the Meta keys on the server — save a draft for now'}
@@ -344,7 +368,7 @@ export function TemplateBuilder({ initial, canSubmit, onClose, onSaved }: { init
           <div className="mx-5 mb-3 flex-1 min-h-[420px] rounded-2xl border border-[#ECE7DA] flex flex-col overflow-hidden" style={{ backgroundColor: '#F5F1E8', backgroundImage: 'radial-gradient(#D8D2C2 1px, transparent 1px)', backgroundSize: '14px 14px' }}>
             <TemplatePreview type={type} form={form} />
           </div>
-          <p className="px-5 pb-5 text-center text-[12px] text-slate-500">This needs to be approved by WhatsApp before sending.</p>
+          <p className="px-5 pb-5 text-center text-[12px] text-slate-500">Submit for review: Meta approves it, then it can be sent any time. Save as quick reply: internal, sent as ordinary text within 24 hours of the client's last message.</p>
         </aside>
       </div>
     </div>

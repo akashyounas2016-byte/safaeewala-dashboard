@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(leads): "Confirmation" is now "Booking" — opens the Add Job form filled from the lead (date, time, area, address, remarks; new client popup with name + number), amount left empty (R-LEAD-02)
+- feat(conversations): Templates is its own module between Broadcasts and Analytics, with tabs Templates · Quick replies · Automation · Keyword Triggers; Settings keeps Users · Notifications · Tags · Connection (R-INBOX-05)
+- feat(templates): "Save as quick reply" in the template builder — an internal template sent as ordinary text, no Meta review (R-WA-06)
+
 - fix(leads): website leads were refused with 401 since the service key was set on the VPS (2026-11-05) — the webhook accepts leads again until FLUENT_WEBHOOK_SECRET is set (SEC-04)
 - fix(leads): the property type is shown as the customer picked it on the website form — Flat was shown as Apartment (R-LEAD-01)
 

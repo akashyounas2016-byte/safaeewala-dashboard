@@ -43,7 +43,11 @@ export interface NewBookingModalProps {
   initialBooking?: Booking | null
   onUpdate?: (id: string, patch: Partial<Booking>) => void
   /** R-WA-02: a new booking started from a WhatsApp chat — the client is filled in */
-  prefill?: { clientId?: string; name?: string; phone?: string } | null
+  prefill?: { clientId?: string; name?: string; phone?: string; job?: Partial<DailyJob> } | null
+  /** R-LEAD-02: called after the booking is saved (a lead is marked converted) */
+  onSaved?: () => void
+  /** Title of the popup (default: Add New Booking) */
+  title?: string
 }
 
 /* ─── Default Cleaning Services ─── */
@@ -106,13 +110,14 @@ const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satu
 export function prefillJob(prefill: NewBookingModalProps['prefill'], clients: { id: string; full_name: string; building_name?: string; area?: string }[]): Partial<DailyJob> {
   const base: Partial<DailyJob> = { date: todayDubai() }
   if (!prefill) return base
+  if (prefill.job) return { ...base, ...prefill.job } // R-LEAD-02: filled from a website lead
   const c = prefill.clientId ? clients.find(cl => cl.id === prefill.clientId) : undefined
   if (c?.building_name) return { ...base, address: c.building_name, area: c.area || '' }
   const who = [c?.full_name || prefill.name, prefill.phone].filter(Boolean).join(' ')
   return who ? { ...base, remarks: `WhatsApp enquiry — ${who}` } : base
 }
 
-export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate, prefill }: NewBookingModalProps) {
+export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate, prefill, onSaved, title }: NewBookingModalProps) {
   const { clients, employees, dailyJobs, bookings } = useData()
 
   // ── Form State ──
@@ -507,7 +512,7 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
       <Modal
         open={open}
         onClose={onClose}
-        title="Add New Booking"
+        title={title || "Add New Booking"}
         size="2xl"
         className="max-w-6xl w-full max-h-[96vh] min-h-[86vh]"
         headerActions={
@@ -536,9 +541,11 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
             clients={clients}
             onClose={onClose}
             initial={prefillJob(prefill, clients)}
+            clientHint={prefill?.job ? { name: prefill.name, phone: prefill.phone } : undefined}
             onSave={j => {
               onAdd({ ...bookingFromJobEntry(j, clients, employees), job_entry: j })
               notify.success('Booking saved and added to the Daily Job Sheet')
+              onSaved?.()
               onClose()
             }}
           />

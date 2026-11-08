@@ -95,9 +95,9 @@ export function Composer({ text, setText, onSend, onAttach, onOpenTemplates, dis
               <FileText size={14} className="text-emerald-600" /><span className="text-[12.5px] font-semibold">Approved WhatsApp templates…</span>
             </button>
           )}
-          <p className="px-3 pt-2 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-slate-400">Saved replies</p>
+          <p className="px-3 pt-2 pb-1 text-[10.5px] font-bold uppercase tracking-wider text-slate-400">Quick replies</p>
           {replies === null ? <Loader2 className="mx-3 my-2 animate-spin text-slate-300" size={16} /> : replies.length === 0
-            ? <p className="px-3 py-2 text-[12px] text-slate-400">None yet — add them in Settings → Saved replies.</p>
+            ? <p className="px-3 py-2 text-[12px] text-slate-400">None yet — add them in Templates → Quick replies (or "Save as quick reply" in the template builder).</p>
             : replies.map(r => (
               <button key={r.title} type="button" onClick={() => { setMenu(null); insert(r.text) }} disabled={disabled} className="w-full flex items-start gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 text-left cursor-pointer disabled:opacity-40">
                 <MessageSquareText size={14} className="text-slate-400 mt-0.5 shrink-0" /><span className="min-w-0"><span className="block text-[12.5px] font-semibold truncate">{r.title}</span><span className="block text-[11.5px] text-slate-500 line-clamp-2">{r.text}</span></span>

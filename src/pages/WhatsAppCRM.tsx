@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { MessageCircle, Loader2, Inbox as InboxIcon, CalendarCheck, Handshake, Megaphone, BarChart3, Settings2, Maximize2, PanelLeftOpen, CircleCheck, CircleAlert, MoreVertical, FlaskConical, CloudUpload, Trash2 } from 'lucide-react'
+import { MessageCircle, Loader2, Inbox as InboxIcon, CalendarCheck, Handshake, Megaphone, BarChart3, Settings2, FileText, Maximize2, PanelLeftOpen, CircleCheck, CircleAlert, MoreVertical, FlaskConical, CloudUpload, Trash2 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { demo, useInboxDemo } from '@/lib/inboxDemo'
 import { backupInbox, waDeleteAll } from '@/lib/inboxBackup'
@@ -19,6 +19,7 @@ import { WaDeals } from '@/components/whatsapp/WaDeals'
 import { WaBroadcast } from '@/components/whatsapp/WaBroadcast'
 import { WaAnalytics } from '@/components/whatsapp/WaAnalytics'
 import { WaSettings } from '@/components/whatsapp/WaSettings'
+import { WaTemplatesHub } from '@/components/whatsapp/WaTemplatesHub'
 
 /**
  * R-WA-01..03, UX-114: the CRM's own WhatsApp (Meta Cloud API, no GHL).
@@ -31,8 +32,9 @@ const MODULES = [
   { key: 'jobs', label: 'Jobs', icon: CalendarCheck, note: 'Bookings of WhatsApp clients' },
   { key: 'deals', label: 'Deals', icon: Handshake, note: 'Sales pipeline' },
   { key: 'broadcast', label: 'Broadcasts', icon: Megaphone, note: 'Contact lists and campaigns' },
+  { key: 'templates', label: 'Templates', icon: FileText, note: 'Meta templates, quick replies, automation, keyword triggers' },
   { key: 'analytics', label: 'Analytics', icon: BarChart3, note: 'Volumes, reply time, agents' },
-  { key: 'settings', label: 'Settings', icon: Settings2, note: 'Users, notifications, tags, templates, replies, automation' },
+  { key: 'settings', label: 'Settings', icon: Settings2, note: 'Users, notifications, tags, connection' },
 ] as const
 type ModuleKey = (typeof MODULES)[number]['key']
 
@@ -41,9 +43,12 @@ export function WhatsAppCRM() {
   const { user } = useAuth()
   const { focusMode, setFocusMode } = useLayout()
   const [params, setParams] = useSearchParams()
-  // R-INBOX-04: Automation, Keyword Trigger and Templates live in Settings now — old links still land there
-  const moved = ({ templates: 'templates', automation: 'automation', keywords: 'keywords' } as Record<string, string>)[params.get('tab') || '']
-  useEffect(() => { if (moved) setParams(p => { p.set('tab', 'settings'); p.set('s', moved); return p }, { replace: true }) }, [moved, setParams])
+  // R-INBOX-05: Templates, Quick replies, Automation and Keyword Triggers live in the Templates module — old links land there
+  const oldTab = params.get('tab') || ''
+  const oldS = params.get('s') || ''
+  const moved = (oldTab === 'automation' || oldTab === 'keywords') ? oldTab
+    : (oldTab === 'settings' && ['templates', 'replies', 'automation', 'keywords'].includes(oldS)) ? oldS : ''
+  useEffect(() => { if (moved) setParams(p => { p.set('tab', 'templates'); p.set('t', moved); p.delete('s'); return p }, { replace: true }) }, [moved, setParams])
   const tab: ModuleKey = (MODULES.find(t => t.key === params.get('tab'))?.key) || 'inbox'
   const mod = MODULES.find(m => m.key === tab)!
   const setTab = useCallback((t: ModuleKey) => setParams(p => { p.set('tab', t); return p }, { replace: true }), [setParams])
@@ -215,7 +220,7 @@ export function WhatsAppCRM() {
           </button>
         </header>
 
-        {loading && (tab === 'inbox' || tab === 'jobs' || tab === 'analytics' || tab === 'settings') ? (
+        {loading && (tab === 'inbox' || tab === 'jobs' || tab === 'analytics' || tab === 'settings' || tab === 'templates') ? (
           <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-slate-300" /></div>
         ) : tab === 'inbox' ? (
           <WaInbox convs={convs} tablesReady={tablesReady} configured={configured} crmOn={crmOn} agents={agents} me={user?.id || null}
@@ -225,6 +230,7 @@ export function WhatsAppCRM() {
             {tab === 'jobs' && <WaJobs convs={convs} onOpenChat={openChat} canSend={configured} />}
             {tab === 'deals' && <WaDeals onOpenChat={openChat} agents={agents} />}
             {tab === 'broadcast' && <WaBroadcast canSend={configured && !loading} />}
+            {tab === 'templates' && <WaTemplatesHub configured={configured} />}
             {tab === 'analytics' && (tablesReady ? <WaAnalytics agents={agents} /> : <p className="text-center text-[13px] text-slate-500 py-10">Analytics starts once the inbox database step is done.</p>)}
             {tab === 'settings' && <WaSettings configured={configured} tablesReady={tablesReady} modulesReady={modulesReady} crmOn={crmOn && convs.length > 0 ? true : null} agents={agents} />}
           </div>

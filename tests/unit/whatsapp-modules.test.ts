@@ -108,10 +108,16 @@ eq([db.wa_rules.find(r => r.id === 'kw')?.fire_count, db.wa_messages.filter(m =>
 
 // ── wiring ──
 const page = src('src/pages/WhatsAppCRM.tsx')
-// R-INBOX-04: Automation, Keyword Trigger and Templates moved from the rail into Settings tabs
-eq(['Inbox', 'Jobs', 'Deals', 'Broadcasts', 'Analytics', 'Settings'].every(l => page.includes(`label: '${l}'`)) && !["'Automations'", "'Keyword Trigger'", "'Templates'"].some(l => page.includes(`label: ${l}`)), true, 'module rail: Inbox, Jobs, Deals, Broadcasts, Analytics, Settings')
+// R-INBOX-05: Templates is a module between Broadcasts and Analytics; Settings keeps Users, Notifications, Tags, Connection
+const rail = ['Inbox', 'Jobs', 'Deals', 'Broadcasts', 'Templates', 'Analytics', 'Settings'].map(l => page.indexOf(`label: '${l}'`))
+eq(rail.every((p, i) => p > 0 && (i === 0 || p > rail[i - 1])), true, 'module rail: Inbox, Jobs, Deals, Broadcasts, Templates, Analytics, Settings')
 const settingsSrc = src('src/components/whatsapp/WaSettings.tsx')
-eq(['Users', 'Notifications', 'Tags', 'Templates', 'Replies', 'Automation', 'Keyword Trigger', 'Connection'].every(l => settingsSrc.includes(`label: '${l}'`)), true, 'Settings tabs: Users · Notifications · Tags · Templates · Replies · Automation · Keyword Trigger · Connection')
+eq(['Users', 'Notifications', 'Tags', 'Connection'].every(l => settingsSrc.includes(`label: '${l}'`)) && !["'Templates'", "'Replies'", "'Automation'", "'Keyword Trigger'"].some(l => settingsSrc.includes(`label: ${l}`)), true, 'Settings tabs: Users · Notifications · Tags · Connection')
+const hub = src('src/components/whatsapp/WaTemplatesHub.tsx')
+eq(['Templates', 'Quick replies', 'Automation', 'Keyword Triggers'].every(l => hub.includes(`label: '${l}'`)), true, 'Templates module tabs: Templates · Quick replies · Automation · Keyword Triggers')
+eq(/oldTab === 'settings' && \['templates', 'replies', 'automation', 'keywords'\]/.test(page), true, 'old Settings links open the Templates module')
+const builder = src('src/components/whatsapp/TemplateBuilder.tsx')
+eq(/Save as quick reply/.test(builder) && /saveQuickReplies\(/.test(builder), true, 'builder: Save as quick reply (internal, no Meta review) (R-WA-06)')
 eq(/SetupPanel/.test(page), false, 'no full-screen setup wall: the setup state is a strip + a Settings tab')
 eq([
   prefillJob({ clientId: 'c1', phone: '+971500000000' }, [{ id: 'c1', full_name: 'Sara', building_name: 'Marina Tower', area: 'Dubai Marina' }]),

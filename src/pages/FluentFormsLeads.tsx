@@ -32,6 +32,8 @@ import { LeadsKanban } from '@/components/leads/LeadsKanban'
 import { findDuplicateLeads } from '@/lib/leads'
 import { sendGHLBookingConfirmation } from '@/lib/ghlService'
 import { todayDubai } from '@/lib/dubaiTime'
+import { NewBookingModal } from '@/components/bookings/NewBookingModal'
+import { leadToJob } from '@/lib/leadBooking'
 
 /* ─── Column Customization Definitions ─── */
 interface FluentColDef {
@@ -522,68 +524,38 @@ export function FluentFormsLeads() {
     triggerToast('Lead deleted')
   }
 
-  // Convert Lead to Booking (Manual modal confirmation)
-  const handleConvertBooking = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (!convertingLead) return
-    const fd = new FormData(e.currentTarget)
+  // R-LEAD-02: "Booking" opens the Add Job form of the job sheets, filled from the lead; amount left empty
+  const bookingPrefill = useMemo(() => {
+    if (!convertingLead) return null
+    const { initial, hint } = leadToJob(convertingLead, clients)
+    return { name: hint.name, phone: hint.phone, job: initial }
+  }, [convertingLead, clients])
 
-    const scheduledDate = (fd.get('scheduled_date') as string) || todayDubai()
-    const scheduledTime = (fd.get('scheduled_time') as string) || '09:00 AM'
-    const totalAmount   = Number(fd.get('total_amount')) || convertingLead.estimated_value || 500
-    const serviceType   = (fd.get('service_type') as string) || convertingLead.service || `${convertingLead.category} Service`
-    const address       = (fd.get('address') as string) || convertingLead.address || convertingLead.area || 'Dubai'
-
-    const matchedClient = clients.find(c =>
-      (convertingLead.phone && c.phone && c.phone.replace(/\D/g, '').endsWith(convertingLead.phone.replace(/\D/g, '').slice(-8))) ||
-      (convertingLead.client_name && (c.full_name || '').toLowerCase().trim() === convertingLead.client_name.toLowerCase().trim())
-    )
-
-    // Add to bookings
-    addBooking({
-      client_id: matchedClient?.id || '',
-      client_name: convertingLead.client_name,
-      client_phone: convertingLead.phone,
-      service_address: address,
-      service_type: serviceType,
-      status: 'confirmed',
-      frequency: 'once',
-      scheduled_date: scheduledDate,
-      scheduled_time: scheduledTime,
-      duration_hours: 4,
-      assigned_crew: [],
-      notes: `Converted from Website Fluent Form (${convertingLead.page_source}). Remarks: ${convertingLead.message || 'None'}`,
-      total_amount: totalAmount,
-      source: 'fluent_forms',
-    })
-
-    // Also dispatch to GHL confirmation email workflow if enabled
+  const finishLeadBooking = () => {
+    const lead = convertingLead
+    if (!lead) return
     sendGHLBookingConfirmation({
-      client_name: convertingLead.client_name,
-      client_phone: convertingLead.phone,
-      client_email: convertingLead.email,
-      service_type: serviceType,
-      scheduled_date: scheduledDate,
-      scheduled_time: scheduledTime,
-      service_address: address,
-      total_amount: totalAmount,
-      lead_id: convertingLead.id,
-      notes: convertingLead.message,
+      client_name: lead.client_name,
+      client_phone: lead.phone,
+      client_email: lead.email,
+      service_type: lead.service || `${lead.category} Service`,
+      scheduled_date: bookingPrefill?.job.date || todayDubai(),
+      scheduled_time: bookingPrefill?.job.start_time || '09:00 AM',
+      service_address: bookingPrefill?.job.address || lead.address || lead.area || 'Dubai',
+      total_amount: 0,
+      lead_id: lead.id,
+      notes: lead.message,
     }).catch(() => {})
-
-    // Update lead status to converted
+    const patch: Partial<FluentFormLead> = { status: 'converted' }
+    if (lead.status === 'new' && !lead.responded_at) patch.responded_at = new Date().toISOString()
     setLeads(prev => {
-      const updated = prev.map(l => l.id === convertingLead.id ? { ...l, status: 'converted' as LeadStatus } : l)
+      const updated = prev.map(l => l.id === lead.id ? { ...l, ...patch } : l)
       saveLeadsLocally(updated)
       return updated
     })
-    updateFluentFormLeadStatus(convertingLead.id, 'converted')
-
-    setConvertingLead(null)
-    triggerToast(`✓ Successfully converted ${convertingLead.client_name} into an official Booking!`)
+    void updateFluentFormLead(lead.id, patch)
+    triggerToast(`✓ ${lead.client_name} booked — added to Bookings and the Daily Job Sheet`)
   }
-
-
 
   // Filtered Leads
   const filteredLeads = useMemo(() => {
@@ -1528,9 +1500,9 @@ export function FluentFormsLeads() {
                                     <button
                                       onClick={() => setConvertingLead(lead)}
                                       className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 rounded-xl shadow-xs transition-colors cursor-pointer"
-                                      title="Confirmation: Convert inquiry to official Booking"
+                                      title="Booking: open the Add Job form filled from this lead"
                                     >
-                                      <Plus size={12} /> Confirmation
+                                      <Plus size={12} /> Booking
                                     </button>
                                   ) : (
                                     <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg">
@@ -1874,89 +1846,15 @@ export function FluentFormsLeads() {
 
 
 
-      {/* ── Modal 3: Lead Confirmation & Booking Creation ── */}
-      <Modal
+      {/* ── Modal 3: Booking from a lead — the Add Job form of the job sheets (R-LEAD-02) ── */}
+      <NewBookingModal
         open={!!convertingLead}
         onClose={() => setConvertingLead(null)}
-        title="Lead Confirmation: Create Official Booking"
-        size="lg"
-      >
-        {convertingLead && (
-          <form onSubmit={handleConvertBooking} className="space-y-4">
-            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-[12.5px] leading-relaxed">
-              Confirming lead for <strong>{convertingLead.client_name}</strong> from <strong>{convertingLead.page_source}</strong>. This will automatically create an official Booking in your calendar and register the client.
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Client Name"
-                name="client_name"
-                defaultValue={convertingLead.client_name}
-                required
-              />
-              <Input
-                label="Phone Number"
-                name="phone"
-                defaultValue={convertingLead.phone}
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Service Address / Area"
-                name="address"
-                defaultValue={convertingLead.address || convertingLead.area || 'Dubai'}
-                required
-              />
-              <Input
-                label="Service Type"
-                name="service_type"
-                defaultValue={convertingLead.service || `${convertingLead.category} Service`}
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <Input
-                label="Scheduled Date"
-                name="scheduled_date"
-                type="date"
-                defaultValue={convertingLead.preferred_date || todayDubai()}
-                required
-              />
-              <Input
-                label="Scheduled Time"
-                name="scheduled_time"
-                defaultValue={convertingLead.preferred_time || '09:00 AM'}
-              />
-              <Input
-                label="Booking Amount (AED)"
-                name="total_amount"
-                type="number"
-                defaultValue={convertingLead.estimated_value || 500}
-                required
-              />
-            </div>
-
-            <Textarea
-              label="Booking Notes & Instructions"
-              name="notes"
-              defaultValue={convertingLead.message || `Website inquiry from ${convertingLead.page_source}`}
-              rows={2}
-            />
-
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setConvertingLead(null)}>
-                Cancel
-              </Button>
-              <Button type="submit" className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-                Confirm & Create Booking
-              </Button>
-            </div>
-          </form>
-        )}
-      </Modal>
+        title={convertingLead ? `Booking — ${convertingLead.client_name}` : 'Add New Booking'}
+        prefill={bookingPrefill}
+        onAdd={b => addBooking({ ...b, client_phone: b.client_phone || convertingLead?.phone || '', source: 'fluent_forms' })}
+        onSaved={finishLeadBooking}
+      />
 
       {/* ── Modal 4: View & Edit Lead Details ── */}
       <Modal
@@ -2200,7 +2098,7 @@ export function FluentFormsLeads() {
                       setConvertingLead(l)
                     }}
                   >
-                    Convert to Booking
+                    Booking
                   </Button>
                 )}
               </div>

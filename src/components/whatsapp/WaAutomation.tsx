@@ -142,7 +142,7 @@ export function WaAutomation({ canSend = false }: { canSend?: boolean }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-[12.5px] text-slate-500">Automatic replies are sent by the server the moment a client writes — free, because the client opened the 24-hour window. A keyword reply (Settings → Keyword Trigger) goes first; then the welcome or away message.</p>
+      <p className="text-[12.5px] text-slate-500">Automatic replies are sent by the server the moment a client writes — free, because the client opened the 24-hour window. A keyword reply (Templates → Keyword Triggers) goes first; then the welcome or away message.</p>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <FixedRule kind="welcome" rule={rules.find(r => r.kind === 'welcome')} onSaved={refresh} icon={Hand} title="Welcome message" note="Sent once, to the first message of a new chat." />
         <FixedRule kind="away" rule={rules.find(r => r.kind === 'away')} onSaved={refresh} icon={Clock} title="Away message" note="Sent outside business hours — at most once every 12 hours per chat." />

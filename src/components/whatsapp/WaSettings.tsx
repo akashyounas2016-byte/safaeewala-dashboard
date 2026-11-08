@@ -3,12 +3,10 @@ import { CheckCircle2, Circle, Copy, Link2, Loader2, Phone, PlugZap, Users, Bell
 import { notify } from '@/lib/notify'
 import { waConnect, waPhone, type WaPhoneInfo } from '@/lib/whatsappModules'
 import { loadAssignment, loadLists, saveAssignment, type AssignmentSetting, type WaAgent } from '@/lib/whatsappCrm'
-import { NotificationsSettings, QuickRepliesSettings, SettingsIcons, TagsSettings } from './WaSettingsMore'
+import { NotificationsSettings, SettingsIcons, TagsSettings } from './WaSettingsMore'
 import { loadGhlTags } from '@/lib/inboxSettings'
 import { loadTemplates } from '@/lib/templateBuilder'
 import { useSearchParams } from 'react-router-dom'
-import { WaTemplates } from './WaTemplates'
-import { WaAutomation, WaKeywords } from './WaAutomation'
 import { btnGhost, btnPrimary, inputCls } from './WaShared'
 
 function Step({ done, children }: { done: boolean; children: React.ReactNode }) {
@@ -130,13 +128,12 @@ function ConnectionPanel({ configured, tablesReady, modulesReady }: { configured
 }
 
 /**
- * R-INBOX-04: Settings with tabs — Users, Notifications, Tags, Templates, Replies, Automation, Keyword Trigger,
- * Connection. Automation, Keyword Trigger and Templates moved here from the module rail.
+ * R-INBOX-04: Settings with tabs — Users, Notifications, Tags, Connection. Templates, Quick replies, Automation and
+ * Keyword Triggers are in the Templates module (R-INBOX-05).
  */
 const SETTINGS_TABS = [
   { key: 'users', label: 'Users' }, { key: 'notifications', label: 'Notifications' }, { key: 'tags', label: 'Tags' },
-  { key: 'templates', label: 'Templates' }, { key: 'replies', label: 'Replies' }, { key: 'automation', label: 'Automation' },
-  { key: 'keywords', label: 'Keyword Trigger' }, { key: 'connection', label: 'Connection' },
+  { key: 'connection', label: 'Connection' },
 ] as const
 export type SettingsTab = (typeof SETTINGS_TABS)[number]['key']
 
@@ -173,10 +170,6 @@ export function WaSettings({ configured, tablesReady, modulesReady, agents = [] 
       )}
       {tab === 'notifications' && <section className={card}><p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><SettingsIcons.BellRing size={17} className="text-emerald-600" /> Notifications to clients</p><NotificationsSettings configured={configured} /></section>}
       {tab === 'tags' && <section className={card}><p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><SettingsIcons.TagsIcon size={17} className="text-violet-600" /> Tags</p><TagsSettings /></section>}
-      {tab === 'templates' && <WaTemplates key={String(configured)} canSend={configured} />}
-      {tab === 'replies' && <section className={card}><p className="text-[15px] font-bold text-[#111827] flex items-center gap-2"><SettingsIcons.MessageSquareText size={17} className="text-sky-600" /> Saved replies</p><QuickRepliesSettings /></section>}
-      {tab === 'automation' && <WaAutomation canSend={configured} />}
-      {tab === 'keywords' && <WaKeywords />}
       {tab === 'connection' && <ConnectionPanel configured={configured} tablesReady={tablesReady} modulesReady={modulesReady} />}
     </div>
   )

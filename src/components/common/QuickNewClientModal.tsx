@@ -10,6 +10,8 @@ export interface QuickNewClientModalProps {
   initialName?: string
   initialArea?: string
   initialBuilding?: string
+  /** R-LEAD-02: the number from a website lead */
+  initialPhone?: string
   onClientRegistered: (client: Client) => void
 }
 
@@ -24,6 +26,7 @@ export function QuickNewClientModal({
   initialName = '',
   initialArea = '',
   initialBuilding = '',
+  initialPhone = '',
   onClientRegistered,
 }: QuickNewClientModalProps) {
   const { addClient, employees } = useData()
@@ -32,7 +35,8 @@ export function QuickNewClientModal({
     full_name: initialName,
     building_name: initialBuilding || initialName,
     area: initialArea,
-  }), [initialName, initialBuilding, initialArea])
+    ...(initialPhone ? { phone: initialPhone, whatsapp: initialPhone } : {}),
+  }), [initialName, initialBuilding, initialArea, initialPhone])
 
   return (
     <ClientModalForm

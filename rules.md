@@ -352,6 +352,22 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `fluentFormsSync.ts → resolvePropertyType, legacyPropertyType`, `webhookServer.cjs → resolvePropertyType, healLead`.
 - **Status:** Active · Since: 2026-11-08
 
+### R-LEAD-02 — "Booking" on a lead opens the Add Job form
+- **Rule:** *"form submissions ke section mein 'Confirmation' button ko 'Booking' button se replace kiya jaye … 'Add Job' ka wahi pop-up … Client Name, Number, Area … pre-filled … Preferred date ko hi 'Scheduled Date' … time na hone par default time … 'Booking Amount' … blank."* (2026-11-09)
+  - The table button and the lead detail button both say **Booking**. They open the Add Job form of the job sheets (R-SYNC-12) instead of the old form that had 500 AED filled in.
+  - **Prefilled:**
+    - Job date = the preferred date (read from "30-Oct-26", "30/10/2026", "2026-10-30"; today if missing).
+    - Time = the form's time, else 09:00 AM; the job runs 4 hours.
+    - Area = the lead's area.
+    - Address = the building of a known client (same number or name), else the location from the form.
+    - Remarks = lead number, name, phone, service, property type, message.
+  - **Charges are empty:** no invented price.
+  - **New client:** saving opens "Add New Client" with the name, number and area filled in (R-DATA-11), so the client is saved with their WhatsApp number.
+  - After saving, the booking and its job-sheet row exist and the lead is marked Converted.
+  - Dragging a lead to Converted on the board still makes a quick booking as before.
+- **Code:** `src/lib/leadBooking.ts`, `FluentFormsLeads.tsx`, `NewBookingModal.tsx → prefill.job, onSaved`, `AddJobModal.tsx → clientHint`, `QuickNewClientModal.tsx → initialPhone`.
+- **Status:** Active · Since: 2026-11-09
+
 ---
 
 ## DATA — Data hygiene
@@ -810,7 +826,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Sidebar → **Conversations** (`/conversations`, `/inbox` and `/whatsapp-crm` open it). The module rail starts with a minimal connection header (WhatsApp / Facebook / Instagram icons with a green or amber dot) instead of a title; nothing is blocked when a platform is not connected.
   - **Tags** on every chat (WhatsApp, Facebook, Instagram): a shared list with colours — defaults Upcoming Job, Booked Job, Quote Sent, Follow-up, Complaint, VIP — plus custom tags made in any chat or in Settings → Tags. WhatsApp tags are stored on the chat; Facebook / Instagram tags in `inbox_chat_tags`.
   - Above the list: a summary — Unread, Pending and each tag in use with its count; a click filters. Unread chats always come first, then newest. A filter button beside search: unread only, tag, WhatsApp status, assigned (everyone / mine / unassigned), opted out.
-  - Message bar on every chat: 📎 photo / file (up to 16 MB; WhatsApp through Meta with a copy in the private bucket; Facebook / Instagram through GHL with a 7-day link), 📄 approved WhatsApp templates + **saved replies** (Settings → Saved replies), 😊 emoji, Send.
+  - Message bar on every chat: 📎 photo / file (up to 16 MB; WhatsApp through Meta with a copy in the private bucket; Facebook / Instagram through GHL with a 7-day link), 📄 approved WhatsApp templates + **saved replies** (Templates → Quick replies), 😊 emoji, Send.
   - Demo data (R-INBOX-02) is WhatsApp only now.
 - **Code:** `src/components/whatsapp/WaInbox.tsx`, `Composer.tsx`, `Tags.tsx`, `WaSettingsMore.tsx`, `src/lib/inboxSettings.ts`, `whatsappServer.cjs → /api/whatsapp/send-media`, `ghlServer.cjs` (attachments), migration `2026-11-07_inbox_tags_notifications.sql`.
 - **Status:** Built · Since: 2026-11-07
@@ -842,6 +858,23 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Sending still uses approved templates only (Meta's rule).
 - **Code:** `src/lib/templateBuilder.ts`, `src/components/whatsapp/TemplateBuilder.tsx`, `WaTemplates.tsx`, `whatsappServer.cjs` (/templates/submit, /template-media), migration `2026-11-07_wa_templates.sql`.
 - **Status:** Built · Meta submission not tested (no keys yet) · Since: 2026-11-07
+
+### R-INBOX-05 — Templates is its own module
+- **Rule:** *"Settings screen se 'Template' tab ko mukammal taur par hata kar Conversations module ke sidebar mein shamil kiya jaye … 'Broadcast' ke niche aur 'Analytics' ke upar … tabs … 'Automation', 'Keyword Triggers', aur 'Replies'."* (2026-11-09)
+  - Module rail: Inbox · Jobs · Deals · Broadcasts · **Templates** · Analytics · Settings.
+  - Templates tabs (`?tab=templates&t=…`): **Templates** (Meta templates, R-WA-05) · **Quick replies** · **Automation** · **Keyword Triggers**.
+  - Settings keeps Users · Notifications · Tags · Connection.
+  - Old links (`?tab=automation|keywords`, `?tab=settings&s=templates|replies|automation|keywords`) open the matching Templates tab.
+- **Code:** `src/components/whatsapp/WaTemplatesHub.tsx`, `src/pages/WhatsAppCRM.tsx`, `WaSettings.tsx`.
+- **Status:** Built · Since: 2026-11-09 · Replaces the tab list of R-INBOX-04.
+
+### R-WA-06 — Internal templates (quick replies) need no Meta review
+- **Rule:** *"main templates apne CRM ke andar banaun jo mere liye internal templates ki tarah kaam karein, lekin jab inhein WhatsApp par bheja jaye to yeh aam text ke taur par jayen."* (2026-11-09)
+  - In the template builder, **Save as quick reply** saves the text (text header + body + footer) as a quick reply. A quick reply has no Meta review and is sent as ordinary text from the message bar. Body formatting is kept: \*bold\*, \_italic\_, \~strike\~.
+  - `{{1}}`-style variables are refused there: a quick reply is sent exactly as written.
+  - **WhatsApp's 24-hour rule:** ordinary text, quick replies included, reaches only a client who wrote in the last 24 hours. Use a Meta-approved template (Submit for review) to start a conversation, or to write after 24 hours. Broadcasts and automatic notifications are examples.
+- **Code:** `TemplateBuilder.tsx → saveAsReply, quickReplyText`, `WaTemplatesHub.tsx`, `Composer.tsx`.
+- **Status:** Built · Since: 2026-11-09
 
 ## OPS — Operating process
 

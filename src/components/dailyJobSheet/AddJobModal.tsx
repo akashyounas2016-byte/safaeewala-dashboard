@@ -46,6 +46,8 @@ export interface AddJobFormProps {
   initial?: Partial<DailyJob>
   clients?: Client[]
   existingJobsForDate?: DailyJob[]
+  /** R-LEAD-02: name and number of a website lead, used when the client is registered on save */
+  clientHint?: { name?: string; phone?: string }
 }
 
 const DEFAULT_PRESET_MATERIALS = [
@@ -86,6 +88,7 @@ export function AddJobForm({
   onClose,
   initial,
   existingJobsForDate = [],
+  clientHint,
 }: AddJobFormProps) {
   const { clients, dailyJobs = [], attendanceMarks, employees: staffRecords } = useData()
 
@@ -1149,7 +1152,8 @@ export function AddJobForm({
           setShowQuickClientModal(false)
           setHasConfirmedUnregistered(true)
         }}
-        initialName=""
+        initialName={clientHint?.name || ""}
+        initialPhone={clientHint?.phone || ""}
         initialBuilding={unregisteredClientName}
         initialArea={area}
         onClientRegistered={(newClient) => {
