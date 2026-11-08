@@ -62,7 +62,25 @@ export function cleanCategory(cat: string, serviceName: string = '', pageUrl: st
   return cat.trim() || 'General Cleaning'
 }
 
-/* ─── Normalize Property Type According to Form Submissions ─── */
+/* ─── Property type: what the customer selected on the form (R-LEAD-01) ─── */
+const cleanPropertyValue = (v: unknown): string => {
+  const s = String(v ?? '').trim()
+  return !s || ['not specified', 'undefined', 'null'].includes(s.toLowerCase()) ? '' : s
+}
+
+/** The old automatic renaming (Flat → Apartment, etc.). Only used to recognise a stored value that the
+ *  system renamed itself, so the customer's own wording can be shown again. */
+export function legacyPropertyType(v: string): string {
+  const l = v.toLowerCase()
+  if (l.includes('villa') || l.includes('mansion')) return 'Villa'
+  if (l.includes('house') || l.includes('home')) return 'House'
+  if (l.includes('penthouse')) return 'Penthouse'
+  if (l.includes('office') || l.includes('commercial')) return 'Office'
+  if (l.includes('studio')) return 'Studio'
+  if (l.includes('apartment') || l.includes('apt') || l.includes('flat') || l.includes('tower') || l.includes('bhk')) return 'Apartment'
+  return v
+}
+
 export function resolvePropertyType(lead: {
   property_type?: string
   address?: string
@@ -72,49 +90,24 @@ export function resolvePropertyType(lead: {
   form_title?: string
   raw_data?: Record<string, any>
 }): string {
-  // 1. Check direct property_type if provided and not a placeholder
-  if (lead.property_type && lead.property_type.trim()) {
-    const pt = lead.property_type.trim()
-    const lpt = pt.toLowerCase()
-    if (lpt !== 'not specified' && lpt !== 'undefined' && pt !== 'null' && pt !== '') {
-      // Standardize casing if matching known types, otherwise preserve form submission text
-      if (lpt === 'villa' || lpt.includes('villa') || lpt.includes('mansion')) return 'Villa'
-      if (lpt === 'house' || lpt.includes('house') || lpt.includes('home')) return 'House'
-      if (lpt === 'townhouse' || lpt.includes('town house') || lpt.includes('townhouse')) return 'Townhouse'
-      if (lpt === 'penthouse' || lpt.includes('penthouse')) return 'Penthouse'
-      if (lpt === 'office' || lpt.includes('office') || lpt.includes('commercial')) return 'Office'
-      if (lpt === 'studio' || lpt.includes('studio')) return 'Studio'
-      if (lpt === 'apartment' || lpt.includes('apartment') || lpt.includes('flat') || lpt.includes('bhk')) return 'Apartment'
-      return pt
-    }
-  }
+  // R-LEAD-01: the option the customer picked on the form is shown exactly as picked ("Flat" stays "Flat").
+  // A value typed in the CRM wins, unless it is only the old automatic renaming of the form value.
+  const stored = cleanPropertyValue(lead.property_type)
+  const form = lead.raw_data && typeof lead.raw_data === 'object'
+    ? cleanPropertyValue(parseFluentFormPayload(lead.raw_data).property_type)
+    : ''
+  if (form && (!stored || stored === form || stored === legacyPropertyType(form))) return form
+  if (stored) return stored
 
-  // 2. Check raw form submission payload for dropdown_1 or custom property keys
-  if (lead.raw_data && typeof lead.raw_data === 'object') {
-    const raw = lead.raw_data
-    const val = raw.property_type || raw.dropdown_1 || raw.property || raw.propertyType || raw.type_of_property || raw.property_size || raw.building_type
-    if (val && typeof val === 'string' && val.trim() && val.trim().toLowerCase() !== 'not specified') {
-      const trimmed = val.trim()
-      const lval = trimmed.toLowerCase()
-      if (lval === 'villa' || lval.includes('villa')) return 'Villa'
-      if (lval === 'house' || lval.includes('house')) return 'House'
-      if (lval === 'townhouse' || lval.includes('town house')) return 'Townhouse'
-      if (lval === 'penthouse' || lval.includes('penthouse')) return 'Penthouse'
-      if (lval === 'office' || lval.includes('commercial')) return 'Office'
-      if (lval === 'studio' || lval.includes('studio')) return 'Studio'
-      if (lval === 'apartment' || lval.includes('flat') || lval.includes('bhk')) return 'Apartment'
-      return trimmed
-    }
-  }
-
-  // 3. Fallback to parsing message or address if specifically mentioned
+  // No property field on the form: guess from the address / message text
   const combined = `${lead.address || ''} ${lead.message || ''}`.toLowerCase()
   if (combined.includes('villa') || combined.includes('mansion') || combined.includes('compound')) return 'Villa'
   if (combined.includes('townhouse') || combined.includes('town house')) return 'Townhouse'
   if (combined.includes('penthouse')) return 'Penthouse'
   if (combined.includes('office') || combined.includes('commercial') || combined.includes('shop') || combined.includes('warehouse')) return 'Office'
   if (combined.includes('studio')) return 'Studio'
-  if (combined.includes('apartment') || combined.includes('flat')) return 'Apartment'
+  if (combined.includes('apartment')) return 'Apartment'
+  if (combined.includes('flat')) return 'Flat'
 
   return 'Not Specified'
 }
@@ -281,7 +274,7 @@ export function normalizeLeadWithRaw(lead: FluentFormLead): FluentFormLead {
     phone: (extracted.phone && extracted.phone !== '+971 50 000 0000') ? extracted.phone : lead.phone,
     whatsapp: extracted.whatsapp || lead.whatsapp,
     service: (extracted.service && extracted.service !== 'General Cleaning') ? extracted.service : (lead.service || extracted.service),
-    property_type: (extracted.property_type && extracted.property_type !== 'Not Specified') ? extracted.property_type : (lead.property_type || extracted.property_type),
+    property_type: resolvePropertyType(lead), // R-LEAD-01: form wording, unless typed in the CRM
     area: (extracted.area && extracted.area !== 'Dubai') ? extracted.area : (lead.area || extracted.area),
     address: extracted.address || lead.address,
     preferred_date: extracted.preferred_date || lead.preferred_date,

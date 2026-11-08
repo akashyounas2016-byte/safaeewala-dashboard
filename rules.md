@@ -345,6 +345,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ---
 
+## LEAD — Website form leads
+
+### R-LEAD-01 — The property type is shown as the customer picked it
+- **Rule:** *"user ne flat select kiya tha"*. The CRM no longer renames the form's property type (Flat was shown as Apartment). The option chosen on the website form is saved and shown as is. A value typed in the CRM wins over the form, except a value that is only the old automatic renaming, so old leads show the form's wording again. Only a lead without a property field is guessed from the address / message.
+- **Code:** `fluentFormsSync.ts → resolvePropertyType, legacyPropertyType`, `webhookServer.cjs → resolvePropertyType, healLead`.
+- **Status:** Active · Since: 2026-11-08
+
+---
+
 ## DATA — Data hygiene
 
 ### R-DATA-01 — Ignore Excel summary / bogus rows

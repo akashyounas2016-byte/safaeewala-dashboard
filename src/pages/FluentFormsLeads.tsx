@@ -1426,6 +1426,7 @@ export function FluentFormsLeads() {
                               House: 'bg-emerald-50 text-emerald-800 border-emerald-200',
                               Townhouse: 'bg-amber-50 text-amber-800 border-amber-200',
                               Apartment: 'bg-sky-50 text-sky-800 border-sky-200',
+                              Flat: 'bg-sky-50 text-sky-800 border-sky-200',
                               Office: 'bg-purple-50 text-purple-800 border-purple-200',
                               Penthouse: 'bg-indigo-50 text-indigo-800 border-indigo-200',
                               Studio: 'bg-cyan-50 text-cyan-800 border-cyan-200',

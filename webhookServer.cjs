@@ -121,18 +121,23 @@ function cleanPageSource(url) {
   }
 }
 
+// R-LEAD-01: the property type is saved exactly as the customer picked it on the form ("Flat" stays "Flat")
 function resolvePropertyType(val) {
-  if (!val || val === 'Not Specified') return 'Not Specified';
-  const str = String(val).toLowerCase().trim();
-  if (!str || str === 'not specified' || str === 'undefined' || str === 'null') return 'Not Specified';
-  if (str.includes('villa') || str.includes('mansion') || str.includes('compound')) return 'Villa';
-  if (str.includes('house') || str.includes('home')) return 'House';
-  if (str.includes('townhouse') || str.includes('town house')) return 'Townhouse';
-  if (str.includes('penthouse')) return 'Penthouse';
-  if (str.includes('office') || str.includes('commercial') || str.includes('shop') || str.includes('warehouse')) return 'Office';
-  if (str.includes('studio')) return 'Studio';
-  if (str.includes('apartment') || str.includes('apt') || str.includes('flat') || str.includes('tower') || str.includes('bhk')) return 'Apartment';
-  return String(val).trim() || 'Not Specified';
+  const s = String(val ?? '').trim();
+  if (!s || ['not specified', 'undefined', 'null'].includes(s.toLowerCase())) return 'Not Specified';
+  return s;
+}
+
+// The old automatic renaming (Flat → Apartment, …): only used to recognise a value the system changed itself
+function legacyPropertyType(v) {
+  const l = String(v).toLowerCase();
+  if (l.includes('villa') || l.includes('mansion') || l.includes('compound')) return 'Villa';
+  if (l.includes('house') || l.includes('home')) return 'House';
+  if (l.includes('penthouse')) return 'Penthouse';
+  if (l.includes('office') || l.includes('commercial') || l.includes('shop') || l.includes('warehouse')) return 'Office';
+  if (l.includes('studio')) return 'Studio';
+  if (l.includes('apartment') || l.includes('apt') || l.includes('flat') || l.includes('tower') || l.includes('bhk')) return 'Apartment';
+  return String(v).trim();
 }
 
 /**
@@ -275,7 +280,9 @@ function healLead(lead) {
     phone: (fixed.phone && fixed.phone !== '+971 50 000 0000') ? fixed.phone : lead.phone,
     whatsapp: fixed.whatsapp || lead.whatsapp,
     service: (fixed.service && fixed.service !== 'General Cleaning') ? fixed.service : (lead.service || fixed.service),
-    property_type: (fixed.property_type && fixed.property_type !== 'Not Specified') ? fixed.property_type : (lead.property_type || fixed.property_type),
+    // R-LEAD-01: the form's own wording, unless the CRM user typed something else
+    property_type: (fixed.property_type !== 'Not Specified' && (!lead.property_type || lead.property_type === 'Not Specified' || lead.property_type === fixed.property_type || lead.property_type === legacyPropertyType(fixed.property_type)))
+      ? fixed.property_type : (lead.property_type || fixed.property_type),
     area: (fixed.area && fixed.area !== 'Dubai') ? fixed.area : (lead.area || fixed.area),
     address: fixed.address || lead.address,
     preferred_date: fixed.preferred_date || lead.preferred_date,

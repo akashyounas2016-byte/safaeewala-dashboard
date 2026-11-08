@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(leads): the property type is shown as the customer picked it on the website form — Flat was shown as Apartment (R-LEAD-01)
+
 - fix(employees, agencies): adding an employee with document photos lost it after a reload — files now go to Storage and only their paths are saved (R-SYNC-15)
 
 - feat(conversations): Automation, Keyword Trigger and Templates moved into Settings, which now has tabs (Users, Notifications, Tags, Templates, Replies, Automation, Keyword Trigger, Connection) (R-INBOX-04)
