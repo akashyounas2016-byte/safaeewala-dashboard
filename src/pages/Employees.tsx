@@ -1759,6 +1759,16 @@ export function Employees() {
                 )}
               </div>
 
+              {/* Comments & Remarks */}
+              {selected.notes && (
+                <div>
+                  <p className="text-[11.5px] font-bold text-slate-600 uppercase tracking-wider mb-2">Comments & Remarks</p>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-[12.5px] text-slate-700 leading-relaxed font-medium">
+                    {selected.notes}
+                  </div>
+                </div>
+              )}
+
               {/* Document Health (Medical Insurance Removed) */}
               <div>
                 <p className="text-[11.5px] font-bold text-slate-600 uppercase tracking-wider mb-2">Document Expiry Dates</p>

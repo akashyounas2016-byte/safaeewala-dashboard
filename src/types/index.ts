@@ -277,6 +277,7 @@ export interface Employee {
   // Cleaners & Technical
   skills: string[]
   assigned_client_ids?: string[]
+  notes?: string
 
   // Sourcing Agency
   agency_id?: string

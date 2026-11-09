@@ -132,16 +132,21 @@ export function AddJobForm({
   }, [selectedStaff.length, existingJobsForDate, initial?.team_name])
 
   const [teamName, setTeamName] = useState(() => initial?.team_name || '')
+  const [teamLead, setTeamLead] = useState<string>(() => selectedStaff[0] || '')
 
   useEffect(() => {
     if (selectedStaff.length >= 2) {
       if (!teamName) {
         setTeamName(defaultTeamName)
       }
+      if (!teamLead || !selectedStaff.includes(teamLead)) {
+        setTeamLead(selectedStaff[0] || '')
+      }
     } else {
       setTeamName('')
+      setTeamLead(selectedStaff[0] || '')
     }
-  }, [selectedStaff.length, defaultTeamName])
+  }, [selectedStaff, defaultTeamName, teamName, teamLead])
 
   // ── Address & Building State ──
   const [address, setAddress] = useState(initial?.address ?? '')
@@ -371,16 +376,7 @@ export function AddJobForm({
     if (c.preferred_cleaner && selectedStaff.length === 0) {
       setSelectedStaff(c.preferred_cleaner.split(/[,+/&]|\band\b/i).map(s => s.trim()).filter(Boolean))
     }
-    if (c.scheduled_time) {
-      const sTime = formatTime12h(c.scheduled_time) || '09:00 AM'
-      setStartTime(sTime)
-      if (c.duration_hours) {
-        setDutyHours(c.duration_hours)
-        const newEnd = addHoursToTime(sTime, c.duration_hours)
-        setEndTime(newEnd)
-        setOtHours(calcOTHours(sTime, newEnd))
-      }
-    }
+    // Bugfix: Do not reset/overwrite previously entered time and duty hours
     setBuildingDropdownOpen(false)
   }
 
@@ -415,7 +411,10 @@ export function AddJobForm({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!req.check()) return
-    const finalStaff = selectedStaff.join(', ').trim()
+    const orderedStaff = teamLead && selectedStaff.includes(teamLead)
+      ? [teamLead, ...selectedStaff.filter(s => s !== teamLead)]
+      : selectedStaff
+    const finalStaff = orderedStaff.join(', ').trim()
 
     // Automatic check: Does this client exist in the system?
     const trimmedAddr = address.trim()
@@ -539,16 +538,32 @@ export function AddJobForm({
             {/* Conditional Multi-Cleaner Team Field (Horizontal & Compact) */}
             {selectedStaff.length >= 2 && (
               <div className="pt-2 border-t border-slate-100 animate-in fade-in slide-in-from-top-1 duration-200">
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
                   <label className="text-[11px] font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
                     <Users size={12} className="text-indigo-600" />
                     Team Reference <span className="text-slate-400 font-normal lowercase">(auto)</span>
                   </label>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-slate-500">Lead: <span className="text-indigo-700">{selectedStaff[0]}</span></span>
+                    <label htmlFor="team-leader-select" className="text-[10px] font-bold text-slate-600">Leader:</label>
+                    <select
+                      id="team-leader-select"
+                      aria-label="Team Leader"
+                      value={teamLead || selectedStaff[0] || ''}
+                      onChange={e => setTeamLead(e.target.value)}
+                      className="text-[11px] font-bold text-indigo-950 bg-white border border-indigo-200 rounded-lg px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+                    >
+                      {selectedStaff.map(staff => (
+                        <option key={staff} value={staff}>
+                          {staff} {staff === selectedStaff[0] ? '(Auto)' : ''}
+                        </option>
+                      ))}
+                    </select>
                     <button
                       type="button"
-                      onClick={() => setTeamName(defaultTeamName)}
+                      onClick={() => {
+                        setTeamLead(selectedStaff[0] || '')
+                        setTeamName(defaultTeamName)
+                      }}
                       className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
                     >
                       Reset
@@ -565,7 +580,7 @@ export function AddJobForm({
                   />
                 </div>
                 <p className="text-[10px] text-slate-500 mt-1 leading-tight">
-                  Payment recorded under <b>{selectedStaff[0]}</b>; other cleaner rows display reference <b>{teamName || defaultTeamName}</b>.
+                  Payment recorded under <b>{teamLead || selectedStaff[0]}</b>; other cleaner rows display reference <b>{teamName || defaultTeamName}</b>.
                 </p>
               </div>
             )}

@@ -241,11 +241,21 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
     return ''
   }, [selectedStaff])
 
+  const [teamLead, setTeamLead] = useState<string>(() => selectedStaff[0] || '')
+
   useEffect(() => {
-    if (selectedStaff.length >= 2 && !teamName) {
-      setTeamName(defaultTeamName)
+    if (selectedStaff.length >= 2) {
+      if (!teamName) {
+        setTeamName(defaultTeamName)
+      }
+      if (!teamLead || !selectedStaff.includes(teamLead)) {
+        setTeamLead(selectedStaff[0] || '')
+      }
+    } else {
+      setTeamName('')
+      setTeamLead(selectedStaff[0] || '')
     }
-  }, [selectedStaff, teamName, defaultTeamName])
+  }, [selectedStaff, teamName, defaultTeamName, teamLead])
 
   // Click-outside handlers
   useEffect(() => {
@@ -454,7 +464,10 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
     }
 
     const finalClientName = clientName.trim() || cleanAddressDisplay(address.trim())
-    const assignedCrewIds = staffNameToCrew(selectedStaff.join(', '), employees)
+    const orderedStaff = teamLead && selectedStaff.includes(teamLead)
+      ? [teamLead, ...selectedStaff.filter(s => s !== teamLead)]
+      : selectedStaff
+    const assignedCrewIds = staffNameToCrew(orderedStaff.join(', '), employees)
 
     const bookingPayload = {
       client_name: finalClientName,
@@ -611,16 +624,32 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
             {/* Multi-Cleaner Team Field */}
             {selectedStaff.length >= 2 && (
               <div className="pt-2 border-t border-slate-100 animate-in fade-in slide-in-from-top-1 duration-200">
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
                   <label className="text-[11px] font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
                     <Users size={12} className="text-indigo-600" />
                     Team Reference <span className="text-slate-400 font-normal lowercase">(auto)</span>
                   </label>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-slate-500">Lead: <span className="text-indigo-700">{selectedStaff[0]}</span></span>
+                    <label htmlFor="booking-team-leader-select" className="text-[10px] font-bold text-slate-600">Leader:</label>
+                    <select
+                      id="booking-team-leader-select"
+                      aria-label="Team Leader"
+                      value={teamLead || selectedStaff[0] || ''}
+                      onChange={e => setTeamLead(e.target.value)}
+                      className="text-[11px] font-bold text-indigo-950 bg-white border border-indigo-200 rounded-lg px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+                    >
+                      {selectedStaff.map(staff => (
+                        <option key={staff} value={staff}>
+                          {staff} {staff === selectedStaff[0] ? '(Auto)' : ''}
+                        </option>
+                      ))}
+                    </select>
                     <button
                       type="button"
-                      onClick={() => setTeamName(defaultTeamName)}
+                      onClick={() => {
+                        setTeamLead(selectedStaff[0] || '')
+                        setTeamName(defaultTeamName)
+                      }}
                       className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
                     >
                       Reset

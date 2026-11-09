@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(alerts): centralized Cleaner duty issues in Sidebar Alerts module with Realtime updates, high-severity badges, cleaner notes, and direct links to Job Sheet and Booking (R-ALERT-04)
+- feat(employees): Skills and Client Assessment widget redesigned into a clean 3-column row (Skills, Comments/Remarks notes, Client selection dropdown) (R-EMP-10)
+- feat(jobs, bookings): Team Reference section includes selectable Team Leader dropdown; address selection bug resolved to preserve previously entered start time, end time, and duty hours (R-JOB-09)
 - feat(employees): Add Employee popup redesign — Short Name field (50% width), Total Salary + Basic Salary fields, Under Training status with duration and Admin completion alert, 3x2 compliance documents layout (Work Permit expiry only, NOC, Other Documents multi-upload) (R-EMP-09)
 - feat(agencies, documents): document Delete button in Add/Edit Agency popups; date year 4-digit formatting fix preventing "202" truncation (R-DOC-01, UX-127)
 - ui(sidebar): AI Bot and Alerts counters visually standardized with identical red blinking pill badge (UX-126)

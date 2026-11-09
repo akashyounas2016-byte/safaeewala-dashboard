@@ -4,9 +4,11 @@ import { useNotifications } from '@/store/NotificationContext'
 import { analyzeCRMHealth } from '@/lib/crmAIBot'
 import { buildCrewTimeline } from '@/lib/crewTimeline'
 import { backupHealth, type BackupStatus } from '@/lib/backupStatus'
-import { agencyAlerts, bookingAlerts, scheduleCleanerAlerts, buildAlerts, employeeDocAlerts, type CrmAlert } from '@/lib/alerts'
+import { agencyAlerts, bookingAlerts, cleanerIssueAlerts, scheduleCleanerAlerts, buildAlerts, employeeDocAlerts, type CrmAlert } from '@/lib/alerts'
 import { todayDubai } from '@/lib/dubaiTime'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
+import { supabase } from '@/lib/supabase'
+import type { JobCheckin } from '@/lib/jobCheckins'
 
 const DISMISSED_KEY = 'safaeewala_alerts_dismissed'
 const CHANGED = 'safaeewala:alerts-dismissed'
@@ -33,6 +35,34 @@ export function useAlerts(enabled = true): {
     return () => { alive = false }
   }, [enabled])
 
+  // R-ALERT-04: Cleaner reported issues from My Duties routed to Admin alerts in real time
+  const [dutyIssues, setDutyIssues] = useState<JobCheckin[]>([])
+  useEffect(() => {
+    if (!enabled) return
+    let alive = true
+    const loadIssues = () => {
+      void supabase.from('job_checkins')
+        .select('*')
+        .eq('status', 'issue')
+        .order('updated_at', { ascending: false })
+        .limit(50)
+        .then(({ data, error }) => {
+          if (alive && !error && data) setDutyIssues(data as JobCheckin[])
+        })
+    }
+    loadIssues()
+    const channel = supabase.channel('crm-alerts-duty-issues').on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'job_checkins' },
+      () => { if (alive) loadIssues() }
+    )
+    channel.subscribe()
+    return () => {
+      alive = false
+      void supabase.removeChannel(channel)
+    }
+  }, [enabled])
+
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => safeLocalStorageGet<string[]>(DISMISSED_KEY, []))
   useEffect(() => {
     const refresh = () => setDismissedIds(safeLocalStorageGet<string[]>(DISMISSED_KEY, []))
@@ -54,9 +84,15 @@ export function useAlerts(enabled = true): {
       sheetIssues: sheet.issues,
       today,
       backup: backup ? { health: backupHealth(backup, new Date()), message: backup.message } : null,
-      extra: [...employeeDocAlerts(employees), ...agencyAlerts(agencies, employees), ...bookingAlerts(bookings, today), ...scheduleCleanerAlerts(clients, employees)],
+      extra: [
+        ...employeeDocAlerts(employees),
+        ...agencyAlerts(agencies, employees),
+        ...bookingAlerts(bookings, today),
+        ...scheduleCleanerAlerts(clients, employees),
+        ...cleanerIssueAlerts(dutyIssues, dailyJobs),
+      ],
     })
-  }, [enabled, notifications, bookings, clients, dailyJobs, employees, agencies, today, backup])
+  }, [enabled, notifications, bookings, clients, dailyJobs, employees, agencies, today, backup, dutyIssues])
 
   const hidden = new Set(dismissedIds)
   return {

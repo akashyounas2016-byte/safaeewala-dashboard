@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { isWrongDocDate } from '@/lib/utils'
 import {
-  UserCheck, Briefcase, CreditCard, Shield, Car, Sparkles, Search, Check, FileText, FileCheck
+  UserCheck, Briefcase, CreditCard, Shield, Car, Sparkles, Check, FileText, FileCheck
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -69,7 +69,6 @@ function EmployeeFormModalContent({
 
   // Assigned client IDs (for cleaners and technical)
   const [assignedClientIds, setAssignedClientIds] = useState<string[]>(() => initialEmployee?.assigned_client_ids || [])
-  const [clientSearch, setClientSearch] = useState('')
 
   // Preview modal for documents
   const [previewDoc, setPreviewDoc] = useState<EmployeeDocument | null>(null)
@@ -193,6 +192,7 @@ function EmployeeFormModalContent({
       // Skills & Clients
       skills: (fd.get('skills') as string)?.split(',').map(s => s.trim()).filter(Boolean) || [],
       assigned_client_ids: role === 'driver' ? [] : assignedClientIds,
+      notes: (fd.get('notes') as string)?.trim() || undefined,
 
       // Document history
       documents: docsList.length > 0 ? docsList : initialEmployee?.documents,
@@ -807,88 +807,67 @@ function EmployeeFormModalContent({
                 </div>
               </div>
             ) : (
-              /* Skills & Client Assignment (Cleaners & Technical) */
+              /* Skills & Client Assessment (Cleaners & Technical) */
               <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
                   <h4 className="text-[12px] font-black uppercase tracking-wider text-indigo-800 flex items-center gap-1.5">
                     <Sparkles size={13} className="text-indigo-600" />
-                    <span>Skills & Client Assignment</span>
+                    <span>Skills & Client Assessment</span>
                   </h4>
-                  <div className="flex items-center gap-2">
-                    {assignedClientIds.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setAssignedClientIds([])}
-                        className="text-[10.5px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
-                      >
-                        Clear All
-                      </button>
-                    )}
-                    <span className="text-[10.5px] font-bold bg-teal-50 text-teal-800 border border-teal-200/60 px-2 py-0.5 rounded-lg">
-                      {assignedClientIds.length} Clients Assigned
-                    </span>
-                  </div>
-                </div>
-
-                <Input
-                  name="skills"
-                  label="Skills (comma separated)"
-                  defaultValue={initialEmployee?.skills?.join(', ') || ''}
-                  placeholder="Deep Clean, Sofa, Window, Technical, Carpet..."
-                />
-
-                <div className="relative">
-                  <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search clients by name or location..."
-                    value={clientSearch}
-                    onChange={e => setClientSearch(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 shadow-2xs"
-                  />
-                </div>
-
-                <div className="max-h-[180px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1 pr-1 content-start">
-                  {assignableClients.length === 0 && (
-                    <p className="col-span-full text-center text-[11.5px] text-slate-400 py-4">No clients found. Add clients first on the Clients screen.</p>
+                  {assignedClientIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAssignedClientIds([])}
+                      className="text-[10.5px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
+                    >
+                      Clear Client
+                    </button>
                   )}
-                  {assignableClients
-                    .filter(c => {
-                      if (!clientSearch) return true
-                      const q = clientSearch.toLowerCase()
-                      const loc = (c.building_name || c.area || '').toLowerCase()
-                      return c.full_name.toLowerCase().includes(q) || loc.includes(q)
-                    })
-                    .map(c => {
-                      const checked = assignedClientIds.includes(c.id)
-                      const location = c.building_name ? `${c.building_name}, ${c.area}` : c.area
-                      return (
-                        <label
-                          key={c.id}
-                          className={`flex items-center justify-between p-2 rounded-xl text-[11.5px] border cursor-pointer transition-colors shadow-2xs ${
-                            checked
-                              ? 'bg-teal-50 border-teal-300 text-teal-950 font-bold'
-                              : 'bg-white border-slate-200 hover:bg-slate-100/70 text-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 truncate">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                setAssignedClientIds(prev =>
-                                  checked ? prev.filter(id => id !== c.id) : [...prev, c.id]
-                                )
-                              }}
-                              className="rounded text-teal-600 focus:ring-teal-500 h-3.5 w-3.5 cursor-pointer"
-                            />
-                            <span className="truncate">{c.full_name}</span>
-                            {location && <span className="text-[10.5px] text-slate-400 font-normal truncate">({location})</span>}
-                          </div>
-                          {checked && <span className="text-[10px] font-black text-teal-700 shrink-0">ASSIGNED</span>}
-                        </label>
-                      )
-                    })}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                  {/* Column 1: Skills */}
+                  <div>
+                    <Input
+                      name="skills"
+                      label="Skills"
+                      defaultValue={initialEmployee?.skills?.join(', ') || ''}
+                      placeholder="e.g. Deep Clean, Sofa, Window..."
+                    />
+                  </div>
+
+                  {/* Column 2: Comments / Remarks */}
+                  <div>
+                    <Input
+                      name="notes"
+                      label="Comments / Remarks"
+                      defaultValue={initialEmployee?.notes || ''}
+                      placeholder="e.g. Good with pets, punctual..."
+                    />
+                  </div>
+
+                  {/* Column 3: Client Selection Dropdown */}
+                  <div>
+                    <label htmlFor="assigned_client_id" className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
+                      Client
+                    </label>
+                    <select
+                      id="assigned_client_id"
+                      value={assignedClientIds[0] || ''}
+                      onChange={e => setAssignedClientIds(e.target.value ? [e.target.value] : [])}
+                      className="w-full text-[12.5px] px-3 py-2 min-h-[42px] border border-slate-200 rounded-xl bg-white text-slate-800 font-semibold focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-2xs cursor-pointer"
+                    >
+                      <option value="">-- Select Client (Optional) --</option>
+                      {assignableClients.map(c => {
+                        const loc = c.building_name ? `${c.building_name}, ${c.area}` : c.area
+                        return (
+                          <option key={c.id} value={c.id}>
+                            {c.full_name}{loc ? ` (${loc})` : ''}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
                 </div>
               </div>
             )}

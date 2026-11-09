@@ -14,7 +14,7 @@ import { daysUntil, formatDate, isWrongDocDate, DOC_ALERT_DAYS } from '@/lib/uti
  * the nightly backup, plus what the Employees / Agencies / Bookings header bells showed.
  */
 export type AlertSeverity = 'high' | 'medium' | 'low'
-export type AlertSource = 'system' | 'ai' | 'sheet' | 'backup' | 'staff' | 'bookings'
+export type AlertSource = 'system' | 'ai' | 'sheet' | 'backup' | 'staff' | 'bookings' | 'duties'
 
 export interface CrmAlert {
   id: string
@@ -31,7 +31,7 @@ export interface CrmAlert {
 }
 
 export const SOURCE_LABEL: Record<AlertSource, string> = {
-  system: 'System', ai: 'AI Bot', sheet: 'Daily Job Sheet', backup: 'Backup', staff: 'Staff & agencies', bookings: 'Bookings',
+  system: 'System', ai: 'AI Bot', sheet: 'Daily Job Sheet', backup: 'Backup', staff: 'Staff & agencies', bookings: 'Bookings', duties: 'Cleaner Duties',
 }
 
 const RANK: Record<AlertSeverity, number> = { high: 0, medium: 1, low: 2 }
@@ -181,6 +181,41 @@ export function bookingAlerts(bookings: Booking[], today: string): CrmAlert[] {
       id: `bk-unassigned-${b.id}`, source: 'bookings', severity: 'high',
       title: `No cleaner: ${b.client_name}`, message: `Today at ${b.scheduled_time} needs a cleaner`,
       actionUrl: `/bookings?booking=${encodeURIComponent(b.id)}`, actionLabel: 'Open booking',
+    })
+  })
+  return out
+}
+
+/**
+ * R-ALERT-04: Cleaner-reported duty issues routed centrally into Admin alerts.
+ * Cleaners report issues via My Duties; Admin gets an immediate high-priority alert with links to Job Sheet and Booking.
+ */
+export function cleanerIssueAlerts(
+  issues: { id: string; job_id: string; date: string; cleaner: string; status: string; note?: string | null }[],
+  jobs: { id: string; client_name?: string; site?: string; address?: string; area?: string; date?: string; booking_id?: string }[] = []
+): CrmAlert[] {
+  const out: CrmAlert[] = []
+  issues.forEach(i => {
+    if (i.status !== 'issue') return
+    const job = jobs.find(j => j.id === i.job_id)
+    const siteName = job?.client_name || job?.site || job?.address || job?.area || 'Assigned Job'
+    const noteText = i.note ? `"${i.note}"` : 'Issue reported by cleaner'
+    const links: { label: string; url: string }[] = []
+    if (i.date) {
+      links.push({ label: 'Open Job Sheet', url: `/daily-job-sheet?date=${i.date}&job=${encodeURIComponent(i.job_id)}` })
+    }
+    if (job?.booking_id) {
+      links.push({ label: 'View Booking', url: `/bookings?booking=${encodeURIComponent(job.booking_id)}` })
+    }
+    out.push({
+      id: `duty-issue-${i.id}`,
+      source: 'duties',
+      severity: 'high',
+      title: `Cleaner Issue: ${i.cleaner}`,
+      message: `${siteName} (${formatDate(i.date)}): ${noteText}`,
+      actionUrl: `/daily-job-sheet?date=${i.date || ''}&job=${encodeURIComponent(i.job_id)}`,
+      actionLabel: 'Open Job Sheet',
+      links,
     })
   })
   return out

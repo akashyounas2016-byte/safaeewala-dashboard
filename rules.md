@@ -328,6 +328,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/shiftClash.ts` (`findStaffClash`, `findClashAmong`, `findAllClashes`), used by `AddJobModal`, `EditJobModal`, `DailyJobSheet → saveInlineEdit`, `JobSheetSpreadsheet → refuseClash / handleSaveAll`. Test: `tests/unit/shift-clash.test.ts`.
 - **Status:** Active · Since: 2026-10-31
 
+### R-JOB-09 — Team Leader dropdown & address selection time preservation
+- **Rule:** *"Daily Job Sheet, Booking, aur Excel Sheet kay Add Job Entry pop-ups mein, Team Reference section mein auto-assigned leader kay sath aik dropdown menu shamil karein, taake admin apni marzi ka Team Leader select kar sakay. Mazeed yeh ke, Address select karnay par 'Time and Duty Hours' ka data reset ho jata hai; is bug ko resolve karein taake pehle say set kiya gaya time aur duty hours barqarar rahein."* (2026-11-10)
+  - **Manual Team Leader Selection:** In multi-cleaner jobs (2+ staff), the Team Reference card provides a dropdown menu alongside the auto-assigned leader so the Admin can designate any assigned cleaner as Team Leader. The chosen leader is saved as the primary cleaner (`orderedStaff[0]`), ensuring payments and accounting anchor to the correct leader.
+  - **Address Time Preservation:** When selecting an address/client from suggestions in Add Job or Booking modals, previously configured Start Time, End Time, and Duty Hours are preserved and never overwritten by the client's master profile defaults.
+- **Code:** `AddJobModal.tsx`, `NewBookingModal.tsx`. Test: `tests/unit/cleaner-alerts-team-leader.test.ts`.
+- **Status:** Active · Since: 2026-11-10
+
 ### R-DATA-11 — A new client typed on a job is registered first
 - **Rule:** A new address typed on a job (Add Job Entry, Excel Job Sheet, row edit) opens the Clients screen's "Add New Client" popup with the address filled in, so the details and WhatsApp number are saved before the job entry is finished.
 - **Code:** `QuickNewClientModal` → `ClientModalForm` (`prefill`).
@@ -565,6 +572,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Compliance documents are arranged in a 3 columns × 2 rows layout (6 cards total). Work Permit has Expiry Date only (Issue Date removed). NOC and Other Documents (multi-upload support) are included.
 - **Code:** `EmployeeFormModal.tsx`, `types/index.ts`, `alerts.ts`, `DocVersionsField.tsx`, `Employees.tsx`, `EmployeeProfile.tsx`.
 - **Status:** Active · Since: 2026-11-09
+
+### R-EMP-10 — Skills & Client Assessment 3-column row redesign
+- **Rule:** *"Add New Employee popup ke aakhir mein maujood 'Skills and Client Assessment' widget ko redesign karein. Isay aik hi row mein teen columns par mushtamil karein: pehla 'Skills', dusra 'Comments/Remarks', aur teesra 'Client' selection dropdown. Client field ko search bar ki bajaye dropdown menu mein convert kiya jaye."* (2026-11-10)
+  - The bottom section of the Add/Edit Employee popup is arranged as a single row with 3 columns:
+    1. **Skills:** comma-separated text input.
+    2. **Comments / Remarks:** freeform assessment and notes text input (`notes`).
+    3. **Client:** single dropdown selection menu populated from registered clients (replacing the previous search bar and scrollable checkbox list).
+  - Cleaners' profile view in `/employees` displays the saved Comments & Remarks.
+- **Code:** `EmployeeFormModal.tsx`, `types/index.ts`, `pages/Employees.tsx`. Test: `tests/unit/cleaner-alerts-team-leader.test.ts`.
+- **Status:** Active · Since: 2026-11-10
 
 ---
 
@@ -914,6 +931,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - A finding about a client has **Open client**. *Review in AI Bot* stays.
 - **Code:** `lib/alerts.ts → aiIssueLinks`; `Alerts.tsx`; `Bookings.tsx` (`edit=1`); `DailyJobSheet.tsx` (`job`).
 - **Status:** Active · Since: 2026-11-06
+
+### R-ALERT-04 — Cleaner-reported duty issues routed to Admin Alerts
+- **Rule:** *"Cleaner App ke 'Report Issue' workflow ka mukammal tajziya karein. Verify karein ke Cleaner ki taraf se bheji gayi reports Admin ko system mein kahan show hoti hain. Agar yeh notifications centralized nahi hain, to inhein 'Alerts' module mein route karne ka system banaya jaye, taake Admin ko foran khabar ho sakay aur woh bar-waqt iqdaam kar sakein."* (2026-11-10)
+  - Whenever a cleaner reports an issue on a shift via My Duties (`job_checkins` status `issue`), it is routed immediately to the centralized Sidebar → Alerts module.
+  - Generates a High Severity alert with the cleaner's name, client/site, job date, and the cleaner's note.
+  - Direct Action links allow the Admin to jump straight to the Daily Job Sheet row (`Open Job Sheet`) or the Booking (`View Booking`) to resolve the issue on the spot.
+- **Code:** `src/lib/alerts.ts → cleanerIssueAlerts`, `src/store/useAlerts.ts` (Realtime subscription on `job_checkins`). Test: `tests/unit/cleaner-alerts-team-leader.test.ts`.
+- **Status:** Active · Since: 2026-11-10
 
 ### R-SYNC-15 — Files never travel inside a save
 - **Rule:** owner report 2026-11-07: *"vps pr 1 employee add kiya he hogya us k bd mazeed nhi ho rahe. refresh kro to profile nhi show hrhi"*. Cause: the document photos (EID, passport, visa, permit) were sent inside the first save as text — with phone photos several MB, twice (the document list and the eid_file / … fields). The request failed, did not fit the browser's outbox (quota), and the employee was lost on reload; the files reached Storage but had no row to attach to.
