@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSalaryAccess } from '@/store/useModuleAccess'
 import * as XLSX from 'xlsx'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -32,6 +33,7 @@ const avatarColors = [
 ]
 
 export function Reports() {
+  const seeSalary = useSalaryAccess()
   const { bookings, clients, employees, invoices, dailyJobs, dailyExpenses } = useData()
   const [dateRange, setDateRange] = useState('6m')
 
@@ -465,8 +467,8 @@ function formatReportRole(role: string | undefined): string {
         </div>
       </div>
 
-      {/* ── Payroll Report ── */}
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+      {/* ── Payroll Report — R-SEC-08: only for Admin and roles given Salary ── */}
+      {seeSalary && <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
         <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-3">
           <div>
             <h3 className="text-[16px] font-bold text-[#111827]">Staff Payroll</h3>
@@ -548,7 +550,7 @@ function formatReportRole(role: string | undefined): string {
             </p>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   )
 }

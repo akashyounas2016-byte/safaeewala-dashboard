@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useSalaryAccess, SALARY_HIDDEN } from '@/store/useModuleAccess'
 import { isCurrent } from '@/lib/docVersions'
 import { useParams, Link } from 'react-router-dom'
 import {
@@ -114,6 +115,7 @@ function ExpiryCard({ date, label }: { date: string | undefined | null; label: s
 
 export function EmployeeProfile() {
   useDocUrls() // E2E-08: re-render when a document's signed link is ready
+  const seeSalary = useSalaryAccess() // R-SEC-08
   const { id } = useParams<{ id: string }>()
   const { employees, dailyJobs, updateEmployee, agencies, clients, attendanceMarks } = useData()
 
@@ -309,7 +311,7 @@ export function EmployeeProfile() {
                 )}
 
                 <span className="text-[11px] bg-teal-900/80 text-teal-200 border border-teal-700/70 px-2.5 py-0.5 rounded-full font-bold">
-                  {formatMonthlySalary(emp)}
+                  {seeSalary ? formatMonthlySalary(emp) : SALARY_HIDDEN}
                 </span>
 
                 {emp.agency_name && (
@@ -1031,7 +1033,7 @@ export function EmployeeProfile() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-[12.5px]">
                   <div className="p-3 bg-slate-50 rounded-xl border border-[#edf2f7]">
                     <span className="text-slate-400 block text-[10.5px] uppercase font-bold">Monthly Salary</span>
-                    <span className="font-extrabold text-[#111827]">{formatMonthlySalary(emp)}</span>
+                    <span className="font-extrabold text-[#111827]">{seeSalary ? formatMonthlySalary(emp) : SALARY_HIDDEN}</span>
                   </div>
                   <div className="p-3 bg-slate-50 rounded-xl border border-[#edf2f7]">
                     <span className="text-slate-400 block text-[10.5px] uppercase font-bold">Joined Date</span>

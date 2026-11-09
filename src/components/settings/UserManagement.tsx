@@ -377,7 +377,7 @@ export function RolePermissionsPanel() {
           <tbody className="divide-y divide-slate-100">
             {ALL_MODULE_KEYS.map(mod => (
               <tr key={mod}>
-                <td className="px-6 py-2.5 font-semibold text-slate-700">{mod}</td>
+                <td className="px-6 py-2.5 font-semibold text-slate-700">{mod === 'Salary' ? <>Salary <span className="font-normal text-slate-400">— see cleaners' pay (R-SEC-08)</span></> : mod}</td>
                 <td className="px-3 py-2.5 text-center"><input type="checkbox" checked disabled className="w-4 h-4 accent-emerald-600" title="Admin always has every screen" /></td>
                 {PERM_ROLES.map(({ key: role }) => (
                   <td key={role} className="px-3 py-2.5 text-center">

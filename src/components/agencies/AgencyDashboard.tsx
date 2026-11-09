@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect, useId } from 'react'
+import { confirmAsync } from '@/lib/notify'
+import { useSalaryAccess, SALARY_HIDDEN } from '@/store/useModuleAccess'
 import { DocVersionsField } from '@/components/common/DocVersionsField'
 import { addVersion, readFiles, removeVersion } from '@/lib/docVersions'
 import { Link, useNavigate } from 'react-router-dom'
@@ -49,6 +51,7 @@ interface AgencyDashboardProps {
 
 export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboardProps) {
   useDocUrls() // E2E-08: re-render when a document's signed link is ready
+  const seeSalary = useSalaryAccess() // R-SEC-08: pay and payouts only for Admin and roles given Salary
   const { agencies, employees, dailyJobs, updateAgency, updateEmployee, addEmployee } = useData()
   const navigate = useNavigate()
 
@@ -68,7 +71,8 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
   const [activeTab, setActiveTab] = useState<'staff' | 'documents' | 'payouts' | 'contract'>(() => {
     return isParentAgency ? 'documents' : 'staff'
   })
-  const currentTab = isParentAgency && activeTab === 'staff' ? 'documents' : activeTab
+  const tabAllowed = seeSalary || activeTab !== 'payouts'
+  const currentTab = isParentAgency && (activeTab === 'staff' || !tabAllowed) ? 'documents' : !tabAllowed ? 'staff' : activeTab
 
   // ── Filter State for Sourced Staff ──
   const [staffSearch, setStaffSearch] = useState('')
@@ -328,6 +332,13 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
     void readFiles(files, category).then(added => setEditDocs(prev => addVersion(prev, category, added as AgencyDocument[])))
   }
 
+  // UX-118: delete a document from the list (asks first). The file itself stays in Storage and in the nightly backup.
+  const deleteDoc = async (doc: AgencyDocument) => {
+    const ok = await confirmAsync({ title: 'Delete document', message: `Delete "${doc.name}" from ${agency.name}'s documents? The file stays in the backup.`, confirmLabel: 'Delete', tone: 'danger' })
+    if (!ok) return
+    updateAgency(agency.id, { documents: (agency.documents || []).filter(d => d.id !== doc.id) })
+  }
+
   // ── Direct Document Upload with Version History Preservation (from License & Documents Tab) ──
   const handleDirectUploadDoc = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -536,17 +547,19 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
             Edit Profile
           </Button>
 
-          <Button
-            type="button"
-            className="text-[12.5px] font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-sm cursor-pointer flex items-center gap-1.5"
-            onClick={() => {
-              setPayoutFormType('salary')
-              setShowLogPayoutModal(true)
-            }}
-          >
-            <Wallet size={14} className="mr-0.5" />
-            Salary Payout
-          </Button>
+          {seeSalary && (
+            <Button
+              type="button"
+              className="text-[12.5px] font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-sm cursor-pointer flex items-center gap-1.5"
+              onClick={() => {
+                setPayoutFormType('salary')
+                setShowLogPayoutModal(true)
+              }}
+            >
+              <Wallet size={14} className="mr-0.5" />
+              Salary Payout
+            </Button>
+          )}
         </div>
       </div>
 
@@ -852,7 +865,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
           <span>License & Documents ({allDocs.length})</span>
         </button>
 
-        <button
+        {seeSalary && <button
           type="button"
           onClick={() => setActiveTab('payouts')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-[13px] transition-all cursor-pointer ${
@@ -863,7 +876,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
         >
           <Wallet size={16} />
           <span>Staff & Salaries Payout ({formatCurrency(financials.totalSalaryAllocated)})</span>
-        </button>
+        </button>}
 
         <button
           type="button"
@@ -1096,14 +1109,16 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
 
                           {/* Rates & Compensation */}
                           <td className="py-3.5 px-4 text-right">
-                            {emp.monthly_salary ? (
+                            {!seeSalary ? (
+                              <p className="font-bold text-slate-400 text-[12.5px]">{SALARY_HIDDEN}</p>
+                            ) : emp.monthly_salary ? (
                               <p className="font-bold text-slate-900 text-[12.5px]">
                                 {formatCurrency(emp.monthly_salary)}
                                 <span className="text-[10.5px] font-normal text-slate-500 block">per month</span>
                               </p>
                             ) : (
                               <p className="font-bold text-slate-500 text-[12.5px]">
-                                {formatMonthlySalary(emp)}
+                                {seeSalary ? formatMonthlySalary(emp) : SALARY_HIDDEN}
                               </p>
                             )}
                             <p className="text-[10.5px] font-bold text-teal-700 mt-0.5">
@@ -1196,7 +1211,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                         <div>
                           <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Pay Rate</p>
                           <p className="text-[13px] font-black text-slate-900 mt-0.5">
-                            {formatMonthlySalary(emp)}
+                            {seeSalary ? formatMonthlySalary(emp) : SALARY_HIDDEN}
                           </p>
                         </div>
                         <div>
@@ -1271,217 +1286,6 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
          ══════════════════════════════════════════════════════════════════════ */}
       {currentTab === 'documents' && (
         <div className="space-y-6">
-          {/* Header Banner & Upload Trigger */}
-          <div className="bg-white rounded-[28px] border border-slate-200/90 shadow-[0_4px_25px_rgba(15,23,42,0.03)] p-6 md:p-8 relative overflow-hidden">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200/80">
-                    Compliance & Regulatory Vault
-                  </span>
-                  <span className="text-[11px] font-bold text-slate-400">
-                    • Total {allDocs.length} Documents Logged
-                  </span>
-                </div>
-                <h2 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight">
-                  License & Compliance Documents
-                </h2>
-                <p className="text-[13px] text-slate-500 mt-1 max-w-2xl">
-                  UAE commercial registrations, labour quota permits, NOC, and agreements for <strong>{agency.name}</strong>. All new uploads preserve previous versions in historical audit logs.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2.5 shrink-0">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowEditProfileModal(true)}
-                  className="text-[12.5px] font-bold border-slate-200 cursor-pointer flex items-center gap-1.5"
-                >
-                  <Edit2 size={13} className="text-teal-600" />
-                  <span>Edit Profile</span>
-                </Button>
-
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setDirectUploadCategory('trade_license')
-                    setShowUploadDocModal(true)
-                  }}
-                  className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-[12.5px] shadow-sm cursor-pointer flex items-center gap-1.5"
-                >
-                  <Upload size={14} className="stroke-[2.5]" />
-                  <span>Upload Document / Renewal</span>
-                </Button>
-              </div>
-            </div>
-
-            {/* Quick 4 Compliance Overview Metric Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6 pt-6 border-t border-slate-100">
-              {/* Card 1: Trade License */}
-              <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                      <Shield size={13} className="text-teal-600" />
-                      <span>Trade License</span>
-                    </span>
-                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                      agency.trade_license_no ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
-                    }`}>
-                      {agency.trade_license_no ? 'Active' : 'Unregistered'}
-                    </span>
-                  </div>
-                  <p className="text-[14px] font-mono font-black text-slate-900 truncate">
-                    {agency.trade_license_no || 'CN-Pending'}
-                  </p>
-                  <p className="text-[11.5px] text-slate-500 mt-0.5">
-                    {agency.license_expiry_date ? `Exp: ${formatDate(agency.license_expiry_date)}` : 'Government of Dubai DED'}
-                  </p>
-                </div>
-                <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex items-center justify-between">
-                  {(() => {
-                    const doc = activeDocs.find(d => d.category === 'trade_license')
-                    return doc ? (
-                      <button
-                        type="button"
-                        onClick={() => setPreviewDoc(doc)}
-                        className="text-[11.5px] font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1 cursor-pointer hover:underline"
-                      >
-                        <Eye size={12} />
-                        <span>Preview Certificate</span>
-                      </button>
-                    ) : (
-                      <span className="text-[11px] text-slate-400">No file attached</span>
-                    )
-                  })()}
-                </div>
-              </div>
-
-              {/* Card 2: Ministry NOC */}
-              <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                      <CheckCircle2 size={13} className="text-teal-600" />
-                      <span>Ministry NOC</span>
-                    </span>
-                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                      agency.noc_no ? 'bg-teal-100 text-teal-800' : 'bg-slate-200 text-slate-600'
-                    }`}>
-                      {agency.noc_no ? 'Authorized' : 'Optional'}
-                    </span>
-                  </div>
-                  <p className="text-[14px] font-mono font-black text-slate-900 truncate">
-                    {agency.noc_no || 'NOC-Pending'}
-                  </p>
-                  <p className="text-[11.5px] text-slate-500 mt-0.5">
-                    Labour Supply Authorization
-                  </p>
-                </div>
-                <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex items-center justify-between">
-                  {(() => {
-                    const doc = activeDocs.find(d => d.category === 'noc')
-                    return doc ? (
-                      <button
-                        type="button"
-                        onClick={() => setPreviewDoc(doc)}
-                        className="text-[11.5px] font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1 cursor-pointer hover:underline"
-                      >
-                        <Eye size={12} />
-                        <span>Preview NOC</span>
-                      </button>
-                    ) : (
-                      <span className="text-[11px] text-slate-400">No file attached</span>
-                    )
-                  })()}
-                </div>
-              </div>
-
-              {/* Card 3: Tax TRN */}
-              <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                      <Landmark size={13} className="text-teal-600" />
-                      <span>Tax TRN Number</span>
-                    </span>
-                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                      agency.trn_no ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
-                    }`}>
-                      {agency.trn_no ? 'FTA Registered' : 'Not Registered'}
-                    </span>
-                  </div>
-                  <p className="text-[14px] font-mono font-black text-slate-900 truncate">
-                    {agency.trn_no || 'TRN Not Registered'}
-                  </p>
-                  <p className="text-[11.5px] text-slate-500 mt-0.5">
-                    Federal Tax Authority (UAE)
-                  </p>
-                </div>
-                <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex items-center justify-between">
-                  {(() => {
-                    const doc = activeDocs.find(d => d.category === 'tax_registration')
-                    return doc ? (
-                      <button
-                        type="button"
-                        onClick={() => setPreviewDoc(doc)}
-                        className="text-[11.5px] font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1 cursor-pointer hover:underline"
-                      >
-                        <Eye size={12} />
-                        <span>Preview TRN Doc</span>
-                      </button>
-                    ) : (
-                      <span className="text-[11px] text-slate-400">
-                        {agency.trn_no ? 'Tax verified' : 'No certificate'}
-                      </span>
-                    )
-                  })()}
-                </div>
-              </div>
-
-              {/* Card 4: Agreement Ref */}
-              <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                      <FileText size={13} className="text-teal-600" />
-                      <span>Contract Ref</span>
-                    </span>
-                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                      agency.contract_ref || agency.contract_end_date ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
-                    }`}>
-                      {agency.contract_end_date ? 'In Force' : (agency.contract_ref ? 'Active Ref' : 'Standard')}
-                    </span>
-                  </div>
-                  <p className="text-[14px] font-mono font-black text-slate-900 truncate">
-                    {agency.contract_ref || 'Standard Agreement'}
-                  </p>
-                  <p className="text-[11.5px] text-slate-500 mt-0.5">
-                    {agency.contract_end_date ? `Valid till ${formatDate(agency.contract_end_date)}` : 'Ongoing Partner Contract'}
-                  </p>
-                </div>
-                <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex items-center justify-between">
-                  {(() => {
-                    const doc = activeDocs.find(d => d.category === 'agreement')
-                    return doc ? (
-                      <button
-                        type="button"
-                        onClick={() => setPreviewDoc(doc)}
-                        className="text-[11.5px] font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1 cursor-pointer hover:underline"
-                      >
-                        <Eye size={12} />
-                        <span>Preview Agreement</span>
-                      </button>
-                    ) : (
-                      <span className="text-[11px] text-slate-400">Standard Terms</span>
-                    )
-                  })()}
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Section 1: Active In-Force Documents Grid */}
           <div className="bg-white rounded-[24px] border border-slate-200/90 shadow-[0_4px_20px_rgba(15,23,42,0.03)] p-6">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -1495,19 +1299,17 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                 </p>
               </div>
 
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setDirectUploadCategory('trade_license')
-                  setShowUploadDocModal(true)
-                }}
-                className="text-[12px] font-bold border-slate-200 flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus size={13} className="text-teal-600" />
-                <span>Add / Replace Document</span>
-              </Button>
+              {/* UX-118: the banner with four summary cards was removed — its buttons live here */}
+              <div className="flex items-center gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={() => setShowEditProfileModal(true)} className="text-[12px] font-bold border-slate-200 flex items-center gap-1.5 cursor-pointer">
+                  <Edit2 size={13} className="text-teal-600" />
+                  <span>Edit Profile</span>
+                </Button>
+                <Button type="button" size="sm" onClick={() => { setDirectUploadCategory('trade_license'); setShowUploadDocModal(true) }} className="bg-teal-600 hover:bg-teal-700 text-white text-[12px] font-bold flex items-center gap-1.5 cursor-pointer">
+                  <Upload size={13} />
+                  <span>Upload Document / Renewal</span>
+                </Button>
+              </div>
             </div>
 
             {activeDocs.length === 0 ? (
@@ -1654,12 +1456,12 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   <span className="w-48 shrink-0 text-left">Category</span>
                   <span className="w-32 shrink-0 text-center">Status</span>
                   <span className="w-40 shrink-0 text-right">Dates</span>
-                  <span className="w-20 shrink-0 text-right">Actions</span>
+                  <span className="w-24 shrink-0 text-right">Actions</span>
                 </div>
 
                 {/* Single Row List Items */}
                 {allDocs.map((doc, idx) => {
-                  const isActive = doc.is_active !== false && !doc.archived_at
+                  const isActive = doc.is_active !== false && !doc.archived_at && !doc.removed_at
                   const catConfig =
                     doc.category === 'trade_license'
                       ? { label: 'Trade License', bg: 'bg-amber-50 text-amber-900 border-amber-200/90', icon: Shield }
@@ -1772,8 +1574,8 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                         </p>
                       </div>
 
-                      {/* Column 6: Actions (Fixed Width w-20, flex items-center justify-end) */}
-                      <div className="w-20 shrink-0 flex items-center justify-end gap-1">
+                      {/* Column 6: Actions — preview, download, delete (UX-118) */}
+                      <div className="w-24 shrink-0 flex items-center justify-end gap-1">
                         <button
                           type="button"
                           onClick={() => setPreviewDoc(doc)}
@@ -1792,6 +1594,12 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                             <Download size={14} />
                           </a>
                         ) : null}
+                        {!doc.id.startsWith('cert-') && (
+                          <button type="button" onClick={() => void deleteDoc(doc)} title="Delete from this list"
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors cursor-pointer">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   )
@@ -2742,7 +2550,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input name="visa_expiry" label="Visa Expiry Date" type="date" />
-            <Input name="monthly_salary" label="Monthly Salary (AED)" type="number" placeholder="e.g. 2200" />
+            {seeSalary && <Input name="monthly_salary" label="Monthly Salary (AED)" type="number" placeholder="e.g. 2200" />}
           </div>
         </form>
       </Modal>
@@ -3451,7 +3259,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                 <div className="bg-white rounded-2xl border border-slate-200/90 p-3.5 shadow-2xs">
                   <span className="text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">Cleaner Pay Rate</span>
                   <p className="text-xl font-black text-slate-900 mt-0.5">
-                    {formatMonthlySalary(profileStaff)}
+                    {seeSalary ? formatMonthlySalary(profileStaff) : SALARY_HIDDEN}
                   </p>
                   <p className="text-[11px] text-slate-500 mt-0.5">Direct cleaner compensation</p>
                 </div>

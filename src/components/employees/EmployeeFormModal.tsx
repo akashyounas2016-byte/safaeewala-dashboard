@@ -12,6 +12,7 @@ import { EmployeeDocumentPreviewModal } from './EmployeeDocumentField'
 import { DocVersionsField } from '@/components/common/DocVersionsField'
 import { addVersion, currentDocs, readFiles, removeVersion, seedFromFields } from '@/lib/docVersions'
 import { useAuth } from '@/store/UserContext'
+import { useSalaryAccess } from '@/store/useModuleAccess'
 import { todayDubai } from '@/lib/dubaiTime'
 import { useData } from '@/store/DataContext'
 import { notify, confirmAsync } from '@/lib/notify'
@@ -60,6 +61,7 @@ function EmployeeFormModalContent({
   // Document upload state
   const [docs, setDocs] = useState<EmployeeDocument[]>(() => getInitialDocs(initialEmployee))
   const { user: me } = useAuth()
+  const seeSalary = useSalaryAccess() // R-SEC-08
   const cur = (c: EmployeeDocument['category']) => currentDocs(docs, c)[0]
 
   // Assigned client IDs (for cleaners and technical)
@@ -366,16 +368,24 @@ function EmployeeFormModalContent({
                 <span>Employment & Salary</span>
               </h4>
 
-              <Input
-                name="monthly_salary"
-                label="Monthly Salary (AED/mo) *"
-                type="number"
-                min="0"
-                step="any"
-                defaultValue={initialEmployee?.monthly_salary ? String(initialEmployee.monthly_salary) : (initialEmployee?.pay_rate_hourly ? String(Math.round(initialEmployee.pay_rate_hourly * MONTHLY_WORK_HOURS)) : '2500')}
-                placeholder="2500"
-                required
-              />
+              {seeSalary ? (
+                <Input
+                  name="monthly_salary"
+                  label="Monthly Salary (AED/mo) *"
+                  type="number"
+                  min="0"
+                  step="any"
+                  defaultValue={initialEmployee?.monthly_salary ? String(initialEmployee.monthly_salary) : (initialEmployee?.pay_rate_hourly ? String(Math.round(initialEmployee.pay_rate_hourly * MONTHLY_WORK_HOURS)) : '2500')}
+                  placeholder="2500"
+                  required
+                />
+              ) : (
+                <>
+                  {/* R-SEC-08: the salary is kept as it is; only Admin (or a role given Salary) sees and sets it */}
+                  <input type="hidden" name="monthly_salary" defaultValue={initialEmployee?.monthly_salary ? String(initialEmployee.monthly_salary) : (initialEmployee?.pay_rate_hourly ? String(Math.round(initialEmployee.pay_rate_hourly * MONTHLY_WORK_HOURS)) : '')} />
+                  <p className="text-[11.5px] text-slate-500 bg-white border border-slate-200 rounded-lg px-3 py-2">Monthly salary: set by Admin</p>
+                </>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 <Input

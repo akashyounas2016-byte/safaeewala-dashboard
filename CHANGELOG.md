@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(sidebar): Monthly Clients, Inventory, Analytics and Complaints are tabs of Clients, Expenses, Reports and Alerts; Fluent Forms is "Leads (Website)" (UX-117)
+- feat(security): "Salary" in Roles & Access — cleaners' salary shown to Admin only unless a role is given it (R-SEC-08)
+- feat(agencies): documents tab without the four-card banner; Current Active Documents first; Delete in the version history (UX-118)
+
 - feat(documents): every document field (employee + agency popups) takes several images; the new upload is Current and the replaced one shows right under it as Previous; Remove keeps the file; replaced profile photo kept (R-DOC-01)
 - ops(backup): the nightly backup also copies the Storage files (document images, chat media), every version kept (R-DOC-01, R-OPS-04)
 

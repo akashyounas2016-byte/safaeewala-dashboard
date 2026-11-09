@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useState, useMemo } from 'react'
+import { ModuleTabs } from './ModuleTabs'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Menu, Bot, ChevronRight } from 'lucide-react'
@@ -144,6 +145,8 @@ export function Layout() {
               <ConfirmHost />
               <FormGuard /> {/* UX-84: required fields in every popup */}
 
+              {/* UX-117: Clients · Monthly Clients, Expenses · Inventory, Reports · Analytics, Alerts · Complaints */}
+              <div className="mb-4 empty:hidden"><ModuleTabs /></div>
               <ErrorBoundary key={location.pathname}>
                 <Outlet />
               </ErrorBoundary>

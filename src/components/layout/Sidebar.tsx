@@ -1,4 +1,6 @@
 import { Fragment, useState, useMemo, type ElementType } from 'react'
+import { useLocation } from 'react-router-dom'
+import { groupPaths, MODULE_GROUPS } from '@/lib/moduleGroups'
 import { NavLink } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
@@ -35,12 +37,10 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { to: '/alerts',           label: 'Alerts',            icon: Bell,            category: 'Workspace' }, // R-ALERT-01
   { to: '/bookings',         label: 'Bookings',          icon: CalendarCheck,                              category: 'Workspace' },
   { to: '/daily-job-sheet',  label: 'Daily Job Sheet',   icon: ClipboardList,   adminOnly: true,    category: 'Workspace' },
-  { to: '/fluent-forms',     label: 'Fluent Forms',      icon: Globe,                               category: 'Workspace' },
+  { to: '/fluent-forms',     label: 'Leads (Website)',   icon: Globe,                               category: 'Workspace' }, // owner 2026-11-09 (was Fluent Forms)
   { to: '/whatsapp-crm',     label: 'Conversations',     icon: MessageCircle,                       category: 'Workspace' }, // R-WA-01, R-INBOX-02: one screen for WhatsApp + Facebook + Instagram
   { to: '/marketing',        label: 'Marketing',         icon: Megaphone,                           category: 'Workspace' }, // owner request 2026-11-06
-  { to: '/complaints',       label: 'Complaints',        icon: MessageSquareWarning,                category: 'Workspace' }, // R-CMP-01
   { to: '/clients',          label: 'Clients',           icon: Users,                               category: 'Workspace' },
-  { to: '/monthly-clients',  label: 'Monthly Clients',   icon: TrendingUp,                          category: 'Workspace' },
   { to: '/employees',        label: 'Employees',         icon: UserCheck,                           category: 'Workspace' },
   { to: '/attendance',       label: 'Attendance System', icon: CalendarDays,                        category: 'Workspace' },
   { to: '/drivers',          label: 'Drivers',           icon: Truck,                               category: 'Workspace' },
@@ -49,13 +49,11 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
 
   // ── Finance & Operations ──
   { to: '/invoices',         label: 'Invoices',          icon: FileText,                            category: 'Finance & Operations' },
-  { to: '/inventory',        label: 'Inventory',         icon: Package,                             category: 'Finance & Operations' },
   { to: '/expenses',         label: 'Expenses',          icon: TrendingDown,                        category: 'Finance & Operations' },
   { to: '/payments',         label: 'Payments',          icon: CreditCard,                          category: 'Finance & Operations' },
 
   // ── Operations ──
   { to: '/reports',          label: 'Reports',           icon: BarChart3,                           category: 'Operations' },
-  { to: '/analytics',        label: 'Analytics',         icon: BarChart3,                           category: 'Operations' },
   { to: '/settings',         label: 'Settings',          icon: Settings,                            category: 'Operations' },
 ]
 
@@ -79,7 +77,10 @@ interface NavItemProps {
   onToggleFavorite?: (e: React.MouseEvent) => void
 }
 
-function NavItem({ to, label, icon: Icon, onClose, tag, badge, badgeTitle, onClick, isFavorite, onToggleFavorite }: NavItemProps) {
+function NavItem({ to, label, icon: Icon, onClose, tag, badge, badgeTitle, onClick, isFavorite, onToggleFavorite, groupKey }: NavItemProps & { groupKey?: string }) {
+  const { pathname } = useLocation()
+  const tabs = MODULE_GROUPS[groupKey || to]
+  const onTab = !!tabs && tabs.some(t => pathname === t.to || pathname.startsWith(`${t.to}/`))
   const handleClick = () => {
     onClose()
     if (to === '/agencies') {
@@ -96,11 +97,11 @@ function NavItem({ to, label, icon: Icon, onClose, tag, badge, badgeTitle, onCli
       className={({ isActive }) =>
         cn(
           'flex items-center gap-3 px-4 py-3 rounded-2xl text-[14px] font-medium transition-all duration-150 group',
-          isActive ? 'nav-active' : 'nav-inactive'
+          isActive || onTab ? 'nav-active' : 'nav-inactive'
         )
       }
     >
-      {({ isActive }) => (
+      {({ isActive: exact }) => { const isActive = exact || onTab; return (
         <>
           <Icon
             size={16}
@@ -159,7 +160,7 @@ function NavItem({ to, label, icon: Icon, onClose, tag, badge, badgeTitle, onCli
             <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] shrink-0" />
           )}
         </>
-      )}
+      )}}
     </NavLink>
   )
 }
@@ -288,8 +289,11 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
   const accessibleItems = useMemo(() => {
     return sortedNavItems.filter(item => {
       // Only the screens this user's role allows (R-SEC-03); staff logins by their staff role (R-SEC-07)
-      const mod = moduleForPath(item.to)
-      return !mod || canAccessModule(me?.role, rolePerms, mod, staffRole)
+      // UX-117: a merged item (Clients, Expenses, Reports, Alerts) counts when any of its tabs is allowed
+      return groupPaths(item.to).some(p => { const mod = moduleForPath(p); return !mod || canAccessModule(me?.role, rolePerms, mod, staffRole) })
+    }).map(item => {
+      const first = groupPaths(item.to).find(p => { const mod = moduleForPath(p); return !mod || canAccessModule(me?.role, rolePerms, mod, staffRole) })
+      return first && first !== item.to ? { ...item, to: first, groupKey: item.to } : item
     })
   }, [sortedNavItems, me?.role, rolePerms, staffRole])
 

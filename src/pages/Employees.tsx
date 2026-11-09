@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
+import { useSalaryAccess, SALARY_HIDDEN } from '@/store/useModuleAccess'
 import * as XLSX from 'xlsx'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import {
@@ -90,7 +91,8 @@ export function getEmployeeAgencySource(emp: { agency_id?: string; agency_name?:
 
 function exportEmployeesXLSX(
   employees: Employee[],
-  statsMap: Map<string, { shifts: number; dutyHours: number; otHours: number }>
+  statsMap: Map<string, { shifts: number; dutyHours: number; otHours: number }>,
+  seeSalary = true, // R-SEC-08
 ) {
   const rows = employees.map((e, i) => {
     const st = statsMap.get(e.id)
@@ -108,7 +110,7 @@ function exportEmployeesXLSX(
       'OT Hours':                  otHours,
       'Total Hours':               totalHours,
       'Total Shifts':              st?.shifts ?? 0,
-      'Monthly Salary (AED)':      monthlySalary,
+      'Monthly Salary (AED)':      seeSalary ? monthlySalary : '',
       'Agency':                    getEmployeeAgencySource(e),
       'Phone':                     e.phone,
       'Nationality':               e.nationality,
@@ -229,6 +231,7 @@ type SortBy = 'working_today' | 'ot_desc' | 'duty_desc' | 'shifts_desc' | 'name_
 type ViewMode = 'grid' | 'table'
 
 export function Employees() {
+  const seeSalary = useSalaryAccess() // R-SEC-08: salaries for Admin and roles given Salary
   const { employees, bookings, dailyJobs, clients, agencies, addEmployee, updateEmployee, deleteEmployee: removeEmployee, attendanceMarks } = useData()
   // EMP-02: deleting asks first (the card and table buttons deleted at once)
   const deleteEmployee = async (id: string) => {
@@ -875,7 +878,7 @@ export function Employees() {
                     <span className="font-medium text-slate-700">{emp.phone || 'No phone'}</span>
                   </div>
                   <span className="text-[11.5px] font-black text-teal-800 bg-teal-50 border border-teal-200/90 px-2 py-0.5 rounded-lg shadow-2xs">
-                    {formatMonthlySalary(emp)}
+                    {seeSalary ? formatMonthlySalary(emp) : SALARY_HIDDEN}
                   </span>
                 </div>
 
@@ -978,7 +981,7 @@ export function Employees() {
               {isColVisible('otHours') && <th className="py-3.5 px-3 text-right">Overtime (OT)</th>}
               {isColVisible('totalHours') && <th className="py-3.5 px-3 text-right">Total Hours</th>}
               {isColVisible('shifts') && <th className="py-3.5 px-3 text-center">Shifts</th>}
-              {isColVisible('salary') && <th className="py-3.5 px-3">Monthly Salary</th>}
+              {seeSalary && isColVisible('salary') && <th className="py-3.5 px-3">Monthly Salary</th>}
               {isColVisible('visa') && <th className="py-3.5 px-3">Visa Expiry</th>}
               {isColVisible('actions') && <th className="py-3.5 px-4 text-right">Actions</th>}
             </tr>
@@ -1083,9 +1086,9 @@ export function Employees() {
                   )}
 
                   {/* Monthly Salary */}
-                  {isColVisible('salary') && (
+                  {seeSalary && isColVisible('salary') && (
                     <td className="py-3 px-3 font-black text-slate-900">
-                      {formatMonthlySalary(emp)}
+                      {seeSalary ? formatMonthlySalary(emp) : SALARY_HIDDEN}
                     </td>
                   )}
 
@@ -1196,7 +1199,7 @@ export function Employees() {
             </button>
             <button
               type="button"
-              onClick={() => exportEmployeesXLSX(filtered, staffJobStats)}
+              onClick={() => exportEmployeesXLSX(filtered, staffJobStats, seeSalary)}
               className="h-11 px-4 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-[13px] backdrop-blur-sm transition-all shrink-0 flex items-center justify-center gap-2 cursor-pointer shadow-xs"
               title="Export staff work list with Duty & OT to Excel"
             >
@@ -1344,7 +1347,7 @@ export function Employees() {
                 <option value="duty_desc">💼 Highest Duty Hours</option>
                 <option value="shifts_desc">📊 Most Shifts</option>
                 <option value="name_asc">👤 Name (A-Z)</option>
-                <option value="rate_desc">💵 Highest Monthly Salary</option>
+                {seeSalary && <option value="rate_desc">💵 Highest Monthly Salary</option>}
               </optgroup>
 
               <optgroup label="🏢 Filter by Agency / Vendor">
@@ -1704,7 +1707,7 @@ export function Employees() {
               {/* Contact and Details (with Monthly Salary, Agency, Joining and End Date) */}
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  { label: 'Monthly Salary', value: formatMonthlySalary(selected) },
+                  { label: 'Monthly Salary', value: seeSalary ? formatMonthlySalary(selected) : SALARY_HIDDEN },
                   { label: 'Role',           value: formatEmpRole(selected.role) },
                   { label: 'Agency Source',  value: getEmployeeAgencySource(selected) },
                   { label: 'Joining Date',   value: formatDate(selected.joined_date) },

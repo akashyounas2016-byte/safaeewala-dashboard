@@ -36,6 +36,7 @@ export const APP_MODULES = [
   { key: 'Expenses',        paths: ['/expenses'] },
   { key: 'Payments',        paths: ['/payments', '/pending'] }, // R-FIN-08: Pending is a tab of Payments
   { key: 'Pending',         paths: [] }, // kept: the database write rules (role_based_writes.sql) still name it
+  { key: 'Salary',          paths: [] }, // R-SEC-08: see cleaners' salaries (not a screen; Admin only unless given)
   { key: 'Reports',         paths: ['/reports'] },
   { key: 'Analytics',       paths: ['/analytics'] },
   { key: 'Settings',        paths: ['/settings'] },
@@ -61,7 +62,7 @@ export const PERM_ROLES: { key: PermRole; label: string }[] = [
 /** Screens each role gets until the admin changes them (admin always gets everything) */
 export type RolePerms = Record<PermRole, ModuleKey[]>
 export const DEFAULT_ROLE_PERMS: RolePerms = {
-  manager:    ALL_MODULE_KEYS.filter(k => k !== 'Settings'),
+  manager:    ALL_MODULE_KEYS.filter(k => k !== 'Settings' && k !== 'Salary'), // R-SEC-08: salary is Admin-only by default
   employee:   ['Overview', 'Bookings', 'Attendance', 'My Duties'],
   supervisor: ['Overview', 'Alerts', 'Bookings', 'Daily Job Sheet', 'Attendance', 'Drivers', 'My Duties'],
   driver:     ['My Duties'], // R-SEC-05: field staff see their own duties only, unless the admin adds screens
@@ -93,7 +94,7 @@ export function moduleForPath(pathname: string): ModuleKey | null {
 
 /** Clean stored permissions: keep only known screens */
 /** Screens added after permissions could first be saved; a save older than them gets their defaults (R-ALERT-01) */
-const ADDED_LATER: ModuleKey[] = ['Alerts', 'WhatsApp', 'Inbox', 'Marketing', 'Complaints', 'AI Bot']
+const ADDED_LATER: ModuleKey[] = ['Alerts', 'WhatsApp', 'Inbox', 'Marketing', 'Complaints', 'AI Bot', 'Salary']
 
 export function normalizeRolePerms(stored: unknown): RolePerms {
   const out = Object.fromEntries(PERM_ROLES.map(r => [r.key, [...DEFAULT_ROLE_PERMS[r.key]]])) as RolePerms

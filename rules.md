@@ -720,6 +720,18 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/permissions.ts → PermRole, PERM_ROLES, permRoleOf, canAccessModule`; `App.tsx → ModuleGate`; `Sidebar.tsx`; `UserManagement.tsx → RolePermissionsPanel`.
 - **Status:** In code · the database part needs the migration · Since: 2026-11-05
 
+### R-SEC-08 — Cleaners' salary only for Admin (or roles given "Salary")
+- **Rule:** *"Roles and Screen Access settings mein 'Salary' visibility ka option … cleaner ki salary sirf Admin ko show ho. Manager, Employee, aur deegar roles ke liye permissions customize."* (2026-11-09)
+  - Settings → Roles & Access has a **Salary** row (not a screen). Admin always sees salaries. Every other column starts **off**, Manager included; the admin can tick it per column.
+  - **Without it:**
+    - Monthly salary is shown as •••• on Employees (cards, table column hidden, detail, "Highest salary" sort, Excel export left blank), on the Employee profile and in the Agency staff list / profile.
+    - The Employee popup does not show the salary field: the saved salary stays, and a new employee gets none until Admin sets it.
+    - Agency: the "Salary Payout" button and the Staff & Salaries Payout tab are hidden.
+    - Reports: the Staff Payroll table is hidden.
+  - **Limit:** this is a screen rule. The salary is still in the employee record that the CRM loads, so a technical user could read it in the browser. Hiding it in the database needs a separate salary table (not done).
+- **Code:** `src/lib/permissions.ts` (Salary key), `src/store/useModuleAccess.ts → useSalaryAccess`, `Employees.tsx`, `EmployeeProfile.tsx`, `EmployeeFormModal.tsx`, `AgencyDashboard.tsx`, `Reports.tsx`, `UserManagement.tsx`.
+- **Status:** Active · Since: 2026-11-09
+
 ### R-SEC-05 — Cleaners and drivers see only their own duties
 - **Rule:** *"cleaners ko sirf cleaners ki duties aur drivers ko sirf drivers ki duties nazar ayen, aur koi dosra inhein access na kar sakay."*
   - **Field staff** = a login with role *Employee* linked to a staff record (Settings → Users) whose staff role is not *supervisor*.
