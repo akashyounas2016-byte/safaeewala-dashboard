@@ -47,12 +47,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const loadProfile = useCallback(async (authUserId: string | null, email: string) => {
     if (!authUserId) { signedInAs.current = null; setUser(null); setStatus('signed_out'); return }
-    const [{ data: profile }, { data: settings }] = await Promise.all([
+    const [{ data: profile, error: profError }, { data: settings }] = await Promise.all([
       supabase.from('profiles').select('login_id, full_name, role, status, employee_id').eq('id', authUserId).maybeSingle(),
       supabase.from('company_settings').select('data').eq('id', 1).maybeSingle(),
     ])
     setRolePerms(normalizeRolePerms(settings?.data?.rolePermissions))
-    if (!profile) { signedInAs.current = null; setUser(null); setStatus('no_profile'); return }
+    // Network glitch / temporary error: keep existing signed-in user instead of kicking out to no_profile / signed_out
+    if (profError) {
+      console.warn('Profile fetch network error:', profError.message)
+      if (signedInAs.current === authUserId) return
+    }
+    if (!profile) {
+      if (!profError) {
+        signedInAs.current = null; setUser(null); setStatus('no_profile')
+      }
+      return
+    }
     if (profile.status !== 'active') { signedInAs.current = null; setUser(null); setStatus('disabled'); return }
     const next: CurrentUser = {
       id: authUserId,

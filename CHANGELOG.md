@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(realtime): unique channel name for duty issues subscription in `useAlerts`, preventing "cannot add callbacks after subscribe" error when multiple components mount (R-ALERT-04)
+- fix(auth): extend idle auto-logout timer to 24 hours (1440 min) and add network error resilience in `loadProfile` to prevent unwanted session logouts (SEC-01)
+
 - feat(alerts): centralized Cleaner duty issues in Sidebar Alerts module with Realtime updates, high-severity badges, cleaner notes, and direct links to Job Sheet and Booking (R-ALERT-04)
 - feat(employees): Skills and Client Assessment widget redesigned into a clean 3-column row (Skills, Comments/Remarks notes, Client selection dropdown) (R-EMP-10)
 - feat(jobs, bookings): Team Reference section includes selectable Team Leader dropdown; address selection bug resolved to preserve previously entered start time, end time, and duty hours (R-JOB-09)

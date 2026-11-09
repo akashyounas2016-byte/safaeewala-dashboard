@@ -98,8 +98,8 @@ function AuthMessage({ icon, title, text, onSignOut }: { icon: string; title: st
   )
 }
 
-/** E2E-13: a signed-in browser left alone this long is signed out */
-const IDLE_SIGN_OUT_MINUTES = 120
+/** E2E-13: a signed-in browser left alone this long is signed out (extended to 24 hours to prevent mid-workday logouts) */
+const IDLE_SIGN_OUT_MINUTES = 1440
 
 /** Login is required everywhere, localhost included — the database only answers signed-in users (SEC-01, DEC-014) */
 /** R-FIN-08: old /pending links open the same tab inside Payments */
