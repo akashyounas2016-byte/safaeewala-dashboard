@@ -147,7 +147,11 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
     - WhatsApp screen (UX-114): one white card filling the screen (like Inbox). Left module rail 220 px (#FAFBFA; icon + label; active = white pill with a hairline border and green icon; 64 px icons-only below lg) with "WhatsApp CRM · Connected / Not connected" on top and Full screen / Back to Sidebar at the bottom. Right: 64 px title bar (module icon, name, one-line note, amber "Sending off" chip when Meta is not connected, Full screen / Back to Sidebar button — dark when full screen). Broadcasts has its own sub-menu column (Contacts List · Create Campaign · Campaign List · Retarget Campaign; active = emerald-50). Chat team bar: status pill, assignee, tags, Notes drawer (amber notes, grey history lines).
     - Merged screens (UX-117, 2026-11-09):
       - Monthly Clients, Inventory, Analytics and Complaints have no sidebar item. They are tabs of Clients, Expenses, Reports and Alerts.
-      - The tabs sit at the foot of the dark page header: a translucent pill bar, with the active tab white. Only the tabs the role may open are shown.
+      - The tabs sit under the page header like Marketing's tabs: a white pill bar, active tab #0F1F19. Only the tabs the role may open are shown. Since 2026-11-09, Employees ⊃ Attendance as well.
+    - Bookings date filter (UX-121): All Time, Today, Yesterday, Last 3 / 7 / 30 Days, Last 3 / 6 Months, Last 1 Year, Custom Range…; default Today; Dubai dates.
+    - Settings → Users password (UX-122):
+      - The key icon opens a window and changes nothing. It explains that the current password cannot be shown (it is a one-way hash).
+      - The window has a **Generate New Password** button, or "type a password myself". "Set password" works only with a valid password.
     - Popups (UX-119): header buttons never wrap (one line); a long title wraps instead. The agency payout popup is called "Payment and Advances".
     - Conversations → Templates (UX-120): no title. Search, status dropdown (All, Favorites, Approved, Rejected, …), category, type, sort, Refresh and New Template are in one row, which wraps on narrow screens.
       - The sidebar item stays highlighted on any of its tabs. A role allowed only a tab still gets the item, which leads to that tab.

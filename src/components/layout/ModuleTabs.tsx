@@ -21,7 +21,7 @@ export function ModuleTabs({ tone = 'light' }: { tone?: 'light' | 'dark' } = {})
   return (
     <nav aria-label="Sections" className={dark
       ? 'relative z-10 mt-5 -mb-1 flex items-center gap-1 p-1 rounded-2xl bg-white/10 border border-white/15 w-fit max-w-full overflow-x-auto backdrop-blur-sm'
-      : 'flex items-center gap-1 p-1 bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_2px_10px_rgba(15,23,42,0.04)] w-fit max-w-full overflow-x-auto'}>
+      : '-mt-2 mb-6 flex items-center gap-1 p-1 bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_2px_10px_rgba(15,23,42,0.04)] w-fit max-w-full overflow-x-auto'}>
       {tabs.map(t => (
         <NavLink key={t.to} to={t.to} end
           className={({ isActive }) => `px-4 py-1.5 rounded-xl text-[13px] whitespace-nowrap transition-colors ${dark

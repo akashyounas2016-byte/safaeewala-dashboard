@@ -66,6 +66,27 @@ export function readFiles(files: FileList | File[] | null, category: string, by?
 }
 
 /**
+ * R-DOC-02: picked files go to private Storage at once (images and PDFs), so the record only ever holds
+ * "storage:<path>". A file that cannot be uploaded keeps its data and is moved on save (R-SYNC-15) — never lost.
+ */
+export async function storePicked<T extends VersionedDoc>(docs: T[], folder: string): Promise<{ docs: T[]; failed: number }> {
+  const { uploadInlineDocs } = await import('@/lib/docStorage')
+  const done = await uploadInlineDocs(folder, docs)
+  return { docs: docs.map(d => { const u = done.get(d.id); return u ? { ...d, file_data: u.to } : d }), failed: docs.length - done.size }
+}
+
+/** Read picked files and put them in Storage straight away (folder e.g. "employees/<id>" or "agencies/new") */
+export async function readAndStore(files: FileList | File[] | null, category: string, folder: string, by?: string): Promise<VersionedDoc[]> {
+  const read = await readFiles(files, category, by)
+  const { docs, failed } = await storePicked(read, folder)
+  if (failed) {
+    const { notify } = await import('@/lib/notify')
+    notify.error(`${failed} file${failed > 1 ? 's' : ''} could not be uploaded now — ${failed > 1 ? 'they are' : 'it is'} kept and uploaded again on save`)
+  }
+  return docs
+}
+
+/**
  * Employees: the documents list with every image of every version. Old employees only have one image per document
  * in eid_file, passport_file … — that image is added as the current one when the list has none for the document.
  */

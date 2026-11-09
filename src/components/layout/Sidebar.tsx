@@ -42,7 +42,6 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { to: '/marketing',        label: 'Marketing',         icon: Megaphone,                           category: 'Workspace' }, // owner request 2026-11-06
   { to: '/clients',          label: 'Clients',           icon: Users,                               category: 'Workspace' },
   { to: '/employees',        label: 'Employees',         icon: UserCheck,                           category: 'Workspace' },
-  { to: '/attendance',       label: 'Attendance System', icon: CalendarDays,                        category: 'Workspace' },
   { to: '/drivers',          label: 'Drivers',           icon: Truck,                               category: 'Workspace' },
   { to: '/my-duties',        label: 'My Duties',         icon: Navigation,                          category: 'Workspace' },
   { to: '/agencies',         label: 'Agencies',          icon: Building2,                           category: 'Workspace' },

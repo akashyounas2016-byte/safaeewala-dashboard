@@ -14,7 +14,7 @@ eq([job.staff_name, job.area, job.material, job.charges, job.received, job.booki
 eq(job.remarks, '[Booking] Bring ladder', 'notes carried as remarks')
 
 eq(jobPatchFromBookingPatch({ scheduled_time: '10:00' }, booking, null), { start_time: '10:00' }, 'BJ-01/02: only changed fields — no received / staff reset')
-eq(jobPatchFromBookingPatch({ status: 'completed' }, booking, null), { received: 300 }, 'completed = full charge collected')
+eq(jobPatchFromBookingPatch({ status: 'completed' }, booking, null), { received: 300, status: 'completed' }, 'completed = full charge collected; the job row carries the status (R-DUTY-02)')
 eq(jobPatchFromBookingPatch({ material: 'No', notes: '' }, booking, null), { material: 'No', remarks: '' }, 'BJ-14: material and notes follow')
 eq(jobPatchFromBookingPatch({ assigned_crew: ['e9'] }, booking, null), {}, 'unknown crew does not blank the cleaner')
 

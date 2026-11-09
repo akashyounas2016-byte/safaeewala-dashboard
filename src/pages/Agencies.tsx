@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useId } from 'react'
 import { DocVersionsField } from '@/components/common/DocVersionsField'
-import { addVersion, readFiles, removeVersion } from '@/lib/docVersions'
+import { addVersion, readAndStore, removeVersion } from '@/lib/docVersions'
 import { useNavigate } from 'react-router-dom'
 import {
   Building2, Plus, Search, Phone, Mail, MapPin, Users,
@@ -227,7 +227,7 @@ function handleFileUpload(
   setDocs: React.Dispatch<React.SetStateAction<AgencyDocument[]>>
 ) {
   if (!files || files.length === 0) return
-  void readFiles(files, category).then(added => setDocs(prev => addVersion(prev, category, added as AgencyDocument[])))
+  void readAndStore(files, category, 'agencies/new').then(added => setDocs(prev => addVersion(prev, category, added as AgencyDocument[])))
 }
 
 // ── R-DOC-01: agency document field — one or more images; the replaced set shows under it as Previous ──

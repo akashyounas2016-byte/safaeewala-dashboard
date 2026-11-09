@@ -6,6 +6,13 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(documents): Upload image or PDF everywhere; PDFs preview; picked files go to Storage at once (no more empty "No binary file preview" records) (R-DOC-02)
+- feat(my-duties): Start Job / End Job popups; Start → booking In progress, End → Completed (database trigger); office-completed bookings show as done on the phone (R-DUTY-02)
+- feat(sidebar): Attendance is a tab of Employees; merged-screen tabs under the header like Marketing (UX-117)
+- feat(bookings): date filter All Time · Today · Yesterday · Last 3 / 7 / 30 Days · … · Custom; default Today; Dubai dates (UX-121)
+- feat(users): the key icon no longer makes a password by itself — explicit Generate New Password (UX-122)
+- db: `2026-11-09_duty_booking_sync.sql` — to run in Supabase
+
 - feat(ghl): Marketing → Google posts — update / event / offer with button and photo, post now / schedule / draft, list of posts, through GHL Social Planner (needs the key's Social Planner scopes) (R-GHL-02)
 - feat(whatsapp): Google review link setting; {review_link} in notification templates and quick replies (R-GHL-01)
 

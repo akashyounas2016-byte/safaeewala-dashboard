@@ -6,16 +6,17 @@ import { canAccessModule, DEFAULT_ROLE_PERMS, normalizeRolePerms } from '@/lib/p
 const eq = (a: unknown, b: unknown, m: string) => {
   if (JSON.stringify(a) !== JSON.stringify(b)) { console.log('FAIL', m, JSON.stringify(a), JSON.stringify(b)); process.exitCode = 1 } else console.log('PASS ', m)
 }
-eq(MERGED_PATHS.sort(), ['/analytics', '/complaints', '/inventory', '/monthly-clients'], 'Monthly Clients, Inventory, Analytics, Complaints are tabs')
+eq(MERGED_PATHS.sort(), ['/analytics', '/attendance', '/complaints', '/inventory', '/monthly-clients'], 'Monthly Clients, Attendance, Inventory, Analytics, Complaints are tabs')
 eq([groupOf('/monthly-clients'), groupOf('/clients/c1'), groupOf('/inventory'), groupOf('/analytics'), groupOf('/complaints'), groupOf('/bookings')], ['/clients', '/clients', '/expenses', '/reports', '/alerts', null], 'each tab belongs to its parent')
 eq(groupPaths('/alerts'), ['/alerts', '/complaints'], 'Alerts item covers Complaints')
-eq(Object.keys(MODULE_GROUPS), ['/clients', '/expenses', '/reports', '/alerts'], 'four parent screens')
+eq(Object.keys(MODULE_GROUPS), ['/clients', '/expenses', '/employees', '/reports', '/alerts'], 'five parent screens (Employees ⊃ Attendance since 2026-11-09)')
+eq(groupOf('/attendance'), '/employees', 'Attendance is a tab of Employees')
 
 const side = readFileSync('src/components/layout/Sidebar.tsx', 'utf8')
-eq(['/monthly-clients', '/inventory', '/analytics', '/complaints'].some(p => new RegExp(`\\{ to: '${p.replace('/', '\\/')}',`).test(side)), false, 'merged screens have no sidebar item')
+eq(['/monthly-clients', '/inventory', '/analytics', '/complaints', '/attendance'].some(p => new RegExp(`\\{ to: '${p.replace('/', '\\/')}',`).test(side)), false, 'merged screens have no sidebar item')
 eq(/label: 'Leads \(Website\)'/.test(side) && !/label: 'Fluent Forms'/.test(side), true, 'Fluent Forms is called Leads (Website)')
 eq(/groupPaths\(item\.to\)\.some/.test(side), true, 'an item shows when any of its tabs is allowed')
-eq(/<ModuleTabs tone="dark" \/>/.test(readFileSync('src/components/layout/PageHero.tsx', 'utf8')) && !/<ModuleTabs/.test(readFileSync('src/components/layout/Layout.tsx', 'utf8')), true, 'tabs sit at the foot of the page header (UX-117)')
+eq(/<\/section>\s*\{\/\*[^*]*\*\/\}\s*<ModuleTabs \/>/.test(readFileSync('src/components/layout/PageHero.tsx', 'utf8')) && /<ModuleTabs \/>/.test(readFileSync('src/pages/Attendance.tsx', 'utf8')), true, 'tabs sit under the page header, like Marketing (UX-117, 2026-11-09)')
 
 // R-SEC-08
 eq([canAccessModule('admin', DEFAULT_ROLE_PERMS, 'Salary'), canAccessModule('manager', DEFAULT_ROLE_PERMS, 'Salary'), canAccessModule('employee', DEFAULT_ROLE_PERMS, 'Salary')], [true, false, false], 'salary: Admin only by default')

@@ -25,10 +25,27 @@ import { useData } from '@/store/DataContext'
 import type { Booking, BookingFrequency, BookingStatus, Employee, Client, DailyJob } from '@/types'
 import { SourceOriginTag, resolveBookingSource } from '@/lib/sourceTracking'
 import { cleanClientNameFromAddress, isBogusJob, isMonthlyClient, crewToStaffName, staffNameToCrew, syncMonthlySchedulesToDailyJobs, getScheduledMonthlyShiftsForDate } from '@/lib/clientDataSync'
-import { todayDubai } from '@/lib/dubaiTime'
+import { todayDubai, addDays } from '@/lib/dubaiTime'
 import { cleanerPalette, cleanerInitials } from '@/lib/cleanerColors' // UX-63: shared with the client cards
 
-export type BookingDatePreset = 'today' | '7days' | '30days' | '3months' | '6months' | '1year' | 'all' | 'custom'
+export type BookingDatePreset = 'all' | 'today' | 'yesterday' | '3days' | '7days' | '30days' | '3months' | '6months' | '1year' | 'custom'
+/** UX-121: Bookings date filter, in this order; default Today. Dates are Dubai dates (R-DATA-06). */
+export const BOOKING_DATE_PRESETS: { id: BookingDatePreset; label: string; days?: number; months?: number }[] = [
+  { id: 'all', label: 'All Time' }, { id: 'today', label: 'Today' }, { id: 'yesterday', label: 'Yesterday' },
+  { id: '3days', label: 'Last 3 Days', days: 3 }, { id: '7days', label: 'Last 7 Days', days: 7 }, { id: '30days', label: 'Last 30 Days', days: 30 },
+  { id: '3months', label: 'Last 3 Months', months: 3 }, { id: '6months', label: 'Last 6 Months', months: 6 }, { id: '1year', label: 'Last 1 Year', months: 12 },
+  { id: 'custom', label: 'Custom Range…' },
+]
+/** The from–to (YYYY-MM-DD, Dubai) of a preset; 'Last 3 Days' = today and the 2 days before */
+export function bookingRange(p: BookingDatePreset, today: string, custom: { start: string; end: string }): { start: string; end: string; label: string } {
+  const d = BOOKING_DATE_PRESETS.find(x => x.id === p)
+  if (p === 'today') return { start: today, end: today, label: 'Today' }
+  if (p === 'yesterday') { const y = addDays(today, -1); return { start: y, end: y, label: 'Yesterday' } }
+  if (d?.days) return { start: addDays(today, -(d.days - 1)), end: today, label: d.label }
+  if (d?.months) { const [Y, M, D] = today.split('-').map(Number); const t = new Date(Date.UTC(Y, M - 1 - d.months, D)); return { start: t.toISOString().slice(0, 10), end: today, label: d.label } }
+  if (p === 'custom') return { start: custom.start, end: custom.end, label: custom.start && custom.end ? `${custom.start} to ${custom.end}` : 'Custom Range' }
+  return { start: '', end: '', label: 'All Time' }
+}
 export type BookingViewMode = 'grid' | 'table' | 'kanban' | 'calendar'
 
 /* ─── Table Columns Definition & Customization ─── */
@@ -600,43 +617,7 @@ export function Bookings() {
     return [...enrichedBookings, ...syntheticBookings]
   }, [bookings, dailyJobs, employees, clients])
 
-  const activeDateRange = useMemo(() => {
-    const now = new Date()
-    const todayStr = now.toISOString().split('T')[0]
-    if (datePreset === 'today') {
-      return { start: todayStr, end: todayStr, label: 'Today' }
-    }
-    if (datePreset === '7days') {
-      const d = new Date(now)
-      d.setDate(d.getDate() - 7)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 7 Days' }
-    }
-    if (datePreset === '30days') {
-      const d = new Date(now)
-      d.setDate(d.getDate() - 30)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 30 Days' }
-    }
-    if (datePreset === '3months') {
-      const d = new Date(now)
-      d.setMonth(d.getMonth() - 3)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 3 Months' }
-    }
-    if (datePreset === '6months') {
-      const d = new Date(now)
-      d.setMonth(d.getMonth() - 6)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 6 Months' }
-    }
-    if (datePreset === '1year') {
-      const d = new Date(now)
-      d.setFullYear(d.getFullYear() - 1)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 1 Year' }
-    }
-    if (datePreset === 'custom') {
-      const label = customStartDate && customEndDate ? `${customStartDate} to ${customEndDate}` : 'Custom Range'
-      return { start: customStartDate, end: customEndDate, label }
-    }
-    return { start: '', end: '', label: 'All Time' }
-  }, [datePreset, customStartDate, customEndDate])
+  const activeDateRange = useMemo(() => bookingRange(datePreset, todayDubai(), { start: customStartDate, end: customEndDate }), [datePreset, customStartDate, customEndDate])
 
   // Filter bookings by active date range
   const dateFilteredBookings = useMemo(() => {
@@ -1026,14 +1007,7 @@ export function Bookings() {
                 onChange={e => setDatePreset(e.target.value as BookingDatePreset)}
                 className="text-[12.5px] px-3.5 py-2 bg-teal-50/30 border border-teal-200/80 rounded-xl focus:outline-none focus:border-teal-500 text-teal-950 font-bold cursor-pointer transition-colors shadow-2xs hover:border-teal-300"
               >
-                <option value="today">📅 Today</option>
-                <option value="all">📅 All Time</option>
-                <option value="7days">📅 Last 7 Days</option>
-                <option value="30days">📅 Last 30 Days</option>
-                <option value="3months">📅 Last 3 Months</option>
-                <option value="6months">📅 Last 6 Months</option>
-                <option value="1year">📅 Last 1 Year</option>
-                <option value="custom">📅 Custom Range…</option>
+                {BOOKING_DATE_PRESETS.map(p => <option key={p.id} value={p.id}>📅 {p.label}</option>)}
               </select>
             </div>
 

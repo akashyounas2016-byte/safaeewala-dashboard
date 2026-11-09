@@ -18,7 +18,9 @@ function Row<T extends VersionedDoc>({ d, faded, onPreview, onRemove }: { d: T; 
       <button type="button" onClick={() => onPreview(d)} className="flex items-center gap-2 min-w-0 text-left cursor-pointer" title="Preview">
         {docKind(d) === 'image' && src
           ? <img src={src} alt={d.name} className={`w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0 ${faded ? 'opacity-75' : ''}`} />
-          : <span className="w-9 h-9 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700 shrink-0"><Paperclip size={14} /></span>}
+          : docKind(d) === 'pdf'
+            ? <span className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-700 text-[9.5px] font-black shrink-0">PDF</span>
+            : <span className="w-9 h-9 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700 shrink-0"><Paperclip size={14} /></span>}
         <span className="min-w-0">
           <span className="block text-[11.5px] font-bold text-slate-800 truncate" title={d.name}>{d.name || 'Document'}</span>
           <span className="block text-[10px] text-slate-400 truncate">
@@ -40,7 +42,7 @@ function Row<T extends VersionedDoc>({ d, faded, onPreview, onRemove }: { d: T; 
  * once; they become the current set, and the set they replace shows right under it as "Previous". Older sets are
  * under "History". Remove never deletes a file.
  */
-export function DocVersionsField<T extends VersionedDoc>({ label, category, docs, onUpload, onRemove, onPreview, accent = 'teal', uploadText = 'Upload Image / Copy' }: {
+export function DocVersionsField<T extends VersionedDoc>({ label, category, docs, onUpload, onRemove, onPreview, accent = 'teal', uploadText = 'Upload image or PDF' }: {
   label?: string
   category: string
   docs: T[]
@@ -78,7 +80,7 @@ export function DocVersionsField<T extends VersionedDoc>({ label, category, docs
 
       <label htmlFor={inputId} className={`flex items-center justify-center gap-2 py-1.5 px-3 rounded-xl border border-dashed border-slate-300 bg-white ${ACCENT[accent]} text-slate-600 transition-all cursor-pointer shadow-2xs`}>
         <Upload size={13} className="text-slate-400" />
-        <span className="text-[11.5px] font-bold">{current.length ? 'Upload new (one or more)' : uploadText}</span>
+        <span className="text-[11.5px] font-bold">{current.length ? 'Upload new image / PDF' : uploadText}</span>
       </label>
 
       {previous.length > 0 && (

@@ -105,6 +105,7 @@ export function UsersAdminPanel() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
+  const [typePassword, setTypePassword] = useState(false) // UX-122
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({ login_id: '', full_name: '', role: 'employee' as AppRole, employee_id: '', password: '', status: 'active' as 'active' | 'disabled' })
 
@@ -258,7 +259,7 @@ export function UsersAdminPanel() {
                 <td className="px-3 py-3">
                   <div className="flex gap-1 justify-end">
                     <button type="button" title="Edit" onClick={() => openEdit(u)} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer"><Pencil size={14} /></button>
-                    <button type="button" title="Reset password" onClick={() => { setForm(f => ({ ...f, password: generatePassword() })); setDialog({ kind: 'password', user: u }) }} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer"><KeyRound size={14} /></button>
+                    <button type="button" title="Password" onClick={() => { setForm(f => ({ ...f, password: '' })); setTypePassword(false); setDialog({ kind: 'password', user: u }) }} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer"><KeyRound size={14} /></button>
                     {u.id !== me?.id && (
                       <button type="button" title={u.status === 'active' ? 'Disable' : 'Enable'} onClick={() => void toggleStatus(u)}
                         className={`p-1.5 rounded-lg cursor-pointer ${u.status === 'active' ? 'text-rose-500 hover:bg-rose-50' : 'text-emerald-600 hover:bg-emerald-50'}`}><Power size={14} /></button>
@@ -309,9 +310,16 @@ export function UsersAdminPanel() {
         )}
       </Modal>
 
-      <Modal open={dialog?.kind === 'password'} onClose={() => setDialog(null)} title={dialog?.kind === 'password' ? `New password for ${dialog.user.login_id}` : ''} size="sm"
-        headerActions={dialog?.kind === 'password' ? <button type="button" disabled={busy} onClick={() => void submitPassword(dialog.user)} className="px-3.5 py-1.5 rounded-xl bg-emerald-700 text-white text-[12.5px] font-bold hover:bg-emerald-800 disabled:opacity-50 cursor-pointer">Set password</button> : null}>
-        <PasswordField value={form.password} onChange={v => setForm(f => ({ ...f, password: v }))} />
+      {/* UX-122: the key opens this window — nothing changes until the admin generates or types a new password and
+          presses Set password. The current password cannot be shown: Supabase keeps only a one-way hash (R-SEC-02). */}
+      <Modal open={dialog?.kind === 'password'} onClose={() => setDialog(null)} title={dialog?.kind === 'password' ? `Password — ${dialog.user.login_id}` : ''} size="sm"
+        headerActions={dialog?.kind === 'password' ? <button type="button" disabled={busy || !form.password || !!passwordProblem(form.password)} onClick={() => void submitPassword(dialog.user)} className="px-3.5 py-1.5 rounded-xl bg-emerald-700 text-white text-[12.5px] font-bold hover:bg-emerald-800 disabled:opacity-40 cursor-pointer">Set password</button> : null}>
+        <div className="space-y-3">
+          <p className="text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">The current password cannot be shown — it is stored only as a one-way code that nobody can read back, not even the admin. If the user forgot it, give a new one here.</p>
+          <button type="button" onClick={() => setForm(f => ({ ...f, password: generatePassword() }))} className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-300 text-emerald-800 bg-emerald-50 text-[12.5px] font-bold hover:bg-emerald-100 cursor-pointer"><RefreshCw size={13} /> Generate New Password</button>
+          {(form.password || typePassword) && <PasswordField value={form.password} onChange={v => setForm(f => ({ ...f, password: v }))} />}
+          {!form.password && !typePassword && <p className="text-[11.5px] text-slate-400 text-center">or <button type="button" onClick={() => setTypePassword(true)} className="underline cursor-pointer">type a password myself</button></p>}
+        </div>
       </Modal>
 
       <Modal open={dialog?.kind === 'credentials'} onClose={() => setDialog(null)} title="Login details" size="sm">

@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useId } from 'react'
 import { confirmAsync } from '@/lib/notify'
 import { useSalaryAccess, SALARY_HIDDEN } from '@/store/useModuleAccess'
 import { DocVersionsField } from '@/components/common/DocVersionsField'
-import { addVersion, readFiles, removeVersion } from '@/lib/docVersions'
+import { addVersion, readAndStore, removeVersion } from '@/lib/docVersions'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Building2, ArrowLeft, Users, CreditCard, FileText, CheckCircle2,
@@ -329,7 +329,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
   const handleEditFileUpload = (files: FileList | null, category: AgencyDocumentCategory) => {
     if (!files || files.length === 0) return
     // R-DOC-01: the whole batch becomes current at once (was: each file archived the one before it)
-    void readFiles(files, category).then(added => setEditDocs(prev => addVersion(prev, category, added as AgencyDocument[])))
+    void readAndStore(files, category, `agencies/${agency.id}`).then(added => setEditDocs(prev => addVersion(prev, category, added as AgencyDocument[])))
   }
 
   // UX-118: delete a document from the list (asks first). The file itself stays in Storage and in the nightly backup.
@@ -352,44 +352,12 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
       return
     }
 
-    const reader = new FileReader()
-    reader.onload = () => {
-      const base64Data = reader.result as string
-      const currentDocs = agency.documents || []
-      const categoryDocs = currentDocs.filter(d => d.category === category)
-      const nextVersion = categoryDocs.length + 1
-
-      // Archive previous active documents in this category
-      const archivedOldDocs = currentDocs.map(d => {
-        if (d.category === category && d.is_active !== false) {
-          return {
-            ...d,
-            is_active: false,
-            archived_at: new Date().toISOString()
-          }
-        }
-        return d
-      })
-
-      const newDoc: AgencyDocument = {
-        id: `doc-${category}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        name: file.name,
-        category,
-        file_data: base64Data,
-        file_type: file.type || 'application/octet-stream',
-        file_size: file.size,
-        uploaded_at: new Date().toISOString(),
-        is_active: true,
-        version: nextVersion,
-        notes: docNotes || undefined,
-      }
-
-      updateAgency(agency.id, {
-        documents: [newDoc, ...archivedOldDocs]
-      })
+    // R-DOC-02: the file (image or PDF) goes to Storage first; the new version becomes current, the old one Previous
+    void readAndStore([file], category, `agencies/${agency.id}`).then(added => {
+      const next = addVersion(agency.documents || [], category, added.map(d => ({ ...d, notes: docNotes || undefined })) as AgencyDocument[])
+      updateAgency(agency.id, { documents: next })
       setShowUploadDocModal(false)
-    }
-    reader.readAsDataURL(file)
+    })
   }
 
   // ── Save Comprehensive Edit Profile Modal ──
@@ -3188,8 +3156,9 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
               ) : (
                 <div className="text-center p-8 text-slate-400">
                   <AlertCircle size={36} className="mx-auto mb-2 text-slate-300" />
-                  <p className="font-bold text-slate-600">No binary file preview available</p>
-                  <p className="text-[12px] text-slate-400 mt-0.5">Please upload a scanned document or digital certificate.</p>
+                  {/* R-DOC-02: a record whose file never reached Storage (older uploads) — say so plainly */}
+                  <p className="font-bold text-slate-600">The file of this record is missing</p>
+                  <p className="text-[12px] text-slate-400 mt-0.5">It did not reach storage when it was uploaded. Upload it again (image or PDF) with Upload Document / Renewal.</p>
                 </div>
               )}
             </div>

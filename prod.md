@@ -113,6 +113,7 @@ There are **two** ways code reaches production. Both need the owner's permission
 7c. (R-INBOX-03 / R-WA-04) Supabase → SQL editor: run `supabase/migrations/2026-11-07_inbox_tags_notifications.sql` (Facebook / Instagram tags, notification log). Then create the notification templates in Conversations → Templates → Templates (Utility) and pick them in Settings → Notifications.
 7d. (R-WA-05) Supabase → SQL editor: run `supabase/migrations/2026-11-07_wa_templates.sql` (template builder). For image / video / document samples in templates add `WHATSAPP_APP_ID` (Meta app → App settings → Basic → App ID) to the VPS .env.
 7e. (R-MKT-01 / R-CMP-01) Supabase → SQL editor: run `supabase/migrations/2026-11-09_marketing_complaints.sql` (Marketing offers + campaigns, Complaints).
+7f. (R-DUTY-02) Supabase → SQL editor: run `supabase/migrations/2026-11-09_duty_booking_sync.sql` (My Duties Start / End job → booking In progress / Completed).
 8. If the number is not registered / the app gets no messages: WhatsApp → Settings → **Connect** (admin; a 6-digit PIN registers the number, and the WhatsApp account is subscribed to the app).
 
 ### Facebook + Instagram in the Inbox (R-INBOX-01)

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { ModuleTabs } from '@/components/layout/ModuleTabs'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Calendar, Clock, Users, UserCheck, CheckCircle2, AlertCircle,
@@ -471,6 +472,9 @@ export function Attendance() {
           </button>
         </div>
       </div>
+
+      {/* UX-117: Employees · Attendance tabs under the header (Attendance is a tab of Employees) */}
+      <div className="-mb-6"><ModuleTabs /></div>
 
       {/* ── Auto-Fetch Sync Feedback Toast ── */}
       {syncToast && (

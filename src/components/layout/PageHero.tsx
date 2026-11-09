@@ -48,6 +48,7 @@ export function PageHero({
   const cleanActionLabel = actionLabel ? actionLabel.replace(/^\+\s*/, '') : ''
 
   return (
+    <>
     <section className="gradient-card rounded-[24px] px-7 py-6 text-white shadow-[0_8px_32px_rgba(15,23,42,0.28)] ring-1 ring-black/10 mb-7 relative">
       {/* Glow (clipped separately so the notification panel can overflow the hero) */}
       <div className="absolute inset-0 rounded-[24px] overflow-hidden pointer-events-none">
@@ -140,8 +141,9 @@ export function PageHero({
 
         </div>
       </div>
-      {/* UX-117: tabs of a merged screen (Clients · Monthly Clients, …) at the foot of the header */}
-      <ModuleTabs tone="dark" />
     </section>
+    {/* UX-117: tabs of a merged screen (Clients · Monthly Clients, …) under the header, like Marketing's tabs */}
+    <ModuleTabs />
+    </>
   )
 }

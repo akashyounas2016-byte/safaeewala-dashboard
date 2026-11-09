@@ -1,6 +1,6 @@
 /**
  * UX-117: a cleaner sidebar — some screens are tabs of a parent screen instead of their own sidebar item:
- * Clients ⊃ Monthly Clients · Expenses ⊃ Inventory · Reports ⊃ Analytics · Alerts ⊃ Complaints.
+ * Clients ⊃ Monthly Clients · Employees ⊃ Attendance · Expenses ⊃ Inventory · Reports ⊃ Analytics · Alerts ⊃ Complaints.
  * Each screen keeps its own route and its own permission in Roles & Access.
  */
 export interface GroupTab { to: string; label: string }
@@ -8,6 +8,7 @@ export interface GroupTab { to: string; label: string }
 export const MODULE_GROUPS: Record<string, GroupTab[]> = {
   '/clients': [{ to: '/clients', label: 'Clients' }, { to: '/monthly-clients', label: 'Monthly Clients' }],
   '/expenses': [{ to: '/expenses', label: 'Expenses' }, { to: '/inventory', label: 'Inventory' }],
+  '/employees': [{ to: '/employees', label: 'Employees' }, { to: '/attendance', label: 'Attendance' }], // owner 2026-11-09
   '/reports': [{ to: '/reports', label: 'Reports' }, { to: '/analytics', label: 'Analytics' }],
   '/alerts': [{ to: '/alerts', label: 'Alerts' }, { to: '/complaints', label: 'Complaints' }],
 }

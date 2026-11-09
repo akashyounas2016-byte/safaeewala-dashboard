@@ -61,6 +61,8 @@ export function jobPatchFromBookingPatch(patch: Partial<Booking>, booking: Booki
   if (patch.material !== undefined) out.material = patch.material as DailyJob['material']
   if (patch.notes !== undefined) out.remarks = patch.notes ? `${BOOKING_NOTE}${patch.notes}` : ''
   if (patch.status === 'completed') out.received = num(patch.total_amount ?? booking.total_amount)
+  // R-DUTY-02: the job row carries the booking's status, so My Duties shows a booking completed in the office as done
+  if (patch.status === 'in_progress' || patch.status === 'completed' || patch.status === 'confirmed') out.status = patch.status
   if (patch.received_amount !== undefined) out.received = num(patch.received_amount)
   if (patch.row_color !== undefined) out.row_color = patch.row_color
   return out

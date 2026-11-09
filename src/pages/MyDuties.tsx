@@ -273,14 +273,20 @@ function DutyCard({ duty: d, index, checkin, client, canUpdate, onStep }: {
   const material = String(d.job.material || '').trim()
   const [issueOpen, setIssueOpen] = useState(false)
   const [issue, setIssue] = useState('')
-  const next = nextStep(checkin?.status)
+  // R-DUTY-02: Start Job / End Job ask first in a popup (big buttons, made for a phone — the same flow the app will use)
+  const [confirm, setConfirm] = useState<'started' | 'done' | null>(null)
+  const [endNote, setEndNote] = useState('')
+  // a booking completed in the office shows as done here too (the job row follows the booking, R-SYNC-06)
+  const officeDone = String(d.job.status || '') === 'completed' && checkin?.status !== 'done'
+  const next = officeDone ? null : nextStep(checkin?.status)
+  const ask = (st: CheckinStatus) => (st === 'started' || st === 'done' ? setConfirm(st) : onStep(st))
   const phone = client?.phone || client?.whatsapp || ''
   const wa = client?.whatsapp || client?.phone || ''
   const time = (iso?: string | null) => (iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dubai' }) : '')
   const stepButton: Record<CheckinStatus, { label: string; icon: typeof Car; cls: string }> = {
     on_way: { label: 'On my way', icon: Car, cls: 'bg-sky-600 active:bg-sky-700' },
     started: { label: 'Start job', icon: PlayCircle, cls: 'bg-emerald-700 active:bg-emerald-800' },
-    done: { label: 'Finish job', icon: CheckCircle2, cls: 'bg-emerald-900 active:bg-black' },
+    done: { label: 'End job', icon: CheckCircle2, cls: 'bg-emerald-900 active:bg-black' },
     issue: { label: 'Report issue', icon: AlertTriangle, cls: 'bg-rose-600' },
   }
   return (
@@ -340,12 +346,20 @@ function DutyCard({ duty: d, index, checkin, client, canUpdate, onStep }: {
         )}
         <div className="grid grid-cols-2 gap-2 pt-1">
           {next ? (
-            <button type="button" disabled={!canUpdate} onClick={() => onStep(next)}
-              className={`col-span-2 min-h-[46px] rounded-xl text-white font-bold text-[14px] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 ${stepButton[next].cls}`}>
-              {(() => { const I = stepButton[next].icon; return <I size={18} /> })()} {stepButton[next].label}
-            </button>
+            <>
+              <button type="button" disabled={!canUpdate} onClick={() => ask(next)}
+                className={`${next === 'on_way' ? '' : 'col-span-2'} min-h-[46px] rounded-xl text-white font-bold text-[14px] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 ${stepButton[next].cls}`}>
+                {(() => { const I = stepButton[next].icon; return <I size={18} /> })()} {stepButton[next].label}
+              </button>
+              {next === 'on_way' && (
+                <button type="button" disabled={!canUpdate} onClick={() => ask('started')}
+                  className={`min-h-[46px] rounded-xl text-white font-bold text-[14px] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 ${stepButton.started.cls}`}>
+                  <PlayCircle size={18} /> Start job
+                </button>
+              )}
+            </>
           ) : (
-            <span className="col-span-2 min-h-[46px] rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[13.5px] flex items-center justify-center gap-2"><CheckCircle2 size={17} /> Job done</span>
+            <span className="col-span-2 min-h-[46px] rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[13.5px] flex items-center justify-center gap-2"><CheckCircle2 size={17} /> {officeDone ? 'Completed (marked by the office)' : 'Job done'}</span>
           )}
           <a href={phone ? `tel:${phone}` : undefined} aria-disabled={!phone}
             className={`min-h-[42px] rounded-xl border text-[13px] font-bold flex items-center justify-center gap-1.5 ${phone ? 'border-slate-200 text-slate-800 active:bg-slate-100' : 'border-slate-100 text-slate-300 pointer-events-none'}`}>
@@ -362,6 +376,31 @@ function DutyCard({ duty: d, index, checkin, client, canUpdate, onStep }: {
             </button>
           )}
         </div>
+        {confirm && (
+          <div role="dialog" aria-modal="true" aria-label={confirm === 'started' ? 'Start job' : 'End job'} className="fixed inset-0 z-[70] bg-black/40 flex items-end sm:items-center justify-center p-3">
+            <div className="w-full max-w-sm bg-white rounded-2xl p-5 space-y-3 shadow-2xl">
+              <p className="text-[17px] font-black text-[#111827] flex items-center gap-2">
+                {confirm === 'started' ? <PlayCircle size={20} className="text-emerald-700" /> : <CheckCircle2 size={20} className="text-emerald-900" />}
+                {confirm === 'started' ? 'Start this job?' : 'End this job?'}
+              </p>
+              <p className="text-[13px] text-slate-600"><b>{d.site}</b>{d.area ? `, ${d.area}` : ''} · {d.start || '—'}–{d.end || '—'}</p>
+              <p className="text-[12.5px] text-slate-500">{confirm === 'started' ? 'The office sees the job as started now.' : 'The office sees the job as done and the booking is marked Completed.'}</p>
+              {confirm === 'done' && (
+                <>
+                  {d.cashToCollect > 0 && <p className="text-[12.5px] font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Collect AED {d.cashToCollect} from the client</p>}
+                  <input value={endNote} onChange={e => setEndNote(e.target.value)} placeholder="Anything for the office? (optional)" className="w-full h-11 px-3 rounded-xl border border-slate-200 text-[13.5px]" />
+                </>
+              )}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button type="button" onClick={() => { setConfirm(null); setEndNote('') }} className="min-h-[46px] rounded-xl border border-slate-200 font-bold text-[14px] cursor-pointer">Cancel</button>
+                <button type="button" onClick={() => { onStep(confirm, confirm === 'done' ? endNote.trim() || undefined : undefined); setConfirm(null); setEndNote('') }}
+                  className={`min-h-[46px] rounded-xl text-white font-bold text-[14px] cursor-pointer ${confirm === 'started' ? 'bg-emerald-700' : 'bg-emerald-900'}`}>
+                  {confirm === 'started' ? 'Start job' : 'End job'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {issueOpen && (
           <div className="flex gap-2">
             <input value={issue} onChange={e => setIssue(e.target.value)} placeholder="e.g. Client not at home, no key, extra work…"

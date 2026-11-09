@@ -464,6 +464,21 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/jobCheckins.ts`, `MyDuties.tsx → DutyCard`; `src/lib/crewTimeline.ts → jobStatusLabel, driverNameForJob`.
 - **Status:** In code · needs the migration · Since: 2026-11-05
 
+### R-DUTY-02 — Start Job / End Job popups, synced with Bookings
+- **Rule:** *"Booking screen se assign hone wali jobs yahan show hon, jahan cleaners direct 'Start Job' aur 'End Job' ke pop-ups zariye kaam control kar sakein … Booking screen ke Cards ke sath fully synchronized … job complete hone par … 'Completed'."* — designed for the later Android app (same steps, same data). (2026-11-09)
+  - **Jobs:** a booking makes its job-sheet row (R-SYNC-03); My Duties lists the rows that carry the cleaner's name, so assigned bookings appear on the phone.
+  - **Buttons:** On my way, plus **Start job** directly. Then **End job** (was "Finish job").
+  - **Popups:** Start and End each ask in a popup: site, time, what the office will see. End also shows the cash to collect and takes an optional note.
+  - **Phone → office:** the database trigger `duty_to_booking` (migration `2026-11-09_duty_booking_sync.sql`):
+    - Start: job row and booking become *In progress*.
+    - End: they become *Completed*, once no other cleaner on that job is still on the way or working.
+    - Bookings are added to Realtime, so cards change live.
+  - **Office → phone:** a booking set to In progress / Completed / Confirmed in the office writes that status on its job row. My Duties then shows "Completed (marked by the office)" with no buttons.
+  - **Not automatic:** an invoice for a booking completed from the phone is not created. The office creates it, as before when completing by hand from the job sheet.
+- **For the Android app:** the steps are rows in `job_checkins` (status + time + position) and the status changes are in the database. A native app writes the same rows with the cleaner's login and gets the same result, with nothing extra on the server.
+- **Code:** `MyDuties.tsx → DutyCard`, `src/lib/bookingSync.ts → jobPatchFromBookingPatch`, migration `2026-11-09_duty_booking_sync.sql`.
+- **Status:** Built · needs the migration · Since: 2026-11-09
+
 ---
 
 ## EMP — Employees
@@ -878,6 +893,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - A file that does not upload is reported ("N documents could not be uploaded — open the employee and attach them again"); the employee is saved anyway.
 - **Code:** `src/lib/docStorage.ts` (withoutInlineDocs), `src/store/DataContext.tsx` (addEmployee, updateEmployee, addAgency, updateAgency, docsToStorage).
 - **Status:** Fixed · Since: 2026-11-07
+
+### R-DOC-02 — Images and PDFs, stored the moment they are picked
+- **Rule:** *"documents forms mein sirf 'Upload Image' ki bajaye 'Upload PDF' ka option bhi … PDF files ko read aur preview … 'No binary file preview available' ka error na aaye."* (2026-11-09)
+  - Every document field (employee and agency popups, agency direct upload) says **Upload image or PDF** and accepts both. A PDF shows a red PDF tile and opens in the preview (browser PDF viewer); images show a thumbnail.
+  - **Cause of the error:** the file used to travel to Storage only after the record was saved. When that upload failed, the record kept an empty file, which showed "No binary file preview available" (one agency document was found empty on 2026-11-09).
+  - **Now** a picked file goes to private Storage at once (`employees/<id>/…`, `agencies/<id>/…`) and the record holds only `storage:<path>`. If the upload fails, the file is kept and moved on save (R-SYNC-15), and the user is told.
+  - A record whose file is missing says so plainly and asks to upload it again.
+- **Code:** `src/lib/docVersions.ts → storePicked, readAndStore`, `DocVersionsField.tsx`, `EmployeeFormModal.tsx`, `Agencies.tsx`, `AgencyDashboard.tsx`.
+- **Status:** Active · Since: 2026-11-09
 
 ### R-DOC-01 — Document images keep their history (Current + Previous), and are backed up
 - **Rule:** *"jahan jahan image upload ka option he popups me wahan pr multiple images add ka option … jo current image hogi … new image upload hone k bad usi field me neche show honi chaheye, take hum recent 1 image dekh sken … inka proper backup b rakhna he jese passport, eid, work permit"* (2026-11-09)

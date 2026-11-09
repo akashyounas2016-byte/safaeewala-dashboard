@@ -10,7 +10,7 @@ import type { Employee, Agency, Client, EmployeeDocument, EmployeeRole } from '@
 import { MONTHLY_WORK_HOURS, formatEmpRole } from '@/lib/clientDataSync'
 import { EmployeeDocumentPreviewModal } from './EmployeeDocumentField'
 import { DocVersionsField } from '@/components/common/DocVersionsField'
-import { addVersion, currentDocs, readFiles, removeVersion, seedFromFields } from '@/lib/docVersions'
+import { addVersion, currentDocs, readAndStore, removeVersion, seedFromFields } from '@/lib/docVersions'
 import { useAuth } from '@/store/UserContext'
 import { useSalaryAccess } from '@/store/useModuleAccess'
 import { todayDubai } from '@/lib/dubaiTime'
@@ -73,7 +73,8 @@ function EmployeeFormModalContent({
 
   // R-DOC-01: one or more new images become current; the ones they replace show under them as Previous
   const handleAttachDoc = (category: EmployeeDocument['category'], files: FileList) => {
-    void readFiles(files, category, me?.full_name || me?.email || undefined)
+    // R-DOC-02: images and PDFs go to Storage as soon as they are picked
+    void readAndStore(files, category, `employees/${initialEmployee?.id || 'new'}`, me?.full_name || me?.email || undefined)
       .then(added => setDocs(prev => addVersion(prev, category, added as EmployeeDocument[])))
       .catch(() => notify.error('Could not read this file — try another one'))
   }
