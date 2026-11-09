@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(ghl): Marketing → Google posts — update / event / offer with button and photo, post now / schedule / draft, list of posts, through GHL Social Planner (needs the key's Social Planner scopes) (R-GHL-02)
+- feat(whatsapp): Google review link setting; {review_link} in notification templates and quick replies (R-GHL-01)
+
 - feat(job-sheets): every cleaner listed — Daily Job Sheet "no job" rows (available / absent / leave), Excel empty blocks (not saved); crew timeline only cleaners with a job (R-ATT-09)
 - feat(marketing): Lead lists — pool of website leads, WhatsApp chats, clients and contacts extracted from pasted text; filters; save as a contact list or CSV (R-MKT-02)
 - ui: merged-screen tabs inside the page header; popup header buttons on one line; payout popup "Payment and Advances"; Templates filters in one row with status as a dropdown (UX-117, UX-119, UX-120)

@@ -783,6 +783,42 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/leadLists.ts`, `src/components/marketing/LeadLists.tsx`, `MarketingDashboard.tsx`.
 - **Status:** Built · Since: 2026-11-09
 
+### R-GHL-01 — Google review link in client messages
+- **Rule:** owner's GHL / Google Business Profile plan, step 1 (2026-11-09): ask every client for a Google review.
+  - Conversations → Settings → Notifications → **Google review link**: paste the link from Google Business Profile → "Ask for reviews". The CRM checks that it looks like a Google review link.
+  - `{review_link}` can be picked as a value of any notification template (e.g. the Feedback request, R-WA-04). The server fills it.
+  - A quick reply containing `{review_link}` gets the link when it is picked in a chat, so the link can be sent within 24 hours without Meta templates.
+- **Code:** `src/lib/inboxSettings.ts → TOKENS, loadReviewLink, saveReviewLink, isReviewLink`, `WaSettingsMore.tsx → ReviewLinkSetting`, `Composer.tsx → fillReply`, `whatsappServer.cjs → automation().reviewLink`.
+- **Status:** Built · Since: 2026-11-09
+
+### R-GHL-02 — Google Business Profile posts through GHL's Social Planner
+- **Rule:** *"GHL ke zariye Google My Business ke kaun kaun se features (post scheduling, review management, analytics) apne CRM mein direct handle kar sakta hoon … GMB messages … centralized Inbox."* (2026-11-09)
+- **What the GHL key can do (read-only check on the live account, 2026-11-09):**
+
+  | Area | Result |
+  |---|---|
+  | Conversations | Work: 93 Facebook, 7 Instagram |
+  | Social Planner, location | 401: the Private Integration key lacks the scopes |
+  | Reviews (`/reputation/reviews`) | "token source/channel mismatch": not open to this key type |
+
+  - **GMB messages:** not possible. Google ended Business Profile chat on 31 Jul 2024, so there are no GMB messages to bring into the Inbox. A WhatsApp link on the profile is the alternative.
+- **Built: Marketing → Google posts.**
+  - Pick the connected accounts (Google Business Profile first).
+  - Post type: Update, Event (title, dates) or Offer (title, coupon, dates, terms link, booking link). Text up to 1,500 characters.
+  - Button: Book, Call, Learn more, Order, Shop or Sign up, with its link.
+  - Photo: JPG / PNG up to 8 MB. It is stored in private Storage, and GHL gets a 1-year link.
+  - When: post now, schedule (5+ minutes ahead, Dubai time) or save as a draft.
+  - A list of posts (all, scheduled, published, draft, failed) with status, date, link and errors.
+  - **Server:**
+    - `/api/ghl/social/accounts`, `/posts/list` and `/posts` call GHL with `Version: v3`; admin / manager only.
+    - A 401 / 403 from GHL becomes one message naming the scopes to tick: `socialplanner/account.readonly`, `post.readonly`, `post.write`.
+- **Owner step:** GHL → Settings → Private Integrations → edit the CRM's key → tick the Social Planner scopes; make sure Google Business Profile is connected in Marketing → Social Planner.
+- **Not built:**
+  - Reviews in the CRM: GHL's API refuses this key. The Google Business Profile API needs Google's approval.
+  - Analytics: the Google Performance API needs the same approval.
+- **Code:** `ghlServer.cjs → buildPostBody, /api/ghl/social/*`, `src/lib/ghlInbox.ts → socialAccounts, socialPosts, createSocialPost`, `src/components/marketing/GooglePosts.tsx`.
+- **Status:** Built · waits for the Social Planner scopes on the GHL key · Since: 2026-11-09
+
 ### R-CMP-01 — Complaints module
 - **Rule:** *"sidebar mein 'Complaints' ka alag module … Fluent Forms ya Facebook se aane wali shikayat aur unka status centralized tor par manage."*
   - **Sidebar → Complaints** (own screen permission). One list, newest first, with:

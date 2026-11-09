@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { BellRing, Loader2, Plus, Tags as TagsIcon, Trash2, MessageSquareText, Power } from 'lucide-react'
+import { BellRing, Loader2, Plus, Tags as TagsIcon, Trash2, MessageSquareText, Power, Star } from 'lucide-react'
 import { notify } from '@/lib/notify'
 import { templateBody, templateParamCount, waTemplates, type WaTemplate } from '@/lib/whatsapp'
 import {
-  NOTIFY_KINDS, TAG_COLORS, TAG_TONE, TOKENS, loadNotifications, loadQuickReplies, saveNotifications, saveQuickReplies,
+  NOTIFY_KINDS, TAG_COLORS, TAG_TONE, TOKENS, isReviewLink, loadNotifications, loadReviewLink, saveReviewLink, loadQuickReplies, saveNotifications, saveQuickReplies,
   type NotificationSettings, type NotifyConfig, type QuickReply,
 } from '@/lib/inboxSettings'
 import { setTagDefs, useTagDefs } from './Tags'
@@ -14,6 +14,30 @@ function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
     <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className={`w-10 h-6 rounded-full relative transition-colors cursor-pointer shrink-0 ${on ? 'bg-emerald-600' : 'bg-slate-300'}`}>
       <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} />
     </button>
+  )
+}
+
+/**
+ * R-GHL-01: the Google review link. Pick {review_link} as a value of the Feedback request (or any) template and every
+ * client gets the link to review Safaeewala on Google. Get it in Google Business Profile → "Ask for reviews".
+ */
+function ReviewLinkSetting() {
+  const [url, setUrl] = useState<string | null>(null)
+  const [saved, setSaved] = useState('')
+  useEffect(() => { loadReviewLink().then(v => { const u = v?.url || ''; setUrl(u); setSaved(u) }).catch(() => setUrl('')) }, [])
+  if (url === null) return null
+  const ok = !url.trim() || isReviewLink(url)
+  return (
+    <article className="border border-amber-200 bg-amber-50/40 rounded-xl p-3 space-y-2">
+      <p className="text-[13px] font-bold flex items-center gap-1.5"><Star size={14} className="text-amber-500 fill-amber-400" /> Google review link</p>
+      <p className="text-[11.5px] text-slate-600">Google Business Profile → <b>Ask for reviews</b> → copy the link. Then choose <code className="bg-white px-1 rounded">{'{review_link}'}</code> as a value of the Feedback request template below.</p>
+      <div className="flex gap-2">
+        <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://g.page/r/…/review" className={`${inputCls} flex-1`} />
+        <button type="button" disabled={url === saved || !ok} onClick={async () => { try { await saveReviewLink(url.trim()); setSaved(url.trim()); notify.success('Review link saved') } catch (e) { notify.error((e as Error).message) } }} className={btnPrimary}>Save</button>
+        {saved && <a href={saved} target="_blank" rel="noreferrer" className={btnGhost}>Test</a>}
+      </div>
+      {!ok && <p className="text-[11.5px] text-red-600">This does not look like a Google review link (g.page/r/… or search.google.com/local/writereview…).</p>}
+    </article>
   )
 }
 
@@ -52,6 +76,8 @@ export function NotificationsSettings({ configured }: { configured: boolean }) {
         <Switch on={v.master !== false} onChange={on => void save({ ...v, master: on })} label="All automatic messages" />
       </div>
       {!configured && <p className="text-[12px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2">Choose templates once the Meta keys are on the server. The switches can be set already.</p>}
+      <ReviewLinkSetting />
+
       {NOTIFY_KINDS.map(k => {
         const cfg = v[k.key] as NotifyConfig | undefined
         const tpl = templates?.find(t => t.name === cfg?.template && t.language === cfg?.language) || null

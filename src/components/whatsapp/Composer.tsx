@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Paperclip, FileText, Smile, Send, Loader2, X, MessageSquareText } from 'lucide-react'
-import { EMOJIS, MAX_FILE, loadQuickReplies, type QuickReply } from '@/lib/inboxSettings'
+import { EMOJIS, MAX_FILE, loadQuickReplies, loadReviewLink, type QuickReply } from '@/lib/inboxSettings'
 import { notify } from '@/lib/notify'
 
 let repliesCache: QuickReply[] | null = null
@@ -31,6 +31,10 @@ export function Composer({ text, setText, onSend, onAttach, onOpenTemplates, dis
   useEffect(() => {
     if (menu === 'templates' && replies === null) void loadQuickReplies().then(r => { repliesCache = r || []; setReplies(repliesCache) }).catch(() => setReplies([]))
   }, [menu, replies])
+  // R-GHL-01: {review_link} in a quick reply becomes the saved Google review link
+  const [reviewLink, setReviewLink] = useState('')
+  useEffect(() => { if (menu === 'templates') void loadReviewLink().then(v => setReviewLink(v?.url || '')).catch(() => {}) }, [menu])
+  const fillReply = (t: string) => t.replace(/\{review_link\}/g, reviewLink || '{review_link}')
 
   const insert = (s: string) => {
     const el = areaRef.current
@@ -99,7 +103,7 @@ export function Composer({ text, setText, onSend, onAttach, onOpenTemplates, dis
           {replies === null ? <Loader2 className="mx-3 my-2 animate-spin text-slate-300" size={16} /> : replies.length === 0
             ? <p className="px-3 py-2 text-[12px] text-slate-400">None yet — add them in Templates → Quick replies (or "Save as quick reply" in the template builder).</p>
             : replies.map(r => (
-              <button key={r.title} type="button" onClick={() => { setMenu(null); insert(r.text) }} disabled={disabled} className="w-full flex items-start gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 text-left cursor-pointer disabled:opacity-40">
+              <button key={r.title} type="button" onClick={() => { setMenu(null); insert(fillReply(r.text)) }} disabled={disabled} className="w-full flex items-start gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 text-left cursor-pointer disabled:opacity-40">
                 <MessageSquareText size={14} className="text-slate-400 mt-0.5 shrink-0" /><span className="min-w-0"><span className="block text-[12.5px] font-semibold truncate">{r.title}</span><span className="block text-[11.5px] text-slate-500 line-clamp-2">{r.text}</span></span>
               </button>
             ))}

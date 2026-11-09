@@ -24,7 +24,11 @@ export const NOTIFY_KINDS: { key: NotifyKind; label: string; when: string; param
   { key: 'feedback', label: 'Feedback request', when: 'After the job is marked completed (from the time below, same or next day).', params: ['{name}'], hour: '10:00', auto: true },
   { key: 'payment', label: 'Payment reminder', when: 'Only by hand: Conversations → Jobs → Unpaid → Remind (at most once a day per job).', params: ['{name}', '{balance}', '{date}'], auto: false },
 ]
-export const TOKENS = ['{name}', '{date}', '{time}', '{service}', '{address}', '{amount}', '{balance}', '{cleaner}']
+export const TOKENS = ['{name}', '{date}', '{time}', '{service}', '{address}', '{amount}', '{balance}', '{cleaner}', '{review_link}']
+/** R-GHL-01: the Google review link (Google Business Profile → "Ask for reviews") — fills {review_link} */
+export const loadReviewLink = () => loadSetting<{ url: string }>('review_link')
+export const saveReviewLink = (url: string) => saveSetting('review_link', { url })
+export const isReviewLink = (u: string) => /^https:\/\/(g\.page\/r\/|search\.google\.com\/local\/writereview|www\.google\.com\/|maps\.app\.goo\.gl\/|goo\.gl\/maps\/)/i.test(u.trim())
 export const loadNotifications = () => loadSetting<NotificationSettings>('notifications')
 export const saveNotifications = (v: NotificationSettings) => saveSetting('notifications', v)
 export const waNotify = (kind: NotifyKind, ref: string, to: string, name: string, values: Record<string, string>) =>

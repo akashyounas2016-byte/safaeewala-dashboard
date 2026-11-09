@@ -232,15 +232,17 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
   }
 
   // R-WA-02: rules and hours are read at most every 30 s (they change rarely; the webhook is hot)
-  let cache = { at: 0, rules: [], hours: null, assignment: null, notifications: null }
+  let cache = { at: 0, rules: [], hours: null, assignment: null, notifications: null, reviewLink: '' }
   async function automation() {
     if (Date.now() - cache.at < 30000) return cache
     try {
       const rules = await supa('/rest/v1/wa_rules?select=*&order=created_at.asc')
-      const settings = await supa('/rest/v1/wa_settings?key=in.(hours,assignment,notifications)&select=key,value')
+      const settings = await supa('/rest/v1/wa_settings?key=in.(hours,assignment,notifications,review_link)&select=key,value')
       const val = k => (settings || []).find(s => s.key === k)?.value || null
-      cache = { at: Date.now(), rules: rules || [], hours: val('hours'), assignment: val('assignment'), notifications: val('notifications') }
-    } catch { cache = { at: Date.now(), rules: [], hours: null, assignment: null, notifications: null } } // tables not created yet: no automation
+      // R-GHL-01: the Google review link fills {review_link} in client messages
+      const rl = val('review_link')
+      cache = { at: Date.now(), rules: rules || [], hours: val('hours'), assignment: val('assignment'), notifications: val('notifications'), reviewLink: String((rl && rl.url) || (typeof rl === 'string' ? rl : '') || '') }
+    } catch { cache = { at: Date.now(), rules: [], hours: null, assignment: null, notifications: null, reviewLink: '' } } // tables not created yet: no automation
     return cache
   }
   /** R-WA-03: a note on the chat's history (assignment / status); quiet when the table is missing */
@@ -439,7 +441,7 @@ function createWhatsApp({ supa, supabaseUrl, serviceHeaders, sendJson, readJson,
     if (!claim || !claim.length) return 'already'
     try {
       const conv = await conversationFor(waId, name || null)
-      const values = fillTokens(cfg.params || [], { name, ...ctx })
+      const values = fillTokens(cfg.params || [], { name, review_link: (await automation()).reviewLink, ...ctx })
       const template = { name: cfg.template, language: { code: cfg.language || 'en' }, ...(values.length ? { components: [{ type: 'body', parameters: values.map(text => ({ type: 'text', text })) }] } : {}) }
       await sendOut(conv, { email: by }, { type: 'template', template }, { type: 'template', body: `${({ confirm: 'Booking confirmation', reminder: 'Booking reminder', on_way: 'Team on the way', feedback: 'Feedback request', payment: 'Payment reminder' })[kind] || kind}: ${cfg.template}`, template_name: cfg.template })
       return 'sent'

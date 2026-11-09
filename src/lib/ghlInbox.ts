@@ -24,6 +24,19 @@ export interface GhlMessage {
 
 /** Existing GHL settings route: both the key and the location must be on the server */
 export const ghlStatus = () => call<{ configured: boolean; locationId: boolean }>('/api/ghl/status').then(r => Boolean(r.configured && r.locationId))
+// ── R-GHL-02: Google Business Profile posts through GHL's Social Planner ──
+export interface SocialAccount { id: string; name: string; platform: string; type: string; expired: boolean; active: boolean }
+export interface SocialPost { id: string; platform: string; status: string; summary: string; media: string[]; at: string | null; link: string | null; error: string | null }
+export interface NewPost {
+  accountIds: string[]; summary: string; mode: 'now' | 'schedule' | 'draft'; scheduleAt?: string
+  file?: { base64: string; mime: string; name: string }
+  gmb: { eventType: 'STANDARD' | 'EVENT' | 'OFFER'; actionType: string; url?: string; title?: string; offerTitle?: string; couponCode?: string; termsUrl?: string; redeemUrl?: string; startDate?: string; startTime?: string; endDate?: string; endTime?: string }
+}
+export const socialAccounts = () => call<{ accounts: SocialAccount[] }>('/api/ghl/social/accounts').then(r => r.accounts)
+export const socialPosts = (type = 'all') => call<{ posts: SocialPost[]; total: number }>('/api/ghl/social/posts/list', { method: 'POST', body: JSON.stringify({ type }) })
+export const createSocialPost = (p: NewPost) => call<{ ok: boolean; id: string | null; status: string }>('/api/ghl/social/posts', { method: 'POST', body: JSON.stringify(p) })
+export const isGoogleAccount = (a: Pick<SocialAccount, 'platform'>) => /google|gmb|business/i.test(a.platform)
+
 export const ghlConversations = () => call<{ conversations: GhlConversation[] }>('/api/ghl/conversations').then(r => r.conversations)
 export const ghlMessages = (id: string) => call<{ messages: GhlMessage[] }>(`/api/ghl/messages/${encodeURIComponent(id)}`).then(r => r.messages)
 export const ghlSend = (c: Pick<GhlConversation, 'contactId' | 'channel'>, text: string) =>
