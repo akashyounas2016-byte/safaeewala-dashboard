@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(documents): every document field (employee + agency popups) takes several images; the new upload is Current and the replaced one shows right under it as Previous; Remove keeps the file; replaced profile photo kept (R-DOC-01)
+- ops(backup): the nightly backup also copies the Storage files (document images, chat media), every version kept (R-DOC-01, R-OPS-04)
+
 - feat(ai-bot): Sidebar → AI Bot opens a full-width hub — quick actions (new booking here), live cards from every module, Ask the CRM (rules over your data; cleaner by name; "new booking"), one search, cleaner card, month Duty & OT; AI model later (R-AI-01)
 - feat(marketing): client base by segment (inactive, first-time, repeat, active, never booked) synced from jobs + bookings, Offers and Campaigns tabs; own screen permission (R-MKT-01)
 - feat(complaints): new Complaints module — status, priority, assignee, resolution; "To review" from website messages and chats tagged Complaint; Complaint button on a lead (R-CMP-01)

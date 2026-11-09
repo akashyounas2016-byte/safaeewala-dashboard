@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect, useId } from 'react'
+import { DocVersionsField } from '@/components/common/DocVersionsField'
+import { addVersion, readFiles, removeVersion } from '@/lib/docVersions'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Building2, ArrowLeft, Users, CreditCard, FileText, CheckCircle2,
@@ -19,7 +21,7 @@ import { generateCertificateDataUrl } from '@/lib/agencyCertificates'
 import { todayDubai } from '@/lib/dubaiTime'
 import { docSrc, docKind, useDocUrls } from '@/lib/docStorage'
 
-// ── Pure Image / Document Upload Field for Agencies (matching EmployeeDocInput style) ──
+// ── R-DOC-01: agency document field — one or more images; the replaced set shows under it as Previous ──
 function AgencyDocUploadField({
   label,
   buttonText,
@@ -37,99 +39,7 @@ function AgencyDocUploadField({
   onRemove: (docId: string) => void
   onPreview: (doc: AgencyDocument) => void
 }) {
-  useDocUrls() // E2E-08: re-render when a document's signed link is ready
-  const reactId = useId()
-  const catDocs = documents.filter(d => d.category === category)
-  const doc = catDocs[catDocs.length - 1]
-  const uploadInputId = `agency-doc-upload-${category}-${reactId.replace(/:/g, '')}`
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      {label && (
-        <div className="flex items-center justify-between">
-          <label className="text-[11.5px] font-bold text-slate-700">{label}</label>
-          {doc ? (
-            <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <CheckCircle2 size={10} />
-              <span>Image Attached</span>
-            </span>
-          ) : (
-            <span className="text-[10px] font-semibold text-slate-400">No image</span>
-          )}
-        </div>
-      )}
-
-      <input
-        id={uploadInputId}
-        type="file"
-        accept="image/*,application/pdf"
-        className="hidden"
-        onChange={e => {
-          onAttach(e.target.files)
-          e.target.value = ''
-        }}
-      />
-
-      {doc ? (
-        <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
-          <div className="flex items-center gap-2 min-w-0">
-            {docKind(doc) === 'image' ? (
-              <img
-                src={docSrc(doc.file_data)}
-                alt={doc.name}
-                className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700 shrink-0">
-                <Paperclip size={14} />
-              </div>
-            )}
-            <div className="min-w-0">
-              <p className="text-[11.5px] font-bold text-slate-800 truncate" title={doc.name}>
-                {doc.name}
-              </p>
-              <p className="text-[10px] text-slate-400">
-                {doc.file_size ? `${Math.round(doc.file_size / 1024)} KB` : 'Attached copy'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={() => onPreview(doc)}
-              className="p-1 rounded-lg text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
-              title="Preview Document"
-            >
-              <Eye size={13} />
-            </button>
-            <label
-              htmlFor={uploadInputId}
-              className="p-1 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 cursor-pointer transition-colors"
-              title="Change / Replace Image"
-            >
-              <Upload size={13} />
-            </label>
-            <button
-              type="button"
-              onClick={() => onRemove(doc.id)}
-              className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
-              title="Remove Document"
-            >
-              <Trash2 size={13} />
-            </button>
-          </div>
-        </div>
-      ) : (
-        <label
-          htmlFor={uploadInputId}
-          className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-dashed border-slate-300 bg-white hover:bg-slate-50 hover:border-teal-500 text-slate-600 hover:text-teal-700 transition-all cursor-pointer group shadow-2xs"
-        >
-          <Upload size={13} className="text-slate-400 group-hover:text-teal-600 transition-colors" />
-          <span className="text-[11.5px] font-bold">{buttonText || 'Upload Image / Copy'}</span>
-        </label>
-      )}
-    </div>
-  )
+  return <DocVersionsField label={label} category={category} docs={documents} uploadText={buttonText} onUpload={onAttach} onRemove={onRemove} onPreview={onPreview} />
 }
 
 interface AgencyDashboardProps {
@@ -394,10 +304,13 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
     // Sort by uploaded_at descending
     const sorted = [...list].sort((a, b) => (b.uploaded_at || '').localeCompare(a.uploaded_at || ''))
 
+    // R-DOC-01: every image of the current set is active (a document can have several); an old record without
+    // version marks keeps only its newest image as active
+    const versioned = new Set(sorted.filter(d => d.version || d.is_active !== undefined).map(d => d.category))
     sorted.forEach(doc => {
-      if (doc.is_active === false || doc.archived_at) {
+      if (doc.is_active === false || doc.archived_at || doc.removed_at) {
         archived.push(doc)
-      } else if (!seenActiveCats.has(doc.category)) {
+      } else if (versioned.has(doc.category) || !seenActiveCats.has(doc.category)) {
         seenActiveCats.add(doc.category)
         active.push({ ...doc, is_active: true })
       } else {
@@ -409,48 +322,10 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
   }, [agency])
 
   // ── Document Upload with Version History Preservation (for Edit Profile) ──
-  const handleEditFileUpload = (
-    files: FileList | null,
-    category: AgencyDocumentCategory
-  ) => {
+  const handleEditFileUpload = (files: FileList | null, category: AgencyDocumentCategory) => {
     if (!files || files.length === 0) return
-    Array.from(files).forEach(file => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const base64Data = reader.result as string
-        setEditDocs(prevDocs => {
-          const categoryDocs = prevDocs.filter(d => d.category === category)
-          const nextVersion = categoryDocs.length + 1
-
-          // Preserve previous active documents as archived history
-          const archivedOldDocs = prevDocs.map(d => {
-            if (d.category === category && d.is_active !== false) {
-              return {
-                ...d,
-                is_active: false,
-                archived_at: new Date().toISOString()
-              }
-            }
-            return d
-          })
-
-          const newDoc: AgencyDocument = {
-            id: `doc-${category}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            name: file.name,
-            category,
-            file_data: base64Data,
-            file_type: file.type || 'application/octet-stream',
-            file_size: file.size,
-            uploaded_at: new Date().toISOString(),
-            is_active: true,
-            version: nextVersion,
-          }
-
-          return [newDoc, ...archivedOldDocs]
-        })
-      }
-      reader.readAsDataURL(file)
-    })
+    // R-DOC-01: the whole batch becomes current at once (was: each file archived the one before it)
+    void readFiles(files, category).then(added => setEditDocs(prev => addVersion(prev, category, added as AgencyDocument[])))
   }
 
   // ── Direct Document Upload with Version History Preservation (from License & Documents Tab) ──
@@ -3104,7 +2979,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   category="trade_license"
                   documents={editDocs}
                   onAttach={files => handleEditFileUpload(files, 'trade_license')}
-                  onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -3130,7 +3005,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   category="emirates_id"
                   documents={editDocs}
                   onAttach={files => handleEditFileUpload(files, 'emirates_id')}
-                  onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -3156,7 +3031,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   category="passport"
                   documents={editDocs}
                   onAttach={files => handleEditFileUpload(files, 'passport')}
-                  onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -3183,7 +3058,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   category="tax_registration"
                   documents={editDocs}
                   onAttach={files => handleEditFileUpload(files, 'tax_registration')}
-                  onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <AgencyDocUploadField
@@ -3191,7 +3066,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   category="noc"
                   documents={editDocs}
                   onAttach={files => handleEditFileUpload(files, 'noc')}
-                  onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
               </div>
@@ -3223,7 +3098,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   category="agreement"
                   documents={editDocs}
                   onAttach={files => handleEditFileUpload(files, 'agreement')}
-                  onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -3249,7 +3124,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                   category="workmen_compensation"
                   documents={editDocs}
                   onAttach={files => handleEditFileUpload(files, 'workmen_compensation')}
-                  onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="p-2 rounded-xl bg-indigo-50/60 border border-indigo-100 text-[11px] text-indigo-900/90 font-medium leading-relaxed">

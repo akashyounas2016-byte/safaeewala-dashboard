@@ -8,7 +8,10 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import type { Employee, Agency, Client, EmployeeDocument, EmployeeRole } from '@/types'
 import { MONTHLY_WORK_HOURS, formatEmpRole } from '@/lib/clientDataSync'
-import { EmployeeDocInput, EmployeeDocumentPreviewModal } from './EmployeeDocumentField'
+import { EmployeeDocumentPreviewModal } from './EmployeeDocumentField'
+import { DocVersionsField } from '@/components/common/DocVersionsField'
+import { addVersion, currentDocs, readFiles, removeVersion, seedFromFields } from '@/lib/docVersions'
+import { useAuth } from '@/store/UserContext'
 import { todayDubai } from '@/lib/dubaiTime'
 import { useData } from '@/store/DataContext'
 import { notify, confirmAsync } from '@/lib/notify'
@@ -24,33 +27,15 @@ export interface EmployeeFormModalProps {
   isSaving?: boolean
 }
 
-function getInitialDocsMap(initialEmployee?: Employee | null): Record<string, EmployeeDocument> {
-  const docsMap: Record<string, EmployeeDocument> = {}
-  if (!initialEmployee) return docsMap
-
-  const seedDoc = (cat: EmployeeDocument['category'], name: string, fileData?: string, expiry?: string, docNo?: string) => {
-    if (fileData || docNo || expiry) {
-      docsMap[cat] = {
-        id: `doc-${cat}-${Date.now()}`,
-        category: cat,
-        name,
-        file_data: fileData,
-        document_number: docNo,
-        end_date: expiry,
-        uploaded_at: new Date().toISOString(),
-      }
-    }
-  }
-
-  seedDoc('eid', 'Emirates ID', initialEmployee.eid_file, initialEmployee.eid_end_date, initialEmployee.emirates_id)
-  seedDoc('passport', 'Passport', initialEmployee.passport_file, initialEmployee.passport_expiry || initialEmployee.passport_end_date, initialEmployee.passport_number)
-  seedDoc('visa', 'Residency Visa', initialEmployee.visa_file, initialEmployee.visa_expiry || initialEmployee.visa_end_date, initialEmployee.visa_number)
-  seedDoc('work_permit', 'Work Permit', initialEmployee.work_permit_file, initialEmployee.work_permit_expiry || initialEmployee.work_permit_end_date, initialEmployee.work_permit_number)
-  seedDoc('driving_license', 'Driving License', initialEmployee.driving_license_file, initialEmployee.driving_license_expiry_date, initialEmployee.driving_license_no)
-  seedDoc('medical_insurance', 'Medical Insurance', initialEmployee.medical_insurance_file, initialEmployee.medical_insurance_expiry, initialEmployee.medical_insurance)
-  seedDoc('noc', 'NOC / Labour Card', initialEmployee.noc_file, undefined, initialEmployee.noc)
-
-  return docsMap
+/** R-DOC-01: all document images with their versions; old employees bring their single image per document */
+function getInitialDocs(initialEmployee?: Employee | null): EmployeeDocument[] {
+  if (!initialEmployee) return []
+  const e = initialEmployee
+  return seedFromFields<EmployeeDocument>(e.documents, [
+    ['eid', 'Emirates ID', e.eid_file], ['passport', 'Passport', e.passport_file], ['visa', 'Residency Visa', e.visa_file],
+    ['work_permit', 'Work Permit', e.work_permit_file], ['driving_license', 'Driving License', e.driving_license_file],
+    ['medical_insurance', 'Medical Insurance', e.medical_insurance_file], ['noc', 'NOC / Labour Card', e.noc_file],
+  ], e.created_at || new Date().toISOString())
 }
 
 export function EmployeeFormModal(props: EmployeeFormModalProps) {
@@ -73,7 +58,9 @@ function EmployeeFormModalContent({
   const [role, setRole] = useState<EmployeeRole>(() => initialEmployee?.role || 'cleaner')
 
   // Document upload state
-  const [docs, setDocs] = useState<Record<string, EmployeeDocument>>(() => getInitialDocsMap(initialEmployee))
+  const [docs, setDocs] = useState<EmployeeDocument[]>(() => getInitialDocs(initialEmployee))
+  const { user: me } = useAuth()
+  const cur = (c: EmployeeDocument['category']) => currentDocs(docs, c)[0]
 
   // Assigned client IDs (for cleaners and technical)
   const [assignedClientIds, setAssignedClientIds] = useState<string[]>(() => initialEmployee?.assigned_client_ids || [])
@@ -82,34 +69,14 @@ function EmployeeFormModalContent({
   // Preview modal for documents
   const [previewDoc, setPreviewDoc] = useState<EmployeeDocument | null>(null)
 
-  // Helper to attach uploaded document
-  const handleAttachDoc = (category: EmployeeDocument['category'], name: string, file: File) => {
-    const reader = new FileReader()
-    reader.onload = e => {
-      const result = e.target?.result as string
-      setDocs(prev => ({
-        ...prev,
-        [category]: {
-          id: `doc-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-          category,
-          name: file.name || name,
-          file_data: result,
-          file_size: file.size,
-          file_type: file.type,
-          uploaded_at: new Date().toISOString(),
-        },
-      }))
-    }
-    reader.readAsDataURL(file)
+  // R-DOC-01: one or more new images become current; the ones they replace show under them as Previous
+  const handleAttachDoc = (category: EmployeeDocument['category'], files: FileList) => {
+    void readFiles(files, category, me?.full_name || me?.email || undefined)
+      .then(added => setDocs(prev => addVersion(prev, category, added as EmployeeDocument[])))
+      .catch(() => notify.error('Could not read this file — try another one'))
   }
 
-  const handleRemoveDoc = (category: string) => {
-    setDocs(prev => {
-      const copy = { ...prev }
-      delete copy[category]
-      return copy
-    })
-  }
+  const handleRemoveDoc = (id: string) => setDocs(prev => removeVersion(prev, id))
 
   const { employees } = useData()
 
@@ -143,7 +110,9 @@ function EmployeeFormModalContent({
     const monthly_salary = Number(fd.get('monthly_salary')) || 0
     const agencyId = (fd.get('agency_id') as string) || ''
     const selAgency = agencies.find(a => a.id === agencyId)
-    const docsList: EmployeeDocument[] = Object.values(docs)
+    const docsList: EmployeeDocument[] = docs
+    // R-DOC-01: eid_file, passport_file … = the newest current image ('' once every image was removed)
+    const fileOf = (c: EmployeeDocument['category'], old?: string) => cur(c)?.file_data || (docs.some(d => d.category === c) ? '' : old)
 
     const patch: Partial<Employee> = {
       full_name: fd.get('full_name') as string,
@@ -159,28 +128,28 @@ function EmployeeFormModalContent({
       emirates_id: (fd.get('emirates_id') as string) || initialEmployee?.emirates_id || '',
       eid_start_date: (fd.get('eid_start_date') as string) || undefined,
       eid_end_date: (fd.get('eid_end_date') as string) || undefined,
-      eid_file: docs.eid?.file_data || initialEmployee?.eid_file,
+      eid_file: fileOf('eid', initialEmployee?.eid_file),
 
       // Passport
       passport_number: (fd.get('passport_number') as string) || initialEmployee?.passport_number || undefined,
       passport_start_date: (fd.get('passport_start_date') as string) || undefined,
       passport_expiry: (fd.get('passport_expiry') as string) || '',
       passport_end_date: (fd.get('passport_expiry') as string) || undefined,
-      passport_file: docs.passport?.file_data || initialEmployee?.passport_file,
+      passport_file: fileOf('passport', initialEmployee?.passport_file),
 
       // Visa
       visa_number: (fd.get('visa_number') as string) || initialEmployee?.visa_number || undefined,
       visa_start_date: (fd.get('visa_start_date') as string) || undefined,
       visa_expiry: (fd.get('visa_expiry') as string) || '',
       visa_end_date: (fd.get('visa_expiry') as string) || undefined,
-      visa_file: docs.visa?.file_data || initialEmployee?.visa_file,
+      visa_file: fileOf('visa', initialEmployee?.visa_file),
 
       // Work Permit
       work_permit_number: (fd.get('work_permit_number') as string) || initialEmployee?.work_permit_number || undefined,
       work_permit_start_date: (fd.get('work_permit_start_date') as string) || undefined,
       work_permit_expiry: (fd.get('work_permit_expiry') as string) || '',
       work_permit_end_date: (fd.get('work_permit_expiry') as string) || undefined,
-      work_permit_file: docs.work_permit?.file_data || initialEmployee?.work_permit_file,
+      work_permit_file: fileOf('work_permit', initialEmployee?.work_permit_file),
 
       // Driving License (for Drivers)
       driving_license_no: (fd.get('driving_license_no') as string) || undefined,
@@ -188,7 +157,7 @@ function EmployeeFormModalContent({
       driving_license_issue_date: (fd.get('driving_license_issue_date') as string) || undefined,
       driving_license_expiry_date: (fd.get('driving_license_expiry_date') as string) || undefined,
       driving_license_type: (fd.get('driving_license_type') as string) || undefined,
-      driving_license_file: docs.driving_license?.file_data || initialEmployee?.driving_license_file,
+      driving_license_file: fileOf('driving_license', initialEmployee?.driving_license_file),
       assigned_vehicle: (fd.get('assigned_vehicle') as string) || undefined,
 
       // Financial & Employment
@@ -196,11 +165,11 @@ function EmployeeFormModalContent({
       pay_rate_hourly: Math.round((monthly_salary / MONTHLY_WORK_HOURS) * 10) / 10,
       medical_insurance: (fd.get('medical_insurance') as string) || undefined,
       medical_insurance_expiry: (fd.get('medical_insurance_expiry') as string) || undefined,
-      medical_insurance_file: docs.medical_insurance?.file_data || initialEmployee?.medical_insurance_file,
+      medical_insurance_file: fileOf('medical_insurance', initialEmployee?.medical_insurance_file),
       joined_date: (fd.get('joined_date') as string) || initialEmployee?.joined_date || todayDubai(),
       end_date: (fd.get('end_date') as string) || undefined,
       noc: (fd.get('noc') as string) || undefined,
-      noc_file: docs.noc?.file_data || initialEmployee?.noc_file,
+      noc_file: fileOf('noc', initialEmployee?.noc_file),
 
       status: (fd.get('status') as Employee['status']) || initialEmployee?.status || 'active',
 
@@ -445,7 +414,7 @@ function EmployeeFormModalContent({
                     <FileText size={12} className="text-sky-600" />
                     <span>Emirates ID (EID)</span>
                   </span>
-                  {docs.eid?.file_data ? (
+                  {cur('eid')?.file_data ? (
                     <span className="text-[9.5px] font-black text-sky-700 bg-sky-100/90 px-1.5 py-0.5 rounded-md border border-sky-200">
                       ATTACHED
                     </span>
@@ -455,13 +424,12 @@ function EmployeeFormModalContent({
                     </span>
                   )}
                 </div>
-                <EmployeeDocInput
-                  name="eid_file"
-                  placeholder="Upload EID image"
-                  doc={docs.eid}
-                  accentColor="sky"
-                  onUpload={f => handleAttachDoc('eid', 'Emirates ID', f)}
-                  onRemove={() => handleRemoveDoc('eid')}
+                <DocVersionsField
+                  category="eid"
+                  docs={docs}
+                  accent="sky"
+                  onUpload={f => handleAttachDoc('eid', f)}
+                  onRemove={handleRemoveDoc}
                   onPreview={d => setPreviewDoc(d)}
                 />
                 <div className="grid grid-cols-2 gap-2 pt-0.5">
@@ -489,7 +457,7 @@ function EmployeeFormModalContent({
                     <FileText size={12} className="text-purple-600" />
                     <span>Passport</span>
                   </span>
-                  {docs.passport?.file_data ? (
+                  {cur('passport')?.file_data ? (
                     <span className="text-[9.5px] font-black text-purple-700 bg-purple-100/90 px-1.5 py-0.5 rounded-md border border-purple-200">
                       ATTACHED
                     </span>
@@ -499,13 +467,12 @@ function EmployeeFormModalContent({
                     </span>
                   )}
                 </div>
-                <EmployeeDocInput
-                  name="passport_file"
-                  placeholder="Upload Passport image"
-                  doc={docs.passport}
-                  accentColor="purple"
-                  onUpload={f => handleAttachDoc('passport', 'Passport', f)}
-                  onRemove={() => handleRemoveDoc('passport')}
+                <DocVersionsField
+                  category="passport"
+                  docs={docs}
+                  accent="purple"
+                  onUpload={f => handleAttachDoc('passport', f)}
+                  onRemove={handleRemoveDoc}
                   onPreview={d => setPreviewDoc(d)}
                 />
                 <div className="grid grid-cols-2 gap-2 pt-0.5">
@@ -533,7 +500,7 @@ function EmployeeFormModalContent({
                     <Shield size={12} className="text-amber-600" />
                     <span>Residency Visa</span>
                   </span>
-                  {docs.visa?.file_data ? (
+                  {cur('visa')?.file_data ? (
                     <span className="text-[9.5px] font-black text-amber-700 bg-amber-100/90 px-1.5 py-0.5 rounded-md border border-amber-200">
                       ATTACHED
                     </span>
@@ -543,13 +510,12 @@ function EmployeeFormModalContent({
                     </span>
                   )}
                 </div>
-                <EmployeeDocInput
-                  name="visa_file"
-                  placeholder="Upload Visa image"
-                  doc={docs.visa}
-                  accentColor="amber"
-                  onUpload={f => handleAttachDoc('visa', 'Residency Visa', f)}
-                  onRemove={() => handleRemoveDoc('visa')}
+                <DocVersionsField
+                  category="visa"
+                  docs={docs}
+                  accent="amber"
+                  onUpload={f => handleAttachDoc('visa', f)}
+                  onRemove={handleRemoveDoc}
                   onPreview={d => setPreviewDoc(d)}
                 />
                 <div className="grid grid-cols-2 gap-2 pt-0.5">
@@ -577,7 +543,7 @@ function EmployeeFormModalContent({
                     <FileCheck size={12} className="text-emerald-600" />
                     <span>Work Permit</span>
                   </span>
-                  {docs.work_permit?.file_data ? (
+                  {cur('work_permit')?.file_data ? (
                     <span className="text-[9.5px] font-black text-emerald-700 bg-emerald-100/90 px-1.5 py-0.5 rounded-md border border-emerald-200">
                       ATTACHED
                     </span>
@@ -587,13 +553,12 @@ function EmployeeFormModalContent({
                     </span>
                   )}
                 </div>
-                <EmployeeDocInput
-                  name="work_permit_file"
-                  placeholder="Upload Work Permit image"
-                  doc={docs.work_permit}
-                  accentColor="emerald"
-                  onUpload={f => handleAttachDoc('work_permit', 'Work Permit', f)}
-                  onRemove={() => handleRemoveDoc('work_permit')}
+                <DocVersionsField
+                  category="work_permit"
+                  docs={docs}
+                  accent="emerald"
+                  onUpload={f => handleAttachDoc('work_permit', f)}
+                  onRemove={handleRemoveDoc}
                   onPreview={d => setPreviewDoc(d)}
                 />
                 <div className="grid grid-cols-2 gap-2 pt-0.5">
@@ -638,19 +603,18 @@ function EmployeeFormModalContent({
                         <Car size={12} className="text-blue-600" />
                         <span>UAE Driving License</span>
                       </span>
-                      {docs.driving_license?.file_data && (
+                      {cur('driving_license')?.file_data && (
                         <span className="text-[9.5px] font-black text-blue-700 bg-blue-100/90 px-1.5 py-0.5 rounded-md border border-blue-200">
                           ATTACHED
                         </span>
                       )}
                     </div>
-                    <EmployeeDocInput
-                      name="driving_license_file"
-                      accentColor="blue"
-                      placeholder="Upload Driving License image"
-                      doc={docs.driving_license}
-                      onUpload={f => handleAttachDoc('driving_license', 'Driving License', f)}
-                      onRemove={() => handleRemoveDoc('driving_license')}
+                    <DocVersionsField
+                      category="driving_license"
+                      docs={docs}
+                      accent="blue"
+                      onUpload={f => handleAttachDoc('driving_license', f)}
+                      onRemove={handleRemoveDoc}
                       onPreview={d => setPreviewDoc(d)}
                     />
                     <div className="grid grid-cols-2 gap-2 pt-1">

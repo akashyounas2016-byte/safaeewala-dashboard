@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useId } from 'react'
+import { DocVersionsField } from '@/components/common/DocVersionsField'
+import { addVersion, readFiles, removeVersion } from '@/lib/docVersions'
 import { useNavigate } from 'react-router-dom'
 import {
   Building2, Plus, Search, Phone, Mail, MapPin, Users,
@@ -218,32 +220,17 @@ function generateCertificateDataUrl(
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg)
 }
 
-// ── Multi-File Attachment Helper Function ──
+// ── R-DOC-01: new images become current; the set they replace is kept ──
 function handleFileUpload(
   files: FileList | null,
   category: AgencyDocumentCategory,
   setDocs: React.Dispatch<React.SetStateAction<AgencyDocument[]>>
 ) {
   if (!files || files.length === 0) return
-  Array.from(files).forEach(file => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const doc: AgencyDocument = {
-        id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        name: file.name,
-        category,
-        file_data: reader.result as string,
-        file_type: file.type,
-        file_size: file.size,
-        uploaded_at: new Date().toISOString(),
-      }
-      setDocs(prev => [...prev, doc])
-    }
-    reader.readAsDataURL(file)
-  })
+  void readFiles(files, category).then(added => setDocs(prev => addVersion(prev, category, added as AgencyDocument[])))
 }
 
-// ── Pure Image / Document Upload Field for Agencies (matching EmployeeDocInput style) ──
+// ── R-DOC-01: agency document field — one or more images; the replaced set shows under it as Previous ──
 function AgencyDocUploadField({
   label,
   buttonText,
@@ -261,98 +248,7 @@ function AgencyDocUploadField({
   onRemove: (docId: string) => void
   onPreview: (doc: AgencyDocument) => void
 }) {
-  useDocUrls() // E2E-08: re-render when a document's signed link is ready
-  const catDocs = documents.filter(d => d.category === category)
-  const doc = catDocs[catDocs.length - 1]
-  const uploadInputId = useId()
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      {label && (
-        <div className="flex items-center justify-between">
-          <label className="text-[11.5px] font-bold text-slate-700">{label}</label>
-          {doc ? (
-            <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <CheckCircle2 size={10} />
-              <span>Image Attached</span>
-            </span>
-          ) : (
-            <span className="text-[10px] font-semibold text-slate-400">No image</span>
-          )}
-        </div>
-      )}
-
-      <input
-        id={uploadInputId}
-        type="file"
-        accept="image/*,application/pdf"
-        className="hidden"
-        onChange={e => {
-          onAttach(e.target.files)
-          e.target.value = ''
-        }}
-      />
-
-      {doc ? (
-        <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
-          <div className="flex items-center gap-2 min-w-0">
-            {docKind(doc) === 'image' ? (
-              <img
-                src={docSrc(doc.file_data)}
-                alt={doc.name}
-                className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700 shrink-0">
-                <Paperclip size={14} />
-              </div>
-            )}
-            <div className="min-w-0">
-              <p className="text-[11.5px] font-bold text-slate-800 truncate" title={doc.name}>
-                {doc.name}
-              </p>
-              <p className="text-[10px] text-slate-400">
-                {doc.file_size ? `${Math.round(doc.file_size / 1024)} KB` : 'Attached copy'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={() => onPreview(doc)}
-              className="p-1 rounded-lg text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
-              title="Preview Document"
-            >
-              <Eye size={13} />
-            </button>
-            <label
-              htmlFor={uploadInputId}
-              className="p-1 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 cursor-pointer transition-colors"
-              title="Change / Replace Image"
-            >
-              <Upload size={13} />
-            </label>
-            <button
-              type="button"
-              onClick={() => onRemove(doc.id)}
-              className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
-              title="Remove Document"
-            >
-              <Trash2 size={13} />
-            </button>
-          </div>
-        </div>
-      ) : (
-        <label
-          htmlFor={uploadInputId}
-          className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-dashed border-slate-300 bg-white hover:bg-slate-50 hover:border-teal-500 text-slate-600 hover:text-teal-700 transition-all cursor-pointer group shadow-2xs"
-        >
-          <Upload size={13} className="text-slate-400 group-hover:text-teal-600 transition-colors" />
-          <span className="text-[11.5px] font-bold">{buttonText || 'Upload Image / Copy'}</span>
-        </label>
-      )}
-    </div>
-  )
+  return <DocVersionsField label={label} category={category} docs={documents} uploadText={buttonText} onUpload={onAttach} onRemove={onRemove} onPreview={onPreview} />
 }
 
 export function Agencies() {
@@ -1801,7 +1697,7 @@ export function Agencies() {
                   category="trade_license"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'trade_license', setAddDocs)}
-                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setAddDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -1827,7 +1723,7 @@ export function Agencies() {
                   category="emirates_id"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'emirates_id', setAddDocs)}
-                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setAddDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -1853,7 +1749,7 @@ export function Agencies() {
                   category="passport"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'passport', setAddDocs)}
-                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setAddDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -1880,7 +1776,7 @@ export function Agencies() {
                   category="tax_registration"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'tax_registration', setAddDocs)}
-                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setAddDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <AgencyDocUploadField
@@ -1888,7 +1784,7 @@ export function Agencies() {
                   category="noc"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'noc', setAddDocs)}
-                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setAddDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
               </div>
@@ -1920,7 +1816,7 @@ export function Agencies() {
                   category="agreement"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'agreement', setAddDocs)}
-                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setAddDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -1946,7 +1842,7 @@ export function Agencies() {
                   category="workmen_compensation"
                   documents={addDocs}
                   onAttach={files => handleFileUpload(files, 'workmen_compensation', setAddDocs)}
-                  onRemove={id => setAddDocs(prev => prev.filter(d => d.id !== id))}
+                  onRemove={id => setAddDocs(prev => removeVersion(prev, id))}
                   onPreview={doc => setPreviewDoc(doc)}
                 />
                 <div className="p-2 rounded-xl bg-indigo-50/60 border border-indigo-100 text-[11px] text-indigo-900/90 font-medium leading-relaxed">
@@ -2274,7 +2170,7 @@ export function Agencies() {
                     category="trade_license"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'trade_license', setEditDocs)}
-                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                     onPreview={doc => setPreviewDoc(doc)}
                   />
                   <div className="grid grid-cols-2 gap-2">
@@ -2300,7 +2196,7 @@ export function Agencies() {
                     category="emirates_id"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'emirates_id', setEditDocs)}
-                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                     onPreview={doc => setPreviewDoc(doc)}
                   />
                   <div className="grid grid-cols-2 gap-2">
@@ -2326,7 +2222,7 @@ export function Agencies() {
                     category="passport"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'passport', setEditDocs)}
-                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                     onPreview={doc => setPreviewDoc(doc)}
                   />
                   <div className="grid grid-cols-2 gap-2">
@@ -2353,7 +2249,7 @@ export function Agencies() {
                     category="tax_registration"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'tax_registration', setEditDocs)}
-                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                     onPreview={doc => setPreviewDoc(doc)}
                   />
                   <AgencyDocUploadField
@@ -2361,7 +2257,7 @@ export function Agencies() {
                     category="noc"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'noc', setEditDocs)}
-                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                     onPreview={doc => setPreviewDoc(doc)}
                   />
                 </div>
@@ -2393,7 +2289,7 @@ export function Agencies() {
                     category="agreement"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'agreement', setEditDocs)}
-                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                     onPreview={doc => setPreviewDoc(doc)}
                   />
                   <div className="grid grid-cols-2 gap-2">
@@ -2419,7 +2315,7 @@ export function Agencies() {
                     category="workmen_compensation"
                     documents={editDocs}
                     onAttach={files => handleFileUpload(files, 'workmen_compensation', setEditDocs)}
-                    onRemove={id => setEditDocs(prev => prev.filter(d => d.id !== id))}
+                    onRemove={id => setEditDocs(prev => removeVersion(prev, id))}
                     onPreview={doc => setPreviewDoc(doc)}
                   />
                   <div className="p-2 rounded-xl bg-indigo-50/60 border border-indigo-100 text-[11px] text-indigo-900/90 font-medium leading-relaxed">

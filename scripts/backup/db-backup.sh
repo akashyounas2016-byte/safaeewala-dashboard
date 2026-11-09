@@ -85,6 +85,19 @@ if [ -d "$APP_DATA_DIR" ]; then
   mv "$BACKUP_DIR/safaeewala-$STAMP-files.tar.gz.tmp" "$BACKUP_DIR/safaeewala-$STAMP-files.tar.gz"
 fi
 
+# 4. R-DOC-01: document images and chat media from Supabase Storage. A growing copy: only new files are
+#    downloaded and nothing is deleted, so every version of every passport / EID / permit image stays.
+STORAGE_NOTE=""
+SB_URL=$(env_get SUPABASE_URL || true)
+SB_KEY=$(env_get SUPABASE_SERVICE_ROLE_KEY || true)
+if [ -n "$SB_URL" ] && [ -n "$SB_KEY" ] && [ -f "$(dirname "$0")/storage-mirror.cjs" ]; then
+  printf 'SUPABASE_URL=%s\nSUPABASE_SERVICE_ROLE_KEY=%s\nBUCKETS=staff-documents,whatsapp-media\n' "$SB_URL" "$SB_KEY" > "$TMP_ENV"
+  mkdir -p "$BACKUP_DIR/storage"
+  STORAGE_OUT=$(docker run --rm --env-file "$TMP_ENV" -v "$BACKUP_DIR/storage:/out" -v "$(dirname "$0")/storage-mirror.cjs:/m.cjs:ro" node:22-alpine node /m.cjs 2>&1) \
+    || fail "storage copy: $(printf '%s' "$STORAGE_OUT" | tail -1)"
+  STORAGE_NOTE=$(printf '%s' "$STORAGE_OUT" | tail -1)
+fi
+
 # The 1st of the month is kept for good, so the full history stays without keeping every day
 if [ "$DAY" = "01" ]; then
   mkdir -p "$BACKUP_DIR/monthly"
@@ -105,5 +118,5 @@ if [ -n "$REMOTE" ]; then
 fi
 
 SIZE=$(du -ch "$BACKUP_DIR"/safaeewala-"$STAMP"-* | tail -1 | cut -f1)
-echo "$STAMP OK: $TABLES tables, $SIZE, $OFFSITE" | tee "$STATUS_FILE"
-write_status true "$TABLES tables, $SIZE"
+echo "$STAMP OK: $TABLES tables, $SIZE, $OFFSITE${STORAGE_NOTE:+, $STORAGE_NOTE}" | tee "$STATUS_FILE"
+write_status true "$TABLES tables, $SIZE${STORAGE_NOTE:+ · $STORAGE_NOTE}"

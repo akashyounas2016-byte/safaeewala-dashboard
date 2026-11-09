@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { isCurrent } from '@/lib/docVersions'
 import { useParams, Link } from 'react-router-dom'
 import {
   ArrowLeft, Phone, Mail, MapPin, Calendar, Clock, Camera, Activity,
@@ -150,7 +151,8 @@ export function EmployeeProfile() {
     addIf('driving_license', `${emp.full_name} - Driving License`, emp.driving_license_file)
     addIf('medical_insurance', `${emp.full_name} - Medical Insurance`, emp.medical_insurance_file)
     addIf('noc', `${emp.full_name} - NOC`, emp.noc_file)
-    return list
+    // R-DOC-01: the current image of each document first (newest), then earlier versions
+    return list.filter(d => d.file_data).sort((a, b) => Number(isCurrent(b)) - Number(isCurrent(a)) || (b.uploaded_at || '').localeCompare(a.uploaded_at || ''))
   }, [emp])
 
   // Fetch complete service history from Daily Job Sheet for this employee
@@ -173,7 +175,10 @@ export function EmployeeProfile() {
     if (!emp || !file) return
     if (!file.type.startsWith('image/')) { alert('Please choose an image file.'); return }
     try {
-      updateEmployee(emp.id, { photo_url: await resizeImageToDataUrl(file) })
+      const photo_url = await resizeImageToDataUrl(file)
+      // R-DOC-01: the photo it replaces is kept (Documents archive → Previous photo)
+      const old: EmployeeDocument[] = emp.photo_url ? [{ id: `doc-photo-${Date.now()}`, category: 'photo', name: `${emp.full_name} - Previous photo`, file_data: emp.photo_url, file_type: 'image/jpeg', uploaded_at: new Date().toISOString(), is_active: false, archived_at: new Date().toISOString() }] : []
+      updateEmployee(emp.id, { photo_url, ...(old.length ? { documents: [...old, ...(emp.documents || [])] } : {}) })
     } catch {
       alert('Could not read this image. Please try another file.')
     }
@@ -977,7 +982,7 @@ export function EmployeeProfile() {
                           </div>
                           <div className="min-w-0">
                             <p className="text-[12.5px] font-bold text-slate-800 truncate" title={doc.name}>{doc.name}</p>
-                            <p className="text-[11px] text-slate-400 capitalize">{doc.category.replace('_', ' ')} • {Math.round((doc.file_size || 0) / 1024)} KB</p>
+                            <p className="text-[11px] text-slate-400 capitalize">{doc.category.replace('_', ' ')} • {Math.round((doc.file_size || 0) / 1024)} KB{!isCurrent(doc) && <span className="ml-1.5 normal-case font-bold text-slate-500 bg-slate-200/70 px-1.5 rounded">{doc.removed_at ? 'Removed' : 'Previous'} · {formatDate(String(doc.archived_at || doc.removed_at || doc.uploaded_at).slice(0, 10))}</span>}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">

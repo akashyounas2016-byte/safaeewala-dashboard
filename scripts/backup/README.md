@@ -14,11 +14,14 @@
 - Daily copies are kept for 30 days in `/var/backups/safaeewala` on the VPS. The copy of the 1st of each month also goes to `monthly/` and is kept for good: every backup holds all data up to that day, so this keeps the full history at under 1 GB for years.
 - Off-site copy (Google Drive) when `BACKUP_RCLONE_REMOTE` is set.
 - `last-status.txt` in that folder gives the result of the last run; `backup-status.json` in the app data folder feeds Settings → Backup (UX-93). If `BACKUP_ALERT_URL` is set (for example an n8n webhook), a failed run is posted there.
-- The app has no Supabase Storage buckets, so there are no files to back up beyond the database.
+- **Storage files (R-DOC-01):** `storage/staff-documents/…` (passport, EID, visa, work permit, agency documents, every version) and `storage/whatsapp-media/…` (chat photos / voice notes).
+  - `storage-mirror.cjs` runs next to `db-backup.sh`. It downloads only files not copied before and never deletes one, so the folder keeps every version of every document. It is not part of the 30-day clean-up.
+  - It needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the VPS `.env`.
+  - Test without downloading: `DRY=1 node storage-mirror.cjs`.
 
 ## Setup on the VPS (once)
 
-1. Script: `/opt/safaeewala-backup/db-backup.sh` (`chmod 700`, LF line endings).
+1. Scripts: `/opt/safaeewala-backup/db-backup.sh` (`chmod 700`, LF line endings) and `/opt/safaeewala-backup/storage-mirror.cjs` next to it.
 2. In `/var/www/safaeewala/.env` (chmod 600, never in git), set `SUPABASE_DB_URL` to the Supabase *Session pooler* connection string (the **Connect** button in the project's top bar → Connection String → Session pooler, port 5432). The service role key is not enough for this.
 3. Optional settings: `BACKUP_RCLONE_REMOTE=gdrive:Safaeewala-Backups` (after `rclone config`) and `BACKUP_ALERT_URL=…`.
 4. Cron (the VPS runs on UTC; 22:00 UTC = 02:00 Dubai):

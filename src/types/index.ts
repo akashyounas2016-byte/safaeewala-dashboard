@@ -83,7 +83,7 @@ export interface Client {
 
 export type EmployeeRole = 'cleaner' | 'supervisor' | 'crew_lead' | 'ducting' | 'technical' | 'store_cleaner' | 'driver'
 
-export type EmployeeDocumentCategory = 'eid' | 'passport' | 'visa' | 'work_permit' | 'driving_license' | 'medical_insurance' | 'noc' | 'other'
+export type EmployeeDocumentCategory = 'eid' | 'passport' | 'visa' | 'work_permit' | 'driving_license' | 'medical_insurance' | 'noc' | 'photo' | 'other'
 
 export interface EmployeeDocument {
   id: string
@@ -97,6 +97,12 @@ export interface EmployeeDocument {
   end_date?: string
   document_number?: string
   notes?: string
+  /** R-DOC-01: version history — current images have is_active !== false; replaced ones get archived_at */
+  is_active?: boolean
+  archived_at?: string
+  removed_at?: string
+  uploaded_by?: string
+  version?: number
 }
 
 /** A salary or advance paid to an agency's staff (agencies work on a fixed-price contract, no commission — DEC-016) */
@@ -147,6 +153,8 @@ export interface AgencyDocument {
   archived_at?: string
   version?: number
   notes?: string
+  removed_at?: string   // R-DOC-01: taken out of the current set, kept in history
+  uploaded_by?: string
 }
 
 export interface Agency {

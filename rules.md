@@ -808,6 +808,18 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/docStorage.ts` (withoutInlineDocs), `src/store/DataContext.tsx` (addEmployee, updateEmployee, addAgency, updateAgency, docsToStorage).
 - **Status:** Fixed · Since: 2026-11-07
 
+### R-DOC-01 — Document images keep their history (Current + Previous), and are backed up
+- **Rule:** *"jahan jahan image upload ka option he popups me wahan pr multiple images add ka option … jo current image hogi … new image upload hone k bad usi field me neche show honi chaheye, take hum recent 1 image dekh sken … inka proper backup b rakhna he jese passport, eid, work permit"* (2026-11-09)
+  - Every document field in the Employee popup (EID, Passport, Visa, Work Permit, Driving License) and the Agency popups (Trade License, EID, Passport, Contract, NOC, …) takes **one or more** images or PDFs at once.
+  - The new upload becomes **Current**. The images it replaces show **in the same field, right under it, as "Previous · replaced <date>"**. Older sets are under "Older history (n)". Each image has preview and download.
+  - **Remove** takes an image out of Current only. It stays in history marked "removed". No file is deleted from Storage.
+  - Employees: `eid_file`, `passport_file` … still hold the newest current image (other screens read them). Old employees' single image becomes their Current set.
+  - The profile's document archive lists current images first and earlier ones as "Previous" / "Removed". A replaced **profile photo** is kept there as "Previous photo".
+  - **Backup:** the nightly VPS backup (R-OPS-04) also copies the Storage buckets `staff-documents` and `whatsapp-media` to `/var/backups/safaeewala/storage/`. Only new files are downloaded and nothing is deleted, so every version stays.
+  - Expenses: a receipt is added only when the expense is created (there is no replace), so it has no Previous.
+- **Code:** `src/lib/docVersions.ts`, `src/components/common/DocVersionsField.tsx`, `EmployeeFormModal.tsx`, `Agencies.tsx`, `AgencyDashboard.tsx`, `EmployeeProfile.tsx`, `scripts/backup/storage-mirror.cjs`, `db-backup.sh`.
+- **Status:** Built · backup step to install on the VPS · Since: 2026-11-09
+
 ## WA — WhatsApp
 
 ### R-WA-01 — WhatsApp runs inside the CRM (Meta Cloud API, no GHL)
