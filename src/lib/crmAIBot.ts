@@ -286,13 +286,13 @@ export function askCRMAIBot(query: string, data: ChatContextData): AIChatMessage
         `  ${idx + 1}. **${name}:** ${stats.ot}h OT (${stats.visits} shifts, ${stats.duty}h total duty)`
       )).join('\n')
     } else {
-      staffListText = '  • Filhal kisi staff ka overtime record nahi hua.'
+      staffListText = '  • No overtime recorded for any staff yet.'
     }
 
     return {
       id: `ai-${Date.now()}`,
       sender: 'ai',
-      text: `⏱️ **Safaeewala Overtime (OT) Report:**\n\n• **Total Overtime Logged:** **${totalOT} Hours** across all active cleaning shifts.\n\n• **Top Cleaners with Overtime:**\n${staffListText}\n\nℹ️ *Policy Note: Rozana 8:00 PM kay baad kay working hours auto-calculate hokar Overtime mein add hotay hain.*`,
+      text: `⏱️ **Safaeewala Overtime (OT) Report:**\n\n• **Total Overtime Logged:** **${totalOT} Hours** across all active cleaning shifts.\n\n• **Top Cleaners with Overtime:**\n${staffListText}\n\nℹ️ *Policy note: hours worked after 8:00 PM are counted as overtime automatically.*`,
       timestamp: timeStr,
       actionSuggestion: {
         type: 'view_ot',
@@ -383,13 +383,13 @@ export function askCRMAIBot(query: string, data: ChatContextData): AIChatMessage
         `  ${i + 1}. **${cname}:** AED ${amt.toLocaleString()} due`
       )).join('\n')
     } else {
-      topDueText = '  • Tamam clients kay dues clear hain.'
+      topDueText = '  • All clients are paid up.'
     }
 
     return {
       id: `ai-${Date.now()}`,
       sender: 'ai',
-      text: `⚠️ **Pending Receivables & Unpaid Accounts:**\n\n• **Total Outstanding Balance:** **AED ${totalPending.toLocaleString()}**\n\n• **Source Breakdown:**\n  - Daily Job Sheet Unpaid Shifts: **AED ${djPendingAmt.toLocaleString()}** (${djPendingShifts.length} shifts)\n  - Side-table Pending Collections: **AED ${sidePendingAmt.toLocaleString()}**\n  - Sent/Overdue Invoices: **AED ${invoicePendingAmt.toLocaleString()}**\n\n• **Highest Due Accounts:**\n${topDueText}\n\n💡 *Aap Pending Payments (/pending) screen se in clients ko direct WhatsApp reminder bhej saktay hain.*`,
+      text: `⚠️ **Pending Receivables & Unpaid Accounts:**\n\n• **Total Outstanding Balance:** **AED ${totalPending.toLocaleString()}**\n\n• **Source Breakdown:**\n  - Daily Job Sheet Unpaid Shifts: **AED ${djPendingAmt.toLocaleString()}** (${djPendingShifts.length} shifts)\n  - Side-table Pending Collections: **AED ${sidePendingAmt.toLocaleString()}**\n  - Sent/Overdue Invoices: **AED ${invoicePendingAmt.toLocaleString()}**\n\n• **Highest Due Accounts:**\n${topDueText}\n\n💡 *You can send these clients a WhatsApp reminder from the Pending Payments screen (/pending).*`,
       timestamp: timeStr,
       actionSuggestion: {
         type: 'view_pending',
@@ -420,13 +420,13 @@ export function askCRMAIBot(query: string, data: ChatContextData): AIChatMessage
         `  ${i + 1}. **${d.clientName}:** ${d.description}`
       )).join('\n')
     } else {
-      sampleDupText = '  • Koi duplicate booking nahi mili. Data clean hai.'
+      sampleDupText = '  • No duplicate bookings found. The data is clean.'
     }
 
     return {
       id: `ai-${Date.now()}`,
       sender: 'ai',
-      text: `🛡️ **CRM Data Integrity & Duplication Auditor:**\n\n• **Overall Health Score:** **${health.score}%**\n• **Total Records Audited:** ${health.totalScanned}\n• **Duplicate Bookings Detected:** **${dupCount}**\n• **High Priority Conflicts:** **${highCount}**\n\n• **Detected Duplicates:**\n${sampleDupText}\n\n⚡ *Action Advised: Duplicate ya doubtful bookings ko foran "Pending" status par move karen taakay dispatch team ghalti se double shift na lagaye.*`,
+      text: `🛡️ **CRM Data Integrity & Duplication Auditor:**\n\n• **Overall Health Score:** **${health.score}%**\n• **Total Records Audited:** ${health.totalScanned}\n• **Duplicate Bookings Detected:** **${dupCount}**\n• **High Priority Conflicts:** **${highCount}**\n\n• **Detected Duplicates:**\n${sampleDupText}\n\n⚡ *Advice: move duplicate or doubtful bookings to "Pending" at once, so the dispatch team does not book a double shift by mistake.*`,
       timestamp: timeStr,
       actionSuggestion: {
         type: 'switch_tab_alerts',
@@ -467,7 +467,7 @@ export function askCRMAIBot(query: string, data: ChatContextData): AIChatMessage
     return {
       id: `ai-${Date.now()}`,
       sender: 'ai',
-      text: `👥 **Active Cleaning Staff Performance:**\n\n• **Total Active Crew Members:** ${staffMap.size}\n• **Total Operational Shifts:** ${validJobs.length}\n\n• **Most Active Cleaners:**\n${staffText}\n\n💡 *Tip: Aap kisi specific cleaner ka naam pooch kar unka schedule bhi check kar saktay hain.*`,
+      text: `👥 **Active Cleaning Staff Performance:**\n\n• **Total Active Crew Members:** ${staffMap.size}\n• **Total Operational Shifts:** ${validJobs.length}\n\n• **Most Active Cleaners:**\n${staffText}\n\n💡 *Tip: ask about a cleaner by name to see their schedule.*`,
       timestamp: timeStr,
     }
   }
@@ -480,7 +480,7 @@ export function askCRMAIBot(query: string, data: ChatContextData): AIChatMessage
   return {
     id: `ai-${Date.now()}`,
     sender: 'ai',
-    text: `🤖 **Safaeewala AI CRM Bot — Live Snapshot:**\n\n• **Live Revenue:** **AED ${djReceived.toLocaleString()}** (Collected from shifts)\n• **Overtime (OT):** **${totalOT}h** across crew\n• **Data Health Score:** **${health.score}%** (${health.issues.length} detected discrepancies)\n\nAap mujh se mazeed pooch saktay hain:\n• *"Aaj ka total revenue kitna hai?"*\n• *"Highest overtime (OT) kis cleaner ka hai?"*\n• *"Kaun se clients ka balance pending hai?"*\n• *"Duplicate bookings check karo"*`,
+    text: `🤖 **Safaeewala AI CRM Bot — Live Snapshot:**\n\n• **Live Revenue:** **AED ${djReceived.toLocaleString()}** (Collected from shifts)\n• **Overtime (OT):** **${totalOT}h** across crew\n• **Data Health Score:** **${health.score}%** (${health.issues.length} detected discrepancies)\n\nYou can also ask:\n• *"What is today's total revenue?"*\n• *"Which cleaner has the most overtime (OT)?"*\n• *"Which clients have a pending balance?"*\n• *"Check duplicate bookings"*`,
     timestamp: timeStr,
   }
 }

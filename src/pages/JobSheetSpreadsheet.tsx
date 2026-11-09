@@ -677,13 +677,8 @@ export function JobSheetSpreadsheet() {
     } catch { /* storage full — the leave warning still protects the edits */ }
   }, [gridRows, hasUnsavedChanges, periodKey, draftOffer])
 
-  // Warn before closing / refreshing the tab with unsaved edits (UX-34)
-  useEffect(() => {
-    if (!hasUnsavedChanges) return
-    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [hasUnsavedChanges])
+  // UX-123 (owner 2026-11-09): no "changes not saved" warning when leaving. Edits are saved on the way out
+  // (auto-save, below) and kept as a draft in this browser meanwhile, which is offered again on return.
 
   // Update formula bar when active cell changes
   useEffect(() => {
@@ -2322,6 +2317,11 @@ export function JobSheetSpreadsheet() {
     showToast(`✓ ${auto ? 'Auto-saved' : 'Saved'}: ${parts.join(', ')}`)
   }
 
+  // UX-123: leaving the sheet (sidebar, another screen) saves what is waiting, without asking
+  const saveOnLeaveRef = useRef<() => void>(() => {})
+  useEffect(() => { saveOnLeaveRef.current = () => { if (latest.current.hasUnsavedChanges) void handleSaveAll('auto') } })
+  useEffect(() => () => saveOnLeaveRef.current(), [])
+
   // R-SYNC-14: auto-save 3 seconds after the last change (not while a cell is being typed in or the Add Job form is open)
   const saveRef = useRef(handleSaveAll)
   useEffect(() => { saveRef.current = handleSaveAll })
@@ -2819,7 +2819,9 @@ export function JobSheetSpreadsheet() {
           {/* Back Icon Button (Text removed as requested) */}
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
+              // UX-123: save what is waiting, then leave — no warning
+              if (hasUnsavedChanges) { try { await handleSaveAll('auto') } catch { /* kept as a draft */ } }
               if (window.opener) {
                 try {
                   window.close()
@@ -4975,7 +4977,7 @@ export function JobSheetSpreadsheet() {
           </div>
 
           <p className="text-[11px] text-slate-500">
-            Columns ka sequence drag-and-drop ya arrows say tabdeel karen, aur checkboxes say show ya hide karen:
+            Reorder the columns by drag and drop or with the arrows, and show or hide them with the checkboxes:
           </p>
 
           {/* Draggable column list */}

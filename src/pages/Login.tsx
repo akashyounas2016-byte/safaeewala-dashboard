@@ -31,7 +31,7 @@ export function Login() {
     setError(null)
     if (lockedSeconds > 0) return
     if (!username.trim() || !password) {
-      setError('Login ID aur password dono darj karein.')
+      setError('Enter both your Login ID and password.')
       return
     }
     setLoading(true)
@@ -44,13 +44,13 @@ export function Login() {
     const msg = err.message.toLowerCase()
     if (err.status === 429 || msg.includes('rate limit') || msg.includes('too many')) {
       setLockedSeconds(60)
-      setError('Bohat zyada koshishein — 1 minute baad dobara try karein.')
+      setError('Too many attempts — try again in 1 minute.')
     } else if (msg.includes('banned')) {
-      setError('Ye account band hai. Admin se rabta karein.')
+      setError('This account is disabled. Contact your admin.')
     } else if (msg.includes('invalid')) {
-      setError('Login ID ya password ghalat hai.')
+      setError('The Login ID or password is wrong.')
     } else {
-      setError('Sign in nahi ho saka: ' + err.message)
+      setError('Could not sign in: ' + err.message)
     }
   }
 

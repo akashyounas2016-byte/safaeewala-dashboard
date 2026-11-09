@@ -296,6 +296,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ---
 
+### R-UI-01 — Screens speak English only
+- **Rule:** *"signout k popup se roman urdu remove krdo english use honi chaheye … crm ko mukamal audit kr k dekho"* (2026-11-09)
+  - **Rewritten in English:** the sign-out question, login errors, the AI Bot's greeting, answers and suggestions, the Settings backup guide, and the Monthly schedule sync and Google Drive webhook windows. Also two hints (Excel columns, Monthly client days) and a keyword example.
+  - **What stays:** Roman Urdu may still be typed. The AI Bot understands words like "kamai", "baqaya", "booking karo", and complaint detection knows "shikayat". Code comments are not shown and are left as they are.
+  - A test scans every screen file for Roman Urdu words, so new text stays English.
+- **Code:** `tests/unit/english-ui-attendance.test.ts` and the files above.
+- **Status:** Active · Since: 2026-11-09
+
 ### R-FORM-01 — A popup never saves with a required field empty
 - **Rule:** *"CRM ke tamam pop-ups aur Add Job Entry mein, agar koi mandatory field khaali ho to data save na ho … top par wazeh error message … specific field ko highlight kare."*
   - Nothing is saved while a required field (marked *) is empty or invalid.

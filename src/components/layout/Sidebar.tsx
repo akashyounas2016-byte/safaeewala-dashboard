@@ -689,7 +689,7 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
               <button
                 type="button"
                 onClick={() => {
-                  void confirmAsync({ title: 'Sign out?', message: 'Kiya aap Safaeewala CRM se Sign Out karna chahtay hain?', confirmLabel: 'Sign out' })
+                  void confirmAsync({ title: 'Sign out?', message: 'Do you want to sign out of Safaeewala CRM?', confirmLabel: 'Sign out' })
                     .then(ok => { if (ok) void signOut() })
                 }}
                 className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"

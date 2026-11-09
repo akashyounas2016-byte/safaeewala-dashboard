@@ -148,6 +148,12 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
     - Merged screens (UX-117, 2026-11-09):
       - Monthly Clients, Inventory, Analytics and Complaints have no sidebar item. They are tabs of Clients, Expenses, Reports and Alerts.
       - The tabs sit under the page header like Marketing's tabs: a white pill bar, active tab #0F1F19. Only the tabs the role may open are shown. Since 2026-11-09, Employees ⊃ Attendance as well.
+    - Leaving a screen (UX-123): no "changes not saved" warning anywhere. The Excel Job Sheet saves what is waiting when you leave (back button or another screen) and keeps a draft in the browser in the meantime. Expenses and Inventory already worked this way.
+    - Attendance (UX-124):
+      - The toolbar ends with: Cards / Table toggle · search · Hide / Show.
+      - Cards show the first 6 (2 rows on wide screens, 3 on medium), then "View all N cleaners".
+      - The table has Cleaner, Status, Shift, Jobs, Duty, OT and Note. The chosen view is remembered in the browser.
+      - The Employees · Attendance tabs keep normal spacing.
     - Bookings date filter (UX-121): All Time, Today, Yesterday, Last 3 / 7 / 30 Days, Last 3 / 6 Months, Last 1 Year, Custom Range…; default Today; Dubai dates.
     - Settings → Users password (UX-122):
       - The key icon opens a window and changes nothing. It explains that the current password cannot be shown (it is a one-way hash).

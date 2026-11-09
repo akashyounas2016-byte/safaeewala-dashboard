@@ -130,7 +130,7 @@ export function GoogleDriveWebhookModal({
               </span>
             </div>
             <p className="text-[12px] text-blue-50 mt-1 leading-relaxed">
-              Daily Job Sheets ko Excel format mein convert kar kay aap kay n8n Webhook kay zariye directly Google Drive folder mein backup karta hai.
+              Converts Daily Job Sheets to Excel and backs them up straight to your Google Drive folder through your n8n webhook.
             </p>
           </div>
         </div>
@@ -212,7 +212,7 @@ export function GoogleDriveWebhookModal({
               </div>
               <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
                 <Info size={12} />
-                <span>Agar webhook URL empty chhorain gay to sheet local VPS archive (<code className="text-slate-600">/data/backups/</code>) mein save hogi.</span>
+                <span>If the webhook URL is left empty, the sheet is saved in the VPS archive (<code className="text-slate-600">/data/backups/</code>).</span>
               </p>
             </div>
 
@@ -347,7 +347,7 @@ export function GoogleDriveWebhookModal({
                 </div>
                 <h5 className="font-bold text-[13px] text-slate-800">Code Node (Base64)</h5>
                 <p className="text-[11.5px] text-slate-500 leading-relaxed">
-                  CRM kay <code className="text-slate-700 font-semibold">file_base64</code> payload ko n8n binary <code className="text-slate-700 font-semibold">data</code> mein convert karta hai jo spreadsheet upload kay liye zaroori hai.
+                  Turns the CRM's <code className="text-slate-700 font-semibold">file_base64</code> payload into the n8n binary <code className="text-slate-700 font-semibold">data</code> that the spreadsheet upload needs.
                 </p>
               </div>
 
@@ -367,11 +367,11 @@ export function GoogleDriveWebhookModal({
             <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 text-blue-950 space-y-2 text-[12px]">
               <strong className="block text-[12.5px] font-bold text-blue-900">How to use in n8n:</strong>
               <ol className="list-decimal pl-4 space-y-1 text-slate-700">
-                <li>Upar majood <strong>"Copy n8n Workflow JSON"</strong> button par click karen.</li>
-                <li>Apnay n8n editor screen par ja kar canvas par click karein aur <strong>Ctrl + V</strong> (Paste) dabayein.</li>
-                <li>Poora 4-node workflow automatically create ho jaye ga.</li>
-                <li>Google Drive node mein apna Google account connect karein aur workflow ko <strong>Active</strong> kar dein.</li>
-                <li>Uski Webhook URL copy karke is modal kay <strong>"Backup & Settings"</strong> tab mein paste kar dein!</li>
+                <li>Click the <strong>"Copy n8n Workflow JSON"</strong> button above.</li>
+                <li>Open your n8n editor, click the canvas and press <strong>Ctrl + V</strong> (paste).</li>
+                <li>The whole 4-node workflow is created.</li>
+                <li>Connect your Google account in the Google Drive node and set the workflow <strong>Active</strong>.</li>
+                <li>Copy its webhook URL and paste it in this window's <strong>"Backup & Settings"</strong> tab.</li>
               </ol>
             </div>
           </div>

@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(ui): English only on screen — sign-out, login errors, AI Bot, backup guide and sync / webhook windows rewritten; a test keeps it so (R-UI-01)
+- feat(job-sheet): no "leave site / changes not saved" warning; the Excel sheet saves on the way out (UX-123)
+- feat(attendance): Cards / Table view, Hide / Show, first 6 cards then View all; tab spacing fixed (UX-124)
+
 - feat(documents): Upload image or PDF everywhere; PDFs preview; picked files go to Storage at once (no more empty "No binary file preview" records) (R-DOC-02)
 - feat(my-duties): Start Job / End Job popups; Start → booking In progress, End → Completed (database trigger); office-completed bookings show as done on the phone (R-DUTY-02)
 - feat(sidebar): Attendance is a tab of Employees; merged-screen tabs under the header like Marketing (UX-117)

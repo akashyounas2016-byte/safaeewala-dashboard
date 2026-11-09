@@ -2956,7 +2956,7 @@ export function DailyJobSheet() {
               type="button"
               onClick={() => importRef.current?.click()}
               disabled={importing}
-              title="Import Excel: Sheet ki date file name say automatically set hoti hai"
+              title="Import Excel: the sheet date is taken from the file name"
               className="h-11 px-4 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-[12.5px] shadow-sm backdrop-blur-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60"
             >
               <Upload size={15} className="text-emerald-300" />

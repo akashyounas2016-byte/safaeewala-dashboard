@@ -76,7 +76,7 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
     {
       id: 'welcome-msg',
       sender: 'ai',
-      text: `Assalam-o-Alaikum! Main **Safaeewala Operations AI Bot** hoon. 🤖✨\n\nMain aap kay live CRM data ko monitor karta hoon aur in sawalat kay fori jawab de sakta hoon:\n• **Revenue & Collections:** Total payments, cash/card, aur bank transfers\n• **Overtime (OT):** Cleaners kay overtime ghantay aur top OT staff\n• **Pending Balances:** Unpaid clients aur due amounts\n• **Duplicate Bookings:** Duplications aur missing address detection\n\nAap neechay diye gaye buttons par click kar saktay hain ya seedha apna sawal likh kar send karein!`,
+      text: `Hello! I am the **Safaeewala Operations AI Bot**. 🤖✨\n\nI watch your live CRM data and answer these questions straight away:\n• **Revenue & Collections:** total payments, cash / card and bank transfers\n• **Overtime (OT):** cleaners' overtime hours and the top OT staff\n• **Pending Balances:** unpaid clients and amounts due\n• **Duplicate Bookings:** duplicates and missing addresses\n\nClick a button below or type your question and send it.`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ])
@@ -572,7 +572,7 @@ export function CRMAIBotModal({ open, onClose }: CRMAIBotModalProps) {
                   type="text"
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
-                  placeholder="Revenue, Overtime (OT), ya Duplicates ke baray mein poonchein…"
+                  placeholder="Ask about revenue, overtime (OT) or duplicates…"
                   className="w-full text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium text-slate-800 transition-colors"
                 />
               </div>

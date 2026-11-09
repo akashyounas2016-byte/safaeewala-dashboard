@@ -26,7 +26,7 @@ import type { Employee } from '@/types'
  *    one search across cleaners / clients / bookings / invoices, cleaner info and the month's OT table.
  */
 const card = 'bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)]'
-const SUGGEST = ['Is mahine OT kis ka zyada hai?', 'Pending payments kitni hain?', 'Aaj ka revenue', 'Duplicate bookings check karo', 'New booking']
+const SUGGEST = ['Who has the most OT this month?', 'How much is pending?', "Today's revenue", 'Check duplicate bookings', 'New booking']
 
 /** **bold** and new lines, nothing else */
 function Rich({ text }: { text: string }) {

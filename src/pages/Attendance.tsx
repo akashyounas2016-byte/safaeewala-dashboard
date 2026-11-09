@@ -6,8 +6,12 @@ import {
   XCircle, Search, Filter, Printer, Download, Plus, RotateCw,
   ExternalLink, ChevronLeft, ChevronRight, MapPin, Briefcase,
   Sparkles, Check, HelpCircle, FileSpreadsheet, Eye, UserX,
-  Phone, AlertTriangle, X, Flag, ShieldCheck,
+  Phone, AlertTriangle, X, Flag, ShieldCheck, LayoutGrid, List, EyeOff,
 } from 'lucide-react'
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
+
+/** UX-124: the attendance cards show 2–3 rows first (3 per row on wide screens) */
+const CARDS_FIRST = 6
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
@@ -119,6 +123,11 @@ export function Attendance() {
 
   // ── Search & Filter State ──
   const [searchQuery, setSearchQuery] = useState('')
+  // UX-124: card or table view and hidden roster are remembered in this browser
+  const [rosterView, setRosterViewState] = useState<'cards' | 'table'>(() => safeLocalStorageGet('safaeewala_attendance_view', 'cards'))
+  const setRosterView = (v: 'cards' | 'table') => { setRosterViewState(v); safeLocalStorageSet('safaeewala_attendance_view', v) }
+  const [rosterHidden, setRosterHidden] = useState(false)
+  const [showAllCards, setShowAllCards] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'available' | 'absent'>('all')
   const [timeframePreset, setTimeframePreset] = useState<string>('today')
 
@@ -474,7 +483,7 @@ export function Attendance() {
       </div>
 
       {/* UX-117: Employees · Attendance tabs under the header (Attendance is a tab of Employees) */}
-      <div className="-mb-6"><ModuleTabs /></div>
+      <ModuleTabs />
 
       {/* ── Auto-Fetch Sync Feedback Toast ── */}
       {syncToast && (
@@ -653,8 +662,17 @@ export function Attendance() {
           </select>
         </div>
 
-        {/* Right: Search Cleaner Name/Location Field (Moved after the filters) */}
-        <div className="relative min-w-[260px]">
+        {/* UX-124: Card / Table view before the search, Hide / Show beside it */}
+        <div className="flex items-center gap-2 flex-wrap xl:flex-nowrap">
+        <div className="flex items-center gap-0.5 bg-slate-100 p-1 rounded-xl border border-slate-200/80" role="group" aria-label="View">
+          {(['cards', 'table'] as const).map(v => (
+            <button key={v} type="button" onClick={() => setRosterView(v)} aria-pressed={rosterView === v} title={v === 'cards' ? 'Card view' : 'Table view'}
+              className={`px-2.5 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1 cursor-pointer ${rosterView === v ? 'bg-white text-emerald-700 shadow-2xs' : 'text-slate-500 hover:text-slate-800'}`}>
+              {v === 'cards' ? <LayoutGrid size={13} /> : <List size={13} />} {v === 'cards' ? 'Cards' : 'Table'}
+            </button>
+          ))}
+        </div>
+        <div className="relative min-w-[240px] flex-1">
           <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
@@ -672,6 +690,11 @@ export function Attendance() {
               <X size={13} />
             </button>
           )}
+        </div>
+        <button type="button" onClick={() => setRosterHidden(h => !h)} aria-pressed={rosterHidden} title={rosterHidden ? 'Show the cleaners' : 'Hide the cleaners'}
+          className="px-3 py-2 rounded-xl text-[12px] font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer shrink-0">
+          {rosterHidden ? <Eye size={13} /> : <EyeOff size={13} />} {rosterHidden ? 'Show' : 'Hide'}
+        </button>
         </div>
       </div>
 
@@ -744,9 +767,37 @@ export function Attendance() {
         </div>
       )}
 
-      {/* ── Cleaners Attendance Roster Grid ── */}
+      {/* ── Cleaners Attendance Roster (UX-124: cards or table; first rows, then View All; can be hidden) ── */}
+      {rosterHidden ? (
+        <button type="button" onClick={() => setRosterHidden(false)} className="w-full bg-white rounded-2xl border border-dashed border-slate-300 py-3 text-[12.5px] font-bold text-slate-500 hover:text-emerald-700 cursor-pointer">
+          {filteredRecords.length} cleaner{filteredRecords.length === 1 ? '' : 's'} hidden — Show
+        </button>
+      ) : rosterView === 'table' ? (
+        <div className="bg-white rounded-2xl border border-[#E4E8EC] overflow-hidden">
+          <table className="w-full text-[12.5px]">
+            <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500 text-left"><tr>
+              <th className="px-4 py-2.5">Cleaner</th><th className="px-3 py-2.5">Status</th><th className="px-3 py-2.5">Shift</th><th className="px-3 py-2.5 text-right">Jobs</th><th className="px-3 py-2.5 text-right">Duty</th><th className="px-3 py-2.5 text-right">OT</th><th className="px-4 py-2.5">Note</th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredRecords.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-slate-400">No cleaners match.</td></tr>}
+              {filteredRecords.map(cleaner => (
+                <tr key={cleaner.name} className="hover:bg-slate-50">
+                  <td className="px-4 py-2.5"><span className="font-bold text-[#111827]">{cleaner.name}</span><span className="block text-[11px] text-slate-400 capitalize">{cleaner.employee?.role ? cleaner.employee.role.replace('_', ' ') : 'Cleaner'}</span></td>
+                  <td className="px-3 py-2.5"><span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${cleaner.status === 'present' ? 'bg-emerald-50 text-emerald-700' : cleaner.status === 'available' ? 'bg-sky-50 text-sky-700' : cleaner.status === 'on_leave' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>{cleaner.status === 'present' ? 'Present' : cleaner.status === 'available' ? 'Available' : cleaner.status === 'on_leave' ? 'On leave' : 'Absent'}</span></td>
+                  <td className="px-3 py-2.5 text-slate-600">{cleaner.firstStartTime ? `${cleaner.firstStartTime} – ${cleaner.lastEndTime || ''}` : '—'}</td>
+                  <td className="px-3 py-2.5 text-right">{cleaner.jobsCount || 0}</td>
+                  <td className="px-3 py-2.5 text-right">{cleaner.dutyHours || 0} h</td>
+                  <td className="px-3 py-2.5 text-right">{cleaner.otHours || 0} h</td>
+                  <td className="px-4 py-2.5 text-slate-500 truncate max-w-[220px]">{cleaner.absenceReason || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+      <>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filteredRecords.map((cleaner, idx) => {
+        {(showAllCards ? filteredRecords : filteredRecords.slice(0, CARDS_FIRST)).map((cleaner, idx) => {
           const isPresent = cleaner.status === 'present'
           const isAvailable = cleaner.status === 'available'
           const isAbsent = cleaner.status === 'absent'
@@ -992,6 +1043,15 @@ export function Attendance() {
           )
         })}
       </div>
+      {filteredRecords.length > CARDS_FIRST && (
+        <div className="flex justify-center">
+          <button type="button" onClick={() => setShowAllCards(v => !v)} className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-[12.5px] font-bold text-slate-700 hover:bg-slate-50 cursor-pointer">
+            {showAllCards ? 'Show fewer' : `View all ${filteredRecords.length} cleaners`}
+          </button>
+        </div>
+      )}
+      </>
+      )}
 
       {/* ── Monthly calendar per cleaner + month export (UX-20) ── */}
       <AttendanceCalendar

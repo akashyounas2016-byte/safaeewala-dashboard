@@ -2003,24 +2003,24 @@ export function Settings() {
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <h4 className="text-[13.5px] font-bold text-slate-900 flex items-center gap-2 mb-2">
               <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] flex items-center justify-center font-bold">1</span>
-              Aap Ka Data Kahan Kahan Mehfooz Hota Hai? (Storage Locations)
+              Where your data is kept
             </h4>
             <div className="space-y-2.5 text-[12px] text-slate-600 mt-2">
               <div className="flex items-start gap-2">
                 <span className="font-bold text-slate-800 min-w-[130px] shrink-0">⚡ Supabase Cloud DB:</span>
-                <span>Asal database cloud (PostgreSQL) par chal rahi hai. Har booking, client, aur daily shift foran live sync hoti hai.</span>
+                <span>The main database runs in the cloud (PostgreSQL). Every booking, client and shift syncs live.</span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="font-bold text-slate-800 min-w-[130px] shrink-0">🖥️ VPS Host Storage:</span>
-                <span>Server directory <code className="bg-slate-200 px-1 py-0.5 rounded font-mono text-[11px]">/var/www/safaeewala/data/backups/</code> par persistent volume hai jahan daily archives store hotay hain.</span>
+                <span>The folder <code className="bg-slate-200 px-1 py-0.5 rounded font-mono text-[11px]">/var/www/safaeewala/data/backups/</code> on the server keeps the daily archives.</span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="font-bold text-slate-800 min-w-[130px] shrink-0">📁 Google Drive:</span>
-                <span>Direct OAuth ya n8n webhook kay zariye offsite spreadsheets aap kay company Google Drive folder mein save ho jatay hain.</span>
+                <span>Spreadsheets are saved off-site in the company's Google Drive folder, by Google sign-in or the n8n webhook.</span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="font-bold text-slate-800 min-w-[130px] shrink-0">💻 Local Computer:</span>
-                <span>Jab aap "Download Excel" ya "Download JSON" click kartay hain to file seedha aap kay laptop/PC kay <strong>Downloads</strong> folder mein chali jati hai.</span>
+                <span>"Download Excel" and "Download JSON" save the file in your computer's <strong>Downloads</strong> folder.</span>
               </div>
             </div>
           </div>
@@ -2029,13 +2029,13 @@ export function Settings() {
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <h4 className="text-[13.5px] font-bold text-slate-900 flex items-center gap-2 mb-2">
               <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] flex items-center justify-center font-bold">2</span>
-              Backup Lenay Ka Tareeqa (How to Create Backups)
+              How to make a backup
             </h4>
             <div className="space-y-2 text-[12px] text-slate-600 mt-2">
-              <p>• <strong>Excel Spreadsheet (.xlsx):</strong> Monthly accounting aur client audit kay liye "Download Full Excel" click karein. Is mein Bookings, Clients, Employees, Invoices, Inventory, Daily Jobs, aur Expenses ki 7 separate sheets hoti hain.</p>
-              <p>• <strong>Full Technical JSON (.json):</strong> System ka mukammal clone download karnay kay liye "Download JSON Backup" click karein. Yeh file system restore kay liye use hoti hai.</p>
-              <p>• <strong>Google Drive Cloud Sync:</strong> "Backup to Google Drive" click karnay say latest spreadsheet seedha Google Drive par upload ho jati hai.</p>
-              <p>• <strong>Automated Daily Sync (n8n):</strong> Agar aap n8n webhook URL configure kartay hain, to Daily Job Sheet har sham automatically drive mein save ho jati hai.</p>
+              <p>• <strong>Excel Spreadsheet (.xlsx):</strong> For monthly accounts and client audits, click "Download Full Excel". It has 7 sheets: Bookings, Clients, Employees, Invoices, Inventory, Daily Jobs and Expenses.</p>
+              <p>• <strong>Full Technical JSON (.json):</strong> Click "Download JSON Backup" for a full copy of the system. This file is used to restore it.</p>
+              <p>• <strong>Google Drive Cloud Sync:</strong> "Backup to Google Drive" uploads the latest spreadsheet to Google Drive.</p>
+              <p>• <strong>Automated Daily Sync (n8n):</strong> With the n8n webhook URL set, the Daily Job Sheet is saved to Drive every evening.</p>
             </div>
           </div>
 
@@ -2043,15 +2043,15 @@ export function Settings() {
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
             <h4 className="text-[13.5px] font-bold text-slate-900 flex items-center gap-2 mb-2">
               <span className="w-5 h-5 rounded-full bg-purple-600 text-white text-[11px] flex items-center justify-center font-bold">3</span>
-              Data Wapis Restore Karnay Ka Tareeqa (Recovery Guide)
+              How to restore data
             </h4>
             <div className="space-y-2 text-[12px] text-slate-600 mt-2">
-              <p>1. Backup Tab mein <strong>Safe Database Recovery & Restore Engine</strong> par jayein.</p>
-              <p>2. <strong>"Browse & Import JSON Backup"</strong> button par click karein aur apni pehlay say download shuda <code className="bg-slate-200 px-1 py-0.5 rounded font-mono text-[11px]">safaeewala-backup-*.json</code> file select karein.</p>
-              <p>3. System file validate karay ga aur confirm modal mein records ki tadaad show karay ga.</p>
-              <p>4. <strong>"Confirm & Restore"</strong> par click karein. System تمام tables ko live database mein safely upsert kar day ga.</p>
+              <p>1. In the Backup tab, go to <strong>Safe Database Recovery & Restore Engine</strong>.</p>
+              <p>2. Click <strong>"Browse & Import JSON Backup"</strong> and pick a <code className="bg-slate-200 px-1 py-0.5 rounded font-mono text-[11px]">safaeewala-backup-*.json</code> file you downloaded earlier.</p>
+              <p>3. The file is checked and the window shows how many records it holds.</p>
+              <p>4. Click <strong>"Confirm & Restore"</strong>. Every table is written to the live database safely (added or updated).</p>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 mt-2 text-[11.5px] text-blue-900">
-                <strong>🔒 Safe Non-Destructive Rule:</strong> Restore process existing records ko unki ID say update karta hai aur missing records add karta hai. Kisi doosray table ya record ko delete nahi karta.
+                <strong>🔒 Safe Non-Destructive Rule:</strong> A restore updates existing records by their ID and adds missing ones. It never deletes a table or a record.
               </div>
             </div>
           </div>
@@ -2062,9 +2062,9 @@ export function Settings() {
               💡 Recommended Best Practices
             </h4>
             <ul className="list-disc pl-5 text-[12px] text-emerald-900 space-y-1">
-              <li>Har haftay aik dafa <strong>Download Full Excel</strong> aur <strong>Download JSON</strong> kar kay apnay computer mein save rakhein.</li>
-              <li>Daily Job Sheet kay aakhri waqt (EOD) Google Drive backup run kar lein.</li>
-              <li>Kisi bhi baray system upgrade say pehlay fresh JSON backup download zaroor karein.</li>
+              <li>Once a week, <strong>Download Full Excel</strong> and <strong>Download JSON</strong> and keep them on your computer.</li>
+              <li>At the end of the day, run the Google Drive backup of the Daily Job Sheet.</li>
+              <li>Always download a fresh JSON backup before a big system upgrade.</li>
             </ul>
           </div>
 

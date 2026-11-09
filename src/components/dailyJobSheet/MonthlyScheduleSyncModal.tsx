@@ -92,7 +92,7 @@ export function MonthlyScheduleSyncModal({
               </span>
             </div>
             <p className="text-[12px] text-slate-300 mt-1 leading-relaxed">
-              Monthly clients kay repeating contracts unkay assigned cleaners aur fixed timings kay sath Daily Job Sheet mein automatically generate aur sync kiye jatay hain.
+              Monthly clients' repeating contracts are added to the Daily Job Sheet automatically, with their assigned cleaners and fixed times.
             </p>
           </div>
 
@@ -152,7 +152,7 @@ export function MonthlyScheduleSyncModal({
                   <span>Batch Generate Upcoming Schedules</span>
                 </p>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Aany walay dino kay monthly shifts aik click mein pehlay say generate kar lein:
+                  Create the monthly shifts of the coming days in one click:
                 </p>
               </div>
 
@@ -197,7 +197,7 @@ export function MonthlyScheduleSyncModal({
                 Auto-Generate Repeating Schedules on Date Load
               </p>
               <p className="text-[11px] text-slate-500">
-                Jab bhi aap koi date open karenge ya dashboard start ho ga, us din scheduled monthly clients automatically unkay assigned cleaners kay sath generate ho jayein gay.
+                Whenever you open a date or the dashboard starts, that day's scheduled monthly clients are added automatically with their assigned cleaners.
               </p>
             </div>
           </div>
@@ -318,7 +318,7 @@ export function MonthlyScheduleSyncModal({
         <div className="flex items-start gap-2 p-3 bg-slate-100/80 rounded-xl text-[11px] text-slate-600 border border-slate-200/60">
           <ShieldCheck size={15} className="text-emerald-700 shrink-0 mt-0.5" />
           <p className="leading-relaxed">
-            <strong>Schedule Isolation Rule:</strong> Daily Job Sheet par ki janay wali kisi bhi shift ki tabdeeli (cleaner ya time change) temporary samjhi jaye gi aur Monthly Client kay permanent master contract ko kabhi tabdeel nahi karay gi.
+            <strong>Schedule Isolation Rule:</strong> A shift changed on the Daily Job Sheet (cleaner or time) is temporary and never changes the Monthly Client's permanent contract.
           </p>
         </div>
 

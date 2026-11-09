@@ -221,7 +221,7 @@ export function WaKeywords() {
         {edit && (
           <div className="space-y-3">
             <input value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value })} placeholder="Name, e.g. Price list" className={inputCls} />
-            <input value={edit.keywords} onChange={e => setEdit({ ...edit, keywords: e.target.value })} placeholder="Keywords, comma separated: price, rates, kitna" className={inputCls} />
+            <input value={edit.keywords} onChange={e => setEdit({ ...edit, keywords: e.target.value })} placeholder="Keywords, comma separated: price, rates, cost" className={inputCls} />
             <select value={edit.match} onChange={e => setEdit({ ...edit, match: e.target.value as 'contains' | 'exact' })} className={inputCls}>
               <option value="contains">Message contains the word</option>
               <option value="exact">Message is exactly the word</option>

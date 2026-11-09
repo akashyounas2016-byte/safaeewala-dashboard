@@ -366,7 +366,7 @@ export function AddMonthlyClientModalForm({
                 </span>
               </div>
               <p className="text-[10.5px] text-slate-500">
-                Har din ke liye specific timing, duration aur cleaner assign karen (6 Days Mon–Sat, Sunday Off)
+                Set the time, duration and cleaner for each day (6 days Mon–Sat, Sunday off)
               </p>
             </div>
           </div>
