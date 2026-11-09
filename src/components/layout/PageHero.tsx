@@ -1,4 +1,5 @@
 import { Search, Bell, Plus } from 'lucide-react'
+import { ModuleTabs } from './ModuleTabs'
 import { Link } from 'react-router-dom'
 import { useLayout } from './Layout'
 
@@ -139,6 +140,8 @@ export function PageHero({
 
         </div>
       </div>
+      {/* UX-117: tabs of a merged screen (Clients · Monthly Clients, …) at the foot of the header */}
+      <ModuleTabs tone="dark" />
     </section>
   )
 }

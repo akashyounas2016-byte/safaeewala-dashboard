@@ -267,3 +267,24 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
   // R-OT-01: Automatically calculate cumulative multi-shift Overtime across each cleaner's shifts
   return recalculateAllRowsOT(result)
 }
+
+/**
+ * R-ATT-09: every cleaner is listed on a one-day sheet. A cleaner with no job that day gets an empty block of 3 rows
+ * (marked _idle: 'Available' or 'Absent'). Empty rows are never saved (isBlankNewRow) — typing a job into one saves it.
+ */
+export function withIdleCleaners(rows: DailyJob[], idle: { name: string; status: 'Available' | 'Absent' }[], targetDate: string): DailyJob[] {
+  const named = new Set(rows.map(r => String(r.staff_name || '').trim().toLowerCase()).filter(Boolean))
+  const extra: DailyJob[] = []
+  idle.forEach(({ name, status }) => {
+    if (named.has(name.trim().toLowerCase())) return
+    for (let i = 0; i < 3; i++) {
+      extra.push({
+        id: newRowId(`idle_${name.replace(/\W+/g, '_')}_${i}`), date: targetDate, staff_name: name, team_name: '',
+        start_time: '', end_time: '', duty_hours: 0, ot_hours: 0, address: '', area: '', material: '' as any,
+        charges: 0, received: 0, payment_mode: '' as any, remarks: '', is_overtime: false, created_at: new Date().toISOString(),
+        _idle: status,
+      } as DailyJob)
+    }
+  })
+  return extra.length ? [...rows, ...extra] : rows
+}

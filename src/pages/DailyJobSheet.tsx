@@ -975,16 +975,14 @@ export function DailyJobSheet() {
   }
   const isAwayMark = (m?: AttendanceOverride) => m?.status === 'absent' || m?.status === 'on_leave'
 
-  // Absentees / active employees with nil records (0 jobs today) placed at the bottom
-  // Guard: if no data has been uploaded/imported for this date (todayJobs is empty),
-  // or if store is loading, keep nilRows empty so staff names/absent rows do not appear on empty days —
-  // except cleaners marked absent / on leave in Attendance, who are always listed (R-ATT-07).
-  const emptyDay = todayJobs.length === 0 || (loading && dailyJobs.length === 0)
-  // R-ATT-08: a cleaner absent or on leave that day is not listed (a job they still hold stays visible, tagged "reassign")
+  // Cleaners with no job that day, placed at the bottom of the Jobs list (R-ATT-09: all of them, with their
+  // Attendance mark — available, absent or on leave; a job an absent cleaner still holds stays tagged "reassign")
   const nilRows: Array<any> = allKnownCleaners
     .filter(name => !activeStaffSet.has(name.trim().toLowerCase()))
     .map(name => ({ name, mark: attendanceMarkFor(name, selectedDate) }))
-    .filter(({ mark }) => !emptyDay && !isAwayMark(mark))
+    // R-ATT-09 (owner 2026-11-09): every cleaner is listed — no job = available, or absent / on leave as marked
+    // (replaces R-ATT-08's "absent not listed" and the empty-day guard); only while data is still loading it waits
+    .filter(() => !(loading && dailyJobs.length === 0))
     .sort((a, b) => a.name.localeCompare(b.name))
     .map(({ name, mark }) => ({
       id: `nil-${name.toLowerCase().replace(/\s+/g, '-')}`,
@@ -1000,7 +998,7 @@ export function DailyJobSheet() {
   const routeSites = useMemo(() => buildRouteSites(dailyJobs, selectedDate), [dailyJobs, selectedDate])
   const crewTimeline = useMemo(() => buildCrewTimeline(
     dailyJobs.filter(j => (j.date || '').split('T')[0] === selectedDate),
-    allKnownCleaners,
+    [], // R-ATT-09: the crew timeline shows only cleaners with a job that day (the Jobs list shows everyone)
     name => {
       const m = attendanceMarkFor(name, selectedDate)
       return m?.status === 'absent' ? 'absent' : m?.status === 'on_leave' ? 'leave' : undefined

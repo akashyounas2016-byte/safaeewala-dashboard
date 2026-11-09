@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(job-sheets): every cleaner listed — Daily Job Sheet "no job" rows (available / absent / leave), Excel empty blocks (not saved); crew timeline only cleaners with a job (R-ATT-09)
+- feat(marketing): Lead lists — pool of website leads, WhatsApp chats, clients and contacts extracted from pasted text; filters; save as a contact list or CSV (R-MKT-02)
+- ui: merged-screen tabs inside the page header; popup header buttons on one line; payout popup "Payment and Advances"; Templates filters in one row with status as a dropdown (UX-117, UX-119, UX-120)
+
 - feat(sidebar): Monthly Clients, Inventory, Analytics and Complaints are tabs of Clients, Expenses, Reports and Alerts; Fluent Forms is "Leads (Website)" (UX-117)
 - feat(security): "Salary" in Roles & Access — cleaners' salary shown to Admin only unless a role is given it (R-SEC-08)
 - feat(agencies): documents tab without the four-card banner; Current Active Documents first; Delete in the version history (UX-118)

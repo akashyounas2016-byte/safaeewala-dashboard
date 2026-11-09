@@ -100,8 +100,9 @@ export function Modal({ open, onClose, title, children, size = 'md', lockScroll 
         }}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-line shrink-0 gap-3">
-          <h2 className="text-base font-semibold text-ink">{title}</h2>
-          <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold text-ink min-w-0">{title}</h2>
+          {/* UX-119: header buttons keep their text on one line; the title wraps instead */}
+          <div className="flex items-center gap-2 shrink-0 whitespace-nowrap">
             {headerActions}
             <button
               onClick={onClose}

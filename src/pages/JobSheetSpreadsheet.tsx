@@ -27,7 +27,7 @@ import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, padCleanerBlocks,
 import { splitTotals, isSplitJob } from '@/lib/chargeSplit'
 import { type ColumnDef, DEFAULT_COLUMN_DEFS, mergeNewColumns, buildColumnsWithLetters, COLUMNS, type ExcelDatePresetKey, EXCEL_DATE_PRESETS } from '@/lib/excelSheet/columns'
 import { type BlockPalette, BLOCK_PALETTES, SOLID_PALETTE_KEYS, LIGHT_PALETTE_KEYS, PALETTE_KEYS, hslToHex, makeHexPalette } from '@/lib/excelSheet/palettes'
-import { newRowId, sameJobRow, isBlankNewRow, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff } from '@/lib/excelSheet/rows'
+import { newRowId, sameJobRow, isBlankNewRow, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners } from '@/lib/excelSheet/rows'
 import { DRAFT_PREFIX, COLUMN_PRESETS, READ_ONLY_COLS, DEFAULT_ROW_BG, projectKeyOf, memberChargesLabel, memberReceivedLabel, memberModeLabel, refMoney, DROPDOWN_COLS, TIME_SUGGESTIONS, DUBAI_AREAS, RENDER_PAGE, safeGet, safeSet } from '@/lib/excelSheet/sheetConfig'
 import { evaluateFormula } from '@/lib/excelSheet/formula'
 import { jobFlags, splitSyncNote, type JobFlag } from '@/lib/jobFlags'
@@ -586,6 +586,19 @@ export function JobSheetSpreadsheet() {
     return dailyJobs.filter(j => j.date === selectedDate)
   }, [dailyJobs, dateFilterMode, selectedDate, rangeStart, rangeEnd, activeDatePreset])
 
+  // R-ATT-09: on a one-day sheet every active cleaner is listed — those without a job get empty rows (not saved)
+  const oneDay = dateFilterMode === 'single' || dateFilterMode === 'today' || dateFilterMode === 'yesterday' ||
+    (dateFilterMode === 'range' && !!rangeStart && rangeStart === rangeEnd) // "Today" is a one-day range
+  const idleCleaners = useMemo(() => {
+    if (!oneDay) return [] as { name: string; status: 'Available' | 'Absent' }[]
+    const away = awayCleanerNames(attendanceMarks || {}, employees, effectiveTargetDate)
+    return employees
+      .filter(e => e.status !== 'inactive' && e.role !== 'driver' && e.full_name)
+      .map(e => ({ name: e.full_name.trim(), status: (away.has(e.full_name.trim().toLowerCase()) ? 'Absent' : 'Available') as 'Available' | 'Absent' }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [oneDay, employees, attendanceMarks, effectiveTargetDate])
+  const idleKey = idleCleaners.map(c => c.name + c.status).join('|')
+
   /** Rows added, edited and removed in the grid compared with what was loaded (UX-33) */
   const pendingChanges = useMemo(() => {
     const gridIds = new Set(gridRows.map(r => r.id))
@@ -614,7 +627,7 @@ export function JobSheetSpreadsheet() {
     if (periodChanged || !dirty || reloadAfterSaveRef.current) {
       reloadAfterSaveRef.current = false
       latest.current.periodKey = periodKey
-      const rows = ensureThreeRowsPerStaff(clone(periodJobs), effectiveTargetDate)
+      const rows = withIdleCleaners(ensureThreeRowsPerStaff(clone(periodJobs), effectiveTargetDate), idleCleaners, effectiveTargetDate)
       setGridRows(rows)
       setLoadedSnapshot(new Map(rows.map(r => [r.id, r])))
       setHistory([])
@@ -653,7 +666,7 @@ export function JobSheetSpreadsheet() {
     setGridRows(nextGrid)
     setLoadedSnapshot(nextSnap)
     if (conflict) setRemoteConflict(true)
-  }, [periodKey, periodJobs])
+  }, [periodKey, periodJobs, idleKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep a local draft of unsaved edits so a refresh or leaving the page never loses them (UX-34)
   useEffect(() => {
@@ -3489,12 +3502,19 @@ export function JobSheetSpreadsheet() {
                             </span>
                             <div className="flex items-center gap-2">
                               <span className="font-extrabold text-[14px] tracking-tight">{group.cleanerName}</span>
-                              <span className={`text-[10.5px] font-bold px-2.5 py-0.5 rounded-full ${palette.badgeBg} ${palette.badgeText}`}>
-                                {group.jobs.length} {group.jobs.length === 1 ? 'Shift' : 'Shifts'}
-                              </span>
-                              <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full ${palette.badgeBg} ${palette.badgeText}`}>
-                                {group.totalDuty}h Duty
-                              </span>
+                              {group.jobs.every(j => (j.row as any)._idle) && (
+                                <span className={`text-[10.5px] font-black px-2 py-0.5 rounded-full ${(group.jobs[0].row as any)._idle === 'Absent' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
+                                  {(group.jobs[0].row as any)._idle === 'Absent' ? 'Absent' : 'No job — available'}
+                                </span>
+                              )}
+                              {!group.jobs.every(j => (j.row as any)._idle) && <>
+                                <span className={`text-[10.5px] font-bold px-2.5 py-0.5 rounded-full ${palette.badgeBg} ${palette.badgeText}`}>
+                                  {group.jobs.length} {group.jobs.length === 1 ? 'Shift' : 'Shifts'}
+                                </span>
+                                <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full ${palette.badgeBg} ${palette.badgeText}`}>
+                                  {group.totalDuty}h Duty
+                                </span>
+                              </>}
                               {group.totalOT > 0 && (
                                 <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-amber-400 text-amber-950">
                                   +{group.totalOT}h OT

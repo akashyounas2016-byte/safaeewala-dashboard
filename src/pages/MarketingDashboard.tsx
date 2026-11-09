@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, UserX, UserPlus, Repeat, UserCheck, Tag, Megaphone, Plus, Pencil, Trash2, Download, MessageCircle, Copy, Database, Loader2, Search, CalendarClock } from 'lucide-react'
+import { Users, UserX, UserPlus, Repeat, UserCheck, Tag, Megaphone, Plus, Pencil, Trash2, Download, MessageCircle, Copy, Database, Loader2, Search, CalendarClock, ListChecks } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
+import { LeadLists } from '@/components/marketing/LeadLists'
 import { KpiCard } from '@/components/ui/KpiCard'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -19,7 +20,7 @@ import {
  * R-MKT-01: Marketing for a cleaning business — Client base (segments synced from the job sheet and bookings:
  * inactive, first-time, repeat, active, never booked), Offers and Campaigns.
  */
-const TABS = [{ key: 'clients', label: 'Client base', icon: Users }, { key: 'offers', label: 'Offers', icon: Tag }, { key: 'campaigns', label: 'Campaigns', icon: Megaphone }] as const
+const TABS = [{ key: 'clients', label: 'Client base', icon: Users }, { key: 'lists', label: 'Lead lists', icon: ListChecks }, { key: 'offers', label: 'Offers', icon: Tag }, { key: 'campaigns', label: 'Campaigns', icon: Megaphone }] as const
 type TabKey = (typeof TABS)[number]['key']
 const SEG_ICON: Record<Audience, typeof Users> = { inactive: UserX, first_time: UserPlus, repeat: Repeat, active: UserCheck, never: Users, all: Users }
 const SEG_STYLE: Record<Audience, [string, string]> = {
@@ -166,6 +167,8 @@ export function MarketingDashboard() {
           </section>
         </>
       )}
+
+      {tab === 'lists' && <LeadLists />}
 
       {tab === 'offers' && (
         offers === 'loading' ? <Loader2 className="animate-spin text-slate-300 mx-auto" /> : (

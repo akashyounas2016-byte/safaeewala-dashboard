@@ -15,7 +15,7 @@ const side = readFileSync('src/components/layout/Sidebar.tsx', 'utf8')
 eq(['/monthly-clients', '/inventory', '/analytics', '/complaints'].some(p => new RegExp(`\\{ to: '${p.replace('/', '\\/')}',`).test(side)), false, 'merged screens have no sidebar item')
 eq(/label: 'Leads \(Website\)'/.test(side) && !/label: 'Fluent Forms'/.test(side), true, 'Fluent Forms is called Leads (Website)')
 eq(/groupPaths\(item\.to\)\.some/.test(side), true, 'an item shows when any of its tabs is allowed')
-eq(/<ModuleTabs \/>/.test(readFileSync('src/components/layout/Layout.tsx', 'utf8')), true, 'tabs shown above the merged screens')
+eq(/<ModuleTabs tone="dark" \/>/.test(readFileSync('src/components/layout/PageHero.tsx', 'utf8')) && !/<ModuleTabs/.test(readFileSync('src/components/layout/Layout.tsx', 'utf8')), true, 'tabs sit at the foot of the page header (UX-117)')
 
 // R-SEC-08
 eq([canAccessModule('admin', DEFAULT_ROLE_PERMS, 'Salary'), canAccessModule('manager', DEFAULT_ROLE_PERMS, 'Salary'), canAccessModule('employee', DEFAULT_ROLE_PERMS, 'Salary')], [true, false, false], 'salary: Admin only by default')

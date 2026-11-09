@@ -2265,7 +2265,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
           setPayoutCleanerId('')
           setPayoutFormType('salary')
         }}
-        title={`Record Salary Payment & Advances — ${agency.name}`}
+        title={`Payment and Advances — ${agency.name}`}
         size="md"
         headerActions={
           <div className="flex items-center gap-2">
@@ -2286,10 +2286,10 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
               type="submit"
               form="log-payout-form"
               size="sm"
-              className="h-8 px-3 text-[11.5px] bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer shadow-xs flex items-center gap-1.5"
+              className="h-8 px-3 text-[11.5px] bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer shadow-xs flex items-center gap-1.5 whitespace-nowrap shrink-0"
             >
-              <Check size={13} className="stroke-[2.5]" />
-              <span>Record Payment</span>
+              <Check size={13} className="stroke-[2.5] shrink-0" />
+              <span className="whitespace-nowrap">Record Payment</span>
             </Button>
           </div>
         }

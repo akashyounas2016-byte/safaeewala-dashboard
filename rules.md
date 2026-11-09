@@ -137,12 +137,22 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-ATT-08 — A cleaner away that day is not offered for work
 - **Rule:** *"leave par gaya hoa cleaner Active Job Sheet ya scheduling dropdown mein nazar na aaye."*
   - Away means marked **absent**, or **on leave** (pending or approved), in Attendance for that date. A rejected leave is an absence, so it also counts.
-  - Such a cleaner is not listed on the Daily Job Sheet when they have no job that day.
+  - ~~Such a cleaner is not listed on the Daily Job Sheet when they have no job that day.~~ Replaced by R-ATT-09 (2026-11-09): they are listed, marked Absent / On leave.
   - They are not offered in the cleaner picker of Add / Edit Job (Daily and Excel) for that date, or in the Excel staff suggestions. The popup says who was left out.
   - A cleaner already on the job being edited stays selected. A job they still hold stays on the sheet with the *reassign* tag (R-ATT-07).
   - Marks kept by employee id or by name both count.
 - **Code:** `src/lib/attendance.ts → isAwayMark, awayCleanerNames`; `AddJobModal.tsx` (`pickableStaff`); `JobSheetSpreadsheet.tsx` (`staffOptions`); `DailyJobSheet.tsx` (`nilRows`).
 - **Status:** Active · Since: 2026-11-04
+
+### R-ATT-09 — Every cleaner is listed on the job sheets; the crew timeline shows only those working
+- **Rule:** *"Daily Job Sheet ki screen par maujood Jobs widget mein tamam cleaners ki mukammal list show ki jaye … Excel Job Sheet par bhi tamam cleaners … rows empty show hon lakin list mein shamil rahein. crew timeline wale widget me just wo show hon jinke pas job he."* (2026-11-09)
+  - **Daily Job Sheet → Jobs:** after the jobs, every cleaner with no job that day has a row: blue = available, red = absent, amber = on leave (the Attendance mark). This includes days with no jobs at all.
+  - **Excel Job Sheet:** on a one-day view (Today, Yesterday, one date), every active employee except drivers who has no job gets an empty block of 3 rows, with "No job — available" or "Absent".
+    - These rows are not saved (`isBlankNewRow`) and do not make the sheet "unsaved". Typing a job into one saves it as a normal job.
+    - Absent stays absent only when marked (R-ATT-01): an empty row is never counted as present.
+  - **Crew timeline:** only cleaners with a job that day (it used to show everyone).
+- **Code:** `DailyJobSheet.tsx → nilRows, crewTimeline`; `src/lib/excelSheet/rows.ts → withIdleCleaners`; `JobSheetSpreadsheet.tsx → idleCleaners`.
+- **Status:** Active · Since: 2026-11-09
 
 ---
 
@@ -759,6 +769,19 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - **Database:** tables `marketing_offers`, `marketing_campaigns` (migration `2026-11-09_marketing_complaints.sql`). Until the migration runs, the client base works and a note asks for it.
 - **Code:** `src/lib/marketing.ts`, `src/pages/MarketingDashboard.tsx`.
 - **Status:** Built · waiting for the migration · Since: 2026-11-09
+
+### R-MKT-02 — Lead lists: extract, filter, save
+- **Rule:** *"aane wali emails se data (naam, number) extract karne aur unhein filter out karne ka system … Marketing screen par … leads ki list ban sakay aur unpar campaigns chalayi ja sakein … data extraction aur list segmentation."* (2026-11-09)
+  - **What existed before:** the CRM receives no emails (no mailbox is connected). Contacts came only from website leads (Fluent Forms: name, phone, email), WhatsApp chats and clients. Contact lists existed in Conversations → Broadcasts, but there was no extraction or lead filter.
+  - **Marketing → Lead lists** shows one pool of contacts:
+    - Website leads (with status, service, area), WhatsApp chats and clients.
+    - **Pasted text:** paste emails or any text and names, numbers and emails are pulled out. "Name:" / "From: Name <mail>" labels and the words before a number are read. UAE numbers become 971…, and a mail and a phone on the next line join one contact.
+  - One contact per number (else email). Existing clients are marked "client".
+  - **Filters:** source, date range, lead status, has phone / email / either, leave out existing clients, and search.
+  - **Save list:** the selected contacts with a number are saved as a contact list (`wa_contact_lists`, tag "marketing") for Conversations → Broadcasts. A **CSV** download has every selected contact, emails included.
+  - Facebook / Instagram contacts are not in the pool: GHL gives their names but no phone or email.
+- **Code:** `src/lib/leadLists.ts`, `src/components/marketing/LeadLists.tsx`, `MarketingDashboard.tsx`.
+- **Status:** Built · Since: 2026-11-09
 
 ### R-CMP-01 — Complaints module
 - **Rule:** *"sidebar mein 'Complaints' ka alag module … Fluent Forms ya Facebook se aane wali shikayat aur unka status centralized tor par manage."*

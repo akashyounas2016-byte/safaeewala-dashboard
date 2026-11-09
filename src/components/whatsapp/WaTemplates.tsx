@@ -85,33 +85,23 @@ export function WaTemplates({ canSend }: { canSend: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="mr-auto">
-          <h2 className="text-[22px] font-bold text-[#111827]">All Templates</h2>
-          <p className="text-[13px] text-slate-500">View, search and manage all your WhatsApp message templates</p>
-        </div>
-        <button type="button" onClick={() => void sync()} disabled={syncing} title={canSend ? 'Get review results from Meta' : 'Works once Meta is connected'} className="h-10 w-10 rounded-xl border border-[#E2E5E0] bg-white flex items-center justify-center hover:bg-slate-50 cursor-pointer disabled:opacity-50" aria-label="Refresh from Meta">
-          <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-        </button>
-        <button type="button" onClick={() => setBuilder({ row: null })} className="h-10 px-4 rounded-xl bg-[#0F1F19] text-white text-[13px] font-bold flex items-center gap-1.5 cursor-pointer hover:bg-[#1c3a2f]"><Plus size={15} /> New Template</button>
-      </div>
-
       {noTable && <MigrationNote file="2026-11-07_wa_templates.sql" />}
-      <div className="flex gap-2 overflow-x-auto pb-1 border-b border-[#ECEEEC]">
-        {STATUS_TABS.map(t => (
-          <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`px-3.5 py-1.5 mb-2 rounded-full border text-[12.5px] whitespace-nowrap cursor-pointer ${tab === t.id ? 'border-[#0F1F19] bg-white font-bold text-[#0F1F19]' : 'border-[#E6E8E6] text-slate-500 hover:text-slate-800'}`}>
-            {t.label}{count(t.id) > 0 && <span className="ml-1 text-slate-400">{count(t.id)}</span>}
-          </button>
-        ))}
-      </div>
 
-      <div className="flex flex-wrap gap-2">
-        <div className="flex items-center gap-2 bg-white border border-[#E6E8E6] rounded-xl px-3 h-10 flex-1 min-w-[220px]"><Search size={15} className="text-slate-400" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search templates..." className="flex-1 outline-none text-[13px] bg-transparent" /></div>
+      {/* UX-120: no title; search, status (dropdown), category, type, sort, Refresh and New Template in one row */}
+      <div className="flex flex-wrap 2xl:flex-nowrap items-center gap-2">
+        <div className="flex items-center gap-2 bg-white border border-[#E6E8E6] rounded-xl px-3 h-10 flex-1 min-w-[180px]"><Search size={15} className="text-slate-400" /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search templates..." className="flex-1 outline-none text-[13px] bg-transparent" /></div>
+        <select value={tab} onChange={e => setTab(e.target.value as typeof tab)} className="h-10 rounded-xl border border-[#E6E8E6] bg-white px-3 text-[13px] font-semibold" aria-label="Status">
+          {STATUS_TABS.map(t => <option key={t.id} value={t.id}>{t.label}{count(t.id) > 0 ? ` (${count(t.id)})` : ''}</option>)}
+        </select>
         <select value={cat} onChange={e => setCat(e.target.value)} className="h-10 rounded-xl border border-[#E6E8E6] bg-white px-3 text-[13px]" aria-label="Category"><option value="all">All Categories</option><option value="UTILITY">Utility</option><option value="MARKETING">Marketing</option><option value="AUTHENTICATION">Authentication</option></select>
         <select value={type} onChange={e => setType(e.target.value)} className="h-10 rounded-xl border border-[#E6E8E6] bg-white px-3 text-[13px]" aria-label="Type"><option value="all">All Types</option>{TEMPLATE_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select>
         <label className="h-10 rounded-xl border border-[#E6E8E6] bg-white pl-3 flex items-center gap-1.5 text-[12.5px] text-slate-600"><Filter size={14} />
           <select value={sort} onChange={e => setSort(e.target.value)} className="h-full pr-2 bg-transparent outline-none" aria-label="Sort"><option value="updated">Last updated</option><option value="created">Newest first</option><option value="name">Name A–Z</option></select>
         </label>
+        <button type="button" onClick={() => void sync()} disabled={syncing} title={canSend ? 'Get review results from Meta' : 'Works once Meta is connected'} className="h-10 w-10 shrink-0 rounded-xl border border-[#E2E5E0] bg-white flex items-center justify-center hover:bg-slate-50 cursor-pointer disabled:opacity-50" aria-label="Refresh from Meta">
+          <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+        </button>
+        <button type="button" onClick={() => setBuilder({ row: null })} className="h-10 px-4 shrink-0 rounded-xl bg-[#0F1F19] text-white text-[13px] font-bold flex items-center gap-1.5 whitespace-nowrap cursor-pointer hover:bg-[#1c3a2f]"><Plus size={15} /> New Template</button>
       </div>
 
       <div className="bg-white border border-[#E6E8E6] rounded-[16px] overflow-x-auto">
