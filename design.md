@@ -148,6 +148,8 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
     - Merged screens (UX-117, 2026-11-09):
       - Monthly Clients, Inventory, Analytics and Complaints have no sidebar item. They are tabs of Clients, Expenses, Reports and Alerts.
       - The tabs sit under the page header like Marketing's tabs: a white pill bar, active tab #0F1F19. Only the tabs the role may open are shown. Since 2026-11-09, Employees ⊃ Attendance as well.
+    - Staff pickers (UX-125): "Busy" means the cleaner has a job not finished yet (today) or a job that day (later dates), and, once the form has a time, only a job that overlaps it. A finished job removes the tag; the job being edited never counts. Used in Add Job, Add / Edit Booking and every popup built on them.
+    - Sidebar (UX-126): AI Bot sits in Operations between Reports and Settings. Its counter is red, glowing and blinking like the Alerts / Leads counters ("100%" when nothing is found).
     - Leaving a screen (UX-123): no "changes not saved" warning anywhere. The Excel Job Sheet saves what is waiting when you leave (back button or another screen) and keeps a draft in the browser in the meantime. Expenses and Inventory already worked this way.
     - Attendance (UX-124):
       - The toolbar ends with: Cards / Table toggle · search · Hide / Show.

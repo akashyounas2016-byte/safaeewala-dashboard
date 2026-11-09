@@ -201,6 +201,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `bookingSync.ts → nextOccurrence`. Migration `2026-11-02_bookings_recurrence_day.sql`.
 - **Status:** Active · Since: 2026-11-02 (E2E-22)
 
+### R-BK-04 — Status menu on the card, synced with the cleaners
+- **Rule:** *"Bookings screen par maujood 'Completed' button ko interactive … Unconfirmed, Scheduled … cleaner k sath sync hoga jab cleaning on way hoga ya start job kre ga ya end kre ga … manually b change … 'Edit Booking' pop-up mein status convert karne par woh main screen par foran update."* (2026-11-09)
+  - **The menu:** the status on every booking card is a menu: Unconfirmed (pending), Scheduled (confirmed), In progress, Completed, Cancelled. Choosing one saves it straight away; for a booking, this is the same as changing it in Edit Booking.
+  - **Live step:** a small tag under the status shows the cleaners' furthest step from My Duties for that job (On the way, Started, Cleaner done, Issue reported). It updates live.
+    - With the trigger of R-DUTY-02, Started / End job also move the status itself (In progress, Completed). The office can still change it by hand.
+  - **Sync fix:** a card made from a Daily Job Sheet row (no booking, e.g. a monthly visit) used to ignore a status changed in Edit Booking, and its status was guessed. Now the status is saved on the job row and the card shows that saved status first.
+  - The card of a monthly visit not yet on the job sheet has no menu: add it to the sheet first.
+- **Code:** `Bookings.tsx → StatusMenu, liveOf, handleUpdateBookingFromModal`, `src/lib/jobCheckins.ts → useJobCheckinsFor, jobProgress`.
+- **Status:** Active · Since: 2026-11-09
+
 ---
 
 ## SYNC — Cross-screen synchronisation

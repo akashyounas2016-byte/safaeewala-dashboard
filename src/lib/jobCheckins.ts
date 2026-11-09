@@ -49,6 +49,34 @@ function position(): Promise<{ lat: number; lng: number } | null> {
   })
 }
 
+/** R-BK-04: check-ins of several dates (the Bookings screen), kept live — read only */
+export function useJobCheckinsFor(dates: string[]) {
+  const key = [...new Set(dates)].sort().join(',')
+  const [rows, setRows] = useState<Record<string, JobCheckin>>({})
+  useEffect(() => {
+    if (!key) return
+    let alive = true
+    const list = key.split(',')
+    void supabase.from('job_checkins').select('*').in('date', list).then(({ data, error }) => {
+      if (alive && !error) setRows(Object.fromEntries(((data ?? []) as JobCheckin[]).map(r => [r.id, r])))
+    })
+    const channel = supabase.channel(`crm-job-checkins-bookings-${key.length}-${list[0]}`).on('postgres_changes', { event: '*', schema: 'public', table: 'job_checkins' }, payload => {
+      const row = payload.new as JobCheckin | undefined
+      if (alive && row?.id && list.includes(row.date)) setRows(prev => ({ ...prev, [row.id]: row }))
+    })
+    channel.subscribe()
+    return () => { alive = false; void supabase.removeChannel(channel) }
+  }, [key])
+  return rows
+}
+
+/** The furthest step of a job's cleaners: done > started > on the way > issue (null = none yet) */
+export function jobProgress(rows: Record<string, JobCheckin>, jobIds: string[]): CheckinStatus | null {
+  const mine = Object.values(rows).filter(r => jobIds.includes(r.job_id))
+  for (const s of ['done', 'started', 'on_way', 'issue'] as const) if (mine.some(r => r.status === s)) return s
+  return null
+}
+
 /** Check-ins of one date, kept live. `ready` is false when the table does not exist yet. */
 export function useJobCheckins(date: string) {
   const [rows, setRows] = useState<Record<string, JobCheckin>>({})

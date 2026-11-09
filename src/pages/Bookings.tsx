@@ -1,4 +1,5 @@
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useJobCheckinsFor, jobProgress, type CheckinStatus } from '@/lib/jobCheckins'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import {
@@ -159,6 +160,50 @@ function StatusPill({ status }: { status: string }) {
       <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
       {c.label}
     </span>
+  )
+}
+
+/**
+ * R-BK-04: the card's status is a menu — Unconfirmed, Scheduled, In progress, Completed, Cancelled — changed by
+ * hand at any time. It also shows the cleaner's live step from My Duties (On the way · Started · Done).
+ */
+const STATUS_MENU: { value: BookingStatus; label: string }[] = [
+  { value: 'pending', label: 'Unconfirmed' }, { value: 'confirmed', label: 'Scheduled' }, { value: 'in_progress', label: 'In progress' },
+  { value: 'completed', label: 'Completed' }, { value: 'cancelled', label: 'Cancelled' },
+]
+const LIVE_STEP: Record<CheckinStatus, { label: string; cls: string }> = {
+  on_way: { label: 'On the way', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+  started: { label: 'Started', cls: 'bg-teal-50 text-teal-700 border-teal-200' },
+  done: { label: 'Cleaner done', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  issue: { label: 'Issue reported', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+}
+function StatusMenu({ status, live, onChange }: { status: string; live: CheckinStatus | null; onChange?: (s: BookingStatus) => void }) {
+  const [open, setOpen] = useState(false)
+  const norm = normalizeBookingStatus(status)
+  const c = statusConfig[norm]
+  return (
+    <div className="relative shrink-0 flex flex-col items-end gap-1" onClick={e => e.stopPropagation()}>
+      <button type="button" disabled={!onChange} onClick={() => setOpen(o => !o)} aria-haspopup="menu" aria-expanded={open} title={onChange ? 'Change the status' : undefined}
+        className={`text-[11px] px-2.5 py-[3px] rounded-full font-semibold inline-flex items-center gap-1.5 border ${c.bg} ${c.text} ${c.border} ${onChange ? 'cursor-pointer hover:brightness-95' : ''}`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+        {norm === 'completed' ? 'Completed' : norm === 'pending' ? 'Unconfirmed' : c.label}
+        {onChange && <ChevronDown size={11} />}
+      </button>
+      {live && norm !== 'cancelled' && <span className={`text-[10px] font-bold px-2 py-[1px] rounded-full border ${LIVE_STEP[live].cls}`}>{LIVE_STEP[live].label}</span>}
+      {open && onChange && (
+        <>
+          <button type="button" aria-label="Close" className="fixed inset-0 z-30 cursor-default" onClick={() => setOpen(false)} />
+          <div role="menu" className="absolute right-0 top-7 z-40 w-40 bg-white border border-slate-200 rounded-xl shadow-xl p-1">
+            {STATUS_MENU.map(o => (
+              <button key={o.value} type="button" role="menuitemradio" aria-checked={norm === o.value} onClick={() => { setOpen(false); if (o.value !== norm) onChange(o.value) }}
+                className={`w-full text-left px-3 py-1.5 rounded-lg text-[12.5px] flex items-center gap-2 cursor-pointer ${norm === o.value ? 'bg-slate-100 font-bold' : 'hover:bg-slate-50'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${statusConfig[o.value].dot}`} /> {o.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -414,6 +459,7 @@ export function Bookings() {
       if (patch.material !== undefined) jobPatch.material = patch.material as DailyJob['material']
       if (patch.notes !== undefined) jobPatch.remarks = patch.notes
       if (patch.status === 'completed') jobPatch.received = patch.total_amount
+      if (patch.status) jobPatch.status = patch.status // R-BK-04: the card follows the popup at once
       if (Object.keys(jobPatch).length > 0) updateDailyJob(jobId, jobPatch)
     } else {
       updateBooking(id, patch)
@@ -540,7 +586,9 @@ export function Bookings() {
 
       const nowStr = todayDubai()
       let status: BookingStatus = 'confirmed'
-      if (j.status === 'completed' || j.received > 0) {
+      if (j.status && ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled'].includes(j.status)) {
+        status = j.status as BookingStatus // R-BK-04: set by hand, by the booking or by My Duties
+      } else if (j.received > 0) {
         status = 'completed'
       } else if (j.date === nowStr && j.staff_name && j.staff_name !== 'Unassigned') {
         status = 'in_progress'
@@ -806,6 +854,15 @@ export function Bookings() {
     const start = (currentPage - 1) * pageSize
     return filtered.slice(start, start + pageSize)
   }, [filtered, currentPage, pageSize])
+
+  // R-BK-04: the cleaners' live steps (My Duties) for the cards on this page
+  const checkins = useJobCheckinsFor(paginatedBookings.map(b => b.scheduled_date).filter(Boolean))
+  const liveOf = (b: Booking): CheckinStatus | null => {
+    const jobIds = b.id.startsWith('dj-')
+      ? [b.id.slice(3)]
+      : [...dailyJobs.filter(j => j.booking_id === b.id).map(j => j.id), ...(b.job_sheet_id ? [b.job_sheet_id] : [])]
+    return jobIds.length ? jobProgress(checkins, jobIds) : null
+  }
 
   const totalPageDutyHours = useMemo(() => {
     return paginatedBookings.reduce((sum, b) => sum + (Number(b.duration_hours) || 0), 0)
@@ -1285,7 +1342,7 @@ export function Bookings() {
                           </p>
                         </div>
                       </div>
-                      <StatusPill status={b.status} />
+                      <StatusMenu status={b.status} live={liveOf(b)} onChange={b.id.startsWith('monthly-sync-') ? undefined : st => handleUpdateBookingFromModal(b.id, { status: st })} />
                     </div>
 
                     {/* Row 2 — client */}

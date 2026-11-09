@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { busyCleaners } from '@/lib/staffBusy'
 import { findStaffClash, clashMessage } from '@/lib/shiftClash'
 import { Modal } from '@/components/ui/Modal'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
@@ -327,39 +328,18 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
     return allAreas.filter(a => a.toLowerCase().includes(q))
   }, [allAreas, areaSearch])
 
-  // Track busy cleaners on the scheduled date
+  // UX-125: busy = a job not finished yet (today) or any job (later day) that overlaps this booking's time
   const busyCleanersMap = useMemo(() => {
+    const own = initialBooking ? [initialBooking.id, ...(dailyJobs || []).filter(j => j.booking_id === initialBooking.id).map(j => j.id)] : []
+    const fromBookings = (bookings || [])
+      .filter(b => b.status !== 'cancelled' && b.status !== 'completed' && Array.isArray(b.assigned_crew) && !(dailyJobs || []).some(j => j.booking_id === b.id))
+      .map(b => ({ id: b.id, date: b.scheduled_date, start_time: b.scheduled_time, end_time: b.end_time || '', address: b.service_address,
+        staff_name: b.assigned_crew.map(id => employees.find(e => e.id === id)?.full_name).filter(Boolean).join(', ') }))
+    const busy = busyCleaners([...(dailyJobs || []), ...fromBookings], scheduledDate, { window: { start: startTime, end: endTime }, ignoreIds: own })
     const map = new Map<string, string>()
-    if (!scheduledDate) return map
-
-    // 1. Daily jobs
-    ;(dailyJobs || []).forEach(j => {
-      if (j.date === scheduledDate && j.staff_name) {
-        const parts = j.staff_name.split(/[,+]/).map(s => s.trim())
-        parts.forEach(p => {
-          if (!map.has(p)) {
-            const timeDesc = j.start_time && j.end_time ? `${j.start_time}-${j.end_time}` : 'Scheduled'
-            map.set(p, timeDesc)
-          }
-        })
-      }
-    })
-
-    // 2. Bookings
-    ;(bookings || []).forEach(b => {
-      if (b.scheduled_date === scheduledDate && b.status !== 'cancelled' && Array.isArray(b.assigned_crew)) {
-        b.assigned_crew.forEach(empId => {
-          const emp = employees.find(e => e.id === empId)
-          if (emp && !map.has(emp.full_name)) {
-            const timeDesc = b.scheduled_time && b.end_time ? `${b.scheduled_time}-${b.end_time}` : 'Booked'
-            map.set(emp.full_name, timeDesc)
-          }
-        })
-      }
-    })
-
+    busy.forEach((v, name) => map.set(name, v.info))
     return map
-  }, [scheduledDate, dailyJobs, bookings, employees])
+  }, [scheduledDate, dailyJobs, bookings, employees, startTime, endTime, initialBooking])
 
   // ── Time & Duty Hours Calculation ──
   const calcDuration = (start: string, end: string): number => {

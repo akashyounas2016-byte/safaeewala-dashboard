@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(bookings): status menu on every card (Unconfirmed · Scheduled · In progress · Completed · Cancelled) with the cleaners' live step; Edit Booking status shows at once on job-sheet cards (R-BK-04)
+- feat(staff): live "Busy" tag — finished jobs no longer count; with a chosen time only overlapping jobs count (UX-125)
+- ui(sidebar): AI Bot between Reports and Settings; red blinking counter (UX-126)
+
 - fix(ui): English only on screen — sign-out, login errors, AI Bot, backup guide and sync / webhook windows rewritten; a test keeps it so (R-UI-01)
 - feat(job-sheet): no "leave site / changes not saved" warning; the Excel sheet saves on the way out (UX-123)
 - feat(attendance): Cards / Table view, Hide / Show, first 6 cards then View all; tab spacing fixed (UX-124)

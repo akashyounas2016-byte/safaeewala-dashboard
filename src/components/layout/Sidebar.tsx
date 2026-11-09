@@ -176,9 +176,10 @@ function AIBotNavItem({ onClose }: { onClose: () => void }) {
     >
       <Bot size={16} className="shrink-0 text-[#64748b] group-hover:text-[#34d399]" />
       <span className="flex-1 truncate">AI Bot</span>
+      {/* UX-126: the same counter as Alerts / Leads (pill, glow, blinking), in red */}
       {aiIssueCount > 0 ? (
         <span title={`${aiIssueCount} finding${aiIssueCount === 1 ? '' : 's'}${aiHighIssues ? `, ${aiHighIssues} high` : ''}`}
-          className={cn('inline-flex items-center justify-center px-2 py-0.5 min-w-[20px] h-5 rounded-full text-[11px] font-black shrink-0', aiHighIssues ? 'bg-rose-500 text-white' : 'bg-white/10 text-slate-300')}>
+          className="inline-flex items-center justify-center px-2 py-0.5 min-w-[20px] h-5 rounded-full text-[11px] font-black bg-rose-500 text-white shadow-[0_2px_10px_rgba(244,63,94,0.45)] animate-pulse shrink-0">
           {aiIssueCount > 99 ? '99+' : aiIssueCount}
         </span>
       ) : <span className="text-[10px] font-bold text-emerald-300/80 shrink-0">100%</span>}
@@ -410,7 +411,6 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
             <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-2 px-3 font-semibold">
               Workspace
             </p>
-            {!isFieldLogin && !workspaceNav.some(i => i.to === '/alerts') && <AIBotNavItem onClose={onClose} />}
             {workspaceNav.map(item => {
               const isFluent = item.to === '/fluent-forms'
               return (
@@ -425,7 +425,6 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
                   onClick={isFluent ? () => markFluentFormsAsRead() : undefined}
                   onClose={onClose}
                 />
-                {item.to === '/alerts' && !isFieldLogin && <AIBotNavItem onClose={onClose} />}
                 </Fragment>
               )
             })}
@@ -457,14 +456,18 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
               Operations
             </p>
             {operationsNav.map(item => (
-              <NavItem
-                key={item.to}
-                {...item}
-                isFavorite={favorites.includes(item.to)}
-                onToggleFavorite={(e) => toggleFavorite(item.to, e)}
-                onClose={onClose}
-              />
+              <Fragment key={item.to}>
+                {/* UX-126: AI Bot sits between Reports and Settings */}
+                {item.to === '/settings' && !isFieldLogin && <AIBotNavItem onClose={onClose} />}
+                <NavItem
+                  {...item}
+                  isFavorite={favorites.includes(item.to)}
+                  onToggleFavorite={(e) => toggleFavorite(item.to, e)}
+                  onClose={onClose}
+                />
+              </Fragment>
             ))}
+            {!isFieldLogin && !operationsNav.some(i => i.to === '/settings') && <AIBotNavItem onClose={onClose} />}
           </>
         )}
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { busyCleaners } from '@/lib/staffBusy'
 import { awayCleanerNames } from '@/lib/attendance'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
@@ -109,34 +110,6 @@ export function AddJobForm({
     return employees.filter(e => !awayOnDate.has(e.full_name.trim().toLowerCase()) || chosen.has(e.full_name.trim().toLowerCase()))
   }, [employees, awayOnDate, selectedStaff])
   const awayList = useMemo(() => employees.filter(e => awayOnDate.has(e.full_name.trim().toLowerCase())).map(e => e.full_name), [employees, awayOnDate])
-  const busyCleanersMap = useMemo(() => {
-    const map = new Map<string, { shiftCount: number; info: string }>()
-    const targetDateJobs = existingJobsForDate.length > 0
-      ? existingJobsForDate
-      : dailyJobs.filter(j => j.date === date)
-
-    targetDateJobs.forEach(j => {
-      if (!j.staff_name) return
-      const names = j.staff_name.split(/[,+/&]|\band\b/i).map(s => s.trim().toLowerCase()).filter(Boolean)
-      const timeStr = j.start_time && j.end_time ? `${formatTime12h(j.start_time)} - ${formatTime12h(j.end_time)}` : ''
-      const addrStr = j.address ? ` (${j.address})` : ''
-      names.forEach(name => {
-        if (!map.has(name)) {
-          map.set(name, {
-            shiftCount: 1,
-            info: timeStr ? `${timeStr}${addrStr}` : `Active on ${date}`
-          })
-        } else {
-          const prev = map.get(name)!
-          prev.shiftCount += 1
-          if (timeStr && !prev.info.includes(timeStr)) {
-            prev.info += `, ${timeStr}`
-          }
-        }
-      })
-    })
-    return map
-  }, [existingJobsForDate, dailyJobs, date])
 
   // Auto-generate team name when multiple cleaners selected
   const defaultTeamName = useMemo(() => {
@@ -192,6 +165,11 @@ export function AddJobForm({
   // ── Timing & Duration (12-Hour AM/PM Format e.g. 09:00 AM, 01:00 PM) ──
   const [startTime, setStartTime] = useState(() => formatTime12h(initial?.start_time || '09:00 AM') || '09:00 AM')
   const [endTime, setEndTime]     = useState(() => formatTime12h(initial?.end_time || '01:00 PM') || '01:00 PM')
+  // UX-125: busy = a job not finished yet (today) or any job (later day) that overlaps this job's time
+  const busyCleanersMap = useMemo(() => {
+    const jobs = existingJobsForDate.length > 0 ? existingJobsForDate : dailyJobs
+    return busyCleaners(jobs, date, { window: { start: startTime, end: endTime }, ignoreIds: [initial?.id || '', String((initial as { _originalJobId?: string } | undefined)?._originalJobId || '')] })
+  }, [existingJobsForDate, dailyJobs, date, startTime, endTime, initial?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // R-JOB-01: a chosen cleaner already busy at this time on this date (all jobs of the date, saved or on screen)
   const staffClash = useMemo(() => {
