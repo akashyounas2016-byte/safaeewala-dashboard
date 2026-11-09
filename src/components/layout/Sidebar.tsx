@@ -124,7 +124,12 @@ function NavItem({ to, label, icon: Icon, onClose, tag, badge, badgeTitle, onCli
           {typeof badge === 'number' && badge > 0 && !tag && (
             <span
               title={badgeTitle || `${badge} new form submission${badge > 1 ? 's' : ''}`}
-              className="inline-flex items-center justify-center px-2 py-0.5 min-w-[20px] h-5 rounded-full text-[11px] font-black bg-[#34d399] text-[#064e3b] shadow-[0_2px_10px_rgba(52,211,153,0.45)] animate-pulse shrink-0"
+              className={cn(
+                'inline-flex items-center justify-center px-2 py-0.5 min-w-[20px] h-5 rounded-full text-[11px] font-black animate-pulse shrink-0',
+                to === '/alerts'
+                  ? 'bg-rose-500 text-white shadow-[0_2px_10px_rgba(244,63,94,0.45)]'
+                  : 'bg-[#34d399] text-[#064e3b] shadow-[0_2px_10px_rgba(52,211,153,0.45)]'
+              )}
             >
               {badge > 99 ? '99+' : badge}
             </span>

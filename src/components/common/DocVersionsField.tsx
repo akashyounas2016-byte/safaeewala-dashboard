@@ -86,7 +86,7 @@ export function DocVersionsField<T extends VersionedDoc>({ label, category, docs
       {previous.length > 0 && (
         <div className="space-y-1 pt-0.5">
           <p className="text-[9.5px] font-black uppercase tracking-wider text-slate-500">Previous · replaced {formatDate(String(previous[0].archived_at || previous[0].removed_at || '').slice(0, 10))}</p>
-          {previous.map(d => <Row key={d.id} d={d} faded onPreview={onPreview} />)}
+          {previous.map(d => <Row key={d.id} d={d} faded onPreview={onPreview} onRemove={onRemove} />)}
         </div>
       )}
       {history.length > 0 && (
@@ -94,7 +94,7 @@ export function DocVersionsField<T extends VersionedDoc>({ label, category, docs
           <button type="button" onClick={() => setShowHistory(v => !v)} className="text-[10.5px] font-bold text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 cursor-pointer">
             <History size={11} /> Older history ({history.length}) <ChevronDown size={11} className={showHistory ? 'rotate-180' : ''} />
           </button>
-          {showHistory && <div className="space-y-1 mt-1">{history.map(d => <Row key={d.id} d={d} faded onPreview={onPreview} />)}</div>}
+          {showHistory && <div className="space-y-1 mt-1">{history.map(d => <Row key={d.id} d={d} faded onPreview={onPreview} onRemove={onRemove} />)}</div>}
         </div>
       )}
     </div>

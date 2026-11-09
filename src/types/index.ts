@@ -216,6 +216,7 @@ export interface Employee {
   photo_url?: string // profile picture as a resized data URL
   gender?: 'male' | 'female' | 'other' | string
   nationality: string
+  short_name?: string
 
   // Emirates ID (EID)
   emirates_id: string
@@ -256,6 +257,7 @@ export interface Employee {
   // Financial & Insurance / NOC Terms
   pay_rate_hourly: number
   monthly_salary?: number
+  basic_salary?: number
   medical_insurance?: string
   medical_insurance_expiry?: string
   medical_insurance_file?: string
@@ -263,8 +265,14 @@ export interface Employee {
   end_date?: string
   noc?: string
   noc_file?: string
+  other_documents_file?: string
 
-  status: 'active' | 'on_leave' | 'inactive' | 'engaged_in_project'
+  // Training workflow
+  training_start_date?: string
+  training_end_date?: string
+  training_duration_days?: number
+
+  status: 'active' | 'on_leave' | 'inactive' | 'engaged_in_project' | 'under_training'
 
   // Cleaners & Technical
   skills: string[]

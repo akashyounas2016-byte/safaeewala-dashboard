@@ -34,8 +34,10 @@ function getInitialDocs(initialEmployee?: Employee | null): EmployeeDocument[] {
   const e = initialEmployee
   return seedFromFields<EmployeeDocument>(e.documents, [
     ['eid', 'Emirates ID', e.eid_file], ['passport', 'Passport', e.passport_file], ['visa', 'Residency Visa', e.visa_file],
-    ['work_permit', 'Work Permit', e.work_permit_file], ['driving_license', 'Driving License', e.driving_license_file],
-    ['medical_insurance', 'Medical Insurance', e.medical_insurance_file], ['noc', 'NOC / Labour Card', e.noc_file],
+    ['work_permit', 'Work Permit', e.work_permit_file], ['noc', 'NOC / Labour Card', e.noc_file],
+    ['other', 'Other Documents', e.other_documents_file],
+    ['driving_license', 'Driving License', e.driving_license_file],
+    ['medical_insurance', 'Medical Insurance', e.medical_insurance_file],
   ], e.created_at || new Date().toISOString())
 }
 
@@ -57,6 +59,7 @@ function EmployeeFormModalContent({
 
   // Selected role for dynamic driver vs cleaner field switching
   const [role, setRole] = useState<EmployeeRole>(() => initialEmployee?.role || 'cleaner')
+  const [status, setStatus] = useState<Employee['status']>(() => initialEmployee?.status || 'active')
 
   // Document upload state
   const [docs, setDocs] = useState<EmployeeDocument[]>(() => getInitialDocs(initialEmployee))
@@ -93,7 +96,6 @@ function EmployeeFormModalContent({
       ['eid_start_date', 'eid_end_date', 'Emirates ID'],
       ['passport_start_date', 'passport_expiry', 'Passport'],
       ['visa_start_date', 'visa_expiry', 'Residency Visa'],
-      ['work_permit_start_date', 'work_permit_expiry', 'Work Permit'],
       ['driving_license_issue_date', 'driving_license_expiry_date', 'Driving License'],
     ]
     for (const [from, to, label] of datePairs) {
@@ -110,7 +112,14 @@ function EmployeeFormModalContent({
       }
     }
 
+    const wpExpiry = str('work_permit_expiry')
+    if (wpExpiry && isWrongDocDate(wpExpiry)) {
+      notify.error('Work Permit: the expiry date has a wrong year — please correct it (e.g. 2027).')
+      return
+    }
+
     const monthly_salary = Number(fd.get('monthly_salary')) || 0
+    const basic_salary = Number(fd.get('basic_salary')) || undefined
     const agencyId = (fd.get('agency_id') as string) || ''
     const selAgency = agencies.find(a => a.id === agencyId)
     const docsList: EmployeeDocument[] = docs
@@ -119,6 +128,7 @@ function EmployeeFormModalContent({
 
     const patch: Partial<Employee> = {
       full_name: fd.get('full_name') as string,
+      short_name: str('short_name'),
       phone: fd.get('phone') as string,
       role,
       designation: formatEmpRole(role),
@@ -147,9 +157,8 @@ function EmployeeFormModalContent({
       visa_end_date: (fd.get('visa_expiry') as string) || undefined,
       visa_file: fileOf('visa', initialEmployee?.visa_file),
 
-      // Work Permit
+      // Work Permit (Expiry Date only)
       work_permit_number: (fd.get('work_permit_number') as string) || initialEmployee?.work_permit_number || undefined,
-      work_permit_start_date: (fd.get('work_permit_start_date') as string) || undefined,
       work_permit_expiry: (fd.get('work_permit_expiry') as string) || '',
       work_permit_end_date: (fd.get('work_permit_expiry') as string) || undefined,
       work_permit_file: fileOf('work_permit', initialEmployee?.work_permit_file),
@@ -165,6 +174,7 @@ function EmployeeFormModalContent({
 
       // Financial & Employment
       monthly_salary,
+      basic_salary,
       pay_rate_hourly: Math.round((monthly_salary / MONTHLY_WORK_HOURS) * 10) / 10,
       medical_insurance: (fd.get('medical_insurance') as string) || undefined,
       medical_insurance_expiry: (fd.get('medical_insurance_expiry') as string) || undefined,
@@ -173,8 +183,12 @@ function EmployeeFormModalContent({
       end_date: (fd.get('end_date') as string) || undefined,
       noc: (fd.get('noc') as string) || undefined,
       noc_file: fileOf('noc', initialEmployee?.noc_file),
+      other_documents_file: fileOf('other', initialEmployee?.other_documents_file),
 
-      status: (fd.get('status') as Employee['status']) || initialEmployee?.status || 'active',
+      status,
+      training_start_date: status === 'under_training' ? ((fd.get('training_start_date') as string) || todayDubai()) : undefined,
+      training_end_date: status === 'under_training' ? ((fd.get('training_end_date') as string) || undefined) : undefined,
+      training_duration_days: status === 'under_training' && fd.get('training_end_date') && fd.get('training_start_date') ? Math.max(1, Math.round((new Date(fd.get('training_end_date') as string).getTime() - new Date(fd.get('training_start_date') as string).getTime()) / (1000 * 60 * 60 * 24))) : undefined,
 
       // Skills & Clients
       skills: (fd.get('skills') as string)?.split(',').map(s => s.trim()).filter(Boolean) || [],
@@ -235,10 +249,12 @@ function EmployeeFormModalContent({
               <select
                 name="status"
                 form="employee-form-modal"
-                defaultValue={initialEmployee?.status || 'active'}
+                value={status}
+                onChange={e => setStatus(e.target.value as Employee['status'])}
                 className="text-[11.5px] px-2 py-1 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-teal-600 font-bold text-slate-800 cursor-pointer shadow-2xs"
               >
                 <option value="active">Active</option>
+                <option value="under_training">Under Training</option>
                 <option value="inactive">Inactive</option>
                 <option value="on_leave">On Leave</option>
                 <option value="engaged_in_project">Engaged in Project</option>
@@ -304,12 +320,20 @@ function EmployeeFormModalContent({
                   </select>
                 </div>
               </div>
-              <Input
-                name="nationality"
-                label="Nationality"
-                defaultValue={initialEmployee?.nationality || ''}
-                placeholder="e.g. Filipino, Pakistani, Indian, Nepali..."
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  name="nationality"
+                  label="Nationality"
+                  defaultValue={initialEmployee?.nationality || ''}
+                  placeholder="e.g. Filipino, Nepali..."
+                />
+                <Input
+                  name="short_name"
+                  label="Short Name"
+                  defaultValue={initialEmployee?.short_name || ''}
+                  placeholder="e.g. Maria"
+                />
+              </div>
             </div>
 
             {/* Role & Sourcing */}
@@ -370,22 +394,58 @@ function EmployeeFormModalContent({
               </h4>
 
               {seeSalary ? (
-                <Input
-                  name="monthly_salary"
-                  label="Monthly Salary (AED/mo) *"
-                  type="number"
-                  min="0"
-                  step="any"
-                  defaultValue={initialEmployee?.monthly_salary ? String(initialEmployee.monthly_salary) : (initialEmployee?.pay_rate_hourly ? String(Math.round(initialEmployee.pay_rate_hourly * MONTHLY_WORK_HOURS)) : '2500')}
-                  placeholder="2500"
-                  required
-                />
+                <div className="space-y-2">
+                  <Input
+                    name="monthly_salary"
+                    label="Total Salary (AED/mo) *"
+                    type="number"
+                    min="0"
+                    step="any"
+                    defaultValue={initialEmployee?.monthly_salary ? String(initialEmployee.monthly_salary) : (initialEmployee?.pay_rate_hourly ? String(Math.round(initialEmployee.pay_rate_hourly * MONTHLY_WORK_HOURS)) : '2500')}
+                    placeholder="2500"
+                    required
+                  />
+                  <Input
+                    name="basic_salary"
+                    label="Basic Salary (AED/mo)"
+                    type="number"
+                    min="0"
+                    step="any"
+                    defaultValue={initialEmployee?.basic_salary ? String(initialEmployee.basic_salary) : ''}
+                    placeholder="e.g. 1500"
+                  />
+                </div>
               ) : (
                 <>
                   {/* R-SEC-08: the salary is kept as it is; only Admin (or a role given Salary) sees and sets it */}
                   <input type="hidden" name="monthly_salary" defaultValue={initialEmployee?.monthly_salary ? String(initialEmployee.monthly_salary) : (initialEmployee?.pay_rate_hourly ? String(Math.round(initialEmployee.pay_rate_hourly * MONTHLY_WORK_HOURS)) : '')} />
-                  <p className="text-[11.5px] text-slate-500 bg-white border border-slate-200 rounded-lg px-3 py-2">Monthly salary: set by Admin</p>
+                  <input type="hidden" name="basic_salary" defaultValue={initialEmployee?.basic_salary ? String(initialEmployee.basic_salary) : ''} />
+                  <p className="text-[11.5px] text-slate-500 bg-white border border-slate-200 rounded-lg px-3 py-2">Salary: set by Admin</p>
                 </>
+              )}
+
+              {status === 'under_training' && (
+                <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-2.5 space-y-1.5">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-amber-900 block flex items-center gap-1">
+                    <span>⚡ Under Training Period</span>
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      name="training_start_date"
+                      label="Training Start"
+                      type="date"
+                      defaultValue={initialEmployee?.training_start_date || todayDubai()}
+                      className="h-8 text-[11px] min-w-[125px] bg-white border-amber-200"
+                    />
+                    <Input
+                      name="training_end_date"
+                      label="Training End"
+                      type="date"
+                      defaultValue={initialEmployee?.training_end_date || ''}
+                      className="h-8 text-[11px] min-w-[125px] bg-white border-amber-200"
+                    />
+                  </div>
+                </div>
               )}
 
               <div className="grid grid-cols-2 gap-2">
@@ -417,8 +477,8 @@ function EmployeeFormModalContent({
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
-              {/* Emirates ID (Sky Blue Tint) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {/* Card 1: Emirates ID (Sky Blue Tint) */}
               <div className="bg-sky-50/70 border border-sky-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
                 <div className="flex items-center justify-between pb-1.5 border-b border-sky-200/60">
                   <span className="text-[11px] font-black uppercase tracking-wider text-sky-900 flex items-center gap-1.5">
@@ -449,19 +509,19 @@ function EmployeeFormModalContent({
                     label="Issue Date"
                     type="date"
                     defaultValue={initialEmployee?.eid_start_date || ''}
-                    className="h-8 text-[11px] bg-white border-sky-200/80 focus:border-sky-500"
+                    className="h-8 text-[11px] min-w-[125px] bg-white border-sky-200/80 focus:border-sky-500"
                   />
                   <Input
                     name="eid_end_date"
                     label="Expiry Date"
                     type="date"
                     defaultValue={initialEmployee?.eid_end_date || ''}
-                    className="h-8 text-[11px] bg-white border-sky-200/80 focus:border-sky-500"
+                    className="h-8 text-[11px] min-w-[125px] bg-white border-sky-200/80 focus:border-sky-500"
                   />
                 </div>
               </div>
 
-              {/* Passport (Purple Tint) */}
+              {/* Card 2: Passport (Purple Tint) */}
               <div className="bg-purple-50/70 border border-purple-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
                 <div className="flex items-center justify-between pb-1.5 border-b border-purple-200/60">
                   <span className="text-[11px] font-black uppercase tracking-wider text-purple-900 flex items-center gap-1.5">
@@ -492,19 +552,19 @@ function EmployeeFormModalContent({
                     label="Issue Date"
                     type="date"
                     defaultValue={initialEmployee?.passport_start_date || ''}
-                    className="h-8 text-[11px] bg-white border-purple-200/80 focus:border-purple-500"
+                    className="h-8 text-[11px] min-w-[125px] bg-white border-purple-200/80 focus:border-purple-500"
                   />
                   <Input
                     name="passport_expiry"
                     label="Expiry Date"
                     type="date"
                     defaultValue={initialEmployee?.passport_expiry || initialEmployee?.passport_end_date || ''}
-                    className="h-8 text-[11px] bg-white border-purple-200/80 focus:border-purple-500"
+                    className="h-8 text-[11px] min-w-[125px] bg-white border-purple-200/80 focus:border-purple-500"
                   />
                 </div>
               </div>
 
-              {/* Residency Visa (Amber Tint) */}
+              {/* Card 3: Residency Visa (Amber Tint) */}
               <div className="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-3.5 space-y-2 shadow-2xs">
                 <div className="flex items-center justify-between pb-1.5 border-b border-amber-200/60">
                   <span className="text-[11px] font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
@@ -535,19 +595,19 @@ function EmployeeFormModalContent({
                     label="Issue Date"
                     type="date"
                     defaultValue={initialEmployee?.visa_start_date || ''}
-                    className="h-8 text-[11px] bg-white border-amber-200/80 focus:border-amber-500"
+                    className="h-8 text-[11px] min-w-[125px] bg-white border-amber-200/80 focus:border-amber-500"
                   />
                   <Input
                     name="visa_expiry"
                     label="Expiry Date"
                     type="date"
                     defaultValue={initialEmployee?.visa_expiry || initialEmployee?.visa_end_date || ''}
-                    className="h-8 text-[11px] bg-white border-amber-200/80 focus:border-amber-500"
+                    className="h-8 text-[11px] min-w-[125px] bg-white border-amber-200/80 focus:border-amber-500"
                   />
                 </div>
               </div>
 
-              {/* Work Permit (Emerald Tint) */}
+              {/* Card 4: Work Permit (Emerald Tint) — Expiry Date ONLY */}
               <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-3.5 space-y-2 shadow-2xs">
                 <div className="flex items-center justify-between pb-1.5 border-b border-emerald-200/60">
                   <span className="text-[11px] font-black uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
@@ -572,21 +632,83 @@ function EmployeeFormModalContent({
                   onRemove={handleRemoveDoc}
                   onPreview={d => setPreviewDoc(d)}
                 />
-                <div className="grid grid-cols-2 gap-2 pt-0.5">
-                  <Input
-                    name="work_permit_start_date"
-                    label="Issue Date"
-                    type="date"
-                    defaultValue={initialEmployee?.work_permit_start_date || ''}
-                    className="h-8 text-[11px] bg-white border-emerald-200/80 focus:border-emerald-500"
-                  />
+                <div className="pt-0.5">
                   <Input
                     name="work_permit_expiry"
                     label="Expiry Date"
                     type="date"
                     defaultValue={initialEmployee?.work_permit_expiry || initialEmployee?.work_permit_end_date || ''}
-                    className="h-8 text-[11px] bg-white border-emerald-200/80 focus:border-emerald-500"
+                    className="h-8 text-[11px] min-w-[125px] bg-white border-emerald-200/80 focus:border-emerald-500"
                   />
+                </div>
+              </div>
+
+              {/* Card 5: NOC / Labour Clearance (Indigo Tint) */}
+              <div className="bg-indigo-50/60 border border-indigo-200/80 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between pb-1.5 border-b border-indigo-200/60">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-indigo-900 flex items-center gap-1.5">
+                    <FileText size={12} className="text-indigo-600" />
+                    <span>NOC</span>
+                  </span>
+                  {cur('noc')?.file_data ? (
+                    <span className="text-[9.5px] font-black text-indigo-700 bg-indigo-100/90 px-1.5 py-0.5 rounded-md border border-indigo-200">
+                      ATTACHED
+                    </span>
+                  ) : (
+                    <span className="text-[9.5px] font-semibold text-indigo-600/70">
+                      Optional
+                    </span>
+                  )}
+                </div>
+                <DocVersionsField
+                  category="noc"
+                  docs={docs}
+                  accent="indigo"
+                  onUpload={f => handleAttachDoc('noc', f)}
+                  onRemove={handleRemoveDoc}
+                  onPreview={d => setPreviewDoc(d)}
+                />
+                <div className="pt-0.5">
+                  <Input
+                    name="noc"
+                    label="NOC Details / Reference"
+                    defaultValue={initialEmployee?.noc || ''}
+                    placeholder="e.g. MOHRE NOC / Clearance #1234"
+                    className="h-8 text-[11px] bg-white border-indigo-200/80 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Card 6: Other Documents (Slate / Teal Tint) — Multi-upload */}
+              <div className="bg-slate-100/80 border border-slate-300/80 rounded-2xl p-3.5 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-200">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <FileText size={12} className="text-teal-600" />
+                    <span>Other Documents</span>
+                  </span>
+                  {currentDocs(docs, 'other').length > 0 ? (
+                    <span className="text-[9.5px] font-black text-teal-800 bg-teal-100/90 px-1.5 py-0.5 rounded-md border border-teal-200">
+                      {currentDocs(docs, 'other').length} ATTACHED
+                    </span>
+                  ) : (
+                    <span className="text-[9.5px] font-semibold text-slate-500">
+                      Multi-upload
+                    </span>
+                  )}
+                </div>
+                <DocVersionsField
+                  category="other"
+                  docs={docs}
+                  accent="teal"
+                  uploadText="Upload EID, Passport, residency files…"
+                  onUpload={f => handleAttachDoc('other', f)}
+                  onRemove={handleRemoveDoc}
+                  onPreview={d => setPreviewDoc(d)}
+                />
+                <div className="pt-0.5">
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    Upload multiple images or PDFs (EID copy, extra certificates, agreement).
+                  </p>
                 </div>
               </div>
             </div>

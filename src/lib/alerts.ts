@@ -99,6 +99,18 @@ export function employeeDocAlerts(employees: Employee[]): CrmAlert[] {
   const out: CrmAlert[] = []
   employees.forEach(e => {
     if (e.status === 'inactive') return
+    // Under Training completion alert: notify Admin to review, extend or mark as Active
+    if (e.status === 'under_training' && e.training_end_date) {
+      const days = daysUntil(e.training_end_date)
+      if (days <= 0) {
+        out.push({
+          id: `emp-${e.id}-training-ended`, source: 'staff', severity: 'high',
+          title: `${e.full_name}: Training period ended`,
+          message: `Training concluded on ${formatDate(e.training_end_date)}. Review performance to extend training or mark as Active.`,
+          actionUrl: `/employees/${e.id}`, actionLabel: 'Review Employee',
+        })
+      }
+    }
     docs.forEach(([field, label]) => {
       const date = e[field] as string | undefined
       if (!date) return

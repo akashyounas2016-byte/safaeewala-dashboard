@@ -22,6 +22,7 @@ export function Input({ label, error, icon, className, ...props }: InputProps) {
             'w-full rounded-lg border border-line bg-elevated px-3 py-2 text-sm text-ink placeholder:text-ink-mute',
             'focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent',
             'transition-colors duration-150',
+            props.type === 'date' && 'px-2 py-1.5 text-[12px] min-w-0',
             icon && 'pl-9',
             error && 'border-coral focus:border-coral focus:ring-coral/20',
             className

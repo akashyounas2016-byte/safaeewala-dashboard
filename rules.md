@@ -556,6 +556,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `DataContext.tsx → addEmployee`.
 - **Status:** Active · Since: 2026-11-06
 
+### R-EMP-09 — Under Training workflow & Employee popup redesign
+- **Rule:** (2026-11-09 owner prompt)
+  - Profile section has `short_name` next to `nationality` in a 50% width grid, matching the Phone & Gender fields.
+  - Salary widget renames 'Monthly Salary' to 'Total Salary' and adds a 'Basic Salary' field.
+  - Employee status includes `under_training`; selecting it reveals Training Start Date and Training End Date inputs.
+  - When the training period ends (`training_end_date <= todayDubai()`), the system triggers a high-severity alert for Admin to review performance and extend training or mark the employee as 'Active'.
+  - Compliance documents are arranged in a 3 columns × 2 rows layout (6 cards total). Work Permit has Expiry Date only (Issue Date removed). NOC and Other Documents (multi-upload support) are included.
+- **Code:** `EmployeeFormModal.tsx`, `types/index.ts`, `alerts.ts`, `DocVersionsField.tsx`, `Employees.tsx`, `EmployeeProfile.tsx`.
+- **Status:** Active · Since: 2026-11-09
+
 ---
 
 ## AGN — Agencies

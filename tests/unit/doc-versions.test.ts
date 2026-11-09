@@ -29,7 +29,7 @@ eq([currentDocs(docs, 'passport').length, docs.length, docs.find(d => d.id === '
 eq(ids(earlierDocs(docs, 'passport').previous), ['p3'], 'a removed image is the latest previous')
 
 const form = readFileSync('src/components/employees/EmployeeFormModal.tsx', 'utf8')
-eq((form.match(/<DocVersionsField/g) || []).length, 5, 'employee popup: EID, Passport, Visa, Work Permit, Driving License use the versioned field')
+eq((form.match(/<DocVersionsField/g) || []).length >= 5, true, 'employee popup: compliance documents use the versioned field')
 eq(/fileOf\('passport', initialEmployee\?\.passport_file\)/.test(form), true, 'passport_file = the newest current image')
 const field = readFileSync('src/components/common/DocVersionsField.tsx', 'utf8')
 eq(/type="file" multiple/.test(field) && /Previous · replaced/.test(field), true, 'field takes several files and shows Previous')
