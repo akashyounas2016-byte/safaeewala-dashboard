@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { awayCleanerNames } from '@/lib/attendance'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
-import { ArrowLeft, FileSpreadsheet, Plus, Trash2, Save, Download, RotateCcw, Search, Check, X, Sparkles, Filter, Copy, Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table, Printer, MoreVertical, ChevronDown, ExternalLink, ChevronUp, Eye, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle, CloudUpload, Calendar, GripVertical, Info, History, Pencil, Building2, Star, Package, MapPin, Clock, CreditCard, UserPlus, Users, AlignLeft, AlignCenter, AlignRight } from 'lucide-react'
+import { ArrowLeft, FileSpreadsheet, Plus, Trash2, Save, Download, RotateCcw, Search, Check, X, Sparkles, Filter, Copy, Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table, Printer, MoreVertical, ChevronDown, ExternalLink, ChevronUp, Eye, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle, CloudUpload, Calendar, GripVertical, Info, History, Pencil, Building2, Star, Package, MapPin, Clock, CreditCard, UserPlus, Users, AlignLeft, AlignCenter, AlignRight, UserCheck, Rows } from 'lucide-react'
 import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
 import { ExcelCellPopover, ExcelPopoverItem, ExcelPopoverCustom, ExcelPopoverEmpty } from '@/components/dailyJobSheet/ExcelCellPopover'
 import { SpreadsheetEditModal } from '@/components/dailyJobSheet/SpreadsheetEditModal'
@@ -497,6 +497,24 @@ export function JobSheetSpreadsheet() {
 
   // ── Change Log History Modal ──
   const [showChangeLogModal, setShowChangeLogModal] = useState(false)
+
+  // ── Row Height Settings (Discrete levels: 2 steps down, default, 2 steps up) ──
+  type RowHeightLevel = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+  const ROW_HEIGHT_MAP: Record<RowHeightLevel, { label: string; heightClass: string; rowHeightPx: number; pyClass: string }> = {
+    xs: { label: 'Extra Compact (26px)', heightClass: 'h-[26px]', rowHeightPx: 26, pyClass: 'py-0.5' },
+    sm: { label: 'Compact (32px)', heightClass: 'h-[32px]', rowHeightPx: 32, pyClass: 'py-1' },
+    md: { label: 'Default (38px)', heightClass: 'h-[38px]', rowHeightPx: 38, pyClass: 'py-1.5' },
+    lg: { label: 'Relaxed (46px)', heightClass: 'h-[46px]', rowHeightPx: 46, pyClass: 'py-2' },
+    xl: { label: 'Tall (56px)', heightClass: 'h-[56px]', rowHeightPx: 56, pyClass: 'py-2.5' },
+  }
+  const [rowHeightLevel, setRowHeightLevel] = useState<RowHeightLevel>(() => {
+    return safeGet('safaeewala_excel_row_height', 'md')
+  })
+  const handleSetRowHeight = (lvl: RowHeightLevel) => {
+    setRowHeightLevel(lvl)
+    safeSet('safaeewala_excel_row_height', lvl)
+    showToast(`✓ Row height set to ${ROW_HEIGHT_MAP[lvl].label}`)
+  }
 
   // ── Column Widths (Interactive Drag Resizing) ──
   const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
@@ -1057,9 +1075,11 @@ export function JobSheetSpreadsheet() {
   const commitTimeSelect = (rowIdx: number, colId: 'start_time' | 'end_time', timeStr: string) => {
     const updated = [...gridRows]
     const r = { ...updated[rowIdx] }
-    r[colId] = timeStr
+    const fmt = formatTimeOnly(timeStr)
+    r[colId] = fmt !== '—' ? fmt : timeStr
     if (r.start_time && r.end_time && r.start_time !== '—' && r.end_time !== '—') {
       r.duty_hours = Math.round(calcHours(r.start_time, r.end_time) * 10) / 10
+      r.ot_hours = Math.round(calcOTHours(r.start_time, r.end_time) * 10) / 10
     }
     updated[rowIdx] = r
     // R-OT-01: Recalculate cumulative multi-shift Overtime
@@ -1067,7 +1087,7 @@ export function JobSheetSpreadsheet() {
     if (refuseClash(finalGrid)) { setEditingCell(null); return }
     pushState(finalGrid)
     setEditingCell(null)
-    showToast(`✓ ${colId === 'start_time' ? 'Start Time' : 'End Time'} set to "${timeStr}"`)
+    showToast(`✓ ${colId === 'start_time' ? 'Start Time' : 'End Time'} set to "${r[colId]}"`)
   }
 
   // Quick Commit for Payment Mode Dropdown Selection
@@ -1336,8 +1356,19 @@ export function JobSheetSpreadsheet() {
             type="text"
             value={editingCell.tempValue}
             onChange={e => setTemp(e.target.value)}
-            onKeyDown={handleEditorKeyDown}
-            placeholder="e.g. 09:00 AM"
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                if (typed) {
+                  commitTimeSelect(targetIdx, col.id as any, typed)
+                } else {
+                  commitCellEdit()
+                }
+              } else {
+                handleEditorKeyDown(e)
+              }
+            }}
+            placeholder="e.g. 09:15 AM"
             className={`${cellInputClass} font-mono`}
           />
           <ExcelCellPopover
@@ -2066,7 +2097,7 @@ export function JobSheetSpreadsheet() {
     const clickY = e.clientY
     // Keep context menu on screen with taller height for 20 solid colors options panel
     const menuWidth = 330
-    const menuHeight = 540
+    const menuHeight = 600
     const posX = clickX + menuWidth > window.innerWidth ? Math.max(10, window.innerWidth - menuWidth - 15) : clickX
     const posY = clickY + menuHeight > window.innerHeight ? Math.max(10, window.innerHeight - menuHeight - 15) : clickY
 
@@ -2430,7 +2461,7 @@ export function JobSheetSpreadsheet() {
         } else if (col.id === 'charges') {
           val = refMoney(mcInfo, r) ? memberChargesLabel(r, mcInfo!.teamRef) : r.charges
         } else if (col.id === 'received') {
-          val = refMoney(mcInfo, r) ? memberReceivedLabel(r, mcInfo!.primaryCleaner) : r.received
+          val = refMoney(mcInfo, r) ? memberReceivedLabel(r, mcInfo!.primaryCleaner, employees) : r.received
         } else if (col.id === 'pending') {
           val = refMoney(mcInfo, r) ? 'Nil' : rowPending(r)
         } else if (col.id === 'advance') {
@@ -2464,7 +2495,7 @@ export function JobSheetSpreadsheet() {
         } else if (col.id === 'charges') {
           val = refMoney(mcInfo, r) ? memberChargesLabel(r, mcInfo!.teamRef) : r.charges
         } else if (col.id === 'received') {
-          val = refMoney(mcInfo, r) ? memberReceivedLabel(r, mcInfo!.primaryCleaner) : r.received
+          val = refMoney(mcInfo, r) ? memberReceivedLabel(r, mcInfo!.primaryCleaner, employees) : r.received
         } else if (col.id === 'pending') {
           val = refMoney(mcInfo, r) ? 'Nil' : rowPending(r)
         } else if (col.id === 'advance') {
@@ -2963,6 +2994,24 @@ export function JobSheetSpreadsheet() {
 
 
 
+          {/* ── Attendance Navigation Button ── */}
+          <button
+            type="button"
+            onClick={async (e) => {
+              if (hasUnsavedChanges) { try { await handleSaveAll('auto') } catch { /* auto draft */ } }
+              if (e.ctrlKey || e.metaKey) {
+                window.open(`/attendance?date=${selectedDate}`, '_blank')
+              } else {
+                navigate(`/attendance?date=${selectedDate}`)
+              }
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-black text-[12px] border border-white/30 shadow-xs transition-all cursor-pointer active:scale-95"
+            title="Access Attendance system (Ctrl+Click to open in new tab)"
+          >
+            <UserCheck size={14} className="stroke-[2.5]" />
+            <span>Attendance</span>
+          </button>
+
           {/* ── Dedicated Add Job Button ── */}
           <button
             type="button"
@@ -3287,8 +3336,8 @@ export function JobSheetSpreadsheet() {
 
           {/* UX-73: align the selected column's text */}
           {(() => {
-            const colId = activeCell?.colId && activeCell.colId !== 'staff_name' ? activeCell.colId : ''
-            const colLabel = columns.find(c => c.id === colId)?.label || ''
+            const colId = activeCell?.colId || ''
+            const colLabel = columns.find(c => c.id === colId)?.label || (colId === 'staff_name' ? 'Staff' : '')
             const current = colId ? (columnAlign[colId] || (alignClass({ id: colId, type: columns.find(c => c.id === colId)?.type }).startsWith('text-right') ? 'right' : 'left')) : ''
             const opts = [['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight]] as const
             return (
@@ -3672,7 +3721,7 @@ export function JobSheetSpreadsheet() {
                               else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                             } else if (col.id === 'received') {
                               if (isBlankShift) displayVal = ''
-                              else if (refMoney(mcInfo, row)) displayVal = memberReceivedLabel(row, mcInfo!.primaryCleaner)
+                              else if (refMoney(mcInfo, row)) displayVal = memberReceivedLabel(row, mcInfo!.primaryCleaner, employees)
                               else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                             } else if (col.id === 'pending') {
                               if (isBlankShift) displayVal = ''
@@ -3741,19 +3790,19 @@ export function JobSheetSpreadsheet() {
                                 ) : col.id === 'staff_name' ? (
                                   <div className="flex flex-col items-start leading-tight py-0.5">
                                     <span className="inline-flex items-center gap-1 max-w-full">
-                                      <span className="font-black text-white tracking-wide truncate">{displayVal}</span>
+                                      <span className="font-bold text-slate-900 tracking-tight truncate">{displayVal}</span>
                                       <JobFlagIcon flags={flagsOf([row])} onClear={clearFlag} />
                                     </span>
                                     {mcInfo?.teamRef && !isBlankShift && (
                                       <span className={`inline-flex items-center gap-0.5 text-[9.5px] font-black px-1.5 py-0.2 rounded-md mt-0.5 border shadow-2xs ${
-                                        mcInfo.isPrimary ? 'bg-indigo-100 text-indigo-900 border-indigo-300' : 'bg-indigo-950/80 text-indigo-200 border-indigo-500/40'
+                                        mcInfo.isPrimary ? 'bg-indigo-100 text-indigo-900 border-indigo-300' : 'bg-indigo-50 text-indigo-800 border-indigo-200'
                                       }`}>
                                         <span>{mcInfo.teamRef}</span>
-                                        {mcInfo.isPrimary && <span className="text-[8.5px] text-indigo-400 font-extrabold">(Lead)</span>}
+                                        {mcInfo.isPrimary && <span className="text-[8.5px] text-indigo-600 font-extrabold">(Lead)</span>}
                                       </span>
                                     )}
                                     {!mcInfo?.teamRef && row.team_name && !isBlankShift && (
-                                      <span className="inline-flex items-center text-[9.5px] font-black px-1.5 py-0.2 rounded-md mt-0.5 bg-indigo-950/80 text-indigo-200 border border-indigo-500/40">
+                                      <span className="inline-flex items-center text-[9.5px] font-black px-1.5 py-0.2 rounded-md mt-0.5 bg-indigo-50 text-indigo-800 border border-indigo-200">
                                         {row.team_name}
                                       </span>
                                     )}
@@ -3765,11 +3814,11 @@ export function JobSheetSpreadsheet() {
                                       e.stopPropagation()
                                       handleJumpToLeadCleaner(mcInfo!, row)
                                     }}
-                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 border border-indigo-400/40 text-[10.5px] font-bold cursor-pointer transition-all shadow-2xs group/ref"
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-[10.5px] font-bold cursor-pointer transition-all shadow-2xs group/ref"
                                     title={`Go to the row where the payment was received (${mcInfo!.primaryCleaner})`}
                                   >
-                                    <ExternalLink size={10} className="text-indigo-400 group-hover/ref:translate-x-0.5 transition-transform" />
-                                    <span className="underline decoration-indigo-400 underline-offset-2">{displayVal}</span>
+                                    <ExternalLink size={10} className="text-indigo-600 group-hover/ref:translate-x-0.5 transition-transform" />
+                                    <span className="underline decoration-indigo-300 underline-offset-2">{displayVal}</span>
                                   </button>
                                 ) : col.id === 'team_name' && mcInfo?.teamRef && !isBlankShift ? (
                                   <button
@@ -3778,10 +3827,10 @@ export function JobSheetSpreadsheet() {
                                       e.stopPropagation()
                                       handleJumpToLeadCleaner(mcInfo, row)
                                     }}
-                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-950/80 hover:bg-indigo-900 text-indigo-200 border border-indigo-400/40 text-[10.5px] font-bold cursor-pointer transition-all shadow-2xs"
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 text-[10.5px] font-bold cursor-pointer transition-all shadow-2xs"
                                     title="Go to the lead cleaner's payment row"
                                   >
-                                    <Users size={10} className="text-indigo-400" />
+                                    <Users size={10} className="text-indigo-600" />
                                     <span>{displayVal}</span>
                                   </button>
                                 ) : (
@@ -3799,16 +3848,16 @@ export function JobSheetSpreadsheet() {
                                     }
                                     className={
                                       refMoney(mcInfo, row) && (col.id === 'charges' || col.id === 'received')
-                                        ? 'text-indigo-300 italic font-semibold text-[11px]'
+                                        ? 'text-indigo-800 italic font-semibold text-[11px]'
                                         : refMoney(mcInfo, row) && col.id === 'payment_mode'
-                                          ? 'text-indigo-200 font-bold text-[11px]'
+                                          ? 'text-indigo-800 font-bold text-[11px]'
                                           : col.id === 'charges'
-                                            ? 'text-amber-300 font-black drop-shadow-xs'
+                                            ? 'text-slate-900 font-extrabold'
                                             : col.id === 'received'
-                                              ? 'text-emerald-300 font-black drop-shadow-xs'
+                                              ? 'text-emerald-700 font-bold'
                                               : col.id === 'pending' && cleanNum(displayVal) > 0
-                                                ? 'text-rose-200 font-black bg-rose-950/80 px-1.5 py-0.5 rounded border border-rose-500/40 text-[11px]'
-                                                : 'text-slate-100 font-medium'
+                                                ? 'text-rose-700 font-bold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 text-[11px]'
+                                                : 'text-slate-900 font-medium'
                                     }
                                   >
                                     {col.id === 'address' ? (
@@ -3902,7 +3951,7 @@ export function JobSheetSpreadsheet() {
                     key={row.id}
                     data-row-id={row.id}
                     onContextMenu={e => handleContextMenu(e, targetIdx, row)}
-                    style={{ backgroundColor: rowBg }}
+                    style={{ backgroundColor: rowBg, height: `${ROW_HEIGHT_MAP[rowHeightLevel].rowHeightPx}px` }}
                     className={`transition-colors group hover:brightness-[0.98] ${flashRowId === row.id ? 'outline outline-4 -outline-offset-2 outline-amber-400' : clashRowIds.has(row.id) ? 'outline outline-2 -outline-offset-2 outline-rose-500' : ''} ${
                       isSelectedRow ? 'ring-2 ring-inset ring-emerald-500 font-semibold shadow-xs' : ''
                     }`}
@@ -3919,19 +3968,15 @@ export function JobSheetSpreadsheet() {
                         const isStaffCellActive = activeCell?.rowIdx === targetIdx && activeCell?.colId === 'staff_name'
                         const isStaffCellEditing = editingCell?.rowIdx === targetIdx && editingCell?.colId === 'staff_name'
 
-                        const blockTeams = Array.from(new Set(
-                          gridRows
-                            .filter(j => (j.staff_name || '').trim().toLowerCase() === staffKey)
-                            .map(j => {
-                              const mi = getMultiCleanerPaymentInfo(j, gridRows)
-                              if (mi?.isMultiCleaner && mi.teamRef) return mi.teamRef
-                              if (j.team_name && j.team_name.trim() && j.team_name.trim().toLowerCase() !== 'project team') {
-                                return j.team_name.trim()
-                              }
-                              return null
-                            })
-                            .filter(Boolean)
-                        ))
+                        // UX-70 & User Rule: Team row background color applies ONLY from Start Time onwards!
+                        // Staff column stays default white (#ffffff) unless user explicitly customized cleaner color or staff cell color
+                        const staffCellCustomColor = cellColors[`${row.id}_staff_name`] || cellColors[`${targetIdx}_staff_name`]
+                        const staffBg = hasCustomBlockColor ? palette.solidBg : (staffCellCustomColor || DEFAULT_ROW_BG)
+                        const isStaffDark = hasCustomBlockColor ? !palette.isLight : false
+
+                        // Staff text alignment (default left, controlled via toolbar alignment buttons)
+                        const staffAlign = columnAlign['staff_name'] || 'left'
+                        const staffAlignClass = staffAlign === 'center' ? 'text-center items-center' : staffAlign === 'right' ? 'text-right items-end' : 'text-left items-start'
 
                         return (
                           <td
@@ -3940,17 +3985,17 @@ export function JobSheetSpreadsheet() {
                             rowSpan={blockRowCount}
                             onClick={() => handleCellClick(targetIdx, col.id)}
                             onDoubleClick={() => handleCellDoubleClick(targetIdx, col.id)}
-                            onContextMenu={e => handleContextMenu(e, targetIdx, row)}
+                            onContextMenu={e => handleContextMenu(e, targetIdx, row, 'staff_name')}
                             style={{
                               width: `${getColWidth(col)}px`,
                               minWidth: `${getColWidth(col)}px`,
-                              backgroundColor: rowBg,
+                              backgroundColor: staffBg,
                               borderLeft: `4px solid ${hasCustomBlockColor ? palette.solidBorder : '#0f172a'}`,
                               borderTop: blockTopBorder,
                               borderBottom: blockBottomBorder,
                               borderRight: '1px solid #cbd5e1',
                             }}
-                            className={`align-middle text-center select-none cursor-cell transition-all relative group/staff px-2 py-2 ${
+                            className={`align-middle ${staffAlign === 'center' ? 'text-center' : staffAlign === 'right' ? 'text-right' : 'text-left'} select-none cursor-cell transition-all relative group/staff px-3 py-2 ${
                               isStaffCellActive ? 'ring-2 ring-emerald-500 bg-white z-10' : ''
                             }`}
                             title="Staff Member · Double-click to edit Staff Name"
@@ -3963,27 +4008,17 @@ export function JobSheetSpreadsheet() {
                                 onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
                                 onBlur={commitCellEdit}
                                 onKeyDown={handleEditorKeyDown}
-                                className="w-full text-center text-[12px] font-bold border border-emerald-500 rounded p-1 outline-none bg-white text-slate-900 shadow-inner"
+                                className={`w-full ${staffAlign === 'center' ? 'text-center' : staffAlign === 'right' ? 'text-right' : 'text-left'} text-[12px] font-bold border border-emerald-500 rounded p-1 outline-none bg-white text-slate-900 shadow-inner`}
                                 autoFocus
                               />
                             ) : (
-                              <div className="flex flex-col items-center justify-center h-full min-h-[60px] px-2 text-center gap-1">
+                              <div className={`flex flex-col ${staffAlignClass} justify-center h-full min-h-[48px] px-2 gap-1`}>
                                 <span className="inline-flex items-center gap-1">
-                                  <span className={`font-bold text-[13px] tracking-tight select-text ${isDarkRow ? 'text-white' : 'text-slate-900'}`}>
+                                  <span className={`font-bold text-[13px] tracking-tight select-text ${isStaffDark ? 'text-white' : 'text-slate-900'}`}>
                                     {blockInfo?.staffName || '—'}
                                   </span>
                                   <JobFlagIcon flags={flagsOf(gridRows.filter(j => (j.staff_name || '').trim().toLowerCase() === staffKey))} onClear={clearFlag} />
                                 </span>
-                                {blockTeams.map(tName => (
-                                  <span
-                                    key={tName}
-                                    className={`inline-flex items-center text-[9.5px] font-black px-1.5 py-0.2 rounded-md border shadow-2xs ${
-                                      isDarkRow ? 'bg-indigo-950/80 text-indigo-200 border-indigo-500/40' : 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                                    }`}
-                                  >
-                                    {tName}
-                                  </span>
-                                ))}
                               </div>
                             )}
                           </td>
@@ -4014,7 +4049,7 @@ export function JobSheetSpreadsheet() {
                         else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                       } else if (col.id === 'received') {
                         if (isBlankShift) displayVal = ''
-                        else if (refMoney(mcInfo, row)) displayVal = memberReceivedLabel(row, mcInfo!.primaryCleaner)
+                        else if (refMoney(mcInfo, row)) displayVal = memberReceivedLabel(row, mcInfo!.primaryCleaner, employees)
                         else displayVal = cleanNum(displayVal) > 0 ? cleanNum(displayVal) : (cleanNum(displayVal) === 0 ? 0 : '')
                       } else if (col.id === 'pending') {
                         if (isBlankShift) {
@@ -4068,7 +4103,7 @@ export function JobSheetSpreadsheet() {
                             borderBottom: blockBottomBorder,
                             borderRight: palette.isLight ? '1px solid #cbd5e1' : '1px solid rgba(255, 255, 255, 0.12)',
                           }}
-                          className={`h-7.5 px-2 ${isCellEditing ? 'overflow-visible z-30' : 'overflow-hidden'} text-ellipsis whitespace-nowrap cursor-cell transition-all relative ${
+                          className={`${ROW_HEIGHT_MAP[rowHeightLevel].heightClass} ${ROW_HEIGHT_MAP[rowHeightLevel].pyClass} px-2 ${isCellEditing ? 'overflow-visible z-30' : 'overflow-hidden'} text-ellipsis whitespace-nowrap cursor-cell transition-all relative ${
                             isCellActive
                               ? (palette.isLight ? 'ring-2 ring-emerald-600 bg-white z-10 font-bold text-slate-900 shadow-md' : 'ring-2 ring-emerald-400 bg-slate-950 z-10 font-bold text-white shadow-md')
                               : ''
@@ -4154,7 +4189,7 @@ export function JobSheetSpreadsheet() {
                         borderTop: blockTopBorder,
                         borderBottom: blockBottomBorder,
                       }}
-                      className="w-20 text-center px-1"
+                      className={`w-20 text-center px-1 ${ROW_HEIGHT_MAP[rowHeightLevel].heightClass} ${ROW_HEIGHT_MAP[rowHeightLevel].pyClass}`}
                     >
                       <div className="flex items-center justify-center gap-1.5">
                         <button
@@ -4318,7 +4353,39 @@ export function JobSheetSpreadsheet() {
                   </button>
                 </div>
 
-                <div className="h-px bg-slate-100 my-1" />
+                {/* ── ROW HEIGHT CONTROLS (Discrete levels: 2 steps down, default, 2 steps up) ── */}
+                <div className="py-1 px-3 border-t border-b border-slate-100">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 mb-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <Rows size={13} className="text-emerald-700" />
+                      <span>Row Height</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-semibold">{ROW_HEIGHT_MAP[rowHeightLevel]?.label}</span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                    {(['xs', 'sm', 'md', 'lg', 'xl'] as const).map(lvl => {
+                      const isCur = rowHeightLevel === lvl
+                      const meta = ROW_HEIGHT_MAP[lvl]
+                      return (
+                        <button
+                          key={lvl}
+                          type="button"
+                          onMouseDown={e => e.stopPropagation()}
+                          onClick={() => handleSetRowHeight(lvl)}
+                          className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-lg border text-center transition-all cursor-pointer ${
+                            isCur
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs font-black'
+                              : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 text-[10px] font-medium'
+                          }`}
+                          title={meta.label}
+                        >
+                          <span className="text-[11px] leading-none font-bold uppercase">{lvl}</span>
+                          <span className="text-[8.5px] opacity-80 mt-0.5">{meta.rowHeightPx}px</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
 
                 {/* ── COLOR CUSTOMIZATION PANEL ── */}
                 {isStaffSection ? (

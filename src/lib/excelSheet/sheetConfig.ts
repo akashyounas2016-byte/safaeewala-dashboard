@@ -33,37 +33,45 @@ export function projectKeyOf(r: DailyJob, allRows: DailyJob[]): string | null {
  * Lump Sum → the money is on the lead row ("Added Team A", "Reference Adnan", "Above").
  */
 export const memberEntry = (row: DailyJob) => splitEntryOf(row, row.staff_name || '')
+
+export const getLeadShortName = (lead: string, employees?: Array<{ full_name: string; short_name?: string }>): string => {
+  if (!lead) return 'Lead'
+  const trimmed = lead.trim()
+  if (employees && employees.length > 0) {
+    const emp = employees.find(e => e.full_name && e.full_name.trim().toLowerCase() === trimmed.toLowerCase())
+    if (emp?.short_name && emp.short_name.trim()) return emp.short_name.trim()
+  }
+  return trimmed.split(/\s+/)[0] || trimmed
+}
+
 export const memberChargesLabel = (row: DailyJob, team: string) => {
   const e = memberEntry(row)
-  return e ? `Split ${e.charges}` : `Added ${team || 'Team'}`
+  return e ? `Split ${e.charges}` : (team || 'Team')
 }
-export const memberReceivedLabel = (row: DailyJob, lead: string) => {
+
+export const memberReceivedLabel = (row: DailyJob, lead: string, employees?: Array<{ full_name: string; short_name?: string }>) => {
   const e = memberEntry(row)
-  return e ? `Collected ${e.received} · Ref ${lead || 'Lead'}` : `Reference ${lead || 'Lead'}`
+  const shortName = getLeadShortName(lead, employees)
+  return e ? `Collected ${e.received} · Ref ${shortName}` : `REF: ${shortName}`
 }
 export const memberModeLabel = (row: DailyJob) => memberEntry(row)?.payment_mode || 'Above'
 /** R-PAY-05: a team member's money is shown by reference to the lead only in Lump Sum mode; Split Mode rows are plain and editable */
 export const refMoney = (mc: MultiCleanerPaymentInfo | null | undefined, row: DailyJob) => Boolean(mc?.isSecondary) && !isSplitJob(row)
 /** Columns whose cells open their dropdown on a single click, filled or empty (UX-35) */
 export const DROPDOWN_COLS = new Set(['address', 'area', 'material', 'payment_mode', 'start_time', 'end_time'])
-/** Time suggestions formatted with explicit AM and PM */
-export const TIME_SUGGESTIONS = [ // working day 9:00 AM – 11:00 PM
-  '09:00 AM', '09:30 AM',
-  '10:00 AM', '10:30 AM',
-  '11:00 AM', '11:30 AM',
-  '12:00 PM', '12:30 PM',
-  '01:00 PM', '01:30 PM',
-  '02:00 PM', '02:30 PM',
-  '03:00 PM', '03:30 PM',
-  '04:00 PM', '04:30 PM',
-  '05:00 PM', '05:30 PM',
-  '06:00 PM', '06:30 PM',
-  '07:00 PM', '07:30 PM',
-  '08:00 PM', '08:30 PM',
-  '09:00 PM', '09:30 PM',
-  '10:00 PM', '10:30 PM',
-  '11:00 PM'
-]
+
+/** Time suggestions formatted with explicit AM and PM in 15-minute intervals (07:00 AM – 11:45 PM) */
+export const TIME_SUGGESTIONS: string[] = (() => {
+  const slots: string[] = []
+  for (let m = 7 * 60; m < 24 * 60; m += 15) {
+    let hh = Math.floor(m / 60)
+    const mm = String(m % 60).padStart(2, '0')
+    const mer = hh >= 12 ? 'PM' : 'AM'
+    hh = hh % 12 || 12
+    slots.push(`${String(hh).padStart(2, '0')}:${mm} ${mer}`)
+  }
+  return slots
+})()
 /** Standard Dubai Areas for location selection */
 export const DUBAI_AREAS = [
   'Downtown Dubai',

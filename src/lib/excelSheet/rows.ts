@@ -234,34 +234,49 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
     }
   })
 
+  const isBlank = (r: DailyJob) =>
+    !r.address && !r.start_time && !r.end_time && cleanNum(r.charges) === 0 && cleanNum(r.received) === 0 && !r.remarks
+
   const result: DailyJob[] = []
   staffKeysOrder.forEach(key => {
     const list = staffGroups.get(key)!
     const repName = list.find(j => (j.staff_name || '').trim())?.staff_name || ''
-    result.push(...list)
-    while (list.length < 3) {
-      const blankRow: DailyJob = {
-        id: newRowId(`blank_${key || 'unassigned'}`),
-        date: targetDate,
-        staff_name: repName,
-        team_name: '',
-        start_time: '',
-        end_time: '',
-        duty_hours: 0,
-        ot_hours: 0,
-        address: '',
-        area: '',
-        material: '' as any,
-        charges: 0,
-        received: 0,
-        payment_mode: '' as any,
-        remarks: '',
-        is_overtime: false,
-        created_at: new Date().toISOString(),
+    
+    // Separate real jobs from blank placeholder shifts
+    const realJobs = list.filter(j => !isBlank(j))
+    const blankJobs = list.filter(isBlank)
+
+    // Keep all real jobs
+    const finalStaffRows: DailyJob[] = [...realJobs]
+
+    // Strictly limit default rows to 3 rows per cleaner
+    while (finalStaffRows.length < 3) {
+      const existingBlank = blankJobs.shift()
+      if (existingBlank) {
+        finalStaffRows.push(existingBlank)
+      } else {
+        finalStaffRows.push({
+          id: newRowId(`blank_${key || 'unassigned'}`),
+          date: targetDate,
+          staff_name: repName,
+          team_name: '',
+          start_time: '',
+          end_time: '',
+          duty_hours: 0,
+          ot_hours: 0,
+          address: '',
+          area: '',
+          material: '' as any,
+          charges: 0,
+          received: 0,
+          payment_mode: '' as any,
+          remarks: '',
+          is_overtime: false,
+          created_at: new Date().toISOString(),
+        })
       }
-      list.push(blankRow)
-      result.push(blankRow)
     }
+    result.push(...finalStaffRows)
   })
 
   // R-OT-01: Automatically calculate cumulative multi-shift Overtime across each cleaner's shifts

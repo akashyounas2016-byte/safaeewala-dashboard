@@ -650,7 +650,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** *"Charges section mein Lump Sum aur Split Mode ka toggle … Lump Sum Mode mein total amount aik hi cleaner (lead) ke record mein jayegi … Split Mode … har split entry mein cleaner ka naam, charges, received amount, aur compact payment mode."*
   - **Lump Sum Mode** (default; the only mode for a one-cleaner job): *Charges*, *Advance Received* and *Payment Mode*.
     - Advance Received is the first payment taken when the job is entered, not the full collection.
-    - The whole amount is on the **lead** cleaner's record. On the Excel Job Sheet the other cleaners show *Added Team X / Reference Lead / Above*.
+    - The whole amount is on the **lead** cleaner's record. On the Excel Job Sheet the other cleaners show *Team X* (in Charges) / *REF: [Cleaner's Short Name]* (in Received) / *Above* (in Payment Mode).
   - **Split Mode** (team jobs only): one line per cleaner with their own **charges**, **received** and **payment mode**.
     - The job's charges and received are the **totals** of the lines.
     - The job's payment mode is the common mode, else the lead's.

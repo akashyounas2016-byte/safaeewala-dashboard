@@ -31,8 +31,8 @@ export function parseTimeToMinutes(val: unknown): number | null {
   const str = String(val).trim()
   if (!str || str === '—' || str === '-') return null
 
-  // 12-hour format e.g. "08:30 AM", "4:00 PM", "12:00pm"
-  const ampmMatch = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)\b/i)
+  // 12-hour format e.g. "08:30 AM", "4:00 PM", "12:00pm", "9:15am", "9:15 am", "9.15am", "9.15 am"
+  const ampmMatch = str.match(/\b(\d{1,2})[:.](\d{2})(?::\d{2})?\s*(AM|PM)\b/i)
   if (ampmMatch) {
     let hh = parseInt(ampmMatch[1], 10)
     const mm = parseInt(ampmMatch[2], 10)
@@ -42,12 +42,45 @@ export function parseTimeToMinutes(val: unknown): number | null {
     return (hh * 60 + mm) % (24 * 60)
   }
 
-  // 24-hour format e.g. "08:30", "16:00", "20:15"
-  const timeMatch = str.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\b/)
+  // Hour only with AM/PM e.g. "9am", "9 pm", "10AM", "12PM"
+  const hourAmPmMatch = str.match(/\b(\d{1,2})\s*(AM|PM)\b/i)
+  if (hourAmPmMatch) {
+    let hh = parseInt(hourAmPmMatch[1], 10)
+    const mer = hourAmPmMatch[2].toUpperCase()
+    if (mer === 'PM' && hh < 12) hh += 12
+    if (mer === 'AM' && hh === 12) hh = 0
+    return (hh * 60) % (24 * 60)
+  }
+
+  // 24-hour format or colon/dot separated e.g. "08:30", "16:00", "20:15", "9:15", "9.15"
+  const timeMatch = str.match(/\b(\d{1,2})[:.](\d{2})(?::\d{2})?\b/)
   if (timeMatch) {
-    const hh = parseInt(timeMatch[1], 10)
+    let hh = parseInt(timeMatch[1], 10)
     const mm = parseInt(timeMatch[2], 10)
+    // In daytime cleaning context, 1:00 to 6:59 without AM/PM is afternoon (PM)
+    if (hh >= 1 && hh <= 6) hh += 12
     return (hh * 60 + mm) % (24 * 60)
+  }
+
+  // 3 or 4 digits without separator e.g. "0915", "1430", "930"
+  const digitsMatch = str.match(/^(\d{1,2})(\d{2})$/)
+  if (digitsMatch) {
+    let hh = parseInt(digitsMatch[1], 10)
+    const mm = parseInt(digitsMatch[2], 10)
+    if (hh < 24 && mm < 60) {
+      if (hh >= 1 && hh <= 6) hh += 12
+      return (hh * 60 + mm) % (24 * 60)
+    }
+  }
+
+  // Single or double digit hour only e.g. "9", "14"
+  const singleHourMatch = str.match(/^(\d{1,2})$/)
+  if (singleHourMatch) {
+    let hh = parseInt(singleHourMatch[1], 10)
+    if (hh >= 1 && hh <= 6) hh += 12
+    if (hh < 24) {
+      return (hh * 60) % (24 * 60)
+    }
   }
 
   const parsed = new Date(str.includes('T') ? str : '2000-01-01T' + str)

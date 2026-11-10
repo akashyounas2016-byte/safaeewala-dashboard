@@ -6,6 +6,11 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(excel-sheet): team job row styling isolates color from Start Time onwards; Staff column retains default white unless user customized; right-click Row Height control with 5 discrete levels (XS 26px to XL 56px) (UX-128)
+- feat(excel-sheet): strict 3-row default limit per cleaner, trimming excess blank shifts; 15-minute time slots (07:00 AM–11:45 PM) with robust manual custom time parsing (e.g. 9:15, 9.15, 9am, 1pm) (UX-129)
+- feat(excel-sheet): simplified secondary team labels: Charges displays team name directly ("Team A"), Received displays "REF: [Cleaner's Short Name]" (R-PAY-05)
+- feat(excel-sheet): removed Team badges from Staff column; default Left aligned with functional toolbar alignment buttons; added Attendance button in top header (UX-130)
+
 - fix(realtime): unique channel name for duty issues subscription in `useAlerts`, preventing "cannot add callbacks after subscribe" error when multiple components mount (R-ALERT-04)
 - fix(auth): extend idle auto-logout timer to 24 hours (1440 min) and add network error resilience in `loadProfile` to prevent unwanted session logouts (SEC-01)
 
