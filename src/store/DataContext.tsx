@@ -12,7 +12,7 @@ import { todayDubai, addDays } from '@/lib/dubaiTime'
 import { notify } from '@/lib/notify'
 import { jobFromBooking, jobPatchFromBookingPatch, bookingPatchFromJobPatch, nextOccurrence } from '@/lib/bookingSync'
 import { describeJobChange } from '@/lib/auditLog'
-import { recalculateAllRowsOT } from '@/components/dailyJobSheet/jobSheetUtils'
+import { recalculateAllRowsOT, setCleanerBasicHours } from '@/components/dailyJobSheet/jobSheetUtils'
 import { subscribeTables, applyRowChange } from '@/lib/realtime'
 import { uploadInlineDocs, isInlineDoc, withoutInlineDocs } from '@/lib/docStorage'
 import { useAuth } from '@/store/UserContext'
@@ -403,6 +403,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // (job sheets, Employees, profiles, Monthly Clients, AI bot) then shows the same OT, not a stale stored value.
   const viewDailyJobs = useMemo(() => {
     const byId = new Map(employees.map(e => [e.id, e.full_name]))
+    setCleanerBasicHours(employees) // R-OT-03: each cleaner's own basic hours before any OT is worked out
     return recalculateAllRowsOT(dailyJobs.map(j => {
       if (!j.staff_name || !j.staff_name.split(",").some(t => byId.has(t.trim()))) return j
       return { ...j, staff_name: j.staff_name.split(",").map(t => byId.get(t.trim()) || t.trim()).join(", ") }

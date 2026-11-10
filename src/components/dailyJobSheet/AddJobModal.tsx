@@ -3,6 +3,7 @@ import { busyCleaners, useDubaiMinute } from '@/lib/staffBusy'
 import { useJobCheckins } from '@/lib/jobCheckins'
 import { awayCleanerNames } from '@/lib/attendance'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
+import { clientMoneyStatus, calcClientAdvanceBalance, autoAdvanceRemark, type ClientMoneyStatus } from '@/lib/clientAdvance'
 import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
 import { Time12hPicker, parseTimeToMinutes } from '@/components/common/Time12hPicker'
 import { useData } from '@/store/DataContext'
@@ -350,6 +351,16 @@ export function AddJobForm({
     return list
   }, [clients])
 
+  // UX-135 / R-FIN-10: the client picked in the list — its advance / pending is shown and used on save
+  const [pickedClient, setPickedClient] = useState<Client | null>(() => {
+    const a = (initial?.address || '').trim().toLowerCase()
+    return a ? clients.find(c => [c.building_name, c.full_name].some(n => (n || '').trim().toLowerCase() === a)) || null : null
+  })
+  const pickedStatus = useMemo<ClientMoneyStatus | null>(
+    () => (pickedClient ? clientMoneyStatus(pickedClient, dailyJobs) : null),
+    [pickedClient, dailyJobs],
+  )
+
   const filteredBuildings = useMemo(() => {
     const q = buildingSearch.trim().toLowerCase()
     if (!q) return buildingOptions
@@ -359,6 +370,14 @@ export function AddJobForm({
       b.area.toLowerCase().includes(q)
     )
   }, [buildingOptions, buildingSearch])
+  // Worked out only while the list is open, for the first rows shown
+  const listStatus = useMemo(() => {
+    const m = new Map<string, ClientMoneyStatus>()
+    if (!buildingDropdownOpen) return m
+    filteredBuildings.slice(0, 60).forEach(b => m.set(b.key, clientMoneyStatus(b.client, dailyJobs)))
+    return m
+  }, [buildingDropdownOpen, filteredBuildings, dailyJobs])
+
 
   // ── All Available Areas (Presets + Clients) ──
   const availableAreas = useMemo(() => {
@@ -378,6 +397,7 @@ export function AddJobForm({
   // Client Selection Handler
   const handleSelectClient = (c: Client, chosenAddress?: string) => {
     const finalAddr = chosenAddress || c.building_name || c.full_name || ''
+    setPickedClient(c)
     setAddress(finalAddr)
     if (c.area) setArea(c.area)
     if (c.preferred_cleaner && selectedStaff.length === 0) {
@@ -455,6 +475,20 @@ export function AddJobForm({
       return
     }
 
+    // R-FIN-10: a new job for a client whose advance covers the charges is paid from the advance —
+    // the cleaner does not collect on site. Only new jobs with nothing received.
+    let finalRemarks = remarks.trim()
+    if (!initial?.id && pickedClient && !useSplit) {
+      const note = autoAdvanceRemark(
+        { charges: cleanNum(charges), received: cleanNum(received), payment_mode: paymentMode, remarks: finalRemarks },
+        calcClientAdvanceBalance(pickedClient, dailyJobs),
+      )
+      if (note) {
+        finalRemarks = note
+        notify.success(`Paid from ${pickedClient.full_name}'s advance — nothing to collect on site`)
+      }
+    }
+
     onSave({
       date,
       staff_name:   finalStaff,
@@ -473,7 +507,7 @@ export function AddJobForm({
       // back to Lump Sum on an edit clears the split ([]); a new lump-sum job sends nothing
       charge_split: useSplit ? splitSaved : ((initial?.charge_split || []).length ? [] : undefined),
       is_overtime:  false, // DEC-015: OT is automatic, this old flag is not used
-      remarks:      remarks.trim(),
+      remarks:      finalRemarks,
       service:      '', // Service field permanently removed per user instruction
     })
   }
@@ -635,7 +669,7 @@ export function AddJobForm({
                         type="button"
                         onClick={e => {
                           e.stopPropagation()
-                          setAddress('')
+                          setAddress(''); setPickedClient(null)
                         }}
                         className="p-1 hover:bg-slate-200/60 rounded text-slate-400 hover:text-slate-700 cursor-pointer"
                       >
@@ -678,7 +712,7 @@ export function AddJobForm({
                               if (match) {
                                 handleSelectClient(match.client, match.building)
                               } else {
-                                setAddress(cleanAddressDisplay(trimmed))
+                                setAddress(cleanAddressDisplay(trimmed)); setPickedClient(null)
                                 setUnregisteredClientName(trimmed)
                                 setShowQuickClientModal(true)
                                 setBuildingDropdownOpen(false)
@@ -696,7 +730,7 @@ export function AddJobForm({
                       <div
                         onClick={() => {
                           const val = buildingSearch.trim()
-                          setAddress(cleanAddressDisplay(val))
+                          setAddress(cleanAddressDisplay(val)); setPickedClient(null)
                           setUnregisteredClientName(val)
                           setShowQuickClientModal(true)
                           setBuildingDropdownOpen(false)
@@ -735,7 +769,10 @@ export function AddJobForm({
                                   {item.clientName} {item.apartment ? `· Apt ${item.apartment}` : ''} {item.area ? `· ${item.area}` : ''}
                                 </div>
                               </div>
-                              {isSelected && <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />}
+                              <span className="flex items-center gap-1.5 shrink-0">
+                                <MoneyChip status={listStatus.get(item.key)} />
+                                {isSelected && <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />}
+                              </span>
                             </div>
                           )
                         })
@@ -744,6 +781,16 @@ export function AddJobForm({
                   </div>
                 )}
               </div>
+
+              {pickedStatus && (pickedStatus.advance > 0 || pickedStatus.pending > 0) && (
+                <div className="-mt-1 flex flex-wrap gap-1.5 text-[11px] font-bold">
+                  {pickedStatus.advance > 0 && <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">Advance AED {pickedStatus.advance.toLocaleString()}</span>}
+                  {pickedStatus.pending > 0 && <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200">Pending AED {pickedStatus.pending.toLocaleString()}</span>}
+                  {pickedStatus.advance >= cleanNum(charges) && cleanNum(charges) > 0 && !cleanNum(received) && !initial?.id && (
+                    <span className="px-2 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-200">Will be paid from advance</span>
+                  )}
+                </div>
+              )}
 
               {/* Area Dropdown with Suggestions & Custom Entry */}
               <div className="relative" ref={areaRef}>
@@ -1166,4 +1213,12 @@ export function AddJobForm({
       />
     </form>
   )
+}
+
+/** UX-135: client money status in the Add Job client list */
+function MoneyChip({ status }: { status?: ClientMoneyStatus }) {
+  if (!status) return null
+  if (status.advance > 0) return <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 whitespace-nowrap">Adv {status.advance.toLocaleString()}</span>
+  if (status.pending > 0) return <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap">Pending {status.pending.toLocaleString()}</span>
+  return null
 }

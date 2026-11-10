@@ -14,7 +14,8 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
-import type { Agency, AgencyContactPerson, AgencyDocument, AgencyDocumentCategory } from '@/types'
+import type { Agency, AgencyCompanyType, AgencyContactPerson, AgencyDocument, AgencyDocumentCategory, AgencyTradeLicense } from '@/types'
+import { TradeLicensesModal } from '@/components/agencies/TradeLicensesModal'
 import { formatDate, isThirdPartyEmployee, isParentCompanyEmployee, slugifyAgencyName, staffOfAgency } from '@/lib/utils'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { cleanClientNameFromAddress, employeeMatchesStaff, splitStaffNames, isBogusJob } from '@/lib/clientDataSync'
@@ -455,7 +456,7 @@ export function Agencies() {
 
   // ── Add Modal Form State ──
   const [addStatus, setAddStatus] = useState<'active' | 'inactive'>('active')
-  const [addCompanyType, setAddCompanyType] = useState<'Third Party' | 'Parent Company'>('Third Party')
+  const [addCompanyType, setAddCompanyType] = useState<AgencyCompanyType>('Third Party')
   const [addReplacementGuarantee, setAddReplacementGuarantee] = useState<'Yes' | 'No'>('Yes')
   const [addContacts, setAddContacts] = useState<AgencyContactPerson[]>([
     { id: 'cp-1', name: '', phone: '', email: '', role: 'Account Manager' }
@@ -466,7 +467,11 @@ export function Agencies() {
 
   // ── Edit Modal Form State ──
   const [editStatus, setEditStatus] = useState<'active' | 'inactive'>('active')
-  const [editCompanyType, setEditCompanyType] = useState<'Third Party' | 'Parent Company'>('Third Party')
+  const [editCompanyType, setEditCompanyType] = useState<AgencyCompanyType>('Third Party')
+  // R-AGN-07: several trade licenses for a Third Party (Group) company
+  const [addLicenses, setAddLicenses] = useState<AgencyTradeLicense[]>([])
+  const [editLicenses, setEditLicenses] = useState<AgencyTradeLicense[]>([])
+  const [licensesFor, setLicensesFor] = useState<null | 'add' | 'edit'>(null)
   const [editReplacementGuarantee, setEditReplacementGuarantee] = useState<'Yes' | 'No'>('Yes')
   const [editContacts, setEditContacts] = useState<AgencyContactPerson[]>([])
   const [editDocs, setEditDocs] = useState<AgencyDocument[]>([])
@@ -479,6 +484,7 @@ export function Agencies() {
     setPrevEditingAgencyId(editingAgency.id)
     setEditStatus(editingAgency.status || 'active')
     setEditCompanyType(editingAgency.company_type || 'Third Party')
+    setEditLicenses(editingAgency.trade_licenses || [])
     setEditReplacementGuarantee(
       editingAgency.replacement_guarantee === 'No' || editingAgency.replacement_guarantee_enabled === false
         ? 'No'
@@ -499,6 +505,7 @@ export function Agencies() {
   const handleOpenAddModal = () => {
     setAddStatus('active')
     setAddCompanyType('Third Party')
+    setAddLicenses([])
     setAddReplacementGuarantee('Yes')
     setAddContacts([{ id: `cp-${Date.now()}`, name: '', phone: '', email: '', role: 'Account Manager' }])
     setAddDocs([])
@@ -1525,6 +1532,7 @@ export function Agencies() {
             addAgency({
               name: fd.get('name') as string,
               company_type: addCompanyType,
+              trade_licenses: addCompanyType === 'Third Party (Group)' && addLicenses.length ? addLicenses : undefined,
               contact_person: primaryContact || undefined,
               contact_persons: validContacts.length > 0 ? validContacts : undefined,
               phone: fd.get('phone') as string,
@@ -1581,10 +1589,11 @@ export function Agencies() {
                 <label className="text-xs font-medium text-slate-600 block mb-1">Company Type</label>
                 <select
                   value={addCompanyType}
-                  onChange={e => setAddCompanyType(e.target.value as 'Third Party' | 'Parent Company')}
+                  onChange={e => setAddCompanyType(e.target.value as AgencyCompanyType)}
                   className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
                 >
                   <option value="Third Party">Third Party (Vendor)</option>
+                  <option value="Third Party (Group)">Third Party (Group)</option>
                   <option value="Parent Company">Parent Company (Safaeewala)</option>
                 </select>
               </div>
@@ -1687,6 +1696,11 @@ export function Agencies() {
                     <Shield size={12} className="text-amber-600" />
                     Trade License
                   </span>
+                  {addCompanyType === 'Third Party (Group)' && (
+                    <button type="button" onClick={() => setLicensesFor('add')} className="ml-auto mr-1.5 inline-flex items-center gap-1 text-[10.5px] font-black text-amber-900 bg-white border border-amber-300 hover:bg-amber-100 px-2 py-0.5 rounded-md cursor-pointer" title="Add several trade licenses (R-AGN-07)">
+                      <Plus size={11} className="stroke-[3]" /> New{addLicenses.length ? ` (${addLicenses.length})` : ''}
+                    </button>
+                  )}
                   {addDocs.some(d => d.category === 'trade_license') && (
                     <span className="text-[9.5px] font-black text-amber-800 bg-amber-100/90 px-1.5 py-0.5 rounded-md border border-amber-200">
                       ATTACHED
@@ -1998,6 +2012,7 @@ export function Agencies() {
               updateAgency(editingAgency.id, {
                 name: fd.get('name') as string,
                 company_type: editCompanyType,
+                trade_licenses: editCompanyType === 'Third Party (Group)' ? editLicenses : editingAgency.trade_licenses,
                 contact_person: primaryContact || undefined,
                 contact_persons: validContacts.length > 0 ? validContacts : undefined,
                 phone: fd.get('phone') as string,
@@ -2054,10 +2069,11 @@ export function Agencies() {
                   <label className="text-xs font-medium text-slate-600 block mb-1">Company Type</label>
                   <select
                     value={editCompanyType}
-                    onChange={e => setEditCompanyType(e.target.value as 'Third Party' | 'Parent Company')}
+                    onChange={e => setEditCompanyType(e.target.value as AgencyCompanyType)}
                     className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
                   >
                     <option value="Third Party">Third Party (Vendor)</option>
+                    <option value="Third Party (Group)">Third Party (Group)</option>
                     <option value="Parent Company">Parent Company (Safaeewala)</option>
                   </select>
                 </div>
@@ -2160,6 +2176,11 @@ export function Agencies() {
                       <Shield size={12} className="text-amber-600" />
                       Trade License
                     </span>
+                    {editCompanyType === 'Third Party (Group)' && (
+                      <button type="button" onClick={() => setLicensesFor('edit')} className="ml-auto mr-1.5 inline-flex items-center gap-1 text-[10.5px] font-black text-amber-900 bg-white border border-amber-300 hover:bg-amber-100 px-2 py-0.5 rounded-md cursor-pointer" title="Add several trade licenses (R-AGN-07)">
+                        <Plus size={11} className="stroke-[3]" /> New{editLicenses.length ? ` (${editLicenses.length})` : ''}
+                      </button>
+                    )}
                     {editDocs.some(d => d.category === 'trade_license') && (
                       <span className="text-[9.5px] font-black text-amber-800 bg-amber-100/90 px-1.5 py-0.5 rounded-md border border-amber-200">
                         ATTACHED
@@ -2753,6 +2774,13 @@ export function Agencies() {
         </Modal>
       )}
 
+      {/* R-AGN-07: trade licenses of a Third Party (Group) company */}
+      <TradeLicensesModal
+        open={licensesFor !== null}
+        onClose={() => setLicensesFor(null)}
+        value={licensesFor === 'edit' ? editLicenses : addLicenses}
+        onSave={list => (licensesFor === 'edit' ? setEditLicenses(list) : setAddLicenses(list))}
+      />
     </div>
   )
 }

@@ -17,6 +17,7 @@ import { formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import type { Booking, PaymentMode, DailyJob, Invoice, DailyAdvanceItem, Client } from '@/types'
+import { advanceMatchesClient } from '@/lib/clientAdvance'
 import {
   getClientDailyJobsHistory, calcJobOTHours, isMonthlyJob, normalizeKey, isMonthlyClient,
   buildPendingCalcContext, calcJobAdjustment, calcJobPending, calcClientOpeningPending,
@@ -45,26 +46,8 @@ export interface ClientFinancialAdjustment {
   created_at: string
 }
 
-export function advanceMatchesClient(adv: DailyAdvanceItem, client: Client): boolean {
-  if (!adv || !client || !adv.client) return false
-  const advRaw = adv.client.trim().toLowerCase()
-  const cName = client.full_name?.trim().toLowerCase() || ''
-  const cBldg = client.building_name?.trim().toLowerCase() || ''
-  const cApt = client.apartment?.trim().toLowerCase() || ''
-
-  if (cName && (advRaw === cName || advRaw.includes(cName) || cName.includes(advRaw))) return true
-  if (cBldg && (advRaw === cBldg || advRaw.includes(cBldg))) return true
-  if (cApt && cBldg && advRaw.includes(cApt) && advRaw.includes(cBldg)) return true
-
-  const advNorm = normalizeKey(adv.client)
-  const nameNorm = normalizeKey(client.full_name)
-  const bldgNorm = normalizeKey(client.building_name || '')
-  if (advNorm && nameNorm && (advNorm === nameNorm || (nameNorm.length >= 4 && advNorm.includes(nameNorm)))) return true
-  if (advNorm && bldgNorm && (advNorm === bldgNorm || (bldgNorm.length >= 4 && advNorm.includes(bldgNorm)))) return true
-  if (advNorm === normalizeKey(client.id)) return true
-
-  return false
-}
+// R-FIN-10: one copy, in src/lib/clientAdvance.ts
+export { advanceMatchesClient }
 
 /* ─── Avatar ─── */
 const avatarColors = [

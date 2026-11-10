@@ -34,6 +34,15 @@ npm run build               # type-check + production build into dist/
 | [docs/audits/](docs/audits/) | want the list of known problems with locations | Dated audit reports (`AUD-xx` findings) |
 | [docs/guides/](docs/guides/) | set up an integration | SMS, Stripe, API, document management guides |
 
+## Overtime (OT) rule — applies to the whole project
+
+> *"Add Employee popup mein 'Total Duty Hours' kay mutabiq Overtime (OT) calculation logic configure karein. Agar kisi employee kay duty hours 8 ghantay hain, toh 8 ghantay mukammal honay kay baad ya raat 8 bajay kay baad kiya gaya kaam OT consider hoga. Isi tarah, agar 10 ghantay hain, toh OT 10 ghantay kay baad shuru hoga."*
+
+- **After 8:00 PM** every hour is OT, for everyone (R-OT-01).
+- **Before 8:00 PM**, hours above the employee's **Total Duty Hours** (Add Employee popup) are OT: 8 h employee → after 8 h, 10 h employee → after 10 h. Blank → 8 h (R-OT-03).
+- A cleaner's shifts on one day add up in time order. OT is always worked out by the system — never typed or imported (DEC-015).
+- Use `recalculateAllRowsOT` (`src/components/dailyJobSheet/jobSheetUtils.ts`) for any OT figure; never write a separate OT formula.
+
 ## How rules are tracked (summary)
 
 1. Every rule has a permanent ID in [rules.md](rules.md); design rules in [design.md](design.md).

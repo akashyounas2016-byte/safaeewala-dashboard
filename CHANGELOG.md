@@ -6,6 +6,15 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(ot): OT starts after the employee's own Total Duty Hours (8 h → after 8 h, 10 h → after 10 h; blank = 8 h); after 8 PM is still always OT; written in README (R-OT-03)
+- feat(employees): every dropdown in Add / Edit Employee is a white searchable list (Booking-screen style); Nationality and Client can take a typed value (UX-133)
+- feat(excel-sheet): the keyboard cell has a clear green border; new **Charges (hrs)** column = Charges ÷ Duty Hrs (UX-134)
+- feat(add-job): wider Staff picker; client list and picked client show Advance / Pending (UX-135)
+- feat(finance): a new job for a client whose advance covers it is marked "Paid from advance" — nothing to collect on site (R-FIN-10)
+- fix(excel-sheet): picking one date shows one date box — From–To only for Custom Range and range presets (UX-136)
+- feat(excel-sheet): right-click Copy Row / Paste Row Here, or Alt + drag a row onto another; the target keeps its cleaner and date (UX-137)
+- feat(excel-sheet): banner to replace an absent / on-leave cleaner on monthly-client jobs for that day only (R-SCHED-09)
+- feat(agencies): Third Party (Group) company type with several trade licenses (file, issue, expiry, name) — run `2026-11-11_agency_trade_licenses.sql` (R-AGN-07)
 - feat(staff): "Busy till 9:00 PM" tag in the Add Job (Excel + Daily Job Sheet) and Booking pickers; goes away when the job time is over, the cleaner presses End in My Duties or the booking is completed; re-checked every minute (UX-131)
 - feat(excel-sheet): 90 % / smaller zoom fills the whole screen — only the content shrinks (UX-131)
 - feat(excel-sheet): OT shows once per cleaner, on the last row of the block, as the total of all the cleaner's jobs (UX-131)

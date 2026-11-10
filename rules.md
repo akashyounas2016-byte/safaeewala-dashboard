@@ -87,6 +87,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `ContractStatusToggle.tsx`; `ClientModalForm`, `AddMonthlyClientModalForm`; `clientDataSync.ts → contractOffJobs`, checked in `getScheduledMonthlyShiftsForDate`; `DataContext → updateClient`; migration `2026-11-05_client_contract_active.sql`.
 - **Status:** Active once the migration has run · Since: 2026-11-05
 
+### R-SCHED-09 — Replacement cleaner for a monthly client, for one day
+- **Rule:** *"Agar koi assigned cleaner leave par jata hai, to system mein monthly clients kay liye cleaner replacement ka workflow banaya jaye, taake foran dusra cleaner assign kiya ja sakay aur service mutasir na ho."* (2026-11-11)
+  - On a one-day Excel Job Sheet, when a cleaner is marked absent / on leave (R-ATT-01, R-ATT-08) and has monthly-client jobs that day, an amber banner lists those jobs.
+  - Pick a replacement (free cleaners first; "busy at this time" shown) → **Replace** swaps the cleaner on those rows only (a team keeps its other cleaners). Press Save to keep it.
+  - It is a Daily Job Sheet change for that date (R-SCHED-01): the client's permanent cleaner (`preferred_cleaner`, `day_cleaner_assignments`) is never changed.
+- **Code:** `src/lib/excelSheet/replacement.ts → monthlyJobsNeedingCover, replaceCleanerOnRow, isFreeFor`; `JobSheetSpreadsheet.tsx → coverNeeds, handleReplaceCleaner`. Test: `tests/unit/ot-advance-agency-1111.test.ts`.
+- **Status:** Active · Since: 2026-11-11
+
 ---
 
 ## ATT — Attendance
@@ -185,7 +193,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   > **"Overtime (OT) do scenarios mein calculate hoga: (1) Shaam 8:00 PM kay baad ki janay wali duty har soorat mein OT shumar hogi, chahe us waqt tak basic hours kuch bhi hon. (2) Agar koi employee 8:00 PM say pehle apne basic duty hours (8 ghantay) say zayada duty kar lay, to woh extra hours bhi OT mein shamil hon gay."**
 - **Detailed Scenarios:**
   - **Scenario 1 (Post-8:00 PM Rule):** Any work executed after **8:00 PM (20:00)** is strictly and unconditionally treated as Overtime, regardless of how many basic hours were worked beforehand (e.g., a 4h shift from 18:00 to 22:00 yields 2 OT hours for 20:00–22:00 even though total duty is only 4h). Shifts crossing midnight (e.g. 21:00 → 02:00) remain continuous OT.
-  - **Scenario 2 (Excess Basic Hours Before 8:00 PM Rule):** Standard basic duty hours are **8 hours** (480 minutes). If an employee works more than 8 hours before 8:00 PM, all hours exceeding the 8-hour basic threshold qualify as Overtime (e.g., an 08:00 to 18:00 shift consists of 10 hours total before 8 PM: 8 hours standard duty + 2 hours OT).
+  - **Scenario 2 (Excess Basic Hours Before 8:00 PM Rule):** Standard basic duty hours are **8 hours** (480 minutes) — or the employee's own **Total Duty Hours** (R-OT-03). If an employee works more than 8 hours before 8:00 PM, all hours exceeding the 8-hour basic threshold qualify as Overtime (e.g., an 08:00 to 18:00 shift consists of 10 hours total before 8 PM: 8 hours standard duty + 2 hours OT).
   - **Combined Shifts (Scenario 1 + Scenario 2):** When a shift exceeds 8 hours before 8 PM and also extends past 8 PM, total OT is the sum of both components (e.g., 10:00 to 22:00 is 12h total: 10:00–20:00 has 10h pre-8 PM → 8h standard + 2h OT; 20:00–22:00 has 2h OT → Total OT = 4h).
   - **Multi-Shift Cumulative Tracking:** When a cleaner works multiple shifts on the same date, pre-8:00 PM duty is tracked cumulatively in chronological order against the daily 8-hour basic limit (480 mins). Excess pre-8 PM hours across earlier and later shifts plus post-8 PM hours are calculated at shift level and totaled across the day (`recalculateAllRowsOT`).
 - **Always automatic (DEC-015):** OT comes only from the rules above. It cannot be typed, pasted or imported (an OT number or "yes" in a file is not used), and the old `is_overtime` column and stored `ot_hours` are never read.
@@ -203,6 +211,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** ≥ 10 OT hours in the selected period = "High OT" (amber accent, `HIGH` badge, `High OT >10h` filter).
 - **Code:** `src/pages/Employees.tsx`.
 - **Status:** Active
+
+### R-OT-03 — Basic hours come from the employee's Total Duty Hours
+- **Rule:** *"Add Employee popup mein 'Total Duty Hours' kay mutabiq Overtime (OT) calculation logic configure karein. Agar kisi employee kay duty hours 8 ghantay hain, toh 8 ghantay mukammal honay kay baad ya raat 8 bajay kay baad kiya gaya kaam OT consider hoga. Isi tarah, agar 10 ghantay hain, toh OT 10 ghantay kay baad shuru hoga."* (2026-11-11)
+  - The basic limit of Scenario 2 (R-OT-01) is the **Total Duty Hours** set in the Add / Edit Employee popup (R-EMP-11): 8 h employee → OT after 8 h, 10 h employee → OT after 10 h, 6 h employee → OT after 6 h.
+  - Scenario 1 does not change: work after **8:00 PM** is OT for everyone, whatever their hours.
+  - Blank, 0 or an unknown cleaner name → **8 h**. Multiple shifts still add up chronologically against the employee's own limit.
+  - Every screen uses it: `DataContext` registers each employee's hours (full name and short name) before it works out OT for all jobs.
+  - Also written in README.md ("Overtime (OT) rule") so every part of the project applies it.
+- **Code:** `jobSheetUtils.ts → setCleanerBasicHours, basicHoursFor, recalculateAllRowsOT, calcOTHours(…, basicHours)`; `DataContext.tsx → viewDailyJobs`. Test: `tests/unit/ot-advance-agency-1111.test.ts`.
+- **Status:** Active · Since: 2026-11-11 (needs the `total_duty_hours` column — prod.md 7h)
 
 ---
 
@@ -652,6 +670,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** Add Agency form submit in `Agencies.tsx`.
 - **Status:** Active
 
+### R-AGN-07 — Third Party (Group): several trade licenses
+- **Rule:** *"Add New Agency popup mein 'Third Party (Group)' company type shamil karein … Trade License section mein 'New' ya 'Plus' ka button … multiple trade licenses add karnay kay liye 'Upload Image/PDF', 'Issue Date', 'Expiry Date', aur 'Name/Remarks' kay columns hon. Yeh feature sirf Third Party (Group) select karnay par hi display hona chahiye."* (2026-11-11)
+  - Company Type has a third choice, **Third Party (Group)** (Add and Edit Agency). It counts as a third party everywhere a third party does.
+  - Only for that type, the Trade License card shows **+ New (n)**, which opens a popup with one row per license: Upload Image / PDF · Issue Date · Expiry Date · Name / Remarks, plus Add License.
+  - Files go to Storage when picked (R-DOC-02). Empty rows are dropped; issue after expiry is refused (R-AGN-05).
+  - Saved on the agency as `trade_licenses` — needs `supabase/migrations/2026-11-11_agency_trade_licenses.sql` (prod.md 7i).
+- **Code:** `src/components/agencies/TradeLicensesModal.tsx`; `Agencies.tsx → addLicenses, editLicenses, licensesFor`; `types/index.ts → AgencyCompanyType, AgencyTradeLicense`. Test: `tests/unit/ot-advance-agency-1111.test.ts`.
+- **Status:** Built · migration to run · Since: 2026-11-11
+
 ---
 
 ## PAY — Salaries & payouts
@@ -748,6 +775,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Expenses counts the same collections as Payments (received on bookings, not their total — R-FIN-07).
 - **Code:** `PaymentProcessing.tsx → paymentHistoryRecords, handleDeleteHistory`; `Expenses.tsx → periodRevenue`.
 - **Status:** Active · Since: 2026-11-06
+
+### R-FIN-10 — Jobs are paid from the client's advance automatically
+- **Rule:** *"System mein Advance payment deduction ka mukammal mechanism shamil kiya jaye. Jin clients ka advance balance maujood ho, unki jobs ki payment automatically advance amount say deduct ho jaani chahiye, taake cleaners ko on-site payment demand na karni paray."* (2026-11-11)
+  - **Advance balance** (one formula, `calcClientAdvanceBalance`): opening advance + advance payments + Advance-widget items + money paid above a job's charges − jobs paid from advance − standalone advance deductions.
+  - A **new** job added through Add Job (Excel or Daily Job Sheet, or Booking) for a client picked from the list is marked **"Paid from advance"** when the balance covers all its charges, nothing was received and it is not a monthly-contract visit. Its pending is 0, so the cleaner collects nothing.
+  - If the advance covers only part, nothing is deducted automatically; the popup shows the advance and pending so the office can decide.
+  - Client Profile's "Deduct from advance" button still works the same.
+  - Not automatic yet: jobs typed straight into the Excel grid, and recurring monthly rows (paid through the monthly contract anyway).
+- **Code:** `src/lib/clientAdvance.ts → calcClientAdvanceBalance, autoAdvanceRemark, clientMoneyStatus`; `AddJobModal.tsx → handleSubmit`; `clientDataSync.ts → isJobPaidFromAdvance`. Test: `tests/unit/ot-advance-agency-1111.test.ts`.
+- **Status:** Active · Since: 2026-11-11
 
 ### R-FIN-04 — Invoice numbers
 - **Rule:** One scheme: `SAF-<year>-<NNNN>`, next = highest of the year + 1; `addInvoice` replaces any missing, legacy or duplicate number.

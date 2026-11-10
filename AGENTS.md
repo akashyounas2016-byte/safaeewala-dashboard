@@ -59,6 +59,6 @@ It is the short form — the full, ID-numbered rules live in [rules.md](rules.md
 > **"Overtime (OT) do scenarios mein calculate hoga: (1) Shaam 8:00 PM kay baad ki janay wali duty har soorat mein OT shumar hogi, chahe us waqt tak basic hours kuch bhi hon. (2) Agar koi employee 8:00 PM say pehle apne basic duty hours (8 ghantay) say zayada duty kar lay, to woh extra hours bhi OT mein shamil hon gay."**
 
 - **Scenario 1 (Post-8:00 PM):** Any duty after 20:00 is unconditionally OT, even if total duty is under 8h.
-- **Scenario 2 (Excess >8h Pre-8 PM):** If duty before 20:00 exceeds standard 8 basic hours, extra hours are OT.
+- **Scenario 2 (Excess >8h Pre-8 PM):** If duty before 20:00 exceeds the basic hours, extra hours are OT. Basic hours = the employee's **Total Duty Hours** from the Add Employee popup (8 h → OT after 8 h, 10 h → after 10 h; blank = 8 h) — R-OT-03, see README "Overtime (OT) rule".
 - **Combined:** Excess pre-8 PM hours + post-8 PM hours = Total OT. Multiple shifts on the same date track pre-8 PM duty cumulatively in chronological order against the 8-hour basic limit (`recalculateAllRowsOT`). **OT is always automatic (DEC-015):** it cannot be typed, imported or flagged by hand.
 

@@ -157,10 +157,25 @@ export interface AgencyDocument {
   uploaded_by?: string
 }
 
+/** R-AGN-07: 'Third Party (Group)' = a vendor group that holds several trade licenses */
+export type AgencyCompanyType = 'Parent Company' | 'Third Party' | 'Third Party (Group)'
+
+/** R-AGN-07: one trade license of a Third Party (Group) company */
+export interface AgencyTradeLicense {
+  id: string
+  name?: string          // Name / Remarks
+  issue_date?: string
+  expiry_date?: string
+  file_data?: string     // Storage path (or inline data URL when the upload failed)
+  file_type?: string
+  file_name?: string
+}
+
 export interface Agency {
   id: string
   name: string
-  company_type?: 'Parent Company' | 'Third Party'
+  company_type?: AgencyCompanyType
+  trade_licenses?: AgencyTradeLicense[]
   contact_person?: string
   contact_persons?: AgencyContactPerson[]
   phone: string

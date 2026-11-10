@@ -10,6 +10,7 @@ import type { Employee, Agency, Client, EmployeeDocument, EmployeeRole } from '@
 import { MONTHLY_WORK_HOURS, formatEmpRole } from '@/lib/clientDataSync'
 import { EmployeeDocumentPreviewModal } from './EmployeeDocumentField'
 import { DocVersionsField } from '@/components/common/DocVersionsField'
+import { SearchSelect } from '@/components/common/SearchSelect'
 import { addVersion, currentDocs, deleteVersion, readAndStore, seedFromFields } from '@/lib/docVersions'
 import { useAuth } from '@/store/UserContext'
 import { useSalaryAccess } from '@/store/useModuleAccess'
@@ -40,6 +41,9 @@ function getInitialDocs(initialEmployee?: Employee | null): EmployeeDocument[] {
     ['medical_insurance', 'Medical Insurance', e.medical_insurance_file],
   ], e.created_at || new Date().toISOString())
 }
+
+/** UX-133: starting list for the Nationality dropdown; anything typed is kept too */
+const COMMON_NATIONALITIES = ['Filipino', 'Indian', 'Pakistani', 'Nepali', 'Sri Lankan', 'Bangladeshi', 'Ugandan', 'Kenyan', 'Ethiopian', 'Ghanaian', 'Nigerian', 'Indonesian', 'Emirati', 'Egyptian']
 
 export function EmployeeFormModal(props: EmployeeFormModalProps) {
   if (!props.open) return null
@@ -93,6 +97,17 @@ function EmployeeFormModalContent({
   }
 
   const { employees } = useData()
+  // UX-133: white searchable dropdowns (like the Booking screen) instead of native selects
+  const [gender, setGender] = useState(() => initialEmployee?.gender || 'Female')
+  const [nationality, setNationality] = useState(() => initialEmployee?.nationality || '')
+  const [agencyId, setAgencyId] = useState(() => initialEmployee?.agency_id || '')
+  const [dlPlace, setDlPlace] = useState(() => initialEmployee?.driving_license_place_of_issue || 'Dubai')
+  const [dlType, setDlType] = useState(() => initialEmployee?.driving_license_type || 'Light Vehicle (Automatic)')
+  const nationalityOptions = React.useMemo(() => {
+    const seen = new Map<string, string>()
+    ;[...COMMON_NATIONALITIES, ...employees.map(e => (e.nationality || '').trim())].forEach(n => { if (n && !seen.has(n.toLowerCase())) seen.set(n.toLowerCase(), n) })
+    return Array.from(seen.values()).sort((a, b) => a.localeCompare(b))
+  }, [employees])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -257,19 +272,21 @@ function EmployeeFormModalContent({
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 pr-2 border-r border-slate-200">
               <span className="text-[11px] font-bold text-slate-500">Status:</span>
-              <select
-                name="status"
-                form="employee-form-modal"
+              <input type="hidden" name="status" form="employee-form-modal" value={status} />
+              <SearchSelect
+                size="sm"
+                className="w-44"
                 value={status}
-                onChange={e => setStatus(e.target.value as Employee['status'])}
-                className="text-[11.5px] px-2 py-1 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-teal-600 font-bold text-slate-800 cursor-pointer shadow-2xs"
-              >
-                <option value="active">Active</option>
-                <option value="under_training">Under Training</option>
-                <option value="inactive">Inactive</option>
-                <option value="on_leave">On Leave</option>
-                <option value="engaged_in_project">Engaged in Project</option>
-              </select>
+                onChange={v => setStatus((v || 'active') as Employee['status'])}
+                required
+                options={[
+                  { value: 'active', label: 'Active' },
+                  { value: 'under_training', label: 'Under Training' },
+                  { value: 'inactive', label: 'Inactive' },
+                  { value: 'on_leave', label: 'On Leave' },
+                  { value: 'engaged_in_project', label: 'Engaged in Project' },
+                ]}
+              />
             </div>
 
             <Button
@@ -326,24 +343,23 @@ function EmployeeFormModalContent({
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <Input
+                <SearchSelect
                   name="nationality"
                   label="Nationality"
-                  defaultValue={initialEmployee?.nationality || ''}
-                  placeholder="e.g. Filipino, Nepali..."
+                  value={nationality}
+                  onChange={setNationality}
+                  options={nationalityOptions}
+                  placeholder="Select or type…"
+                  allowCustom
                 />
-                <div>
-                  <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Gender</label>
-                  <select
-                    name="gender"
-                    defaultValue={initialEmployee?.gender || 'Female'}
-                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                  >
-                    <option value="Female">Female</option>
-                    <option value="Male">Male</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
+                <SearchSelect
+                  name="gender"
+                  label="Gender"
+                  value={gender}
+                  onChange={v => setGender(v || 'Female')}
+                  options={['Female', 'Male', 'Other']}
+                  required
+                />
               </div>
             </div>
 
@@ -359,39 +375,30 @@ function EmployeeFormModalContent({
                 </span>
               </div>
 
-              <div>
-                <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Designation / Role *</label>
-                <select
-                  name="role"
-                  value={role}
-                  onChange={e => setRole(e.target.value as EmployeeRole)}
-                  className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                  required
-                >
-                  <option value="cleaner">Cleaner</option>
-                  <option value="supervisor">Supervisor</option>
-                  <option value="technical">Technical</option>
-                  <option value="store_cleaner">Store Cleaner</option>
-                  <option value="driver">Driver</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Agency / Sourcing Source</label>
-                <select
-                  name="agency_id"
-                  defaultValue={initialEmployee?.agency_id || ''}
-                  className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                >
-                  <option value="">Safaeewala (Parent Company)</option>
-                  {agencies
-                    .filter(a => a.id !== 'agency-safaeewala' && a.company_type !== 'Parent Company' && !a.name.toLowerCase().includes('safaeewala'))
-                    .map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.name} ({a.status})
-                      </option>
-                    ))}
-                </select>
-              </div>
+              <SearchSelect
+                name="role"
+                label="Designation / Role *"
+                value={role}
+                onChange={v => setRole((v || 'cleaner') as EmployeeRole)}
+                required
+                options={[
+                  { value: 'cleaner', label: 'Cleaner' },
+                  { value: 'supervisor', label: 'Supervisor' },
+                  { value: 'technical', label: 'Technical' },
+                  { value: 'store_cleaner', label: 'Store Cleaner' },
+                  { value: 'driver', label: 'Driver' },
+                ]}
+              />
+              <SearchSelect
+                name="agency_id"
+                label="Agency / Sourcing Source"
+                value={agencyId}
+                onChange={setAgencyId}
+                emptyLabel="Safaeewala (Parent Company)"
+                options={agencies
+                  .filter(a => a.id !== 'agency-safaeewala' && a.company_type !== 'Parent Company' && !a.name.toLowerCase().includes('safaeewala'))
+                  .map(a => ({ value: a.id, label: a.name, hint: a.status }))}
+              />
               {/* R-EMP-11: duty hours per day (pick or type) and date of birth */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -805,34 +812,22 @@ function EmployeeFormModalContent({
 
                   <div className="bg-white p-3 rounded-xl border border-slate-200/80 space-y-2.5 flex flex-col justify-between">
                     <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Place of Issue</label>
-                        <select
-                          name="driving_license_place_of_issue"
-                          defaultValue={initialEmployee?.driving_license_place_of_issue || 'Dubai'}
-                          className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                        >
-                          <option value="Dubai">Dubai</option>
-                          <option value="Abu Dhabi">Abu Dhabi</option>
-                          <option value="Sharjah">Sharjah</option>
-                          <option value="Ajman">Ajman</option>
-                          <option value="Ras Al Khaimah">Ras Al Khaimah</option>
-                          <option value="Fujairah">Fujairah</option>
-                          <option value="Umm Al Quwain">Umm Al Quwain</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Licence Type</label>
-                        <select
-                          name="driving_license_type"
-                          defaultValue={initialEmployee?.driving_license_type || 'Light Vehicle (Automatic)'}
-                          className="w-full text-[11.5px] px-2 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 cursor-pointer shadow-2xs"
-                        >
-                          <option value="Light Vehicle (Manual)">Light Vehicle (Manual)</option>
-                          <option value="Light Vehicle (Automatic)">Light Vehicle (Automatic)</option>
-                          <option value="Van">Van</option>
-                        </select>
-                      </div>
+                      <SearchSelect
+                        name="driving_license_place_of_issue"
+                        label="Place of Issue"
+                        value={dlPlace}
+                        onChange={v => setDlPlace(v || 'Dubai')}
+                        required
+                        options={['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Ras Al Khaimah', 'Fujairah', 'Umm Al Quwain']}
+                      />
+                      <SearchSelect
+                        name="driving_license_type"
+                        label="Licence Type"
+                        value={dlType}
+                        onChange={v => setDlType(v || 'Light Vehicle (Automatic)')}
+                        required
+                        options={['Light Vehicle (Manual)', 'Light Vehicle (Automatic)', 'Van']}
+                      />
                     </div>
                     <Input
                       name="assigned_vehicle"
@@ -888,22 +883,13 @@ function EmployeeFormModalContent({
                     <label htmlFor="assigned_client_id" className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">
                       Client
                     </label>
-                    <select
+                    <SearchSelect
                       id="assigned_client_id"
                       value={assignedClientIds[0] || ''}
-                      onChange={e => setAssignedClientIds(e.target.value ? [e.target.value] : [])}
-                      className="w-full text-[12.5px] px-3 py-2 min-h-[42px] border border-slate-200 rounded-xl bg-white text-slate-800 font-semibold focus:outline-none focus:border-teal-600 focus:ring-1 focus:ring-teal-500 shadow-2xs cursor-pointer"
-                    >
-                      <option value="">-- Select Client (Optional) --</option>
-                      {assignableClients.map(c => {
-                        const loc = c.building_name ? `${c.building_name}, ${c.area}` : c.area
-                        return (
-                          <option key={c.id} value={c.id}>
-                            {c.full_name}{loc ? ` (${loc})` : ''}
-                          </option>
-                        )
-                      })}
-                    </select>
+                      onChange={v => setAssignedClientIds(v ? [v] : [])}
+                      emptyLabel="Select client (optional)"
+                      options={assignableClients.map(c => ({ value: c.id, label: c.full_name, hint: c.building_name ? `${c.building_name}, ${c.area}` : c.area }))}
+                    />
                   </div>
                 </div>
               </div>

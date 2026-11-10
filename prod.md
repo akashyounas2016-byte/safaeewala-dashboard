@@ -116,6 +116,7 @@ There are **two** ways code reaches production. Both need the owner's permission
 7f. (R-DUTY-02) Supabase → SQL editor: run `supabase/migrations/2026-11-09_duty_booking_sync.sql` (My Duties Start / End job → booking In progress / Completed).
 7g. (R-EMP-09 / R-EMP-10) Supabase → SQL editor: run `supabase/migrations/2026-11-10_employee_training_fields.sql` (employee short name, basic salary, other documents, training dates, notes — without it they are dropped on save).
 7h. (R-EMP-11) Supabase → SQL editor: run `supabase/migrations/2026-11-10_employee_dob_duty_hours.sql` (employee date of birth and total duty hours).
+7i. (R-AGN-07) Supabase → SQL editor: run `supabase/migrations/2026-11-11_agency_trade_licenses.sql` (trade licenses of a Third Party (Group) agency).
 8. If the number is not registered / the app gets no messages: WhatsApp → Settings → **Connect** (admin; a 6-digit PIN registers the number, and the WhatsApp account is subscribed to the app).
 
 ### Facebook + Instagram in the Inbox (R-INBOX-01)

@@ -5,7 +5,7 @@ import type { DailyJob } from '@/types'
 /* ─── Column Schema for the Excel Grid (Daily Job Sheet Exact Sequence) ─── */
 export interface ColumnDef {
   col: string       // Excel letter: A, B, C...
-  id: keyof DailyJob | 'pending' | 'advance' | 'row_num' | 'attendance'
+  id: keyof DailyJob | 'pending' | 'advance' | 'row_num' | 'attendance' | 'charges_per_hour'
   label: string
   width: string
   type: 'text' | 'time' | 'date' | 'number' | 'select' | 'formula'
@@ -26,6 +26,8 @@ export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
   { id: 'area',         label: 'Location',   width: '125px', type: 'text',   formulaHint: 'Area or location' },
   { id: 'material',     label: 'Material',   width: '120px', type: 'select', options: ['Yes', 'No', 'Sofa'] },
   { id: 'charges',      label: 'Charges',    width: '95px',  type: 'number', formulaHint: 'Gross charges' },
+  // UX-134: fee per hour = Charges ÷ Duty Hrs
+  { id: 'charges_per_hour', label: 'Charges (hrs)', width: '95px', type: 'formula', formulaHint: 'Charges per hour (Charges ÷ Duty Hrs)' },
   { id: 'received',     label: 'Received',   width: '95px',  type: 'number', formulaHint: 'Amount received' },
   { id: 'pending',      label: 'Pending',    width: '95px',  type: 'formula', formulaHint: 'Pending amount' },
   { id: 'advance',      label: 'Advance',    width: '95px',  type: 'formula', formulaHint: 'Paid more than the charges (UX-72)' },
@@ -38,6 +40,12 @@ export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
 ]
 
 /** Columns added in a later version go after the column that precedes them by default (UX-72: Advance after Pending) */
+/** UX-134: Charges ÷ Duty Hrs, rounded to 2 decimals; 0 when either is missing */
+export function chargesPerHour(r: { charges?: unknown; duty_hours?: unknown }): number {
+  const c = Number(r.charges) || 0, h = Number(r.duty_hours) || 0
+  return c > 0 && h > 0 ? Math.round((c / h) * 100) / 100 : 0
+}
+
 export function mergeNewColumns(ids: string[], defaults: string[]) {
   defaults.forEach((id, i) => {
     if (ids.includes(id)) return

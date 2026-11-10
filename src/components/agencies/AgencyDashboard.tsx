@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
-import type { Agency, Employee, DailyJob, AgencySalaryPayout, AgencyDocument, AgencyDocumentCategory, AgencyContactPerson } from '@/types'
+import type { Agency, Employee, DailyJob, AgencySalaryPayout, AgencyDocument, AgencyDocumentCategory, AgencyContactPerson, AgencyCompanyType } from '@/types'
 import { formatDate, formatCurrency, daysUntil, DOC_ALERT_DAYS, isParentCompanyEmployee } from '@/lib/utils'
 import { getEmployeeDailyJobsHistory, employeeMatchesStaff, jobChargeShare, shiftSalaryCost, formatMonthlySalary } from '@/lib/clientDataSync'
 import { generateCertificateDataUrl } from '@/lib/agencyCertificates'
@@ -99,7 +99,7 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
 
   // ── Edit Profile Modal Form State ──
   const [editStatus, setEditStatus] = useState<'active' | 'inactive'>(agency.status || 'active')
-  const [editCompanyType, setEditCompanyType] = useState<'Third Party' | 'Parent Company'>(agency.company_type || 'Third Party')
+  const [editCompanyType, setEditCompanyType] = useState<AgencyCompanyType>(agency.company_type || 'Third Party')
   const [editReplacementGuarantee, setEditReplacementGuarantee] = useState<'Yes' | 'No'>('Yes')
   const [editContacts, setEditContacts] = useState<AgencyContactPerson[]>([])
   const [editDocs, setEditDocs] = useState<AgencyDocument[]>([])
@@ -2639,10 +2639,11 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
                 <label className="text-xs font-medium text-slate-600 block mb-1">Company Type</label>
                 <select
                   value={editCompanyType}
-                  onChange={e => setEditCompanyType(e.target.value as 'Third Party' | 'Parent Company')}
+                  onChange={e => setEditCompanyType(e.target.value as AgencyCompanyType)}
                   className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-medium text-slate-800 cursor-pointer shadow-2xs"
                 >
                   <option value="Third Party">Third Party (Vendor)</option>
+                  <option value="Third Party (Group)">Third Party (Group)</option>
                   <option value="Parent Company">Parent Company (Safaeewala)</option>
                 </select>
               </div>

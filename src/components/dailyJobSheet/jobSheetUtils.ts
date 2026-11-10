@@ -131,7 +131,7 @@ export function calcHours(start: string, end: string): number {
  * Scenario 2: Work performed before 8:00 PM exceeding standard basic duty hours (8 hours / 480 mins) is also OT.
  * Combined: Excess pre-8 PM hours + post-8 PM hours = Total OT.
  */
-export function calcOTHours(start: string, end: string): number {
+export function calcOTHours(start: string, end: string, basicHours: number = DEFAULT_BASIC_HOURS): number {
   const startMins = parseTimeToMinutes(start)
   let endMins     = parseTimeToMinutes(end)
   if (startMins === null || endMins === null) return 0
@@ -139,7 +139,7 @@ export function calcOTHours(start: string, end: string): number {
   if (endMins < startMins) endMins += 24 * 60
 
   const OT_CUTOFF = 20 * 60 // 8:00 PM (1200 mins)
-  const BASIC_LIMIT_MINS = 8 * 60 // 8 basic hours (480 mins)
+  const BASIC_LIMIT_MINS = validBasic(basicHours) * 60 // R-OT-03: the employee's Total Duty Hours (default 8)
 
   // Scenario 1: Hours worked after 8:00 PM are unconditionally Overtime
   const post8PmMins = endMins > OT_CUTOFF
@@ -156,6 +156,31 @@ export function calcOTHours(start: string, end: string): number {
 
   const totalOtMins = post8PmMins + pre8PmExcessMins
   return totalOtMins > 0 ? Math.round((totalOtMins / 60) * 10) / 10 : 0
+}
+
+/**
+ * R-OT-03: basic hours are per employee — "Total Duty Hours" in the Add Employee popup.
+ * 8 h employee → OT after 8 h (or after 8 PM); 10 h employee → OT after 10 h (or after 8 PM).
+ * The data layer registers every employee's hours by name (full and short, lower case) once they load,
+ * so every screen that calls recalculateAllRowsOT uses the same limits. Unknown / blank → 8 h.
+ */
+export const DEFAULT_BASIC_HOURS = 8
+const validBasic = (h: unknown) => {
+  const n = Number(h)
+  return Number.isFinite(n) && n > 0 && n <= 24 ? n : DEFAULT_BASIC_HOURS
+}
+let basicHoursByName = new Map<string, number>()
+export function setCleanerBasicHours(employees: Array<{ full_name?: string; short_name?: string; total_duty_hours?: number | null }>): void {
+  const m = new Map<string, number>()
+  employees.forEach(e => {
+    const h = Number(e.total_duty_hours)
+    if (!Number.isFinite(h) || h <= 0 || h > 24) return
+    ;[e.full_name, e.short_name].forEach(n => { const k = (n || '').trim().toLowerCase(); if (k && !m.has(k)) m.set(k, h) })
+  })
+  basicHoursByName = m
+}
+export function basicHoursFor(cleaner: string | undefined): number {
+  return basicHoursByName.get((cleaner || '').trim().toLowerCase()) ?? DEFAULT_BASIC_HOURS
 }
 
 export interface ShiftOTCandidate {
@@ -175,8 +200,8 @@ export interface ShiftOTCandidate {
  * Cumulatively calculates OT for each cleaner on each date:
  * 1. Shifts are grouped by date and cleaner name.
  * 2. Unconditionally assigns post-8:00 PM (20:00) time to Overtime (Scenario 1).
- * 3. Tracks pre-8:00 PM duty chronologically against the daily standard 8 basic hours (480 mins).
- * 4. Pre-8:00 PM hours exceeding the 8h daily basic threshold qualify as Overtime (Scenario 2).
+ * 3. Tracks pre-8:00 PM duty chronologically against the cleaner's basic hours (R-OT-03: Total Duty Hours, default 8).
+ * 4. Pre-8:00 PM hours exceeding that daily basic threshold qualify as Overtime (Scenario 2).
  * 5. Time covered by two overlapping shifts of one cleaner is counted once: a person cannot work it twice.
  * 6. OT is always automatic (DEC-015): stored ot_hours and the old is_overtime flag are never read.
  * 7. A team job has one row but each cleaner has their own day, so each cleaner's OT is kept in
@@ -214,10 +239,10 @@ export function recalculateAllRowsOT<T extends ShiftOTCandidate>(rows: T[]): T[]
   })
 
   const OT_CUTOFF = 20 * 60 // 8:00 PM (1200 mins)
-  const BASIC_LIMIT_MINS = 8 * 60 // 8 basic hours (480 mins)
 
   groups.forEach((entries, groupKey) => {
     const cleaner = groupKey.split(':::')[1]
+    const BASIC_LIMIT_MINS = basicHoursFor(cleaner) * 60 // R-OT-03: this cleaner's Total Duty Hours
     const shiftsWithTimes: Array<{
       entry: { row: T; origIdx: number }
       sMins: number

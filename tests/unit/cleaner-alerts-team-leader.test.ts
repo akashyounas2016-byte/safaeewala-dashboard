@@ -34,7 +34,7 @@ eq(alerts[0].links?.some(l => l.label === 'View Booking'), true, 'direct link to
 const empForm = src('src/components/employees/EmployeeFormModal.tsx')
 eq(/grid grid-cols-1 md:grid-cols-3 gap-3/.test(empForm), true, '3 columns grid layout')
 eq(/name="skills"/.test(empForm) && /name="notes"/.test(empForm), true, 'skills and notes fields')
-eq(/id="assigned_client_id"/.test(empForm) && /<select/.test(empForm), true, 'client selection dropdown replaces search bar')
+eq(/id="assigned_client_id"/.test(empForm) && /<(select|SearchSelect)\b/.test(empForm), true, 'client selection dropdown replaces search bar (UX-133: SearchSelect)')
 
 // ── 3. R-JOB-09: Team Leader dropdown & address time preservation ──
 const addJob = src('src/components/dailyJobSheet/AddJobModal.tsx')

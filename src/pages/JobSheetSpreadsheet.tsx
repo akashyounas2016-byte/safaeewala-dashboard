@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { awayCleanerNames } from '@/lib/attendance'
+import { monthlyJobsNeedingCover, replaceCleanerOnRow, isFreeFor, pasteRowInto } from '@/lib/excelSheet/replacement'
+import { SearchSelect } from '@/components/common/SearchSelect'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
-import { ArrowLeft, FileSpreadsheet, Plus, Trash2, Save, Download, RotateCcw, Search, Check, X, Sparkles, Filter, Copy, Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table, Printer, MoreVertical, ChevronDown, ExternalLink, ChevronUp, Eye, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle, CloudUpload, Calendar, GripVertical, Info, History, Pencil, Building2, Star, Package, MapPin, Clock, CreditCard, UserPlus, Users, AlignLeft, AlignCenter, AlignRight, UserCheck, Rows } from 'lucide-react'
+import { ArrowLeft, FileSpreadsheet, Plus, Trash2, Save, Download, RotateCcw, Search, Check, X, Sparkles, Filter, Copy, Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table, Printer, MoreVertical, ChevronDown, ExternalLink, ChevronUp, Eye, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle, CloudUpload, Calendar, GripVertical, Info, History, Pencil, Building2, Star, Package, MapPin, Clock, CreditCard, UserPlus, Users, AlignLeft, AlignCenter, AlignRight, UserCheck, Rows, ClipboardPaste, UserCog } from 'lucide-react'
 import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
 import { ExcelCellPopover, ExcelPopoverItem, ExcelPopoverCustom, ExcelPopoverEmpty } from '@/components/dailyJobSheet/ExcelCellPopover'
 import { SpreadsheetEditModal } from '@/components/dailyJobSheet/SpreadsheetEditModal'
@@ -25,7 +27,7 @@ import { ChangeLogHistoryModal } from '@/components/dailyJobSheet/ChangeLogHisto
 import { cleanAddressDisplay, normalizeJobAddress, isGenericAddress } from '@/lib/utils'
 import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, padCleanerBlocks, buildTeamColorMap } from '@/lib/excelTeams'
 import { splitTotals, isSplitJob } from '@/lib/chargeSplit'
-import { type ColumnDef, DEFAULT_COLUMN_DEFS, mergeNewColumns, buildColumnsWithLetters, COLUMNS, type ExcelDatePresetKey, EXCEL_DATE_PRESETS } from '@/lib/excelSheet/columns'
+import { type ColumnDef, DEFAULT_COLUMN_DEFS, mergeNewColumns, buildColumnsWithLetters, COLUMNS, type ExcelDatePresetKey, EXCEL_DATE_PRESETS, chargesPerHour } from '@/lib/excelSheet/columns'
 import { type BlockPalette, BLOCK_PALETTES, SOLID_PALETTE_KEYS, LIGHT_PALETTE_KEYS, PALETTE_KEYS, hslToHex, makeHexPalette } from '@/lib/excelSheet/palettes'
 import { newRowId, sameJobRow, isBlankNewRow, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners } from '@/lib/excelSheet/rows'
 import { DRAFT_PREFIX, COLUMN_PRESETS, READ_ONLY_COLS, DEFAULT_ROW_BG, projectKeyOf, memberChargesLabel, memberReceivedLabel, memberModeLabel, refMoney, DROPDOWN_COLS, TIME_SUGGESTIONS, DUBAI_AREAS, RENDER_PAGE, safeGet, safeSet, rowColorConflict } from '@/lib/excelSheet/sheetConfig'
@@ -54,8 +56,8 @@ export function JobSheetSpreadsheet() {
   const [rangeStart, setRangeStart] = useState<string>(initialDate)
   const [rangeEnd, setRangeEnd] = useState<string>(initialDate)
   const [activeDatePreset, setActiveDatePreset] = useState<
-    'today' | 'yesterday' | 'last_month' | 'last_3_months' | 'last_6_months' | 'last_year' | 'two_years' | 'custom' | 'all'
-  >('today')
+    'today' | 'yesterday' | 'last_month' | 'last_3_months' | 'last_6_months' | 'last_year' | 'two_years' | 'custom' | 'all' | 'single'
+  >('today') // 'single': one date picked in the date box (UX-136)
   const [showDatePresetDropdown, setShowDatePresetDropdown] = useState(false)
   const datePresetRef = useRef<HTMLDivElement>(null)
   const threeDotRef = useRef<HTMLDivElement>(null)
@@ -385,6 +387,8 @@ export function JobSheetSpreadsheet() {
   type CellRef = { rowIdx: number; colId: string }
   const [selRange, setSelRange] = useState<{ a: CellRef; b: CellRef } | null>(null)
   const dragSel = useRef<false | 'cells' | 'cols'>(false)
+  const rowDrag = useRef<{ from: number; over: number } | null>(null)
+  const pasteRowRef = useRef<(to: number, from: number) => void>(() => {})
   const [editingCell, setEditingCell] = useState<{ rowIdx: number; colId: string; tempValue: string } | null>(null)
   const [formulaBarValue, setFormulaBarValue] = useState<string>('')
   const [filterSearch, setFilterSearch] = useState('')
@@ -490,7 +494,7 @@ export function JobSheetSpreadsheet() {
   }
   const alignClass = (col: { id: string; type?: string }) => {
     const a = columnAlign[col.id]
-    const mono = col.type === 'number' || col.id === 'pending' || col.id === 'advance' ? ' font-mono' : ''
+    const mono = col.type === 'number' || col.id === 'pending' || col.id === 'advance' || col.id === 'charges_per_hour' ? ' font-mono' : ''
     if (a) return (a === 'right' ? 'text-right' : a === 'center' ? 'text-center' : 'text-left') + mono
     return mono ? 'text-right font-mono' : 'text-left'
   }
@@ -621,6 +625,23 @@ export function JobSheetSpreadsheet() {
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [oneDay, employees, attendanceMarks, effectiveTargetDate])
   const idleKey = idleCleaners.map(c => c.name + c.status).join('|')
+
+  // R-SCHED-09: monthly clients whose cleaner is absent / on leave today → pick a replacement for this date only
+  const coverNeeds = useMemo(() => {
+    if (!oneDay) return []
+    const away = awayCleanerNames(attendanceMarks || {}, employees, effectiveTargetDate)
+    return away.size ? monthlyJobsNeedingCover(gridRows, effectiveTargetDate, away) : []
+  }, [oneDay, attendanceMarks, employees, effectiveTargetDate, gridRows])
+  const [coverPick, setCoverPick] = useState<Record<string, string>>({})
+  const handleReplaceCleaner = (from: string, rowIds: string[]) => {
+    const to = (coverPick[from.toLowerCase()] || '').trim()
+    if (!to) { notify.error('Pick a replacement cleaner first'); return }
+    const ids = new Set(rowIds)
+    const updated = gridRows.map(r => (ids.has(r.id) ? replaceCleanerOnRow(r, from, to) : r))
+    pushState(recalculateAllRowsOT(updated))
+    setCoverPick(p => ({ ...p, [from.toLowerCase()]: '' }))
+    showToast(`✓ ${to} covers ${rowIds.length} job${rowIds.length > 1 ? 's' : ''} for ${from} today — press Save. The monthly schedule is not changed.`)
+  }
 
   /** Rows added, edited and removed in the grid compared with what was loaded (UX-33) */
   const pendingChanges = useMemo(() => {
@@ -881,6 +902,11 @@ export function JobSheetSpreadsheet() {
   const handleCellMouseDown = (e: React.MouseEvent, rowIdx: number, colId: string) => {
     if (e.button !== 0) return
     if (editingCell && editingCell.rowIdx === rowIdx && editingCell.colId === colId) return
+    if (e.altKey) { // UX-137: Alt + drag copies this row onto the row where the mouse is let go
+      e.preventDefault()
+      rowDrag.current = { from: rowIdx, over: rowIdx }
+      return
+    }
     if (e.shiftKey && activeCell) {
       e.preventDefault()
       setSelRange({ a: activeCell, b: { rowIdx, colId } })
@@ -891,6 +917,7 @@ export function JobSheetSpreadsheet() {
     dragSel.current = 'cells'
   }
   const handleCellMouseEnter = (rowIdx: number, colId: string) => {
+    if (rowDrag.current) { rowDrag.current.over = rowIdx; return }
     if (dragSel.current !== 'cells') return
     setSelRange(prev => (prev ? { a: prev.a, b: { rowIdx, colId } } : prev))
   }
@@ -908,7 +935,12 @@ export function JobSheetSpreadsheet() {
     setSelRange(prev => (prev ? { a: prev.a, b: { rowIdx: prev.b.rowIdx, colId } } : prev))
   }
   useEffect(() => {
-    const up = () => { dragSel.current = false }
+    const up = () => {
+      dragSel.current = false
+      const d = rowDrag.current
+      rowDrag.current = null
+      if (d && d.over !== d.from) pasteRowRef.current(d.over, d.from)
+    }
     window.addEventListener('mouseup', up)
     return () => window.removeEventListener('mouseup', up)
   }, [])
@@ -1726,6 +1758,27 @@ export function JobSheetSpreadsheet() {
     insertRowAt(gridRows.length - 1, 'below')
   }
 
+  // UX-137: Copy a row, then Paste it onto another row (right-click), or Alt + drag a row onto another
+  const [rowClip, setRowClip] = useState<DailyJob | null>(null)
+  const handleCopyRow = (idx: number) => {
+    const src = gridRows[idx]
+    if (!src) return
+    setRowClip({ ...src })
+    setContextMenu(null)
+    showToast(`Row #${idx + 1} copied — right-click another row → Paste Row Here`)
+  }
+  const handlePasteRow = (targetIdx: number, src: DailyJob | null = rowClip) => {
+    const target = gridRows[targetIdx]
+    if (!target || !src || src.id === target.id) return
+    const updated = [...gridRows]
+    updated[targetIdx] = pasteRowInto(target, src)
+    pushState(recalculateAllRowsOT(updated))
+    setActiveCell({ rowIdx: targetIdx, colId: 'address' })
+    setContextMenu(null)
+    showToast(`✓ Pasted into row #${targetIdx + 1} — press Save to keep it`)
+  }
+  useEffect(() => { pasteRowRef.current = (to: number, from: number) => handlePasteRow(to, gridRows[from] || null) })
+
   // Duplicate Selected Row
   const handleDuplicateRow = (idx: number) => {
     const target = gridRows[idx]
@@ -2261,6 +2314,7 @@ export function JobSheetSpreadsheet() {
           let val: any = r[col.id as keyof DailyJob]
           if (col.id === 'pending') val = rowPending(r)
           if (col.id === 'advance') val = rowAdvance(r)
+          if (col.id === 'charges_per_hour') val = chargesPerHour(r) || ''
           rowObj[col.label] = val !== undefined && val !== null ? val : ''
         })
         return rowObj
@@ -2545,7 +2599,7 @@ export function JobSheetSpreadsheet() {
           const width = selBounds.c1 - selBounds.c0 + 1
           const val = (c: CellRef) => {
             const row = gridRows[c.rowIdx]
-            const v = c.colId === 'pending' ? rowPending(row) : c.colId === 'advance' ? rowAdvance(row) : row?.[c.colId as keyof DailyJob]
+            const v = c.colId === 'pending' ? rowPending(row) : c.colId === 'advance' ? rowAdvance(row) : c.colId === 'charges_per_hour' ? chargesPerHour(row) : row?.[c.colId as keyof DailyJob]
             return v == null ? '' : String(v)
           }
           const lines: string[] = []
@@ -2558,6 +2612,8 @@ export function JobSheetSpreadsheet() {
           ? rowPending(gridRows[activeCell.rowIdx])
           : activeCell.colId === 'advance'
           ? rowAdvance(gridRows[activeCell.rowIdx])
+          : activeCell.colId === 'charges_per_hour'
+          ? chargesPerHour(gridRows[activeCell.rowIdx])
           : gridRows[activeCell.rowIdx]?.[activeCell.colId as keyof DailyJob]
         e.clipboardData?.setData('text/plain', v == null ? '' : String(v))
         e.preventDefault()
@@ -2620,6 +2676,8 @@ export function JobSheetSpreadsheet() {
           val = refMoney(mcInfo, r) ? 'Nil' : rowPending(r)
         } else if (col.id === 'advance') {
           val = refMoney(mcInfo, r) ? '' : rowAdvance(r) || ''
+        } else if (col.id === 'charges_per_hour') {
+          val = refMoney(mcInfo, r) ? '' : chargesPerHour(r) || ''
         } else if (col.id === 'payment_mode') {
           val = refMoney(mcInfo, r) ? memberModeLabel(r) : r.payment_mode
         }
@@ -2654,6 +2712,8 @@ export function JobSheetSpreadsheet() {
           val = refMoney(mcInfo, r) ? 'Nil' : rowPending(r)
         } else if (col.id === 'advance') {
           val = refMoney(mcInfo, r) ? '' : rowAdvance(r) || ''
+        } else if (col.id === 'charges_per_hour') {
+          val = refMoney(mcInfo, r) ? '' : chargesPerHour(r) || ''
         } else if (col.id === 'payment_mode') {
           val = refMoney(mcInfo, r) ? memberModeLabel(r) : r.payment_mode
         }
@@ -3101,7 +3161,8 @@ export function JobSheetSpreadsheet() {
               <Calendar size={13} className="text-white/70 shrink-0" />
               {dateFilterMode === 'all' ? (
                 <span className="font-extrabold text-[11.5px] text-white px-2 py-0.5">All Dates</span>
-              ) : (activeDatePreset === 'today' || activeDatePreset === 'yesterday' || (dateFilterMode === 'single' && activeDatePreset !== 'custom')) ? (
+              ) : !(dateFilterMode === 'range' && activeDatePreset !== 'today' && activeDatePreset !== 'yesterday' && activeDatePreset !== 'single') ? (
+                /* UX-136: Today / Yesterday / one picked date show one date box; From–To only for Custom Range and the range presets */
                 <div className="flex items-center gap-1.5">
                   <input
                     type="date"
@@ -3112,9 +3173,10 @@ export function JobSheetSpreadsheet() {
                       setRangeStart(newD)
                       setRangeEnd(newD)
                       setDateFilterMode('single')
+                      setSearchParams({ date: newD }, { replace: true })
                       if (newD === todayDubai()) setActiveDatePreset('today')
                       else if (newD === addDaysToYMD(todayDubai(), -1)) setActiveDatePreset('yesterday')
-                      else setActiveDatePreset('custom')
+                      else setActiveDatePreset('single')
                     }}
                     className="bg-transparent px-1 py-0.5 font-bold focus:outline-none cursor-pointer [color-scheme:dark] text-[11.5px]"
                     title="Selected Date"
@@ -3157,7 +3219,7 @@ export function JobSheetSpreadsheet() {
               title="Select Date Range Preset"
             >
               <span>
-                {EXCEL_DATE_PRESETS.find(p => p.id === activeDatePreset)?.label || 'Date Range'}
+                {activeDatePreset === 'single' ? 'Date' : EXCEL_DATE_PRESETS.find(p => p.id === activeDatePreset)?.label || 'Date Range'}
               </span>
               <ChevronDown size={12} className={`transition-transform duration-200 ${showDatePresetDropdown ? 'rotate-180' : ''}`} />
             </button>
@@ -3662,8 +3724,44 @@ export function JobSheetSpreadsheet() {
         </div>
       )}
 
-      {/* UX-132: cells chosen by click-and-drag */}
-      <style>{`.xl-in-range{box-shadow:inset 0 0 0 9999px rgba(37,99,235,0.14), inset 0 0 0 1px rgba(37,99,235,0.45)}`}</style>
+      {/* ── R-SCHED-09: monthly jobs whose cleaner is away today ── */}
+      {coverNeeds.length > 0 && (
+        <div role="alert" className="mx-3 my-2 px-4 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 text-[12.5px] space-y-2">
+          <p className="font-extrabold flex items-center gap-1.5"><UserCog size={14} /> Monthly clients need a replacement cleaner today (only this date changes — the monthly schedule stays the same)</p>
+          {coverNeeds.map(need => {
+            const key = need.cleaner.toLowerCase()
+            const opts = staffOptions
+              .filter(n => n.toLowerCase() !== key)
+              .map(n => ({ value: n, label: n, hint: isFreeFor(gridRows, n, need.rows) ? 'free' : 'busy at this time' }))
+              .sort((a, b) => (a.hint === b.hint ? 0 : a.hint === 'free' ? -1 : 1))
+            return (
+              <div key={key} className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold">{need.cleaner}</span>
+                <span className="text-amber-800">is away —</span>
+                {need.rows.map(r => (
+                  <button key={r.id} type="button" onClick={() => setJumpTargetId(r.id)} className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-white border border-amber-300 hover:bg-amber-100 cursor-pointer">
+                    {(r.address || '—').slice(0, 28)} · {formatTime12h(r.start_time || '')}–{formatTime12h(r.end_time || '')}
+                  </button>
+                ))}
+                <SearchSelect
+                  size="sm"
+                  className="w-56"
+                  value={coverPick[key] || ''}
+                  onChange={v => setCoverPick(p => ({ ...p, [key]: v }))}
+                  options={opts}
+                  placeholder="Replacement cleaner…"
+                />
+                <button type="button" onClick={() => handleReplaceCleaner(need.cleaner, need.rows.map(r => r.id))} className="text-[11.5px] font-bold px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white cursor-pointer">
+                  Replace
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* UX-132: cells chosen by click-and-drag · UX-134: the keyboard cell has a clear green border */}
+      <style>{`.xl-active{outline:2px solid #16a34a!important;outline-offset:-2px}.xl-in-range{box-shadow:inset 0 0 0 9999px rgba(37,99,235,0.14), inset 0 0 0 1px rgba(37,99,235,0.45)}`}</style>
       {selectedColId && (
         <style>{`td[data-col="${selectedColId}"]{box-shadow:inset 0 0 0 9999px rgba(16,185,129,0.12)}`}</style>
       )}
@@ -3934,6 +4032,8 @@ export function JobSheetSpreadsheet() {
                               else displayVal = rowPending(row)
                             } else if (col.id === 'advance') {
                               displayVal = isBlankShift || refMoney(mcInfo, row) ? '' : (rowAdvance(row) || '')
+                            } else if (col.id === 'charges_per_hour') {
+                              displayVal = isBlankShift || refMoney(mcInfo, row) ? '' : (chargesPerHour(row) || '')
                             } else if (col.id === 'payment_mode') {
                               if (isBlankShift) displayVal = ''
                               else if (refMoney(mcInfo, row)) displayVal = memberModeLabel(row)
@@ -3989,7 +4089,7 @@ export function JobSheetSpreadsheet() {
                                 }}
                                 className={`h-7 px-2 border-r border-slate-200 ${isCellEditing ? 'overflow-visible z-30' : 'overflow-hidden'} text-ellipsis whitespace-nowrap cursor-cell transition-all relative ${
                                   isCellActive
-                                    ? 'ring-2 ring-[#107c41] bg-white z-10 font-semibold'
+                                    ? 'xl-active bg-white z-10 font-semibold'
                                     : ''
                                 } ${alignClass(col)} ${isInSel(globalIndex, col.id) ? 'xl-in-range' : ''}`}
                               >
@@ -4206,7 +4306,7 @@ export function JobSheetSpreadsheet() {
                               borderRight: '1px solid #cbd5e1',
                             }}
                             className={`align-middle ${staffAlign === 'center' ? 'text-center' : staffAlign === 'right' ? 'text-right' : 'text-left'} select-none cursor-cell transition-all relative group/staff px-3 py-2 ${
-                              isStaffCellActive ? 'ring-2 ring-emerald-500 bg-white z-10' : ''
+                              isStaffCellActive ? 'xl-active bg-white z-10' : ''
                             }`}
                             title="Staff Member · Double-click to edit Staff Name"
                           >
@@ -4273,6 +4373,8 @@ export function JobSheetSpreadsheet() {
                         }
                       } else if (col.id === 'advance') {
                         displayVal = isBlankShift || refMoney(mcInfo, row) ? '' : (rowAdvance(row) || '')
+                      } else if (col.id === 'charges_per_hour') {
+                        displayVal = isBlankShift || refMoney(mcInfo, row) ? '' : (chargesPerHour(row) || '')
                       } else if (col.id === 'payment_mode') {
                         if (isBlankShift) displayVal = ''
                         else if (refMoney(mcInfo, row)) displayVal = memberModeLabel(row)
@@ -4319,7 +4421,7 @@ export function JobSheetSpreadsheet() {
                           }}
                           className={`${ROW_HEIGHT_MAP[rowHeightLevel].heightClass} ${ROW_HEIGHT_MAP[rowHeightLevel].pyClass} px-2 ${isCellEditing ? 'overflow-visible z-30' : 'overflow-hidden'} text-ellipsis whitespace-nowrap cursor-cell transition-all relative ${
                             isCellActive
-                              ? (palette.isLight ? 'ring-2 ring-emerald-600 bg-white z-10 font-bold text-slate-900 shadow-md' : 'ring-2 ring-emerald-400 bg-slate-950 z-10 font-bold text-white shadow-md')
+                              ? (palette.isLight ? 'xl-active bg-white z-10 font-bold text-slate-900 shadow-md' : 'xl-active bg-slate-950 z-10 font-bold text-white shadow-md')
                               : ''
                           } ${alignClass(col)} ${isInSel(targetIdx, col.id) ? 'xl-in-range' : ''}`}
                         >
@@ -4540,6 +4642,26 @@ export function JobSheetSpreadsheet() {
 
                 {/* Row-Level Actions (Duplicate / Delete Block / Clear) */}
                 <div className="py-0.5">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyRow(contextMenu.rowIdx)}
+                    className="w-full px-3.5 py-1.5 text-left hover:bg-slate-100 text-slate-700 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
+                    title="Copy this job (UX-137) — or hold Alt and drag the row onto another row"
+                  >
+                    <Copy size={14} className="text-teal-600" />
+                    <span>Copy Row #{contextMenu.rowIdx + 1}</span>
+                  </button>
+                  {rowClip && rowClip.id !== gridRows[contextMenu.rowIdx]?.id && (
+                    <button
+                      type="button"
+                      onClick={() => handlePasteRow(contextMenu.rowIdx)}
+                      className="w-full px-3.5 py-1.5 text-left hover:bg-teal-50 text-teal-800 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
+                      title="Time, address, location, material, charges, mode and remarks of the copied row; this row keeps its cleaner"
+                    >
+                      <ClipboardPaste size={14} className="text-teal-600" />
+                      <span className="truncate">Paste Row Here ({(rowClip.address || 'copied job').slice(0, 24)})</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleDuplicateRow(contextMenu.rowIdx)}
