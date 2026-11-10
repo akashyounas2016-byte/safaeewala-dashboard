@@ -60,7 +60,7 @@ export function useJobCheckinsFor(dates: string[]) {
     void supabase.from('job_checkins').select('*').in('date', list).then(({ data, error }) => {
       if (alive && !error) setRows(Object.fromEntries(((data ?? []) as JobCheckin[]).map(r => [r.id, r])))
     })
-    const channel = supabase.channel(`crm-job-checkins-bookings-${key.length}-${list[0]}`).on('postgres_changes', { event: '*', schema: 'public', table: 'job_checkins' }, payload => {
+    const channel = supabase.channel(`crm-job-checkins-bookings-${Math.random().toString(36).slice(2, 9)}`).on('postgres_changes', { event: '*', schema: 'public', table: 'job_checkins' }, payload => {
       const row = payload.new as JobCheckin | undefined
       if (alive && row?.id && list.includes(row.date)) setRows(prev => ({ ...prev, [row.id]: row }))
     })
@@ -90,7 +90,7 @@ export function useJobCheckins(date: string) {
       setReady(true)
       setRows(Object.fromEntries(((data ?? []) as JobCheckin[]).map(r => [r.id, r])))
     })
-    const channel = supabase.channel(`crm-job-checkins-${date}`).on('postgres_changes', { event: '*', schema: 'public', table: 'job_checkins', filter: `date=eq.${date}` }, payload => {
+    const channel = supabase.channel(`crm-job-checkins-${date}-${Math.random().toString(36).slice(2, 9)}`).on('postgres_changes', { event: '*', schema: 'public', table: 'job_checkins', filter: `date=eq.${date}` }, payload => {
       const row = payload.new as JobCheckin | undefined
       if (alive && row?.id) setRows(prev => ({ ...prev, [row.id]: row }))
     })
