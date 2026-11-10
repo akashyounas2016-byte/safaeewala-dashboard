@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { busyCleaners } from '@/lib/staffBusy'
+import { busyCleaners, useDubaiMinute, type BusyInfo } from '@/lib/staffBusy'
+import { useJobCheckins } from '@/lib/jobCheckins'
 import { findStaffClash, clashMessage } from '@/lib/shiftClash'
 import { Modal } from '@/components/ui/Modal'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
@@ -339,17 +340,20 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
   }, [allAreas, areaSearch])
 
   // UX-125: busy = a job not finished yet (today) or any job (later day) that overlaps this booking's time
+  // UX-131: "Busy till 9:00 PM"; a job the cleaner ended in My Duties, or whose booking is completed, no longer counts
+  const nowMin = useDubaiMinute()
+  const { rows: checkins } = useJobCheckins(scheduledDate)
   const busyCleanersMap = useMemo(() => {
     const own = initialBooking ? [initialBooking.id, ...(dailyJobs || []).filter(j => j.booking_id === initialBooking.id).map(j => j.id)] : []
     const fromBookings = (bookings || [])
       .filter(b => b.status !== 'cancelled' && b.status !== 'completed' && Array.isArray(b.assigned_crew) && !(dailyJobs || []).some(j => j.booking_id === b.id))
       .map(b => ({ id: b.id, date: b.scheduled_date, start_time: b.scheduled_time, end_time: b.end_time || '', address: b.service_address,
         staff_name: b.assigned_crew.map(id => employees.find(e => e.id === id)?.full_name).filter(Boolean).join(', ') }))
-    const busy = busyCleaners([...(dailyJobs || []), ...fromBookings], scheduledDate, { window: { start: startTime, end: endTime }, ignoreIds: own })
-    const map = new Map<string, string>()
-    busy.forEach((v, name) => map.set(name, v.info))
-    return map
-  }, [scheduledDate, dailyJobs, bookings, employees, startTime, endTime, initialBooking])
+    const closedBookings = new Set((bookings || []).filter(b => b.status === 'completed' || b.status === 'cancelled').map(b => b.id))
+    const isDone = (jobId: string, cleaner: string, j: { booking_id?: string }) =>
+      checkins[`${jobId}|${cleaner}`]?.status === 'done' || (!!j.booking_id && closedBookings.has(j.booking_id))
+    return busyCleaners([...(dailyJobs || []), ...fromBookings], scheduledDate, { window: { start: startTime, end: endTime }, ignoreIds: own, nowMin, isDone }) as Map<string, BusyInfo>
+  }, [scheduledDate, dailyJobs, bookings, employees, startTime, endTime, initialBooking, nowMin, checkins])
 
   // ── Time & Duty Hours Calculation ──
   const calcDuration = (start: string, end: string): number => {
@@ -604,7 +608,7 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
                   selected={selectedStaff}
                   onChange={setSelectedStaff}
                   placeholder="Select cleaner(s)…"
-                  busyCleaners={new Map(Array.from(busyCleanersMap, ([name, info]) => [name.toLowerCase(), { info }]))}
+                  busyCleaners={busyCleanersMap}
                 />
               </div>
               <div {...req.field('date')}>

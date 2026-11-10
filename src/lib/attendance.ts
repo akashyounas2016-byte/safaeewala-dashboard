@@ -25,7 +25,9 @@ export interface AttendanceOverride {
  * Absence categories on the Attendance screen (R-ATT-05). A leave category is a request that
  * admin / manager approve (stays leave) or reject (becomes absent); an absence is final at once.
  */
-export const LEAVE_CATEGORIES = ['Sick Leave', 'Emergency Leave', 'Annual Leave', 'Weekly Off'] as const
+export const LEAVE_CATEGORIES = ['Sick Leave', 'Emergency Leave', 'Annual Leave', 'Weekly Off', 'Short Leave'] as const
+/** R-ATT-10: part of the day off — the cleaner still works that day, so it is not "away" (stays in assign lists) */
+export const SHORT_LEAVE = 'Short Leave'
 export const ABSENCE_CATEGORIES = ['Uninformed Absence', 'Other'] as const
 export type AbsenceCategory = (typeof LEAVE_CATEGORIES)[number] | (typeof ABSENCE_CATEGORIES)[number]
 export const isLeaveCategory = (c?: string) => (LEAVE_CATEGORIES as readonly string[]).includes(c || '')
@@ -224,7 +226,15 @@ export function buildCleanerRoster(employees: Employee[], dailyJobs: DailyJob[],
 }
 
 /** R-ATT-08: absent, or on leave (pending or approved), on that date — kept off the job sheet and the assign lists */
-export const isAwayMark = (m?: AttendanceOverride | null) => m?.status === 'absent' || m?.status === 'on_leave'
+export const isAwayMark = (m?: AttendanceOverride | null) => m?.status === 'absent' || (m?.status === 'on_leave' && m.category !== SHORT_LEAVE)
+
+/** The key a cleaner's mark is saved under: by employee id when registered, else by name (AUD-38) */
+export function attendanceKeyFor(date: string, name: string, employees: Pick<Employee, 'id' | 'full_name'>[]): { key: string; nameKey: string } {
+  const lower = name.trim().toLowerCase()
+  const emp = employees.find(e => (e.full_name || '').trim().toLowerCase() === lower)
+  const nameKey = `${date}_${lower}`
+  return { key: emp ? `${date}_id:${emp.id}` : nameKey, nameKey }
+}
 
 /** R-ATT-08: lower-case names of every cleaner away on a date, whether the mark is kept by employee id or by name */
 export function awayCleanerNames(marks: Record<string, AttendanceOverride>, employees: Pick<Employee, 'id' | 'full_name'>[], date: string): Set<string> {

@@ -83,6 +83,7 @@ const CATEGORY_LABEL: Record<AbsenceCategory, string> = {
   'Emergency Leave': 'Family / Personal Emergency Leave',
   'Annual Leave': 'Annual / Casual Leave',
   'Weekly Off': 'Day Off / Weekly Rest',
+  'Short Leave': 'Short Leave (part of the day)',
   'Uninformed Absence': 'Uninformed Absence / No Show',
   'Other': 'Other Reason (absent)',
 }

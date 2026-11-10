@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
+import { busyLabel } from '@/lib/staffBusy'
 import { Check, ChevronDown, Search, X, Users, Building2 } from 'lucide-react'
 import { useData } from '@/store/DataContext'
 import { isThirdPartyEmployee } from '@/lib/utils'
@@ -20,7 +21,7 @@ export interface CleanerMultiSelectProps {
   disabled?: boolean
   compact?: boolean
   className?: string
-  busyCleaners?: Map<string, { shiftCount?: number; info?: string }> | Set<string> | string[]
+  busyCleaners?: Map<string, { shiftCount?: number; info?: string; until?: string }> | Set<string> | string[]
   /** Open the list from the right edge — for a picker in the last column of a popup (UX-76) */
   alignRight?: boolean
 }
@@ -361,9 +362,9 @@ export function CleanerMultiSelect({
                       {busyItem && (
                         <span
                           title={`Busy / Working: ${busyItem.info || 'Assigned to another shift on this date'}`}
-                          className="text-[8.5px] font-black px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 shrink-0 uppercase tracking-tight cursor-help"
+                          className="text-[8.5px] font-black px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 shrink-0 tracking-tight cursor-help whitespace-nowrap"
                         >
-                          Busy
+                          {busyLabel(busyItem as { until?: string })}
                         </span>
                       )}
                     </div>

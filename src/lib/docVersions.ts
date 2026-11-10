@@ -46,6 +46,12 @@ export function addVersion<T extends VersionedDoc>(docs: T[], category: string, 
 }
 
 /** "Remove" keeps the image in history (marked removed), it is never deleted */
+/** R-DOC-03: Delete takes the image off the record for good (not shown as Current, Previous or History).
+ *  The Storage copy is left for the nightly backup. */
+export function deleteVersion<T extends VersionedDoc>(docs: T[], id: string): T[] {
+  return docs.filter(d => d.id !== id)
+}
+
 export function removeVersion<T extends VersionedDoc>(docs: T[], id: string, now = new Date().toISOString()): T[] {
   return docs.map(d => (d.id === id ? { ...d, is_active: false, removed_at: now } : d))
 }

@@ -217,6 +217,10 @@ export interface Employee {
   gender?: 'male' | 'female' | 'other' | string
   nationality: string
   short_name?: string
+  /** R-EMP-11: YYYY-MM-DD */
+  date_of_birth?: string
+  /** R-EMP-11: contracted duty hours per day (6, 8, 10 … or any value typed) */
+  total_duty_hours?: number
 
   // Emirates ID (EID)
   emirates_id: string

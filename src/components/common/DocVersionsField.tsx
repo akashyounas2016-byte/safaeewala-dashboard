@@ -11,7 +11,7 @@ const ACCENT = {
 } as const
 export type DocAccent = keyof typeof ACCENT
 
-function Row<T extends VersionedDoc>({ d, faded, onPreview, onRemove }: { d: T; faded?: boolean; onPreview: (d: T) => void; onRemove?: (id: string) => void }) {
+function Row<T extends VersionedDoc>({ d, faded, onPreview, onRemove, removeTitle = 'Remove (kept in history)' }: { d: T; faded?: boolean; onPreview: (d: T) => void; onRemove?: (id: string) => void; removeTitle?: string }) {
   const src = docSrc(d.file_data)
   return (
     <div className={`flex items-center justify-between gap-2 p-1.5 rounded-xl border shadow-2xs ${faded ? 'bg-slate-50 border-slate-200/80' : 'bg-white border-slate-200/90'}`}>
@@ -31,7 +31,7 @@ function Row<T extends VersionedDoc>({ d, faded, onPreview, onRemove }: { d: T; 
       <span className="flex items-center gap-0.5 shrink-0">
         <button type="button" onClick={() => onPreview(d)} className="p-1 rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer" title="Preview"><Eye size={13} /></button>
         {src && <a href={src} download={d.name} target="_blank" rel="noreferrer" className="p-1 rounded-lg text-slate-500 hover:bg-slate-100" title="Download"><Download size={13} /></a>}
-        {onRemove && <button type="button" onClick={() => onRemove(d.id)} className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 cursor-pointer" title="Remove (kept in history)"><Trash2 size={13} /></button>}
+        {onRemove && <button type="button" onClick={() => onRemove(d.id)} className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 cursor-pointer" title={removeTitle}><Trash2 size={13} /></button>}
       </span>
     </div>
   )
@@ -42,8 +42,10 @@ function Row<T extends VersionedDoc>({ d, faded, onPreview, onRemove }: { d: T; 
  * once; they become the current set, and the set they replace shows right under it as "Previous". Older sets are
  * under "History". Remove never deletes a file.
  */
-export function DocVersionsField<T extends VersionedDoc>({ label, category, docs, onUpload, onRemove, onPreview, accent = 'teal', uploadText = 'Upload image or PDF' }: {
+export function DocVersionsField<T extends VersionedDoc>({ label, category, docs, onUpload, onRemove, onPreview, accent = 'teal', uploadText = 'Upload image or PDF', removeTitle }: {
   label?: string
+  /** Tooltip of the bin button (R-DOC-03: "Delete" where the bin deletes for good) */
+  removeTitle?: string
   category: string
   docs: T[]
   onUpload: (files: FileList) => void
@@ -74,7 +76,7 @@ export function DocVersionsField<T extends VersionedDoc>({ label, category, docs
       {current.length > 0 && (
         <div className="space-y-1">
           <p className="text-[9.5px] font-black uppercase tracking-wider text-emerald-700">Current</p>
-          {current.map(d => <Row key={d.id} d={d} onPreview={onPreview} onRemove={onRemove} />)}
+          {current.map(d => <Row key={d.id} d={d} onPreview={onPreview} onRemove={onRemove} removeTitle={removeTitle} />)}
         </div>
       )}
 
@@ -86,7 +88,7 @@ export function DocVersionsField<T extends VersionedDoc>({ label, category, docs
       {previous.length > 0 && (
         <div className="space-y-1 pt-0.5">
           <p className="text-[9.5px] font-black uppercase tracking-wider text-slate-500">Previous · replaced {formatDate(String(previous[0].archived_at || previous[0].removed_at || '').slice(0, 10))}</p>
-          {previous.map(d => <Row key={d.id} d={d} faded onPreview={onPreview} onRemove={onRemove} />)}
+          {previous.map(d => <Row key={d.id} d={d} faded onPreview={onPreview} onRemove={onRemove} removeTitle={removeTitle} />)}
         </div>
       )}
       {history.length > 0 && (
@@ -94,7 +96,7 @@ export function DocVersionsField<T extends VersionedDoc>({ label, category, docs
           <button type="button" onClick={() => setShowHistory(v => !v)} className="text-[10.5px] font-bold text-slate-500 hover:text-slate-800 inline-flex items-center gap-1 cursor-pointer">
             <History size={11} /> Older history ({history.length}) <ChevronDown size={11} className={showHistory ? 'rotate-180' : ''} />
           </button>
-          {showHistory && <div className="space-y-1 mt-1">{history.map(d => <Row key={d.id} d={d} faded onPreview={onPreview} onRemove={onRemove} />)}</div>}
+          {showHistory && <div className="space-y-1 mt-1">{history.map(d => <Row key={d.id} d={d} faded onPreview={onPreview} onRemove={onRemove} removeTitle={removeTitle} />)}</div>}
         </div>
       )}
     </div>

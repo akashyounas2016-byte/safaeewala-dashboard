@@ -10,7 +10,7 @@ import type { Employee, Agency, Client, EmployeeDocument, EmployeeRole } from '@
 import { MONTHLY_WORK_HOURS, formatEmpRole } from '@/lib/clientDataSync'
 import { EmployeeDocumentPreviewModal } from './EmployeeDocumentField'
 import { DocVersionsField } from '@/components/common/DocVersionsField'
-import { addVersion, currentDocs, readAndStore, removeVersion, seedFromFields } from '@/lib/docVersions'
+import { addVersion, currentDocs, deleteVersion, readAndStore, seedFromFields } from '@/lib/docVersions'
 import { useAuth } from '@/store/UserContext'
 import { useSalaryAccess } from '@/store/useModuleAccess'
 import { todayDubai } from '@/lib/dubaiTime'
@@ -81,7 +81,16 @@ function EmployeeFormModalContent({
       .catch(() => notify.error('Could not read this file — try another one'))
   }
 
-  const handleRemoveDoc = (id: string) => setDocs(prev => removeVersion(prev, id))
+  // R-DOC-03: the bin deletes the image from the profile for good (after a confirm); a deleted document's old
+  // single-file field is cleared too, so it does not come back on save
+  const [deletedCats, setDeletedCats] = useState<Set<string>>(() => new Set())
+  const handleRemoveDoc = async (id: string) => {
+    const d = docs.find(x => x.id === id)
+    const ok = await confirmAsync({ title: 'Delete document', message: `Delete "${d?.name || 'this file'}" from this employee? It will not show in Current, Previous or History any more.`, confirmLabel: 'Delete', tone: 'danger' })
+    if (!ok) return
+    if (d) setDeletedCats(prev => new Set(prev).add(d.category))
+    setDocs(prev => deleteVersion(prev, id))
+  }
 
   const { employees } = useData()
 
@@ -123,11 +132,13 @@ function EmployeeFormModalContent({
     const selAgency = agencies.find(a => a.id === agencyId)
     const docsList: EmployeeDocument[] = docs
     // R-DOC-01: eid_file, passport_file … = the newest current image ('' once every image was removed)
-    const fileOf = (c: EmployeeDocument['category'], old?: string) => cur(c)?.file_data || (docs.some(d => d.category === c) ? '' : old)
+    const fileOf = (c: EmployeeDocument['category'], old?: string) => cur(c)?.file_data || (docs.some(d => d.category === c) || deletedCats.has(c) ? '' : old)
 
     const patch: Partial<Employee> = {
       full_name: fd.get('full_name') as string,
       short_name: str('short_name'),
+      date_of_birth: str('date_of_birth'),
+      total_duty_hours: Number(fd.get('total_duty_hours')) > 0 ? Number(fd.get('total_duty_hours')) : undefined,
       phone: fd.get('phone') as string,
       role,
       designation: formatEmpRole(role),
@@ -195,7 +206,7 @@ function EmployeeFormModalContent({
       notes: (fd.get('notes') as string)?.trim() || undefined,
 
       // Document history
-      documents: docsList.length > 0 ? docsList : initialEmployee?.documents,
+      documents: docsList.length > 0 || deletedCats.size > 0 ? docsList : initialEmployee?.documents,
     }
 
     // VAL-04: Emirates ID is 15 digits starting with 784 — stored as 784-YYYY-NNNNNNN-N
@@ -302,10 +313,24 @@ function EmployeeFormModalContent({
               />
               <div className="grid grid-cols-2 gap-2">
                 <Input
+                  name="short_name"
+                  label="Short Name"
+                  defaultValue={initialEmployee?.short_name || ''}
+                  placeholder="e.g. Maria"
+                />
+                <Input
                   name="phone"
                   label="Phone"
                   defaultValue={initialEmployee?.phone || ''}
                   placeholder="+971 50 000 0000"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  name="nationality"
+                  label="Nationality"
+                  defaultValue={initialEmployee?.nationality || ''}
+                  placeholder="e.g. Filipino, Nepali..."
                 />
                 <div>
                   <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Gender</label>
@@ -319,20 +344,6 @@ function EmployeeFormModalContent({
                     <option value="Other">Other</option>
                   </select>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  name="nationality"
-                  label="Nationality"
-                  defaultValue={initialEmployee?.nationality || ''}
-                  placeholder="e.g. Filipino, Nepali..."
-                />
-                <Input
-                  name="short_name"
-                  label="Short Name"
-                  defaultValue={initialEmployee?.short_name || ''}
-                  placeholder="e.g. Maria"
-                />
               </div>
             </div>
 
@@ -381,9 +392,33 @@ function EmployeeFormModalContent({
                     ))}
                 </select>
               </div>
-              <p className="text-[10.5px] text-slate-500 font-medium">
-                Document & assignment fields below switch automatically with the designation.
-              </p>
+              {/* R-EMP-11: duty hours per day (pick or type) and date of birth */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Total Duty Hours</label>
+                  <input
+                    name="total_duty_hours"
+                    type="number"
+                    min="1"
+                    max="24"
+                    step="0.5"
+                    list="emp-duty-hours"
+                    defaultValue={initialEmployee?.total_duty_hours ? String(initialEmployee.total_duty_hours) : ''}
+                    placeholder="Pick or type, e.g. 8"
+                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 shadow-2xs"
+                  />
+                  <datalist id="emp-duty-hours">
+                    {[6, 8, 10, 12].map(h => <option key={h} value={h}>{h} hours</option>)}
+                  </datalist>
+                </div>
+                <Input
+                  name="date_of_birth"
+                  label="Date of Birth"
+                  type="date"
+                  max={todayDubai()}
+                  defaultValue={initialEmployee?.date_of_birth || ''}
+                />
+              </div>
             </div>
 
             {/* Employment & Salary */}
@@ -501,6 +536,7 @@ function EmployeeFormModalContent({
                   accent="sky"
                   onUpload={f => handleAttachDoc('eid', f)}
                   onRemove={handleRemoveDoc}
+                  removeTitle="Delete"
                   onPreview={d => setPreviewDoc(d)}
                 />
                 <div className="grid grid-cols-2 gap-2 pt-0.5">
@@ -544,6 +580,7 @@ function EmployeeFormModalContent({
                   accent="purple"
                   onUpload={f => handleAttachDoc('passport', f)}
                   onRemove={handleRemoveDoc}
+                  removeTitle="Delete"
                   onPreview={d => setPreviewDoc(d)}
                 />
                 <div className="grid grid-cols-2 gap-2 pt-0.5">
@@ -587,6 +624,7 @@ function EmployeeFormModalContent({
                   accent="amber"
                   onUpload={f => handleAttachDoc('visa', f)}
                   onRemove={handleRemoveDoc}
+                  removeTitle="Delete"
                   onPreview={d => setPreviewDoc(d)}
                 />
                 <div className="grid grid-cols-2 gap-2 pt-0.5">
@@ -630,6 +668,7 @@ function EmployeeFormModalContent({
                   accent="emerald"
                   onUpload={f => handleAttachDoc('work_permit', f)}
                   onRemove={handleRemoveDoc}
+                  removeTitle="Delete"
                   onPreview={d => setPreviewDoc(d)}
                 />
                 <div className="pt-0.5">
@@ -666,6 +705,7 @@ function EmployeeFormModalContent({
                   accent="indigo"
                   onUpload={f => handleAttachDoc('noc', f)}
                   onRemove={handleRemoveDoc}
+                  removeTitle="Delete"
                   onPreview={d => setPreviewDoc(d)}
                 />
                 <div className="pt-0.5">
@@ -700,16 +740,12 @@ function EmployeeFormModalContent({
                   category="other"
                   docs={docs}
                   accent="teal"
-                  uploadText="Upload EID, Passport, residency files…"
+                  uploadText="Upload Image and PDF"
                   onUpload={f => handleAttachDoc('other', f)}
                   onRemove={handleRemoveDoc}
+                  removeTitle="Delete"
                   onPreview={d => setPreviewDoc(d)}
                 />
-                <div className="pt-0.5">
-                  <p className="text-[10px] text-slate-500 font-medium">
-                    Upload multiple images or PDFs (EID copy, extra certificates, agreement).
-                  </p>
-                </div>
               </div>
             </div>
           </div>
@@ -748,6 +784,7 @@ function EmployeeFormModalContent({
                       accent="blue"
                       onUpload={f => handleAttachDoc('driving_license', f)}
                       onRemove={handleRemoveDoc}
+                  removeTitle="Delete"
                       onPreview={d => setPreviewDoc(d)}
                     />
                     <div className="grid grid-cols-2 gap-2 pt-1">

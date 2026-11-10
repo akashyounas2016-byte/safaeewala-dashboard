@@ -13,11 +13,11 @@ export const DRAFT_PREFIX = 'safaeewala_excel_draft:' // local only, never cloud
 export const COLUMN_PRESETS: Record<string, string[] | null> = {
   'All columns': null,
   Cashier: ['staff_name', 'team_name', 'address', 'material', 'charges', 'received', 'pending', 'payment_mode', 'remarks'],
-  Payroll: ['staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'remarks'],
+  Payroll: ['staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'attendance', 'remarks'],
   Ops: ['staff_name', 'team_name', 'start_time', 'end_time', 'address', 'area', 'material', 'remarks'],
 }
 /** Columns that are calculated, never typed into */
-export const READ_ONLY_COLS = new Set(['pending', 'advance', 'ot_hours']) // ot_hours: always automatic (DEC-015)
+export const READ_ONLY_COLS = new Set(['pending', 'advance', 'ot_hours', 'attendance']) // ot_hours: always automatic (DEC-015); attendance: own dropdown (R-ATT-10)
 /** UX-70: a row is white unless it is part of a team project (UX-66) or a colour was chosen for it */
 export const DEFAULT_ROW_BG = '#ffffff'
 /** UX-66: the project (location + date) of a team row; null for solo / blank rows */
@@ -114,4 +114,21 @@ export function safeGet<T>(key: string, fallback: T): T {
 /** Through safeLocalStorageSet so shared settings (cleaner / cell / column colours) reach the cloud (E2E-18) */
 export function safeSet(key: string, value: any) {
   safeLocalStorageSet(key, value)
+}
+
+/**
+ * R-SHEET-01 (Row Color Uniqueness): a colour chosen for one row (or one cleaner block) cannot be given to another
+ * row on the same date — except the rows of the same team job, which share their colour. White / default are free.
+ * Returns the first row already using the colour, or null when the colour may be used.
+ */
+export function rowColorConflict(rows: DailyJob[], targetIds: string[], color: string, teamKeyOf: (r: DailyJob) => string | null): DailyJob | null {
+  const c = (color || '').toLowerCase()
+  if (!c || c === 'white' || c === 'default' || c === DEFAULT_ROW_BG) return null
+  const ids = new Set(targetIds)
+  const targets = rows.filter(r => ids.has(r.id))
+  if (!targets.length) return null
+  const dates = new Set(targets.map(r => r.date || ''))
+  const teams = new Set(targets.map(teamKeyOf).filter((k): k is string => !!k))
+  return rows.find(r => !ids.has(r.id) && (r.row_color || '').toLowerCase() === c && dates.has(r.date || '')
+    && !(teams.size > 0 && teams.has(teamKeyOf(r) || ''))) || null
 }

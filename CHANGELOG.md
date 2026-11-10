@@ -6,6 +6,16 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(staff): "Busy till 9:00 PM" tag in the Add Job (Excel + Daily Job Sheet) and Booking pickers; goes away when the job time is over, the cleaner presses End in My Duties or the booking is completed; re-checked every minute (UX-131)
+- feat(excel-sheet): 90 % / smaller zoom fills the whole screen — only the content shrinks (UX-131)
+- feat(excel-sheet): OT shows once per cleaner, on the last row of the block, as the total of all the cleaner's jobs (UX-131)
+- feat(excel-sheet): Attendance column between Mode and Remarks — Present by default, Absent or Short Leave (reason required); same marks as the Attendance screen; Short Leave keeps the cleaner in the assign lists (R-ATT-10)
+- feat(excel-sheet): Row Color Uniqueness — a row colour already used on that date is refused with an error, except within a team (R-SHEET-01)
+- feat(excel-sheet): click-and-drag / Shift selection of cells and whole columns; colour fill, Delete and Ctrl+C work on the selection; arrow keys move out of an open dropdown (Start time …) instead of getting stuck (UX-132)
+- feat(employees): Short Name under Full Name; Total Duty Hours (6 / 8 / 10 / 12 or typed) and Date of Birth — run `2026-11-10_employee_dob_duty_hours.sql`; "switch automatically" note removed; Other Documents says "Upload Image and PDF" (R-EMP-11)
+- fix(employees): Delete on a document really deletes it from the employee (confirm first) and it no longer comes back on save (R-DOC-03)
+- fix(review): columns for the 2026-11-09 employee fields (`2026-11-10_employee_training_fields.sql`), Other Documents to Storage, sign-in retries instead of hanging; unique realtime channel names for job check-ins (R-EMP-09, R-EMP-10, SEC-01, R-DUTY-02)
+
 - feat(excel-sheet): team job row styling isolates color from Start Time onwards; Staff column retains default white unless user customized; right-click Row Height control with 5 discrete levels (XS 26px to XL 56px) (UX-128)
 - feat(excel-sheet): strict 3-row default limit per cleaner, trimming excess blank shifts; 15-minute time slots (07:00 AM–11:45 PM) with robust manual custom time parsing (e.g. 9:15, 9.15, 9am, 1pm) (UX-129)
 - feat(excel-sheet): simplified secondary team labels: Charges displays team name directly ("Team A"), Received displays "REF: [Cleaner's Short Name]" (R-PAY-05)

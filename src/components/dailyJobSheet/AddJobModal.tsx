@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { busyCleaners } from '@/lib/staffBusy'
+import { busyCleaners, useDubaiMinute } from '@/lib/staffBusy'
+import { useJobCheckins } from '@/lib/jobCheckins'
 import { awayCleanerNames } from '@/lib/attendance'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
@@ -91,7 +92,7 @@ export function AddJobForm({
   existingJobsForDate = [],
   clientHint,
 }: AddJobFormProps) {
-  const { clients, dailyJobs = [], attendanceMarks, employees: staffRecords } = useData()
+  const { clients, dailyJobs = [], attendanceMarks, employees: staffRecords, bookings = [] } = useData()
 
   // ── Staff & Team State ──
   const [selectedStaff, setSelectedStaff] = useState<string[]>(() => {
@@ -171,10 +172,16 @@ export function AddJobForm({
   const [startTime, setStartTime] = useState(() => formatTime12h(initial?.start_time || '09:00 AM') || '09:00 AM')
   const [endTime, setEndTime]     = useState(() => formatTime12h(initial?.end_time || '01:00 PM') || '01:00 PM')
   // UX-125: busy = a job not finished yet (today) or any job (later day) that overlaps this job's time
+  // UX-131: "Busy till 9:00 PM"; a job the cleaner ended in My Duties, or whose booking is completed, no longer counts
+  const nowMin = useDubaiMinute()
+  const { rows: checkins } = useJobCheckins(date)
   const busyCleanersMap = useMemo(() => {
     const jobs = existingJobsForDate.length > 0 ? existingJobsForDate : dailyJobs
-    return busyCleaners(jobs, date, { window: { start: startTime, end: endTime }, ignoreIds: [initial?.id || '', String((initial as { _originalJobId?: string } | undefined)?._originalJobId || '')] })
-  }, [existingJobsForDate, dailyJobs, date, startTime, endTime, initial?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+    const closedBookings = new Set(bookings.filter(b => b.status === 'completed' || b.status === 'cancelled').map(b => b.id))
+    const isDone = (jobId: string, cleaner: string, j: { booking_id?: string }) =>
+      checkins[`${jobId}|${cleaner}`]?.status === 'done' || (!!j.booking_id && closedBookings.has(j.booking_id))
+    return busyCleaners(jobs, date, { window: { start: startTime, end: endTime }, nowMin, isDone, ignoreIds: [initial?.id || '', String((initial as { _originalJobId?: string } | undefined)?._originalJobId || '')] })
+  }, [existingJobsForDate, dailyJobs, date, startTime, endTime, initial?.id, nowMin, checkins, bookings]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // R-JOB-01: a chosen cleaner already busy at this time on this date (all jobs of the date, saved or on screen)
   const staffClash = useMemo(() => {

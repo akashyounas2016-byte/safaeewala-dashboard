@@ -28,10 +28,11 @@ import { splitTotals, isSplitJob } from '@/lib/chargeSplit'
 import { type ColumnDef, DEFAULT_COLUMN_DEFS, mergeNewColumns, buildColumnsWithLetters, COLUMNS, type ExcelDatePresetKey, EXCEL_DATE_PRESETS } from '@/lib/excelSheet/columns'
 import { type BlockPalette, BLOCK_PALETTES, SOLID_PALETTE_KEYS, LIGHT_PALETTE_KEYS, PALETTE_KEYS, hslToHex, makeHexPalette } from '@/lib/excelSheet/palettes'
 import { newRowId, sameJobRow, isBlankNewRow, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners } from '@/lib/excelSheet/rows'
-import { DRAFT_PREFIX, COLUMN_PRESETS, READ_ONLY_COLS, DEFAULT_ROW_BG, projectKeyOf, memberChargesLabel, memberReceivedLabel, memberModeLabel, refMoney, DROPDOWN_COLS, TIME_SUGGESTIONS, DUBAI_AREAS, RENDER_PAGE, safeGet, safeSet } from '@/lib/excelSheet/sheetConfig'
+import { DRAFT_PREFIX, COLUMN_PRESETS, READ_ONLY_COLS, DEFAULT_ROW_BG, projectKeyOf, memberChargesLabel, memberReceivedLabel, memberModeLabel, refMoney, DROPDOWN_COLS, TIME_SUGGESTIONS, DUBAI_AREAS, RENDER_PAGE, safeGet, safeSet, rowColorConflict } from '@/lib/excelSheet/sheetConfig'
 import { evaluateFormula } from '@/lib/excelSheet/formula'
 import { jobFlags, splitSyncNote, type JobFlag } from '@/lib/jobFlags'
 import { JobFlagIcon } from '@/components/dailyJobSheet/JobFlagIcon'
+import { ExcelAttendanceCell } from '@/components/dailyJobSheet/ExcelAttendanceCell'
 
 /** E2E-02: one overlap check for the whole app (12h / 24h, overnight shifts) — kept as an export for older imports */
 export { checkTimesOverlap } from '@/components/dailyJobSheet/jobSheetUtils'
@@ -380,6 +381,10 @@ export function JobSheetSpreadsheet() {
   const [activeCell, setActiveCell] = useState<{ rowIdx: number; colId: string } | null>(null)
   // UX-80: a click on a column letter (A, B, C …) selects the whole column — e.g. to align it (UX-73)
   const [selectedColId, setSelectedColId] = useState<string | null>(null)
+  // UX-132: a block of cells chosen by click-and-drag (or Shift + click / Shift + arrows), like Excel
+  type CellRef = { rowIdx: number; colId: string }
+  const [selRange, setSelRange] = useState<{ a: CellRef; b: CellRef } | null>(null)
+  const dragSel = useRef<false | 'cells' | 'cols'>(false)
   const [editingCell, setEditingCell] = useState<{ rowIdx: number; colId: string; tempValue: string } | null>(null)
   const [formulaBarValue, setFormulaBarValue] = useState<string>('')
   const [filterSearch, setFilterSearch] = useState('')
@@ -803,7 +808,8 @@ export function JobSheetSpreadsheet() {
   }
 
   // Cell Click Handler
-  const handleCellClick = (rowIdx: number, colId: string) => {
+  const handleCellClick = (rowIdx: number, colId: string, e?: React.MouseEvent) => {
+    if (e?.shiftKey && activeCell) return // UX-132: Shift + click extends the selection (mousedown)
     if (editingCell && (editingCell.rowIdx !== rowIdx || editingCell.colId !== colId)) {
       commitCellEdit()
     }
@@ -853,6 +859,59 @@ export function JobSheetSpreadsheet() {
     pos = Math.min(order.length - 1, Math.max(0, pos + dRow))
     setActiveCell({ rowIdx: order[pos], colId: colIds[ci] })
   }
+
+  const isInSel = (rowIdx: number, colId: string) => {
+    if (!selBounds) return false
+    const p = rowPosOf.get(rowIdx)
+    const c = columns.findIndex(x => x.id === colId)
+    return p !== undefined && p >= selBounds.r0 && p <= selBounds.r1 && c >= selBounds.c0 && c <= selBounds.c1
+  }
+  /** Every cell of the selection, row by row ([] when only one cell is chosen) */
+  const selCells = (): CellRef[] => {
+    if (!selBounds) return []
+    const order = visibleOrder()
+    const out: CellRef[] = []
+    for (let p = selBounds.r0; p <= selBounds.r1; p++) {
+      for (let c = selBounds.c0; c <= selBounds.c1; c++) {
+        if (order[p] !== undefined && columns[c]) out.push({ rowIdx: order[p], colId: columns[c].id as string })
+      }
+    }
+    return out
+  }
+  const handleCellMouseDown = (e: React.MouseEvent, rowIdx: number, colId: string) => {
+    if (e.button !== 0) return
+    if (editingCell && editingCell.rowIdx === rowIdx && editingCell.colId === colId) return
+    if (e.shiftKey && activeCell) {
+      e.preventDefault()
+      setSelRange({ a: activeCell, b: { rowIdx, colId } })
+      dragSel.current = false
+      return
+    }
+    setSelRange({ a: { rowIdx, colId }, b: { rowIdx, colId } })
+    dragSel.current = 'cells'
+  }
+  const handleCellMouseEnter = (rowIdx: number, colId: string) => {
+    if (dragSel.current !== 'cells') return
+    setSelRange(prev => (prev ? { a: prev.a, b: { rowIdx, colId } } : prev))
+  }
+  /** Drag across the column letters → whole columns */
+  const handleHeaderMouseDown = (e: React.MouseEvent, colId: string) => {
+    if (e.button !== 0) return
+    const order = visibleOrder()
+    if (!order.length) return
+    const from = e.shiftKey && selRange ? selRange.a.colId : colId
+    setSelRange({ a: { rowIdx: order[0], colId: from }, b: { rowIdx: order[order.length - 1], colId } })
+    dragSel.current = 'cols'
+  }
+  const handleHeaderMouseEnter = (colId: string) => {
+    if (dragSel.current !== 'cols') return
+    setSelRange(prev => (prev ? { a: prev.a, b: { rowIdx: prev.b.rowIdx, colId } } : prev))
+  }
+  useEffect(() => {
+    const up = () => { dragSel.current = false }
+    window.addEventListener('mouseup', up)
+    return () => window.removeEventListener('mouseup', up)
+  }, [])
 
   /** Put a typed / pasted value into a row, with the same parsing as cell editing */
   const applyCellValue = (row: DailyJob, colId: string, raw: string): DailyJob => {
@@ -926,6 +985,13 @@ export function JobSheetSpreadsheet() {
 
   /** Delete / Backspace — clear the active cell */
   const clearActiveCell = () => {
+    const many = selCells()
+    if (many.length) { // UX-132: Delete clears every chosen cell
+      const updated = [...gridRows]
+      many.forEach(({ rowIdx, colId }) => { if (updated[rowIdx] && !READ_ONLY_COLS.has(colId)) updated[rowIdx] = applyCellValue(updated[rowIdx], colId, '') })
+      pushState(updated)
+      return
+    }
     if (!activeCell || READ_ONLY_COLS.has(activeCell.colId)) return
     const updated = [...gridRows]
     const row = updated[activeCell.rowIdx]
@@ -1103,7 +1169,32 @@ export function JobSheetSpreadsheet() {
 
   // Unified Interactive Cell Editor — every dropdown uses the Address design and opens in a portal
   // (ExcelCellPopover) so the rows under it can no longer paint over it while the mouse moves (UX-35)
+  /**
+   * UX-132: arrow keys never get stuck inside a cell editor or dropdown (Start time, Location, Mode …):
+   * Up / Down close it and move to the next row — saving first when something was typed (not a half-typed
+   * Address search); Left / Right move to the next column while nothing was typed (else they move the caret).
+   */
+  const handleEditorArrows = (e: React.KeyboardEvent) => {
+    if (!editingCell || !e.key.startsWith('Arrow') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+    const vertical = e.key === 'ArrowUp' || e.key === 'ArrowDown'
+    const untouched = editingCell.tempValue === String((gridRows[editingCell.rowIdx] as any)?.[editingCell.colId] ?? '')
+    if (!vertical && !untouched) return
+    if (vertical && !untouched && editingCell.colId === 'address') return
+    e.preventDefault()
+    e.stopPropagation()
+    const from = { rowIdx: editingCell.rowIdx, colId: editingCell.colId }
+    if (untouched) setEditingCell(null)
+    else commitCellEdit()
+    const step: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }
+    moveActive(...step[e.key], from)
+  }
+
   const renderCellEditor = (col: ColumnDef, targetIdx: number, isLightBg: boolean = true) => {
+    if (!editingCell || editingCell.rowIdx !== targetIdx || editingCell.colId !== col.id) return null
+    return <div className="contents" onKeyDownCapture={handleEditorArrows}>{renderCellEditorInner(col, targetIdx, isLightBg)}</div>
+  }
+
+  const renderCellEditorInner = (col: ColumnDef, targetIdx: number, isLightBg: boolean = true) => {
     if (!editingCell || editingCell.rowIdx !== targetIdx || editingCell.colId !== col.id) return null
     const setTemp = (v: string) => setEditingCell({ ...editingCell, tempValue: v })
     // Value still as it was in the cell: show the whole list with it highlighted, filter once typing starts
@@ -1834,6 +1925,15 @@ export function JobSheetSpreadsheet() {
     showToast(`Row #${idx + 1} cleared`)
   }
 
+  /** R-SHEET-01: true (and an error shown) when the colour is already on another row of that date, outside the team */
+  const refuseUsedColor = (targetIds: string[], paletteKey: string): boolean => {
+    const clash = rowColorConflict(gridRows, targetIds, paletteKey, r => projectKeyOf(r, gridRows))
+    if (!clash) return false
+    const name = BLOCK_PALETTES[paletteKey]?.name || ROW_COLOR_PRESETS.find(p => p.id === paletteKey)?.label || paletteKey
+    notify.error(`Colour "${name}" is already used by ${clash.staff_name?.trim() || 'another row'}${clash.address ? ` (${cleanAddressDisplay(clash.address)})` : ''}. Each row needs its own colour — only a team job shares one.`)
+    return true
+  }
+
   // ── Change Staff Block Color (Block-isolated: applies row_color directly across all rows of that block) ──
   const setBlockColor = (targetJob: DailyJob, rowIdx: number, paletteKey: string) => {
     const bInfo = staffBlockInfoMap.get(targetJob.id)
@@ -1841,6 +1941,9 @@ export function JobSheetSpreadsheet() {
     const blockRowCount = bInfo?.rowCount ?? 3
 
     const updated = [...gridRows]
+    // R-SHEET-01: a colour already used by another row (not the same team) cannot be chosen
+    const blockIds = updated.slice(blockStartIndex, blockStartIndex + blockRowCount).map(r => r.id)
+    if (refuseUsedColor(blockIds, paletteKey)) return
     for (let i = 0; i < blockRowCount; i++) {
       const idx = blockStartIndex + i
       if (updated[idx]) {
@@ -1887,6 +1990,7 @@ export function JobSheetSpreadsheet() {
   // ── Set Single Row Color (Granular: Only this specific single row, NOT the whole block) ──
   const handleSetSingleRowColor = (rowIdx: number, paletteKey: string) => {
     const updated = [...gridRows]
+    if (updated[rowIdx] && refuseUsedColor([updated[rowIdx].id], paletteKey)) return
     if (updated[rowIdx]) {
       updated[rowIdx] = { ...updated[rowIdx], row_color: paletteKey }
       pushState(updated)
@@ -1910,6 +2014,20 @@ export function JobSheetSpreadsheet() {
   // ── Set Single Cell Color (Granular: Only this specific cell, NOT the row or block) ──
   const handleSetCellColor = (rowId: string, colId: string, paletteKey: string) => {
     const cellKey = `${rowId}_${colId}`
+    // UX-132: right-click inside a chosen block colours every cell of it
+    const many = selCells()
+    const rowIdxOf = gridRows.findIndex(r => r.id === rowId)
+    if (many.length && isInSel(rowIdxOf, colId)) {
+      setCellColors(prev => {
+        const next = { ...prev }
+        many.forEach(c => { const id = gridRows[c.rowIdx]?.id; if (id) next[`${id}_${c.colId}`] = paletteKey })
+        safeSet('safaeewala_excel_cell_colors', next)
+        return next
+      })
+      setContextMenu(null)
+      showToast(`✓ Color applied to ${many.length} selected cells`)
+      return
+    }
     setCellColors(prev => {
       const next = { ...prev, [cellKey]: paletteKey }
       safeSet('safaeewala_excel_cell_colors', next)
@@ -1922,6 +2040,18 @@ export function JobSheetSpreadsheet() {
 
   const handleResetCellColor = (rowId: string, colId: string) => {
     const cellKey = `${rowId}_${colId}`
+    const many = selCells()
+    if (many.length && isInSel(gridRows.findIndex(r => r.id === rowId), colId)) {
+      setCellColors(prev => {
+        const next = { ...prev }
+        many.forEach(c => { const id = gridRows[c.rowIdx]?.id; if (id) delete next[`${id}_${c.colId}`] })
+        safeSet('safaeewala_excel_cell_colors', next)
+        return next
+      })
+      setContextMenu(null)
+      showToast(`✓ Reset color on ${many.length} selected cells`)
+      return
+    }
     setCellColors(prev => {
       const next = { ...prev }
       delete next[cellKey]
@@ -2385,7 +2515,17 @@ export function JobSheetSpreadsheet() {
       if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); fillDown(); return }
       if (mod || e.altKey) return
       const moves: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }
-      if (moves[e.key]) { e.preventDefault(); moveActive(...moves[e.key]); return }
+      if (moves[e.key] && e.shiftKey) { // UX-132: Shift + arrows grow the selection
+        e.preventDefault()
+        const order = visibleOrder()
+        const colIds = columns.map(c => c.id as string)
+        const end = selRange?.b || activeCell
+        const pos = Math.min(order.length - 1, Math.max(0, (rowPosOf.get(end.rowIdx) ?? 0) + moves[e.key][0]))
+        const ci = Math.min(colIds.length - 1, Math.max(0, colIds.indexOf(end.colId) + moves[e.key][1]))
+        setSelRange({ a: selRange?.a || activeCell, b: { rowIdx: order[pos], colId: colIds[ci] } })
+        return
+      }
+      if (moves[e.key]) { e.preventDefault(); setSelRange(null); moveActive(...moves[e.key]); return }
       if (e.key === 'Tab') { e.preventDefault(); moveActive(0, e.shiftKey ? -1 : 1); return }
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); clearActiveCell(); return }
       if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); handleCellDoubleClick(activeCell.rowIdx, activeCell.colId); return }
@@ -2400,6 +2540,20 @@ export function JobSheetSpreadsheet() {
     clipboardRef.current = {
       copy: (e: ClipboardEvent) => {
         if (editingCell || !activeCell || isTyping(e.target)) return
+        const many = selCells()
+        if (many.length && selBounds) {
+          const width = selBounds.c1 - selBounds.c0 + 1
+          const val = (c: CellRef) => {
+            const row = gridRows[c.rowIdx]
+            const v = c.colId === 'pending' ? rowPending(row) : c.colId === 'advance' ? rowAdvance(row) : row?.[c.colId as keyof DailyJob]
+            return v == null ? '' : String(v)
+          }
+          const lines: string[] = []
+          for (let i = 0; i < many.length; i += width) lines.push(many.slice(i, i + width).map(val).join('\t'))
+          e.clipboardData?.setData('text/plain', lines.join('\n'))
+          e.preventDefault()
+          return
+        }
         const v = activeCell.colId === 'pending'
           ? rowPending(gridRows[activeCell.rowIdx])
           : activeCell.colId === 'advance'
@@ -2622,6 +2776,21 @@ export function JobSheetSpreadsheet() {
     )
   }, [gridRows, paymentModeFilter, filterSearch, pendingCtx, soloAtBottom])
   const visibleGridRows = useMemo(() => filteredGridRows.slice(0, renderLimit), [filteredGridRows, renderLimit])
+  /** UX-132: position of each visible row (gridRows index → screen position) */
+  const rowPosOf = useMemo(() => {
+    const m = new Map<number, number>()
+    visibleGridRows.forEach((r, pos) => { const i = gridRows.findIndex(g => g.id === r.id); if (i >= 0) m.set(i, pos) })
+    return m
+  }, [visibleGridRows, gridRows])
+  const selBounds = useMemo(() => {
+    if (!selRange) return null
+    const colIds = columns.map(c => c.id as string)
+    const ra = rowPosOf.get(selRange.a.rowIdx), rb = rowPosOf.get(selRange.b.rowIdx)
+    const ca = colIds.indexOf(selRange.a.colId), cb = colIds.indexOf(selRange.b.colId)
+    if (ra === undefined || rb === undefined || ca < 0 || cb < 0) return null
+    if (ra === rb && ca === cb) return null // one cell = just the active cell
+    return { r0: Math.min(ra, rb), r1: Math.max(ra, rb), c0: Math.min(ca, cb), c1: Math.max(ca, cb) }
+  }, [selRange, rowPosOf, columns])
 
   // UX-62: once the payment row is on screen, scroll to it and flash it
   useEffect(() => {
@@ -2720,6 +2889,36 @@ export function JobSheetSpreadsheet() {
 
     return map
   }, [visibleGridRows, gridRows])
+
+  // R-ATT-10: cleaners with a real job on a date (date|name) — Present by default; the others are Available
+  const workingOn = useMemo(() => {
+    const set = new Set<string>()
+    gridRows.forEach(r => {
+      if (!r.staff_name || !(r.start_time || r.address || cleanNum(r.charges) > 0)) return
+      splitStaffNames(r.staff_name).forEach(n => set.add(`${r.date || effectiveTargetDate}|${n.trim().toLowerCase()}`))
+    })
+    return set
+  }, [gridRows, effectiveTargetDate])
+  const attendanceCell = (row: DailyJob) => {
+    const name = (row.staff_name || '').trim()
+    const date = row.date || effectiveTargetDate
+    return <ExcelAttendanceCell name={name} date={date} hasJob={workingOn.has(`${date}|${name.toLowerCase()}`)} />
+  }
+
+  // UX-131: OT shows once per cleaner — on the last row of the cleaner's block, the total of all the block's jobs
+  const blockOTByLastRow = useMemo(() => {
+    const sums = new Map<number, number>()
+    const lastId = new Map<number, string>()
+    visibleGridRows.forEach(r => {
+      const b = staffBlockInfoMap.get(r.id)
+      if (!b) return
+      sums.set(b.lastRowIdx, (sums.get(b.lastRowIdx) || 0) + cleanNum(r.ot_hours))
+      if (b.isLast) lastId.set(b.lastRowIdx, r.id)
+    })
+    const out = new Map<string, number>()
+    lastId.forEach((id, k) => out.set(id, Math.round((sums.get(k) || 0) * 100) / 100))
+    return out
+  }, [visibleGridRows, staffBlockInfoMap])
 
   // ── Group Rows by Cleaner for Block Mode ──
   const cleanerGroups = useMemo(() => {
@@ -2827,8 +3026,10 @@ export function JobSheetSpreadsheet() {
   return (
     <div
       ref={spreadsheetRef}
-      style={{ zoom: `${zoomLevel}%` }}
-      className="flex flex-col h-screen w-screen bg-[#f3f4f6] text-slate-900 overflow-hidden select-none font-sans fixed inset-0 z-50"
+      // UX-131: CSS zoom also shrinks the box — make it 100/zoom of the screen so it always fills the screen
+      // (90 % = content smaller, no empty strip on the right / bottom)
+      style={{ zoom: `${zoomLevel}%`, width: `${10000 / zoomLevel}vw`, height: `${10000 / zoomLevel}vh` }}
+      className="flex flex-col bg-[#f3f4f6] text-slate-900 overflow-hidden select-none font-sans fixed inset-0 z-50"
     >
       {/* ── Toast Notification ── */}
       {toastMessage && (
@@ -3461,6 +3662,8 @@ export function JobSheetSpreadsheet() {
         </div>
       )}
 
+      {/* UX-132: cells chosen by click-and-drag */}
+      <style>{`.xl-in-range{box-shadow:inset 0 0 0 9999px rgba(37,99,235,0.14), inset 0 0 0 1px rgba(37,99,235,0.45)}`}</style>
       {selectedColId && (
         <style>{`td[data-col="${selectedColId}"]{box-shadow:inset 0 0 0 9999px rgba(16,185,129,0.12)}`}</style>
       )}
@@ -3473,6 +3676,8 @@ export function JobSheetSpreadsheet() {
               {columns.map(col => (
                 <th
                   key={col.col}
+                  onMouseDown={e => handleHeaderMouseDown(e, col.id)}
+                  onMouseEnter={() => handleHeaderMouseEnter(col.id)}
                   onClick={() => {
                     setSelectedColId(prev => (prev === col.id ? null : col.id))
                     setActiveCell(prev => ({ rowIdx: prev?.rowIdx ?? 0, colId: col.id }))
@@ -3741,8 +3946,9 @@ export function JobSheetSpreadsheet() {
                               const d = cleanNum(rawVal)
                               displayVal = isBlankShift ? '' : (d > 0 ? d.toFixed(2) : '')
                             } else if (col.id === 'ot_hours') {
-                              const ot = cleanNum(rawVal)
-                              displayVal = isBlankShift ? '' : (ot > 0 ? ot.toFixed(2) : '')
+                              // UX-131: the cleaner's total OT, on the group's last row only
+                              const isLastJob = group.jobs[group.jobs.length - 1]?.row.id === row.id
+                              displayVal = isLastJob && group.totalOT > 0 ? (Math.round(group.totalOT * 100) / 100).toFixed(2) : ''
                             } else if (col.type === 'number') {
                               displayVal = isBlankShift ? '' : cleanNum(displayVal)
                             }
@@ -3771,7 +3977,9 @@ export function JobSheetSpreadsheet() {
                               <td
                                 key={col.id}
                                 data-col={col.id}
-                                onClick={() => handleCellClick(globalIndex, col.id)}
+                                onClick={e => handleCellClick(globalIndex, col.id, e)}
+                                onMouseDown={e => handleCellMouseDown(e, globalIndex, col.id)}
+                                onMouseEnter={() => handleCellMouseEnter(globalIndex, col.id)}
                                 onDoubleClick={() => handleCellDoubleClick(globalIndex, col.id)}
                                 onContextMenu={e => handleContextMenu(e, globalIndex, row, col.id)}
                                 style={{
@@ -3783,7 +3991,7 @@ export function JobSheetSpreadsheet() {
                                   isCellActive
                                     ? 'ring-2 ring-[#107c41] bg-white z-10 font-semibold'
                                     : ''
-                                } ${alignClass(col)}`}
+                                } ${alignClass(col)} ${isInSel(globalIndex, col.id) ? 'xl-in-range' : ''}`}
                               >
                                 {isCellEditing ? (
                                   renderCellEditor(col, globalIndex, true)
@@ -3807,6 +4015,8 @@ export function JobSheetSpreadsheet() {
                                       </span>
                                     )}
                                   </div>
+                                ) : col.id === 'attendance' ? (
+                                  group.jobs[0]?.row.id === row.id && (row.staff_name || '').trim() ? attendanceCell(row) : null
                                 ) : col.id === 'received' && refMoney(mcInfo, row) && !isBlankShift ? (
                                   <button
                                     type="button"
@@ -4068,8 +4278,10 @@ export function JobSheetSpreadsheet() {
                         else if (refMoney(mcInfo, row)) displayVal = memberModeLabel(row)
                         else displayVal = rawVal || ''
                       } else if (col.id === 'ot_hours') {
-                        const ot = cleanNum(rawVal)
-                        displayVal = isBlankShift ? '' : (ot > 0 ? ot.toFixed(2) : '0.00')
+                        // UX-131: only the block's last row shows OT — the total of the cleaner's jobs
+                        const total = blockOTByLastRow.get(row.id)
+                        const hasJobs = staffBlockInfoMap.get(row.id)?.staffName
+                        displayVal = total === undefined || !hasJobs ? '' : (total > 0 ? total.toFixed(2) : '0.00')
                       } else if (col.id === 'duty_hours') {
                         const d = cleanNum(rawVal)
                         displayVal = d > 0 ? d.toFixed(2) : ''
@@ -4092,7 +4304,9 @@ export function JobSheetSpreadsheet() {
                         <td
                           key={col.id}
                           data-col={col.id}
-                          onClick={() => handleCellClick(targetIdx, col.id)}
+                          onClick={e => handleCellClick(targetIdx, col.id, e)}
+                          onMouseDown={e => handleCellMouseDown(e, targetIdx, col.id)}
+                          onMouseEnter={() => handleCellMouseEnter(targetIdx, col.id)}
                           onDoubleClick={() => handleCellDoubleClick(targetIdx, col.id)}
                           onContextMenu={e => handleContextMenu(e, targetIdx, row, col.id)}
                           style={{
@@ -4107,10 +4321,13 @@ export function JobSheetSpreadsheet() {
                             isCellActive
                               ? (palette.isLight ? 'ring-2 ring-emerald-600 bg-white z-10 font-bold text-slate-900 shadow-md' : 'ring-2 ring-emerald-400 bg-slate-950 z-10 font-bold text-white shadow-md')
                               : ''
-                          } ${alignClass(col)}`}
+                          } ${alignClass(col)} ${isInSel(targetIdx, col.id) ? 'xl-in-range' : ''}`}
                         >
                           {isCellEditing ? (
                             renderCellEditor(col, targetIdx, palette.isLight)
+                          ) : col.id === 'attendance' ? (
+                            // R-ATT-10: one Attendance dropdown per cleaner block, on its first row
+                            staffBlockInfoMap.get(row.id)?.isFirst && (row.staff_name || '').trim() ? attendanceCell(row) : null
                           ) : col.id === 'received' && refMoney(mcInfo, row) && !isBlankShift ? (
                             <button
                               type="button"

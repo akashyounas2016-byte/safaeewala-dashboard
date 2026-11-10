@@ -5,7 +5,7 @@ import type { DailyJob } from '@/types'
 /* ─── Column Schema for the Excel Grid (Daily Job Sheet Exact Sequence) ─── */
 export interface ColumnDef {
   col: string       // Excel letter: A, B, C...
-  id: keyof DailyJob | 'pending' | 'advance' | 'row_num'
+  id: keyof DailyJob | 'pending' | 'advance' | 'row_num' | 'attendance'
   label: string
   width: string
   type: 'text' | 'time' | 'date' | 'number' | 'select' | 'formula'
@@ -32,6 +32,8 @@ export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
   { id: 'duty_hours',   label: 'Duty Hrs',   width: '85px',  type: 'number', formulaHint: 'Duty hours' },
   { id: 'ot_hours',     label: 'OT',         width: '80px',  type: 'number', formulaHint: 'Overtime hours' },
   { id: 'payment_mode', label: 'Mode',       width: '95px',  type: 'select', options: ['Cash', 'Online', 'Monthly', 'Pending'] },
+  // R-ATT-10: the cleaner's attendance that day (not a job field — saved in the attendance marks)
+  { id: 'attendance',   label: 'Attendance', width: '120px', type: 'select', formulaHint: 'Present / Absent / Short Leave' },
   { id: 'remarks',      label: 'Remarks',    width: '160px', type: 'text',   formulaHint: 'Remarks & notes' },
 ]
 

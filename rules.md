@@ -154,6 +154,28 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `DailyJobSheet.tsx → nilRows, crewTimeline`; `src/lib/excelSheet/rows.ts → withIdleCleaners`; `JobSheetSpreadsheet.tsx → idleCleaners`.
 - **Status:** Active · Since: 2026-11-09
 
+### R-ATT-10 — Attendance column on the Excel Job Sheet; Short Leave
+- **Rule:** *"Excel sheet mein 'Mode' aur 'Remarks' ke darmiyan 'Attendance' ka naya column … jo cleaner assign hoga uski default attendance 'Present' … dropdown mein 'Absent' aur 'Leave (Short Leave)' … Leave select karne par reason likhna lazmi ho."* (2026-11-10)
+  - One **Attendance** dropdown per cleaner block (first row), between Mode and Remarks. It is not a job field: it reads and writes the same attendance marks as the Attendance screen (by employee id), so both always agree.
+  - No mark: **Present** when the cleaner has a job that day, **Available** when not (R-ATT-01 — never absent by default).
+  - Choices: Present (removes the mark) · **Absent** (Uninformed Absence) · **Leave (Short Leave)**, which needs a reason before it saves.
+  - Leave set by someone who is not admin / manager waits for approval (R-ATT-05), shown as "Short Leave (pending)".
+  - **Short Leave** is part of the day: the cleaner still works, so it is not "away" (R-ATT-08) and stays in the assign lists. Full-day leave and absence stay away.
+- **Code:** `src/components/dailyJobSheet/ExcelAttendanceCell.tsx`; `src/lib/attendance.ts → SHORT_LEAVE, isAwayMark, attendanceKeyFor`; `src/lib/excelSheet/columns.ts`; `JobSheetSpreadsheet.tsx → workingOn, attendanceCell`. Test: `tests/unit/excel-attendance-busy-1110.test.ts`.
+- **Status:** Active · Since: 2026-11-10
+
+---
+
+## SHEET — Excel Job Sheet
+
+### R-SHEET-01 — Row Color Uniqueness
+- **Rule:** *"Row Color Uniqueness Rule: jo color aik row ke liye select ho jaye, woh kisi dusri row ko nahi diya ja sakta (siwaye team ke); aisa karne par restriction error aaye."* (2026-11-10)
+  - A colour given to one row, or to one cleaner block, cannot be given to another row on the same date. Trying it shows an error naming the row that already has the colour, and nothing changes.
+  - **Exception:** the rows of one team job (same location and date, R-PAY-05 / UX-66) share their colour.
+  - White / default are not colours and are always allowed. Other dates do not count. Cell colours (single cells) are not rows and are not limited.
+- **Code:** `src/lib/excelSheet/sheetConfig.ts → rowColorConflict`; `JobSheetSpreadsheet.tsx → refuseUsedColor` (in `setBlockColor`, `handleSetSingleRowColor`). Test: `tests/unit/excel-attendance-busy-1110.test.ts`.
+- **Status:** Active · Since: 2026-11-10
+
 ---
 
 ## OT — Overtime
@@ -583,6 +605,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `EmployeeFormModal.tsx`, `types/index.ts`, `pages/Employees.tsx`. Test: `tests/unit/cleaner-alerts-team-leader.test.ts`.
 - **Status:** Active · Since: 2026-11-10
 
+### R-EMP-11 — Short Name under Full Name; Total Duty Hours and Date of Birth
+- **Rule:** *"'Short Name' ki field ko Full Name ke foran niche move karein … 'Total Duty Hours' (dropdown 6, 8, 10 … aur manual entry) and date of birth ki new field …"* (2026-11-10)
+  - Employee Profile: Full Name, then **Short Name | Phone**, then Nationality | Gender.
+  - Role & Sourcing: the "fields switch automatically" note is gone. **Total Duty Hours** (per day: pick 6 / 8 / 10 / 12 or type any value) and **Date of Birth** (not in the future).
+  - Both need the columns from `supabase/migrations/2026-11-10_employee_dob_duty_hours.sql` (prod.md 7h); without them they are dropped on save.
+- **Code:** `EmployeeFormModal.tsx`, `types/index.ts`. Test: `tests/unit/excel-attendance-busy-1110.test.ts`.
+- **Status:** Built · migration to run · Since: 2026-11-10
+
 ---
 
 ## AGN — Agencies
@@ -946,6 +976,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - A file that does not upload is reported ("N documents could not be uploaded — open the employee and attach them again"); the employee is saved anyway.
 - **Code:** `src/lib/docStorage.ts` (withoutInlineDocs), `src/store/DataContext.tsx` (addEmployee, updateEmployee, addAgency, updateAgency, docsToStorage).
 - **Status:** Fixed · Since: 2026-11-07
+
+### R-DOC-03 — Delete in the Employee popup deletes the document
+- **Rule:** *"Standard Compliance Documents … recent uploads list mein 'Delete' button ko functional banayein taake file actually delete ho jaye."* (2026-11-10)
+  - In the Add / Edit Employee popup the bin (Delete) asks for a confirm, then takes the image off the employee for good: it no longer shows as Current, Previous or History, and the old single-file field (`eid_file` …) is cleared on save so it does not come back.
+  - This replaces R-DOC-01's "Remove keeps it in history" for employees only; agency popups still keep removed images in history.
+  - The Storage copy is not erased (the nightly backup keeps it), so a wrong delete can still be recovered by the office.
+  - Other Documents widget says **Upload Image and PDF**.
+- **Code:** `src/lib/docVersions.ts → deleteVersion`; `EmployeeFormModal.tsx → handleRemoveDoc, deletedCats`; `DocVersionsField.tsx (removeTitle)`.
+- **Status:** Active · Since: 2026-11-10
 
 ### R-DOC-02 — Images and PDFs, stored the moment they are picked
 - **Rule:** *"documents forms mein sirf 'Upload Image' ki bajaye 'Upload PDF' ka option bhi … PDF files ko read aur preview … 'No binary file preview available' ka error na aaye."* (2026-11-09)
