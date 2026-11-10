@@ -334,7 +334,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // E2E-08 / R-SEC-04: identity documents go to private Storage; the row keeps only "storage:<path>".
   // The swap only replaces a document that is still exactly the uploaded one (an edit meanwhile wins).
-  const EMP_FILE_FIELDS = ['eid_file', 'passport_file', 'visa_file', 'work_permit_file', 'driving_license_file', 'medical_insurance_file', 'noc_file'] as const
+  const EMP_FILE_FIELDS = ['eid_file', 'passport_file', 'visa_file', 'work_permit_file', 'driving_license_file', 'medical_insurance_file', 'noc_file', 'other_documents_file'] as const // R-EMP-09: Other Documents too
   const docsToStorage = (kind: 'employees' | 'agencies', id: string, rec?: object) => {
     if (!rec) return
     const r = rec as { documents?: { id?: string; file_data?: string }[] } & Record<string, unknown>

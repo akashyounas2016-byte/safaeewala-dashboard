@@ -44,6 +44,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   /** Who is signed in now — a repeated SIGNED_IN for the same person must not reload the app (SET-01) */
   const signedInAs = useRef<string | null>(null)
+  const profileRetries = useRef(0)
+  const loadProfileRef = useRef<(id: string | null, email: string) => Promise<void>>(async () => {})
 
   const loadProfile = useCallback(async (authUserId: string | null, email: string) => {
     if (!authUserId) { signedInAs.current = null; setUser(null); setStatus('signed_out'); return }
@@ -56,11 +58,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (profError) {
       console.warn('Profile fetch network error:', profError.message)
       if (signedInAs.current === authUserId) return
-    }
-    if (!profile) {
-      if (!profError) {
-        signedInAs.current = null; setUser(null); setStatus('no_profile')
+      // First sign-in and the profile could not be read: try again shortly instead of staying on "loading" for ever
+      if (profileRetries.current < 5) {
+        profileRetries.current += 1
+        setTimeout(() => { void loadProfileRef.current(authUserId, email) }, 3000)
+        return
       }
+    }
+    profileRetries.current = 0
+    if (!profile) {
+      // no profile row → no_profile; still no answer after the retries → back to the sign-in screen (never stuck)
+      signedInAs.current = null; setUser(null); setStatus(profError ? 'signed_out' : 'no_profile')
       return
     }
     if (profile.status !== 'active') { signedInAs.current = null; setUser(null); setStatus('disabled'); return }
@@ -77,6 +85,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     signedInAs.current = authUserId
     setStatus('ready')
   }, [])
+  useEffect(() => { loadProfileRef.current = loadProfile }, [loadProfile])
 
   useEffect(() => {
     let alive = true
