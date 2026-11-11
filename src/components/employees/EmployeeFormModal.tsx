@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { isWrongDocDate } from '@/lib/utils'
+import { isSaneDate } from '@/lib/dateInputs'
 import {
   UserCheck, Briefcase, CreditCard, Shield, Car, Sparkles, Check, FileText, FileCheck
 } from 'lucide-react'
@@ -113,6 +114,27 @@ function EmployeeFormModalContent({
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
     const str = (key: string) => ((fd.get(key) as string) || '').trim() || undefined
+
+    // UX-143: every date of the popup has a 4-digit year (1900–2100) — "123123" / "275760" are stopped here
+    const DATE_FIELDS: [string, string][] = [
+      ['date_of_birth', 'Date of Birth'], ['joined_date', 'Joined Date'], ['end_date', 'Contract End Date'],
+      ['training_start_date', 'Training Start'], ['training_end_date', 'Training End'],
+      ['eid_start_date', 'Emirates ID issue date'], ['eid_end_date', 'Emirates ID expiry date'],
+      ['passport_start_date', 'Passport issue date'], ['passport_expiry', 'Passport expiry date'],
+      ['visa_start_date', 'Residency Visa issue date'], ['visa_expiry', 'Residency Visa expiry date'],
+      ['work_permit_expiry', 'Work Permit expiry date'],
+      ['driving_license_issue_date', 'Driving License issue date'], ['driving_license_expiry_date', 'Driving License expiry date'],
+    ]
+    const badDate = DATE_FIELDS.find(([k]) => !isSaneDate(str(k)))
+    if (badDate) {
+      notify.error(`${badDate[1]}: the year must have 4 digits (e.g. 2027). Please correct it.`)
+      ;(e.currentTarget.elements.namedItem(badDate[0]) as HTMLInputElement | null)?.focus()
+      return
+    }
+    if (str('date_of_birth') && str('date_of_birth')! > todayDubai()) {
+      notify.error('Date of Birth cannot be in the future.')
+      return
+    }
 
     // Issue date must not be after the expiry date
     const datePairs: [string, string, string][] = [

@@ -26,6 +26,8 @@ import { findDuplicateClient, isUaeMobile } from '@/lib/validation'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import { BiWeeklyScheduleCard, emptyBiWeeklyPlan } from '@/components/clients/BiWeeklyScheduleCard'
 import { ContractStatusToggle } from '@/components/clients/ContractStatusToggle'
+import { ContractDetailsCard } from '@/components/clients/ContractDetailsCard'
+import { contractOfClient, detailsOfContract, saveClientContract } from '@/lib/clientContracts'
 import type { BiWeeklyPlan, ClientServiceMode } from '@/lib/biweekly'
 
 export interface ClientModalFormProps {
@@ -60,7 +62,11 @@ export function ClientModalForm({
   const startMode = (): ClientServiceMode => (isMonthly ? 'monthly' : seed?.service_mode === 'biweekly' ? 'biweekly' : seed?.service_mode === 'monthly' ? 'monthly' : 'general')
   const [mode, setMode] = useState<ClientServiceMode>(startMode)
   const [plan, setPlan] = useState<BiWeeklyPlan>(() => seed?.biweekly_plan ?? emptyBiWeeklyPlan())
-  const [contractOn, setContractOn] = useState(() => seed?.contract_active !== false) // R-SCHED-08
+  // R-CLI-05: the client's contract (Monthly Clients → Contracts) is edited here too
+  const [savedContract] = useState(() => (initialClient ? contractOfClient(initialClient.full_name) : undefined))
+  const [contract, setContract] = useState(() => detailsOfContract(savedContract))
+  // R-SCHED-08: Off when the client or its contract is switched off
+  const [contractOn, setContractOn] = useState(() => seed?.contract_active !== false && (!savedContract || savedContract.status === 'active'))
   const [monthlyPrefill, setMonthlyPrefill] = useState<Partial<Client> | undefined>(undefined)
   const formRef = useRef<HTMLFormElement>(null)
   const monthlyEdit = isMonthly && isEdit // an existing monthly client keeps its Profile / 7-Day Schedule tabs
@@ -207,6 +213,10 @@ export function ClientModalForm({
     }
 
     onSave(patch)
+    // R-CLI-05: Bi-Weekly / monthly clients keep their contract with them (a General client has none)
+    if (patch.service_mode !== 'general') {
+      saveClientContract({ clientName: patch.full_name || '', previousName: initialClient?.full_name, details: contract, active: contractOn, phone: patch.phone, email: patch.email })
+    }
     onClose()
   }
 
@@ -450,6 +460,7 @@ export function ClientModalForm({
 
           {/* R-CLI-02: Bi-Weekly — days like the monthly schedule, and the contract duration */}
           {(mode === 'biweekly' || monthlyEdit) && <ContractStatusToggle on={contractOn} onChange={setContractOn} />}
+          {(mode === 'biweekly' || monthlyEdit) && <ContractDetailsCard value={contract} onChange={setContract} existing={Boolean(savedContract)} />}
           {mode === 'biweekly' && <div data-field="biweekly_days"><BiWeeklyScheduleCard plan={plan} onChange={setPlan} cleaners={activeCleanersList} /></div>}
 
           {/* ── Card 3: Financial Balances & Service Remarks ── */}

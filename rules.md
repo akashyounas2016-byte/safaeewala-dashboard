@@ -454,6 +454,24 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `ClientModalForm.tsx` (`chooseMode`, `modeSelect`), `BiWeeklyScheduleCard.tsx`, `src/lib/biweekly.ts`, `AddMonthlyClientModalForm` (`prefill`).
 - **Status:** Active · Since: 2026-11-04
 
+### R-CLI-05 — The client popup holds the client's contract
+- **Rule:** *"'Add New Client' popup mein 'Contract' ka widget shamil kiya jaye taake contract ki tafseelat wahin save ho sakein. Monthly client aur contract ka workflow explain karein … taake data synchronization durust rahay."* (2026-11-11)
+  - Monthly and Bi-Weekly clients (Add New Client, Edit) have a **Contract** card under Contract Status. It has Service, Contract Amount (AED), Billing (Monthly / every 2 weeks / weekly), Contract Start and Notes, and shows the renewal date (start + 1 year).
+  - Save writes it to the same list as **Monthly Clients → Contracts** (`safaeewala_recurring_contracts`, shared by all devices). There is one contract per client: editing or renaming the client updates that contract, never a second one.
+  - The card is optional: left empty, no contract is made. An existing contract is never deleted from the popup; the Contracts tab deletes contracts.
+  - **Contract Status** and the contract move together. On makes the contract *active*; Off makes it *paused*, and a paused contract stops the monthly visits (R-SCHED-05, R-SCHED-08). A contract paused in the Contracts tab shows the toggle Off when the client is opened.
+  - A General client has no contract.
+- **Workflow (monthly client):**
+  1. Add New Client → Mode **Monthly**.
+  2. Fill in the address, the 7-day schedule (days, times, cleaner per day; no cleaner = left empty, R-SCHED-10) and the Contract card.
+  3. Save. The client is stored, and so is its contract.
+  4. Every day the visits of that day are added to the Daily Job Sheet by themselves (R-SCHED-04, R-SYNC-03).
+  5. Changes on the Daily Job Sheet or the Excel sheet are for that date only (R-SCHED-01); a deleted visit stays deleted (R-SYNC-17).
+  6. Permanent changes go through Monthly Clients / the client popup (R-SCHED-03).
+  7. Contract Status Off (or a paused contract) stops the visits from today on; past visits stay.
+- **Code:** `src/lib/clientContracts.ts → saveClientContract, contractOfClient`; `src/components/clients/ContractDetailsCard.tsx`; `AddMonthlyClientModalForm.tsx`, `ClientModalForm.tsx`. Test: `tests/unit/contract-dates-1111d.test.ts`.
+- **Status:** Active · Since: 2026-11-11
+
 ### R-CLI-07 — Active client = served in the last 60 days
 - **Rule:** found in the full CRM audit (2026-11-06). *Active Clients* counted every client served after a fixed date (2026-01-01), so it never went down. Active now means a last service within the last 60 days (Dubai date); *At-Risk (>60d)* is the other side.
 - **Code:** `Clients.tsx → isRecentClient`.
