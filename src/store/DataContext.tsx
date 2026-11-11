@@ -391,7 +391,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     return subscribeTables((table, event, row) => {
       const clean = table === 'daily_jobs'
-        ? { ...row, ...(['charges', 'received', 'duty_hours', 'ot_hours'] as const).reduce((o, k) => (k in row ? { ...o, [k]: safeNum(row[k]) } : o), {}) }
+        ? { ...row, ...(['charges', 'received', 'duty_hours', 'ot_hours', 'charges_per_hour'] as const).reduce((o, k) => (k in row ? { ...o, [k]: safeNum(row[k]) } : o), {}) }
         : table === 'daily_expenses' && 'amount' in row ? { ...row, amount: safeNum(row.amount) } : row
       handlers[table](event, clean)
     })

@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(excel-sheet): cleaners only — no CSR / driver / technical rows or suggestions; Staff column shows the Short Name (R-SHEET-02)
+- feat(employees): CSR role (employee record only — never on the job sheet, Add Job or My Duties) (R-SHEET-02)
+- change(excel-sheet): Charges (hrs) is typed by hand and saved on the job, no longer Charges ÷ Duty Hrs — run `2026-11-11_daily_jobs_charges_per_hour.sql` (UX-138)
 - feat(ot): OT starts after the employee's own Total Duty Hours (8 h → after 8 h, 10 h → after 10 h; blank = 8 h); after 8 PM is still always OT; written in README (R-OT-03)
 - feat(employees): every dropdown in Add / Edit Employee is a white searchable list (Booking-screen style); Nationality and Client can take a typed value (UX-133)
 - feat(excel-sheet): the keyboard cell has a clear green border; new **Charges (hrs)** column = Charges ÷ Duty Hrs (UX-134)

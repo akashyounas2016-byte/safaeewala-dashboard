@@ -14,9 +14,10 @@ export const newRowId = (prefix: string) => `${prefix}-${Date.now()}-${Math.rand
 export const SAVED_FIELDS = [
   'staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'address', 'area',
   'material', 'charges', 'received', 'payment_mode', 'remarks',
+  'charges_per_hour', // UX-138: typed by hand
   'row_color', // R-SYNC-11: a colour change alone is a change to save (it showed 'Nothing to save')
 ] as const
-export const NUMERIC_FIELDS = new Set<string>(['duty_hours', 'ot_hours', 'charges', 'received'])
+export const NUMERIC_FIELDS = new Set<string>(['duty_hours', 'ot_hours', 'charges', 'received', 'charges_per_hour'])
 export const fieldValue = (row: DailyJob, k: (typeof SAVED_FIELDS)[number]) =>
   NUMERIC_FIELDS.has(k) ? cleanNum(row[k]) : String(row[k] ?? '').trim()
 /** True when the two rows hold the same saved values */

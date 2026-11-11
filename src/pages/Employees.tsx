@@ -43,6 +43,7 @@ function parseEmpRole(v: string): EmployeeRole {
   if (s === 'ducting' || s === 'duct' || s === 'technical' || s === 'technician') return 'technical'
   if (s === 'store_cleaner' || s === 'store cleaner' || s === 'store') return 'store_cleaner'
   if (s === 'driver') return 'driver'
+  if (s === 'csr' || s === 'customer service') return 'csr' // R-SHEET-02
   return 'cleaner'
 }
 
@@ -51,6 +52,7 @@ function formatEmpRole(role?: string): string {
   if (role === 'ducting' || role === 'technical') return 'Technical'
   if (role === 'store_cleaner') return 'Store Cleaner'
   if (role === 'driver') return 'Driver'
+  if (role === 'csr') return 'CSR'
   return 'Cleaner'
 }
 
@@ -66,6 +68,9 @@ function getRoleBadgeStyle(role?: string) {
   }
   if (role === 'driver') {
     return 'bg-amber-50 text-amber-700 border-amber-200'
+  }
+  if (role === 'csr') {
+    return 'bg-sky-50 text-sky-700 border-sky-200'
   }
   return 'bg-emerald-50 text-emerald-700 border-emerald-200'
 }
@@ -315,7 +320,7 @@ export function Employees() {
   }
 
   const [search, setSearch] = useState('')
-  const [roleFilter, setRoleFilter] = useState<'all' | 'cleaner' | 'supervisor' | 'crew_lead' | 'ducting' | 'technical' | 'store_cleaner' | 'driver'>('all')
+  const [roleFilter, setRoleFilter] = useState<'all' | 'cleaner' | 'supervisor' | 'crew_lead' | 'ducting' | 'technical' | 'store_cleaner' | 'driver' | 'csr'>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'on_leave' | 'under_training'>('all')
   const [workFilter, setWorkFilter] = useState<'all' | 'has_ot' | 'high_ot' | 'working_today' | 'available' | 'absent' | 'leave'>('all')
   // UX-102: second row of cards behind an arrow; the card grid shows 3 rows until View All
@@ -1293,6 +1298,7 @@ export function Employees() {
               <option value="technical">🔧 Technical</option>
               <option value="store_cleaner">🏬 Store Cleaners</option>
               <option value="driver">🚗 Drivers</option>
+              <option value="csr">🎧 CSR</option>
             </select>
             <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>

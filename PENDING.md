@@ -22,7 +22,8 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | A8 | **Employees: fill Total Duty Hours** for anyone who is not on 8 h | OT is worked out from it (R-OT-03); blank = 8 h | Employees → Edit |
 | A9 | **Data fixes:** Misbah's Work Permit year `0227` → `2027`; re-enter the employee field values lost earlier | Wrong expiry alerts / empty profiles | Employees → Edit |
 | A10 | **Confirm `2026-11-09_duty_booking_sync.sql` was run** (Supabase → SQL editor; safe to run again) | When a cleaner presses Start / End in My Duties, the booking status follows only with this trigger (cleaners may not write bookings, SEC-A03) | `supabase/migrations/` |
-| A11 | **Check today's new screens on the live site** (Excel sheet, Add Job, Employee popup, Agency popup) | Built and tested in code, not yet clicked through in a browser | crm.safaeewala.com |
+| A11 | **Run `2026-11-11_daily_jobs_charges_per_hour.sql`** (Supabase → SQL editor) | Until then a typed Charges (hrs) is not saved (the rest of the row is) | [prod.md 7j](prod.md) |
+| A12 | **Check today's new screens on the live site** (Excel sheet, Add Job, Employee popup, Agency popup) | Built and tested in code, not yet clicked through in a browser | crm.safaeewala.com |
 
 ---
 

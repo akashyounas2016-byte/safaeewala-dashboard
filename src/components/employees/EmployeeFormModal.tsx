@@ -387,6 +387,7 @@ function EmployeeFormModalContent({
                   { value: 'technical', label: 'Technical' },
                   { value: 'store_cleaner', label: 'Store Cleaner' },
                   { value: 'driver', label: 'Driver' },
+                  { value: 'csr', label: 'CSR' }, // R-SHEET-02: employee record only, never on the job sheet
                 ]}
               />
               <SearchSelect

@@ -81,7 +81,7 @@ export interface Client {
   created_at: string
 }
 
-export type EmployeeRole = 'cleaner' | 'supervisor' | 'crew_lead' | 'ducting' | 'technical' | 'store_cleaner' | 'driver'
+export type EmployeeRole = 'cleaner' | 'supervisor' | 'crew_lead' | 'ducting' | 'technical' | 'store_cleaner' | 'driver' | 'csr' // csr: office record only (R-SHEET-02)
 
 export type EmployeeDocumentCategory = 'eid' | 'passport' | 'visa' | 'work_permit' | 'driving_license' | 'medical_insurance' | 'noc' | 'photo' | 'other'
 
@@ -368,6 +368,8 @@ export interface DailyJob {
   created_at: string
   date: string
   staff_name: string
+  /** UX-138: fee per hour, typed by hand on the Excel Job Sheet (Charges (hrs) column) */
+  charges_per_hour?: number
   team_name?: string
   row_color?: string
   /** R-PAY-05: Split Mode — each cleaner's charges, received and payment mode; charges / received are the totals */

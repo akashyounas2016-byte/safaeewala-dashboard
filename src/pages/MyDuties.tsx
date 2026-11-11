@@ -41,7 +41,7 @@ export function MyDuties() {
   const [previewId, setPreviewId] = useState('')
   const drivers = useMemo(() => activeDrivers(employees), [employees])
   const cleaners = useMemo(() => employees
-    .filter(e => e.role !== 'driver' && e.status !== 'inactive')
+    .filter(e => e.role !== 'driver' && e.role !== 'csr' && e.status !== 'inactive') // R-SHEET-02: a CSR has no duties
     .sort((a, b) => a.full_name.localeCompare(b.full_name)), [employees])
 
   // Whose duties are shown: a linked login only ever sees its own (R-SEC-05)

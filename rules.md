@@ -184,6 +184,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/excelSheet/sheetConfig.ts → rowColorConflict`; `JobSheetSpreadsheet.tsx → refuseUsedColor` (in `setBlockColor`, `handleSetSingleRowColor`). Test: `tests/unit/excel-attendance-busy-1110.test.ts`.
 - **Status:** Active · Since: 2026-11-10
 
+### R-SHEET-02 — Cleaners only, Short Name in Staff, CSR is an office record
+- **Rule:** *"Excel Job Sheet par sirf Cleaners display honge; 'CSR', 'Driver', ya 'Technical staff' ko shamil na kiya jaye … 'Staff' column mein Full Name ki bajaye 'Short Name' display ho … role list mein 'CSR' ko bhi shamil karein, lekin CSR ka data Excel Job Sheet par show nahi hona chahiye, balkay sirf employee record kay tor par save ho."* (2026-11-11)
+  - The sheet's empty cleaner rows (R-ATT-09) and its staff suggestions list cleaners only: Cleaner, Supervisor / Crew Lead, Store Cleaner. **CSR, Driver and Technical** staff are left out.
+  - A job already saved with one of them still shows (hiding it would hide its money); just no new rows or suggestions for them.
+  - **Staff column** shows each cleaner's **Short Name** (Full Name when none is set; a team shows each). Display only — the job keeps the full name (R-SYNC-02); the full name shows on hover in Block mode.
+  - **CSR** is a new role in Add / Edit Employee and in the Employees role filter. A CSR is an employee record only: not offered in Add Job (Excel, Daily Job Sheet, Booking), no My Duties.
+- **Code:** `src/lib/staffRoles.ts → isSheetCleaner, isJobStaff, shortStaffLabel`; `JobSheetSpreadsheet.tsx → staffOptions, idleCleaners`; `AddJobModal.tsx → pickableStaff`; `MyDuties.tsx`; `EmployeeFormModal.tsx`; `Employees.tsx`; `types/index.ts → EmployeeRole`. Test: `tests/unit/sheet-cleaners-csr-1111.test.ts`.
+- **Status:** Active · Since: 2026-11-11
+
 ---
 
 ## OT — Overtime

@@ -43,8 +43,8 @@ const page = readFileSync('src/pages/JobSheetSpreadsheet.tsx', 'utf8')
 eq(/\.xl-active\{outline:2px solid #16a34a/.test(page) && (page.match(/'xl-active /g) || []).length >= 3, true, 'keyboard cell has a green border in grid, block and staff cells')
 const ids = DEFAULT_COLUMN_DEFS.map(c => c.id)
 eq(ids.indexOf('charges_per_hour'), ids.indexOf('charges') + 1, 'Charges (hrs) right after Charges')
-eq([chargesPerHour({ charges: 200, duty_hours: 4 }), chargesPerHour({ charges: 100, duty_hours: 3 }), chargesPerHour({ charges: 0, duty_hours: 4 }), chargesPerHour({ charges: 100, duty_hours: 0 })], [50, 33.33, 0, 0], 'per hour = charges ÷ duty hours')
-eq(READ_ONLY_COLS.has('charges_per_hour'), true, 'Charges (hrs) is worked out, not typed')
+eq([chargesPerHour({ charges_per_hour: 45 }), chargesPerHour({}), chargesPerHour({ charges_per_hour: 'x' })], [45, 0, 0], 'UX-138: Charges (hrs) is the typed value, not worked out')
+eq(READ_ONLY_COLS.has('charges_per_hour'), false, 'UX-138: Charges (hrs) can be typed')
 
 // ── R-FIN-10: advance balance + automatic deduction ──
 const client = { id: 'c1', full_name: 'Marina Tower', area: 'Marina', phone: '', city: 'Dubai', advance_amount: 500 } as unknown as Client

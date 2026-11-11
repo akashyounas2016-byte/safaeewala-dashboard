@@ -17,7 +17,7 @@ export const COLUMN_PRESETS: Record<string, string[] | null> = {
   Ops: ['staff_name', 'team_name', 'start_time', 'end_time', 'address', 'area', 'material', 'remarks'],
 }
 /** Columns that are calculated, never typed into */
-export const READ_ONLY_COLS = new Set(['pending', 'advance', 'ot_hours', 'attendance', 'charges_per_hour']) // ot_hours: always automatic (DEC-015); attendance: own dropdown (R-ATT-10)
+export const READ_ONLY_COLS = new Set(['pending', 'advance', 'ot_hours', 'attendance']) // ot_hours: always automatic (DEC-015); attendance: own dropdown (R-ATT-10)
 /** UX-70: a row is white unless it is part of a team project (UX-66) or a colour was chosen for it */
 export const DEFAULT_ROW_BG = '#ffffff'
 /** UX-66: the project (location + date) of a team row; null for solo / blank rows */

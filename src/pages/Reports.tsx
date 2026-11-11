@@ -164,6 +164,7 @@ function formatReportRole(role: string | undefined): string {
   if (!role) return 'Cleaner'
   if (role === 'technical' || role === 'ducting') return 'Technical'
   if (role === 'driver') return 'Driver'
+  if (role === 'csr') return 'CSR'
   if (role === 'crew_lead' || role === 'supervisor') return 'Supervisor'
   if (role === 'store_cleaner') return 'Store Cleaner'
   return 'Cleaner'

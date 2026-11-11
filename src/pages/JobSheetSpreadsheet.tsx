@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { awayCleanerNames } from '@/lib/attendance'
 import { monthlyJobsNeedingCover, replaceCleanerOnRow, isFreeFor, pasteRowInto } from '@/lib/excelSheet/replacement'
 import { SearchSelect } from '@/components/common/SearchSelect'
+import { isSheetCleaner, shortStaffLabel } from '@/lib/staffRoles'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import { ArrowLeft, FileSpreadsheet, Plus, Trash2, Save, Download, RotateCcw, Search, Check, X, Sparkles, Filter, Copy, Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table, Printer, MoreVertical, ChevronDown, ExternalLink, ChevronUp, Eye, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle, CloudUpload, Calendar, GripVertical, Info, History, Pencil, Building2, Star, Package, MapPin, Clock, CreditCard, UserPlus, Users, AlignLeft, AlignCenter, AlignRight, UserCheck, Rows, ClipboardPaste, UserCog } from 'lucide-react'
@@ -215,7 +216,7 @@ export function JobSheetSpreadsheet() {
   // R-ATT-08: cleaners absent or on leave on the sheet's date are not suggested
   const staffOptions = useMemo(() => {
     const away = awayCleanerNames(attendanceMarks || {}, employees, selectedDate)
-    return employees.filter(e => e.status !== 'inactive' && e.full_name && !away.has(e.full_name.trim().toLowerCase())).map(e => e.full_name.trim()).sort((a, b) => a.localeCompare(b))
+    return employees.filter(e => e.status !== 'inactive' && e.full_name && isSheetCleaner(e) && !away.has(e.full_name.trim().toLowerCase())).map(e => e.full_name.trim()).sort((a, b) => a.localeCompare(b)) // R-SHEET-02: cleaners only
   }, [employees, attendanceMarks, selectedDate])
   const addressOptions = useMemo(() => {
     const set = new Set<string>()
@@ -620,7 +621,7 @@ export function JobSheetSpreadsheet() {
     if (!oneDay) return [] as { name: string; status: 'Available' | 'Absent' }[]
     const away = awayCleanerNames(attendanceMarks || {}, employees, effectiveTargetDate)
     return employees
-      .filter(e => e.status !== 'inactive' && e.role !== 'driver' && e.full_name)
+      .filter(e => e.status !== 'inactive' && isSheetCleaner(e) && e.full_name) // R-SHEET-02: no CSR / driver / technical
       .map(e => ({ name: e.full_name.trim(), status: (away.has(e.full_name.trim().toLowerCase()) ? 'Absent' : 'Available') as 'Available' | 'Absent' }))
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [oneDay, employees, attendanceMarks, effectiveTargetDate])
@@ -950,7 +951,7 @@ export function JobSheetSpreadsheet() {
     if (READ_ONLY_COLS.has(colId)) return row
     const v = raw.trim()
     const next = { ...row } as DailyJob & Record<string, unknown>
-    if (colId === 'charges' || colId === 'received' || colId === 'duty_hours' || colId === 'ot_hours') next[colId] = cleanNum(v)
+    if (colId === 'charges' || colId === 'received' || colId === 'duty_hours' || colId === 'ot_hours' || colId === 'charges_per_hour') next[colId] = cleanNum(v)
     else if (colId === 'start_time' || colId === 'end_time') {
       const fmt = formatTimeOnly(v)
       next[colId] = fmt !== '—' ? fmt : v
@@ -1055,7 +1056,7 @@ export function JobSheetSpreadsheet() {
     const updated = [...gridRows]
     const row = { ...updated[rowIdx] }
 
-    if (colId === 'charges' || colId === 'received' || colId === 'duty_hours' || colId === 'ot_hours') {
+    if (colId === 'charges' || colId === 'received' || colId === 'duty_hours' || colId === 'ot_hours' || colId === 'charges_per_hour') {
       if (trimmed.startsWith('=')) {
         const evaluated = evaluateFormula(trimmed, updated, rowIdx)
         ;(row as any)[colId] = typeof evaluated === 'number' ? evaluated : cleanNum(evaluated)
@@ -1697,7 +1698,7 @@ export function JobSheetSpreadsheet() {
       if (newVal.startsWith('=')) {
         const evaluated = evaluateFormula(newVal, updated, activeCell.rowIdx)
         ;(row as any)[colId] = typeof evaluated === 'number' ? evaluated : evaluated
-      } else if (colId === 'charges' || colId === 'received' || colId === 'duty_hours' || colId === 'ot_hours') {
+      } else if (colId === 'charges' || colId === 'received' || colId === 'duty_hours' || colId === 'ot_hours' || colId === 'charges_per_hour') {
         ;(row as any)[colId] = cleanNum(newVal)
       } else {
         ;(row as any)[colId] = newVal
@@ -2454,6 +2455,7 @@ export function JobSheetSpreadsheet() {
         payment_mode: isSec ? ('Above' as any) : row.payment_mode,
         charge_split: row.charge_split, // R-PAY-05
         row_color: row.row_color,           // R-SYNC-11
+        charges_per_hour: (cleanNum(row.charges_per_hour) || null) as unknown as number, // UX-138: null clears it
         is_overtime: false, // DEC-015: OT is automatic, this old flag is not used
         material: row.material,
         service: row.service,
@@ -2501,6 +2503,7 @@ export function JobSheetSpreadsheet() {
         payment_mode: (sum ? sum.payment_mode : lead.payment_mode) as DailyJob['payment_mode'],
         charge_split: split ?? lead.charge_split, // R-PAY-05: each cleaner's money of the team job
         row_color: lead.row_color,           // R-SYNC-11
+        charges_per_hour: (cleanNum(lead.charges_per_hour) || null) as unknown as number, // UX-138: null clears it
         is_overtime: false,
       }
     }
@@ -4098,7 +4101,7 @@ export function JobSheetSpreadsheet() {
                                 ) : col.id === 'staff_name' ? (
                                   <div className="flex flex-col items-start leading-tight py-0.5">
                                     <span className="inline-flex items-center gap-1 max-w-full">
-                                      <span className="font-bold text-slate-900 tracking-tight truncate">{displayVal}</span>
+                                      <span className="font-bold text-slate-900 tracking-tight truncate" title={String(displayVal || '')}>{shortStaffLabel(String(displayVal || ''), employees) || displayVal}</span>
                                       <JobFlagIcon flags={flagsOf([row])} onClear={clearFlag} />
                                     </span>
                                     {mcInfo?.teamRef && !isBlankShift && (
@@ -4325,7 +4328,7 @@ export function JobSheetSpreadsheet() {
                               <div className={`flex flex-col ${staffAlignClass} justify-center h-full min-h-[48px] px-2 gap-1`}>
                                 <span className="inline-flex items-center gap-1">
                                   <span className={`font-bold text-[13px] tracking-tight select-text ${isStaffDark ? 'text-white' : 'text-slate-900'}`}>
-                                    {blockInfo?.staffName || '—'}
+                                    {shortStaffLabel(blockInfo?.staffName, employees) || '—'}
                                   </span>
                                   <JobFlagIcon flags={flagsOf(gridRows.filter(j => (j.staff_name || '').trim().toLowerCase() === staffKey))} onClear={clearFlag} />
                                 </span>
