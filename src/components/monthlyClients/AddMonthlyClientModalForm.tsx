@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import type { Client, Employee } from '@/types'
 import { useData } from '@/store/DataContext'
-import { findMonthlyScheduleClashes } from '@/lib/clientDataSync'
+import { findMonthlyScheduleClashes, realCleanerName } from '@/lib/clientDataSync'
 import { notify } from '@/lib/notify'
 import { ContractStatusToggle } from '@/components/clients/ContractStatusToggle'
 import { addHoursToTime, subtractHoursFromTime, calcDurationFromTimes, formatTime12h } from '@/lib/utils'
@@ -73,7 +73,7 @@ export function AddMonthlyClientModalForm({
           startTime: sTime,
           endTime: eTime,
           duration: dur,
-          cleaner: cln && cln !== 'Unassigned' ? cln : '',
+          cleaner: realCleanerName(cln),
         }
       })
       return res
@@ -272,10 +272,11 @@ export function AddMonthlyClientModalForm({
     const firstRow = daySchedules[firstDay]
     const firstDuration = firstRow?.duration || (firstRow ? calcDurationFromTimes(firstRow.startTime, firstRow.endTime) : 4) || 4
 
-    // Construct final day cleaner assignments mapping
+    // R-SCHED-10: only days with a picked cleaner are listed; no cleaner = left empty, never "Unassigned"
     const finalAssignments: Record<string, string> = {}
     activeDays.forEach(day => {
-      finalAssignments[day] = daySchedules[day]?.cleaner || 'Unassigned'
+      const cleaner = realCleanerName(daySchedules[day]?.cleaner)
+      if (cleaner) finalAssignments[day] = cleaner
     })
 
     // Construct day_schedules map
@@ -286,12 +287,12 @@ export function AddMonthlyClientModalForm({
       finalDaySchedules[day] = {
         startTime: row.startTime,
         endTime: row.endTime,
-        cleaner: row.cleaner || 'Unassigned',
+        cleaner: realCleanerName(row.cleaner),
         duration: dur,
       }
     })
 
-    const primaryCleaner = Object.values(finalAssignments).find(c => c && c !== 'Unassigned') || ''
+    const primaryCleaner = Object.values(finalAssignments)[0] || '' // '' = no cleaner yet
 
     onAdd({
       full_name: clientName,

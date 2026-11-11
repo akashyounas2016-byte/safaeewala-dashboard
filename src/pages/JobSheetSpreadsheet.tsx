@@ -30,7 +30,7 @@ import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, padCleanerBlocks,
 import { splitTotals, isSplitJob } from '@/lib/chargeSplit'
 import { type ColumnDef, DEFAULT_COLUMN_DEFS, mergeNewColumns, buildColumnsWithLetters, COLUMNS, type ExcelDatePresetKey, EXCEL_DATE_PRESETS, chargesPerHour } from '@/lib/excelSheet/columns'
 import { type BlockPalette, BLOCK_PALETTES, SOLID_PALETTE_KEYS, LIGHT_PALETTE_KEYS, PALETTE_KEYS, hslToHex, makeHexPalette } from '@/lib/excelSheet/palettes'
-import { newRowId, sameJobRow, isBlankNewRow, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes } from '@/lib/excelSheet/rows'
+import { newRowId, sameJobRow, isBlankNewRow, isClearedRow, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes } from '@/lib/excelSheet/rows'
 import { DRAFT_PREFIX, COLUMN_PRESETS, READ_ONLY_COLS, DEFAULT_ROW_BG, projectKeyOf, memberChargesLabel, memberReceivedLabel, memberModeLabel, refMoney, DROPDOWN_COLS, TIME_SUGGESTIONS, DUBAI_AREAS, RENDER_PAGE, safeGet, safeSet, rowColorConflict } from '@/lib/excelSheet/sheetConfig'
 import { evaluateFormula } from '@/lib/excelSheet/formula'
 import { jobFlags, splitSyncNote, type JobFlag } from '@/lib/jobFlags'
@@ -698,9 +698,12 @@ export function JobSheetSpreadsheet() {
     let conflict = false
     const rowsOf = (id: string) => nextGrid.filter(r => r.id === id || String((r as { _originalJobId?: string })._originalJobId || '') === id)
     const touched = (id: string) => rowsOf(id).some(r => { const w = snap.get(r.id); return !w || !sameJobRow(w, r) })
+    // R-SYNC-17: every row of the job was deleted or emptied here — the deletion waits for the save (it wins)
+    const goneHere = (id: string) => { const mine = rowsOf(id); return mine.length === 0 || (touched(id) && mine.every(isClearedRow)) }
     remote.forEach((job, id) => {
       const was = raw.get(id)
       if (was && sameJobRow(was, job)) return
+      if (was && goneHere(id)) { nextRaw.set(id, clone([job])[0]); return } // not brought back, no conflict
       if (was && touched(id)) { conflict = true; return } // both changed — Save asks which to keep
       const mine = rowsOf(id)
       const teamRef = String((mine[0] as { _teamReference?: string } | undefined)?._teamReference || job.team_name || '')
@@ -716,6 +719,11 @@ export function JobSheetSpreadsheet() {
     })
     raw.forEach((_, id) => {
       if (remote.has(id)) return
+      if (goneHere(id)) { // deleted here and elsewhere — nothing left to save
+        nextRaw.delete(id)
+        rowsOf(id).forEach(r => nextSnap.delete(r.id))
+        return
+      }
       if (touched(id)) { conflict = true; return }
       nextRaw.delete(id)
       rowsOf(id).forEach(r => nextSnap.delete(r.id))
@@ -2412,8 +2420,10 @@ export function JobSheetSpreadsheet() {
     const splitJobIds = new Set([...added, ...edited, ...removed].map(splitOrigin).filter(Boolean))
     const inTouchedSplit = (r: DailyJob) => splitJobIds.has(splitOrigin(r))
     const plainAdded = added.filter(r => !inTouchedSplit(r)) // a new team job (Add Job) is saved once, below
-    const plainEdited = edited.filter(r => !inTouchedSplit(r))
-    const plainRemoved = removed.filter(r => !inTouchedSplit(r))
+    // R-SYNC-17: a saved row whose details were all removed is deleted, not saved as an empty job
+    const emptiedHere = (r: DailyJob) => isClearedRow(r) && !isClearedRow(loadedSnapshot.get(r.id) ?? r)
+    const plainEdited = edited.filter(r => !inTouchedSplit(r) && !emptiedHere(r))
+    const plainRemoved = [...removed, ...edited.filter(emptiedHere)].filter(r => !inTouchedSplit(r))
 
     // R-JOB-01: nothing is saved while a changed row double-books a cleaner (paste, fill down, …)
     const saveClash = findClashAmong(rows, [...added, ...edited.filter(r => timingChanged(loadedSnapshot.get(r.id), r))])
@@ -2424,14 +2434,15 @@ export function JobSheetSpreadsheet() {
     }
 
     const live = new Map(dailyJobs.map(j => [j.id, j]))
+    // R-SYNC-17: a deletion is never a conflict — the user removed the row on purpose
     const changedElsewhere = [
-      ...[...plainEdited, ...plainRemoved].filter(r => {
+      ...plainEdited.filter(r => {
         const was = loadedRawRef.current.get(r.id) // R-SYNC-16: as saved, not the grid's per-cleaner row
         if (!was) return false // a row added in this sheet
         const now = live.get(r.id)
         return !now || !sameJobRow(was, now)
       }),
-      ...Array.from(splitJobIds).filter(id => !live.has(id)).map(id => ({ id })),
+      ...Array.from(splitJobIds).filter(id => !live.has(id) && rows.some(r => splitOrigin(r) === id && !isClearedRow(r))).map(id => ({ id })),
     ]
     if (changedElsewhere.length > 0) {
       if (auto) { setAutoSaveBlocked(`Not saved — ${changedElsewhere.length} row(s) changed on another screen. Press Save to choose.`); return }
@@ -2479,7 +2490,8 @@ export function JobSheetSpreadsheet() {
 
     /** One saved job from its per-cleaner rows: cleaners joined, shared fields from the row that changed */
     const splitJobPayload = (jobId: string) => {
-      const now = rows.filter(r => splitOrigin(r) === jobId)
+      // R-SYNC-17: a cleaner whose row was emptied leaves the team job; all emptied → the job is deleted
+      const now = rows.filter(r => splitOrigin(r) === jobId && !isClearedRow(r))
       if (now.length === 0) return null
       const before = Array.from(loadedSnapshot.values()).filter(r => splitOrigin(r) === jobId)
       const lead = now.find(r => (r as any)._isPrimaryCleaner) || before.find(r => (r as any)._isPrimaryCleaner) || now[0]
@@ -2545,7 +2557,8 @@ export function JobSheetSpreadsheet() {
     try { localStorage.removeItem(DRAFT_PREFIX + periodKey) } catch { /* ignore */ }
     setDraftOffer(null)
     setRemoteConflict(false)
-    const parts = [added.length && `${added.length} added`, edited.length && `${edited.length} updated`, removed.length && `${removed.length} deleted`].filter(Boolean)
+    const emptied = edited.filter(emptiedHere).length
+    const parts = [added.length && `${added.length} added`, edited.length - emptied && `${edited.length - emptied} updated`, removed.length + emptied && `${removed.length + emptied} deleted`].filter(Boolean)
     showToast(`✓ ${auto ? 'Auto-saved' : 'Saved'}: ${parts.join(', ')}`)
   }
 

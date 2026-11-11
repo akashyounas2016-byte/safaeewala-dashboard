@@ -48,6 +48,7 @@ export const CLOUD_SYNCED_KEYS = [
   'safaeewala_excel_column_align', // UX-73
   'safaeewala_row_filter_colors_v2',
   'safaeewala_auto_sync_monthly_schedules',
+  'safaeewala_removed_monthly_visits', // R-SYNC-17: a deleted monthly visit is not added again on any device
 ] as const
 
 const TABLE = 'app_state'

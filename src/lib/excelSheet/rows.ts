@@ -44,6 +44,14 @@ export const isBlankNewRow = (r: DailyJob) =>
   !String(r.address || '').trim() && !String(r.area || '').trim() && cleanNum(r.charges) === 0 &&
   cleanNum(r.received) === 0 && !String(r.remarks || '').trim()
 
+const realTime = (t: unknown) => { const s = String(t ?? '').trim(); return s !== '' && s !== '—' && s !== '-' }
+/**
+ * R-SYNC-17: a row whose job details were all removed (Delete Row on a cleaner's 3 fixed rows, Clear Row
+ * Contents, or every cell cleared). Only the cleaner's name may be left. A saved job in this state is
+ * deleted on save — it no longer stays on the Daily Job Sheet as an empty job.
+ */
+export const isClearedRow = (r: DailyJob) => isBlankNewRow(r) && !realTime(r.start_time) && !realTime(r.end_time)
+
 export interface MultiCleanerPaymentInfo {
   isMultiCleaner: boolean
   isPrimary: boolean

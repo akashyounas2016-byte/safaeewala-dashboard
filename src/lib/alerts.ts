@@ -3,7 +3,7 @@ import type { DetectedIssue } from '@/lib/crmAIBot'
 import type { TimelineIssue } from '@/lib/crewTimeline'
 import type { BackupHealth } from '@/lib/backupStatus'
 import type { Agency, Booking, Client, Employee } from '@/types'
-import { employeeMatchesStaff, splitStaffNames } from '@/lib/clientDataSync'
+import { employeeMatchesStaff, realCleanerName, splitStaffNames } from '@/lib/clientDataSync'
 import { buildAgencyNotifications } from '@/lib/agencyAlerts'
 import { daysUntil, formatDate, isWrongDocDate, DOC_ALERT_DAYS } from '@/lib/utils'
 
@@ -155,7 +155,7 @@ export function scheduleCleanerAlerts(clients: Client[], employees: Employee[]):
   clients.forEach(c => {
     if (c.contract_active === false || !(c.service_days || []).length) return
     const names = new Set<string>()
-    ;[c.preferred_cleaner, ...Object.values(c.day_cleaner_assignments || {})].forEach(v => splitStaffNames(String(v || '')).forEach(n => names.add(n)))
+    ;[c.preferred_cleaner, ...Object.values(c.day_cleaner_assignments || {})].forEach(v => splitStaffNames(String(v || '')).forEach(n => { if (realCleanerName(n)) names.add(n) })) // R-SCHED-10
     const missing = [...names].filter(n => !employees.some(e => employeeMatchesStaff(e, n)))
     if (missing.length === 0) return
     out.push({

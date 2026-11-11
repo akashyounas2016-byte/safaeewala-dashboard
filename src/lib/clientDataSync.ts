@@ -1,6 +1,6 @@
 import type { Booking, DailyJob, Client, Employee, DailyPendingReceivedItem, RecurringContract } from '@/types'
 import { cleanNum, calcHours, calcOTHours, calcDailyCleanerShiftsOT } from '@/components/dailyJobSheet/jobSheetUtils'
-import { safeLocalStorageGet } from '@/lib/storageUtils'
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
 import { biweeklyVisitOn } from '@/lib/biweekly'
 
@@ -1120,7 +1120,7 @@ export function isClientScheduledForDay(client: Client, targetDay: DayOfWeekName
   // 2. Check day_cleaner_assignments map
   if (client.day_cleaner_assignments) {
     for (const [key, cln] of Object.entries(client.day_cleaner_assignments)) {
-      if (cln && cln.trim() && matchesDayName(key, targetDay)) return true
+      if (realCleanerName(cln) && matchesDayName(key, targetDay)) return true
     }
   }
 
@@ -1145,6 +1145,15 @@ export function isClientScheduledForDay(client: Client, targetDay: DayOfWeekName
 }
 
 /**
+ * R-SCHED-10: a schedule's cleaner, or '' when none was picked. Older monthly clients were saved with the
+ * word "Unassigned" in place of a cleaner; it is read as empty, never as a cleaner's name.
+ */
+export const realCleanerName = (v: unknown): string => {
+  const s = String(v ?? '').trim()
+  return s && s.toLowerCase() !== 'unassigned' ? s : ''
+}
+
+/**
  * Extracts cleaner, start time, end time, and duration for a client on targetDay
  */
 export function getClientShiftDetailsForDay(client: Client, targetDay: DayOfWeekName): {
@@ -1162,7 +1171,7 @@ export function getClientShiftDetailsForDay(client: Client, targetDay: DayOfWeek
   if (client.day_schedules) {
     for (const [key, sched] of Object.entries(client.day_schedules)) {
       if (matchesDayName(key, targetDay) && (sched as any).enabled !== false) {
-        if (sched.cleaner?.trim()) cleaner = sched.cleaner.trim()
+        if (realCleanerName(sched.cleaner)) cleaner = realCleanerName(sched.cleaner)
         if (sched.startTime?.trim()) startTime = sched.startTime.trim()
         if (sched.endTime?.trim()) endTime = sched.endTime.trim()
         if (sched.duration && Number(sched.duration) > 0) duration = Number(sched.duration)
@@ -1174,21 +1183,18 @@ export function getClientShiftDetailsForDay(client: Client, targetDay: DayOfWeek
   // 2. Day cleaner assignments
   if (!cleaner && client.day_cleaner_assignments) {
     for (const [key, cln] of Object.entries(client.day_cleaner_assignments)) {
-      if (matchesDayName(key, targetDay) && cln?.trim()) {
-        cleaner = cln.trim()
+      if (matchesDayName(key, targetDay) && realCleanerName(cln)) {
+        cleaner = realCleanerName(cln)
         break
       }
     }
   }
 
   // 3. Preferred cleaner fallback
-  if (!cleaner && client.preferred_cleaner?.trim()) {
-    cleaner = client.preferred_cleaner.trim()
+  if (!cleaner && realCleanerName(client.preferred_cleaner)) {
+    cleaner = realCleanerName(client.preferred_cleaner)
   }
-
-  if (!cleaner) {
-    cleaner = 'Unassigned'
-  }
+  // R-SCHED-10: no cleaner → '' (the visit is added without one), never the word "Unassigned"
 
   // Compute duration if missing but start and end time exist
   if ((!duration || duration <= 0) && startTime && endTime) {
@@ -1403,6 +1409,12 @@ export function getScheduledMonthlyShiftsForDate(
     })
   })
 
+  // R-SYNC-17: a visit deleted from this date (Excel sheet or Daily Job Sheet) is not added again
+  const removed = removedMonthlyVisitIds()
+  for (let i = shifts.length - 1; i >= 0; i--) {
+    if (!shifts[i].alreadySynced && removed.has(monthlyVisitId(dateStr, shifts[i].client))) shifts.splice(i, 1)
+  }
+
   // Sort shifts: pending first, then by earliest start time, then cleaner
   shifts.sort((a, b) => {
     if (a.alreadySynced !== b.alreadySynced) {
@@ -1423,6 +1435,32 @@ export function getScheduledMonthlyShiftsForDate(
   }
 }
 
+/**
+ * R-SYNC-17: monthly / Bi-Weekly visits deleted from a date. The monthly sync (app start, Daily Job Sheet,
+ * Sync button) would otherwise add a deleted visit again. Shared by all devices through app_state
+ * (CLOUD_SYNCED_KEYS); entries older than 60 days are dropped.
+ */
+export const REMOVED_VISITS_KEY = 'safaeewala_removed_monthly_visits'
+interface RemovedVisit { id: string; date: string; client: string; at: string }
+const monthlyVisitId = (date: string, client: Client) => `${date}|${client.id || normalizeKey(client.full_name)}`
+function removedMonthlyVisitIds(): Set<string> {
+  const list = safeLocalStorageGet<RemovedVisit[]>(REMOVED_VISITS_KEY, [])
+  return new Set((Array.isArray(list) ? list : []).map(v => v.id))
+}
+/** Remember that the monthly visits this job stood for were removed on purpose (call when a job is deleted) */
+export function rememberRemovedMonthlyVisits(job: DailyJob, clients: Client[]): void {
+  if (!job?.date) return
+  const hits = getScheduledMonthlyShiftsForDate(job.date, clients, [job]).shifts.filter(s => s.alreadySynced)
+  if (hits.length === 0) return
+  const cutoff = new Date(Date.parse(`${todayDubai()}T00:00:00Z`) - 60 * 86400000).toISOString().slice(0, 10)
+  const list = safeLocalStorageGet<RemovedVisit[]>(REMOVED_VISITS_KEY, [])
+  const kept = (Array.isArray(list) ? list : []).filter(v => v.date >= cutoff)
+  hits.forEach(s => {
+    const id = monthlyVisitId(job.date, s.client)
+    if (!kept.some(v => v.id === id)) kept.push({ id, date: job.date, client: s.client.full_name || '', at: new Date().toISOString() })
+  })
+  safeLocalStorageSet(REMOVED_VISITS_KEY, kept)
+}
 /**
  * Automatically fetches and inserts all pending monthly shifts for dateStr into dailyJobs.
  * Returns the count of newly inserted jobs.

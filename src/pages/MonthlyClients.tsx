@@ -28,6 +28,7 @@ import {
   cleanClientNameFromAddress,
   isBogusJob,
   normalizeKey,
+  realCleanerName,
   type MonthlyClientSummary,
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
@@ -1921,7 +1922,7 @@ export function MonthlyClients() {
                     const totalClientReceived = c.totalReceived + clientRecordedAmt
                     const clientBalanceDue = Math.max(0, c.totalCharges - totalClientReceived)
                     // UX-67: cleaners of the permanent schedule first, else those seen on the job sheet
-                    const scheduled = Array.from(new Set(Object.values(c.day_cleaner_assignments || {}).flatMap(v => String(v).split(',')).map(s => s.trim()).filter(Boolean)))
+                    const scheduled = Array.from(new Set(Object.values(c.day_cleaner_assignments || {}).flatMap(v => String(v).split(',')).map(realCleanerName).filter(Boolean))) // R-SCHED-10
                     const cleanersOf = scheduled.length > 0 ? scheduled : c.cleaners
                     const slot = c.scheduled_time ? `${formatTime(c.scheduled_time)}${c.end_time ? ` – ${formatTime(c.end_time)}` : ''}` : undefined
 

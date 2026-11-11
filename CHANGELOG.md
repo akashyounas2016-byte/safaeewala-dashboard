@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(sync): a row removed on the Excel sheet (Delete Row, Clear Row Contents, every cell cleared) deletes the job from the Daily Job Sheet instead of saving an empty job; a deletion is never a "Not saved — changed on another screen" conflict and is not undone by a live update; a deleted monthly / Bi-Weekly visit is no longer added back by the monthly sync on any device (R-SYNC-17)
+- fix(monthly-clients): a monthly client saved without a cleaner keeps the cleaner empty instead of "Unassigned"; old "Unassigned" records are read as no cleaner — no fake cleaner on visits, no false alert (R-SCHED-10)
 - fix(sync): no false "Not saved — N row(s) changed on another screen" / extra unsaved rows — OT is not compared, conflicts compare the job as loaded, team jobs and empty cleaner rows survive live updates (R-SYNC-16)
 - fix(staff): Inactive employees (and CSR) are not offered in Add Job, Booking, the Excel editor or the client cleaner pickers (R-EMP-12)
 - fix(excel-sheet): removing a start or end time clears Duty Hrs and OT (typed, picked or Delete) (UX-139)

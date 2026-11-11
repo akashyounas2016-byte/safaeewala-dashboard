@@ -96,6 +96,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/excelSheet/replacement.ts → monthlyJobsNeedingCover, replaceCleanerOnRow, isFreeFor`; `JobSheetSpreadsheet.tsx → coverNeeds, handleReplaceCleaner`. Test: `tests/unit/ot-advance-agency-1111.test.ts`.
 - **Status:** Active · Since: 2026-11-11
 
+### R-SCHED-10 — A monthly client without a cleaner stays empty, never "Unassigned"
+- **Rule:** *"System insertion logic ko update karein. Monthly client create kartay waqt agar cleaner select na kiya jaye, toh system khub-ba-khub 'Unassigned' client create na karay. Is field ko khali (null) chhor diya jaye, takay ghalat records create na hon."* (2026-11-11)
+  - The Monthly Client form wrote the word **"Unassigned"** as the cleaner of every day without one. The monthly sync then added visits under a "cleaner" called Unassigned, and the alerts said "Schedule uses a cleaner who is not an employee: Unassigned".
+  - Now a day without a cleaner is left empty: it is not listed in `day_cleaner_assignments`, its `day_schedules` cleaner is `''`, and `preferred_cleaner` is `''`. The monthly visit is added without a cleaner (like R-SCHED-06).
+  - Older clients that already have "Unassigned" saved are read as no cleaner (`realCleanerName`), so no edit is needed. Editing such a client and saving cleans the record.
+  - Screens may still show the label "Unassigned" where no cleaner is set; it is display text only and is never saved.
+- **Code:** `src/lib/clientDataSync.ts → realCleanerName, getClientShiftDetailsForDay`; `AddMonthlyClientModalForm.tsx → handleSubmit`; `src/lib/alerts.ts → scheduleCleanerAlerts`. Test: `tests/unit/delete-sync-unassigned-1111c.test.ts`.
+- **Status:** Active · Since: 2026-11-11
+
 ---
 
 ## ATT — Attendance
@@ -357,6 +366,18 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
     3. When another screen changed a team job, the grid put the raw job in place of the lead row (team rows broke) and removed empty cleaner rows. Now the job comes back as its cleaner rows (`expandTeamJob`) and empty rows stay.
   - A real conflict (the same job changed here and elsewhere) still stops auto-save and Save asks which version to keep (R-SYNC-14).
 - **Code:** `src/lib/excelSheet/rows.ts → sameJobRow (COMPARED_FIELDS)`; `JobSheetSpreadsheet.tsx → loadedRawRef, the load / merge effect, handleSaveAll`. Test: `tests/unit/sheet-sync-busy-1111b.test.ts`.
+- **Status:** Active · Since: 2026-11-11
+
+### R-SYNC-17 — A row removed on the Excel sheet is deleted everywhere
+- **Rule:** *"System mein Excel Job Sheet aur Daily Job Sheet kay darmiyan mukammal bi-directional synchronization establish karein. Excel Job Sheet say data remove honay par woh foran Daily Job Sheet say remove ho jana chahiye aur koi 'Not Saved' ya concurrency error show nahi hona chahiye. Dono sheets ka data real-time mein update aur synchronize hona chahiye."* (2026-11-11)
+  - **Delete Row** on a cleaner's 3 fixed rows, **Clear Row Contents**, or clearing every cell of a row empties it (only the cleaner's name may stay). The save now **deletes** that job. Before, it saved an empty job that stayed on the Daily Job Sheet.
+  - Only rows emptied by this edit count: a job that was already empty is not deleted for a colour change.
+  - In a team job, an emptied cleaner row takes that cleaner off the team; the other cleaners keep the job's details. When every row of the job is emptied, the job is deleted.
+  - A deletion is never a "changed on another screen" conflict: the user removed the row on purpose, so the deletion wins.
+  - A row deleted here is not brought back by a live update that arrives before the save. A job deleted here and on another screen at the same time gives no conflict.
+  - Other direction (unchanged): a job deleted on the Daily Job Sheet leaves the Excel sheet at once, unless the same job has unsaved edits there (then Save asks, R-SYNC-14).
+  - **A deleted monthly / Bi-Weekly visit stays deleted.** The monthly sync used to add it again: when the app starts (today), when the Daily Job Sheet is opened on that date, or with the Sync button. Every job deletion now records which client visit it was for that date (`safaeewala_removed_monthly_visits`). The record is shared by all devices through `app_state` and kept 60 days, and the sync skips those visits. Only that date is affected: the next visit is added as usual. To have it back, add the job by hand.
+- **Code:** `src/lib/excelSheet/rows.ts → isClearedRow`; `JobSheetSpreadsheet.tsx → handleSaveAll (emptiedHere, splitJobPayload)`, the merge effect (`goneHere`); `src/lib/clientDataSync.ts → rememberRemovedMonthlyVisits, getScheduledMonthlyShiftsForDate`; `DataContext.tsx → deleteDailyJob`; `cloudState.ts → CLOUD_SYNCED_KEYS`. Test: `tests/unit/delete-sync-unassigned-1111c.test.ts`.
 - **Status:** Active · Since: 2026-11-11
 
 ### R-SYNC-04 — Staff are matched by whole words
