@@ -28,6 +28,7 @@ npm run build               # type-check + production build into dist/
 | [architecture.md](architecture.md) | need to know where code lives / how data flows | Stack, folders, providers, lib modules, data flow |
 | [prod.md](prod.md) | deploy, configure, or test against live data | Environments, deploy paths, checklist, rollback, live-data safety |
 | [CHANGELOG.md](CHANGELOG.md) | want to know what changed | Dated list of changes with rule IDs and commits |
+| [PENDING.md](PENDING.md) | want to know what is still open | Owner actions (keys, settings, data) and code backlog — one list, kept current |
 | [docs/data-model.md](docs/data-model.md) | add/change a field or storage key | Entities, links between them, Supabase tables, localStorage keys |
 | [docs/workflow.md](docs/workflow.md) | commit, merge, or work alongside the other agent | Worktree setup, merge steps, definition of done, how rules are tracked |
 | [docs/decisions.md](docs/decisions.md) | wonder *why* something is the way it is | Dated decision records (`DEC-xxx`) |

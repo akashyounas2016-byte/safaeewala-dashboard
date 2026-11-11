@@ -10,7 +10,8 @@ It is the short form — the full, ID-numbered rules live in [rules.md](rules.md
 1. Read the rules for the area you touch in [rules.md](rules.md) (IDs like `R-ATT-01`) and the UI patterns in [design.md](design.md).
 2. Follow [docs/workflow.md](docs/workflow.md): definition of done, how to merge, how to track rules.
 3. When you add or change behaviour, update `rules.md` + `CHANGELOG.md` in the same commit, and mention the rule ID in the commit and in a code comment.
-4. Localhost uses **live** data — test only with `TEST …` records ([prod.md §5](prod.md)).
+4. Keep [PENDING.md](PENDING.md) current: remove what you finish, add what is left open — in the same commit.
+5. Localhost uses **live** data — test only with `TEST …` records ([prod.md §5](prod.md)).
 
 ---
 
