@@ -129,7 +129,7 @@ export function ClientModalForm({
 
   // Filtered distinct active cleaners list (includes all non-inactive employees and any cleaner already assigned)
   const activeCleanersList = useMemo(() => {
-    const active = employees.filter(e => e.status !== 'inactive')
+    const active = employees.filter(e => e.status !== 'inactive' && e.role !== 'csr') // R-EMP-12
     const unique = Array.from(new Set(active.map(e => e.full_name.trim()))).filter(Boolean)
     selectedCleaners.forEach(sc => {
       if (sc && !unique.includes(sc)) unique.push(sc)

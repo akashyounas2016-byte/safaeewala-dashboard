@@ -93,7 +93,7 @@ export function AddMonthlyClientModalForm({
     const map = new Map<string, Employee>()
     employees.forEach(e => {
       const name = (e.full_name || '').trim()
-      if (name && !map.has(name)) {
+      if (name && !map.has(name) && e.status !== 'inactive' && e.role !== 'csr') { // R-EMP-12
         map.set(name, e)
       }
     })

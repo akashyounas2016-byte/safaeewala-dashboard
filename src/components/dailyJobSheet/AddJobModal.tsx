@@ -3,6 +3,7 @@ import { busyCleaners, useDubaiMinute } from '@/lib/staffBusy'
 import { useJobCheckins } from '@/lib/jobCheckins'
 import { awayCleanerNames } from '@/lib/attendance'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
+import { isAssignable } from '@/lib/staffRoles'
 import { clientMoneyStatus, calcClientAdvanceBalance, autoAdvanceRemark, type ClientMoneyStatus } from '@/lib/clientAdvance'
 import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
 import { Time12hPicker, parseTimeToMinutes } from '@/components/common/Time12hPicker'
@@ -109,8 +110,8 @@ export function AddJobForm({
   // ── Busy / Working Cleaners on this Date (for dropdown tag & tooltip) ──
   const pickableStaff = useMemo(() => {
     const chosen = new Set(selectedStaff.map(n => n.trim().toLowerCase()))
-    // R-SHEET-02: a CSR is an office record only — never offered for a job
-    const csr = new Set((staffRecords || []).filter(r => r.role === 'csr').map(r => r.full_name.trim().toLowerCase()))
+    // R-SHEET-02 / R-EMP-12: a CSR or an Inactive employee is never offered for a job (one already on this job stays)
+    const csr = new Set((staffRecords || []).filter(r => !isAssignable(r)).map(r => r.full_name.trim().toLowerCase()))
     return employees.filter(e => {
       const k = e.full_name.trim().toLowerCase()
       return (!awayOnDate.has(k) && !csr.has(k)) || chosen.has(k)

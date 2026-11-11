@@ -76,13 +76,14 @@ eq(/handleCopyRow\(contextMenu\.rowIdx\)/.test(page) && /handlePasteRow\(context
 
 // ── R-SCHED-09: replacement for a monthly client ──
 const rows = [
-  job('m1', 'Uma', '09:00 AM', '01:00 PM', { payment_mode: 'Monthly' }),
-  job('m2', 'Uma, Misbah', '02:00 PM', '04:00 PM', { payment_mode: 'Monthly' }),
-  job('o1', 'Uma', '05:00 PM', '07:00 PM', { payment_mode: 'Cash' }),
+  job('m1', 'Uma', '09:00 AM', '01:00 PM', { address: 'Palm Villa', payment_mode: 'Monthly' }),
+  job('m2', 'Uma, Misbah', '02:00 PM', '04:00 PM', { address: 'Palm Villa', payment_mode: 'Cash' }),
+  job('o1', 'Uma', '05:00 PM', '07:00 PM', { address: 'abc tesing', payment_mode: 'Monthly' }),
   job('b1', 'Ambika', '10:00 AM', '12:00 PM', { payment_mode: 'Cash' }),
 ]
-const needs = monthlyJobsNeedingCover(rows, '2026-11-11', new Set(['uma']))
-eq(needs.map(n => [n.cleaner, n.rows.map(r => r.id)]), [['Uma', ['m1', 'm2']]], 'only monthly jobs of the away cleaner')
+const contractClients = [{ id: 'pv', full_name: 'Palm Villa', area: '', phone: '', city: 'Dubai', service_days: ['Monday'] }, { id: 'abc', full_name: 'abc tesing', area: '', phone: '', city: 'Dubai' }] as unknown as Client[]
+const needs = monthlyJobsNeedingCover(rows, '2026-11-11', new Set(['uma']), contractClients)
+eq(needs.map(n => [n.cleaner, n.rows.map(r => r.id)]), [['Uma', ['m1', 'm2']]], 'only jobs of a real monthly-contract client (UX-141: Mode "Monthly" alone does not count)')
 eq([replaceCleanerOnRow(rows[1], 'Uma', 'Ambika').staff_name, replaceCleanerOnRow(rows[1], 'Uma', 'Misbah').staff_name], ['Ambika, Misbah', 'Misbah'], 'swap keeps the team, no duplicates')
 eq([isFreeFor(rows, 'Ambika', needs[0].rows), isFreeFor(rows, 'Zara', needs[0].rows)], [false, true], 'busy / free check against the other jobs')
 eq(/handleReplaceCleaner/.test(page) && /monthly schedule is not changed/.test(page), true, 'banner changes that date only (R-SCHED-01)')

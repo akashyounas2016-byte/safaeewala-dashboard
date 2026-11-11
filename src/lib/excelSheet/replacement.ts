@@ -1,5 +1,5 @@
-import type { DailyJob } from '@/types'
-import { isMonthlyJob } from '@/lib/clientDataSync'
+import type { Client, DailyJob } from '@/types'
+import { isMonthlyClient, jobMatchesClient } from '@/lib/clientDataSync'
 import { checkTimesOverlap } from '@/components/dailyJobSheet/jobSheetUtils'
 
 /**
@@ -14,11 +14,18 @@ export interface CoverNeed {
   rows: DailyJob[]
 }
 
-/** Monthly-client jobs on `date` whose cleaner (or one of a team) is away that day */
-export function monthlyJobsNeedingCover(rows: DailyJob[], date: string, away: Set<string>): CoverNeed[] {
+/**
+ * Monthly-client jobs on `date` whose cleaner (or one of a team) is away that day.
+ * UX-141: "monthly" means the job's client has a monthly contract (service days / day schedule / day cleaners /
+ * monthly source) — not a row whose Mode was set to "Monthly" or whose remark says monthly.
+ */
+export function monthlyJobsNeedingCover(rows: DailyJob[], date: string, away: Set<string>, clients: Client[]): CoverNeed[] {
   const byCleaner = new Map<string, CoverNeed>()
+  if (!away.size) return []
+  const contracts = clients.filter(c => isMonthlyClient(c)) // no jobs passed → the client's own contract only
+  if (!contracts.length) return []
   rows.forEach(r => {
-    if (r.date !== date || !isMonthlyJob(r)) return
+    if (r.date !== date || !(r.address || '').trim() || !contracts.some(c => jobMatchesClient(r, c))) return
     splitNames(r.staff_name).forEach(n => {
       if (!away.has(n.toLowerCase())) return
       const k = n.toLowerCase()

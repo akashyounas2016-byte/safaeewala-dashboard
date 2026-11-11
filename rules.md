@@ -90,6 +90,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-SCHED-09 — Replacement cleaner for a monthly client, for one day
 - **Rule:** *"Agar koi assigned cleaner leave par jata hai, to system mein monthly clients kay liye cleaner replacement ka workflow banaya jaye, taake foran dusra cleaner assign kiya ja sakay aur service mutasir na ho."* (2026-11-11)
   - On a one-day Excel Job Sheet, when a cleaner is marked absent / on leave (R-ATT-01, R-ATT-08) and has monthly-client jobs that day, an amber banner lists those jobs.
+  - **Monthly client** = the job's client has a monthly contract (service days, day schedule, day cleaners or monthly source). A row whose Mode is "Monthly" for an ordinary client does not count (UX-141, 2026-11-11: the banner showed for "abc tesing" after its Mode was set to Monthly).
   - Pick a replacement (free cleaners first; "busy at this time" shown) → **Replace** swaps the cleaner on those rows only (a team keeps its other cleaners). Press Save to keep it.
   - It is a Daily Job Sheet change for that date (R-SCHED-01): the client's permanent cleaner (`preferred_cleaner`, `day_cleaner_assignments`) is never changed.
 - **Code:** `src/lib/excelSheet/replacement.ts → monthlyJobsNeedingCover, replaceCleanerOnRow, isFreeFor`; `JobSheetSpreadsheet.tsx → coverNeeds, handleReplaceCleaner`. Test: `tests/unit/ot-advance-agency-1111.test.ts`.
@@ -347,6 +348,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - The header shows *Auto-save on* when everything is saved. The local draft and the leave warning (UX-34) stay.
 - **Code:** `JobSheetSpreadsheet.tsx → handleSaveAll('auto' | 'manual')`, the auto-save effect.
 - **Status:** Active · Since: 2026-11-06
+
+### R-SYNC-16 — No false "changed on another screen"
+- **Rule:** *"System synchronization mechanisms ko update karein taake 'Not saved, six rows changed' jaisay concurrency conflicts na hon. Jab koi user Daily Job Sheet par job add karay, toh data smoothly update ho aur dusri screen par honay wali tabdeeli foran synchronize ho jayein, bagair kisi rukawat kay."* (2026-11-11)
+  - Found three causes of false conflicts / false unsaved rows:
+    1. **OT** is worked out again for all of a cleaner's shifts when one of them changes, so untouched rows looked edited ("8 unsaved changes") and looked changed elsewhere. OT is no longer compared (it is always automatic, DEC-015).
+    2. A **team job** is one saved job but one grid row per cleaner; the lead row (one name) was compared with the saved job (all names). The check now compares the live job with the job **as it was loaded** (`loadedRawRef`).
+    3. When another screen changed a team job, the grid put the raw job in place of the lead row (team rows broke) and removed empty cleaner rows. Now the job comes back as its cleaner rows (`expandTeamJob`) and empty rows stay.
+  - A real conflict (the same job changed here and elsewhere) still stops auto-save and Save asks which version to keep (R-SYNC-14).
+- **Code:** `src/lib/excelSheet/rows.ts → sameJobRow (COMPARED_FIELDS)`; `JobSheetSpreadsheet.tsx → loadedRawRef, the load / merge effect, handleSaveAll`. Test: `tests/unit/sheet-sync-busy-1111b.test.ts`.
+- **Status:** Active · Since: 2026-11-11
 
 ### R-SYNC-04 — Staff are matched by whole words
 - **Rule:** An employee matches a job's `staff_name` by normalised full name or whole-word match — "Rupa" must not match "Rupak".
@@ -639,6 +650,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Both need the columns from `supabase/migrations/2026-11-10_employee_dob_duty_hours.sql` (prod.md 7h); without them they are dropped on save.
 - **Code:** `EmployeeFormModal.tsx`, `types/index.ts`. Test: `tests/unit/excel-attendance-busy-1110.test.ts`.
 - **Status:** Built · migration to run · Since: 2026-11-10
+
+### R-EMP-12 — Inactive staff and CSR are never offered for work
+- **Rule:** *"'Inactive' mark kiye gaye employees 'Add Job Entry' dropdown ya Booking system mein zahir na hon. Agar koi employee inactive hai, toh woh Job Sheet ya Booking mein bilkul select nahi hona chahiye."* (2026-11-11)
+  - Not listed: Add Job (Excel, Daily Job Sheet, Booking), the Booking staff picker, the Excel row editor, the Excel staff suggestions, the Monthly Client and Client cleaner pickers.
+  - A cleaner already on a job that is opened for editing stays on it (nothing is removed silently), but cannot be picked again.
+  - CSR is treated the same way (R-SHEET-02).
+- **Code:** `src/lib/staffRoles.ts → isAssignable`; `AddJobModal.tsx → pickableStaff`; `NewBookingModal.tsx`; `JobSheetSpreadsheet.tsx → SpreadsheetEditModal employees`; `AddMonthlyClientModalForm.tsx → cleanerList`; `ClientModalForm.tsx`. Test: `tests/unit/sheet-sync-busy-1111b.test.ts`.
+- **Status:** Active · Since: 2026-11-11
 
 ---
 

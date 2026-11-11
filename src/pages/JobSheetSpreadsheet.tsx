@@ -2,12 +2,12 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { awayCleanerNames } from '@/lib/attendance'
 import { monthlyJobsNeedingCover, replaceCleanerOnRow, isFreeFor, pasteRowInto } from '@/lib/excelSheet/replacement'
 import { SearchSelect } from '@/components/common/SearchSelect'
-import { isSheetCleaner, shortStaffLabel } from '@/lib/staffRoles'
+import { isSheetCleaner, shortStaffLabel, isAssignable } from '@/lib/staffRoles'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import { ArrowLeft, FileSpreadsheet, Plus, Trash2, Save, Download, RotateCcw, Search, Check, X, Sparkles, Filter, Copy, Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table, Printer, MoreVertical, ChevronDown, ExternalLink, ChevronUp, Eye, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle, CloudUpload, Calendar, GripVertical, Info, History, Pencil, Building2, Star, Package, MapPin, Clock, CreditCard, UserPlus, Users, AlignLeft, AlignCenter, AlignRight, UserCheck, Rows, ClipboardPaste, UserCog } from 'lucide-react'
 import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
-import { ExcelCellPopover, ExcelPopoverItem, ExcelPopoverCustom, ExcelPopoverEmpty } from '@/components/dailyJobSheet/ExcelCellPopover'
+import { ExcelCellPopover, ExcelPopoverItem, ExcelPopoverCustom, ExcelPopoverEmpty, popoverMove, popoverPick } from '@/components/dailyJobSheet/ExcelCellPopover'
 import { SpreadsheetEditModal } from '@/components/dailyJobSheet/SpreadsheetEditModal'
 import { Modal } from '@/components/ui/Modal'
 import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
@@ -30,7 +30,7 @@ import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, padCleanerBlocks,
 import { splitTotals, isSplitJob } from '@/lib/chargeSplit'
 import { type ColumnDef, DEFAULT_COLUMN_DEFS, mergeNewColumns, buildColumnsWithLetters, COLUMNS, type ExcelDatePresetKey, EXCEL_DATE_PRESETS, chargesPerHour } from '@/lib/excelSheet/columns'
 import { type BlockPalette, BLOCK_PALETTES, SOLID_PALETTE_KEYS, LIGHT_PALETTE_KEYS, PALETTE_KEYS, hslToHex, makeHexPalette } from '@/lib/excelSheet/palettes'
-import { newRowId, sameJobRow, isBlankNewRow, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners } from '@/lib/excelSheet/rows'
+import { newRowId, sameJobRow, isBlankNewRow, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes } from '@/lib/excelSheet/rows'
 import { DRAFT_PREFIX, COLUMN_PRESETS, READ_ONLY_COLS, DEFAULT_ROW_BG, projectKeyOf, memberChargesLabel, memberReceivedLabel, memberModeLabel, refMoney, DROPDOWN_COLS, TIME_SUGGESTIONS, DUBAI_AREAS, RENDER_PAGE, safeGet, safeSet, rowColorConflict } from '@/lib/excelSheet/sheetConfig'
 import { evaluateFormula } from '@/lib/excelSheet/formula'
 import { jobFlags, splitSyncNote, type JobFlag } from '@/lib/jobFlags'
@@ -417,6 +417,9 @@ export function JobSheetSpreadsheet() {
   }, [clientBuildingList, editingCell, gridRows])
   // What the grid was loaded from — Save All writes only the differences (AUD-49)
   const [loadedSnapshot, setLoadedSnapshot] = useState<Map<string, DailyJob>>(() => new Map())
+  // R-SYNC-16: the jobs exactly as saved when the sheet loaded (a team job is one job here, several rows in the grid).
+  // "Changed on another screen" compares the live job with this — not with the grid's per-cleaner rows.
+  const loadedRawRef = useRef<Map<string, DailyJob>>(new Map())
   const [remoteConflict, setRemoteConflict] = useState(false)
   const [draftOffer, setDraftOffer] = useState<{ rows: DailyJob[]; savedAt: number } | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
@@ -631,8 +634,8 @@ export function JobSheetSpreadsheet() {
   const coverNeeds = useMemo(() => {
     if (!oneDay) return []
     const away = awayCleanerNames(attendanceMarks || {}, employees, effectiveTargetDate)
-    return away.size ? monthlyJobsNeedingCover(gridRows, effectiveTargetDate, away) : []
-  }, [oneDay, attendanceMarks, employees, effectiveTargetDate, gridRows])
+    return away.size ? monthlyJobsNeedingCover(gridRows, effectiveTargetDate, away, clients) : []
+  }, [oneDay, attendanceMarks, employees, effectiveTargetDate, gridRows, clients])
   const [coverPick, setCoverPick] = useState<Record<string, string>>({})
   const handleReplaceCleaner = (from: string, rowIds: string[]) => {
     const to = (coverPick[from.toLowerCase()] || '').trim()
@@ -673,6 +676,7 @@ export function JobSheetSpreadsheet() {
       reloadAfterSaveRef.current = false
       latest.current.periodKey = periodKey
       const rows = withIdleCleaners(ensureThreeRowsPerStaff(clone(periodJobs), effectiveTargetDate), idleCleaners, effectiveTargetDate)
+      loadedRawRef.current = new Map(clone(periodJobs).map(j => [j.id, j]))
       setGridRows(rows)
       setLoadedSnapshot(new Map(rows.map(r => [r.id, r])))
       setHistory([])
@@ -684,30 +688,40 @@ export function JobSheetSpreadsheet() {
       }
       return
     }
+    // R-SYNC-16: merge by saved job. A team job is several grid rows (expandTeamJob) — all of them are
+    // compared and replaced together; empty cleaner rows (never saved) are left alone.
+    const raw = loadedRawRef.current
     const remote = new Map(periodJobs.map(j => [j.id, j]))
     const nextSnap = new Map(snap)
+    const nextRaw = new Map(raw)
     let nextGrid = [...grid]
     let conflict = false
+    const rowsOf = (id: string) => nextGrid.filter(r => r.id === id || String((r as { _originalJobId?: string })._originalJobId || '') === id)
+    const touched = (id: string) => rowsOf(id).some(r => { const w = snap.get(r.id); return !w || !sameJobRow(w, r) })
     remote.forEach((job, id) => {
-      const was = snap.get(id)
-      if (!was) {
-        nextSnap.set(id, clone([job])[0])
-        if (!nextGrid.some(r => r.id === id)) nextGrid.push(clone([job])[0])
-        return
-      }
-      if (sameJobRow(was, job)) return
-      const mine = nextGrid.find(r => r.id === id)
-      if (mine && !sameJobRow(was, mine)) { conflict = true; return }
-      nextSnap.set(id, clone([job])[0])
-      if (mine) nextGrid = nextGrid.map(r => (r.id === id ? clone([job])[0] : r))
+      const was = raw.get(id)
+      if (was && sameJobRow(was, job)) return
+      if (was && touched(id)) { conflict = true; return } // both changed — Save asks which to keep
+      const mine = rowsOf(id)
+      const teamRef = String((mine[0] as { _teamReference?: string } | undefined)?._teamReference || job.team_name || '')
+      const fresh = expandTeamJob(clone([job])[0], teamRef)
+      nextRaw.set(id, clone([job])[0])
+      mine.forEach(r => nextSnap.delete(r.id))
+      fresh.forEach(r => nextSnap.set(r.id, r))
+      if (mine.length) {
+        const at = nextGrid.indexOf(mine[0])
+        nextGrid = nextGrid.filter(r => !mine.includes(r))
+        nextGrid.splice(Math.max(0, at), 0, ...fresh)
+      } else nextGrid.push(...fresh)
     })
-    snap.forEach((was, id) => {
+    raw.forEach((_, id) => {
       if (remote.has(id)) return
-      const mine = nextGrid.find(r => r.id === id)
-      if (mine && !sameJobRow(was, mine)) { conflict = true; return }
-      nextSnap.delete(id)
-      nextGrid = nextGrid.filter(r => r.id !== id)
+      if (touched(id)) { conflict = true; return }
+      nextRaw.delete(id)
+      rowsOf(id).forEach(r => nextSnap.delete(r.id))
+      nextGrid = nextGrid.filter(r => !rowsOf(id).includes(r))
     })
+    loadedRawRef.current = nextRaw
     setGridRows(nextGrid)
     setLoadedSnapshot(nextSnap)
     if (conflict) setRemoteConflict(true)
@@ -955,10 +969,7 @@ export function JobSheetSpreadsheet() {
     else if (colId === 'start_time' || colId === 'end_time') {
       const fmt = formatTimeOnly(v)
       next[colId] = fmt !== '—' ? fmt : v
-      if (next.start_time && next.end_time && next.start_time !== '—' && next.end_time !== '—') {
-        next.duty_hours = Math.round(calcHours(next.start_time, next.end_time) * 10) / 10
-        next.ot_hours = Math.round(calcOTHours(next.start_time, next.end_time) * 10) / 10
-      }
+      return syncDutyWithTimes(next, !v) // UX-139: a removed time clears Duty Hrs and OT
     } else next[colId] = v
     return next
   }
@@ -1022,7 +1033,7 @@ export function JobSheetSpreadsheet() {
     if (many.length) { // UX-132: Delete clears every chosen cell
       const updated = [...gridRows]
       many.forEach(({ rowIdx, colId }) => { if (updated[rowIdx] && !READ_ONLY_COLS.has(colId)) updated[rowIdx] = applyCellValue(updated[rowIdx], colId, '') })
-      pushState(updated)
+      pushState(recalculateAllRowsOT(updated))
       return
     }
     if (!activeCell || READ_ONLY_COLS.has(activeCell.colId)) return
@@ -1030,7 +1041,7 @@ export function JobSheetSpreadsheet() {
     const row = updated[activeCell.rowIdx]
     if (!row) return
     updated[activeCell.rowIdx] = applyCellValue(row, activeCell.colId, '')
-    pushState(updated)
+    pushState(recalculateAllRowsOT(updated)) // UX-139: OT of the cleaner's day follows a removed time
   }
 
   /** Keys inside the cell editor: Enter / Tab save and move, Esc cancels (UX-36) */
@@ -1066,10 +1077,7 @@ export function JobSheetSpreadsheet() {
     } else if (colId === 'start_time' || colId === 'end_time') {
       const fmt = formatTimeOnly(trimmed)
       ;(row as any)[colId] = fmt !== '—' ? fmt : trimmed
-      if (row.start_time && row.end_time && row.start_time !== '—' && row.end_time !== '—') {
-        row.duty_hours = Math.round(calcHours(row.start_time, row.end_time) * 10) / 10
-        row.ot_hours = Math.round(calcOTHours(row.start_time, row.end_time) * 10) / 10
-      }
+      Object.assign(row, syncDutyWithTimes(row, !trimmed)) // UX-139
     } else {
       ;(row as any)[colId] = trimmed
     }
@@ -1176,11 +1184,7 @@ export function JobSheetSpreadsheet() {
     const r = { ...updated[rowIdx] }
     const fmt = formatTimeOnly(timeStr)
     r[colId] = fmt !== '—' ? fmt : timeStr
-    if (r.start_time && r.end_time && r.start_time !== '—' && r.end_time !== '—') {
-      r.duty_hours = Math.round(calcHours(r.start_time, r.end_time) * 10) / 10
-      r.ot_hours = Math.round(calcOTHours(r.start_time, r.end_time) * 10) / 10
-    }
-    updated[rowIdx] = r
+    updated[rowIdx] = syncDutyWithTimes(r, !String(timeStr || '').trim()) // UX-139
     // R-OT-01: Recalculate cumulative multi-shift Overtime
     const finalGrid = recalculateAllRowsOT(updated)
     if (refuseClash(finalGrid)) { setEditingCell(null); return }
@@ -1208,7 +1212,16 @@ export function JobSheetSpreadsheet() {
    * Address search); Left / Right move to the next column while nothing was typed (else they move the caret).
    */
   const handleEditorArrows = (e: React.KeyboardEvent) => {
-    if (!editingCell || !e.key.startsWith('Arrow') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+    if (!editingCell) return
+    // UX-142: in an open dropdown, Up / Down walk the list and Enter picks the highlighted item;
+    // past the last (or above the first) item the keys fall through and move to the next row as before
+    if (DROPDOWN_COLS.has(editingCell.colId) && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && popoverMove(e.key === 'ArrowDown' ? 1 : -1)) {
+        e.preventDefault(); e.stopPropagation(); return
+      }
+      if (e.key === 'Enter' && popoverPick()) { e.preventDefault(); e.stopPropagation(); return }
+    }
+    if (!e.key.startsWith('Arrow') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
     const vertical = e.key === 'ArrowUp' || e.key === 'ArrowDown'
     const untouched = editingCell.tempValue === String((gridRows[editingCell.rowIdx] as any)?.[editingCell.colId] ?? '')
     if (!vertical && !untouched) return
@@ -2413,9 +2426,10 @@ export function JobSheetSpreadsheet() {
     const live = new Map(dailyJobs.map(j => [j.id, j]))
     const changedElsewhere = [
       ...[...plainEdited, ...plainRemoved].filter(r => {
+        const was = loadedRawRef.current.get(r.id) // R-SYNC-16: as saved, not the grid's per-cleaner row
+        if (!was) return false // a row added in this sheet
         const now = live.get(r.id)
-        const was = loadedSnapshot.get(r.id)
-        return !now || (was && !sameJobRow(was, now))
+        return !now || !sameJobRow(was, now)
       }),
       ...Array.from(splitJobIds).filter(id => !live.has(id)).map(id => ({ id })),
     ]
@@ -2570,6 +2584,8 @@ export function JobSheetSpreadsheet() {
       // Grid keys only when a cell is selected and nothing else has focus
       if (editingCell || !activeCell || isTyping(e.target)) return
       if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); fillDown(); return }
+      // UX-142: Alt + Down opens the dropdown of the selected cell (like Excel); then Down walks the list
+      if (e.altKey && e.key === 'ArrowDown' && DROPDOWN_COLS.has(activeCell.colId)) { e.preventDefault(); handleCellDoubleClick(activeCell.rowIdx, activeCell.colId); return }
       if (mod || e.altKey) return
       const moves: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }
       if (moves[e.key] && e.shiftKey) { // UX-132: Shift + arrows grow the selection
@@ -5526,7 +5542,7 @@ export function JobSheetSpreadsheet() {
           index={editingRowState.index}
           onClose={() => setEditingRowState(null)}
           onSave={handleSaveEditedRow}
-          employees={employees}
+          employees={employees.filter(e => isAssignable(e) && isSheetCleaner(e))} // R-EMP-12, R-SHEET-02
           clients={clients}
           areaOptions={areaOptions}
           existingRows={gridRows}

@@ -15,7 +15,7 @@ eq(['cleaner', 'supervisor', 'store_cleaner', 'crew_lead', undefined].map(r => i
 eq(['csr', 'driver', 'technical', 'ducting'].map(r => isSheetCleaner({ role: r as never })), [false, false, false, false], 'CSR, driver and technical staff are not')
 eq([isJobStaff({ role: 'csr' }), isJobStaff({ role: 'technical' })], [false, true], 'a CSR is never offered for a job')
 const page = readFileSync('src/pages/JobSheetSpreadsheet.tsx', 'utf8')
-eq((page.match(/isSheetCleaner\(e\)/g) || []).length, 2, 'staff suggestions and empty cleaner rows both use the rule')
+eq((page.match(/isSheetCleaner\(e\)/g) || []).length >= 2, true, 'staff suggestions and empty cleaner rows both use the rule')
 eq(/csr\.has\(k\)/.test(readFileSync('src/components/dailyJobSheet/AddJobModal.tsx', 'utf8')), true, 'Add Job does not offer a CSR')
 eq(/e\.role !== 'csr'/.test(readFileSync('src/pages/MyDuties.tsx', 'utf8')), true, 'a CSR has no duties')
 

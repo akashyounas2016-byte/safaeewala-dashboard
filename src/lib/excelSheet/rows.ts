@@ -1,6 +1,6 @@
 import { checkTimesOverlap } from '@/components/dailyJobSheet/jobSheetUtils'
 import type { DailyJob } from '@/types'
-import { recalculateAllRowsOT, cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
+import { recalculateAllRowsOT, cleanNum, calcHours, calcOTHours, parseTimeToMinutes } from '@/components/dailyJobSheet/jobSheetUtils'
 import { todayDubai } from '@/lib/dubaiTime'
 import { expandTeamJob, uniqueTeamRefs } from '@/lib/excelTeams'
 import { normalizeJobAddress, isGenericAddress } from '@/lib/utils'
@@ -17,11 +17,28 @@ export const SAVED_FIELDS = [
   'charges_per_hour', // UX-138: typed by hand
   'row_color', // R-SYNC-11: a colour change alone is a change to save (it showed 'Nothing to save')
 ] as const
+/**
+ * UX-139: Duty Hrs and OT follow the two times. Both times set → worked out; a time removed (`removed`) → both cleared
+ * (a removed time must not leave old duty hours behind); one time typed while the other is still empty → unchanged. OT is then redone for the cleaner's day by recalculateAllRowsOT.
+ */
+export function syncDutyWithTimes<T extends { start_time?: string; end_time?: string; duty_hours?: number; ot_hours?: number }>(row: T, removed = true): T {
+  const has = (t?: string) => !!t && t !== '—' && parseTimeToMinutes(t) !== null
+  if (has(row.start_time) && has(row.end_time)) {
+    return { ...row, duty_hours: Math.round(calcHours(row.start_time!, row.end_time!) * 10) / 10, ot_hours: Math.round(calcOTHours(row.start_time!, row.end_time!) * 10) / 10 }
+  }
+  return removed ? { ...row, duty_hours: 0, ot_hours: 0 } : row
+}
+
 export const NUMERIC_FIELDS = new Set<string>(['duty_hours', 'ot_hours', 'charges', 'received', 'charges_per_hour'])
 export const fieldValue = (row: DailyJob, k: (typeof SAVED_FIELDS)[number]) =>
   NUMERIC_FIELDS.has(k) ? cleanNum(row[k]) : String(row[k] ?? '').trim()
-/** True when the two rows hold the same saved values */
-export const sameJobRow = (a: DailyJob, b: DailyJob) => SAVED_FIELDS.every(k => fieldValue(a, k) === fieldValue(b, k))
+/**
+ * True when the two rows hold the same saved values.
+ * R-SYNC-16: OT is not compared — it is always worked out (DEC-015) and changes on its own when another of the
+ * cleaner's shifts changes, which made untouched rows count as "unsaved" and "changed on another screen".
+ */
+const COMPARED_FIELDS = SAVED_FIELDS.filter(k => k !== 'ot_hours')
+export const sameJobRow = (a: DailyJob, b: DailyJob) => COMPARED_FIELDS.every(k => fieldValue(a, k) === fieldValue(b, k))
 /** A new grid row the user never filled in — not worth saving */
 export const isBlankNewRow = (r: DailyJob) =>
   !String(r.address || '').trim() && !String(r.area || '').trim() && cleanNum(r.charges) === 0 &&

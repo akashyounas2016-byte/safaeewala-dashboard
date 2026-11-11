@@ -4,6 +4,7 @@ import { useJobCheckins } from '@/lib/jobCheckins'
 import { findStaffClash, clashMessage } from '@/lib/shiftClash'
 import { Modal } from '@/components/ui/Modal'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
+import { isAssignable } from '@/lib/staffRoles'
 import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
 import { Time12hPicker, parseTimeToMinutes } from '@/components/common/Time12hPicker'
 import { useData } from '@/store/DataContext'
@@ -534,7 +535,7 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
       >
         {open && (
           <AddJobForm
-            employees={employees.filter(e => e.status !== 'inactive')}
+            employees={employees.filter(isAssignable)} // R-EMP-12
             clients={clients}
             onClose={onClose}
             initial={prefillJob(prefill, clients)}
@@ -604,7 +605,7 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
                 <CleanerMultiSelect
                   label="Staff Name"
                   name="staff_name"
-                  cleaners={employees}
+                  cleaners={employees.filter(isAssignable)}
                   selected={selectedStaff}
                   onChange={setSelectedStaff}
                   placeholder="Select cleaner(s)…"

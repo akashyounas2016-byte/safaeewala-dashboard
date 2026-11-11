@@ -58,7 +58,8 @@ export const busyLabel = (b?: { until?: string } | null) => (b?.until ? `Busy ti
  *  - today: only jobs not finished yet (end time later than now, Dubai);
  *  - a future date: every job that day;
  *  - with the form's own time (`window`): only jobs overlapping it;
- *  - never a job that is completed / cancelled, or that this cleaner has ended (`isDone`).
+ *  - never a job that is completed / cancelled, or that this cleaner has ended (`isDone`);
+ *  - never a row without a known time (UX-140).
  * `ignoreIds`: the job being edited.
  */
 export function busyCleaners(jobs: Pick<DailyJob, 'id' | 'date' | 'staff_name' | 'start_time' | 'end_time' | 'address'>[], date: string,
@@ -83,6 +84,9 @@ export function busyCleaners(jobs: Pick<DailyJob, 'id' | 'date' | 'staff_name' |
       const hours = Number((j as { duty_hours?: number }).duty_hours) || 0
       if (a !== null && hours > 0) { endMin = a + Math.round(hours * 60); s = [a, endMin] }
     }
+    // UX-140: a row with no time (an empty cleaner row on the Excel sheet, a job not timed yet) makes nobody busy —
+    // the tag always says until when ("Busy till 9:00 PM"), never a bare "Busy"
+    if (endMin === null || !s) continue
     if (date === today && s && s[1] <= now) continue // finished already — duty hours over
     if (win && s && !(s[0] < win[1] && win[0] < s[1])) continue // does not touch the chosen time
     const until = endMin !== null ? clock(endMin) : ''

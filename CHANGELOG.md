@@ -6,6 +6,12 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(sync): no false "Not saved — N row(s) changed on another screen" / extra unsaved rows — OT is not compared, conflicts compare the job as loaded, team jobs and empty cleaner rows survive live updates (R-SYNC-16)
+- fix(staff): Inactive employees (and CSR) are not offered in Add Job, Booking, the Excel editor or the client cleaner pickers (R-EMP-12)
+- fix(excel-sheet): removing a start or end time clears Duty Hrs and OT (typed, picked or Delete) (UX-139)
+- fix(staff): no bare "Busy" tag — an empty cleaner row or a job without a time makes nobody busy; every tag says until when (UX-140)
+- fix(excel-sheet): the monthly replacement banner shows only for real monthly-contract clients, not for a row whose Mode is "Monthly" (UX-141)
+- feat(excel-sheet): in an open cell dropdown, Up / Down walk the list and Enter picks; past the end they move to the next row; Alt + Down opens the dropdown of the selected cell (UX-142)
 - feat(excel-sheet): cleaners only — no CSR / driver / technical rows or suggestions; Staff column shows the Short Name (R-SHEET-02)
 - feat(employees): CSR role (employee record only — never on the job sheet, Add Job or My Duties) (R-SHEET-02)
 - change(excel-sheet): Charges (hrs) is typed by hand and saved on the job, no longer Charges ÷ Duty Hrs — run `2026-11-11_daily_jobs_charges_per_hour.sql` (UX-138)

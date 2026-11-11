@@ -14,6 +14,35 @@ import { Check, Search } from 'lucide-react'
  * hidden marker: a ref on the parent is not attached yet when this component's layout effect runs, which
  * left the dropdown invisible on first open.
  */
+/**
+ * UX-142: keyboard inside the open dropdown. The cell's input keeps the focus; the sheet calls these on
+ * Arrow Up / Down / Enter. Down past the last item (or Up above the first) returns false, so the sheet
+ * moves to the next row instead — the cursor is never stuck (UX-132).
+ */
+let activeList: HTMLElement | null = null
+const pickers = new WeakMap<HTMLElement, () => void>()
+export function popoverMove(delta: 1 | -1): boolean {
+  const list = activeList
+  if (!list || !list.isConnected) return false
+  const items = Array.from(list.querySelectorAll<HTMLElement>('[data-xl-item]'))
+  if (!items.length) return false
+  let i = items.findIndex(el => el.classList.contains('xl-hl'))
+  if (i < 0) i = items.findIndex(el => el.dataset.selected === '1')
+  const next = i < 0 ? (delta === 1 ? 0 : -1) : i + delta
+  items.forEach(el => el.classList.remove('xl-hl'))
+  if (next < 0 || next >= items.length) return false
+  items[next].classList.add('xl-hl')
+  items[next].scrollIntoView({ block: 'nearest' })
+  return true
+}
+export function popoverPick(): boolean {
+  const el = activeList?.querySelector<HTMLElement>('.xl-hl')
+  const pick = el ? pickers.get(el) : undefined
+  if (!pick) return false
+  pick()
+  return true
+}
+
 export function ExcelCellPopover({ width = 400, title, icon: Icon, search, banner, children, footer, listMaxHeight = 260 }: {
   width?: number
   title: string
@@ -26,6 +55,12 @@ export function ExcelCellPopover({ width = 400, title, icon: Icon, search, banne
 }) {
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null)
   const markerRef = useRef<HTMLSpanElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = listRef.current
+    activeList = el
+    return () => { if (activeList === el) activeList = null }
+  }, [])
 
   useLayoutEffect(() => {
     let frame = 0
@@ -92,7 +127,8 @@ export function ExcelCellPopover({ width = 400, title, icon: Icon, search, banne
         </div>
       )}
       {banner}
-      <div className="relative overflow-y-auto flex-1 divide-y divide-slate-100 pr-0.5" style={{ maxHeight: listMaxHeight }}>
+      <style>{`.xl-hl{background:#d1fae5 !important;box-shadow:inset 0 0 0 1px #10b981}`}</style>
+      <div ref={listRef} className="relative overflow-y-auto flex-1 divide-y divide-slate-100 pr-0.5" style={{ maxHeight: listMaxHeight }}>
         {children}
       </div>
       {footer}
@@ -118,9 +154,12 @@ export function ExcelPopoverItem({ selected, onPick, icon: Icon, label, sub, mon
     const el = ref.current, list = el?.parentElement
     if (selected && el && list) list.scrollTop = Math.max(0, el.offsetTop - list.clientHeight / 2 + el.offsetHeight / 2)
   }, [selected])
+  useEffect(() => { if (ref.current) pickers.set(ref.current, onPick) }) // UX-142: Enter picks the highlighted item
   return (
     <div
       ref={ref}
+      data-xl-item=""
+      data-selected={selected ? '1' : '0'}
       onMouseDown={e => { e.preventDefault(); onPick() }}
       className={`px-3 py-2 rounded-lg cursor-pointer text-left flex items-center justify-between group/popitem ${
         selected ? 'bg-emerald-50/80 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
