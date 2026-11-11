@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(monthly-clients): a monthly client's visits are added only from its contract start date (or the day it was added) — opening an older date no longer puts a new client on past days (R-SCHED-11)
+- fix(clients): deleting a monthly / Bi-Weekly client also removes its unpaid visits from today on and its contract (restore point kept); a deleted client is not brought back from old visits (R-SCHED-12)
 - feat(clients): Contract card on the Monthly / Bi-Weekly client popup (service, amount, billing, start, notes, renewal) — saved as the client's contract in Monthly Clients → Contracts; Contract Status On / Off = active / paused (R-CLI-05)
 - fix(ui): date boxes take a 4-digit year only (no "123123" / "275760") on every screen; Add Employee stops a wrong year or a future Date of Birth before saving (UX-143)
 - fix(sync): a row removed on the Excel sheet (Delete Row, Clear Row Contents, every cell cleared) deletes the job from the Daily Job Sheet instead of saving an empty job; a deletion is never a "Not saved — changed on another screen" conflict and is not undone by a live update; a deleted monthly / Bi-Weekly visit is no longer added back by the monthly sync on any device (R-SYNC-17)

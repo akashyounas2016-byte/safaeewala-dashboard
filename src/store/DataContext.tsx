@@ -17,6 +17,7 @@ import { subscribeTables, applyRowChange } from '@/lib/realtime'
 import { uploadInlineDocs, isInlineDoc, withoutInlineDocs } from '@/lib/docStorage'
 import { useAuth } from '@/store/UserContext'
 import { saveDeletionSnapshot } from '@/lib/snapshots'
+import { removeClientContracts } from '@/lib/clientContracts'
 import { staffToRegister } from '@/lib/staffRegistry'
 import { useAttendanceMarks, type AttendanceMarks, type AttendanceMarkChange } from '@/store/useAttendanceMarks'
 export { defaultAgencies }
@@ -737,6 +738,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     },
     deleteClient: (id) => {
       const c = allClients.find(c => c.id === id)
+      // R-SCHED-12: a deleted monthly / Bi-Weekly client leaves nothing behind — its scheduled visits from
+      // today on (not paid) and its contract go too; past visits stay as work history. Restorable.
+      if (c) {
+        const visits = contractOffJobs(c, dailyJobs, todayDubai())
+        saveDeletionSnapshot(`Client ${c.full_name}`, { dailyJobs: visits })
+        visits.forEach(j => removeJobRow(j.id))
+        removeClientContracts(c.full_name)
+      }
       setClients(p => p.filter(c => c.id !== id))
       if (!id.startsWith('dj-')) dbDelete('clients', id)
       // Keep a deleted client from re-appearing from job-sheet addresses (AUD-17)

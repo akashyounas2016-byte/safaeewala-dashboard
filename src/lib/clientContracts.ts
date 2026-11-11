@@ -53,6 +53,18 @@ export function detailsOfContract(c: RecurringContract | undefined): ContractDet
 
 export const hasContractDetails = (d: ContractDetails) => Boolean(d.serviceType.trim()) || d.amount > 0
 
+/** R-SCHED-12: a deleted client's contracts go with it (they would keep the client in Contracts) */
+export function removeClientContracts(clientName: string): number {
+  const key = normalizeKey(clientName || '')
+  if (!key) return 0
+  const list = readContracts()
+  const kept = list.filter(c => normalizeKey(c.clientName || '') !== key)
+  if (kept.length === list.length) return 0
+  safeLocalStorageSet(CONTRACTS_KEY, kept)
+  try { window.dispatchEvent(new CustomEvent(REMOTE_CHANGE_EVENT, { detail: { key: CONTRACTS_KEY } })) } catch { /* no window */ }
+  return list.length - kept.length
+}
+
 /**
  * Creates or updates the client's contract. Nothing is created while the card is empty; an existing
  * contract is never deleted from here (the Contracts tab does that). `previousName` keeps the link when

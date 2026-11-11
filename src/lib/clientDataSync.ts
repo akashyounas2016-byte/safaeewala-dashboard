@@ -1,7 +1,7 @@
 import type { Booking, DailyJob, Client, Employee, DailyPendingReceivedItem, RecurringContract } from '@/types'
 import { cleanNum, calcHours, calcOTHours, calcDailyCleanerShiftsOT } from '@/components/dailyJobSheet/jobSheetUtils'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
-import { todayDubai } from '@/lib/dubaiTime'
+import { todayDubai, toDubaiDate } from '@/lib/dubaiTime'
 import { biweeklyVisitOn } from '@/lib/biweekly'
 
 /** Ids of the old demo clients (seed data, removed 2026-10-27) — may still exist in old stored data */
@@ -1249,6 +1249,23 @@ export function contractOffJobs(client: Client, dailyJobs: DailyJob[], today: st
     jobMatchesClient(j, client))
 }
 
+/**
+ * R-SCHED-11: the first date a monthly client's visits are added on: the contract's start date
+ * (Monthly Clients → Contracts / the Contract card), else the day the client was added. Old dates opened
+ * on the Daily Job Sheet or the Excel sheet never get a visit of a client who had not started yet.
+ * Clients known only from old job rows (`useCreatedDate` false) have no added-on date.
+ */
+export function monthlyStartDateOf(client: Client, contracts: RecurringContract[], useCreatedDate = true): string {
+  const key = normalizeKey(client.full_name || '')
+  const own = key ? contracts.filter(c => normalizeKey(c.clientName || '') === key) : []
+  const contract = own.find(c => c.status === 'active') || own[0]
+  const start = (contract?.startDate || '').slice(0, 10)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(start)) return start
+  if (!useCreatedDate || !client.created_at) return ''
+  const added = new Date(client.created_at)
+  return Number.isNaN(added.getTime()) ? '' : toDubaiDate(added)
+}
+
 /** Address of a scheduled visit: "<building> Apt <n> - <client name>", never with "(Monthly)" */
 export function scheduledAddressOf(client: Client): string {
   const bldg = (client.building_name || '').trim()
@@ -1297,13 +1314,18 @@ export function getScheduledMonthlyShiftsForDate(
   })
 
   // 2. Add monthly summaries that might not have a formal client ID yet
+  // R-SCHED-12: a deleted client is not brought back from its old visits (AUD-17)
+  const deletedKeys = new Set(safeLocalStorageGet<string[]>('safaeewala_deleted_clients', []))
+  const fromHistory = new Set<string>()
   allMonthlySummaries.forEach(s => {
+    if (deletedKeys.has(normalizeKey(s.name))) return
     const existing = Array.from(clientMap.values()).find(c => 
       c.id === s.id || 
       c.id === s.matchedClientId || 
       normalizeKey(c.full_name) === normalizeKey(s.name)
     )
     if (!existing) {
+      fromHistory.add(s.id)
       clientMap.set(s.id, {
         id: s.id,
         full_name: s.name,
@@ -1365,6 +1387,9 @@ export function getScheduledMonthlyShiftsForDate(
       return containsWords(cleanAddr, client.full_name) ||
         Boolean(client.building_name && containsWords(cleanAddr, client.building_name))
     })
+    // R-SCHED-11: no visit is added before the client's contract starts (a past date opened on the sheet)
+    const startDate = monthlyStartDateOf(client, contracts, !fromHistory.has(client.id))
+    if (!matchedJob && startDate && dateStr < startDate) return
 
     shifts.push({
       client,

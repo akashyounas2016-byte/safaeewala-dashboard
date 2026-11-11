@@ -105,6 +105,22 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientDataSync.ts → realCleanerName, getClientShiftDetailsForDay`; `AddMonthlyClientModalForm.tsx → handleSubmit`; `src/lib/alerts.ts → scheduleCleanerAlerts`. Test: `tests/unit/delete-sync-unassigned-1111c.test.ts`.
 - **Status:** Active · Since: 2026-11-11
 
+### R-SCHED-11 — Monthly visits start on the contract start date
+- **Rule:** *"Naye client ka contract jis date say shuru hua hai, record sirf ussi date say aagay show hona chahiye. Past ya previous dates mein is client ka naam ya entries display hona aik bug hai."* (2026-11-11)
+  - Opening an older date on the Daily Job Sheet or the Excel sheet ran the monthly sync for that date, so a client added today got visits on past dates (e.g. a client added on 11 Nov showed on 28 Oct and 4 Nov).
+  - Start date = the contract's start date (Contract card / Monthly Clients → Contracts, R-CLI-05); without a contract, the day the client was added (Dubai date). No visit is added for a date before it — on app start, the Daily Job Sheet, the Excel sheet or the Sync button.
+  - To show earlier visits, set an earlier Contract Start. A row already on an earlier date is never hidden or deleted by this rule.
+- **Code:** `src/lib/clientDataSync.ts → monthlyStartDateOf, getScheduledMonthlyShiftsForDate`. Test: `tests/unit/contract-start-delete-1111e.test.ts`.
+- **Status:** Active · Since: 2026-11-11
+
+### R-SCHED-12 — Deleting a monthly client leaves nothing behind
+- **Rule:** *"Testing client add karkay delete karnay par yeh ensure kiya jaye kay record mukammal tor par remove ho raha hai aur Supabase database kay sath fully synchronize ho raha hai, bagair kisi data remnant ya synchronization error kay."* (2026-11-11)
+  - Delete removes the client row from Supabase (through the sync outbox, retried until it succeeds), its scheduled visits from today on that are not paid (same set as Contract Off, R-SCHED-08), and its contract in Monthly Clients → Contracts.
+  - The removed visits are saved as a restore point (Settings → restore). Past visits stay as work history (duty hours, attendance).
+  - The name goes on the deleted-clients list (shared by all devices), so the monthly sync never brings the client back from old visits.
+- **Code:** `src/store/DataContext.tsx → deleteClient`; `src/lib/clientContracts.ts → removeClientContracts`; `src/lib/clientDataSync.ts → getScheduledMonthlyShiftsForDate`. Test: `tests/unit/contract-start-delete-1111e.test.ts`.
+- **Status:** Active · Since: 2026-11-11
+
 ---
 
 ## ATT — Attendance
