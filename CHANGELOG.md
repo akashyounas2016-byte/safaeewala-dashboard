@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(complaints): each complaint keeps a track record (every change, who, when); a cleaner's complaints show on their profile and lower the Health Score by severity — high −15, medium −8, low −3 over 90 days, at most −40 (R-CMP-02, R-EMP-13)
+- feat(settings): Roles & Access in categories with a whole-category switch; Daily Job Sheet options "Excel Job Sheet" and "Import & delete a whole day"; Billing tab removed (R-SEC-09)
+- feat(excel-sheet): Attendance opens a popup with every cleaner and Present / Available / Absent / Leave, plus View details (R-ATT-11)
+- change(excel-sheet): right-click menu tidied — one Delete Block, deletes at the bottom; row height 24 px added, 56 px removed; one tick in the save toast (UX-146, UX-147)
 - feat(settings): Activity Log redesigned — every add / change / delete with person, time, screen and each field before → after; filters, day groups, record links, CSV; client / employee / booking / invoice edits, new jobs, expenses and whole-day deletes now logged; migration `2026-11-12_audit_log_details.sql` (R-OPS-06, UX-145)
 - feat(settings): Data health opens the exact job for unregistered staff and job warnings; app errors carry kind, person, version, connection and unsaved changes, the server logs its own errors, and the list is grouped by cause with the effect on the data (R-OPS-07)
 - feat(settings): Backup tab simplified — one clear "are backups running?" answer, Server / Google Drive / This computer lines, daily automatic copy to a folder on this computer and to the Drive webhook; advanced settings folded (R-OPS-08)

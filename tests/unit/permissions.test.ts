@@ -2,7 +2,7 @@ import { moduleForPath, canAccessModule, normalizeRolePerms, firstAllowedPath, l
 const eq = (a: unknown, b: unknown, m: string) => { if (JSON.stringify(a) !== JSON.stringify(b)) { console.log('FAIL', m, JSON.stringify(a), JSON.stringify(b)); process.exitCode = 1 } else console.log('PASS ', m) }
 eq(moduleForPath('/'), 'Overview', 'root = Overview')
 eq(moduleForPath('/clients/abc'), 'Clients', 'profile route maps to Clients')
-eq(moduleForPath('/daily-job-sheet/spreadsheet'), 'Daily Job Sheet', 'excel maps to DJS')
+eq(moduleForPath('/daily-job-sheet/spreadsheet'), 'Excel Job Sheet', 'excel has its own permission (R-SEC-09, was Daily Job Sheet)')
 eq(moduleForPath('/monthly-invoices'), 'Invoices', 'monthly invoices = Invoices')
 eq(moduleForPath('/unknown'), null, 'unknown route has no module')
 eq(canAccessModule('admin', DEFAULT_ROLE_PERMS, 'Settings'), true, 'admin always')

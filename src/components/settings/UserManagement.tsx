@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { copyText } from '@/lib/clipboard'
-import { Copy, KeyRound, Pencil, Plus, Power, RefreshCw, ShieldCheck, UserPlus } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, CornerDownRight, KeyRound, Pencil, Plus, Power, RefreshCw, ShieldCheck, UserPlus } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { supabase } from '@/lib/supabase'
 import { notify, confirmAsync } from '@/lib/notify'
@@ -8,7 +8,7 @@ import { useData } from '@/store/DataContext'
 import { useAuth, useRolePerms, useSetRolePerms } from '@/store/UserContext'
 import {
   ALL_MODULE_KEYS, ROLE_META, generatePassword, nextLoginId, passwordProblem, passwordStrength,
-  type AppRole, type ModuleKey, type RolePerms, PERM_ROLES,
+  type AppRole, type ModuleKey, type RolePerms, PERM_ROLES, PERMISSION_CATEGORIES,
 } from '@/lib/permissions'
 
 /** A login, as stored in public.profiles */
@@ -341,6 +341,10 @@ export function RolePermissionsPanel() {
 
   const toggle = (role: keyof RolePerms, mod: ModuleKey) =>
     setDraft(d => ({ ...d, [role]: d[role].includes(mod) ? d[role].filter(m => m !== mod) : [...d[role], mod] }))
+  // R-SEC-09: a whole category on / off for one role
+  const toggleCategory = (role: keyof RolePerms, keys: ModuleKey[], on: boolean) =>
+    setDraft(d => ({ ...d, [role]: on ? Array.from(new Set([...d[role], ...keys])) : d[role].filter(m => !keys.includes(m)) }))
+  const [closed, setClosed] = useState<string[]>([])
 
   const save = async () => {
     setSaving(true)
@@ -362,8 +366,8 @@ export function RolePermissionsPanel() {
     <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
       <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h3 className="text-[15px] font-bold text-[#111827]">Roles & screen access</h3>
-          <p className="text-[12px] text-slate-500 mt-0.5">Tick the screens each role may open. Blocked screens disappear from the menu and their links show “No access”.</p>
+          <h3 className="text-[15px] font-bold text-[#111827]">Roles & access</h3>
+          <p className="text-[12px] text-slate-500 mt-0.5">Grouped by area. Tick what each role may use, or switch a whole category with its <b>n/n</b> button. Blocked screens disappear from the menu; blocked options disappear from their screen.</p>
           <p className="text-[11.5px] text-slate-400 mt-0.5">Supervisor, Driver and Cleaner apply to Employee logins linked to a staff record (Settings → Users), by that person's staff role. Employee applies to Employee logins without a staff record.</p>
         </div>
         {isAdmin && (
@@ -373,28 +377,67 @@ export function RolePermissionsPanel() {
           </button>
         )}
       </div>
+      {/* R-SEC-09: permissions in categories; options of a screen are indented under it */}
       <div className="overflow-x-auto">
         <table className="w-full text-[12.5px]">
-          <thead className="bg-[#f8fafc] text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+          <thead className="bg-[#f8fafc] text-[11px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 z-[1]">
             <tr>
-              <th className="text-left px-6 py-2.5">Screen</th>
+              <th className="text-left px-6 py-2.5">Category / permission</th>
               <th className="px-3 py-2.5 text-center">{ROLE_META.admin.label}</th>
               {PERM_ROLES.map(r => <th key={r.key} className="px-3 py-2.5 text-center">{r.label}</th>)}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
-            {ALL_MODULE_KEYS.map(mod => (
-              <tr key={mod}>
-                <td className="px-6 py-2.5 font-semibold text-slate-700">{mod === 'Salary' ? <>Salary <span className="font-normal text-slate-400">— see cleaners' pay (R-SEC-08)</span></> : mod}</td>
-                <td className="px-3 py-2.5 text-center"><input type="checkbox" checked disabled className="w-4 h-4 accent-emerald-600" title="Admin always has every screen" /></td>
-                {PERM_ROLES.map(({ key: role }) => (
-                  <td key={role} className="px-3 py-2.5 text-center">
-                    <input type="checkbox" checked={draft[role].includes(mod)} disabled={!isAdmin} onChange={() => toggle(role, mod)} className="w-4 h-4 accent-emerald-600 cursor-pointer" />
+          {PERMISSION_CATEGORIES.map(cat => {
+            const keys = cat.items.map(i => i.key)
+            const isClosed = closed.includes(cat.title)
+            return (
+              <tbody key={cat.title} className="border-t-4 border-slate-100">
+                <tr className="bg-emerald-50/50">
+                  <td className="px-6 py-2.5">
+                    <button type="button" onClick={() => setClosed(c => (isClosed ? c.filter(t => t !== cat.title) : [...c, cat.title]))} className="flex items-center gap-2 text-left cursor-pointer">
+                      {isClosed ? <ChevronRight size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
+                      <span>
+                        <span className="block text-[13px] font-black text-slate-900">{cat.title}</span>
+                        <span className="block text-[11px] text-slate-500 font-normal">{cat.desc}</span>
+                      </span>
+                    </button>
                   </td>
+                  <td className="px-3 py-2.5 text-center text-[10.5px] font-bold text-emerald-700">All</td>
+                  {PERM_ROLES.map(({ key: role }) => {
+                    const n = keys.filter(k => draft[role].includes(k)).length
+                    return (
+                      <td key={role} className="px-3 py-2.5 text-center">
+                        <button type="button" disabled={!isAdmin} onClick={() => toggleCategory(role, keys, n < keys.length)}
+                          title={n < keys.length ? `Give ${cat.title} to this role` : `Take ${cat.title} away from this role`}
+                          className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full border cursor-pointer disabled:cursor-default ${n === keys.length ? 'bg-emerald-600 text-white border-emerald-600' : n > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-white text-slate-400 border-slate-200'}`}>
+                          {n}/{keys.length}
+                        </button>
+                      </td>
+                    )
+                  })}
+                </tr>
+                {!isClosed && cat.items.map(item => (
+                  <tr key={item.key} className="hover:bg-slate-50/60">
+                    <td className={`py-2 ${item.sub ? 'pl-12' : 'pl-10'} pr-6`}>
+                      <span className="flex items-start gap-1.5">
+                        {item.sub && <CornerDownRight size={12} className="text-slate-300 mt-1 shrink-0" />}
+                        <span>
+                          <span className="block font-semibold text-slate-700">{item.label}</span>
+                          <span className="block text-[11px] text-slate-400">{item.desc}</span>
+                        </span>
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center"><input type="checkbox" checked disabled className="w-4 h-4 accent-emerald-600" title="Admin always has everything" /></td>
+                    {PERM_ROLES.map(({ key: role }) => (
+                      <td key={role} className="px-3 py-2 text-center">
+                        <input type="checkbox" aria-label={`${item.label} for ${role}`} checked={draft[role].includes(item.key)} disabled={!isAdmin} onChange={() => toggle(role, item.key)} className="w-4 h-4 accent-emerald-600 cursor-pointer" />
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </tr>
-            ))}
-          </tbody>
+              </tbody>
+            )
+          })}
         </table>
       </div>
       <p className="px-6 py-3 text-[11.5px] text-slate-400 border-t border-slate-100">Deleting records is allowed for Admin and Manager only (enforced by the database). Users & roles are always admin-only.</p>

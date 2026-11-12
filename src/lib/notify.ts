@@ -5,7 +5,8 @@ import { toast } from 'sonner'
  * which block the page and don't match the design.
  */
 export const notify = {
-  success: (message: string) => toast.success(message),
+  // UX-147: the toast has its own tick — a "✓" at the start of the message would show two
+  success: (message: string) => toast.success(message.replace(/^\s*[✓✔✅]️?\s*/u, '')),
   error: (message: string) => toast.error(message),
   info: (message: string) => toast(message),
   warning: (message: string) => toast.warning(message),

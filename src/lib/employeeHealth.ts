@@ -5,16 +5,25 @@ import type { AttendanceOverride } from '@/lib/attendance'
 
 export interface HealthComponent {
   label: string
-  score: number   // points earned
+  score: number   // points earned (a deduction is negative, with max 0)
   max: number     // points possible
   detail: string
 }
+
+/** R-EMP-13: a complaint about the cleaner (from Complaints) — its priority is the severity */
+export interface CleanerComplaint { priority: 'low' | 'medium' | 'high'; status: string; job_date?: string | null; created_at: string }
+/** Points taken off the Health Score per complaint in the last 90 days, by severity; at most 40 in all */
+export const COMPLAINT_PENALTY = { high: 15, medium: 8, low: 3 } as const
+export const COMPLAINT_PENALTY_CAP = 40
+const complaintDate = (c: CleanerComplaint) => (c.job_date || c.created_at || '').slice(0, 10)
 
 export interface EmployeeHealth {
   score: number   // 0–100
   grade: 'Excellent' | 'Good' | 'Needs Attention' | 'At Risk'
   components: HealthComponent[]
   absences: { date: string; reason: string }[]
+  /** R-EMP-13: complaints of the last 90 days that lowered the score */
+  complaints: { count: number; deduction: number; open: number }
 }
 
 const WINDOW_DAYS = 90          // attendance look-back
@@ -35,7 +44,7 @@ const isWorkedShift = (j: DailyJob) => (Number(j.duty_hours) || 0) > 0 || (Numbe
  *  - Activity (30): distinct days worked in the last 30 days vs. 22 expected working days.
  *  - Compliance (20): Visa, Passport, Work Permit and Emirates ID not expired.
  */
-export function calcEmployeeHealth(emp: Employee, empJobs: DailyJob[], overrides: Record<string, AttendanceOverride> = {}): EmployeeHealth {
+export function calcEmployeeHealth(emp: Employee, empJobs: DailyJob[], overrides: Record<string, AttendanceOverride> = {}, complaints: CleanerComplaint[] = []): EmployeeHealth {
   const windowStart = isoDaysAgo(WINDOW_DAYS)
   const activityStart = isoDaysAgo(ACTIVITY_DAYS)
   const today = isoDaysAgo(0)
@@ -115,10 +124,25 @@ export function calcEmployeeHealth(emp: Employee, empJobs: DailyJob[], overrides
       : 'No document expiry dates recorded',
   }
 
-  const components = [attendance, activity, compliance]
-  const score = components.reduce((s, c) => s + c.score, 0)
+  // R-EMP-13: complaints about this cleaner (last 90 days) lower the score by their severity — resolved
+  // ones count too (the complaint happened); the cleaner's record shows each one with its status
+  const recentComplaints = complaints.filter(c => { const d = complaintDate(c); return d >= windowStart && d <= today })
+  const deduction = Math.min(COMPLAINT_PENALTY_CAP, recentComplaints.reduce((s, c) => s + (COMPLAINT_PENALTY[c.priority] ?? COMPLAINT_PENALTY.medium), 0))
+  const openComplaints = recentComplaints.filter(c => c.status === 'open' || c.status === 'in_progress').length
+  const by = (p: CleanerComplaint['priority']) => recentComplaints.filter(c => c.priority === p).length
+  const complaintPart: HealthComponent = {
+    label: 'Complaints',
+    max: 0,
+    score: -deduction,
+    detail: recentComplaints.length
+      ? `${recentComplaints.length} in 90 days (${[by('high') && `${by('high')} high`, by('medium') && `${by('medium')} medium`, by('low') && `${by('low')} low`].filter(Boolean).join(', ')})${openComplaints ? ` · ${openComplaints} still open` : ''}`
+      : 'No complaints in the last 90 days',
+  }
+
+  const components = [attendance, activity, compliance, complaintPart]
+  const score = Math.max(0, components.reduce((s, c) => s + c.score, 0))
   const grade: EmployeeHealth['grade'] =
     score >= 85 ? 'Excellent' : score >= 70 ? 'Good' : score >= 50 ? 'Needs Attention' : 'At Risk'
 
-  return { score, grade, components, absences }
+  return { score, grade, components, absences, complaints: { count: recentComplaints.length, deduction, open: openComplaints } }
 }

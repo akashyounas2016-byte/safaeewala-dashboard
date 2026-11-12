@@ -109,6 +109,7 @@ import { buildCleanerRoster, findMark, type AttendanceOverride } from '@/lib/att
 import { buildRowChecks } from '@/lib/jobChecks'
 import { parseJobSheetWorkbook } from '@/lib/jobSheetImport'
 import { CLOSED_DAYS_KEY, type ClosedDay } from '@/lib/closedDays'
+import { useModuleAccess } from '@/store/useModuleAccess'
 
 /* ─── Main Page ─── */
 export function DailyJobSheet() {
@@ -117,6 +118,9 @@ export function DailyJobSheet() {
   const { dailyJobs, dailyExpenses, employees, clients, invoices, loading, addDailyJob, updateDailyJob, deleteDailyJob, addDailyExpense, updateDailyExpense, deleteDailyExpense, clearDailyData, clearAllDailyData, attendanceMarks } = useData()
 
   const [searchParams, setSearchParams] = useSearchParams()
+  // R-SEC-09: options of Settings → Roles & Access → Daily Job Sheet
+  const canExcel = useModuleAccess('Excel Job Sheet')
+  const canBulk = useModuleAccess('Job Sheet Import & Delete')
   const qDate = searchParams.get('date')
   const initialDate = qDate && /^\d{4}-\d{2}-\d{2}$/.test(qDate)
     ? qDate
@@ -2951,8 +2955,8 @@ export function DailyJobSheet() {
               }}
             />
 
-            {/* Import Button */}
-            <button
+            {/* Import Button — R-SEC-09: only with "Import & delete a whole day" */}
+            {canBulk && <button
               type="button"
               onClick={() => importRef.current?.click()}
               disabled={importing}
@@ -2961,7 +2965,7 @@ export function DailyJobSheet() {
             >
               <Upload size={15} className="text-emerald-300" />
               <span>{importing ? 'Importing…' : 'Import'}</span>
-            </button>
+            </button>}
 
             {/* Primary Action: Add Job Button (Solid White with Green text, matching Clients/Fluent Forms) */}
             <button
@@ -3096,6 +3100,7 @@ export function DailyJobSheet() {
                       <Settings size={13} className="text-slate-400" />
                       <span>Drive & n8n Settings</span>
                     </button>
+                    {canBulk && <>{/* R-SEC-09 */}
                     <div className="my-1 border-t border-slate-100" />
                     <button
                       type="button"
@@ -3115,6 +3120,7 @@ export function DailyJobSheet() {
                       <AlertTriangle size={15} className="text-red-600" />
                       <span>Delete All Data</span>
                     </button>
+                    </>}
                   </div>
                 </>
               )}
@@ -3644,8 +3650,8 @@ export function DailyJobSheet() {
               )}
             </div>
 
-            {/* Excel Sheet Button */}
-            <button
+            {/* Excel Sheet Button — R-SEC-09: only with the Excel Job Sheet permission */}
+            {canExcel && <button
               type="button"
               onClick={() => window.open(`/daily-job-sheet/spreadsheet?date=${selectedDate}`, '_blank', 'noopener,noreferrer')}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white text-slate-900 hover:bg-slate-100 font-black text-[12px] shadow-sm hover:shadow transition-all cursor-pointer group shrink-0 border border-slate-200 active:scale-95"
@@ -3654,7 +3660,7 @@ export function DailyJobSheet() {
               <FileSpreadsheet size={14} className="text-emerald-700 group-hover:scale-110 transition-transform" />
               <span className="hidden sm:inline">Excel Sheet</span>
               <ExternalLink size={12} className="text-slate-400 group-hover:text-slate-600 transition-colors" />
-            </button>
+            </button>}
 
             {/* View All / Page size selector */}
             <div className={`flex items-center ${jobsCollapsed ? 'hidden' : ''}`}>

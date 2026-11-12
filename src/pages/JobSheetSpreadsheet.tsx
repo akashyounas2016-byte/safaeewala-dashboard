@@ -30,6 +30,7 @@ import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, padCleanerBlocks,
 import { splitTotals, isSplitJob } from '@/lib/chargeSplit'
 import { type ColumnDef, DEFAULT_COLUMN_DEFS, mergeNewColumns, buildColumnsWithLetters, COLUMNS, type ExcelDatePresetKey, EXCEL_DATE_PRESETS, chargesPerHour } from '@/lib/excelSheet/columns'
 import { type BlockPalette, BLOCK_PALETTES, SOLID_PALETTE_KEYS, LIGHT_PALETTE_KEYS, PALETTE_KEYS, hslToHex, makeHexPalette } from '@/lib/excelSheet/palettes'
+import { QuickAttendanceModal } from '@/components/dailyJobSheet/QuickAttendanceModal'
 import { newRowId, sameJobRow, isBlankNewRow, isClearedRow, teamJobsDeletedElsewhere, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes } from '@/lib/excelSheet/rows'
 import { DRAFT_PREFIX, COLUMN_PRESETS, READ_ONLY_COLS, DEFAULT_ROW_BG, projectKeyOf, memberChargesLabel, memberReceivedLabel, memberModeLabel, refMoney, DROPDOWN_COLS, TIME_SUGGESTIONS, DUBAI_AREAS, RENDER_PAGE, safeGet, safeSet, rowColorConflict } from '@/lib/excelSheet/sheetConfig'
 import { evaluateFormula } from '@/lib/excelSheet/formula'
@@ -510,18 +511,22 @@ export function JobSheetSpreadsheet() {
 
   // ── Change Log History Modal ──
   const [showChangeLogModal, setShowChangeLogModal] = useState(false)
+  const [showQuickAttendance, setShowQuickAttendance] = useState(false) // R-ATT-11
 
   // ── Row Height Settings (Discrete levels: 2 steps down, default, 2 steps up) ──
-  type RowHeightLevel = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+  // UX-146: 24 px added, 56 px (Tall) removed
+  type RowHeightLevel = 'xxs' | 'xs' | 'sm' | 'md' | 'lg'
+  const ROW_HEIGHT_LEVELS: RowHeightLevel[] = ['xxs', 'xs', 'sm', 'md', 'lg']
   const ROW_HEIGHT_MAP: Record<RowHeightLevel, { label: string; heightClass: string; rowHeightPx: number; pyClass: string }> = {
+    xxs: { label: 'Tight (24px)', heightClass: 'h-[24px]', rowHeightPx: 24, pyClass: 'py-0' },
     xs: { label: 'Extra Compact (26px)', heightClass: 'h-[26px]', rowHeightPx: 26, pyClass: 'py-0.5' },
     sm: { label: 'Compact (32px)', heightClass: 'h-[32px]', rowHeightPx: 32, pyClass: 'py-1' },
     md: { label: 'Default (38px)', heightClass: 'h-[38px]', rowHeightPx: 38, pyClass: 'py-1.5' },
     lg: { label: 'Relaxed (46px)', heightClass: 'h-[46px]', rowHeightPx: 46, pyClass: 'py-2' },
-    xl: { label: 'Tall (56px)', heightClass: 'h-[56px]', rowHeightPx: 56, pyClass: 'py-2.5' },
   }
   const [rowHeightLevel, setRowHeightLevel] = useState<RowHeightLevel>(() => {
-    return safeGet('safaeewala_excel_row_height', 'md')
+    const saved = safeGet<string>('safaeewala_excel_row_height', 'md')
+    return saved === 'xl' ? 'lg' : (ROW_HEIGHT_LEVELS as string[]).includes(saved) ? saved as RowHeightLevel : 'md' // the old 56 px → 46 px
   })
   const handleSetRowHeight = (lvl: RowHeightLevel) => {
     setRowHeightLevel(lvl)
@@ -3127,8 +3132,9 @@ export function JobSheetSpreadsheet() {
       {/* ── Toast Notification ── */}
       {toastMessage && (
         <div className="fixed top-16 right-8 z-[120] bg-emerald-900 text-white px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 border border-emerald-500 animate-in fade-in slide-in-from-top-3">
-          <Check size={16} className="text-emerald-300" />
-          <span className="text-[13px] font-bold">{toastMessage}</span>
+          <Check size={16} className="text-emerald-300 shrink-0" />
+          {/* UX-147: one tick only — the icon; a "✓" at the start of the message is dropped */}
+          <span className="text-[13px] font-bold">{toastMessage.replace(/^\s*[✓✔✅]\uFE0F?\s*/u, '')}</span>
         </div>
       )}
 
@@ -3293,16 +3299,13 @@ export function JobSheetSpreadsheet() {
           {/* ── Attendance Navigation Button ── */}
           <button
             type="button"
-            onClick={async (e) => {
-              if (hasUnsavedChanges) { try { await handleSaveAll('auto') } catch { /* auto draft */ } }
-              if (e.ctrlKey || e.metaKey) {
-                window.open(`/attendance?date=${selectedDate}`, '_blank')
-              } else {
-                navigate(`/attendance?date=${selectedDate}`)
-              }
+            onClick={(e) => {
+              // R-ATT-11: a popup on this screen; Ctrl+Click still opens the full Attendance sheet in a new tab
+              if (e.ctrlKey || e.metaKey) { window.open(`/attendance?date=${effectiveTargetDate}`, '_blank'); return }
+              setShowQuickAttendance(true)
             }}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-black text-[12px] border border-white/30 shadow-xs transition-all cursor-pointer active:scale-95"
-            title="Access Attendance system (Ctrl+Click to open in new tab)"
+            title="Mark attendance of every cleaner here (Ctrl+Click: full Attendance sheet in a new tab)"
           >
             <UserCheck size={14} className="stroke-[2.5]" />
             <span>Attendance</span>
@@ -4673,7 +4676,7 @@ export function JobSheetSpreadsheet() {
                   </div>
                 )}
 
-                {/* Row-Level Actions (Duplicate / Delete Block / Clear) */}
+                {/* UX-146: row actions in order — Copy, Paste, Duplicate, Clear; the deletes are together at the bottom */}
                 <div className="py-0.5">
                   <button
                     type="button"
@@ -4704,17 +4707,6 @@ export function JobSheetSpreadsheet() {
                     <span>Duplicate Row #{contextMenu.rowIdx + 1}</span>
                   </button>
 
-                  {/* Delete Block (Directly below Duplicate button per instruction) */}
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteStaffBlock(contextMenu.job)}
-                    className="w-full px-3.5 py-1.5 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2.5 font-semibold transition-colors cursor-pointer"
-                    title={`Delete entire staff block for ${contextMenu.job.staff_name || 'this cleaner'}`}
-                  >
-                    <Trash2 size={14} className="text-rose-600 shrink-0" />
-                    <span>Delete Block ({contextMenu.job.staff_name || 'Staff Block'})</span>
-                  </button>
-
                   <button
                     type="button"
                     onClick={() => handleClearRow(contextMenu.rowIdx)}
@@ -4735,7 +4727,7 @@ export function JobSheetSpreadsheet() {
                     <span className="text-[10px] text-slate-400 font-semibold">{ROW_HEIGHT_MAP[rowHeightLevel]?.label}</span>
                   </div>
                   <div className="grid grid-cols-5 gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
-                    {(['xs', 'sm', 'md', 'lg', 'xl'] as const).map(lvl => {
+                    {ROW_HEIGHT_LEVELS.map(lvl => {
                       const isCur = rowHeightLevel === lvl
                       const meta = ROW_HEIGHT_MAP[lvl]
                       return (
@@ -4751,8 +4743,8 @@ export function JobSheetSpreadsheet() {
                           }`}
                           title={meta.label}
                         >
-                          <span className="text-[11px] leading-none font-bold uppercase">{lvl}</span>
-                          <span className="text-[8.5px] opacity-80 mt-0.5">{meta.rowHeightPx}px</span>
+                          <span className="text-[11px] leading-none font-bold">{meta.rowHeightPx}</span>
+                          <span className="text-[8.5px] opacity-80 mt-0.5">px</span>
                         </button>
                       )
                     })}
@@ -5291,30 +5283,27 @@ export function JobSheetSpreadsheet() {
                   </button>
                 </div>
 
-                {/* Delete Block (Only under Staff) & Delete Row */}
+                {/* UX-146: delete — the row first, then the whole cleaner block (one Delete Block only) */}
                 <div className="py-0.5 border-t border-slate-100">
-                  {isStaffSection && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteStaffBlock(contextMenu.job)}
-                      className="w-full px-3.5 py-2 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2.5 font-bold transition-colors cursor-pointer"
-                      title={`Delete entire staff block for ${contextMenu.job.staff_name || 'this cleaner'}`}
-                    >
-                      <Trash2 size={14} className="text-rose-600 shrink-0" />
-                      <span>Delete Block ({contextMenu.job.staff_name || 'Staff Block'})</span>
-                    </button>
-                  )}
-
                   <button
                     type="button"
                     onClick={() => {
                       handleDeleteRow(contextMenu.rowIdx)
                       setContextMenu(null)
                     }}
-                    className="w-full px-3.5 py-1.5 text-left hover:bg-slate-100 text-slate-600 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
+                    className="w-full px-3.5 py-1.5 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2.5 font-medium transition-colors cursor-pointer"
                   >
-                    <Trash2 size={14} className="text-slate-400 shrink-0" />
+                    <Trash2 size={14} className="text-rose-500 shrink-0" />
                     <span>Delete Row #{contextMenu.rowIdx + 1}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteStaffBlock(contextMenu.job)}
+                    className="w-full px-3.5 py-1.5 text-left hover:bg-rose-50 text-rose-700 flex items-center gap-2.5 font-bold transition-colors cursor-pointer"
+                    title={`Delete entire staff block for ${contextMenu.job.staff_name || 'this cleaner'}`}
+                  >
+                    <Trash2 size={14} className="text-rose-600 shrink-0" />
+                    <span>Delete Block ({contextMenu.job.staff_name || 'Staff Block'})</span>
                   </button>
                 </div>
               </>
@@ -5662,6 +5651,20 @@ export function JobSheetSpreadsheet() {
             />
           </div>
         </Modal>
+      )}
+
+      {/* R-ATT-11: quick attendance without leaving the sheet */}
+      {showQuickAttendance && (
+        <QuickAttendanceModal
+          open={showQuickAttendance}
+          onClose={() => setShowQuickAttendance(false)}
+          date={effectiveTargetDate}
+          onViewDetails={async () => {
+            if (hasUnsavedChanges) { try { await handleSaveAll('auto') } catch { /* kept as a draft */ } }
+            setShowQuickAttendance(false)
+            navigate(`/attendance?date=${effectiveTargetDate}`)
+          }}
+        />
       )}
 
       {/* ── Change Log History Audit Modal ── */}

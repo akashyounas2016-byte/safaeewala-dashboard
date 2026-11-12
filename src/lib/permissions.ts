@@ -19,6 +19,8 @@ export const APP_MODULES = [
   { key: 'Alerts',          paths: ['/alerts'] }, // R-ALERT-01
   { key: 'Bookings',        paths: ['/bookings'] },
   { key: 'Daily Job Sheet', paths: ['/daily-job-sheet'] },
+  { key: 'Excel Job Sheet', paths: ['/daily-job-sheet/spreadsheet'] }, // R-SEC-09: its own permission (longest path wins)
+  { key: 'Job Sheet Import & Delete', paths: [] }, // R-SEC-09: Import, Delete Day's Data, Delete All Data
   { key: 'Fluent Forms',    paths: ['/fluent-forms', '/feedback'] },
   { key: 'Marketing',       paths: ['/marketing'] }, // R-MKT-01: own screen (was under Fluent Forms)
   { key: 'Complaints',      paths: ['/complaints'] }, // R-CMP-01
@@ -69,6 +71,58 @@ export const DEFAULT_ROLE_PERMS: RolePerms = {
   cleaner:    ['My Duties'],
 }
 
+/**
+ * R-SEC-09: Settings → Roles & Access in categories. Every permission is in exactly one category; options
+ * inside a screen (Excel Job Sheet, Import & Delete, Salary) sit under that screen's category.
+ */
+export interface PermItem { key: ModuleKey; label: string; desc: string; sub?: boolean }
+export const PERMISSION_CATEGORIES: { title: string; desc: string; items: PermItem[] }[] = [
+  { title: 'Overview & Alerts', desc: 'Dashboard, alerts and the AI assistant', items: [
+    { key: 'Overview', label: 'Overview', desc: 'Dashboard home' },
+    { key: 'Alerts', label: 'Alerts', desc: 'Notifications and AI findings' },
+    { key: 'AI Bot', label: 'AI Bot', desc: 'Ask questions about the data' },
+  ] },
+  { title: 'Daily Job Sheet', desc: 'Jobs of the day, the Excel sheet and field duties', items: [
+    { key: 'Daily Job Sheet', label: 'Daily Job Sheet', desc: 'See, add and edit jobs and expenses' },
+    { key: 'Excel Job Sheet', label: 'Excel Job Sheet', desc: 'Open the full-screen Excel sheet', sub: true },
+    { key: 'Job Sheet Import & Delete', label: 'Import & delete a whole day', desc: "Import Excel, Delete Day's Data, Delete All Data", sub: true },
+    { key: 'My Duties', label: 'My Duties', desc: "A cleaner's own jobs, Start / End" },
+    { key: 'Drivers', label: 'Drivers', desc: 'Pick-up and drop routes' },
+  ] },
+  { title: 'Bookings & Clients', desc: 'Bookings, clients, contracts and complaints', items: [
+    { key: 'Bookings', label: 'Bookings', desc: 'Create and manage bookings' },
+    { key: 'Clients', label: 'Clients', desc: 'Client list and profiles' },
+    { key: 'Monthly Clients', label: 'Monthly Clients', desc: 'Schedules and contracts' },
+    { key: 'Complaints', label: 'Complaints', desc: 'Complaints and their resolution' },
+  ] },
+  { title: 'Leads & Messages', desc: 'Website leads, marketing and chats', items: [
+    { key: 'Fluent Forms', label: 'Leads (Fluent Forms)', desc: 'Website forms and feedback' },
+    { key: 'Marketing', label: 'Marketing', desc: 'Campaigns and results' },
+    { key: 'Inbox', label: 'Inbox', desc: 'WhatsApp, Facebook and Instagram in one place' },
+    { key: 'WhatsApp', label: 'WhatsApp CRM', desc: 'WhatsApp conversations and templates' },
+  ] },
+  { title: 'Staff', desc: 'Employees, attendance and agencies', items: [
+    { key: 'Employees', label: 'Employees', desc: 'Staff records and documents' },
+    { key: 'Salary', label: 'See salaries', desc: "Cleaners' pay on Employees and reports", sub: true },
+    { key: 'Attendance', label: 'Attendance', desc: 'Present / absent / leave' },
+    { key: 'Agencies', label: 'Agencies', desc: 'Outsourcing agencies and their staff' },
+  ] },
+  { title: 'Finance', desc: 'Invoices, payments, expenses and stock', items: [
+    { key: 'Invoices', label: 'Invoices', desc: 'Invoices and monthly invoices' },
+    { key: 'Payments', label: 'Payments', desc: 'Payments and pending amounts' },
+    { key: 'Pending', label: 'Pending (old screen)', desc: 'Kept for older settings — opens Payments → Pending', sub: true },
+    { key: 'Expenses', label: 'Expenses', desc: 'Daily and company expenses' },
+    { key: 'Inventory', label: 'Inventory', desc: 'Materials and stock' },
+  ] },
+  { title: 'Reports', desc: 'Reports and analytics', items: [
+    { key: 'Reports', label: 'Reports', desc: 'Business reports' },
+    { key: 'Analytics', label: 'Analytics', desc: 'Charts and trends' },
+  ] },
+  { title: 'Administration', desc: 'Company settings (users and roles stay Admin-only)', items: [
+    { key: 'Settings', label: 'Settings', desc: 'Company profile, backup, logs' },
+  ] },
+]
+
 /** Which column applies to a login (null for admin = everything) */
 export function permRoleOf(role: AppRole | undefined, staffRole?: string | null): PermRole | null {
   if (role === 'admin' || !role) return null
@@ -94,7 +148,9 @@ export function moduleForPath(pathname: string): ModuleKey | null {
 
 /** Clean stored permissions: keep only known screens */
 /** Screens added after permissions could first be saved; a save older than them gets their defaults (R-ALERT-01) */
-const ADDED_LATER: ModuleKey[] = ['Alerts', 'WhatsApp', 'Inbox', 'Marketing', 'Complaints', 'AI Bot', 'Salary']
+const ADDED_LATER: ModuleKey[] = ['Alerts', 'WhatsApp', 'Inbox', 'Marketing', 'Complaints', 'AI Bot', 'Salary', 'Excel Job Sheet', 'Job Sheet Import & Delete']
+/** R-SEC-09: options split off a screen — a role that had the screen keeps them until the admin changes it */
+const SPLIT_FROM: Partial<Record<ModuleKey, ModuleKey>> = { 'Excel Job Sheet': 'Daily Job Sheet', 'Job Sheet Import & Delete': 'Daily Job Sheet' }
 
 export function normalizeRolePerms(stored: unknown): RolePerms {
   const out = Object.fromEntries(PERM_ROLES.map(r => [r.key, [...DEFAULT_ROLE_PERMS[r.key]]])) as RolePerms
@@ -108,7 +164,10 @@ export function normalizeRolePerms(stored: unknown): RolePerms {
       if (!Array.isArray(list)) continue
       const kept = list.filter((k): k is ModuleKey => ALL_MODULE_KEYS.includes(k as ModuleKey))
       const added = DEFAULT_ROLE_PERMS[role].filter(k => !known.includes(k) && !kept.includes(k))
-      out[role] = [...kept, ...added]
+      const inherited = (Object.entries(SPLIT_FROM) as [ModuleKey, ModuleKey][])
+        .filter(([k, from]) => !known.includes(k) && kept.includes(from) && !kept.includes(k) && !added.includes(k))
+        .map(([k]) => k)
+      out[role] = [...kept, ...added, ...inherited]
     }
   }
   return out

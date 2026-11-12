@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useSalaryAccess, SALARY_HIDDEN } from '@/store/useModuleAccess'
 import { isCurrent } from '@/lib/docVersions'
 import { useParams, Link } from 'react-router-dom'
@@ -19,7 +19,10 @@ import {
   calcCleanerOTHours,
   cleanClientNameFromAddress,
   splitStaffNames,
+  employeeMatchesStaff,
 } from '@/lib/clientDataSync'
+import { loadComplaints, type Complaint } from '@/lib/complaints'
+import { CleanerComplaintsCard } from '@/components/employees/CleanerComplaintsCard'
 import { calcEmployeeHealth, type EmployeeHealth } from '@/lib/employeeHealth'
 import { EmployeeFormModal } from '@/components/employees/EmployeeFormModal'
 import { docSrc, docKind, useDocUrls } from '@/lib/docStorage'
@@ -171,7 +174,11 @@ export function EmployeeProfile() {
   const totalCashCollected = empJobs.filter(j => j.payment_mode === 'Cash').reduce((s, j) => s + (Number(j.received) || 0), 0)
   const uniqueClients = Array.from(new Set(empJobs.map(j => cleanClientNameFromAddress(j.address)).filter(Boolean)))
 
-  const health = useMemo(() => (emp ? calcEmployeeHealth(emp, empJobs, attendanceMarks) : null), [emp, empJobs, attendanceMarks])
+  // R-EMP-13: complaints about this cleaner — shown on the profile and counted in the Health Score
+  const [allComplaints, setAllComplaints] = useState<Complaint[] | null>(null)
+  useEffect(() => { let alive = true; void loadComplaints().then(l => { if (alive) setAllComplaints(l || []) }).catch(() => { if (alive) setAllComplaints([]) }); return () => { alive = false } }, [])
+  const empComplaints = useMemo(() => (emp && allComplaints ? allComplaints.filter(c => c.cleaner && splitStaffNames(c.cleaner).some(n => employeeMatchesStaff(emp, n))) : []), [emp, allComplaints])
+  const health = useMemo(() => (emp ? calcEmployeeHealth(emp, empJobs, attendanceMarks, empComplaints) : null), [emp, empJobs, attendanceMarks, empComplaints])
 
   const handlePhotoPick = async (file: File | undefined) => {
     if (!emp || !file) return
@@ -384,6 +391,12 @@ export function EmployeeProfile() {
               {/* 3 Component Mini Progress Bars */}
               <div className="flex flex-col gap-1.5 min-w-[175px] w-full sm:w-auto bg-[#02171a]/90 p-2.5 rounded-xl border border-teal-800/60">
                 {health.components.map(c => {
+                  if (c.max === 0) return ( // R-EMP-13: a deduction (complaints), not a bar
+                    <div key={c.label} className="text-[10.5px] flex items-center justify-between font-bold" title={c.detail}>
+                      <span className="text-teal-300/80">{c.label}</span>
+                      <span className={c.score < 0 ? 'text-rose-300 font-extrabold' : 'text-emerald-300 font-extrabold'}>{c.score < 0 ? c.score : '0'}</span>
+                    </div>
+                  )
                   const pct = Math.min(100, Math.round((c.score / c.max) * 100))
                   return (
                     <div key={c.label} className="text-[10.5px]">
@@ -1059,6 +1072,9 @@ export function EmployeeProfile() {
 
         {/* ── Right Sidebar: Profile Summary & Insights ── */}
         <div className="space-y-5">
+
+          {/* R-EMP-13: complaints with their status, and what they cost on the Health Score */}
+          <CleanerComplaintsCard complaints={empComplaints} name={emp.full_name} deduction={health?.complaints.deduction ?? 0} loading={allComplaints === null} />
 
           {/* Quick Profile Summary */}
           <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">

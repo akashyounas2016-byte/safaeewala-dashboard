@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { copyText } from '@/lib/clipboard'
-import { Save, Building, Bell, Shield, CreditCard, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle, Clock, CheckCircle2, XCircle, Loader2, Send, Key, Link2, Eye, EyeOff, Sparkles, ChevronDown, ChevronUp, Mail, HelpCircle, Database, Server, RefreshCw, FileText, Check, Copy, Info, ShieldCheck } from 'lucide-react'
+import { Save, Building, Bell, Shield, Globe, User, Activity, HardDrive, ExternalLink, CheckCircle, Download, LogOut, CloudUpload, FileSpreadsheet, Users, Upload, Pencil, AlertTriangle, Clock, CheckCircle2, XCircle, Loader2, Send, Key, Link2, Eye, EyeOff, Sparkles, ChevronDown, ChevronUp, Mail, HelpCircle, Database, Server, RefreshCw, FileText, Check, Copy, Info, ShieldCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { loadCompanyInfo } from '@/lib/companyInfo'
 import { useIsAdmin, useCurrentUser } from '@/store/UserContext'
@@ -30,7 +30,6 @@ const allTabs = [
   { id: 'users',         label: 'Users',          icon: Users,      adminOnly: true  },
   { id: 'notifications', label: 'Notifications',  icon: Bell,       adminOnly: false },
   { id: 'roles',         label: 'Roles & Access', icon: Shield,     adminOnly: false },
-  { id: 'billing',       label: 'Billing',        icon: CreditCard, adminOnly: false },
   { id: 'backup',        label: 'Backup',         icon: HardDrive,  adminOnly: false },
   { id: 'health',        label: 'Data health',    icon: HeartPulse, adminOnly: false },
   { id: 'activity',      label: 'Activity Log',   icon: Clock,      adminOnly: true  },
@@ -889,7 +888,7 @@ export function Settings() {
       {/* ── Hero ── */}
       <PageHero
         title="Settings"
-        subtitle="Company profile · Notifications · Roles · Billing · Integrations"
+        subtitle="Company profile · Notifications · Roles · Integrations"
         actionLabel={saved ? '✓ Saved!' : 'Save Changes'}
         onAction={handleSave}
         searchPlaceholder="Search settings…"
@@ -1043,83 +1042,6 @@ export function Settings() {
           {/* ── Roles ── */}
           {activeTab === 'roles' && <RolePermissionsPanel />}
 
-          {activeTab === 'billing' && (
-            <div className="space-y-4">
-              <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
-                <div className="px-6 py-4 border-b border-[#E4E8EC]">
-                  <h3 className="text-[15px] font-bold text-[#111827]">Subscription & Billing</h3>
-                </div>
-                <div className="p-6 space-y-4">
-                  {/* Current plan */}
-                  <div className="bg-slate-50 border border-[#E4E8EC] rounded-xl p-4 flex items-start justify-between">
-                    <div>
-                      <p className="text-[14px] font-bold text-[#111827]">Supabase Free Tier</p>
-                      <p className="text-[12px] text-slate-500 mt-0.5">$0/month · No billing required</p>
-                      <p className="text-[12px] text-slate-500">Free forever with generous limits</p>
-                    </div>
-                    <span className="text-[11px] bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-bold">Active</span>
-                  </div>
-
-                  {/* Free tier limits */}
-                  <div>
-                    <p className="text-[12px] font-bold text-slate-500 uppercase tracking-[0.08em] mb-3">Free Tier Limits</p>
-                    <div className="space-y-2 text-[13px]">
-                      {[
-                        { item: 'Database storage',    limit: '500 MB',          used: 'Included' },
-                        { item: 'Bandwidth',           limit: '5 GB/month',      used: 'Included' },
-                        { item: 'File storage',        limit: '1 GB',            used: 'Included' },
-                        { item: 'API requests',        limit: '500K / month',    used: 'Included' },
-                        { item: 'Auth users',          limit: '50,000 users',    used: 'Included' },
-                        { item: 'Database backups',    limit: 'Nightly on the VPS', used: 'Included' }, // R-OPS-04
-                      ].map(b => (
-                        <div key={b.item} className="flex justify-between py-2.5 border-b border-[#E4E8EC]">
-                          <span className="text-slate-600">{b.item}</span>
-                          <div className="text-right">
-                            <span className="font-bold text-[#111827]">{b.limit}</span>
-                            {b.used !== 'Included' && <p className="text-[11px] text-amber-600">{b.used}</p>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Infrastructure cost summary */}
-                  <div>
-                    <p className="text-[12px] font-bold text-slate-500 uppercase tracking-[0.08em] mb-3">Your Infrastructure Costs</p>
-                    <div className="space-y-2 text-[13px]">
-                      {[
-                        { item: 'Supabase (Database + Auth + Storage)', cost: '$0/mo', note: 'Free tier' },
-                        { item: 'VPS (Hosting)',                         cost: '~$5/mo', note: 'VPS server' },
-                        { item: 'Custom domain (if registered)',         cost: '~$10/yr', note: 'Paid separately' },
-                      ].map(b => (
-                        <div key={b.item} className="flex justify-between py-2.5 border-b border-[#E4E8EC]">
-                          <div>
-                            <span className="text-slate-600">{b.item}</span>
-                            <p className="text-[11px] text-slate-400">{b.note}</p>
-                          </div>
-                          <span className="font-bold text-emerald-600">{b.cost}</span>
-                        </div>
-                      ))}
-                      <div className="flex justify-between pt-2 font-bold text-[#111827] text-[14px]">
-                        <span>Total Monthly</span><span className="text-emerald-600">~$5/mo</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Upgrade note */}
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                    <p className="text-[13px] font-semibold text-blue-800 mb-1">When to upgrade</p>
-                    <p className="text-[12px] text-blue-700">
-                      Upgrade to Supabase Pro ($25/mo) when the database grows past 500 MB or you need point-in-time recovery. Daily backups already run on the VPS (Settings → Backup).
-                      Your current free tier is more than sufficient for a growing cleaning business.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Integrations ── */}
           {activeTab === 'integrations' && (
             <div className="space-y-6">
               {/* GoHighLevel Dedicated Integration Panel */}

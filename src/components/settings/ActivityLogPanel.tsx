@@ -31,7 +31,7 @@ create policy "allow all authenticated" on public.audit_log
 const PAGE = 200
 const ENTITY_LABEL: Record<string, string> = {
   daily_job: 'Job', booking: 'Booking', client: 'Client', employee: 'Employee', invoice: 'Invoice', agency: 'Agency',
-  inventory: 'Inventory', expense: 'Expense', day: 'Whole day', snapshot: 'Restore',
+  inventory: 'Inventory', expense: 'Expense', day: 'Whole day', snapshot: 'Restore', complaint: 'Complaint',
 }
 const ENTITY_TONE: Record<string, string> = {
   daily_job: 'bg-teal-50 text-teal-700 border-teal-200', booking: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -73,6 +73,7 @@ export function recordLink(e: Pick<AuditEntry, 'entity' | 'entity_id' | 'entity_
     case 'invoice':   return '/invoices'
     case 'expense':   return date ? `/daily-job-sheet?date=${date}` : '/expenses'
     case 'inventory': return '/inventory'
+    case 'complaint': return `/complaints?open=${encodeURIComponent(e.entity_id)}`
     default:          return ''
   }
 }

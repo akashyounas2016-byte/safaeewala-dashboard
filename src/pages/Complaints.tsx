@@ -17,6 +17,13 @@ import {
   COMPLAINT_CATEGORIES, COMPLAINT_SOURCES, COMPLAINT_STATUSES, complaintSummary, deleteComplaint, loadComplaints, looksLikeComplaint,
   nextComplaintRef, saveComplaint, type Complaint, type ComplaintSource, type ComplaintStatus,
 } from '@/lib/complaints'
+import { diffRecord, changesText, changesOf, fetchRecordHistory, logAudit, type AuditEntry } from '@/lib/auditLog'
+import { employeeMatchesStaff } from '@/lib/clientDataSync'
+import { COMPLAINT_PENALTY } from '@/lib/employeeHealth'
+
+/** R-CMP-02: every step of a complaint goes into the Activity Log — its track record */
+const TRACKED = ['status', 'priority', 'category', 'cleaner', 'job_date', 'assigned_to', 'resolution', 'description', 'client_name', 'phone', 'source']
+const trackName = (c: Partial<Complaint>) => `${c.ref || 'Complaint'} · ${c.client_name || ''}`
 
 /** A message from a form or a chat that may be a complaint, not yet in the list */
 interface Suggestion { source: ComplaintSource; source_ref: string; client_name: string; phone: string; description: string; at: string | null; why: string }
@@ -41,7 +48,21 @@ export function Complaints() {
   const [source, setSource] = useState<string>('all')
   const [q, setQ] = useState('')
   const [form, setForm] = useState<Partial<Complaint> | null>(null)
+  const [history, setHistory] = useState<AuditEntry[] | 'loading'>([])
   const by = user?.full_name || user?.email || 'Staff'
+  // R-CMP-02: the track record of the open complaint
+  const formId = form?.id
+  useEffect(() => {
+    if (!formId) { setHistory([]); return }
+    let alive = true
+    setHistory('loading')
+    void fetchRecordHistory(formId, 50).then(h => { if (alive) setHistory(h) })
+    return () => { alive = false }
+  }, [formId])
+  const cleanerProfile = (name: string | null) => {
+    if (!name) return null
+    return employees.find(e => employeeMatchesStaff(e, name)) || null
+  }
 
   const reload = () => loadComplaints().then(setList).catch(e => { notify.error((e as Error).message); setList([]) })
   useEffect(() => { void reload() }, [])
@@ -64,6 +85,19 @@ export function Complaints() {
     })()
     return () => { alive = false }
   }, [])
+
+  // ?cleaner=<name> (from a cleaner's profile) lists that cleaner's complaints; ?open=<id> opens one
+  useEffect(() => {
+    const cleaner = params.get('cleaner')
+    const open = params.get('open')
+    if (!cleaner && !open) return
+    if (cleaner) { setQ(cleaner); setStatus('all') }
+    if (open && Array.isArray(list)) {
+      const hit = list.find(c => c.id === open)
+      if (hit) setForm(hit)
+    } else if (open) return // wait for the list
+    setParams(p => { p.delete('cleaner'); p.delete('open'); return p }, { replace: true })
+  }, [params, setParams, list])
 
   // ?new=1&source=&ref=&name=&phone=&text= opens the form (from a lead or a chat)
   useEffect(() => {
@@ -90,16 +124,27 @@ export function Complaints() {
     const phoneDigits = String(form.phone || '').replace(/\D/g, '').slice(-8)
     const client = form.client_id ? null : clients.find(c => phoneDigits.length >= 7 && [c.phone, c.whatsapp].some(p => String(p || '').replace(/\D/g, '').endsWith(phoneDigits)))
     try {
-      await saveComplaint({
+      const before = form.id ? rows.find(r => r.id === form.id) : undefined
+      const saved = await saveComplaint({
         ...form, client_name: form.client_name.trim(), client_id: form.client_id || client?.id || null,
         ...(form.id ? {} : { ref: nextComplaintRef(rows.map(r => r.ref)), created_by: by }),
       })
+      // R-CMP-02: track record
+      if (!before) logAudit({ action: 'created', entity: 'complaint', entity_id: saved.id, entity_name: trackName(saved), details: `${saved.priority} · ${saved.category}${saved.cleaner ? ` · cleaner ${saved.cleaner}` : ''} · ${saved.status}` })
+      else {
+        const changes = diffRecord(before as unknown as Record<string, unknown>, saved as unknown as Record<string, unknown>, TRACKED)
+        if (changes.length) logAudit({ action: before.status !== saved.status ? 'status_changed' : 'updated', entity: 'complaint', entity_id: saved.id, entity_name: trackName(saved), details: changesText(changes), changes })
+      }
       notify.success(form.id ? 'Complaint updated' : 'Complaint added'); setForm(null); void reload()
     } catch (e) { notify.error((e as Error).message) }
   }
   const quickStatus = async (c: Complaint, s: ComplaintStatus) => {
     if ((s === 'resolved' || s === 'closed') && !c.resolution) { setForm({ ...c, status: s }); return notify.info('Write how it was resolved, then save') }
-    try { await saveComplaint({ ...c, status: s }); void reload() } catch (e) { notify.error((e as Error).message) }
+    try {
+      await saveComplaint({ ...c, status: s })
+      logAudit({ action: 'status_changed', entity: 'complaint', entity_id: c.id, entity_name: trackName(c), details: `${c.status} → ${s}`, changes: [{ field: 'status', from: c.status, to: s }] }) // R-CMP-02
+      void reload()
+    } catch (e) { notify.error((e as Error).message) }
   }
 
   const ready = list !== null
@@ -165,7 +210,7 @@ export function Complaints() {
                 <tr key={c.id} className="hover:bg-slate-50 align-top">
                   <td className="px-4 py-3 font-mono text-[11.5px] font-bold text-slate-600">{c.ref || '—'}</td>
                   <td className="px-3 py-3 truncate">{c.client_id ? <button type="button" onClick={() => navigate(`/clients/${c.client_id}`)} className="font-semibold text-[#111827] hover:underline cursor-pointer">{c.client_name}</button> : <span className="font-semibold">{c.client_name}</span>}{c.phone && <span className="block text-[11px] text-slate-400">{c.phone}</span>}</td>
-                  <td className="px-3 py-3"><p className="text-[11px] font-bold text-slate-500">{c.category}{c.cleaner ? ` · ${c.cleaner}` : ''}{c.job_date ? ` · job ${formatDate(c.job_date)}` : ''}</p><p className="text-slate-700 line-clamp-2">{c.description}</p>{c.resolution && <p className="text-[11.5px] text-emerald-700 line-clamp-1">✓ {c.resolution}</p>}</td>
+                  <td className="px-3 py-3"><p className="text-[11px] font-bold text-slate-500">{c.category}{c.cleaner ? <> · {cleanerProfile(c.cleaner) ? <button type="button" onClick={() => navigate(`/employees/${cleanerProfile(c.cleaner)!.id}`)} className="text-emerald-700 hover:underline cursor-pointer" title="Open the cleaner's profile (Health Score, complaints)">{c.cleaner}</button> : c.cleaner}</> : ''}{c.job_date ? ` · job ${formatDate(c.job_date)}` : ''}</p><p className="text-slate-700 line-clamp-2">{c.description}</p>{c.resolution && <p className="text-[11.5px] text-emerald-700 line-clamp-1">✓ {c.resolution}</p>}</td>
                   <td className="px-3 py-3 text-slate-600">{sourceLabel(c.source)}</td>
                   <td className="px-3 py-3"><span className={`text-[11px] font-bold px-2 py-0.5 rounded-full capitalize ${PRIORITY_TONE[c.priority]}`}>{c.priority}</span></td>
                   <td className="px-3 py-3">
@@ -177,7 +222,7 @@ export function Complaints() {
                   <td className="px-3 py-3 text-slate-600">{formatDate(c.created_at.slice(0, 10))}</td>
                   <td className="px-3 py-3 text-right whitespace-nowrap">
                     <button type="button" onClick={() => setForm(c)} title="Edit" className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"><Pencil size={13} /></button>
-                    <button type="button" onClick={async () => { if (await confirmAsync({ title: 'Delete complaint', message: `Delete ${c.ref || 'this complaint'}?`, confirmLabel: 'Delete', tone: 'danger' })) { await deleteComplaint(c.id).catch(e => notify.error((e as Error).message)); void reload() } }} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50 text-red-600 cursor-pointer"><Trash2 size={13} /></button>
+                    <button type="button" onClick={async () => { if (await confirmAsync({ title: 'Delete complaint', message: `Delete ${c.ref || 'this complaint'}?`, confirmLabel: 'Delete', tone: 'danger' })) { await deleteComplaint(c.id).then(() => logAudit({ action: 'deleted', entity: 'complaint', entity_id: c.id, entity_name: trackName(c), details: `${c.priority} · ${c.category}${c.cleaner ? ` · cleaner ${c.cleaner}` : ''}` })).catch(e => notify.error((e as Error).message)); void reload() } }} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50 text-red-600 cursor-pointer"><Trash2 size={13} /></button>
                   </td>
                 </tr>
               ))}
@@ -205,14 +250,35 @@ export function Complaints() {
               <option value="">—</option>
               {employees.filter(e => e.status !== 'inactive').map(e => <option key={e.id} value={e.full_name}>{e.full_name}</option>)}
             </Select>
-            <Select label="Priority" value={form.priority || 'medium'} onChange={e => setForm({ ...form, priority: e.target.value as Complaint['priority'] })}>
-              <option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+            <Select label="Severity (priority)" value={form.priority || 'medium'} onChange={e => setForm({ ...form, priority: e.target.value as Complaint['priority'] })}>
+              <option value="high">High — cleaner −{COMPLAINT_PENALTY.high} health</option><option value="medium">Medium — cleaner −{COMPLAINT_PENALTY.medium} health</option><option value="low">Low — cleaner −{COMPLAINT_PENALTY.low} health</option>
             </Select>
             <Select label="Status" value={form.status || 'open'} onChange={e => setForm({ ...form, status: e.target.value as ComplaintStatus })}>
               {COMPLAINT_STATUSES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
             </Select>
             <div className="col-span-2"><Input label="Assigned to" value={form.assigned_to || ''} onChange={e => setForm({ ...form, assigned_to: e.target.value || null })} placeholder="Who follows it up" /></div>
             <div className="col-span-2"><Textarea label="Resolution" rows={2} value={form.resolution || ''} onChange={e => setForm({ ...form, resolution: e.target.value || null })} placeholder="e.g. Re-clean done free on 12 Nov, client happy" /></div>
+            {form.cleaner && <p className="col-span-2 text-[11.5px] text-slate-500">This complaint shows on {form.cleaner}'s profile and lowers their Health Score by its severity for 90 days.</p>}
+            {/* R-CMP-02: track record */}
+            {form.id && (
+              <div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <p className="text-[12px] font-bold text-slate-700 mb-2">Track record</p>
+                <ol className="space-y-1.5 text-[11.5px]">
+                  <li className="flex gap-2"><span className="w-2 h-2 rounded-full bg-rose-500 mt-1 shrink-0" /><span><b>Reported</b> · {new Date(form.created_at || '').toLocaleString('en-GB', { timeZone: 'Asia/Dubai', dateStyle: 'medium', timeStyle: 'short' })}{form.created_by ? ` · by ${form.created_by}` : ''} · {sourceLabel(form.source || 'manual')}</span></li>
+                  {history === 'loading' ? <li className="text-slate-400">Loading…</li> : [...history].reverse().filter(h => h.action !== 'created').map(h => {
+                    const ch = changesOf(h)
+                    return (
+                      <li key={h.id} className="flex gap-2"><span className={`w-2 h-2 rounded-full mt-1 shrink-0 ${h.action === 'status_changed' ? 'bg-violet-500' : 'bg-sky-500'}`} />
+                        <span><b>{h.action === 'status_changed' ? 'Status' : 'Changed'}</b> · {new Date(h.created_at).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', dateStyle: 'medium', timeStyle: 'short' })} · by {h.user_name || 'System'}
+                          {ch.length > 0 && <span className="block text-slate-600">{ch.map(x => `${x.field.replace(/_/g, ' ')}: ${x.from || '—'} → ${x.to || '—'}`).join(' · ')}</span>}
+                        </span>
+                      </li>
+                    )
+                  })}
+                  {form.resolved_at && <li className="flex gap-2"><span className="w-2 h-2 rounded-full bg-emerald-500 mt-1 shrink-0" /><span><b>Resolved</b> · {new Date(form.resolved_at).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', dateStyle: 'medium', timeStyle: 'short' })}</span></li>}
+                </ol>
+              </div>
+            )}
           </div>
         )}
       </Modal>

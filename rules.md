@@ -200,6 +200,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/components/dailyJobSheet/ExcelAttendanceCell.tsx`; `src/lib/attendance.ts → SHORT_LEAVE, isAwayMark, attendanceKeyFor`; `src/lib/excelSheet/columns.ts`; `JobSheetSpreadsheet.tsx → workingOn, attendanceCell`. Test: `tests/unit/excel-attendance-busy-1110.test.ts`.
 - **Status:** Active · Since: 2026-11-10
 
+### R-ATT-11 — Attendance popup on the Excel Job Sheet
+- **Rule:** *"Excel Job Sheet par Attendance button click karnay par user ko Attendance screen par redirect karnay ki bajaye, isi screen par aik pop-up open kiya jaye. Is pop-up mein tamam cleaners ki list ho jahan say foran attendance status update kiya ja sakay. Mazeed yeh ke, is pop-up mein aik 'View Details' ka button ho."* (2026-11-12)
+  - The Attendance button opens a popup on the sheet: every active cleaner (CSR / drivers / technical left out, R-SHEET-02) with their jobs that day and **Present / Available / Absent / Leave** in one click; counts on top; search.
+  - Saved exactly like the Attendance screen: by employee id, live for every user (R-SYNC-10). Absent = *Uninformed Absence*; Leave asks for the kind (Sick, Emergency, Annual, Weekly Off, Short) and from a non-approver waits for approval (R-ATT-05); a decided leave is locked for non-approvers.
+  - Status shown: the cleaner's own mark; else a job that day = Present; else Available — never Absent unless marked (R-ATT-01).
+  - **View details** saves the sheet's pending changes and opens the full Attendance sheet on that date; Ctrl+Click on the button still opens it in a new tab.
+- **Code:** `src/components/dailyJobSheet/QuickAttendanceModal.tsx`; `JobSheetSpreadsheet.tsx`. Test: `tests/unit/complaints-roles-excel-1112.test.ts`.
+- **Status:** Active · Since: 2026-11-12
+
 ---
 
 ## SHEET — Excel Job Sheet
@@ -644,7 +653,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Status:** Active · Standardized & Updated 2026-10-27 (AUD-06, AUD-09, AUD-10, K-02)
 
 ### R-EMP-03 — Performance Health Score
-- **Rule:** 0–100 = Attendance 50 (worked days vs specifically-marked absences, last 90 days, per R-ATT-01) + Activity 30 (distinct worked days in last 30 days vs 22) + Compliance 20 (Visa, Passport, Work Permit, EID not expired). Grades: ≥85 Excellent, ≥70 Good, ≥50 Needs Attention, else At Risk.
+- **Rule:** 0–100 = Attendance 50 (worked days vs specifically-marked absences, last 90 days, per R-ATT-01) + Activity 30 (distinct worked days in last 30 days vs 22) + Compliance 20 (Visa, Passport, Work Permit, EID not expired) − Complaints (R-EMP-13, since 2026-11-12). Grades: ≥85 Excellent, ≥70 Good, ≥50 Needs Attention, else At Risk.
 - **Code:** `src/lib/employeeHealth.ts → calcEmployeeHealth`; shown on `/employees/:id`.
 - **Status:** Active · Since: 2026-10-27
 
@@ -723,6 +732,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - CSR is treated the same way (R-SHEET-02).
 - **Code:** `src/lib/staffRoles.ts → isAssignable`; `AddJobModal.tsx → pickableStaff`; `NewBookingModal.tsx`; `JobSheetSpreadsheet.tsx → SpreadsheetEditModal employees`; `AddMonthlyClientModalForm.tsx → cleanerList`; `ClientModalForm.tsx`. Test: `tests/unit/sheet-sync-busy-1111b.test.ts`.
 - **Status:** Active · Since: 2026-11-11
+
+### R-EMP-13 — Complaints on the cleaner's profile and in the Health Score
+- **Rule:** *"Har complaint ka mukammal track record rakha jaye, aur iska status us specific cleaner ki profile par display ho. Complaint ki severity cleaner ki Performance ya Health Score par asar andaz honi chahiye."* (2026-11-12)
+  - The cleaner's profile shows a **Complaints** card: total / open / resolved, the latest complaints with ref, severity, status, date and resolution (each opens the complaint), and a link to all of that cleaner's complaints.
+  - **Health Score (R-EMP-03):** each complaint about the cleaner in the last 90 days (job date, else report date) takes off points by its severity (the complaint's priority): **High −15, Medium −8, Low −3**, at most −40 in all; the score never goes below 0. Resolved complaints still count — the complaint happened. The profile shows it as its own *Complaints* line.
+  - A complaint is matched to the cleaner by the Cleaner field (same matching as the job sheet).
+- **Code:** `src/lib/employeeHealth.ts → COMPLAINT_PENALTY, calcEmployeeHealth`; `src/components/employees/CleanerComplaintsCard.tsx`; `EmployeeProfile.tsx`. Test: `tests/unit/complaints-roles-excel-1112.test.ts`.
+- **Status:** Active · Since: 2026-11-12
 
 ---
 
@@ -962,6 +979,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/permissions.ts` (Salary key), `src/store/useModuleAccess.ts → useSalaryAccess`, `Employees.tsx`, `EmployeeProfile.tsx`, `EmployeeFormModal.tsx`, `AgencyDashboard.tsx`, `Reports.tsx`, `UserManagement.tsx`.
 - **Status:** Active · Since: 2026-11-09
 
+### R-SEC-09 — Roles & Access in categories, with options inside a screen
+- **Rule:** *"'Role and Access' tab ko enhance karkay category-wise kiya jaye (jaise Daily Job Sheet ki alag category), jismein mukhtalif options hon taake granular permissions asani say assign ki ja sakein."* (2026-11-12)
+  - Settings → Roles & Access lists permissions in categories: Overview & Alerts, **Daily Job Sheet**, Bookings & Clients, Leads & Messages, Staff, Finance, Reports, Administration. Each category opens and closes and has an **n/n** button per role to give or take the whole category.
+  - New options of the Daily Job Sheet: **Excel Job Sheet** (its own permission — the route and the Excel Sheet button) and **Import & delete a whole day** (Import, Delete Day's Data, Delete All Data). *See salaries* (R-SEC-08) sits under Staff.
+  - A role saved before this keeps both options if it had the Daily Job Sheet, until the admin changes it. Writing job rows is still covered by the database rule of the Daily Job Sheet; deleting stays Admin / Manager only.
+  - Settings → **Billing** tab removed (not needed).
+- **Code:** `src/lib/permissions.ts → APP_MODULES, PERMISSION_CATEGORIES, normalizeRolePerms`; `UserManagement.tsx → RolePermissionsPanel`; `DailyJobSheet.tsx`; `Settings.tsx`.
+- **Status:** Active · Since: 2026-11-12
+
 ### R-SEC-05 — Cleaners and drivers see only their own duties
 - **Rule:** *"cleaners ko sirf cleaners ki duties aur drivers ko sirf drivers ki duties nazar ayen, aur koi dosra inhein access na kar sakay."*
   - **Field staff** = a login with role *Employee* linked to a staff record (Settings → Users) whose staff role is not *supervisor*.
@@ -1050,6 +1076,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - **Database:** table `complaints` (same migration).
 - **Code:** `src/lib/complaints.ts`, `src/pages/Complaints.tsx`, `FluentFormsLeads.tsx`.
 - **Status:** Built · waiting for the migration · Since: 2026-11-09
+
+### R-CMP-02 — Complaint track record
+- **Rule:** *"CRM mein Complaint Tracking aur Resolution system ko mazeed behtar banayein. Har complaint ka mukammal track record rakha jaye."* (2026-11-12)
+  - Every step of a complaint is written to the Activity Log (R-OPS-06): reported, every change (status, severity, cleaner, assignee, resolution …) with before → after, and deletion — who and when.
+  - The complaint popup shows its **Track record**: reported (when, by whom, source), each change and status, and resolved.
+  - The Severity list says what it costs the cleaner (R-EMP-13); the cleaner's name opens their profile. `/complaints?open=<id>` opens one complaint, `?cleaner=<name>` lists one cleaner's complaints.
+- **Code:** `src/pages/Complaints.tsx`; `src/lib/auditLog.ts`.
+- **Status:** Active · Since: 2026-11-12
 
 ### R-AI-01 — AI Bot hub
 - **Rule:** *"AI Bot ke liye ek dedicated, full-width screen … 'central brain' … tamam modules (Booking, Employee, Financials, Operations) ka mukammal access … data retrieve … OT details ya cleaner info … operational tasks execute … direct yahan se nayi booking."*
