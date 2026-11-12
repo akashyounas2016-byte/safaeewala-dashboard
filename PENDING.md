@@ -22,8 +22,6 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | A8 | **Employees: fill Total Duty Hours** for anyone who is not on 8 h | OT is worked out from it (R-OT-03); blank = 8 h | Employees → Edit |
 | A9 | **Data fixes:** Misbah's Work Permit year `0227` → `2027`; re-enter the employee field values lost earlier | Wrong expiry alerts / empty profiles | Employees → Edit |
 | A10 | **Confirm `2026-11-09_duty_booking_sync.sql` was run** (Supabase → SQL editor; safe to run again) | When a cleaner presses Start / End in My Duties, the booking status follows only with this trigger (cleaners may not write bookings, SEC-A03) | `supabase/migrations/` |
-| A12 | **Remove 4 wrong monthly visits made before the client started** (R-SCHED-11): Villa# 6 - Qamar on 28 Oct + 4 Nov; APT 11, Futtaim bldg on 28 Jan + 28 Oct (that client is already deleted — its contract too). Claude can do it on the owner's OK | They show on past dates; new ones are no longer made | Daily Job Sheet |
-| A13 | **Remove 5 old monthly visits saved with the cleaner "Unassigned"** (made 11 Nov 17:06–17:11, before the R-SCHED-10 fix): BDI Apt APT 01 - Mohammad on 30 Dec 2024, 5 Oct 2026, 11 Nov 2027; Villa# 6 - Qamar on 5 Nov 2027, 12 Nov 2027 (wrong years from the old date box). Claude can do it on the owner's OK | Fake cleaner name and visits on wrong dates | Daily Job Sheet |
 | A11 | **Check today's new screens on the live site** (Excel sheet, Add Job, Employee popup, Agency popup) | Built and tested in code, not yet clicked through in a browser | crm.safaeewala.com |
 
 ---
