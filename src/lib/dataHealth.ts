@@ -17,6 +17,10 @@ export interface HealthCheck {
   items: HealthItem[]
 }
 
+/** R-OPS-07: the Daily Job Sheet on the job's date with that job opened (?job= opens it for editing) */
+export const jobLink = (job: Pick<DailyJob, 'id' | 'date'>) =>
+  `/daily-job-sheet?date=${encodeURIComponent(job.date)}&job=${encodeURIComponent(job.id)}`
+
 /** Groups of records that share the same key (2+ records) */
 function groups<T>(rows: T[], key: (r: T) => string): T[][] {
   const map = new Map<string, T[]>()
@@ -55,12 +59,23 @@ export function runDataHealth(input: {
   ].map(({ g, why }) => ({ label: g.map(e => e.full_name).join(' · '), detail: why, link: `/employees/${g[0].id}` }))
 
   // 3. Staff names on recent jobs that are not registered employees
-  const unknownStaff = new Map<string, number>()
+  // R-OPS-07: the link opens the newest job with that name on the Daily Job Sheet (where it is fixed),
+  // not the Employees list; the other dates are listed beside it
+  const unknownStaff = new Map<string, DailyJob[]>()
   recentJobs.forEach(j => splitStaffNames(j.staff_name || '').forEach(n => {
-    if (!employees.some(e => employeeMatchesStaff(e, n))) unknownStaff.set(n, (unknownStaff.get(n) || 0) + 1)
+    if (!employees.some(e => employeeMatchesStaff(e, n))) unknownStaff.set(n, [...(unknownStaff.get(n) || []), j])
   }))
-  const unregistered = Array.from(unknownStaff.entries()).sort((a, b) => b[1] - a[1])
-    .map(([name, n]) => ({ label: name, detail: `${n} job${n === 1 ? '' : 's'} in the last 60 days`, link: '/employees' }))
+  const unregistered = Array.from(unknownStaff.entries()).sort((a, b) => b[1].length - a[1].length)
+    .map(([name, jobs]) => {
+      const newest = [...jobs].sort((a, b) => b.date.localeCompare(a.date) || String(b.start_time || '').localeCompare(String(a.start_time || '')))[0]
+      const others = Array.from(new Set(jobs.map(j => j.date).filter(d => d !== newest.date))).sort().reverse().slice(0, 3)
+      const n = jobs.length
+      return {
+        label: `${name} · ${newest.date} · ${newest.address || '—'}`,
+        detail: `${n} job${n === 1 ? '' : 's'} in the last 60 days${others.length ? ` · also ${others.join(', ')}` : ''} — open the job and pick a registered cleaner, or add ${name} on Employees`,
+        link: jobLink(newest),
+      }
+    })
 
   // 4. Job rows with warnings (times, amounts, monthly cash, duplicates) in the last 60 days
   const checks = buildRowChecks(recentJobs, employees)
@@ -69,7 +84,7 @@ export function runDataHealth(input: {
     .map(([id, msgs]) => ({ job: byId.get(id)!, msgs: msgs.filter(m => !m.startsWith('Not a registered')) }))
     .filter(x => x.job && x.msgs.length > 0)
     .sort((a, b) => b.job.date.localeCompare(a.job.date))
-    .map(({ job, msgs }) => ({ label: `${job.date} · ${job.staff_name} · ${job.address || '—'}`, detail: msgs.join('; '), link: `/daily-job-sheet?date=${job.date}` }))
+    .map(({ job, msgs }) => ({ label: `${job.date} · ${job.staff_name} · ${job.address || '—'}`, detail: msgs.join('; '), link: jobLink(job) })) // R-OPS-07
 
   // 5. Invoices that point to job rows which no longer exist
   const jobIds = new Set(dailyJobs.map(j => j.id))

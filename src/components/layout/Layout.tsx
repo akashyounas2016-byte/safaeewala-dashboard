@@ -11,6 +11,7 @@ import { SyncStatusBanner } from './SyncStatusBanner'
 import { Toaster } from 'sonner'
 import { ConfirmHost } from '@/components/common/ConfirmHost'
 import { FormGuard } from '@/components/common/FormGuard'
+import { DailyLocalBackup } from '@/components/settings/DailyLocalBackup'
 
 /* ── Layout context — lets PageHero access openMenu and toggleSidebar ── */
 export const LayoutContext = createContext<{
@@ -143,6 +144,7 @@ export function Layout() {
               <Toaster position="top-right" richColors closeButton />
               <ConfirmHost />
               <FormGuard /> {/* UX-84: required fields in every popup */}
+              <DailyLocalBackup /> {/* R-OPS-08: today's copy to this computer / Google Drive, once a day */}
 
               <ErrorBoundary key={location.pathname}>
                 <Outlet />

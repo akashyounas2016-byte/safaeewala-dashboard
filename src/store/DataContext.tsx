@@ -11,7 +11,7 @@ import { defaultAgencies } from '@/lib/defaultAgencies'
 import { todayDubai, addDays } from '@/lib/dubaiTime'
 import { notify } from '@/lib/notify'
 import { jobFromBooking, jobPatchFromBookingPatch, bookingPatchFromJobPatch, nextOccurrence } from '@/lib/bookingSync'
-import { describeJobChange } from '@/lib/auditLog'
+import { describeJobChange, diffRecord, changesText, logAudit as writeAudit, type FieldChange } from '@/lib/auditLog'
 import { recalculateAllRowsOT, setCleanerBasicHours } from '@/components/dailyJobSheet/jobSheetUtils'
 import { subscribeTables, applyRowChange } from '@/lib/realtime'
 import { uploadInlineDocs, isInlineDoc, withoutInlineDocs } from '@/lib/docStorage'
@@ -78,20 +78,14 @@ interface DataStore {
 
 const DataContext = createContext<DataStore | null>(null)
 
-/* ── Fire-and-forget audit logger — silently skips if table doesn't exist ── */
-function logAudit(action: string, entity: string, entityId: string, entityName: string, details?: string) {
-  supabase.auth.getUser()
-    .then(({ data: { user } }) =>
-      supabase.from('audit_log').insert({
-        user_name:   user?.email ?? 'System',
-        action,
-        entity,
-        entity_id:   entityId,
-        entity_name: entityName,
-        details:     details ?? null,
-      })
-    )
-    .catch(() => {})
+/* ── Fire-and-forget audit logger (R-OPS-06): who, what, which fields, on which screen — batched, never blocks a save ── */
+function logAudit(action: string, entity: string, entityId: string, entityName: string, details?: string, changes?: FieldChange[]) {
+  writeAudit({ action, entity, entity_id: entityId, entity_name: entityName, details: details ?? null, changes: changes ?? null })
+}
+/** R-OPS-06: an edit is logged with every changed field (nothing is logged when nothing changed) */
+function logEdit(entity: string, id: string, name: string, before: object | undefined, patch: object, skip: string[] = []) {
+  const changes = diffRecord(before as Record<string, unknown>, patch as Record<string, unknown>).filter(c => !skip.includes(c.field))
+  if (changes.length) logAudit('updated', entity, id, name, changesText(changes), changes)
 }
 
 function uid() {
@@ -655,7 +649,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const booking = bookings.find(b => b.id === id)
       setBookings(p => p.map(b => b.id === id ? { ...b, ...patch } : b))
       dbUpdate('bookings', id, patch)
-      if (patch.status && booking) logAudit('status_changed', 'booking', id, booking.client_name, `${booking.status} → ${patch.status}`)
+      if (patch.status && booking && patch.status !== booking.status) logAudit('status_changed', 'booking', id, booking.client_name, `${booking.status} → ${patch.status}`)
+      if (booking) { const { status: _s, ...rest } = patch; void _s; logEdit('booking', id, booking.client_name, booking, rest) }
       if (!booking) return
       const updated: Booking = { ...booking, ...patch }
       const linked = dailyJobs.filter(j => j.booking_id === id)
@@ -721,6 +716,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           off.forEach(j => removeJobRow(j.id))
         }
       }
+      if (before) logEdit('client', id, before.full_name, before, patch) // R-OPS-06
       setClients(p => {
         const exists = p.some(c => c.id === id)
         if (exists) {
@@ -777,6 +773,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       logAudit('created', 'employee', row.id, e.full_name, e.role)
     },
     updateEmployee: (id, patch) => {
+      const beforeEmp = allEmployees.find(e => e.id === id)
+      if (beforeEmp) logEdit('employee', id, beforeEmp.full_name, beforeEmp, patch) // R-OPS-06 (files and photos are left out)
       setEmployees(p => {
         const exists = p.some(e => e.id === id)
         if (exists) {
@@ -898,7 +896,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const inv = invoices.find(i => i.id === id)
       setInvoices(p => p.map(i => i.id === id ? { ...i, ...patch } : i))
       dbUpdate('invoices', id, patch)
-      if (patch.status && inv) logAudit('status_changed', 'invoice', id, inv.client_name, `${inv.status} → ${patch.status}`)
+      if (patch.status && inv && patch.status !== inv.status) logAudit('status_changed', 'invoice', id, inv.client_name, `${inv.status} → ${patch.status}`)
+      if (inv) { const { status: _s, ...rest } = patch; void _s; logEdit('invoice', id, `${inv.invoice_number} · ${inv.client_name}`, inv, rest) }
     },
     deleteInvoice: (id) => {
       const inv = invoices.find(i => i.id === id)
@@ -912,8 +911,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const row = { ...i, id: uid(), created_at: now() }
       setInventory(p => [row, ...p])
       dbInsert('inventory', row)
+      logAudit('created', 'inventory', row.id, row.name)
     },
     updateInventory: (id, patch) => {
+      const item = inventory.find(i => i.id === id)
+      if (item) logEdit('inventory', id, item.name, item, patch)
       setInventory(p => p.map(i => i.id === id ? { ...i, ...patch } : i))
       dbUpdate('inventory', id, patch)
     },
@@ -941,6 +943,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return next
       })
       dbInsert('daily_jobs', row)
+      logAudit('created', 'daily_job', row.id, `${row.staff_name || 'No cleaner'} · ${row.date}`, `${row.address || '—'} · ${row.start_time || ''}–${row.end_time || ''} · AED ${row.charges}`) // R-OPS-06
     },
     updateDailyJob: (id, patch) => {
       const sanitizedPatch = { ...patch }
@@ -952,7 +955,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // Row history (UX-40): who changed which fields
       const before = dailyJobs.find(j => j.id === id)
       const change = before ? describeJobChange(before as unknown as Record<string, unknown>, sanitizedPatch as Record<string, unknown>) : ''
-      if (before && change) logAudit('updated', 'daily_job', id, `${before.staff_name} · ${before.date}`, change)
+      if (before && change) logAudit('updated', 'daily_job', id, `${before.staff_name} · ${before.date}`, change, diffRecord(before as unknown as Record<string, unknown>, sanitizedPatch as Record<string, unknown>, ['date', 'staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'address', 'area', 'charges', 'received', 'payment_mode', 'material', 'service', 'remarks']))
       setDailyJobs(p => {
         const next = p.map(j => j.id === id ? { ...j, ...sanitizedPatch } : j)
         safeLocalStorageSet('safaeewala_daily_jobs', next)
@@ -1003,10 +1006,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return next
       })
       dbInsert('daily_expenses', row)
+      logAudit('created', 'expense', row.id, `${row.date} · AED ${row.amount}`, String((row as { description?: string; category?: string }).description || (row as { category?: string }).category || '')) // R-OPS-06
     },
     updateDailyExpense: (id, patch) => {
       const sanitizedPatch = { ...patch }
       if ('amount' in sanitizedPatch) sanitizedPatch.amount = safeNum(sanitizedPatch.amount)
+      const beforeExp = dailyExpenses.find(e => e.id === id)
+      if (beforeExp) logEdit('expense', id, `${beforeExp.date} · AED ${beforeExp.amount}`, beforeExp, sanitizedPatch)
       setDailyExpenses(p => {
         const next = p.map(e => e.id === id ? { ...e, ...sanitizedPatch } : e)
         safeLocalStorageSet('safaeewala_daily_expenses', next)
@@ -1015,6 +1021,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       dbUpdate('daily_expenses', id, sanitizedPatch)
     },
     deleteDailyExpense: (id) => {
+      const goneExp = dailyExpenses.find(e => e.id === id)
+      if (goneExp) logAudit('deleted', 'expense', id, `${goneExp.date} · AED ${goneExp.amount}`)
       setDailyExpenses(p => {
         const next = p.filter(e => e.id !== id)
         safeLocalStorageSet('safaeewala_daily_expenses', next)
@@ -1046,6 +1054,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       })
       jobIds.forEach(id => dbDelete('daily_jobs', id))
       expenseIds.forEach(id => dbDelete('daily_expenses', id))
+      if (jobIds.length + expenseIds.length) logAudit('deleted', 'day', date, `Day ${date}`, `${jobIds.length} job rows, ${expenseIds.length} expenses (copy kept)`)
     },
     clearAllDailyData: async () => {
       const jobIds = dailyJobs.map(j => j.id)

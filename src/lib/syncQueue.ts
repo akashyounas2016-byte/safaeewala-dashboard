@@ -43,7 +43,7 @@ const keepFailed = (entries: OutboxEntry[], why: string) => {
   if (entries.length === 0) return
   const prev = safeLocalStorageGet<OutboxEntry[]>(FAILED_KEY, [])
   safeLocalStorageSet(FAILED_KEY, [...prev, ...entries.map(e => ({ ...e, lastError: `${why}: ${e.lastError || ''}` }))].slice(-200))
-  entries.forEach(e => reportError(new Error(`${e.op} ${e.table}/${e.rowId} not saved to Supabase (${why}): ${e.lastError || ''}`), 'sync'))
+  entries.forEach(e => reportError(new Error(`${e.op} ${e.table}/${e.rowId} not saved to Supabase (${why}): ${e.lastError || ''}`), 'sync', { table: e.table, op: e.op, rowId: e.rowId }))
 }
 
 const readOutbox = () => safeLocalStorageGet<OutboxEntry[]>(OUTBOX_KEY, [])
@@ -82,6 +82,10 @@ function enqueue(entry: Omit<OutboxEntry, 'key' | 'at' | 'tries'>, error: string
   }
   writeOutbox(list)
   console.error(`[sync] ${entry.op} ${entry.table}/${entry.rowId} not saved to Supabase: ${error}`)
+  // R-OPS-07: the database refused the change (not a lost connection) — reported once, when it first fails
+  if (next.tries === 1 && !isTransientError(error) && !/earlier unsaved change/i.test(error)) {
+    reportError(new Error(`${entry.op} ${entry.table} not saved yet: ${error}`), 'sync', { table: entry.table, op: entry.op, rowId: entry.rowId })
+  }
 }
 
 /** Known column whitelist for tables that do not have custom UI fields in Supabase */
@@ -153,7 +157,7 @@ async function run(e: Pick<OutboxEntry, 'table' | 'op' | 'rowId' | 'payload'>): 
       const message = error.message || String(error)
       const missing = /Could not find the '([^']+)' column/i.exec(message)?.[1]
       if (missing && cleanPayload && missing in cleanPayload && e.op !== 'delete') {
-        reportError(new Error(`Supabase has no column ${e.table}.${missing} — that field was not saved`), 'sync')
+        reportError(new Error(`Supabase has no column ${e.table}.${missing} — that field was not saved`), 'sync', { table: e.table, op: e.op, rowId: e.rowId })
         cleanPayload = { ...cleanPayload }
         delete cleanPayload[missing]
         if (Object.keys(cleanPayload).filter(k => k !== 'id').length === 0) return null

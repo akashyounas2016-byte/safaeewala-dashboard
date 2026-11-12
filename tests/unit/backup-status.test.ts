@@ -19,7 +19,7 @@ eq(nextBackupAt(new Date('2026-11-05T23:00:00Z')).toISOString(), '2026-11-06T22:
 const server = src('webhookServer.cjs')
 eq(/pathname === '\/api\/backup-status'/.test(server), true, 'server serves /api/backup-status')
 eq(/write_status true/.test(src('scripts/backup/db-backup.sh')) && /write_status false/.test(src('scripts/backup/db-backup.sh')), true, 'script writes the status on success and failure')
-eq(/<BackupStatusCard \/>/.test(src('src/pages/Settings.tsx')), true, 'card shown on the Backup tab')
+eq(/<BackupOverview/.test(src('src/pages/Settings.tsx')), true, 'backup status shown at the top of the Backup tab (R-OPS-08, was BackupStatusCard)')
 
 const clients = src('src/pages/Clients.tsx')
 eq(/const CLIENT_CARDS_PREVIEW = 6/.test(clients) && /See All/.test(clients), true, 'Clients: 2 rows, then See All (UX-144, was 4 rows UX-95)')

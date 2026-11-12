@@ -13,7 +13,9 @@ const n = (id: string) => r.find(c => c.id === id)!.items.length
 eq(n('sync'), 1, 'unsynced changes listed')
 eq(n('dup-emp'), 1, 'duplicate employee by EID (dashes ignored)')
 eq(n('dup-client'), 1, 'duplicate client by phone (formats ignored)')
-eq(r.find(c => c.id === 'unregistered')!.items.map(i => i.label), ['Nobody'], 'only recent unregistered staff')
+eq(r.find(c => c.id === 'unregistered')!.items.map(i => i.label.split(' · ')[0]), ['Nobody'], 'only recent unregistered staff')
+// R-OPS-07: the item opens that job on the Daily Job Sheet, not the Employees list
+eq(/^\/daily-job-sheet\?date=2026-10-20&job=/.test(r.find(c => c.id === 'unregistered')!.items[0].link || ''), true, 'unregistered staff opens the exact job')
 eq(n('rows'), 1, 'received > charges row flagged')
 eq(n('invoices'), 1, 'invoice with deleted visit')
 eq(n('no-phone'), 1, 'client without phone')

@@ -643,7 +643,7 @@ const server = http.createServer((req, res) => {
 
   // R-WA-01: Meta calls this without a sign-in; it is checked by the verify token / signature instead
   if (pathname === '/api/whatsapp/webhook') {
-    whatsapp.handleWebhook(req, res, parsedUrl).catch(err => { if (!res.headersSent) sendJson(res, 500, { error: err.message }); });
+    whatsapp.handleWebhook(req, res, parsedUrl).catch(err => { logServerError(pathname, err); if (!res.headersSent) sendJson(res, 500, { error: err.message }); });
     return;
   }
 
@@ -655,8 +655,13 @@ const server = http.createServer((req, res) => {
 
   authorizeApi(req, pathname, parsedUrl).then(result => {
     if (!result.ok) return sendJson(res, result.status, { error: result.error });
-    routeApi(req, res, parsedUrl, pathname);
-  }, () => sendJson(res, 500, { error: 'Server error' }));
+    try {
+      routeApi(req, res, parsedUrl, pathname);
+    } catch (err) { // R-OPS-07: a failing request is logged with its path, not lost in the container log
+      logServerError(`${req.method} ${pathname}`, err);
+      if (!res.headersSent) sendJson(res, 500, { error: 'Server error' });
+    }
+  }, err => { logServerError(`auth ${pathname}`, err); sendJson(res, 500, { error: 'Server error' }); });
 });
 
 // App error log (TA-24): one JSON line per report in /data/logs/errors.jsonl, file kept under 2 MB
@@ -671,6 +676,19 @@ function appendErrorLog(entry) {
   } catch { /* rotation is best effort */ }
   fs.appendFileSync(ERROR_LOG, JSON.stringify(entry) + '\n', 'utf8');
 }
+/** R-OPS-07: errors of the server itself go into the same log (kind "server"), shown in Settings → Data health */
+function logServerError(where, err) {
+  try {
+    appendErrorLog({
+      at: new Date().toISOString(), kind: 'server', where: String(where || '').slice(0, 200),
+      message: String((err && err.message) || err || 'Server error').slice(0, 500),
+      stack: String((err && err.stack) || '').slice(0, 2000), url: String(where || '').slice(0, 300), userAgent: 'server', version: process.env.APP_VERSION || '',
+    });
+  } catch { /* logging must never take the server down */ }
+}
+process.on('unhandledRejection', err => { console.error('[unhandledRejection]', err); logServerError('unhandledRejection', err); });
+process.on('uncaughtException', err => { console.error('[uncaughtException]', err); logServerError('uncaughtException', err); process.exit(1); });
+
 function readErrorLog(limit = 100) {
   if (!fs.existsSync(ERROR_LOG)) return [];
   return fs.readFileSync(ERROR_LOG, 'utf8').trim().split('\n').filter(Boolean).slice(-limit).reverse()
@@ -732,11 +750,18 @@ function routeApi(req, res, parsedUrl, pathname) {
 
   // App error reports (TA-24)
   if (pathname === '/api/logs/errors') {
-    if (req.method === 'GET') return sendJson(res, 200, readErrorLog(100));
+    if (req.method === 'GET') return sendJson(res, 200, readErrorLog(300)); // R-OPS-07: enough to group by cause
     if (req.method === 'POST') {
       readJson(req, 64 * 1024).then(b => {
         const s = (v, n) => String(v == null ? '' : v).slice(0, n);
-        appendErrorLog({ at: new Date().toISOString(), message: s(b.message, 500), stack: s(b.stack, 2000), where: s(b.where, 100), url: s(b.url, 300), userAgent: s(b.userAgent, 200) });
+        const kinds = ['crash', 'error', 'sync'];
+        // R-OPS-07: what is needed to find the cause and the effect on the data
+        appendErrorLog({
+          at: new Date().toISOString(), message: s(b.message, 500), stack: s(b.stack, 2000), where: s(b.where, 100), url: s(b.url, 300), userAgent: s(b.userAgent, 200),
+          kind: kinds.includes(b.kind) ? b.kind : 'error', user: s(b.user, 120), version: s(b.version, 20),
+          online: b.online !== false, pendingWrites: Math.max(0, Math.min(10000, Number(b.pendingWrites) || 0)),
+          table: s(b.table, 40), op: s(b.op, 10), rowId: s(b.rowId, 80),
+        });
         sendJson(res, 201, { ok: true });
       }, err => sendJson(res, err.status || 400, { error: err.message }));
       return;

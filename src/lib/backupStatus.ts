@@ -31,3 +31,24 @@ export function nextBackupAt(now: Date): Date {
   if (next.getTime() <= now.getTime()) next.setUTCDate(next.getUTCDate() + 1)
   return next
 }
+
+/** R-OPS-08: is the data being copied every day — one answer for the top of Settings → Backup */
+export type BackupLevel = 'good' | 'partial' | 'bad'
+export interface BackupSummaryInput {
+  server: BackupHealth
+  /** the nightly server backup also copies to Google Drive (rclone) */
+  serverOffsite: boolean
+  /** last daily copy sent to the Drive webhook / saved in this computer's folder (Dubai date, error) */
+  drive?: { date: string; error?: string } | null
+  local?: { date: string; error?: string } | null
+  localReady: boolean
+  today: string
+  yesterday: string
+}
+const fresh = (c: BackupSummaryInput['drive'], i: BackupSummaryInput) => Boolean(c && !c.error && (c.date === i.today || c.date === i.yesterday))
+export function backupSummary(i: BackupSummaryInput): { level: BackupLevel; server: boolean; drive: boolean; local: boolean } {
+  const server = i.server === 'ok'
+  const drive = (server && i.serverOffsite) || fresh(i.drive, i)
+  const local = i.localReady && fresh(i.local, i)
+  return { level: !server ? 'bad' : drive || local ? 'good' : 'partial', server, drive, local }
+}

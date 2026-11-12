@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(settings): Activity Log redesigned — every add / change / delete with person, time, screen and each field before → after; filters, day groups, record links, CSV; client / employee / booking / invoice edits, new jobs, expenses and whole-day deletes now logged; migration `2026-11-12_audit_log_details.sql` (R-OPS-06, UX-145)
+- feat(settings): Data health opens the exact job for unregistered staff and job warnings; app errors carry kind, person, version, connection and unsaved changes, the server logs its own errors, and the list is grouped by cause with the effect on the data (R-OPS-07)
+- feat(settings): Backup tab simplified — one clear "are backups running?" answer, Server / Google Drive / This computer lines, daily automatic copy to a folder on this computer and to the Drive webhook; advanced settings folded (R-OPS-08)
 - fix(excel-sheet): a new 2-cleaner job from Add Job saves; it no longer stops with "Not saved — 1 row(s) changed on another screen" (R-SYNC-18)
 
 - feat(contracts): optional Contract End date on the Contract card and in Monthly Clients → Contracts; visits are added only from Start to End, an End before the Start is refused, and the contract shows Starts / Valid till / Renews / Ended (R-SCHED-11)

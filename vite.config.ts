@@ -5,6 +5,8 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // R-OPS-07: the app version (commit) goes with every error report
+  define: { __APP_VERSION__: JSON.stringify((process.env.GITHUB_SHA || process.env.APP_VERSION || 'local').slice(0, 7)) },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

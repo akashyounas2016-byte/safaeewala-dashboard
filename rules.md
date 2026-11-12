@@ -1305,6 +1305,32 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `docker-compose.yml` (Traefik rule), `webhookServer.cjs` (ALLOWED_ORIGINS), `nginx.conf`, `index.html`; [prod.md §8](prod.md).
 - **Status:** Code ready · live after the next deploy; Supabase Auth redirect URL to be added by the owner · Since: 2026-11-06
 
+### R-OPS-06 — Activity Log with full detail
+- **Rule:** *"Settings screen par maujood Activity Log tab ke layout ko redesign karein aur iski data capturing capacity ko barhayein. Maujooda simple logs ki bajaye mukammal details (jaise user action, timestamp, aur affected entities) record karne ka system banayein."* (2026-11-12)
+  - Every entry keeps: **who** (sign-in email), **when**, **what** (added / changed / status changed / deleted / restored), **which record** (type, name, id), **on which screen**, and **every changed field before → after**. Photos, files, ids and timestamps are never written.
+  - Logged now: bookings, clients, employees, invoices (all edits, not only status), new job rows, job edits and deletes, expenses, inventory, agencies, a whole day deleted, restores. Entries are sent in batches (an import does not send hundreds of requests) and never block a save.
+  - Settings → Activity Log: period (Today / 7 days / 30 days / All), record type, action, person, search; grouped by day; each entry opens to a Field / Before / After table and an **Open this record** link; **CSV** download of the list; Load older entries.
+  - Migration `supabase/migrations/2026-11-12_audit_log_details.sql` adds the `screen` and `changes` columns. Until it runs, the same detail is kept in the `details` text and read back from there.
+- **Code:** `src/lib/auditLog.ts → diffRecord, changesOf, screenOfPath, logAudit`; `src/store/DataContext.tsx → logAudit, logEdit`; `src/components/settings/ActivityLogPanel.tsx`. Test: `tests/unit/settings-logs-backup-1112.test.ts`.
+- **Status:** Active · migration to run by the owner · Since: 2026-11-12
+
+### R-OPS-07 — Data health opens the exact record; app errors with cause and effect
+- **Rule:** *"'Unregistered staff on job' par click karnay par system ko generic Employees screen par laye kay bajaye, us specific job entry ya record par direct land karayein jahan masla hai. Mazeed yeh kay, VPS par show honay walay 'Recent App Errors' ko analyze karnay kay liye logging mechanism banayein, taake errors ki wajohat aur VPS data par unkay asraat ko track kiya ja sakay."* (2026-11-12)
+  - *Unregistered staff on job* and *Job rows with warnings* open the Daily Job Sheet on that date **with the job open** (`?date=…&job=…`), the newest job of that name first; the other dates are listed beside it.
+  - Every error report now carries: kind (screen crashed / not saved to database / server / background), screen, person, app version (commit), online or not, how many changes were still waiting to be saved, and for database refusals the table and action. A change the database refuses is reported once, when it first fails (lost connections are not errors).
+  - The server (VPS) logs its own failures too (failed requests, unhandled errors) in the same file, `/data/logs/errors.jsonl`; the last 300 are listed.
+  - Settings → Data health → Recent app errors: grouped by cause (same error with other ids = one line, with a count), not-saved and server errors first, each with **what it means for the data** in plain words, the screens, people, versions, the stack, and *Copy report for the developer*.
+- **Code:** `src/lib/dataHealth.ts → jobLink`; `src/lib/errorReport.ts → reportError, groupErrors, impactOf`; `src/lib/syncQueue.ts → enqueue`; `webhookServer.cjs → logServerError`; `src/components/settings/AppErrorsPanel.tsx`; `vite.config.ts` (`__APP_VERSION__`).
+- **Status:** Active · Since: 2026-11-12
+
+### R-OPS-08 — Backup tab: one clear answer, daily copies
+- **Rule:** *"Backup tab kay design ko simplify karein aur confusion door karein. Is mein wazeh tor par display kiya jaye kay aaya backup ho raha hai ya nahi. Sistem ko is tarah configure karein kay data ki daily copies khud-ba-khud Google Drive aur local storage dono par save hoti rahein."* (2026-11-12)
+  - The tab starts with one answer: **Backups are running** (green — server + a second copy), **Server backup is running — add a second copy** (amber), or **The nightly server backup is NOT running** (red).
+  - Three lines below it, each with its status and last copy: **Server copy** (every night 2:00 AM, R-OPS-04), **Google Drive copy** (with the server copy once rclone is set up — owner step A2; or daily through a Drive webhook), **This computer** (a folder picked once in Chrome / Edge: every day, the first time an admin has the CRM open, a JSON copy (restorable) and an Excel copy are saved there; 30 days kept; the browser may ask once to allow the folder again).
+  - Then *Download a copy now* (Excel / JSON), the before-delete copies, Restore; the Google Drive connection settings and server details are folded under **Advanced**.
+- **Code:** `src/components/settings/BackupOverview.tsx`, `DailyLocalBackup.tsx` (in `Layout`); `src/lib/localBackup.ts`; `src/lib/backupStatus.ts → backupSummary`.
+- **Status:** Active · Google Drive on the server waits for the owner (A2) · Since: 2026-11-12
+
 ---
 
 ## Known issues (rules not yet fully honoured)

@@ -6,7 +6,8 @@ import { loadCompanyInfo } from '@/lib/companyInfo'
 import { useIsAdmin, useCurrentUser } from '@/store/UserContext'
 import { UsersAdminPanel, RolePermissionsPanel } from '@/components/settings/UserManagement'
 import { BeforeDeleteCopies } from '@/components/settings/BeforeDeleteCopies'
-import { BackupStatusCard } from '@/components/settings/BackupStatusCard'
+import { BackupOverview } from '@/components/settings/BackupOverview'
+import { ActivityLogPanel } from '@/components/settings/ActivityLogPanel'
 import { notify } from '@/lib/notify'
 import { DataHealthPanel } from '@/components/settings/DataHealthPanel'
 import { HeartPulse } from 'lucide-react'
@@ -560,118 +561,6 @@ const DEFAULT_NOTIF: NotifData = {
   new_booking: false, booking_confirmed: false, booking_cancelled: true,
   reminder_24h: true, reminder_2h: true, invoice_overdue: true,
   payment_received: true, low_stock: true, document_expiry: true, new_review: false,
-}
-
-const AUDIT_SQL = `-- Run this once in Supabase SQL Editor:
-create table if not exists public.audit_log (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz default now(),
-  user_name text,
-  action text,
-  entity text,
-  entity_id text,
-  entity_name text,
-  details text
-);
-alter table public.audit_log enable row level security;
-create policy "allow all authenticated" on public.audit_log
-  for all using (auth.uid() is not null)
-  with check (auth.uid() is not null);`
-
-const ENTITY_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
-  booking:  { bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
-  client:   { bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500'    },
-  invoice:  { bg: 'bg-purple-50',  text: 'text-purple-700',  dot: 'bg-purple-500'  },
-  employee: { bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-500'   },
-  default:  { bg: 'bg-slate-100',  text: 'text-slate-600',   dot: 'bg-slate-400'   },
-}
-const ACTION_LABELS: Record<string, string> = {
-  created:        '✦ Created',
-  deleted:        '✕ Deleted',
-  status_changed: '↻ Status changed',
-  updated:        '✎ Updated',
-}
-
-function ActivityLogPanel() {
-  const [logs, setLogs] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [tableExists, setTableExists] = useState(true)
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    supabase
-      .from('audit_log')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100)
-      .then(({ data, error }) => {
-        if (error) setTableExists(false)
-        else setLogs(data ?? [])
-        setLoading(false)
-      })
-  }, [])
-
-  if (!tableExists) {
-    return (
-      <div className="space-y-4">
-        <div className="bg-amber-50 border border-amber-200 rounded-[22px] p-5">
-          <p className="text-[13px] font-bold text-amber-800 mb-1">One-time setup required</p>
-          <p className="text-[12px] text-amber-700 mb-3">
-            The activity log needs a table in Supabase. Run the SQL below in your Supabase SQL Editor, then refresh the page.
-          </p>
-          <div className="relative">
-            <pre className="text-[11px] font-mono bg-slate-900 text-emerald-400 p-4 rounded-xl overflow-x-auto whitespace-pre-wrap">{AUDIT_SQL}</pre>
-            <button
-              onClick={() => { void copyText(AUDIT_SQL); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
-              className="absolute top-2 right-2 text-[11px] font-semibold bg-white/10 text-white px-2.5 py-1 rounded-lg hover:bg-white/20 transition-colors"
-            >
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
-      <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between">
-        <h3 className="text-[15px] font-bold text-[#111827]">Activity Log</h3>
-        <span className="text-[12px] text-slate-500">{logs.length} entries</span>
-      </div>
-      {loading ? (
-        <p className="text-[13px] text-slate-400 text-center py-10">Loading…</p>
-      ) : logs.length === 0 ? (
-        <p className="text-[13px] text-slate-400 text-center py-10">No activity recorded yet</p>
-      ) : (
-        <div className="divide-y divide-[#E4E8EC]">
-          {logs.map(log => {
-            const style = ENTITY_STYLES[log.entity] ?? ENTITY_STYLES.default
-            return (
-              <div key={log.id} className="px-6 py-3.5 flex items-center gap-4">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${style.dot}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${style.bg} ${style.text} capitalize`}>
-                      {log.entity}
-                    </span>
-                    <span className="text-[12px] font-semibold text-[#111827] truncate">{log.entity_name}</span>
-                    <span className="text-[11.5px] text-slate-500">{ACTION_LABELS[log.action] ?? log.action}</span>
-                    {log.details && (
-                      <span className="text-[11px] text-slate-400 font-mono bg-slate-50 px-1.5 py-0.5 rounded">{log.details}</span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    {log.user_name} · {new Date(log.created_at).toLocaleString('en-AE', { dateStyle: 'short', timeStyle: 'short' })}
-                  </p>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
 }
 
 export function Settings() {
@@ -1284,182 +1173,15 @@ export function Settings() {
           {/* ── Backup & Disaster Recovery ── */}
           {activeTab === 'backup' && (
             <div className="space-y-6">
-              {/* Header Hero Banner */}
-              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white rounded-[22px] p-6 shadow-[0_4px_20px_rgba(15,23,42,0.12)] relative overflow-hidden">
-                <div className="flex flex-wrap items-start justify-between gap-4 relative z-10">
-                  <div className="max-w-xl">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[11px] font-bold uppercase tracking-wider mb-2.5">
-                      <ShieldCheck size={13} className="text-emerald-400" />
-                      Centralized Data Protection
-                    </div>
-                    <h2 className="text-[20px] font-bold text-white tracking-tight">
-                      Backup & Disaster Recovery Center
-                    </h2>
-                    <p className="text-[13px] text-slate-300 mt-1 leading-relaxed">
-                      Instant multi-sheet Excel & JSON downloads, safe non-destructive restore engine, Google Drive cloud integration, and VPS disaster recovery architecture.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <button
-                      onClick={() => setShowBackupHelpModal(true)}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-[12.5px] font-bold transition-all backdrop-blur-xs cursor-pointer shadow-xs"
-                    >
-                      <HelpCircle size={15} className="text-emerald-300" />
-                      How-To & Help Guide
-                    </button>
-                    <a
-                      href="https://supabase.com/dashboard"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[12.5px] font-bold transition-all shadow-xs"
-                    >
-                      <Database size={15} />
-                      Supabase Console
-                    </a>
-                  </div>
-                </div>
-
-                {/* 4 Health / Storage Chips */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 pt-5 border-t border-white/10 relative z-10">
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-slate-300">Total Live Records</span>
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    </div>
-                    <p className="text-[20px] font-black text-white mt-0.5">{totalRecords.toLocaleString()}</p>
-                    <p className="text-[10.5px] text-emerald-300 mt-0.5 font-medium">Across all 7 collections</p>
-                  </div>
-
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-slate-300">Protected Tables</span>
-                      <Database size={13} className="text-blue-300" />
-                    </div>
-                    <p className="text-[20px] font-black text-white mt-0.5">7 Tables</p>
-                    <p className="text-[10.5px] text-blue-200 mt-0.5 font-medium">Bookings, Clients, Crew, etc.</p>
-                  </div>
-
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-slate-300">Google Drive Sync</span>
-                      <CloudUpload size={13} className="text-amber-300" />
-                    </div>
-                    <p className="text-[14px] font-bold text-white mt-1 truncate">
-                      {gdriveConfigured ? 'OAuth Active' : (driveWebhookUrl ? 'Webhook Ready' : 'Standby')}
-                    </p>
-                    <p className="text-[10.5px] text-amber-200 mt-0.5 font-medium">
-                      {gdriveConfigured ? 'Direct 1-click cloud sync' : (driveWebhookUrl ? 'n8n automation endpoint' : 'Manual / Webhook')}
-                    </p>
-                  </div>
-
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-slate-300">Server Disk Backups</span>
-                      <Server size={13} className="text-emerald-300" />
-                    </div>
-                    <p className="text-[14px] font-bold text-white mt-1">/data/backups/</p>
-                    <p className="text-[10.5px] text-emerald-200 mt-0.5 font-medium">VPS Docker volume mounted</p>
-                  </div>
-                </div>
-              </div>
+              {/* R-OPS-08: one clear answer — is the data backed up? — and the three daily copies */}
+              <BackupOverview
+                data={{ bookings, clients, employees, invoices, inventory, dailyJobs, dailyExpenses }}
+                onExcel={downloadExcel}
+                onJson={downloadBackup}
+              />
 
               {/* Copies kept automatically before deletes (BAK-5) */}
-              {/* Nightly database backup on the VPS (UX-93, R-OPS-04) */}
-              <BackupStatusCard />
-
               <BeforeDeleteCopies />
-
-              {/* Card 1: One-Click Instant Backups (Export Engine) */}
-              <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
-                <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold shrink-0">
-                      <Download size={18} />
-                    </div>
-                    <div>
-                      <h3 className="text-[15px] font-bold text-[#111827]">Instant Local Backups (Export Engine)</h3>
-                      <p className="text-[12px] text-slate-500">Download a full timestamped snapshot directly to your computer's Downloads folder</p>
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                    Offline Ready
-                  </span>
-                </div>
-
-                <div className="p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    {/* Excel Backup Card */}
-                    <div className="border border-emerald-200/80 bg-gradient-to-br from-emerald-50/40 to-white rounded-2xl p-5 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center gap-2.5 mb-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs">
-                            <FileSpreadsheet size={16} />
-                          </div>
-                          <div>
-                            <h4 className="text-[14px] font-bold text-slate-900">Microsoft Excel Spreadsheet</h4>
-                            <span className="text-[11px] font-bold text-emerald-700">7 Separate Sheets (.xlsx)</span>
-                          </div>
-                        </div>
-                        <p className="text-[12px] text-slate-600 mb-3 leading-relaxed">
-                          Formatted workbook containing complete records for Bookings ({bookings.length}), Clients ({clients.length}), Employees ({employees.length}), Invoices ({invoices.length}), Inventory ({inventory.length}), Daily Jobs ({dailyJobs.length}), and Expenses ({dailyExpenses.length}).
-                        </p>
-                        <div className="flex flex-wrap gap-1.5 mb-4">
-                          {['Bookings', 'Clients', 'Staff', 'Invoices', 'Inventory', 'Daily Jobs', 'Expenses'].map(tag => (
-                            <span key={tag} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white border border-emerald-200 text-emerald-800">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <button
-                        onClick={downloadExcel}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[12.5px] font-bold transition-all shadow-xs cursor-pointer"
-                      >
-                        <FileSpreadsheet size={15} />
-                        Download Full Excel (.xlsx)
-                      </button>
-                    </div>
-
-                    {/* JSON Dump Card */}
-                    <div className="border border-slate-200 bg-gradient-to-br from-slate-50 to-white rounded-2xl p-5 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center gap-2.5 mb-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center shadow-xs">
-                            <Database size={16} />
-                          </div>
-                          <div>
-                            <h4 className="text-[14px] font-bold text-slate-900">Technical JSON Data Dump</h4>
-                            <span className="text-[11px] font-bold text-slate-600">Full Raw Database Structure (.json)</span>
-                          </div>
-                        </div>
-                        <p className="text-[12px] text-slate-600 mb-3 leading-relaxed">
-                          Complete raw structured export with ISO timestamps, primary keys, and relationships. Directly compatible with the Restore Engine below for 1-click database recovery.
-                        </p>
-                        <div className="flex flex-wrap gap-1.5 mb-4">
-                          {['100% Schema', 'ISO Timestamps', 'Direct Restore', 'Developer Dump'].map(tag => (
-                            <span key={tag} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <button
-                        onClick={downloadBackup}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[12.5px] font-bold transition-all shadow-xs cursor-pointer"
-                      >
-                        <Download size={15} />
-                        Download JSON Backup (.json)
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-[#E4E8EC] flex items-center gap-2 text-[11.5px] text-slate-500">
-                    <Info size={13} className="text-slate-400 shrink-0" />
-                    <span>Files are saved directly to your computer as <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">safaeewala-backup-{todayDubai()}.xlsx / .json</code></span>
-                  </div>
-                </div>
-              </div>
 
               {/* Card 2: Safe Database Recovery & Restore Engine */}
               <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
@@ -1552,6 +1274,16 @@ export function Settings() {
                 </div>
               </div>
 
+              {/* R-OPS-08: connection settings and server details — folded away, they confused day-to-day use */}
+              <details className="group bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+                <summary className="px-6 py-4 cursor-pointer list-none flex items-center justify-between gap-3 hover:bg-slate-50">
+                  <span>
+                    <span className="block text-[14px] font-bold text-slate-900">Advanced — Google Drive connection and server details</span>
+                    <span className="block text-[12px] text-slate-500">Only needed to set up Google Drive or for the developer.</span>
+                  </span>
+                  <ChevronDown size={16} className="text-slate-400 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="p-4 space-y-6 border-t border-slate-100">
               {/* Card 3: Google Drive & Cloud Webhook Integrations */}
               <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
                 <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-2">
@@ -1794,6 +1526,8 @@ export function Settings() {
                   </div>
                 </div>
               </div>
+                </div>
+              </details>
             </div>
           )}
         </div>
