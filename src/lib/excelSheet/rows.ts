@@ -39,6 +39,21 @@ export const fieldValue = (row: DailyJob, k: (typeof SAVED_FIELDS)[number]) =>
  */
 const COMPARED_FIELDS = SAVED_FIELDS.filter(k => k !== 'ot_hours')
 export const sameJobRow = (a: DailyJob, b: DailyJob) => COMPARED_FIELDS.every(k => fieldValue(a, k) === fieldValue(b, k))
+/**
+ * R-SYNC-18: team jobs (one grid row per cleaner) that were deleted on another screen while this sheet had them.
+ * Only a job that was loaded from the database can have been deleted elsewhere: a team job just added with
+ * Add Job (temporary "new-…" id, not saved yet) is not in the database either and is NOT a conflict —
+ * counting it blocked every save of a new 2-cleaner job with "1 row(s) changed on another screen".
+ */
+export function teamJobsDeletedElsewhere(
+  teamJobIds: Iterable<string>,
+  loadedIds: { has: (id: string) => boolean },
+  liveIds: { has: (id: string) => boolean },
+  stillHasDetails: (jobId: string) => boolean,
+): string[] {
+  return Array.from(teamJobIds).filter(id => loadedIds.has(id) && !liveIds.has(id) && stillHasDetails(id))
+}
+
 /** A new grid row the user never filled in — not worth saving */
 export const isBlankNewRow = (r: DailyJob) =>
   !String(r.address || '').trim() && !String(r.area || '').trim() && cleanNum(r.charges) === 0 &&

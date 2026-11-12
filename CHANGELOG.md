@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(excel-sheet): a new 2-cleaner job from Add Job saves; it no longer stops with "Not saved — 1 row(s) changed on another screen" (R-SYNC-18)
+
 - feat(contracts): optional Contract End date on the Contract card and in Monthly Clients → Contracts; visits are added only from Start to End, an End before the Start is refused, and the contract shows Starts / Valid till / Renews / Ended (R-SCHED-11)
 - fix(bookings): a booking without a cleaner adds its job with an empty cleaner, never "Unassigned" (R-SCHED-10)
 - change(clients): the client list shows two rows with a See All button; the widgets below are in their own Client Insights panel (UX-144)

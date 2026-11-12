@@ -398,6 +398,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/excelSheet/rows.ts → isClearedRow`; `JobSheetSpreadsheet.tsx → handleSaveAll (emptiedHere, splitJobPayload)`, the merge effect (`goneHere`); `src/lib/clientDataSync.ts → rememberRemovedMonthlyVisits, getScheduledMonthlyShiftsForDate`; `DataContext.tsx → deleteDailyJob`; `cloudState.ts → CLOUD_SYNCED_KEYS`. Test: `tests/unit/delete-sync-unassigned-1111c.test.ts`.
 - **Status:** Active · Since: 2026-11-11
 
+### R-SYNC-18 — A new team job saves without a false "changed on another screen"
+- **Rule:** *"Jub Job sheet se 2 cleaners book karo tu ye error day raha hai, and save nhi kar raha."* (2026-11-12)
+  - Add Job on the Excel sheet with two or more cleaners puts one row per cleaner in the grid under a temporary id (`new-…`); Save folds them into one job.
+  - The save check for "a team job deleted on another screen" looked only at whether the job was in the database. A job just added is not there yet, so every new team job counted as "1 row(s) changed on another screen": auto-save stopped and Save asked to overwrite.
+  - Now only a team job that was **loaded** from the database and is gone counts as deleted elsewhere. A new one is simply saved.
+- **Code:** `src/lib/excelSheet/rows.ts → teamJobsDeletedElsewhere`; `JobSheetSpreadsheet.tsx → handleSaveAll`. Test: `tests/unit/team-job-save-1112.test.ts`.
+- **Status:** Active · Since: 2026-11-12
+
 ### R-SYNC-04 — Staff are matched by whole words
 - **Rule:** An employee matches a job's `staff_name` by normalised full name or whole-word match — "Rupa" must not match "Rupak".
 - **Code:** `clientDataSync.ts → employeeMatchesStaff`.

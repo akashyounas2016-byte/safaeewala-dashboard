@@ -30,7 +30,7 @@ import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, padCleanerBlocks,
 import { splitTotals, isSplitJob } from '@/lib/chargeSplit'
 import { type ColumnDef, DEFAULT_COLUMN_DEFS, mergeNewColumns, buildColumnsWithLetters, COLUMNS, type ExcelDatePresetKey, EXCEL_DATE_PRESETS, chargesPerHour } from '@/lib/excelSheet/columns'
 import { type BlockPalette, BLOCK_PALETTES, SOLID_PALETTE_KEYS, LIGHT_PALETTE_KEYS, PALETTE_KEYS, hslToHex, makeHexPalette } from '@/lib/excelSheet/palettes'
-import { newRowId, sameJobRow, isBlankNewRow, isClearedRow, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes } from '@/lib/excelSheet/rows'
+import { newRowId, sameJobRow, isBlankNewRow, isClearedRow, teamJobsDeletedElsewhere, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes } from '@/lib/excelSheet/rows'
 import { DRAFT_PREFIX, COLUMN_PRESETS, READ_ONLY_COLS, DEFAULT_ROW_BG, projectKeyOf, memberChargesLabel, memberReceivedLabel, memberModeLabel, refMoney, DROPDOWN_COLS, TIME_SUGGESTIONS, DUBAI_AREAS, RENDER_PAGE, safeGet, safeSet, rowColorConflict } from '@/lib/excelSheet/sheetConfig'
 import { evaluateFormula } from '@/lib/excelSheet/formula'
 import { jobFlags, splitSyncNote, type JobFlag } from '@/lib/jobFlags'
@@ -2442,7 +2442,8 @@ export function JobSheetSpreadsheet() {
         const now = live.get(r.id)
         return !now || !sameJobRow(was, now)
       }),
-      ...Array.from(splitJobIds).filter(id => !live.has(id) && rows.some(r => splitOrigin(r) === id && !isClearedRow(r))).map(id => ({ id })),
+      // R-SYNC-18: only a saved team job can have been deleted elsewhere — a new one from Add Job is just not saved yet
+      ...teamJobsDeletedElsewhere(splitJobIds, loadedRawRef.current, live, id => rows.some(r => splitOrigin(r) === id && !isClearedRow(r))).map(id => ({ id })),
     ]
     if (changedElsewhere.length > 0) {
       if (auto) { setAutoSaveBlocked(`Not saved — ${changedElsewhere.length} row(s) changed on another screen. Press Save to choose.`); return }
