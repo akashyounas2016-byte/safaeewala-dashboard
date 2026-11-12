@@ -102,6 +102,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Now a day without a cleaner is left empty: it is not listed in `day_cleaner_assignments`, its `day_schedules` cleaner is `''`, and `preferred_cleaner` is `''`. The monthly visit is added without a cleaner (like R-SCHED-06).
   - Older clients that already have "Unassigned" saved are read as no cleaner (`realCleanerName`), so no edit is needed. Editing such a client and saving cleans the record.
   - Screens may still show the label "Unassigned" where no cleaner is set; it is display text only and is never saved.
+  - A booking without a cleaner adds its job-sheet row with an empty cleaner too (`jobFromBooking`, 2026-11-12).
 - **Code:** `src/lib/clientDataSync.ts → realCleanerName, getClientShiftDetailsForDay`; `AddMonthlyClientModalForm.tsx → handleSubmit`; `src/lib/alerts.ts → scheduleCleanerAlerts`. Test: `tests/unit/delete-sync-unassigned-1111c.test.ts`.
 - **Status:** Active · Since: 2026-11-11
 
@@ -110,7 +111,8 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Opening an older date on the Daily Job Sheet or the Excel sheet ran the monthly sync for that date, so a client added today got visits on past dates (e.g. a client added on 11 Nov showed on 28 Oct and 4 Nov).
   - Start date = the contract's start date (Contract card / Monthly Clients → Contracts, R-CLI-05); without a contract, the day the client was added (Dubai date). No visit is added for a date before it — on app start, the Daily Job Sheet, the Excel sheet or the Sync button.
   - To show earlier visits, set an earlier Contract Start. A row already on an earlier date is never hidden or deleted by this rule.
-- **Code:** `src/lib/clientDataSync.ts → monthlyStartDateOf, getScheduledMonthlyShiftsForDate`. Test: `tests/unit/contract-start-delete-1111e.test.ts`.
+  - **End date** (2026-11-12, *"contract start date aur validity ko verify karein, end date b add karen"*): the Contract card and Monthly Clients → Contracts have an optional **Contract End**. Visits are added only from Start to End (both included); no End = open-ended. An End before the Start is not saved. The card shows the validity: *Starts …* (not started), *Valid till …* / *Renews …* (running), *Ended …*; the Contracts table shows *Ends …* / *Ended …*. The same window applies to Bi-Weekly clients that have a contract.
+- **Code:** `src/lib/clientDataSync.ts → contractWindowOf, monthlyStartDateOf, getScheduledMonthlyShiftsForDate`; `src/lib/clientContracts.ts → contractDateError, contractValidity`; `ContractDetailsCard.tsx`; `MonthlyClients.tsx` (Contracts tab). Test: `tests/unit/contract-end-clients-1112.test.ts`. Test: `tests/unit/contract-start-delete-1111e.test.ts`.
 - **Status:** Active · Since: 2026-11-11
 
 ### R-SCHED-12 — Deleting a monthly client leaves nothing behind

@@ -26,7 +26,7 @@ export function jobFromBooking(b: Booking, staffName: string, area?: string): Om
   const start = b.scheduled_time || '09:00'
   return {
     date: b.scheduled_date,
-    staff_name: staffName || 'Unassigned',
+    staff_name: staffName || '', // R-SCHED-10: no cleaner = empty, never the word "Unassigned"
     start_time: start,
     end_time: b.end_time || addHoursToTime(start, b.duration_hours || 3),
     duty_hours: num(b.duration_hours || 3),

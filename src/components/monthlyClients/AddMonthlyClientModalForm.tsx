@@ -11,7 +11,7 @@ import { findMonthlyScheduleClashes, realCleanerName } from '@/lib/clientDataSyn
 import { notify } from '@/lib/notify'
 import { ContractStatusToggle } from '@/components/clients/ContractStatusToggle'
 import { ContractDetailsCard } from '@/components/clients/ContractDetailsCard'
-import { contractOfClient, detailsOfContract, saveClientContract } from '@/lib/clientContracts'
+import { contractDateError, contractOfClient, detailsOfContract, saveClientContract } from '@/lib/clientContracts'
 import { addHoursToTime, subtractHoursFromTime, calcDurationFromTimes, formatTime12h } from '@/lib/utils'
 
 export const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -267,6 +267,7 @@ export function AddMonthlyClientModalForm({
     if (!requireFields(e.currentTarget, [
       { name: 'building', label: 'Address (apartment / villa number or building name)', ok: hasClientAddress(addressParts) },
       { name: 'schedule_days', label: 'Service days (tick at least one)', ok: activeDays.length > 0 },
+      { name: 'contract_end', label: 'Contract End (on or after Contract Start)', ok: !contractDateError(contract) }, // R-SCHED-11
     ])) return
 
     const remarks = String(f.get('remarks') || '').trim()

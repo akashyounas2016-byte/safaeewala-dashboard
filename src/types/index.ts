@@ -495,6 +495,8 @@ export interface RecurringContract {
   frequency: 'weekly' | 'biweekly' | 'monthly'
   amount: number
   startDate: string
+  /** R-SCHED-11: last day of the contract; empty = open-ended (renews every year) */
+  endDate?: string
   renewalDate: string
   status: 'active' | 'paused' | 'cancelled'
   lastBilled: string

@@ -11,12 +11,12 @@ import { cleanerPalette, cleanerInitials } from '@/lib/cleanerColors'
 const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const
 
 /** Card frame: lead cleaner colour on the left; monthly clients get the emerald tint */
-export function ClientCardShell({ lead, monthly, onClick, children }: { lead?: string; monthly?: boolean; onClick?: () => void; children: ReactNode }) {
+export function ClientCardShell({ lead, monthly, onClick, children, className = '' }: { lead?: string; monthly?: boolean; onClick?: () => void; children: ReactNode; className?: string }) {
   const edge = lead ? cleanerPalette(lead).borderLeft : monthly ? 'border-l-[5px] border-l-emerald-500' : 'border-l-[5px] border-l-slate-300'
   return (
     <div
       onClick={onClick}
-      className={`${edge} rounded-2xl border ${monthly ? 'bg-gradient-to-b from-emerald-50/60 to-white border-emerald-200' : 'bg-white border-[#E4E8EC]'} p-4 cursor-pointer transition-all shadow-[0_4px_18px_rgba(15,23,42,0.05)] hover:shadow-[0_8px_28px_rgba(15,23,42,0.10)] flex flex-col justify-between gap-3 min-w-0 group`}
+      className={`${edge} rounded-2xl border ${monthly ? 'bg-gradient-to-b from-emerald-50/60 to-white border-emerald-200' : 'bg-white border-[#E4E8EC]'} p-4 cursor-pointer transition-all shadow-[0_4px_18px_rgba(15,23,42,0.05)] hover:shadow-[0_8px_28px_rgba(15,23,42,0.10)] flex flex-col justify-between gap-3 min-w-0 group ${className}`}
     >
       {children}
     </div>

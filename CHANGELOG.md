@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(contracts): optional Contract End date on the Contract card and in Monthly Clients → Contracts; visits are added only from Start to End, an End before the Start is refused, and the contract shows Starts / Valid till / Renews / Ended (R-SCHED-11)
+- fix(bookings): a booking without a cleaner adds its job with an empty cleaner, never "Unassigned" (R-SCHED-10)
+- change(clients): the client list shows two rows with a See All button; the widgets below are in their own Client Insights panel (UX-144)
 - fix(monthly-clients): a monthly client's visits are added only from its contract start date (or the day it was added) — opening an older date no longer puts a new client on past days (R-SCHED-11)
 - fix(clients): deleting a monthly / Bi-Weekly client also removes its unpaid visits from today on and its contract (restore point kept); a deleted client is not brought back from old visits (R-SCHED-12)
 - feat(clients): Contract card on the Monthly / Bi-Weekly client popup (service, amount, billing, start, notes, renewal) — saved as the client's contract in Monthly Clients → Contracts; Contract Status On / Off = active / paused (R-CLI-05)

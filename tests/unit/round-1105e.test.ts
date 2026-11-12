@@ -45,7 +45,7 @@ eq([mix.inHouse, mix.outsourced], [['Maria'], ['Joy']], 'in-house vs outsourced 
 const cl = src('src/pages/Clients.tsx')
 eq(/const scopeClients = filterType \? filtered : clients/.test(cl), true, 'a selected KPI card scopes the widgets')
 eq(/\[\.\.\.scopeBookings\]/.test(cl) && /scopeDue/.test(cl) && /\[\.\.\.scopeClients\]\.sort/.test(cl), true, 'bookings, dues and top clients follow the scope')
-eq(/animate-bounce/.test(cl) && /more clients/.test(cl), true, 'expand arrow under the cards')
+eq(/renderSeeAll()/.test(cl) && /ChevronDown/.test(cl), true, 'See All arrow under the cards (UX-144)')
 
 // R-SCHED-08: Contract Status Off stops the sync and clears synced visits from today on
 const monthly = { id: 'm1', full_name: 'Office ABC', building_name: 'Office ABC', area: 'Khawaneej', source: 'monthly', service_mode: 'monthly',

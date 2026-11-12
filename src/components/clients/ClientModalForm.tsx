@@ -27,7 +27,7 @@ import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import { BiWeeklyScheduleCard, emptyBiWeeklyPlan } from '@/components/clients/BiWeeklyScheduleCard'
 import { ContractStatusToggle } from '@/components/clients/ContractStatusToggle'
 import { ContractDetailsCard } from '@/components/clients/ContractDetailsCard'
-import { contractOfClient, detailsOfContract, saveClientContract } from '@/lib/clientContracts'
+import { contractDateError, contractOfClient, detailsOfContract, saveClientContract } from '@/lib/clientContracts'
 import type { BiWeeklyPlan, ClientServiceMode } from '@/lib/biweekly'
 
 export interface ClientModalFormProps {
@@ -151,7 +151,10 @@ export function ClientModalForm({
     const f = new FormData(e.currentTarget)
     // R-CLI-03: the name is optional, the address is required and names the client when the name is empty
     const addressParts = { apartment: String(f.get('apartment') || ''), building_name: String(f.get('building_name') || ''), area: String(f.get('area') || '') }
-    if (!requireFields(e.currentTarget, [{ name: 'building_name', label: 'Address (apartment / villa number or building name)', ok: hasClientAddress(addressParts) }])) return
+    if (!requireFields(e.currentTarget, [
+      { name: 'building_name', label: 'Address (apartment / villa number or building name)', ok: hasClientAddress(addressParts) },
+      { name: 'contract_end', label: 'Contract End (on or after Contract Start)', ok: !(mode === 'biweekly' || monthlyEdit) || !contractDateError(contract) }, // R-SCHED-11
+    ])) return
     const clientName = clientNameOrAddress(f.get('full_name'), addressParts)
     const remarks = String(f.get('remarks') || '')
     const advance = parseFloat(String(f.get('advance_amount') || '0')) || 0

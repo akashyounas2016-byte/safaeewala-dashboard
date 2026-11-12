@@ -17,10 +17,26 @@ export interface ContractDetails {
   amount: number
   frequency: RecurringContract['frequency']
   startDate: string
+  /** R-SCHED-11: empty = open-ended */
+  endDate: string
   notes: string
 }
 
-export const emptyContractDetails = (): ContractDetails => ({ serviceType: '', amount: 0, frequency: 'monthly', startDate: todayDubai(), notes: '' })
+export const emptyContractDetails = (): ContractDetails => ({ serviceType: '', amount: 0, frequency: 'monthly', startDate: todayDubai(), endDate: '', notes: '' })
+
+/** R-SCHED-11: an End date before the Start date is not saved */
+export function contractDateError(d: Pick<ContractDetails, 'startDate' | 'endDate'>): string {
+  if (d.endDate && d.startDate && d.endDate < d.startDate) return 'Contract End must be on or after Contract Start'
+  return ''
+}
+
+export type ContractValidity = 'upcoming' | 'running' | 'ended'
+/** R-SCHED-11: whether the contract has started, is running, or is over on `today` */
+export function contractValidity(d: { startDate?: string; endDate?: string }, today: string = todayDubai()): ContractValidity {
+  if (d.startDate && today < d.startDate.slice(0, 10)) return 'upcoming'
+  if (d.endDate && today > d.endDate.slice(0, 10)) return 'ended'
+  return 'running'
+}
 
 const FREQUENCY_DAYS: Record<RecurringContract['frequency'], number> = { weekly: 7, biweekly: 14, monthly: 30 }
 
@@ -48,7 +64,7 @@ export function contractOfClient(clientName: string | undefined, list: Recurring
 
 export function detailsOfContract(c: RecurringContract | undefined): ContractDetails {
   if (!c) return emptyContractDetails()
-  return { serviceType: c.serviceType || '', amount: Number(c.amount) || 0, frequency: c.frequency || 'monthly', startDate: c.startDate || todayDubai(), notes: c.notes || '' }
+  return { serviceType: c.serviceType || '', amount: Number(c.amount) || 0, frequency: c.frequency || 'monthly', startDate: c.startDate || todayDubai(), endDate: c.endDate || '', notes: c.notes || '' }
 }
 
 export const hasContractDetails = (d: ContractDetails) => Boolean(d.serviceType.trim()) || d.amount > 0
@@ -92,6 +108,7 @@ export function saveClientContract(args: {
     frequency: details.frequency,
     amount: Number(details.amount) || 0,
     startDate,
+    endDate: details.endDate || '',
     renewalDate: renewalDateOf(startDate),
     status: active ? 'active' : 'paused',
     lastBilled: existing?.lastBilled || startDate,

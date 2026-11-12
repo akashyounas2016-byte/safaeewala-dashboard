@@ -37,6 +37,7 @@ import { ClientCardShell, CleanerStack, WeekStrip, MoneyStrip, CardAction } from
 import { todayDubai, addDays, calendarDate } from '@/lib/dubaiTime'
 import { REMOTE_CHANGE_EVENT } from '@/lib/cloudState'
 import { escapeHtml } from '@/lib/html'
+import { contractDateError, contractValidity } from '@/lib/clientContracts'
 
 export type MonthlyDatePreset =
   | 'today'
@@ -565,6 +566,7 @@ export function MonthlyClients() {
       { name: 'contract_client', label: 'Client name', ok: !!contractForm.clientName },
       { name: 'contract_service', label: 'Service type', ok: !!contractForm.serviceType },
       { name: 'contract_amount', label: 'Amount', ok: contractForm.amount > 0 },
+      { name: 'contract_end', label: 'Contract End (on or after Contract Start)', ok: !contractDateError({ startDate: contractForm.startDate, endDate: contractForm.endDate || '' }) }, // R-SCHED-11
     ])) return
 
     const startDate = new Date(contractForm.startDate || new Date())
@@ -2230,7 +2232,7 @@ export function MonthlyClients() {
                     <th className="px-6 py-4 text-center">Frequency</th>
                     <th className="px-6 py-4 text-right">Amount</th>
                     <th className="px-6 py-4 text-center">Next Billing</th>
-                    <th className="px-6 py-4 text-center">Renewal Date</th>
+                    <th className="px-6 py-4 text-center">Renewal / End</th>
                     <th className="px-6 py-4 text-center">Status</th>
                     <th className="px-6 py-4 text-center">Actions</th>
                   </tr>
@@ -2268,7 +2270,14 @@ export function MonthlyClients() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-center text-[12px] text-slate-500">
-                        <span>{contract.renewalDate ? formatDate(contract.renewalDate) : 'Auto (1 yr)'}</span>
+                        {/* R-SCHED-11: a contract with an End date shows it and whether it is still valid */}
+                        {contract.endDate ? (
+                          <span className={contractValidity(contract) === 'ended' ? 'font-bold text-rose-600' : 'font-semibold text-slate-700'}>
+                            {contractValidity(contract) === 'ended' ? 'Ended ' : 'Ends '}{formatDate(contract.endDate)}
+                          </span>
+                        ) : (
+                          <span>{contract.renewalDate ? formatDate(contract.renewalDate) : 'Auto (1 yr)'}</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-center">
                         <span
@@ -2533,6 +2542,17 @@ export function MonthlyClients() {
               required
             />
           </div>
+
+          {/* R-SCHED-11: optional last day; visits are added only from Start to End */}
+          <Input
+            label="Contract End Date (optional)"
+            type="date"
+            name="contract_end"
+            data-field="contract_end"
+            min={contractForm.startDate || undefined}
+            value={contractForm.endDate || ''}
+            onChange={e => setContractForm({ ...contractForm, endDate: e.target.value })}
+          />
 
           <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3.5 space-y-1.5">
             <div className="flex items-center justify-between text-[12px] text-emerald-900">

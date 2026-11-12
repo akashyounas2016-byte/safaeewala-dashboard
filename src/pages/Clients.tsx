@@ -5,7 +5,7 @@ import {
   Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign,
   Heart, Award, CheckCircle, Trash2, ExternalLink, ArrowUpDown, RotateCcw, X, Filter, Clock,
   Save, Check, ChevronDown, UserCheck, Edit2, LayoutGrid, List, ChevronUp, AlertCircle, Sparkles,
-  Wallet, CalendarCheck, Plus, Building2, Handshake
+  Wallet, CalendarCheck, Plus, Building2, Handshake, BarChart3
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -137,7 +137,8 @@ function CrewSelector({ selected, onChange }: { selected: string[]; onChange: (i
 }
 
 /** UX-92: 4 rows of 3 cards before View All */
-const CLIENT_CARDS_PREVIEW = 12
+/** UX-144: the client list shows two rows (3 cards per row on a wide screen) until See All is pressed */
+const CLIENT_CARDS_PREVIEW = 6
 
 export function Clients() {
   const { clients, bookings, dailyJobs, employees, addClient, updateClient, deleteClient, addBooking, invoices } = useData()
@@ -178,7 +179,7 @@ export function Clients() {
     'recent' | 'top_spent' | 'lowest_spent' | 'pending_due' | 'most_bookings' | 'least_bookings' | 'name' | 'name_asc' | 'name_desc' | 'recent_service' | 'oldest_client'
   >('recent')
   const [showAllCards, setShowAllCards] = useState(false)
-  // UX-92: the card grid shows 4 rows (3 per row) until View All is pressed
+  // UX-144: the list shows 2 rows until See All is pressed (cards and table)
   const [showAllClientCards, setShowAllClientCards] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [datePreset, setDatePreset] = useState<ClientDatePreset>('all')
@@ -767,6 +768,52 @@ export function Clients() {
     )
   }
 
+  // UX-144: See All under the list (two rows shown until pressed)
+  const hiddenCount = filtered.length - CLIENT_CARDS_PREVIEW
+  const renderSeeAll = () => hiddenCount > 0 || showAllClientCards ? (
+    <div className="flex justify-center">
+      <button
+        type="button"
+        onClick={() => setShowAllClientCards(prev => !prev)}
+        aria-expanded={showAllClientCards}
+        className="group inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs hover:shadow-xs transition-all duration-200 cursor-pointer text-[12px] font-bold"
+      >
+        <span>{showAllClientCards ? 'Show less' : `See All (${filtered.length} clients)`}</span>
+        <span className="relative flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-700">
+          {showAllClientCards ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        </span>
+      </button>
+    </div>
+  ) : null
+
+  // UX-144: the widgets sit in their own tinted panel with a heading, clearly apart from the client list
+  const renderInsights = () => (
+    <section aria-label="Client insights" className="mt-4 pt-6 border-t-2 border-dashed border-slate-200">
+      <div className="rounded-[28px] bg-gradient-to-b from-slate-100 to-slate-50/60 border border-slate-200 p-4 sm:p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="w-9 h-9 rounded-xl bg-slate-800 text-white flex items-center justify-center shrink-0"><BarChart3 size={17} /></span>
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-black text-slate-900">Client Insights</h2>
+            <p className="text-[11.5px] text-slate-500">Top clients, dues, retention, locations and recent bookings</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filterType && (
+            <div className="md:col-span-2 lg:col-span-3 flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-[12.5px] text-emerald-900">
+              <span>Widgets show <b>{SCOPE_LABEL[filterType] || 'the selected clients'}</b> only · {scopeClients.length} client{scopeClients.length === 1 ? '' : 's'}</span>
+              <button type="button" onClick={() => setFilterType(null)} className="font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer">Show all clients</button>
+            </div>
+          )}
+          {renderTopClientsWidget()}
+          {renderOutstandingDuesWidget()}
+          {renderClientRetentionWidget()}
+          {renderTopLocationsWidget()}
+          {renderRecentBookingsWidget()}
+        </div>
+      </div>
+    </section>
+  )
+
   const renderClientsTable = () => (
     <div className="w-full bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] overflow-hidden">
       <div className="overflow-x-auto">
@@ -784,7 +831,7 @@ export function Clients() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-[12.5px]">
-            {filtered.map((c, idx) => {
+            {(showAllClientCards ? filtered : filtered.slice(0, CLIENT_CARDS_PREVIEW)).map((c, idx) => {
               const nameLower = c.full_name.toLowerCase().trim()
               const liveBookings = bookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase().trim() === nameLower)
               const clientInvs = invoices.filter(i => i.status !== 'void' && (i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower))
@@ -1220,15 +1267,9 @@ export function Clients() {
           ) : (
             renderClientsTable()
           )}
+          {renderSeeAll()}
 
-          {/* ── Widgets Underneath Datatable (Responsive Grid) ── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
-            {renderTopClientsWidget()}
-            {renderOutstandingDuesWidget()}
-            {renderClientRetentionWidget()}
-            {renderTopLocationsWidget()}
-            {renderRecentBookingsWidget()}
-          </div>
+          {renderInsights()}
         </div>
       ) : (
         /* ── GRID CARD VIEW (UX-90): cards over the full width, three per row; the widgets below them ── */
@@ -1238,7 +1279,9 @@ export function Clients() {
 
           {/* Client cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {(showAllClientCards ? filtered : filtered.slice(0, CLIENT_CARDS_PREVIEW)).map((c) => {
+            {(showAllClientCards ? filtered : filtered.slice(0, CLIENT_CARDS_PREVIEW)).map((c, cardIdx) => {
+              // UX-144: two rows on every screen — 1 per row on a phone, 2 on a tablet, 3 on a wide screen
+              const beyondTwoRows = showAllClientCards ? '' : cardIdx >= 4 ? 'max-xl:hidden' : cardIdx >= 2 ? 'max-md:hidden' : ''
               // UX-67: one card design for Clients and Monthly Clients, after the Daily Job Sheet
               const isMonthly = isMonthlyClient(c, dailyJobs, allMonthlySummaries)
               const nameLower    = c.full_name.toLowerCase().trim()
@@ -1251,7 +1294,7 @@ export function Clients() {
               const phone        = c.whatsapp || c.phone
               const crew         = clientCrewMix(c, dailyJobs, employees) // UX-95
               return (
-              <ClientCardShell key={c.id} lead={cleanersOf[0]} monthly={isMonthly} onClick={() => setSelected(c)}>
+              <ClientCardShell key={c.id} lead={cleanersOf[0]} monthly={isMonthly} onClick={() => setSelected(c)} className={beyondTwoRows}>
                 <div className="space-y-2.5 min-w-0">
                   {/* Client + type */}
                   <div className="flex items-start justify-between gap-2">
@@ -1323,23 +1366,7 @@ export function Clients() {
           })}
         </div>
 
-          {filtered.length > CLIENT_CARDS_PREVIEW && (
-            <div className="flex justify-center">
-              <button
-                type="button"
-                onClick={() => setShowAllClientCards(prev => !prev)}
-                aria-expanded={showAllClientCards}
-                className="group inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-50 hover:bg-slate-100/90 text-slate-600 hover:text-slate-900 border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all duration-200 cursor-pointer text-[12px] font-semibold"
-              >
-                <span>{showAllClientCards ? 'Show less' : `Show ${filtered.length - CLIENT_CARDS_PREVIEW} more clients`}</span>
-                {/* UX-95: the same expand arrow as More Client Metrics */}
-                <span className="relative flex items-center justify-center w-5 h-5 rounded-full bg-slate-200/70 group-hover:bg-slate-300/80 text-slate-700 transition-colors">
-                  {!showAllClientCards && <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />}
-                  {showAllClientCards ? <ChevronUp size={13} /> : <ChevronDown size={13} className="animate-bounce" />}
-                </span>
-              </button>
-            </div>
-          )}
+          {renderSeeAll()}
 
           {filtered.length === 0 && (
             <div className="bg-white rounded-[22px] border border-[#E4E8EC] py-16 text-center">
@@ -1349,20 +1376,7 @@ export function Clients() {
           )}
         </div>
 
-        {/* ── Widgets below the cards, like the table view ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
-        {filterType && (
-          <div className="md:col-span-2 lg:col-span-3 flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-[12.5px] text-emerald-900">
-            <span>Widgets show <b>{SCOPE_LABEL[filterType] || 'the selected clients'}</b> only · {scopeClients.length} client{scopeClients.length === 1 ? '' : 's'}</span>
-            <button type="button" onClick={() => setFilterType(null)} className="font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer">Show all clients</button>
-          </div>
-        )}
-          {renderTopClientsWidget()}
-          {renderOutstandingDuesWidget()}
-          {renderClientRetentionWidget()}
-          {renderTopLocationsWidget()}
-          {renderRecentBookingsWidget()}
-        </div>
+        {renderInsights()}
 
       </div>
     )}

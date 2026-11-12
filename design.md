@@ -100,6 +100,7 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
 ## 7. Interaction
 
 - Transitions `transition-all duration-200`; dropdown panels close on outside click.
+- Clients screen (UX-144): the client list under the filters shows **two rows** (3 cards per row on a wide screen, 2 on a tablet, 1 on a phone; 6 rows in the table view) and a **See All (N clients)** button; the widgets below sit in their own **Client Insights** panel (dashed divider, tinted background, heading) so they are clearly apart from the list.
 - Date boxes (UX-143): the year has at most 4 digits everywhere. A date field without its own `max` gets `9999-12-31` when it is focused (`src/lib/dateInputs.ts`, installed in `main.tsx`), so "123123" can no longer be typed. Add / Edit Employee also stops a year outside 1900–2100 before saving, and a Date of Birth in the future.
 - Excel Job Sheet rows are **white** by default (UX-70, replaces the solo teal of UX-61). A row is coloured only when it belongs to a team project (UX-66) or a row or cleaner colour was chosen. New rows and blocks (*Add Row*, *Add Shift*, *Add First Row*) start white, also in the Cleaner Blocks view. "Solo at bottom" still moves cleaners who only have solo jobs below the team jobs.
 - Booking cards (UX-63) follow the Daily Job Sheet: cleaner colour on the left edge (same palettes, same colour per cleaner), cleaner avatars first, then client, a shift strip (date · start → end · hours) and a money strip (Charges · Received · Pending). Completed cards are in the Completed category only.

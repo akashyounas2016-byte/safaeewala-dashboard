@@ -1256,15 +1256,24 @@ export function contractOffJobs(client: Client, dailyJobs: DailyJob[], today: st
  * Clients known only from old job rows (`useCreatedDate` false) have no added-on date.
  */
 export function monthlyStartDateOf(client: Client, contracts: RecurringContract[], useCreatedDate = true): string {
+  return contractWindowOf(client, contracts, useCreatedDate).start
+}
+
+/** R-SCHED-11: first and last date of the client's visits ('' = no limit). The end is the contract's End date. */
+export function contractWindowOf(client: Client, contracts: RecurringContract[], useCreatedDate = true): { start: string; end: string } {
+  const isDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v)
   const key = normalizeKey(client.full_name || '')
   const own = key ? contracts.filter(c => normalizeKey(c.clientName || '') === key) : []
   const contract = own.find(c => c.status === 'active') || own[0]
   const start = (contract?.startDate || '').slice(0, 10)
-  if (/^\d{4}-\d{2}-\d{2}$/.test(start)) return start
-  if (!useCreatedDate || !client.created_at) return ''
+  const endRaw = (contract?.endDate || '').slice(0, 10)
+  const end = isDate(endRaw) ? endRaw : ''
+  if (isDate(start)) return { start, end }
+  if (!useCreatedDate || !client.created_at) return { start: '', end }
   const added = new Date(client.created_at)
-  return Number.isNaN(added.getTime()) ? '' : toDubaiDate(added)
+  return { start: Number.isNaN(added.getTime()) ? '' : toDubaiDate(added), end }
 }
+const outsideWindow = (date: string, w: { start: string; end: string }) => Boolean((w.start && date < w.start) || (w.end && date > w.end))
 
 /** Address of a scheduled visit: "<building> Apt <n> - <client name>", never with "(Monthly)" */
 export function scheduledAddressOf(client: Client): string {
@@ -1387,9 +1396,8 @@ export function getScheduledMonthlyShiftsForDate(
       return containsWords(cleanAddr, client.full_name) ||
         Boolean(client.building_name && containsWords(cleanAddr, client.building_name))
     })
-    // R-SCHED-11: no visit is added before the client's contract starts (a past date opened on the sheet)
-    const startDate = monthlyStartDateOf(client, contracts, !fromHistory.has(client.id))
-    if (!matchedJob && startDate && dateStr < startDate) return
+    // R-SCHED-11: no visit is added before the contract starts or after its End date
+    if (!matchedJob && outsideWindow(dateStr, contractWindowOf(client, contracts, !fromHistory.has(client.id)))) return
 
     shifts.push({
       client,
@@ -1416,6 +1424,7 @@ export function getScheduledMonthlyShiftsForDate(
     const visit = biweeklyVisitOn(client.biweekly_plan, dateStr)
     if (!visit) return
     const matchedJob = jobsOnDate.find(j => jobMatchesClient(j, client))
+    if (!matchedJob && outsideWindow(dateStr, contractWindowOf(client, contracts, false))) return // R-SCHED-11
     shifts.push({
       client,
       dayName,
