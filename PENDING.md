@@ -2,7 +2,7 @@
 
 One list of what is still open, for the owner, Claude and Antigravity. **Update it in the same commit** whenever something is finished (remove it) or added. Finished items go to [CHANGELOG.md](CHANGELOG.md), not here.
 
-Last updated: 2026-11-12 · Live on crm.safaeewala.com: `6e025fa`
+Last updated: 2026-11-12 · Live on crm.safaeewala.com: `77c6b64`
 
 ---
 
