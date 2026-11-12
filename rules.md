@@ -444,6 +444,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/shiftClash.ts` (`findStaffClash`, `findClashAmong`, `findAllClashes`), used by `AddJobModal`, `EditJobModal`, `DailyJobSheet → saveInlineEdit`, `JobSheetSpreadsheet → refuseClash / handleSaveAll`. Test: `tests/unit/shift-clash.test.ts`.
 - **Status:** Active · Since: 2026-10-31
 
+### R-JOB-02 — Row checks read AM / PM
+- **Rule:** *"System mein time-based validation ko analyze karein; 9 AM say start karnay par anay wala error aur 1 PM par normal functioning ki wajohat maloom karein."* (2026-11-12)
+  - Cause: the row checks (UX-27: *1 check* on the Daily Job Sheet, Data health) read only the digits of a time. 09:00 AM – 08:00 PM became 9:00 – 8:00, so the job "ended before it started"; 01:00 PM – 08:00 PM became 1:00 – 8:00 and passed by chance.
+  - Now the times are read with AM / PM (and 24-hour times) by the same parser as the rest of the sheet (`parseTimeToMinutes`). A shift that really ends before it starts (overnight) is still flagged.
+  - Checked the same day (live, TEST records): Bi-Weekly and Monthly clients save, read back with their schedule, edit (Contract Off) and delete with nothing left; their visit rows without a cleaner save and delete.
+- **Code:** `src/lib/jobChecks.ts → toMinutes`. Test: `tests/unit/time-checks-biweekly-1112.test.ts`.
+- **Status:** Active · Since: 2026-11-12
+
 ### R-JOB-09 — Team Leader dropdown & address selection time preservation
 - **Rule:** *"Daily Job Sheet, Booking, aur Excel Sheet kay Add Job Entry pop-ups mein, Team Reference section mein auto-assigned leader kay sath aik dropdown menu shamil karein, taake admin apni marzi ka Team Leader select kar sakay. Mazeed yeh ke, Address select karnay par 'Time and Duty Hours' ka data reset ho jata hai; is bug ko resolve karein taake pehle say set kiya gaya time aur duty hours barqarar rahein."* (2026-11-10)
   - **Manual Team Leader Selection:** In multi-cleaner jobs (2+ staff), the Team Reference card provides a dropdown menu alongside the auto-assigned leader so the Admin can designate any assigned cleaner as Team Leader. The chosen leader is saved as the primary cleaner (`orderedStaff[0]`), ensuring payments and accounting anchor to the correct leader.

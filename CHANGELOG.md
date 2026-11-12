@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(job-sheet): no false "Ends before it starts" check on morning-to-evening jobs (9 AM – 8 PM) — row checks read AM / PM; Bi-Weekly / Monthly client save, edit and delete checked on live with TEST records (R-JOB-02)
+
 - feat(complaints): each complaint keeps a track record (every change, who, when); a cleaner's complaints show on their profile and lower the Health Score by severity — high −15, medium −8, low −3 over 90 days, at most −40 (R-CMP-02, R-EMP-13)
 - feat(settings): Roles & Access in categories with a whole-category switch; Daily Job Sheet options "Excel Job Sheet" and "Import & delete a whole day"; Billing tab removed (R-SEC-09)
 - feat(excel-sheet): Attendance opens a popup with every cleaner and Present / Available / Absent / Leave, plus View details (R-ATT-11)

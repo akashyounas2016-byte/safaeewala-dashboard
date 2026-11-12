@@ -1,12 +1,13 @@
 import type { DailyJob, Employee } from '@/types'
-import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
+import { cleanNum, parseTimeToMinutes } from '@/components/dailyJobSheet/jobSheetUtils'
 import { employeeMatchesStaff, splitStaffNames } from '@/lib/clientDataSync'
 
-/** HH:MM → minutes, or null for blank / "—" / unreadable times */
-function toMinutes(t?: string): number | null {
-  const m = String(t || '').match(/^(\d{1,2}):(\d{2})/)
-  return m ? Number(m[1]) * 60 + Number(m[2]) : null
-}
+/**
+ * Minutes since midnight, or null for blank / "—" / unreadable times.
+ * R-JOB-02: reads AM / PM — "09:00 AM" → 540, "08:00 PM" → 1200. It used to read only the digits, so
+ * 9 AM – 8 PM came out as 9:00 – 8:00 and every such row got a false "Ends before it starts" check.
+ */
+const toMinutes = (t?: string): number | null => parseTimeToMinutes(t)
 
 /**
  * Inline row checks for the Daily Job Sheet (UX-27). Warnings only — nothing is blocked or changed.
