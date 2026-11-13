@@ -1645,8 +1645,30 @@ export function Employees() {
       <Modal
         open={!!selected}
         onClose={() => { setSelected(null); setConfirmDelete(false) }}
-        title="Employee Work & Profile"
+        title="Employee Profile"
         size="lg"
+        headerActions={selected && (
+          // UX-149: actions in the header (were in the footer); Delete is an icon
+          <>
+            <Link to={`/employees/${selected.id}`} onClick={() => setSelected(null)} title="Open the full service record and job history"
+              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-[12px] font-bold transition-colors">
+              <ExternalLink size={13} /> <span className="max-sm:hidden">Full Profile</span>
+            </Link>
+            <button type="button" title="Show this cleaner's jobs on the Daily Job Sheet"
+              onClick={() => { navigate(`/daily-job-sheet?filterCleaner=${encodeURIComponent(selected.full_name)}`); setSelected(null) }}
+              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-bold transition-colors cursor-pointer">
+              <FileText size={13} /> <span className="max-sm:hidden">Job Sheet</span>
+            </button>
+            <button type="button" title="Edit profile" onClick={() => handleStartEdit(selected)}
+              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-teal-300 text-teal-800 hover:bg-teal-50 text-[12px] font-bold transition-colors cursor-pointer">
+              <Pencil size={13} /> <span className="max-sm:hidden">Edit</span>
+            </button>
+            <button type="button" title="Delete employee" aria-label="Delete employee" onClick={() => setConfirmDelete(true)}
+              className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer">
+              <Trash2 size={14} />
+            </button>
+          </>
+        )}
       >
         {selected && (() => {
           const st = staffJobStats.get(selected.id)
@@ -1657,6 +1679,25 @@ export function Employees() {
 
           return (
             <div className="space-y-5">
+              {/* UX-149: Delete (header icon) asks here, at the top */}
+              {confirmDelete && (
+                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4">
+                  <p className="text-[13.5px] font-bold text-rose-800 mb-1">Delete this employee?</p>
+                  <p className="text-[12px] text-rose-700 mb-3">
+                    This will permanently remove <strong>{selected.full_name}</strong>.
+                  </p>
+                  <div className="flex gap-3">
+                    <Button type="button" variant="outline" className="flex-1" size="sm" onClick={() => setConfirmDelete(false)}>Cancel</Button>
+                    <button
+                      type="button"
+                      className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-[13px] font-bold py-2 rounded-xl transition-colors cursor-pointer"
+                      onClick={() => { removeEmployee(selected!.id); setSelected(null); setConfirmDelete(false) }}
+                    >
+                      Yes, Delete
+                    </button>
+                  </div>
+                </div>
+              )}
               {/* Profile Card Header */}
               <div className="flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-r from-slate-50 to-teal-50/50 border border-slate-200/80">
                 <Avatar name={selected.full_name} size="lg" idx={0} />
@@ -1801,58 +1842,6 @@ export function Employees() {
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              {confirmDelete ? (
-                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4">
-                  <p className="text-[13.5px] font-bold text-rose-800 mb-1">Delete this employee?</p>
-                  <p className="text-[12px] text-rose-700 mb-3">
-                    This will permanently remove <strong>{selected.full_name}</strong>.
-                  </p>
-                  <div className="flex gap-3">
-                    <Button type="button" variant="outline" className="flex-1" size="sm" onClick={() => setConfirmDelete(false)}>Cancel</Button>
-                    <button
-                      type="button"
-                      className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-[13px] font-bold py-2 rounded-xl transition-colors cursor-pointer"
-                      onClick={() => { removeEmployee(selected!.id); setSelected(null); setConfirmDelete(false) }}
-                    >
-                      Yes, Delete
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3 pt-2">
-                  <Link
-                    to={`/employees/${selected.id}`}
-                    onClick={() => setSelected(null)}
-                    className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-extrabold text-[13.5px] shadow-sm shadow-teal-700/20 transition-all"
-                  >
-                    <FileText size={16} /> Open Full Service Record & Daily Job Sheet History <ExternalLink size={14} />
-                  </Link>
-
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDelete(true)}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-rose-200 text-rose-600 text-[12px] font-bold hover:bg-rose-50 transition-colors cursor-pointer"
-                    >
-                      <Trash2 size={13} /> Delete
-                    </button>
-                    <Button variant="outline" className="flex-1 font-bold text-teal-800 border-teal-300 hover:bg-teal-50" size="sm" onClick={() => handleStartEdit(selected)}>
-                      <Pencil size={13} className="mr-1.5" /> Edit Profile
-                    </Button>
-                    <Button
-                      className="flex-1 bg-slate-900 hover:bg-slate-800 text-white"
-                      size="sm"
-                      onClick={() => {
-                        navigate(`/daily-job-sheet?filterCleaner=${encodeURIComponent(selected.full_name)}`)
-                        setSelected(null)
-                      }}
-                    >
-                      View in Job Sheet
-                    </Button>
-                  </div>
-                </div>
-              )}
             </div>
           )
         })()}

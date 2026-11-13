@@ -120,7 +120,17 @@
 
 ---
 
-## 7. Aam baatein
+## 7. Employees
+
+- Employees list mein kisi cleaner par click karein to **Employee Profile** popup khulta hai. Upar header mein buttons hain:
+  - **Full Profile:** poora service record aur job history.
+  - **Job Sheet:** Daily Job Sheet par sirf is cleaner ki jobs.
+  - **Edit:** profile badlein (Total Duty Hours yahin hain — OT inhi se lagta hai).
+  - **Laal 🗑 icon:** delete — pehle popup ke upar poochha jata hai.
+
+---
+
+## 8. Aam baatein
 
 - Har save sab users ko foran nazar aata hai (live).
 - Delete ki gayi cheezon ka restore point banta hai (Settings).

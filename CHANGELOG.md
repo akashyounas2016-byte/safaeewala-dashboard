@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(employees): the employee popup is called "Employee Profile"; Full Profile, Job Sheet, Edit and Delete (icon) moved from the footer to the header (UX-149)
 - fix(leads): "Possible duplicate" no longer flags leads that only share the form's example number +971 50 000 0000; the same email within 7 days now counts (UX-148)
 - docs: INSTRUCTIONS.md — how each feature works, for the Safaeewala team
 - fix(contracts): saving a contract's Start / End date takes off the client's upcoming unpaid visits outside those dates — a visit on 28 Dec 2027 no longer stays after the End date 29 Dec 2026 (R-SCHED-13)
