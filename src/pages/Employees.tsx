@@ -193,19 +193,20 @@ function PhotoZoom({ src, name, onClose }: { src: string; name: string; onClose:
   )
 }
 
-function Avatar({ name, size = 'md', idx = 0, photoUrl }: { name: string; size?: 'sm' | 'md' | 'lg' | 'xl'; idx?: number; photoUrl?: string }) {
+function Avatar({ name, size = 'md', idx = 0, photoUrl, round = false }: { name: string; size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'; idx?: number; photoUrl?: string; round?: boolean }) {
   const [zoom, setZoom] = useState(false)
   const parts = name.trim().split(' ')
   const init = ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'EM'
-  const dims = size === 'xl' ? 'w-16 h-16 text-[18px]' : size === 'lg' ? 'w-14 h-14 text-[15px]' : size === 'sm' ? 'w-8 h-8 text-[11px]' : 'w-11 h-11 text-[13px]'
+  const dims = size === '2xl' ? 'w-24 h-24 text-[24px]' : size === 'xl' ? 'w-16 h-16 text-[18px]' : size === 'lg' ? 'w-14 h-14 text-[15px]' : size === 'sm' ? 'w-8 h-8 text-[11px]' : 'w-11 h-11 text-[13px]'
   const color = avatarColors[idx % avatarColors.length]
+  const shape = round ? 'rounded-full' : 'rounded-2xl' // UX-152: a circle in the Employee Profile popup
   // UX-150: the uploaded photo in place of the initials, same size; a click opens it large (not the employee)
   if (photoUrl) {
     return (
       <>
         <button type="button" title="View photo" aria-label={`View photo of ${name}`}
           onClick={e => { e.stopPropagation(); setZoom(true) }}
-          className={`${dims} rounded-2xl overflow-hidden shrink-0 shadow-xs border cursor-zoom-in hover:ring-2 hover:ring-teal-300 transition-shadow`}
+          className={`${dims} ${shape} overflow-hidden shrink-0 shadow-xs border cursor-zoom-in hover:ring-2 hover:ring-teal-300 transition-shadow`}
           style={{ borderColor: color.border }}>
           <img src={photoUrl} alt={name} loading="lazy" className="w-full h-full object-cover" />
         </button>
@@ -215,7 +216,7 @@ function Avatar({ name, size = 'md', idx = 0, photoUrl }: { name: string; size?:
   }
   return (
     <div
-      className={`${dims} rounded-2xl flex items-center justify-center font-black shrink-0 shadow-xs border`}
+      className={`${dims} ${shape} flex items-center justify-center font-black shrink-0 shadow-xs border`}
       style={{ background: color.bg, color: color.text, borderColor: color.border }}
     >
       {init}
@@ -1734,7 +1735,7 @@ export function Employees() {
               )}
               {/* Profile Card Header */}
               <div className="flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-r from-slate-50 to-teal-50/50 border border-slate-200/80">
-                <Avatar name={selected.full_name} size="lg" idx={0} photoUrl={selected.photo_url} />
+                <Avatar name={selected.full_name} size="2xl" round idx={0} photoUrl={selected.photo_url} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-[19px] font-black text-slate-900 truncate">{selected.full_name}</p>

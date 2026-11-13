@@ -100,6 +100,8 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
 ## 7. Interaction
 
 - Transitions `transition-all duration-200`; dropdown panels close on outside click.
+- Employee form (UX-151): **Total Duty Hours** is the same searchable dropdown as Nationality / Gender (white box, chevron, grey list) — 6, 8, 9, 10, 12 hours, or type any number 1–24; blank = 8 h.
+- Employee Profile popup (UX-152): the photo (or initials) is a **circle**, 96 px, so the whole face shows; lists keep the 44 / 32 px rounded square.
 - Employee photos (UX-150): on the Employees screen (grid, table and the Employee Profile popup) the uploaded photo replaces the initials — same size and rounded square as the initials box; no photo = initials as before. A click on the photo opens it large on a dark backdrop with the name (closes on click, ✕ or Esc) and does not open the employee.
 - Employees popup (UX-149): title **Employee Profile**; its actions sit in the header next to ✕ — Full Profile (teal), Job Sheet (dark), Edit (outline), Delete as a red icon only; on a phone the buttons show icons only. No action footer; Delete asks for confirmation at the top of the popup.
 - Leads (UX-148): the amber **Possible duplicate** badge marks a lead whose phone or email repeats an earlier lead's within 7 days (hover shows which one). A placeholder number such as +971 50 000 0000 (last 7 digits one repeated digit) never matches.

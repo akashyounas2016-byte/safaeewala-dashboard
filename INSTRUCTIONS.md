@@ -125,7 +125,7 @@
 - Employees list mein kisi cleaner par click karein to **Employee Profile** popup khulta hai. Upar header mein buttons hain:
   - **Full Profile:** poora service record aur job history.
   - **Job Sheet:** Daily Job Sheet par sirf is cleaner ki jobs.
-  - **Edit:** profile badlein (Total Duty Hours yahin hain — OT inhi se lagta hai).
+  - **Edit:** profile badlein. **Total Duty Hours** dropdown se chunein (6, 8, 9, 10, 12) ya koi aur number likhein; khali chhorein to 8 ghante maane jate hain — OT inhi se lagta hai.
   - **Laal 🗑 icon:** delete — pehle popup ke upar poochha jata hai.
 - Jis employee ki photo upload hai, list (grid aur table) mein uske initials (jaise MA) ki jagah **photo** dikhti hai. Photo par click karein to bari ho kar khulti hai; band karne ke liye kahin bhi click, ✕ ya Esc. Photo Full Profile par upload / change hoti hai.
 

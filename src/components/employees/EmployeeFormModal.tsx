@@ -43,6 +43,9 @@ function getInitialDocs(initialEmployee?: Employee | null): EmployeeDocument[] {
   ], e.created_at || new Date().toISOString())
 }
 
+/** R-EMP-11 / UX-151: usual daily duty hours; any other number from 1 to 24 can be typed */
+const DUTY_HOUR_OPTIONS = [6, 8, 9, 10, 12]
+
 /** UX-133: starting list for the Nationality dropdown; anything typed is kept too */
 const COMMON_NATIONALITIES = ['Filipino', 'Indian', 'Pakistani', 'Nepali', 'Sri Lankan', 'Bangladeshi', 'Ugandan', 'Kenyan', 'Ethiopian', 'Ghanaian', 'Nigerian', 'Indonesian', 'Emirati', 'Egyptian']
 
@@ -101,6 +104,7 @@ function EmployeeFormModalContent({
   // UX-133: white searchable dropdowns (like the Booking screen) instead of native selects
   const [gender, setGender] = useState(() => initialEmployee?.gender || 'Female')
   const [nationality, setNationality] = useState(() => initialEmployee?.nationality || '')
+  const [dutyHours, setDutyHours] = useState(() => (initialEmployee?.total_duty_hours ? String(initialEmployee.total_duty_hours) : ''))
   const [agencyId, setAgencyId] = useState(() => initialEmployee?.agency_id || '')
   const [dlPlace, setDlPlace] = useState(() => initialEmployee?.driving_license_place_of_issue || 'Dubai')
   const [dlType, setDlType] = useState(() => initialEmployee?.driving_license_type || 'Light Vehicle (Automatic)')
@@ -424,23 +428,16 @@ function EmployeeFormModalContent({
               />
               {/* R-EMP-11: duty hours per day (pick or type) and date of birth */}
               <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11.5px] font-bold text-slate-700 block mb-1">Total Duty Hours</label>
-                  <input
-                    name="total_duty_hours"
-                    type="number"
-                    min="1"
-                    max="24"
-                    step="0.5"
-                    list="emp-duty-hours"
-                    defaultValue={initialEmployee?.total_duty_hours ? String(initialEmployee.total_duty_hours) : ''}
-                    placeholder="Pick or type, e.g. 8"
-                    className="w-full text-[12px] px-2.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-teal-600 font-semibold text-slate-800 shadow-2xs"
-                  />
-                  <datalist id="emp-duty-hours">
-                    {[6, 8, 10, 12].map(h => <option key={h} value={h}>{h} hours</option>)}
-                  </datalist>
-                </div>
+                {/* UX-151: same dropdown as Nationality / Gender (was a native number box with a dark list); pick or type */}
+                <SearchSelect
+                  name="total_duty_hours"
+                  label="Total Duty Hours"
+                  value={dutyHours}
+                  onChange={v => setDutyHours(v && Number(v) >= 1 && Number(v) <= 24 ? String(Number(v)) : '')}
+                  options={[...new Set([...DUTY_HOUR_OPTIONS, ...(dutyHours ? [Number(dutyHours)] : [])])].sort((x, y) => x - y).map(h => ({ value: String(h), label: `${h} hours` }))}
+                  placeholder="Select (blank = 8 hours)"
+                  allowCustom
+                />
                 <Input
                   name="date_of_birth"
                   label="Date of Birth"

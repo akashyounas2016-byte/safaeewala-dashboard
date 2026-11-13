@@ -66,7 +66,7 @@ eq(/many\.length && isInSel\(rowIdxOf, colId\)/.test(page), true, 'colour fill a
 const form = readFileSync('src/components/employees/EmployeeFormModal.tsx', 'utf8')
 eq(form.indexOf('name="short_name"') < form.indexOf('name="phone"') && form.indexOf('name="phone"') < form.indexOf('name="gender"'), true, 'Short Name right under Full Name')
 eq(/switch automatically/.test(form), false, 'helper text removed')
-eq(/name="total_duty_hours"/.test(form) && /\[6, 8, 10, 12\]/.test(form) && /name="date_of_birth"/.test(form), true, 'Total Duty Hours (pick or type) + Date of Birth')
+eq(/name="total_duty_hours"/.test(form) && /DUTY_HOUR_OPTIONS = \[6, 8, 9, 10, 12\]/.test(form) && /allowCustom/.test(form) && /name="date_of_birth"/.test(form), true, 'Total Duty Hours (pick or type) + Date of Birth')
 eq(/uploadText="Upload Image and PDF"/.test(form), true, 'Other Documents text')
 eq(deleteVersion([{ id: '1', category: 'eid', uploaded_at: '' }, { id: '2', category: 'eid', uploaded_at: '' }], '1').map(d => d.id), ['2'], 'Delete removes the file from the record')
 eq(/deletedCats\.has\(c\)/.test(form) && /deletedCats\.size > 0 \? docsList/.test(form), true, 'a deleted document does not come back on save')

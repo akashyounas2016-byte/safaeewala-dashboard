@@ -19,7 +19,6 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | A5 | **GHL key: Social Planner scopes** | Needed for social posting from the CRM | GHL → Settings → Private Integrations |
 | A6 | **AI Bot** — set `ANTHROPIC_API_KEY` on the VPS | Until then `/ai-bot` answers from rules only (no AI chat) | [prod.md](prod.md) |
 | A7 | **Google review link** in Settings | Review-request messages need it | Settings |
-| A8 | **Employees: fill Total Duty Hours** — 48 of 50 done (checked 2026-11-13); still blank: Sanu Maya Muktan, and "sddsadSunar" (looks like a typo / test record — fix or delete) | OT is worked out from it (R-OT-03); blank = 8 h | Employees → Edit |
 | A9 | **Re-enter the employee field values lost earlier** (Misbah's Work Permit year is fixed — 2027, checked 2026-11-13) | Empty profiles | Employees → Edit |
 | A15 | **Settings → Backup → This computer → Choose folder** on the office computer (Chrome / Edge), then "Allow on every visit" | Daily copy of all data on that computer, 30 days kept | Settings → Backup |
 | A16 | **"Test 2- NH bldg": open it and press Save Changes** (nothing to change) | Removes its visit on 28 Dec 2027, outside the contract (R-SCHED-13) | Monthly Clients |
