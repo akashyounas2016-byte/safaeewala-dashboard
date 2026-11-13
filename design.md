@@ -100,6 +100,7 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
 ## 7. Interaction
 
 - Transitions `transition-all duration-200`; dropdown panels close on outside click.
+- Employees screen (UX-153): the popup header reads **Edit · Profile View · 🗑 · ✕** (no Job Sheet button). The table's Employee column shows the **Short Name** (as on the Excel Job Sheet, R-SHEET-02) with the full name on hover; role tags such as *Store Cleaner* stay on one line.
 - Employee form (UX-151): **Total Duty Hours** is the same searchable dropdown as Nationality / Gender (white box, chevron, grey list) — 6, 8, 9, 10, 12 hours, or type any number 1–24; blank = 8 h.
 - Employee Profile popup (UX-152): the photo (or initials) is a **circle**, 96 px, so the whole face shows; lists keep the 44 / 32 px rounded square.
 - Employee photos (UX-150): on the Employees screen (grid, table and the Employee Profile popup) the uploaded photo replaces the initials — same size and rounded square as the initials box; no photo = initials as before. A click on the photo opens it large on a dark backdrop with the name (closes on click, ✕ or Esc) and does not open the employee.

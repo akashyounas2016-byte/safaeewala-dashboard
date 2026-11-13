@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useSalaryAccess, SALARY_HIDDEN } from '@/store/useModuleAccess'
 import * as XLSX from 'xlsx'
-import { useNavigate, Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Search, AlertTriangle, Phone, Shield, Users, UserCheck, Star,
   TrendingUp, Trash2, CheckCircle, CheckCircle2, Upload, Download, FileSpreadsheet,
@@ -281,7 +281,6 @@ export function Employees() {
     const ok = await confirmAsync({ title: 'Delete employee', message: `Delete "${emp?.full_name || 'this employee'}"? Their past jobs stay in the job sheet.`, confirmLabel: 'Delete', tone: 'danger' })
     if (ok) removeEmployee(id)
   }
-  const navigate = useNavigate()
 
   // Table Column Visibility (persisted per browser)
   const EMPLOYEE_TABLE_COLUMNS = [
@@ -1048,7 +1047,8 @@ export function Employees() {
                       <div className="flex items-center gap-3">
                         <Avatar name={emp.full_name} size="sm" idx={idx} photoUrl={emp.photo_url} />
                         <div>
-                          <p className="font-bold text-slate-900">{emp.full_name}</p>
+                          {/* UX-153: Short Name, as on the Excel Job Sheet (R-SHEET-02); full name on hover */}
+                          <p className="font-bold text-slate-900" title={emp.full_name}>{emp.short_name?.trim() || emp.full_name}</p>
                           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                             <span className="text-[11px] text-slate-500">{emp.phone || emp.nationality || 'Staff'}</span>
                             <span className="text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded flex items-center gap-1">
@@ -1068,7 +1068,7 @@ export function Employees() {
 
                   {isColVisible('role') && (
                     <td className="py-3 px-3">
-                      <span className={`inline-block text-[11px] font-bold px-2 py-0.5 rounded-md border ${getRoleBadgeStyle(emp.role)}`}>
+                      <span className={`inline-block whitespace-nowrap text-[11px] font-bold px-2 py-0.5 rounded-md border ${getRoleBadgeStyle(emp.role)}`}>
                         {formatEmpRole(emp.role)}
                       </span>
                     </td>
@@ -1683,21 +1683,16 @@ export function Employees() {
         title="Employee Profile"
         size="lg"
         headerActions={selected && (
-          // UX-149: actions in the header (were in the footer); Delete is an icon
+          // UX-149 / UX-153: Edit, Profile, Delete (icon), then the modal's ✕ — no Job Sheet button
           <>
-            <Link to={`/employees/${selected.id}`} onClick={() => setSelected(null)} title="Open the full service record and job history"
-              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-[12px] font-bold transition-colors">
-              <ExternalLink size={13} /> <span className="max-sm:hidden">Full Profile</span>
-            </Link>
-            <button type="button" title="Show this cleaner's jobs on the Daily Job Sheet"
-              onClick={() => { navigate(`/daily-job-sheet?filterCleaner=${encodeURIComponent(selected.full_name)}`); setSelected(null) }}
-              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-bold transition-colors cursor-pointer">
-              <FileText size={13} /> <span className="max-sm:hidden">Job Sheet</span>
-            </button>
             <button type="button" title="Edit profile" onClick={() => handleStartEdit(selected)}
               className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-teal-300 text-teal-800 hover:bg-teal-50 text-[12px] font-bold transition-colors cursor-pointer">
               <Pencil size={13} /> <span className="max-sm:hidden">Edit</span>
             </button>
+            <Link to={`/employees/${selected.id}`} onClick={() => setSelected(null)} title="Open the full profile, service record and job history"
+              className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white text-[12px] font-bold transition-colors">
+              <ExternalLink size={13} /> <span className="max-sm:hidden">Profile View</span>
+            </Link>
             <button type="button" title="Delete employee" aria-label="Delete employee" onClick={() => setConfirmDelete(true)}
               className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer">
               <Trash2 size={14} />

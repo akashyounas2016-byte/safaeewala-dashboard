@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(employees): popup header Edit · Profile View · Delete · ✕ (Job Sheet button removed); table shows Short Names like the Excel sheet; Store Cleaner tag on one line (UX-153)
 - change(employees): Total Duty Hours is a dropdown like Nationality / Gender (UX-151); the Employee Profile popup shows the photo as a larger circle (UX-152)
 - feat(employees): grid, table and popup show the employee's uploaded photo instead of the initials; a click zooms it (UX-150)
 - change(employees): the employee popup is called "Employee Profile"; Full Profile, Job Sheet, Edit and Delete (icon) moved from the footer to the header (UX-149)
