@@ -100,6 +100,7 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
 ## 7. Interaction
 
 - Transitions `transition-all duration-200`; dropdown panels close on outside click.
+- Employee photos (UX-150): on the Employees screen (grid, table and the Employee Profile popup) the uploaded photo replaces the initials — same size and rounded square as the initials box; no photo = initials as before. A click on the photo opens it large on a dark backdrop with the name (closes on click, ✕ or Esc) and does not open the employee.
 - Employees popup (UX-149): title **Employee Profile**; its actions sit in the header next to ✕ — Full Profile (teal), Job Sheet (dark), Edit (outline), Delete as a red icon only; on a phone the buttons show icons only. No action footer; Delete asks for confirmation at the top of the popup.
 - Leads (UX-148): the amber **Possible duplicate** badge marks a lead whose phone or email repeats an earlier lead's within 7 days (hover shows which one). A placeholder number such as +971 50 000 0000 (last 7 digits one repeated digit) never matches.
 - Excel Job Sheet (UX-146, UX-147): the right-click menu has the row actions in order (Copy, Paste, Duplicate, Clear), row height, colours, history, and the deletes together at the bottom (Delete Row, then Delete Block — one Delete Block only). Row heights: 24, 26, 32, 38, 46 px (56 removed). The save toast shows one tick (the icon); a "✓" in the message is dropped — also for every green success toast.

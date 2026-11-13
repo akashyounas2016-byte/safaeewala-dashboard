@@ -127,6 +127,7 @@
   - **Job Sheet:** Daily Job Sheet par sirf is cleaner ki jobs.
   - **Edit:** profile badlein (Total Duty Hours yahin hain — OT inhi se lagta hai).
   - **Laal 🗑 icon:** delete — pehle popup ke upar poochha jata hai.
+- Jis employee ki photo upload hai, list (grid aur table) mein uske initials (jaise MA) ki jagah **photo** dikhti hai. Photo par click karein to bari ho kar khulti hai; band karne ke liye kahin bhi click, ✕ ya Esc. Photo Full Profile par upload / change hoti hai.
 
 ---
 

@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useSalaryAccess, SALARY_HIDDEN } from '@/store/useModuleAccess'
 import * as XLSX from 'xlsx'
 import { useNavigate, Link, useSearchParams } from 'react-router-dom'
@@ -174,11 +175,44 @@ const avatarColors = [
   { bg: '#fae8ff', text: '#a21caf', border: '#f0abfc' },
 ]
 
-function Avatar({ name, size = 'md', idx = 0 }: { name: string; size?: 'sm' | 'md' | 'lg' | 'xl'; idx?: number }) {
+/** UX-150: the employee's photo, opened large; closes on click, ✕ or Esc */
+function PhotoZoom({ src, name, onClose }: { src: string; name: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label={`Photo of ${name}`} onClick={e => { e.stopPropagation(); onClose() }}
+      className="fixed inset-0 z-[300] bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 animate-in fade-in duration-150 cursor-zoom-out">
+      <button type="button" aria-label="Close" className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center cursor-pointer"><X size={18} /></button>
+      <img src={src} alt={name} className="max-w-[min(90vw,480px)] max-h-[75vh] rounded-3xl object-contain shadow-2xl border-4 border-white/90 animate-in zoom-in-95 duration-150" />
+      <p className="mt-3 text-white font-bold text-[15px] text-center">{name}</p>
+    </div>,
+    document.body,
+  )
+}
+
+function Avatar({ name, size = 'md', idx = 0, photoUrl }: { name: string; size?: 'sm' | 'md' | 'lg' | 'xl'; idx?: number; photoUrl?: string }) {
+  const [zoom, setZoom] = useState(false)
   const parts = name.trim().split(' ')
   const init = ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || 'EM'
   const dims = size === 'xl' ? 'w-16 h-16 text-[18px]' : size === 'lg' ? 'w-14 h-14 text-[15px]' : size === 'sm' ? 'w-8 h-8 text-[11px]' : 'w-11 h-11 text-[13px]'
   const color = avatarColors[idx % avatarColors.length]
+  // UX-150: the uploaded photo in place of the initials, same size; a click opens it large (not the employee)
+  if (photoUrl) {
+    return (
+      <>
+        <button type="button" title="View photo" aria-label={`View photo of ${name}`}
+          onClick={e => { e.stopPropagation(); setZoom(true) }}
+          className={`${dims} rounded-2xl overflow-hidden shrink-0 shadow-xs border cursor-zoom-in hover:ring-2 hover:ring-teal-300 transition-shadow`}
+          style={{ borderColor: color.border }}>
+          <img src={photoUrl} alt={name} loading="lazy" className="w-full h-full object-cover" />
+        </button>
+        {zoom && <PhotoZoom src={photoUrl} name={name} onClose={() => setZoom(false)} />}
+      </>
+    )
+  }
   return (
     <div
       className={`${dims} rounded-2xl flex items-center justify-center font-black shrink-0 shadow-xs border`}
@@ -741,7 +775,7 @@ export function Employees() {
             <div>
               {/* Header: Avatar, Name, Role, Status */}
               <div className="flex items-start gap-3.5 mb-3.5">
-                <Avatar name={emp.full_name} size="md" idx={idx} />
+                <Avatar name={emp.full_name} size="md" idx={idx} photoUrl={emp.photo_url} />
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -1011,7 +1045,7 @@ export function Employees() {
                   {isColVisible('employee') && (
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
-                        <Avatar name={emp.full_name} size="sm" idx={idx} />
+                        <Avatar name={emp.full_name} size="sm" idx={idx} photoUrl={emp.photo_url} />
                         <div>
                           <p className="font-bold text-slate-900">{emp.full_name}</p>
                           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
@@ -1700,7 +1734,7 @@ export function Employees() {
               )}
               {/* Profile Card Header */}
               <div className="flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-r from-slate-50 to-teal-50/50 border border-slate-200/80">
-                <Avatar name={selected.full_name} size="lg" idx={0} />
+                <Avatar name={selected.full_name} size="lg" idx={0} photoUrl={selected.photo_url} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-[19px] font-black text-slate-900 truncate">{selected.full_name}</p>

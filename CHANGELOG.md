@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(employees): grid, table and popup show the employee's uploaded photo instead of the initials; a click zooms it (UX-150)
 - change(employees): the employee popup is called "Employee Profile"; Full Profile, Job Sheet, Edit and Delete (icon) moved from the footer to the header (UX-149)
 - fix(leads): "Possible duplicate" no longer flags leads that only share the form's example number +971 50 000 0000; the same email within 7 days now counts (UX-148)
 - docs: INSTRUCTIONS.md — how each feature works, for the Safaeewala team
