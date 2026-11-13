@@ -248,7 +248,7 @@ export function AddMonthlyClientModalForm({
     }, 0)
   }, [activeDays, daySchedules])
 
-  const { clients: allClients } = useData()
+  const { clients: allClients, trimVisitsToContract } = useData()
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
@@ -331,6 +331,7 @@ export function AddMonthlyClientModalForm({
     })
     // R-CLI-05: the contract follows the client (name, phone) and its Contract Status (active / paused)
     saveClientContract({ clientName, previousName: initialClient?.full_name, details: contract, active: contractOn, phone: String(f.get('phone') || '').trim(), email: String(f.get('email') || '').trim() })
+    trimVisitsToContract({ ...(initialClient || {}), full_name: clientName, building_name: String(f.get('building') || '').trim(), apartment: String(f.get('apartment') || '').trim() }) // R-SCHED-13
   }
 
   return (

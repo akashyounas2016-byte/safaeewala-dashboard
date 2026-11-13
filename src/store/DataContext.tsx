@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
-import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency } from '../types'
+import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency, RecurringContract } from '../types'
 import { supabase } from '@/lib/supabase'
-import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs, rememberRemovedMonthlyVisits } from '@/lib/clientDataSync'
+import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs, visitsOutsideContract, rememberRemovedMonthlyVisits } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry, sanitizeOutboxPayload } from '@/lib/syncQueue'
 import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
@@ -17,7 +17,7 @@ import { subscribeTables, applyRowChange } from '@/lib/realtime'
 import { uploadInlineDocs, isInlineDoc, withoutInlineDocs } from '@/lib/docStorage'
 import { useAuth } from '@/store/UserContext'
 import { saveDeletionSnapshot } from '@/lib/snapshots'
-import { removeClientContracts } from '@/lib/clientContracts'
+import { removeClientContracts, CONTRACTS_KEY } from '@/lib/clientContracts'
 import { staffToRegister } from '@/lib/staffRegistry'
 import { useAttendanceMarks, type AttendanceMarks, type AttendanceMarkChange } from '@/store/useAttendanceMarks'
 export { defaultAgencies }
@@ -40,6 +40,8 @@ interface DataStore {
   addClient:       (c: Omit<Client, 'id' | 'created_at'> & { id?: string }) => void // a caller may pick the id (CM-01)
   updateClient:    (id: string, patch: Partial<Client>) => void
   deleteClient:    (id: string) => void
+  /** R-SCHED-13: after the contract dates change, take off the client's upcoming visits outside them */
+  trimVisitsToContract: (client: Partial<Client> & { full_name?: string }, contracts?: RecurringContract[]) => number
 
   addEmployee:     (e: Omit<Employee, 'id' | 'created_at'>) => void
   updateEmployee:  (id: string, patch: Partial<Employee>) => void
@@ -755,6 +757,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
         })
       }
       if (c) logAudit('deleted', 'client', id, c.full_name)
+    },
+    trimVisitsToContract: (patch, contracts) => {
+      const key = normalizeKey(patch.full_name || '')
+      const found = (patch.id && allClients.find(c => c.id === patch.id)) || (key ? allClients.find(c => normalizeKey(c.full_name || '') === key) : undefined)
+      if (!found && !patch.full_name) return 0
+      const client = { ...(found || {}), ...patch } as Client
+      const list = contracts || safeLocalStorageGet<RecurringContract[]>(CONTRACTS_KEY, [])
+      const out = visitsOutsideContract(client, dailyJobs, list, todayDubai())
+      if (!out.length) return 0
+      saveDeletionSnapshot(`Contract dates · ${client.full_name}`, { dailyJobs: out })
+      out.forEach(j => removeJobRow(j.id))
+      logAudit('deleted', 'daily_job', out[0].id, `${client.full_name} · ${out.length} visit(s) outside the contract dates`)
+      return out.length
     },
 
     /* ── Employees ── */

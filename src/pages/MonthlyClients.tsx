@@ -168,7 +168,7 @@ export interface MonthlyClientPayment {
 }
 
 export function MonthlyClients() {
-  const { clients, dailyJobs, employees, addClient, addBooking, addInvoice, invoices } = useData()
+  const { clients, dailyJobs, employees, addClient, addBooking, addInvoice, invoices, trimVisitsToContract } = useData()
   const navigate = useNavigate()
 
   // ── Tab state ──
@@ -578,11 +578,10 @@ export function MonthlyClients() {
       nextBillingDate: contractForm.nextBillingDate || calendarDate(new Date(startDate.getTime() + frequencyDays[contractForm.frequency] * 86400000)),
     }
 
-    if (editingContractId) {
-      setContracts(prev => prev.map(c => c.id === editingContractId ? updated : c))
-    } else {
-      setContracts(prev => [updated, ...prev])
-    }
+    const nextList = editingContractId ? contracts.map(c => c.id === editingContractId ? updated : c) : [updated, ...contracts]
+    setContracts(nextList)
+    // R-SCHED-13: upcoming visits after the new End date (or before the Start date) come off the sheet
+    trimVisitsToContract({ full_name: updated.clientName }, nextList)
     setShowContractModal(false)
   }
 

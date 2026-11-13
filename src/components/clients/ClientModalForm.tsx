@@ -143,7 +143,7 @@ export function ClientModalForm({
     return unique.sort((a, b) => a.localeCompare(b))
   }, [employees, selectedCleaners])
 
-  const { clients } = useData()
+  const { clients, trimVisitsToContract } = useData()
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -219,6 +219,7 @@ export function ClientModalForm({
     // R-CLI-05: Bi-Weekly / monthly clients keep their contract with them (a General client has none)
     if (patch.service_mode !== 'general') {
       saveClientContract({ clientName: patch.full_name || '', previousName: initialClient?.full_name, details: contract, active: contractOn, phone: patch.phone, email: patch.email })
+      trimVisitsToContract({ ...(initialClient || {}), ...patch }) // R-SCHED-13
     }
     onClose()
   }

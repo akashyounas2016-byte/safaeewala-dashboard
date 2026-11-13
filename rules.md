@@ -123,6 +123,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/store/DataContext.tsx → deleteClient`; `src/lib/clientContracts.ts → removeClientContracts`; `src/lib/clientDataSync.ts → getScheduledMonthlyShiftsForDate`. Test: `tests/unit/contract-start-delete-1111e.test.ts`.
 - **Status:** Active · Since: 2026-11-11
 
+### R-SCHED-13 — Changing the contract dates takes off the visits outside them
+- **Why:** a monthly client got an End date of 29 Dec 2026, but a visit made earlier on 28 Dec 2027 stayed on the sheet (2026-11-13, reported by the team).
+  - When a contract's Start or End date is saved — from the Monthly / Bi-Weekly client popup, the client profile popup, or Monthly Clients → Contracts — the client's scheduled visits **from today on, not paid**, that fall after the End date or before the Start date are taken off the sheet (same set of visits as Contract Off, R-SCHED-08).
+  - Past visits, paid visits, other clients' jobs and ordinary (non-schedule) jobs are never touched. The removed visits are saved as a restore point and written to the Activity Log.
+  - No new visit is added outside the dates (R-SCHED-11), so they do not come back.
+- **Code:** `src/lib/clientDataSync.ts → visitsOutsideContract`; `src/store/DataContext.tsx → trimVisitsToContract`; `ClientModalForm.tsx`, `AddMonthlyClientModalForm.tsx`, `MonthlyClients.tsx → handleSaveContract`. Test: `tests/unit/contract-trim-1113.test.ts`.
+- **Status:** Active · Since: 2026-11-13
+
 ---
 
 ## ATT — Attendance

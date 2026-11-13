@@ -1275,6 +1275,17 @@ export function contractWindowOf(client: Client, contracts: RecurringContract[],
 }
 const outsideWindow = (date: string, w: { start: string; end: string }) => Boolean((w.start && date < w.start) || (w.end && date > w.end))
 
+/**
+ * R-SCHED-13: the client's scheduled visits from today on (not paid) that now fall outside its contract —
+ * after the End date or before the Start date. They are taken off when the contract dates are saved; past
+ * visits stay as work history.
+ */
+export function visitsOutsideContract(client: Client, dailyJobs: DailyJob[], contracts: RecurringContract[], today: string): DailyJob[] {
+  const w = contractWindowOf(client, contracts, false)
+  if (!w.start && !w.end) return []
+  return contractOffJobs(client, dailyJobs, today).filter(j => outsideWindow((j.date || '').split('T')[0], w))
+}
+
 /** Address of a scheduled visit: "<building> Apt <n> - <client name>", never with "(Monthly)" */
 export function scheduledAddressOf(client: Client): string {
   const bldg = (client.building_name || '').trim()

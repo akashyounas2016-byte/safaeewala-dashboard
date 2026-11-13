@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(contracts): saving a contract's Start / End date takes off the client's upcoming unpaid visits outside those dates — a visit on 28 Dec 2027 no longer stays after the End date 29 Dec 2026 (R-SCHED-13)
 - fix(job-sheet): no false "Ends before it starts" check on morning-to-evening jobs (9 AM – 8 PM) — row checks read AM / PM; Bi-Weekly / Monthly client save, edit and delete checked on live with TEST records (R-JOB-02)
 
 - feat(complaints): each complaint keeps a track record (every change, who, when); a cleaner's complaints show on their profile and lower the Health Score by severity — high −15, medium −8, low −3 over 90 days, at most −40 (R-CMP-02, R-EMP-13)
