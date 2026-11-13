@@ -510,7 +510,7 @@ export function FluentFormsLeads() {
     void updateFluentFormLead(id, patch)
   }
 
-  // Same phone within 7 days → possible duplicate (UX-24)
+  // Same phone or email within 7 days (placeholder numbers ignored, UX-148) → possible duplicate (UX-24)
   const duplicates = useMemo(() => findDuplicateLeads(leads), [leads])
 
   // Delete lead
@@ -1361,7 +1361,7 @@ export function FluentFormsLeads() {
                                 <p className="font-bold text-[#111827]">{lead.client_name || 'Guest Client'}</p>
                                 {duplicates.get(lead.id) && (
                                   <span className="inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200"
-                                    title={`Same phone as ${duplicates.get(lead.id)!.client_name} on ${duplicates.get(lead.id)!.created_at?.split('T')[0]}`}>
+                                    title={`Same phone or email as ${duplicates.get(lead.id)!.client_name} on ${duplicates.get(lead.id)!.created_at?.split('T')[0]}`}>
                                     Possible duplicate
                                   </span>
                                 )}

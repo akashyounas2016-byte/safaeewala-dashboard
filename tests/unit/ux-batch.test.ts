@@ -51,6 +51,13 @@ const first = lead({ id: 'a' }), second = lead({ id: 'b', created_at: '2026-10-2
 const dups = findDuplicateLeads([first, second, later])
 check('same phone within 7 days = duplicate', dups.get('b')?.id === 'a')
 check('same phone after 7 days is not a duplicate', !dups.has('c'))
+// UX-148: the form's example number +971 50 000 0000 is not a duplicate; the same email is
+const fake1 = lead({ id: 'f1', phone: '+971 50 000 0000', email: 'radhika@test.com', created_at: '2026-11-11T00:15:00Z' })
+const fake2 = lead({ id: 'f2', phone: '+971 50 000 0000', email: 'sorokin@test.com', created_at: '2026-11-11T12:25:00Z' })
+const sameMail = lead({ id: 'f3', phone: '0501234567', email: 'Sorokin@Test.com ', created_at: '2026-11-12T10:00:00Z' })
+const fakeDups = findDuplicateLeads([fake1, fake2, sameMail])
+check('placeholder number is not a duplicate', !fakeDups.has('f2'))
+check('same email within 7 days = duplicate', fakeDups.get('f3')?.id === 'f2')
 const answered = responseInfo(lead({ status: 'contacted', responded_at: '2026-10-20T12:00:00Z' }))
 check('response time measured', answered?.text === 'answered in 2h', answered)
 

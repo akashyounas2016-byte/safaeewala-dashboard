@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(leads): "Possible duplicate" no longer flags leads that only share the form's example number +971 50 000 0000; the same email within 7 days now counts (UX-148)
+- docs: INSTRUCTIONS.md — how each feature works, for the Safaeewala team
 - fix(contracts): saving a contract's Start / End date takes off the client's upcoming unpaid visits outside those dates — a visit on 28 Dec 2027 no longer stays after the End date 29 Dec 2026 (R-SCHED-13)
 - fix(job-sheet): no false "Ends before it starts" check on morning-to-evening jobs (9 AM – 8 PM) — row checks read AM / PM; Bi-Weekly / Monthly client save, edit and delete checked on live with TEST records (R-JOB-02)
 

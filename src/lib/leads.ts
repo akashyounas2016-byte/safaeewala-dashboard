@@ -26,20 +26,29 @@ export function responseInfo(lead: FluentFormLead & { responded_at?: string }): 
   return null
 }
 
-const phoneKey = (p?: string) => (p || '').replace(/\D/g, '').slice(-8)
+/** Last 8 digits of a phone; '' for a placeholder such as +971 50 000 0000 (one digit repeated) — UX-148 */
+export const phoneKey = (p?: string) => {
+  const k = (p || '').replace(/\D/g, '').slice(-8)
+  return /^(\d)\1+$/.test(k.slice(-7)) ? '' : k
+}
+const emailKey = (e?: string) => (e || '').trim().toLowerCase()
 
 /**
- * Leads that repeat an earlier lead's phone within 7 days → id of that earlier lead (UX-24)
+ * Leads that repeat an earlier lead's phone or email within 7 days → that earlier lead (UX-24).
+ * UX-148: a placeholder number (+971 50 000 0000) is not a match — many visitors leave the form's example in.
  */
 export function findDuplicateLeads(leads: FluentFormLead[]): Map<string, FluentFormLead> {
   const dup = new Map<string, FluentFormLead>()
-  const byPhone = new Map<string, FluentFormLead[]>()
+  const seen = new Map<string, FluentFormLead[]>()
   ;[...leads].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || '')).forEach(l => {
+    const keys: string[] = []
     const k = phoneKey(l.phone || l.whatsapp)
-    if (k.length < 7) return
-    const earlier = (byPhone.get(k) || []).find(e => hoursBetween(e.created_at, l.created_at) <= 7 * 24)
+    if (k.length >= 7) keys.push(`p:${k}`)
+    const m = emailKey(l.email)
+    if (m.includes('@')) keys.push(`e:${m}`)
+    const earlier = keys.flatMap(x => seen.get(x) || []).find(e => hoursBetween(e.created_at, l.created_at) <= 7 * 24)
     if (earlier) dup.set(l.id, earlier)
-    byPhone.set(k, [...(byPhone.get(k) || []), l])
+    keys.forEach(x => seen.set(x, [...(seen.get(x) || []), l]))
   })
   return dup
 }

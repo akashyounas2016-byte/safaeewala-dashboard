@@ -35,7 +35,7 @@ export function LeadsKanban({ leads, duplicates, onMove, onOpen }: {
                           </span>
                         )}
                         {dup && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 flex items-center gap-1" title={`Same phone as ${dup.client_name} on ${dup.created_at?.split('T')[0]}`}>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 flex items-center gap-1" title={`Same phone or email as ${dup.client_name} on ${dup.created_at?.split('T')[0]}`}>
                             <Copy size={9} /> Duplicate?
                           </span>
                         )}
