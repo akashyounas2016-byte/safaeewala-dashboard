@@ -1,7 +1,7 @@
 # Safaeewala CRM — Team ke liye Instructions
 
 > Ye file Safaeewala team ke liye hai: CRM ka har feature kaise kaam karta hai aur kyun.
-> Har naye feature ya change ke sath is mein naya hissa add hota hai. Last updated: 2026-11-13
+> Har naye feature ya change ke sath is mein naya hissa add hota hai. Last updated: 2026-11-15
 
 ---
 
@@ -43,6 +43,16 @@
 ### Daily Job Sheet par change sirf usi din ka hai
 - Daily Job Sheet par kisi visit ka time, date, cleaner ya ghante badlein to **sirf usi din ki row** badlegi. Client ka asal (permanent) schedule nahi badlega.
 - Permanent change sirf **Monthly Clients** screen ya client ke popup se karein.
+
+### Cleaner pehle se busy ho to
+- Agar client ke din par uska cleaner usi waqt kisi aur job par hai, to visit **bina cleaner** ke banti hai (Excel sheet par jamni "—" block) aur Remarks mein likha hota hai: *"⚠ Ambika … is already booked … assign a cleaner"*. Sheet par koi aur cleaner chun lein. Agle hafte cleaner free ho to visit khud uske naam par banti hai.
+- Har client ki ek din mein **sirf ek** visit banti hai. Naam mein "Monthly" ho (jaise *Monthly A*) tab bhi.
+
+### Visit ki date ya address badalna
+- Sheet par kisi visit ki date badlein (misaal: Tuesday se Wednesday) to wo **nayi date par hi rehti hai** — purani date par dobara nahi banti.
+
+### Client ek hi dafa dikhta hai
+- Monthly Clients list mein har client ek dafa aata hai. Uski visits (jaise *Villa# 06 - Zayan*) se alag nakli client nahi banta — edit hamesha asal client par hota hai.
 
 ### Cleaner na ho to
 - Client ka cleaner abhi tay nahi to visit **khali cleaner** ke sath banti hai ("Unassigned" nahi likha jata). Sheet par cleaner baad mein chunein.

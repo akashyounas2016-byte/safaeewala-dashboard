@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency, RecurringContract } from '../types'
 import { supabase } from '@/lib/supabase'
-import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs, visitsOutsideContract, rememberRemovedMonthlyVisits } from '@/lib/clientDataSync'
+import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs, visitsOutsideContract, rememberRemovedMonthlyVisits, rememberMovedMonthlyVisits } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry, sanitizeOutboxPayload } from '@/lib/syncQueue'
 import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
@@ -970,6 +970,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // Row history (UX-40): who changed which fields
       const before = dailyJobs.find(j => j.id === id)
       const change = before ? describeJobChange(before as unknown as Record<string, unknown>, sanitizedPatch as Record<string, unknown>) : ''
+      if (before && ('date' in sanitizedPatch || 'address' in sanitizedPatch)) rememberMovedMonthlyVisits(before, { ...before, ...sanitizedPatch } as DailyJob, allClients) // R-SCHED-14
       if (before && change) logAudit('updated', 'daily_job', id, `${before.staff_name} · ${before.date}`, change, diffRecord(before as unknown as Record<string, unknown>, sanitizedPatch as Record<string, unknown>, ['date', 'staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'address', 'area', 'charges', 'received', 'payment_mode', 'material', 'service', 'remarks']))
       setDailyJobs(p => {
         const next = p.map(j => j.id === id ? { ...j, ...sanitizedPatch } : j)

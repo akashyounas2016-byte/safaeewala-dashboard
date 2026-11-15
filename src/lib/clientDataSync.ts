@@ -597,10 +597,11 @@ export function extractMonthlyClientsFromDailyJobs(
     const lastService = primaryJob.date || '—'
 
     // Look for matching registered client in clients state
+    // R-SCHED-14: rows the sync wrote for a client belong to that client — never a second "client" from history
     const matched = registeredClients.find(c => {
       const cNorm = normalizeKey(c.full_name)
       const bNorm = normalizeKey(c.building_name || '')
-      return cNorm === key || bNorm === key || c.id === `dj-${key}`
+      return cNorm === key || bNorm === key || c.id === `dj-${key}` || jobs.some(j => isOwnVisitRow(j, c))
     })
 
     const id = matched ? matched.id : `dj-${key}`
@@ -730,6 +731,12 @@ export function extractAllClientsFromDailyJobs(
     if (bNorm && jobsByClientKey.has(bNorm) && bNorm !== cNorm) {
       associatedJobs = [...associatedJobs, ...(jobsByClientKey.get(bNorm) || [])]
       matchedJobKeys.add(bNorm)
+    }
+    // R-SCHED-14: the visit rows the sync wrote for this client ("Villa# 06 - Zayan") are its own
+    const visitKey = normalizeKey(cleanClientNameFromAddress(scheduledAddressOf(c)))
+    if (visitKey && visitKey !== cNorm && visitKey !== bNorm && jobsByClientKey.has(visitKey) && !matchedJobKeys.has(visitKey)) {
+      associatedJobs = [...associatedJobs, ...(jobsByClientKey.get(visitKey) || [])]
+      matchedJobKeys.add(visitKey)
     }
 
     // Also check partial (whole-word) matches — only for names specific enough to be safe:
@@ -1298,12 +1305,19 @@ export function scheduledAddressOf(client: Client): string {
   else if (bldgApt) baseAddr = bldgApt
   else if (address) baseAddr = `${address} - ${clientName}`
   else baseAddr = clientName
-  const cleanBase = baseAddr
-    .replace(/\s*\((?:Monthly|monthly)\)/gi, '')
-    .replace(/\bMonthly\b/gi, '')
-    .replace(/\s*-\s*$/, '')
-    .trim()
+  // R-SCHED-14: "Monthly" that is part of the client's own name stays ("Monthly A" was saved as "A",
+  // so its visits were never found again and were added a second time without a cleaner)
+  const ownWord = /\bmonthly\b/i.test(`${clientName} ${bldg}`)
+  let cleanBase = baseAddr.replace(/\s*\((?:Monthly|monthly)\)/gi, '')
+  if (!ownWord) cleanBase = cleanBase.replace(/\bMonthly\b/gi, '')
+  cleanBase = cleanBase.replace(/\s*-\s*$/, '').trim()
   return cleanBase || clientName
+}
+
+/** R-SCHED-14: a visit row written for this client (same address the sync writes) */
+function isOwnVisitRow(job: Pick<DailyJob, 'address'>, client: Client): boolean {
+  const a = normalizeKey(job.address || '')
+  return Boolean(a) && a === normalizeKey(scheduledAddressOf(client))
 }
 
 export function getScheduledMonthlyShiftsForDate(
@@ -1400,7 +1414,7 @@ export function getScheduledMonthlyShiftsForDate(
 
     // Check if this client already has a job on dateStr in dailyJobs
     const matchedJob = jobsOnDate.find(j => {
-      if (jobMatchesClient(j, client)) return true
+      if (isOwnVisitRow(j, client) || jobMatchesClient(j, client)) return true
 
       // Synced rows are written as "<building> - <client name> (Monthly)"
       const cleanAddr = cleanClientNameFromAddress((j.address || '').trim())
@@ -1507,6 +1521,22 @@ export function rememberRemovedMonthlyVisits(job: DailyJob, clients: Client[]): 
   safeLocalStorageSet(REMOVED_VISITS_KEY, kept)
 }
 /**
+ * R-SCHED-14: a monthly visit moved on the sheet (other date, or address changed so it is no longer
+ * that client's row) leaves its old date for good — otherwise the sync added it there again and the
+ * edit looked unsaved.
+ */
+export function rememberMovedMonthlyVisits(before: DailyJob, after: DailyJob, clients: Client[]): void {
+  if (!before?.date) return
+  const sameDate = (after.date || '') === before.date
+  if (sameDate && normalizeKey(after.address || '') === normalizeKey(before.address || '')) return
+  if (!sameDate) return rememberRemovedMonthlyVisits(before, clients)
+  const stillThere = new Set(getScheduledMonthlyShiftsForDate(before.date, clients, [after]).shifts
+    .filter(s => s.alreadySynced).map(s => s.client.id))
+  const lost = getScheduledMonthlyShiftsForDate(before.date, clients, [before]).shifts
+    .filter(s => s.alreadySynced && !stillThere.has(s.client.id))
+  if (lost.length) rememberRemovedMonthlyVisits(before, lost.map(s => s.client))
+}
+/**
  * Automatically fetches and inserts all pending monthly shifts for dateStr into dailyJobs.
  * Returns the count of newly inserted jobs.
  * Strictly complies with Rule 1: Master client contracts are NEVER mutated.
@@ -1572,8 +1602,12 @@ export function syncMonthlySchedulesToDailyJobs(
   // R-SCHED-06: a cleaner already busy at that time is not booked again — the visit is added unassigned
   const placed: Pick<DailyJob, 'date' | 'staff_name' | 'start_time' | 'end_time' | 'address'>[] = dailyJobs.filter(j => j.date === dateStr)
   pendingShifts.forEach(shift => {
-    const busy = shift.cleanerName ? busyJobOf(placed, shift.cleanerName, dateStr, shift.startTime, shift.endTime) : undefined
-    const staff = busy ? '' : shift.cleanerName
+    // R-SCHED-14: "Unassigned" is no cleaner (it was checked as a person and blocked every visit)
+    const cleaner = /^unassigned$/i.test((shift.cleanerName || '').trim()) ? '' : shift.cleanerName
+    const busy = cleaner ? busyJobOf(placed, cleaner, dateStr, shift.startTime, shift.endTime) : undefined
+    // R-SCHED-14: the "clash" is this client's own visit → it is already there, add nothing
+    if (busy && normalizeKey(busy.address || '') === normalizeKey(shift.address)) return
+    const staff = busy ? '' : cleaner
     const remarks = busy
       ? `${shift.remarks} · ⚠ ${shift.cleanerName} is already booked ${busy.start_time}–${busy.end_time} at ${busy.address || 'another job'}: assign a cleaner`
       : shift.remarks
@@ -1599,7 +1633,7 @@ export function syncMonthlySchedulesToDailyJobs(
   })
 
   return {
-    insertedCount: pendingShifts.length,
+    insertedCount: insertedClients.length,
     alreadySyncedCount: result.alreadySyncedCount,
     dayName: result.dayName,
     insertedClients,

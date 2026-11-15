@@ -2,7 +2,7 @@
 
 One list of what is still open, for the owner, Claude and Antigravity. **Update it in the same commit** whenever something is finished (remove it) or added. Finished items go to [CHANGELOG.md](CHANGELOG.md), not here.
 
-Last updated: 2026-11-13 · Live on crm.safaeewala.com: `a949a80`
+Last updated: 2026-11-15 · Live on crm.safaeewala.com: `a949a80`
 
 ---
 
@@ -22,6 +22,7 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | A9 | **Re-enter the employee field values lost earlier** (Misbah's Work Permit year is fixed — 2027, checked 2026-11-13) | Empty profiles | Employees → Edit |
 | A15 | **Settings → Backup → This computer → Choose folder** on the office computer (Chrome / Edge), then "Allow on every visit" | Daily copy of all data on that computer, 30 days kept | Settings → Backup |
 | A16 | **"Test 2- NH bldg": open it and press Save Changes** (nothing to change) | Removes its visit on 28 Dec 2027, outside the contract (R-SCHED-13) | Monthly Clients |
+| A17 | **Monthly data clean-up** — approve the list: duplicate "A" visits (34 rows), duplicate client "Villa# 06 - Zayan", empty rows, TEST visits | Left over from the double-visit bug fixed in R-SCHED-14 | Claude, after owner OK |
 | A11 | **Check today's new screens on the live site** (Excel sheet, Add Job, Employee popup, Agency popup) | Built and tested in code, not yet clicked through in a browser | crm.safaeewala.com |
 
 ---

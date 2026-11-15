@@ -19,7 +19,7 @@ eq(clashes.map(c => [c.day, c.cleaner, c.other]), [['Wednesday', 'Ambika', 'Offi
 eq(findMonthlyScheduleClashes({ id: 'c1', full_name: 'Office Luxam Trading DMCC' }, { Wednesday: { startTime: '09:00', endTime: '12:00', cleaner: 'Ambika' } }, [luxam]), [], 'the client itself is not a clash')
 
 const lib = fs.readFileSync('src/lib/clientDataSync.ts', 'utf8')
-eq(/const staff = busy \? '' : shift\.cleanerName/.test(lib), true, 'monthly sync adds a clashing visit unassigned')
+eq(/const staff = busy \? '' : cleaner$/m.test(lib), true, 'monthly sync adds a clashing visit unassigned')
 const booking = fs.readFileSync('src/components/bookings/NewBookingModal.tsx', 'utf8')
 eq(/findStaffClash\(\[\.\.\.sheetJobs, \.\.\.bookedShifts\]/.test(booking), true, 'booking entry checks the job sheet and other bookings')
 const monthly = fs.readFileSync('src/components/monthlyClients/AddMonthlyClientModalForm.tsx', 'utf8')

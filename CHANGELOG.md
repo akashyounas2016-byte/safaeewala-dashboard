@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(monthly): one visit per client per date — a client named "Monthly …" no longer gets a second visit without a cleaner every week; "Unassigned" is not treated as a busy cleaner; a visit moved to another date / address on the sheet no longer comes back on its old date (R-SCHED-14)
 - change(employees): popup header Edit · Profile View · Delete · ✕ (Job Sheet button removed); table shows Short Names like the Excel sheet; Store Cleaner tag on one line (UX-153)
 - change(employees): Total Duty Hours is a dropdown like Nationality / Gender (UX-151); the Employee Profile popup shows the photo as a larger circle (UX-152)
 - feat(employees): grid, table and popup show the employee's uploaded photo instead of the initials; a click zooms it (UX-150)

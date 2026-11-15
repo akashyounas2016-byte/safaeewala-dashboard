@@ -131,6 +131,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientDataSync.ts → visitsOutsideContract`; `src/store/DataContext.tsx → trimVisitsToContract`; `ClientModalForm.tsx`, `AddMonthlyClientModalForm.tsx`, `MonthlyClients.tsx → handleSaveContract`. Test: `tests/unit/contract-trim-1113.test.ts`.
 - **Status:** Active · Since: 2026-11-13
 
+### R-SCHED-14 — One visit per client per date; a moved visit stays moved
+- **Why:** on live (2026-11-15) the client "Monthly A" got 2–3 rows on every Tuesday, one of them without a cleaner (the purple "—" block on the Excel sheet); old visits showed "⚠ Unassigned is already booked"; and a visit moved to another date or address on the sheet came back on its old date, so the edit looked unsaved.
+  - The visit address keeps the word "Monthly" when it is part of the client's own name or building ("Monthly A" was written as "A" and never found again). Only the "(Monthly)" tag is removed.
+  - A row whose address is exactly the address the sync writes for a client is that client's visit — on the sheet and in the Monthly history (no second client made from its rows).
+  - The busy check (R-SCHED-06) treats "Unassigned" as no cleaner, and a clash with the client's own visit at that time means the visit is already there: nothing is added.
+  - When a monthly visit's date is changed, or its address is changed so it is no longer that client's row, its old date is remembered like a deletion (R-SYNC-17): the sync does not add it there again. Time, cleaner and hours edits stay date-only edits (R-SCHED-01).
+- **Code:** `src/lib/clientDataSync.ts → scheduledAddressOf, isOwnVisitRow, syncMonthlySchedulesToDailyJobs, rememberMovedMonthlyVisits`; `src/store/DataContext.tsx → updateDailyJob`. Test: `tests/unit/monthly-audit-1115.test.ts`.
+- **Status:** Active · Since: 2026-11-15
+
 ---
 
 ## ATT — Attendance
