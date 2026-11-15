@@ -279,6 +279,9 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
     !r.address && !r.start_time && !r.end_time && cleanNum(r.charges) === 0 && cleanNum(r.received) === 0 && !r.remarks
 
   const result: DailyJob[] = []
+  // UX-158: filler rows get the same id on every load (cleaner + date + place), so a colour put on an
+  // empty row is still there after a refresh (random ids lost it)
+  const slug = (t: string) => (t || 'unassigned').replace(/\W+/g, '_')
   staffKeysOrder.forEach(key => {
     const list = staffGroups.get(key)!
     const repName = list.find(j => (j.staff_name || '').trim())?.staff_name || ''
@@ -297,7 +300,7 @@ export function ensureThreeRowsPerStaff(jobs: DailyJob[], targetDate: string): D
         finalStaffRows.push(existingBlank)
       } else {
         finalStaffRows.push({
-          id: newRowId(`blank_${key || 'unassigned'}`),
+          id: `blank_${slug(key)}_${targetDate}_${finalStaffRows.length}`,
           date: targetDate,
           staff_name: repName,
           team_name: '',
@@ -335,7 +338,7 @@ export function withIdleCleaners(rows: DailyJob[], idle: { name: string; status:
     if (named.has(name.trim().toLowerCase())) return
     for (let i = 0; i < 3; i++) {
       extra.push({
-        id: newRowId(`idle_${name.replace(/\W+/g, '_')}_${i}`), date: targetDate, staff_name: name, team_name: '',
+        id: `idle_${name.replace(/\W+/g, '_')}_${targetDate}_${i}`, date: targetDate, staff_name: name, team_name: '', // UX-158: same id every load
         start_time: '', end_time: '', duty_hours: 0, ot_hours: 0, address: '', area: '', material: '' as any,
         charges: 0, received: 0, payment_mode: '' as any, remarks: '', is_overtime: false, created_at: new Date().toISOString(),
         _idle: status,

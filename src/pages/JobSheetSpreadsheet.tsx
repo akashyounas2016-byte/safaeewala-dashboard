@@ -2447,7 +2447,7 @@ export function JobSheetSpreadsheet() {
     if (added.length + edited.length + removed.length === 0) {
       if (auto) return
       setLoadedSnapshot(new Map(rows.map(r => [r.id, r]))) // nothing left to save — the button shows "Saved"
-      showToast('Nothing to save')
+      showToast('All saved — colours and formatting are saved as soon as you apply them') // UX-158
       return
     }
     setAutoSaveBlocked(null)
@@ -2575,10 +2575,17 @@ export function JobSheetSpreadsheet() {
     }
 
     reloadAfterSaveRef.current = true
+    // UX-158: a new row is saved under a new id — its cell colours move with it (they were lost on refresh)
+    const colorMoves: [string, string][] = []
+    const addKeepingColors = (r: DailyJob, p: Omit<DailyJob, 'id' | 'created_at'>) => {
+      const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : undefined
+      addDailyJob(id ? { ...p, id } : p)
+      if (id && Object.keys(cellColors).some(k => k.startsWith(`${r.id}_`))) colorMoves.push([r.id, id])
+    }
     plainRemoved.forEach(r => { if (live.has(r.id)) deleteDailyJob(r.id) })
     plainEdited.forEach(r => {
       if (live.has(r.id)) updateDailyJob(r.id, payload(r))
-      else if (!isClearedRow(r)) addDailyJob(payload(r)) // deleted elsewhere — the user chose to keep their version (UX-156: never an empty row)
+      else if (!isClearedRow(r)) addKeepingColors(r, payload(r)) // deleted elsewhere — the user chose to keep their version (UX-156: never an empty row)
     })
     splitJobIds.forEach(jobId => {
       const p = splitJobPayload(jobId)
@@ -2586,7 +2593,17 @@ export function JobSheetSpreadsheet() {
       if (live.has(jobId)) updateDailyJob(jobId, p)
       else addDailyJob(p)
     })
-    plainAdded.forEach(r => addDailyJob(payload(r)))
+    plainAdded.forEach(r => addKeepingColors(r, payload(r)))
+    if (colorMoves.length) {
+      setCellColors(prev => {
+        const next = { ...prev }
+        colorMoves.forEach(([from, to]) => Object.keys(prev).forEach(k => {
+          if (k.startsWith(`${from}_`)) { next[`${to}_${k.slice(from.length + 1)}`] = prev[k]; delete next[k] }
+        }))
+        safeSet('safaeewala_excel_cell_colors', next)
+        return next
+      })
+    }
     // Only rows that were already gone were "saved": no job changes, so no reload comes — settle here
     const wroteSomething = plainAdded.length + plainEdited.length + splitJobIds.size + plainRemoved.filter(r => live.has(r.id)).length > 0
     if (!wroteSomething) {

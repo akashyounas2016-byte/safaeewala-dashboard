@@ -806,7 +806,10 @@ export function extractAllClientsFromDailyJobs(
         last_service: latestDate || c.last_service,
       })
     } else {
-      result.push(c)
+      // R-DATA-13: no rows on the sheet → no visits and no revenue. The counters stored on the client were a
+      // snapshot taken when it was registered from old sheet rows (Office ABC Trading DMCC kept "25 visits,
+      // AED 564" after those rows were deleted) — they are not used any more.
+      result.push({ ...c, total_bookings: 0, total_spent: 0, last_service: undefined })
     }
   })
 
