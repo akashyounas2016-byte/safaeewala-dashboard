@@ -52,6 +52,7 @@
 - Sheet par kisi visit ki date badlein (misaal: Tuesday se Wednesday) to wo **nayi date par hi rehti hai** — purani date par dobara nahi banti.
 
 ### Client ek hi dafa dikhta hai
+- Client ki profile par **Upcoming** mein agle 4 hafte ki schedule wali visits bhi dikhti hain (**Scheduled** badge). Ye sheet par us din khud aati hain jab wo din khula ho.
 - Har job apne client se jurri rehti hai. Client ka naam ya building badlein to bhi uski purani aur nayi visits usi client ki rehti hain.
 - Monthly Clients list mein har client ek dafa aata hai. Uski visits (jaise *Villa# 06 - Zayan*) se alag nakli client nahi banta — edit hamesha asal client par hota hai.
 
@@ -94,7 +95,11 @@
 - **Present:** us din cleaner ki kam se kam ek job hai.
 - **Available:** us din koi job nahi — ye **absent nahi** gina jata.
 - **Absent:** sirf tab jab specifically Absent ya Leave mark kiya ho.
-- Excel sheet ke Attendance popup mein har cleaner ke liye Present / Available / Absent / Leave ek click mein lagta hai; sab users ko foran nazar aata hai.
+- **Excel sheet ka Attendance popup:**
+  - Har cleaner ki photo ke saath list. Upar cards: kitne cleaners, kitne Present / Available / Absent / Leave (aur %).
+  - **Present / Available khud lagta hai:** sheet par cleaner ki job hai to Present, nahi to Available. Ye abhi save na ki gayi rows ko bhi dekhta hai.
+  - **Absent ya Leave** aap lagate hain. Wapas Present / Available karne ke liye wahi button dabayein jo sheet ke mutabiq ho.
+  - Click karne se foran save **nahi** hota — row par "not saved yet" likha aata hai. Neeche **Save** dabayein to save hota hai. Bina save kiye Close karein to poochha jata hai.
 - Leave (Sick, Emergency, Annual, Weekly Off, Short): admin / manager ke ilawa koi lagaye to approval ke liye jati hai. Faisla ho jane ke baad sirf admin / manager badal sakte hain.
 
 ---

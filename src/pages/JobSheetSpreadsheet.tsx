@@ -2320,6 +2320,8 @@ export function JobSheetSpreadsheet() {
       if (rowColor.startsWith('#')) return makeHexPalette(rowColor)
     }
     const key = (cleanerName || '').trim().toLowerCase()
+    // UX-156: the block without a cleaner ("—") is plain white in every filter (day, Last Month, Last 6 Months)
+    if (!key || key === '—' || key === '-' || key === 'unassigned staff' || key === 'unassigned') return BLOCK_PALETTES.white
     const customKey = cleanerColors[key]
     if (customKey) {
       if (BLOCK_PALETTES[customKey]) return BLOCK_PALETTES[customKey]
@@ -2576,7 +2578,7 @@ export function JobSheetSpreadsheet() {
     plainRemoved.forEach(r => { if (live.has(r.id)) deleteDailyJob(r.id) })
     plainEdited.forEach(r => {
       if (live.has(r.id)) updateDailyJob(r.id, payload(r))
-      else addDailyJob(payload(r)) // deleted elsewhere — the user chose to keep their version
+      else if (!isClearedRow(r)) addDailyJob(payload(r)) // deleted elsewhere — the user chose to keep their version (UX-156: never an empty row)
     })
     splitJobIds.forEach(jobId => {
       const p = splitJobPayload(jobId)
@@ -4327,7 +4329,8 @@ export function JobSheetSpreadsheet() {
 
                 // ── Row & Block Color Logic (Full Row/Block Implementation across all columns) ──
                 // Check if user explicitly set a color for this cleaner block or row
-                const customCleanerKey = cleanerColors[staffKey]
+                const noCleaner = !staffKey || staffKey === 'unassigned staff' || staffKey === 'unassigned' || staffKey === '—' // UX-156
+                const customCleanerKey = noCleaner ? undefined : cleanerColors[staffKey]
                 const hasCustomBlockColor = !!customCleanerKey && !!BLOCK_PALETTES[customCleanerKey]
                 const blockPalette = row.row_color && (BLOCK_PALETTES[row.row_color] || (row.row_color.startsWith('#') ? makeHexPalette(row.row_color) : null))
                 const customRowPreset = row.row_color ? ROW_COLOR_PRESETS.find(p => p.id === row.row_color) : null
@@ -5733,6 +5736,7 @@ export function JobSheetSpreadsheet() {
           open={showQuickAttendance}
           onClose={() => setShowQuickAttendance(false)}
           date={effectiveTargetDate}
+          sheetJobs={gridRows.filter(r => r.date === effectiveTargetDate && !isClearedRow(r))} // UX-157: also rows not saved yet
           onViewDetails={async () => {
             if (hasUnsavedChanges) { try { await handleSaveAll('auto') } catch { /* kept as a draft */ } }
             setShowQuickAttendance(false)

@@ -31,7 +31,7 @@ import { ClientModalForm } from '@/components/clients/ClientModalForm'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
 import type { MonthlyClientPayment } from '@/types'
 import { todayDubai } from '@/lib/dubaiTime'
-import { upcomingVisits, jobSheetSummary } from '@/lib/clientProfileSummary'
+import { upcomingVisits, jobSheetSummary, scheduledVisitsAhead } from '@/lib/clientProfileSummary'
 
 /* ─── Client Financial Adjustment & Advance Types ─── */
 export interface ClientFinancialAdjustment {
@@ -448,7 +448,9 @@ export function ClientProfile() {
 
   const completed     = clientBookings.filter(b => b.status === 'completed')
   // UX-98 audit: only today or later (past "confirmed" bookings were listed), soonest first, plus visits on the sheet
-  const upcoming      = upcomingVisits(clientBookings, clientDailyJobs, todayDubai())
+  // R-SCHED-15: plus the schedule's visits of the next 4 weeks not on the sheet yet
+  const upcoming      = [...upcomingVisits(clientBookings, clientDailyJobs, todayDubai()), ...(client ? scheduledVisitsAhead(client, clientDailyJobs, todayDubai()) : [])]
+    .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
   const sheetSummary  = jobSheetSummary(clientDailyJobs, todayDubai())
   const bookingSpent  = completed.reduce((s, b) => s + b.total_amount, 0)
   const reviewedCount = completed.filter(b => reviewMap[b.id]).length
@@ -1576,7 +1578,9 @@ export function ClientProfile() {
                     </div>
                     {v.status === 'on_sheet'
                       ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 shrink-0">On sheet</span>
-                      : <StatusPill status={v.status} />}
+                      : v.status === 'scheduled'
+                        ? <span title="From the monthly schedule — added to the Job Sheet when that day is opened" className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 shrink-0">Scheduled</span>
+                        : <StatusPill status={v.status} />}
                   </div>
                 ))}
                 {upcoming.length > 5 && <p className="text-[11px] text-slate-400 text-center">+{upcoming.length - 5} more</p>}

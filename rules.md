@@ -140,6 +140,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientDataSync.ts → scheduledAddressOf, isOwnVisitRow, syncMonthlySchedulesToDailyJobs, rememberMovedMonthlyVisits`; `src/store/DataContext.tsx → updateDailyJob`. Test: `tests/unit/monthly-audit-1115.test.ts`.
 - **Status:** Active · Since: 2026-11-15
 
+### R-SCHED-15 — The client profile shows the schedule's upcoming visits
+- **Why:** a monthly / Bi-Weekly visit is put on the sheet only when its day is opened (or comes). "Villa# 6 - Qamar" had a Wednesday / Friday schedule, but the profile said "No upcoming bookings or visits" (2026-11-16).
+  - Upcoming on the client profile = open bookings + the client's rows already on the sheet + the schedule's visits of the next 4 weeks that are not on the sheet yet (badge **Scheduled**).
+  - Same checks as the sheet: contract Start / End dates (R-SCHED-11), Contract Off (R-SCHED-05/08), Bi-Weekly weeks, visits deleted on purpose (R-SYNC-17). Nothing is written — the visit is still added to the sheet when its day is opened.
+- **Code:** `src/lib/clientProfileSummary.ts → scheduledVisitsAhead`; `src/pages/ClientProfile.tsx`. Test: `tests/unit/profile-upcoming-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
+
 ---
 
 ## ATT — Attendance
@@ -221,7 +228,8 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** *"Excel Job Sheet par Attendance button click karnay par user ko Attendance screen par redirect karnay ki bajaye, isi screen par aik pop-up open kiya jaye. Is pop-up mein tamam cleaners ki list ho jahan say foran attendance status update kiya ja sakay. Mazeed yeh ke, is pop-up mein aik 'View Details' ka button ho."* (2026-11-12)
   - The Attendance button opens a popup on the sheet: every active cleaner (CSR / drivers / technical left out, R-SHEET-02) with their jobs that day and **Present / Available / Absent / Leave** in one click; counts on top; search.
   - Saved exactly like the Attendance screen: by employee id, live for every user (R-SYNC-10). Absent = *Uninformed Absence*; Leave asks for the kind (Sick, Emergency, Annual, Weekly Off, Short) and from a non-approver waits for approval (R-ATT-05); a decided leave is locked for non-approvers.
-  - Status shown: the cleaner's own mark; else a job that day = Present; else Available — never Absent unless marked (R-ATT-01).
+  - Status shown (UX-157, 2026-11-16): a marked **Absent / Leave** first; otherwise the Excel sheet decides — a job that day (unsaved rows on the sheet included) = Present, no job = Available. Never Absent unless marked (R-ATT-01). Present / Available can only be chosen when the sheet agrees (it removes an absence).
+  - Changes wait in the popup (marked "not saved", undo per cleaner) and are saved only with **Save**; Close with unsaved changes asks first. Wide popup with the cleaners' photos and cards for Cleaners / Present / Available / Absent / Leave (count and %).
   - **View details** saves the sheet's pending changes and opens the full Attendance sheet on that date; Ctrl+Click on the button still opens it in a new tab.
 - **Code:** `src/components/dailyJobSheet/QuickAttendanceModal.tsx`; `JobSheetSpreadsheet.tsx`. Test: `tests/unit/complaints-roles-excel-1112.test.ts`.
 - **Status:** Active · Since: 2026-11-12

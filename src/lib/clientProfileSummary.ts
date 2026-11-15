@@ -1,5 +1,6 @@
-import type { Booking, DailyJob } from '@/types'
-import { splitStaffNames } from '@/lib/clientDataSync'
+import type { Booking, Client, DailyJob } from '@/types'
+import { splitStaffNames, getScheduledMonthlyShiftsForDate } from '@/lib/clientDataSync'
+import { addDaysToYMD } from '@/components/dailyJobSheet/jobSheetUtils'
 
 /**
  * UX-98 audit of the Client Profile side widgets.
@@ -12,7 +13,7 @@ export interface UpcomingVisit {
   time: string
   label: string
   cleaners: string
-  status: Booking['status'] | 'on_sheet'
+  status: Booking['status'] | 'on_sheet' | 'scheduled'
 }
 
 const day = (d?: string) => String(d || '').split('T')[0]
@@ -30,6 +31,27 @@ export function upcomingVisits(bookings: Booking[], jobs: DailyJob[], today: str
       cleaners: splitStaffNames(j.staff_name || '').join(', '), status: 'on_sheet' as const,
     }))
   return [...fromBookings, ...fromSheet].sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
+}
+
+/**
+ * R-SCHED-15: a monthly / Bi-Weekly visit is put on the sheet only when its day is opened (or comes), so the
+ * profile showed no upcoming visits although the schedule had them. These are the client's schedule visits
+ * of the next `days` days that are not on the sheet yet, with the same checks as the sheet (contract dates,
+ * Contract Off, Bi-Weekly weeks, visits deleted on purpose).
+ */
+export function scheduledVisitsAhead(client: Client, clientJobs: DailyJob[], today: string, days = 28): UpcomingVisit[] {
+  if (!client) return []
+  const out: UpcomingVisit[] = []
+  for (let i = 0; i < days; i++) {
+    const d = addDaysToYMD(today, i)
+    getScheduledMonthlyShiftsForDate(d, [client], clientJobs).shifts
+      .filter(s => !s.alreadySynced && s.client.id === client.id)
+      .forEach(s => out.push({
+        key: `s-${d}-${client.id}`, date: d, time: s.startTime || '', label: s.remarks.includes('Bi-Weekly') ? 'Bi-Weekly visit' : 'Monthly visit',
+        cleaners: splitStaffNames(s.cleanerName || '').join(', '), status: 'scheduled',
+      }))
+  }
+  return out
 }
 
 /** Job Sheet Summary: shifts worked up to today vs. scheduled ahead, each cleaner once, the last worked date */

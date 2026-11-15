@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(excel-sheet): Attendance popup is wider with photos and better cards, follows the sheet (job → Present, else Available unless Absent / Leave), and saves only with the new Save button (UX-157)
+- fix(clients): the client profile lists the schedule's visits of the next 4 weeks — "Villa# 6 - Qamar" showed no upcoming visits (R-SCHED-15)
+- fix(excel-sheet): the block without a cleaner stays white in Last Month / Last 6 Months; an empty row is never saved again from an old sheet (UX-156)
 - fix(sync): an item deleted on one computer (contract, payment, advance, pending, attendance override …) no longer comes back from another computer with unsaved changes — shared delete markers (R-SYNC-19)
 - chore(security): Content-Security-Policy reports are collected (`/api/logs/csp`) and shown in Settings → Data health, so the header can be enforced safely later (B4)
 - feat(excel-sheet): three-dot menu → Delete Today / Delete All Data with warning popups; Delete All (here and on the Daily Job Sheet) needs DELETE typed (UX-155)
