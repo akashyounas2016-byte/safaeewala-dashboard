@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- ops(backup): nightly backup now also copies the uploaded documents (291 files) and sends everything to Google Drive `Safaeewala-Backups` (A2, A3)
 - feat(excel-sheet): Attendance popup is wider with photos and better cards, follows the sheet (job → Present, else Available unless Absent / Leave), and saves only with the new Save button (UX-157)
 - fix(clients): the client profile lists the schedule's visits of the next 4 weeks — "Villa# 6 - Qamar" showed no upcoming visits (R-SCHED-15)
 - fix(excel-sheet): the block without a cleaner stays white in Last Month / Last 6 Months; an empty row is never saved again from an old sheet (UX-156)

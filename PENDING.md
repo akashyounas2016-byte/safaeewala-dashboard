@@ -13,13 +13,10 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | # | What | Why it matters | Where |
 |---|---|---|---|
 | A1 | **Fluent Forms webhook secret** — set `FLUENT_WEBHOOK_SECRET` in the VPS `.env` and add it (https URL + `?secret=` or header `X-Webhook-Secret`) on every Fluent form | Until then anyone can post fake leads to the CRM. **Do this before go-live.** | `webhookServer.cjs` (SEC-04), [docs/setup-auth.md](docs/setup-auth.md) |
-| A2 | **Google Drive copy of the nightly backup** (rclone + `BACKUP_RCLONE_REMOTE`, Google login) | Today the backup is only on the VPS — if the VPS is lost, so is the backup. Owner: do it at the end of the project. | [prod.md §7](prod.md) |
-| A3 | **Storage (documents / images) backup on the VPS** — install needs the owner's OK ("Backup VPS par laga do") | Employee and agency documents are not in the nightly DB backup yet | [prod.md §7](prod.md) |
 | A4 | **WhatsApp (Meta Cloud API)** — five `WHATSAPP_*` keys in the VPS `.env`, Meta webhook, then a test message | WhatsApp send / receive has never been tested. Facebook + Instagram (via GHL) already work. | [prod.md §8](prod.md) |
 | A5 | **GHL key: Social Planner scopes** | Needed for social posting from the CRM | GHL → Settings → Private Integrations |
 | A6 | **AI Bot** — set `ANTHROPIC_API_KEY` on the VPS | Until then `/ai-bot` answers from rules only (no AI chat) | [prod.md](prod.md) |
 | A7 | **Google review link** in Settings | Review-request messages need it | Settings |
-| A9 | **Re-enter the employee field values lost earlier** (Misbah's Work Permit year is fixed — 2027, checked 2026-11-13) | Empty profiles | Employees → Edit |
 | A15 | **Settings → Backup → This computer → Choose folder** on the office computer (Chrome / Edge), then "Allow on every visit" | Daily copy of all data on that computer, 30 days kept | Settings → Backup |
 | A11 | **Check today's new screens on the live site** (Excel sheet, Add Job, Employee popup, Agency popup) | Built and tested in code, not yet clicked through in a browser | crm.safaeewala.com |
 

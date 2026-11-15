@@ -113,6 +113,8 @@ if [ -n "$REMOTE" ]; then
   rclone copy "$BACKUP_DIR" "$REMOTE" --max-depth 1 --include "safaeewala-$STAMP-*" || fail "off-site copy to $REMOTE"
   if [ "$DAY" = "01" ]; then rclone copy "$BACKUP_DIR/monthly" "$REMOTE/monthly" --include "safaeewala-$STAMP-*" || fail "monthly off-site copy"; fi
   rclone delete "$REMOTE" --max-depth 1 --min-age "${KEEP_DAYS}d" --include 'safaeewala-*' || true
+  # A3/A2: documents too — only new files are sent, nothing is deleted from the Drive copy
+  if [ -d "$BACKUP_DIR/storage" ]; then rclone copy "$BACKUP_DIR/storage" "$REMOTE/storage" || fail "documents off-site copy"; fi
   OFFSITE="copied to $REMOTE"
   OFFSITE_ON=true
 fi

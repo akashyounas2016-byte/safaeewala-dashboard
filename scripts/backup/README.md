@@ -12,7 +12,8 @@
 
 - The date is Dubai time, e.g. `safaeewala-2026-11-06_0200-public.dump`.
 - Daily copies are kept for 30 days in `/var/backups/safaeewala` on the VPS. The copy of the 1st of each month also goes to `monthly/` and is kept for good: every backup holds all data up to that day, so this keeps the full history at under 1 GB for years.
-- Off-site copy (Google Drive) when `BACKUP_RCLONE_REMOTE` is set.
+- Off-site copy (Google Drive) when `BACKUP_RCLONE_REMOTE` is set: the day's dumps, plus the `storage/` documents folder (only new files are sent, nothing deleted).
+- **Live since 2026-11-16:** `BACKUP_RCLONE_REMOTE=gdrive:Safaeewala-Backups` (rclone remote `gdrive`, scope `drive.file` — rclone sees only the files it made) and `storage-mirror.cjs` on the VPS. The Google login token is in `/root/.config/rclone/rclone.conf` (chmod 600). If Google ever asks again: run `rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLmZpbGUifQ"` on a computer with a browser and `rclone config update gdrive token=…` on the VPS.
 - `last-status.txt` in that folder gives the result of the last run; `backup-status.json` in the app data folder feeds Settings → Backup (UX-93). If `BACKUP_ALERT_URL` is set (for example an n8n webhook), a failed run is posted there.
 - **Storage files (R-DOC-01):** `storage/staff-documents/…` (passport, EID, visa, work permit, agency documents, every version) and `storage/whatsapp-media/…` (chat photos / voice notes).
   - `storage-mirror.cjs` runs next to `db-backup.sh`. It downloads only files not copied before and never deletes one, so the folder keeps every version of every document. It is not part of the 30-day clean-up.

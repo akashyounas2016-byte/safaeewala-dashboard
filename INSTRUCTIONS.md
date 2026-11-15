@@ -136,6 +136,7 @@
 - Data mein masle dikhata hai (misaal: job par aisa staff jo Employees mein nahi). Item click karein to seedha wahi job khulti hai.
 
 ### Backup
+- Har raat 2 baje (Dubai) poora data — aur passport, EID, visa jaise **uploaded documents** bhi — server par copy hota hai, aur us ki ek copy **Google Drive** ke "Safaeewala-Backups" folder mein jati hai. Upar ka status batata hai ke backup chal raha hai ya nahi.
 - Upar ek status batata hai ke backup ho raha hai ya nahi. Teen jagah: **Server** (har raat), **Google Drive**, aur **This computer** (office computer par ek dafa folder chunein, phir rozana khud copy hoti hai, 30 din rakhi jati hain).
 
 ---
