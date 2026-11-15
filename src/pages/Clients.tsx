@@ -4,7 +4,7 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign,
   Heart, Award, CheckCircle, Trash2, ExternalLink, ArrowUpDown, RotateCcw, X, Filter, Clock,
-  Save, Check, ChevronDown, UserCheck, Edit2, LayoutGrid, List, ChevronUp, AlertCircle, Sparkles,
+  Save, Check, ChevronDown, UserCheck, Edit2, LayoutGrid, List, ChevronUp, AlertCircle, Sparkles, Grid3x3,
   Wallet, CalendarCheck, Plus, Building2, Handshake, BarChart3
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -185,12 +185,14 @@ export function Clients() {
   const [datePreset, setDatePreset] = useState<ClientDatePreset>('all')
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
-  const [viewMode, setViewMode] = useState<'grid' | 'table'>(() => {
-    return safeLocalStorageGet<'grid' | 'table'>('clients_view_mode', 'grid')
+  // UX-160: the same three views as Monthly Clients — Grid Card (2 a row, widgets on the right), Table, Wide Grid
+  const [viewMode, setViewMode] = useState<'grid' | 'table' | 'wide'>(() => {
+    return safeLocalStorageGet<'grid' | 'table' | 'wide'>('clients_view_mode', 'grid')
   })
   useEffect(() => {
     safeLocalStorageSet('clients_view_mode', viewMode)
   }, [viewMode])
+  const wide = viewMode === 'wide'
 
   // ── Synchronized Monthly Clients Summaries (Single Source of Truth) ──
   const allMonthlySummaries = useMemo(() => {
@@ -769,7 +771,9 @@ export function Clients() {
   }
 
   // UX-144: See All under the list (two rows shown until pressed)
-  const hiddenCount = filtered.length - CLIENT_CARDS_PREVIEW
+  // UX-160: two rows of cards — Grid Card has 2 a row (4 cards), Wide Grid / Table 3 a row (6)
+  const previewCount = viewMode === 'grid' ? 4 : CLIENT_CARDS_PREVIEW
+  const hiddenCount = filtered.length - previewCount
   const renderSeeAll = () => hiddenCount > 0 || showAllClientCards ? (
     <div className="flex justify-center">
       <button
@@ -787,8 +791,8 @@ export function Clients() {
   ) : null
 
   // UX-144: the widgets sit in their own tinted panel with a heading, clearly apart from the client list
-  const renderInsights = () => (
-    <section aria-label="Client insights" className="mt-4 pt-6 border-t-2 border-dashed border-slate-200">
+  const renderInsights = (side = false) => (
+    <section aria-label="Client insights" className={side ? '' : 'mt-4 pt-6 border-t-2 border-dashed border-slate-200'}>
       <div className="rounded-[28px] bg-gradient-to-b from-slate-100 to-slate-50/60 border border-slate-200 p-4 sm:p-5 space-y-4">
         <div className="flex items-center gap-3">
           <span className="w-9 h-9 rounded-xl bg-slate-800 text-white flex items-center justify-center shrink-0"><BarChart3 size={17} /></span>
@@ -797,9 +801,9 @@ export function Clients() {
             <p className="text-[11.5px] text-slate-500">Top clients, dues, retention, locations and recent bookings</p>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className={side ? 'grid grid-cols-1 gap-5' : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5'}>
           {filterType && (
-            <div className="md:col-span-2 lg:col-span-3 flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-[12.5px] text-emerald-900">
+            <div className={`${side ? '' : 'md:col-span-2 lg:col-span-3 '}flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-[12.5px] text-emerald-900`}>
               <span>Widgets show <b>{SCOPE_LABEL[filterType] || 'the selected clients'}</b> only · {scopeClients.length} client{scopeClients.length === 1 ? '' : 's'}</span>
               <button type="button" onClick={() => setFilterType(null)} className="font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer">Show all clients</button>
             </div>
@@ -831,7 +835,7 @@ export function Clients() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-[12.5px]">
-            {(showAllClientCards ? filtered : filtered.slice(0, CLIENT_CARDS_PREVIEW)).map((c, idx) => {
+            {(showAllClientCards ? filtered : filtered.slice(0, previewCount)).map((c, idx) => {
               const nameLower = c.full_name.toLowerCase().trim()
               const liveBookings = bookings.filter(b => b.client_id === c.id || b.client_name.toLowerCase().trim() === nameLower)
               const clientInvs = invoices.filter(i => i.status !== 'void' && (i.client_id === c.id || i.client_name.toLowerCase().trim() === nameLower))
@@ -1084,6 +1088,34 @@ export function Clients() {
             <MapPin size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
 
+          {/* Date filter (was its own row of buttons) */}
+          <div className="relative shrink-0">
+            <select
+              value={datePreset}
+              onChange={e => setDatePreset(e.target.value as ClientDatePreset)}
+              className="text-[13px] pl-3.5 pr-8 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500 text-slate-700 font-medium cursor-pointer appearance-none transition-colors"
+              aria-label="Date filter"
+            >
+              <option value="all">All Time</option>
+              <option value="7days">Last 7 Days</option>
+              <option value="30days">Last 30 Days</option>
+              <option value="3months">Last 3 Months</option>
+              <option value="6months">Last 6 Months</option>
+              <option value="1year">Last 1 Year</option>
+              <option value="custom">Custom Range…</option>
+            </select>
+            <Calendar size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+          {datePreset === 'custom' && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <input type="date" value={customStartDate} onChange={e => setCustomStartDate(e.target.value)} aria-label="From"
+                className="text-[12px] px-2 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500" />
+              <span className="text-[11px] text-slate-400">to</span>
+              <input type="date" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)} aria-label="To"
+                className="text-[12px] px-2 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500" />
+            </div>
+          )}
+
           {/* Sort Filter */}
           <div className="relative shrink-0">
             <select
@@ -1150,77 +1182,23 @@ export function Clients() {
             >
               <List size={15} />
             </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('wide')}
+              className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                viewMode === 'wide' ? 'bg-white text-emerald-700 shadow-xs font-bold' : 'text-slate-400 hover:text-slate-600'
+              }`}
+              title="Wide Grid (3–4 cards a row, widgets below)"
+              aria-label="Wide grid view"
+            >
+              <Grid3x3 size={15} />
+            </button>
           </div>
 
-          {/* Result counter */}
-          <div className="ml-auto text-right shrink-0">
-            <span className="text-[12px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200/60">
-              Showing <span className="text-emerald-600 font-extrabold">{filtered.length}</span> of {clients.length} clients
-            </span>
-          </div>
-        </div>
-
-        {/* Date Range Filter Row: 7 Days, 30 Days, 3 Months, 6 Months, 1 Year, Custom Range */}
-        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[12px] font-semibold text-slate-500 mr-1 flex items-center gap-1.5">
-              <Calendar size={13} className="text-emerald-600" />
-              <span>Date Filter:</span>
-            </span>
-
-            {[
-              { id: 'all',     label: 'All Time' },
-              { id: '7days',   label: '7 Days' },
-              { id: '30days',  label: '30 Days' },
-              { id: '3months', label: '3 Months' },
-              { id: '6months', label: '6 Months' },
-              { id: '1year',   label: '1 Year' },
-              { id: 'custom',  label: 'Custom Range' },
-            ].map(preset => {
-              const active = datePreset === preset.id
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => setDatePreset(preset.id as ClientDatePreset)}
-                  className={`px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all ${
-                    active
-                      ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
-                      : 'bg-slate-100/80 hover:bg-slate-200/70 text-slate-600'
-                  }`}
-                >
-                  {preset.label}
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Custom Date Pickers */}
-          {datePreset === 'custom' && (
-            <div className="flex items-center gap-2 bg-[#f8fafc] border border-emerald-200 rounded-xl px-3 py-1.5 animate-in fade-in duration-150">
-              <span className="text-[11px] font-bold text-emerald-700">From:</span>
-              <input
-                type="date"
-                value={customStartDate}
-                onChange={e => setCustomStartDate(e.target.value)}
-                className="text-[12px] px-2 py-1 bg-white border border-[#E4E8EC] rounded-lg focus:outline-none focus:border-emerald-500 font-medium"
-              />
-              <span className="text-[11px] font-bold text-emerald-700">To:</span>
-              <input
-                type="date"
-                value={customEndDate}
-                onChange={e => setCustomEndDate(e.target.value)}
-                className="text-[12px] px-2 py-1 bg-white border border-[#E4E8EC] rounded-lg focus:outline-none focus:border-emerald-500 font-medium"
-              />
-            </div>
-          )}
-
-          {/* Active Range sub-label */}
-          {datePreset !== 'all' && datePreset !== 'custom' && (
-            <span className="text-[11.5px] font-medium text-slate-400 ml-auto">
-              {activeDateRange.start} to {activeDateRange.end}
-            </span>
-          )}
+          {/* Result count — small (UX-160) */}
+          <span className="text-[11.5px] font-bold text-slate-400 shrink-0" title={`${filtered.length} of ${clients.length} clients shown`}>
+            {filtered.length}/{clients.length}
+          </span>
         </div>
 
       </div>
@@ -1272,16 +1250,16 @@ export function Clients() {
           {renderInsights()}
         </div>
       ) : (
-        /* ── GRID CARD VIEW (UX-90): cards over the full width, three per row; the widgets below them ── */
-        <div className="space-y-6">
+        /* ── UX-160: Grid Card = 2 cards a row with the widgets on the right; Wide Grid = 3–4 a row, widgets below (UX-90) ── */
+        <div className={wide ? 'space-y-6' : 'grid grid-cols-1 xl:grid-cols-3 gap-6 items-start'}>
 
-          <div className="space-y-4">
+          <div className={wide ? 'space-y-4' : 'xl:col-span-2 space-y-4'}>
 
           {/* Client cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {(showAllClientCards ? filtered : filtered.slice(0, CLIENT_CARDS_PREVIEW)).map((c, cardIdx) => {
+          <div className={wide ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4' : 'grid grid-cols-1 md:grid-cols-2 gap-4'}>
+            {(showAllClientCards ? filtered : filtered.slice(0, previewCount)).map((c, cardIdx) => {
               // UX-144: two rows on every screen — 1 per row on a phone, 2 on a tablet, 3 on a wide screen
-              const beyondTwoRows = showAllClientCards ? '' : cardIdx >= 4 ? 'max-xl:hidden' : cardIdx >= 2 ? 'max-md:hidden' : ''
+              const beyondTwoRows = showAllClientCards ? '' : (wide && cardIdx >= 4) ? 'max-xl:hidden' : cardIdx >= 2 ? 'max-md:hidden' : ''
               // UX-67: one card design for Clients and Monthly Clients, after the Daily Job Sheet
               const isMonthly = isMonthlyClient(c, dailyJobs, allMonthlySummaries)
               const nameLower    = c.full_name.toLowerCase().trim()
@@ -1376,7 +1354,7 @@ export function Clients() {
           )}
         </div>
 
-        {renderInsights()}
+        {renderInsights(!wide)}
 
       </div>
     )}

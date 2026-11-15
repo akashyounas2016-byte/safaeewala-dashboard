@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(clients): Clients screen has Grid Card / Table / Wide Grid like Monthly Clients, and search, area, date and sort in one row (UX-160)
+- change(client-profile): totals as cards under the header (not repeated in tabs); Upcoming Bookings wide and light green with day, date, time and cleaners next to Financial Summary (60/40); Customize keeps only columns (UX-159)
+- fix(clients): a client without sheet rows shows 0 visits / AED 0 — Office ABC Trading DMCC showed 25 visits and AED 564 from an old stored snapshot (R-DATA-13)
+- fix(excel-sheet): cell colours no longer disappear after Save + refresh; no "Nothing to save" for colour changes (UX-158)
 - ops(backup): nightly backup now also copies the uploaded documents (291 files) and sends everything to Google Drive `Safaeewala-Backups` (A2, A3)
 - feat(excel-sheet): Attendance popup is wider with photos and better cards, follows the sheet (job → Present, else Available unless Absent / Leave), and saves only with the new Save button (UX-157)
 - fix(clients): the client profile lists the schedule's visits of the next 4 weeks — "Villa# 6 - Qamar" showed no upcoming visits (R-SCHED-15)

@@ -8,10 +8,11 @@ import {
   Copy, CheckCircle, User, Clock, ExternalLink, Pencil, FileText, Search,
   Wallet, DollarSign, TrendingUp, AlertCircle, Plus, Download, Check, X,
   Tag, FileSpreadsheet, RotateCcw, Filter, AlertTriangle, ShieldCheck,
-  CreditCard, ChevronRight, Receipt, Trash2, Save, ChevronDown, Users, MoreVertical
+  CreditCard, ChevronRight, Receipt, Trash2, Save, ChevronDown, Users, MoreVertical, PiggyBank, SlidersHorizontal, CalendarDays
 } from 'lucide-react'
 import { useData } from '@/store/DataContext'
 import { LayoutCustomizer, useLayout, type LayoutItem } from '@/components/ui/LayoutCustomizer'
+import { KpiCard, Widget } from '@/components/ui/KpiCard'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
@@ -115,10 +116,6 @@ function persistReview(bookingId: string) {
 }
 
 /* ─── Main component ─── */
-const HISTORY_CARD_ITEMS: LayoutItem[] = [
-  { id: 'charges', label: 'Charges' }, { id: 'received', label: 'Received' }, { id: 'ot', label: 'OT' },
-  { id: 'pending', label: 'Pending' }, { id: 'advance', label: 'Advance' }, { id: 'adjustment', label: 'Adjustment' },
-]
 const HISTORY_COLUMN_ITEMS: LayoutItem[] = [
   { id: 'date', label: 'Date', locked: true }, { id: 'cleaner', label: 'Cleaner' }, { id: 'timing', label: 'Timing' },
   { id: 'duty', label: 'Duty' }, { id: 'ot', label: 'OT' }, { id: 'charges', label: 'Charges' }, { id: 'received', label: 'Received' },
@@ -130,7 +127,6 @@ export function ClientProfile() {
   const { id } = useParams<{ id: string }>()
   const { clients, bookings, employees, invoices, dailyJobs, updateClient, addClient, deleteClient } = useData()
   // UX-108: Service History cards / columns — shown, hidden and order per browser
-  const historyCards = useLayout('safaeewala_client_history_cards', HISTORY_CARD_ITEMS)
   // UX-108: ⋮ menu next to Edit Profile with Delete Profile
   const navigateTo = useNavigate()
   const [heroMenuOpen, setHeroMenuOpen] = useState(false)
@@ -836,55 +832,17 @@ export function ClientProfile() {
           </div>
         </div>
 
-        {/* ── Quick Stats Grid: Redesigned for Dark Midnight Theme ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-5 border-t border-teal-800/50">
-          <div className="text-center p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.07] transition-all">
-            <p className="text-[17px] font-black text-white tracking-tight">AED {totalDJCharges.toLocaleString()}</p>
-            <p className="text-[11px] font-bold text-slate-300 mt-1 whitespace-nowrap">Charges</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Total billed amount</p>
-          </div>
-          <div className="text-center p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 hover:bg-emerald-950/60 transition-all">
-            <p className="text-[17px] font-black text-emerald-400 tracking-tight">AED {totalDJReceived.toLocaleString()}</p>
-            <p className="text-[11px] font-bold text-emerald-200 mt-1 whitespace-nowrap">Received</p>
-            <p className="text-[10px] text-emerald-400/80 mt-0.5">Cash & online paid</p>
-          </div>
-          <div className="text-center p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 hover:bg-amber-950/60 transition-all">
-            <p className="text-[17px] font-black text-amber-400 tracking-tight">{totalDJOTHours}h OT</p>
-            <p className="text-[11px] font-bold text-amber-200 mt-1 whitespace-nowrap">OT</p>
-            <p className="text-[10px] text-amber-400/80 mt-0.5">Logged shift overtime</p>
-          </div>
-          <div className="text-center p-3.5 rounded-2xl bg-rose-950/40 border border-rose-500/30 hover:bg-rose-950/60 transition-all">
-            <p className="text-[17px] font-black text-rose-400 tracking-tight">AED {totalDJPending.toLocaleString()}</p>
-            <p className="text-[11px] font-bold text-rose-200 mt-1 whitespace-nowrap">Pending</p>
-            <p className="text-[10px] text-rose-400/80 mt-0.5">Outstanding dues</p>
-          </div>
-          <div className="text-center p-3.5 rounded-2xl bg-teal-950/40 border border-teal-500/30 hover:bg-teal-950/60 transition-all">
-            <div className="flex items-center justify-center gap-1.5">
-              <p className="text-[17px] font-black text-teal-300 tracking-tight">AED {netRemainingAdvance.toLocaleString()}</p>
-              {matchedAdvanceWidgetItems.length > 0 && (
-                <span className="text-[9px] font-bold bg-teal-500/20 text-teal-300 border border-teal-400/40 px-1.5 py-0.2 rounded-full" title="Advances logged via Daily Job Sheet Advance Widget">
-                  {matchedAdvanceWidgetItems.length} Widget
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] font-bold text-teal-200 mt-1 whitespace-nowrap">Advance</p>
-            <p className="text-[10px] text-teal-400/80 mt-0.5">
-              {totalServiceDeductedFromAdvance > 0 ? `AED ${totalServiceDeductedFromAdvance.toLocaleString()} deducted [ADJ]` : 'Available advance credit'}
-            </p>
-          </div>
-          <div className="text-center p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 hover:bg-indigo-950/60 transition-all">
-            <div className="flex items-center justify-center gap-1.5">
-              <span className="bg-indigo-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase">
-                ADJ
-              </span>
-              <p className="text-[17px] font-black text-indigo-300 tracking-tight">AED {totalDJAdjustment.toLocaleString()}</p>
-            </div>
-            <p className="text-[11px] font-bold text-indigo-200 mt-1 whitespace-nowrap">Adjustment</p>
-            <p className="text-[10px] text-indigo-400/80 mt-0.5">
-              {totalServiceDeductedFromAdvance > 0 ? `Includes AED ${totalServiceDeductedFromAdvance.toLocaleString()} adv deductions` : 'Discounts & waivers'}
-            </p>
-          </div>
-        </div>
+      </div>
+
+      {/* UX-159: the totals once, under the header (like the Daily Job Sheet) — not repeated in the tabs */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-3.5">
+        <KpiCard label="Charges" value={`AED ${totalDJCharges.toLocaleString()}`} sub={`${clientDailyJobs.length} service shift${clientDailyJobs.length === 1 ? '' : 's'}`} icon={FileText} labelColor="text-purple-700" iconSolid="bg-[#7c3aed] shadow-purple-500/25" />
+        <KpiCard label="Received" value={`AED ${totalDJReceived.toLocaleString()}`} sub="Cash & online paid" icon={CheckCircle} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" />
+        <KpiCard label="Pending" value={`AED ${totalDJPending.toLocaleString()}`} sub="Outstanding dues" icon={AlertCircle} labelColor="text-red-600" iconSolid="bg-[#dc2626] shadow-red-500/25"
+          chip={totalDJPending > 0 ? 'View ledger' : undefined} chipTone="down" onClick={totalDJPending > 0 ? () => setActiveTab('financial_history') : undefined} />
+        <KpiCard label="Advance" value={`AED ${netRemainingAdvance.toLocaleString()}`} sub={totalServiceDeductedFromAdvance > 0 ? `AED ${totalServiceDeductedFromAdvance.toLocaleString()} used` : 'Available credit'} icon={PiggyBank} labelColor="text-teal-700" iconSolid="bg-[#0d9488] shadow-teal-500/25" />
+        <KpiCard label="Adjustment" value={`AED ${totalDJAdjustment.toLocaleString()}`} sub={`${clientAdjustments.length} record${clientAdjustments.length === 1 ? '' : 's'}`} icon={SlidersHorizontal} labelColor="text-indigo-700" iconSolid="bg-[#4f46e5] shadow-indigo-500/25" />
+        <KpiCard label="Overtime" value={`${totalDJOTHours}h`} sub={`${totalDJDutyHours}h duty in all`} icon={Clock} labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25" />
       </div>
 
       {/* ── UX-98: main content over the full width; the summary widgets below it ── */}
@@ -977,40 +935,10 @@ export function ClientProfile() {
                 </div>
               </div>
 
-              {/* UX-108: short one-line card labels; cards and columns can be hidden / reordered (Customize) */}
-              {(() => {
-                const cardDefs: Record<string, { label: string; value: string; box: string; text: string; labelText: string }> = {
-                  charges:    { label: 'Charges',    value: `AED ${totalDJCharges.toLocaleString()}`,    box: 'border-[#E4E8EC] bg-white',          text: 'text-purple-700',  labelText: 'text-slate-400' },
-                  received:   { label: 'Received',   value: `AED ${totalDJReceived.toLocaleString()}`,   box: 'border-[#E4E8EC] bg-white',          text: 'text-emerald-700', labelText: 'text-slate-400' },
-                  ot:         { label: 'OT',         value: `${totalDJOTHours}h`,                        box: 'border-[#E4E8EC] bg-white',          text: 'text-amber-600',   labelText: 'text-slate-400' },
-                  pending:    { label: 'Pending',    value: `AED ${totalDJPending.toLocaleString()}`,    box: 'border-red-200 bg-red-50/30',        text: 'text-red-600',     labelText: 'text-red-500' },
-                  advance:    { label: 'Advance',    value: `AED ${netRemainingAdvance.toLocaleString()}`, box: 'border-emerald-200 bg-emerald-50/30', text: 'text-emerald-700', labelText: 'text-emerald-600' },
-                  adjustment: { label: 'Adjustment', value: `AED ${totalDJAdjustment.toLocaleString()}`, box: 'border-indigo-200 bg-indigo-50/40',  text: 'text-indigo-700',  labelText: 'text-indigo-700' },
-                }
-                return (
-                  <div className="p-4 bg-[#f8fafc] border-b border-[#E4E8EC] space-y-2">
-                    <div className="flex justify-end">
-                      <LayoutCustomizer sections={[
-                        { title: 'Cards', items: HISTORY_CARD_ITEMS, layout: historyCards },
-                        { title: 'Columns', items: HISTORY_COLUMN_ITEMS, layout: historyCols },
-                      ]} />
-                    </div>
-                    {historyCards.visible.length > 0 && (
-                      <div className="grid gap-2.5 text-center" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(120px, 1fr))` }}>
-                        {historyCards.visible.map(id => {
-                          const c = cardDefs[id]
-                          return (
-                            <div key={id} className={`p-2.5 rounded-xl border shadow-2xs ${c.box}`}>
-                              <p className={`text-[10px] uppercase font-bold whitespace-nowrap ${c.labelText}`}>{c.label}</p>
-                              <p className={`text-[15px] font-extrabold whitespace-nowrap ${c.text}`}>{c.value}</p>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )
-              })()}
+              {/* UX-159: the totals are in the cards under the header; Customize keeps only the table columns */}
+              <div className="px-4 py-2.5 bg-[#f8fafc] border-b border-[#E4E8EC] flex justify-end">
+                <LayoutCustomizer sections={[{ title: 'Columns', items: HISTORY_COLUMN_ITEMS, layout: historyCols }]} />
+              </div>
 
               {filteredDailyJobs.length === 0 ? (
                 <div className="py-16 text-center">
@@ -1123,51 +1051,6 @@ export function ClientProfile() {
                     <Plus size={13} />
                     <span>Record Adjustment / Advance</span>
                   </button>
-                </div>
-              </div>
-
-              {/* Account Balance Overview Banner */}
-              <div className="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 bg-[#f8fafc] border-b border-[#E4E8EC]">
-                <div className="p-3 bg-white rounded-xl border border-[#E4E8EC] shadow-2xs">
-                  <p className="text-[10px] uppercase font-bold text-slate-400">Total Billed Charges</p>
-                  <p className="text-[16px] font-black text-purple-700">AED {totalDJCharges.toLocaleString()}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{clientDailyJobs.length} service shifts</p>
-                </div>
-                <div className="p-3 bg-white rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-2xs">
-                  <p className="text-[10px] uppercase font-bold text-emerald-700">Total Received / Collected</p>
-                  <p className="text-[16px] font-black text-emerald-700">AED {totalDJReceived.toLocaleString()}</p>
-                  <p className="text-[10px] text-emerald-600 mt-0.5">Cash + online direct</p>
-                </div>
-                <div className="p-3 bg-white rounded-xl border border-red-200 bg-red-50/30 shadow-2xs">
-                  <p className="text-[10px] uppercase font-bold text-red-600">Pending Amount (Due)</p>
-                  <p className="text-[16px] font-black text-red-600">AED {totalDJPending.toLocaleString()}</p>
-                  <p className="text-[10px] text-red-500 mt-0.5">Balance to collect</p>
-                </div>
-                <div className="p-3 bg-white rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-2xs">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] uppercase font-bold text-emerald-700">Advance Available</p>
-                    {matchedAdvanceWidgetItems.length > 0 && (
-                      <span className="text-[8.5px] font-extrabold bg-amber-100 text-amber-800 px-1 py-0.2 rounded border border-amber-300">
-                        {matchedAdvanceWidgetItems.length} Widget
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[16px] font-black text-emerald-700">AED {netRemainingAdvance.toLocaleString()}</p>
-                  <p className="text-[10px] text-emerald-600 mt-0.5">
-                    {totalServiceDeductedFromAdvance > 0 ? `AED ${totalServiceDeductedFromAdvance.toLocaleString()} used [ADJ]` : 'Active advance balance'}
-                  </p>
-                </div>
-                <div className="p-3 bg-white rounded-xl border border-indigo-200 bg-indigo-50/40 shadow-2xs">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] uppercase font-bold text-indigo-700">Total Adjustment</p>
-                    <span className="bg-indigo-700 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase">
-                      ADJ
-                    </span>
-                  </div>
-                  <p className="text-[16px] font-black text-indigo-700">AED {totalDJAdjustment.toLocaleString()}</p>
-                  <p className="text-[10px] text-indigo-500 mt-0.5">
-                    {totalServiceDeductedFromAdvance > 0 ? `Includes AED ${totalServiceDeductedFromAdvance.toLocaleString()} adv deductions` : `${clientAdjustments.length} records`}
-                  </p>
                 </div>
               </div>
 
@@ -1519,82 +1402,64 @@ export function ClientProfile() {
           )}
         </div>
 
-        {/* ── Summary widgets (were the right sidebar) ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
-
-          {/* Daily Job Sheet summary widget */}
-          {clientDailyJobs.length > 0 && (
-            <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-[15px] font-bold text-[#111827] flex items-center gap-1.5">
-                  <FileText size={16} className="text-purple-600" /> Job Sheet Summary
-                </h3>
-                <span className="text-[11px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full" title="Shifts up to today · scheduled ahead">
-                  {sheetSummary.worked} worked{sheetSummary.ahead > 0 ? ` · ${sheetSummary.ahead} ahead` : ''}
-                </span>
-              </div>
-              <div className="space-y-2 text-[12px]">
-                <div className="flex justify-between py-1.5 border-b border-[#edf2f7]">
-                  <span className="text-slate-500">Charges</span>
-                  <span className="font-extrabold text-purple-700">AED {totalDJCharges.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-[#edf2f7]">
-                  <span className="text-slate-500">Overtime (OT)</span>
-                  <span className="font-bold text-amber-600">{totalDJOTHours} hrs</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-[#edf2f7]">
-                  <span className="text-slate-500">Duty Hours</span>
-                  <span className="font-bold text-slate-700">{totalDJDutyHours} hrs</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-[#edf2f7]">
-                  <span className="text-slate-500">Last worked</span>
-                  <span className="font-bold text-slate-700">{sheetSummary.lastWorked ? formatDate(sheetSummary.lastWorked) : '—'}</span>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-slate-500">Cleaners</span>
-                  <span className="font-medium text-slate-700 text-right truncate ml-2" title={sheetSummary.cleaners.join(', ')}>
-                    {sheetSummary.cleaners.join(', ') || '—'}
-                  </span>
+        {/* ── UX-159: summary widgets — Upcoming 60 % · Financial Summary 40 %, the same on every tab ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-stretch">
+          {/* UX-159: Upcoming — wide, light green, day + date + time and the cleaners on each visit */}
+          <section className="lg:col-span-3 rounded-[22px] border border-emerald-200 bg-gradient-to-br from-emerald-50 to-emerald-50/30 shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
+            <header className="px-5 py-4 border-b border-emerald-200/70 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm"><CalendarDays size={17} /></span>
+                <div className="min-w-0">
+                  <h3 className="text-[15px] font-bold text-emerald-950 leading-tight">Upcoming Bookings</h3>
+                  <p className="text-[11.5px] text-emerald-800/70 leading-tight">Bookings, visits on the sheet and the schedule of the next 4 weeks</p>
                 </div>
               </div>
+              <span className="text-[11px] font-bold text-emerald-800 bg-white/80 border border-emerald-200 px-2.5 py-0.5 rounded-full shrink-0">{upcoming.length}</span>
+            </header>
+            <div className="p-4">
+              {upcoming.length === 0 ? (
+                <p className="text-[12.5px] text-emerald-900/60 text-center py-6">No upcoming bookings or visits</p>
+              ) : (
+                <ul className="space-y-2">
+                  {upcoming.slice(0, 6).map(v => {
+                    const d = new Date(`${v.date}T00:00:00`)
+                    return (
+                      <li key={v.key} className="flex items-center gap-3 bg-white/90 rounded-2xl border border-emerald-100 px-3 py-2.5">
+                        <div className="w-12 shrink-0 rounded-xl bg-emerald-600 text-white text-center py-1 leading-tight">
+                          <p className="text-[9.5px] font-bold uppercase tracking-wide opacity-90">{d.toLocaleDateString('en-GB', { weekday: 'short' })}</p>
+                          <p className="text-[16px] font-black">{d.getDate()}</p>
+                          <p className="text-[9.5px] font-semibold opacity-90">{d.toLocaleDateString('en-GB', { month: 'short' })}</p>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-bold text-[#111827] truncate">{v.label}</p>
+                          <p className="text-[11.5px] text-slate-600 flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center gap-1"><CalendarDays size={11} className="text-emerald-600" />{d.toLocaleDateString('en-GB', { weekday: 'long' })}, {formatDate(v.date)}</span>
+                            {v.time && <span className="inline-flex items-center gap-1"><Clock size={11} className="text-emerald-600" />{formatTimeOnly(v.time)}</span>}
+                          </p>
+                          <p className="text-[11.5px] mt-0.5 flex items-center gap-1 min-w-0">
+                            <Users size={11} className="text-emerald-600 shrink-0" />
+                            {v.cleaners
+                              ? <span className="font-semibold text-emerald-900 truncate" title={v.cleaners}>{v.cleaners}</span>
+                              : <span className="text-amber-700 font-semibold">No cleaner yet</span>}
+                          </p>
+                        </div>
+                        {v.status === 'on_sheet'
+                          ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 shrink-0">On sheet</span>
+                          : v.status === 'scheduled'
+                            ? <span title="From the monthly schedule — added to the Job Sheet when that day is opened" className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 shrink-0">Scheduled</span>
+                            : <StatusPill status={v.status} />}
+                      </li>
+                    )
+                  })}
+                  {upcoming.length > 6 && <li className="text-[11.5px] text-emerald-900/60 text-center pt-1">+{upcoming.length - 6} more</li>}
+                </ul>
+              )}
             </div>
-          )}
-
-          {/* Upcoming Bookings */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-            <h3 className="text-[15px] font-bold text-[#111827] mb-4">Upcoming Bookings</h3>
-            {upcoming.length === 0 ? (
-              <p className="text-[12px] text-slate-400 text-center py-4">No upcoming bookings or visits</p>
-            ) : (
-              <div className="space-y-3">
-                {upcoming.slice(0, 5).map(v => (
-                  <div key={v.key} className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
-                      <Calendar size={14} className="text-emerald-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-semibold text-[#111827] truncate">{v.label}</p>
-                      <p className="text-[11px] text-slate-500 truncate">{formatDate(v.date)}{v.time ? ` · ${formatTimeOnly(v.time)}` : ''}{v.cleaners ? ` · ${v.cleaners}` : ''}</p>
-                    </div>
-                    {v.status === 'on_sheet'
-                      ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 shrink-0">On sheet</span>
-                      : v.status === 'scheduled'
-                        ? <span title="From the monthly schedule — added to the Job Sheet when that day is opened" className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 shrink-0">Scheduled</span>
-                        : <StatusPill status={v.status} />}
-                  </div>
-                ))}
-                {upcoming.length > 5 && <p className="text-[11px] text-slate-400 text-center">+{upcoming.length - 5} more</p>}
-              </div>
-            )}
-          </div>
+          </section>
 
           {/* Financial summary */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">💳</span>
-                <h3 className="text-[15px] font-bold text-[#111827]">Financial Summary</h3>
-              </div>
+          <Widget title="Financial Summary" note="Charges, payments and balance" icon={Wallet} className="lg:col-span-2 h-full"
+            actions={
               <button
                 type="button"
                 onClick={() => {
@@ -1605,7 +1470,7 @@ export function ClientProfile() {
               >
                 + ADJ / Advance
               </button>
-            </div>
+            }>
             
             <div className="space-y-2 text-[12px]">
               <div className="flex justify-between py-1.5 border-b border-[#E4E8EC]">
@@ -1658,7 +1523,47 @@ export function ClientProfile() {
                 </p>
               </button>
             )}
-          </div>
+          </Widget>
+
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+          {/* Daily Job Sheet summary widget */}
+          {clientDailyJobs.length > 0 && (
+            <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-[15px] font-bold text-[#111827] flex items-center gap-1.5">
+                  <FileText size={16} className="text-purple-600" /> Job Sheet Summary
+                </h3>
+                <span className="text-[11px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full" title="Shifts up to today · scheduled ahead">
+                  {sheetSummary.worked} worked{sheetSummary.ahead > 0 ? ` · ${sheetSummary.ahead} ahead` : ''}
+                </span>
+              </div>
+              <div className="space-y-2 text-[12px]">
+                <div className="flex justify-between py-1.5 border-b border-[#edf2f7]">
+                  <span className="text-slate-500">Charges</span>
+                  <span className="font-extrabold text-purple-700">AED {totalDJCharges.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-[#edf2f7]">
+                  <span className="text-slate-500">Overtime (OT)</span>
+                  <span className="font-bold text-amber-600">{totalDJOTHours} hrs</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-[#edf2f7]">
+                  <span className="text-slate-500">Duty Hours</span>
+                  <span className="font-bold text-slate-700">{totalDJDutyHours} hrs</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-[#edf2f7]">
+                  <span className="text-slate-500">Last worked</span>
+                  <span className="font-bold text-slate-700">{sheetSummary.lastWorked ? formatDate(sheetSummary.lastWorked) : '—'}</span>
+                </div>
+                <div className="flex justify-between py-1.5">
+                  <span className="text-slate-500">Cleaners</span>
+                  <span className="font-medium text-slate-700 text-right truncate ml-2" title={sheetSummary.cleaners.join(', ')}>
+                    {sheetSummary.cleaners.join(', ') || '—'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Last service */}
           {client.last_service && (
@@ -1669,7 +1574,6 @@ export function ClientProfile() {
           )}
         </div>
       </div>
-
       {/* ── Edit Client Modal (Unified with Add New Client pop-up) ── */}
       <ClientModalForm
         open={editOpen}

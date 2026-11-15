@@ -20,7 +20,7 @@ eq(/moveItem\(item\.to, accessibleItems\[index - 1\]\?\.to\)/.test(sb), true, 'U
 
 // UX-90: Clients cards over the full width, three per row; widgets below
 const cl = src('src/pages/Clients.tsx')
-eq(/grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4/.test(cl) && !/Right sidebar widgets/.test(cl), true, 'three cards per row, widgets below')
+eq(/grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4/.test(cl) && !/Right sidebar widgets/.test(cl), true, 'Wide Grid: three or four cards per row, widgets below (UX-160)')
 
 // UX-91: Mode options show the name only
 eq(/desc: 'Direct cash collection on-site'/.test(src('src/pages/JobSheetSpreadsheet.tsx')), false, 'no description under the payment modes')

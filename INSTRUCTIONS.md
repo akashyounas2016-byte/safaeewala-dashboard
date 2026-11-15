@@ -52,6 +52,9 @@
 - Sheet par kisi visit ki date badlein (misaal: Tuesday se Wednesday) to wo **nayi date par hi rehti hai** — purani date par dobara nahi banti.
 
 ### Client ek hi dafa dikhta hai
+- **Client profile:** upar header ke neeche ek row mein Charges, Received, Pending, Advance, Adjustment aur Overtime ke cards — har tab par wahi. Neeche **Upcoming Bookings** (hara, har visit ka din, tareekh, waqt aur cleaner) aur **Financial Summary** saath saath.
+- **Clients screen:** teen views — Grid Card (2 cards, widgets right par), Table, aur Wide Grid (3–4 cards, widgets neeche). Search, area, date aur sort ek hi row mein.
+- Client card par visits aur revenue sirf Job Sheet ki asal rows se gine jate hain. Rows na hon to 0.
 - Client ki profile par **Upcoming** mein agle 4 hafte ki schedule wali visits bhi dikhti hain (**Scheduled** badge). Ye sheet par us din khud aati hain jab wo din khula ho.
 - Har job apne client se jurri rehti hai. Client ka naam ya building badlein to bhi uski purani aur nayi visits usi client ki rehti hain.
 - Monthly Clients list mein har client ek dafa aata hai. Uski visits (jaise *Villa# 06 - Zayan*) se alag nakli client nahi banta — edit hamesha asal client par hota hai.
@@ -83,6 +86,7 @@
 - Sab se upar **jamni "—" block** sirf tab aata hai jab kisi job par cleaner na laga ho (misaal: monthly visit jiska cleaner us waqt busy tha). Us row mein cleaner chun lein. Khali din par ye block nahi aata.
 - Right-click menu: Copy / Paste / Duplicate / Clear upar, delete wale (Delete Row, phir Delete Block) sab se neeche.
 - Row height: 24, 26, 32, 38, 46 px.
+- **Rang (colour):** cell par rang lagate hi save ho jata hai — Save dabane ki zaroorat nahi. Refresh ke baad bhi rehta hai.
 - **Three dots (⋮) → Delete:** sirf us role ko nazar aata hai jis ke paas *Import & delete a whole day* ki ijazat ho.
   - **Delete Today** — jo din khula hai us ki saari jobs aur expenses delete. Pehle warning popup aata hai. Band (closed) din delete nahi hota. Booking se bani jobs nahi hatti.
   - **Delete All Data** — saari Job Sheet ka data delete. Popup mein **DELETE** likhna zaroori hai, warna button nahi chalta. Delete se pehle poori copy computer par download hoti hai aur Settings → Backup → *Before-delete copies* mein bhi rehti hai, wahan se wapas laa sakte hain.

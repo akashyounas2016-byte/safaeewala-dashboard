@@ -504,6 +504,12 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientDataSync.ts → clientIdForJob, jobMatchesClient, extractAllClientsFromDailyJobs`; `src/store/DataContext.tsx → linkClient`. Test: `tests/unit/data-links-1116.test.ts`.
 - **Status:** Active · Since: 2026-11-16
 
+### R-DATA-13 — Client visits and revenue come from the rows, not from stored numbers
+- **Why:** "Office ABC Trading DMCC" showed 25 visits, AED 564 and Total Revenue 0.6k on the Clients screen while its profile had no bookings or rows (2026-11-16). The client had been registered from old sheet rows, and `total_bookings` / `total_spent` / `last_service` kept that snapshot after the rows were deleted.
+  - A client with no rows on the sheet shows 0 visits, AED 0 and no last service on every screen (cards, Total Revenue, sorting, filters). With rows, the numbers are counted from them.
+- **Code:** `src/lib/clientDataSync.ts → extractAllClientsFromDailyJobs`. Test: `tests/unit/client-counters-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
+
 ---
 
 ## CLI — Clients

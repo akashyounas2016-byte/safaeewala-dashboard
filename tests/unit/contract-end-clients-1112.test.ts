@@ -39,5 +39,5 @@ eq(job.staff_name, '', 'a booking without a cleaner adds its job with no cleaner
 
 // ── UX-144: Clients screen ──
 const page = readFileSync('src/pages/Clients.tsx', 'utf8')
-eq([/const CLIENT_CARDS_PREVIEW = 6/.test(page), /cardIdx >= 4 \? 'max-xl:hidden' : cardIdx >= 2 \? 'max-md:hidden'/.test(page), /See All \(\$\{filtered\.length\} clients\)/.test(page), (page.match(/\{renderInsights\(\)\}/g) || []).length, /aria-label="Client insights"/.test(page)],
-  [true, true, true, 2, true], 'two rows of clients, See All, and the widgets in their own Client Insights section (cards and table view)')
+eq([/const CLIENT_CARDS_PREVIEW = 6/.test(page), /\(wide && cardIdx >= 4\) \? 'max-xl:hidden' : cardIdx >= 2 \? 'max-md:hidden'/.test(page), /See All \(\$\{filtered\.length\} clients\)/.test(page), (page.match(/\{renderInsights\((!wide)?\)\}/g) || []).length, /aria-label="Client insights"/.test(page)],
+  [true, true, true, 2, true], 'two rows of clients, See All, and the widgets in their own Client Insights section (cards and table view; UX-160 side column in Grid Card)')
