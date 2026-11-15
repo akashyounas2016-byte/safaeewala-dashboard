@@ -5,7 +5,7 @@ import { SearchSelect } from '@/components/common/SearchSelect'
 import { isSheetCleaner, shortStaffLabel, isAssignable } from '@/lib/staffRoles'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
-import { ArrowLeft, FileSpreadsheet, Plus, Trash2, Save, Download, RotateCcw, Search, Check, X, Sparkles, Filter, Copy, Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table, Printer, MoreVertical, ChevronDown, ExternalLink, ChevronUp, Eye, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle, CloudUpload, Calendar, GripVertical, Info, History, Pencil, Building2, Star, Package, MapPin, Clock, CreditCard, UserPlus, Users, AlignLeft, AlignCenter, AlignRight, UserCheck, Rows, ClipboardPaste, UserCog } from 'lucide-react'
+import { ArrowLeft, FileSpreadsheet, Plus, Trash2, Save, Download, RotateCcw, Search, Check, X, Sparkles, Filter, Copy, Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table, Printer, MoreVertical, ChevronDown, ExternalLink, ChevronUp, Eye, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle, CloudUpload, Calendar, GripVertical, Info, History, Pencil, Building2, Star, Package, MapPin, Clock, CreditCard, UserPlus, Users, AlignLeft, AlignCenter, AlignRight, UserCheck, Rows, ClipboardPaste, UserCog, AlertTriangle } from 'lucide-react'
 import { AddJobForm } from '@/components/dailyJobSheet/AddJobModal'
 import { ExcelCellPopover, ExcelPopoverItem, ExcelPopoverCustom, ExcelPopoverEmpty, popoverMove, popoverPick } from '@/components/dailyJobSheet/ExcelCellPopover'
 import { SpreadsheetEditModal } from '@/components/dailyJobSheet/SpreadsheetEditModal'
@@ -21,6 +21,9 @@ import { getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, buil
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
 import { confirmAsync, notify } from '@/lib/notify'
+import { useModuleAccess } from '@/store/useModuleAccess'
+import { CLOSED_DAYS_KEY } from '@/lib/closedDays'
+import { DeleteDayConfirmModal, DeleteAllConfirmModal } from '@/components/dailyJobSheet/DailyJobModals'
 import { findClashAmong, clashMessage, timingChanged, findAllClashes, type StaffClash } from '@/lib/shiftClash'
 import { invoicedJobIds } from '@/lib/receivables'
 import { fetchRecordHistory, type AuditEntry } from '@/lib/auditLog'
@@ -45,7 +48,8 @@ export { checkTimesOverlap } from '@/components/dailyJobSheet/jobSheetUtils'
 export function JobSheetSpreadsheet() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { dailyJobs, clients, employees, invoices, addDailyJob, updateDailyJob, deleteDailyJob, attendanceMarks } = useData()
+  const { dailyJobs, dailyExpenses, clients, employees, invoices, addDailyJob, updateDailyJob, deleteDailyJob, clearDailyData, clearAllDailyData, attendanceMarks } = useData()
+  const canBulk = useModuleAccess('Job Sheet Import & Delete') // R-SEC-09: Delete Today / Delete All only for this role option
 
   // ── Target Date Selection & Dynamic Date Presets ──
   const qDate = searchParams.get('date')
@@ -361,6 +365,9 @@ export function JobSheetSpreadsheet() {
 
   // ── Google Drive & Backup State ──
   const [showDriveModal, setShowDriveModal] = useState(false)
+  // UX-155: Delete Today / Delete All from the three-dot menu, each behind a warning popup
+  const [showDeleteDay, setShowDeleteDay] = useState(false)
+  const [showDeleteAll, setShowDeleteAll] = useState(false)
   const [driveStatus, setDriveStatus] = useState<'idle' | 'connecting' | 'uploading' | 'done' | 'error'>('idle')
   const [driveLink, setDriveLink] = useState('')
   const [driveError, setDriveError] = useState('')
@@ -830,6 +837,31 @@ export function JobSheetSpreadsheet() {
   }, [activeCell])
 
   // Show Toast
+  // ── UX-155: Delete Today / Delete All ──
+  const isOneDayView = dateFilterMode === 'single' || dateFilterMode === 'today' || dateFilterMode === 'yesterday'
+  const dayJobCount = useMemo(() => dailyJobs.filter(j => j.date === effectiveTargetDate && !j.booking_id).length, [dailyJobs, effectiveTargetDate])
+  const dayExpenseCount = useMemo(() => dailyExpenses.filter(e => e.date === effectiveTargetDate).length, [dailyExpenses, effectiveTargetDate])
+  const DAY_LEDGER_KEYS = ['safaeewala_daily_pending_items', 'safaeewala_daily_pending_rcvd_items', 'safaeewala_daily_advance_items']
+  function deleteOneDay(date: string) {
+    if (safeLocalStorageGet<Record<string, unknown>>(CLOSED_DAYS_KEY, {})[date]) {
+      notify.error(`${fmtDate(date)} is closed. Reopen the day on the Daily Job Sheet to delete it.`)
+      setShowDeleteDay(false)
+      return
+    }
+    reloadAfterSaveRef.current = true // the grid shows the empty day, unsaved edits of that day are dropped
+    clearDailyData(date) // restore point kept (BAK-5); booking rows stay (BJ-10)
+    DAY_LEDGER_KEYS.forEach(k => safeLocalStorageSet(k, safeLocalStorageGet<{ date?: string }[]>(k, []).filter(x => x?.date !== date)))
+    setShowDeleteDay(false)
+    showToast(`✓ ${fmtDate(date)} deleted — a copy is in Settings → Backup`)
+  }
+  async function deleteEverything() {
+    reloadAfterSaveRef.current = true
+    await clearAllDailyData() // downloads a full copy + restore point first (BAK-5)
+    DAY_LEDGER_KEYS.forEach(k => safeLocalStorageSet(k, []))
+    setShowDeleteAll(false)
+    showToast('✓ All job sheet data deleted — the copy was downloaded')
+  }
+
   const showToast = (msg: string) => {
     setToastMessage(msg)
     setTimeout(() => setToastMessage(null), 3000)
@@ -3520,6 +3552,31 @@ export function JobSheetSpreadsheet() {
                     </div>
                   </div>
                 </div>
+
+                {/* Section 6: Delete (UX-155, R-SEC-09) */}
+                {canBulk && (
+                  <div className="py-1">
+                    <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-rose-400">Delete</div>
+                    <button
+                      type="button"
+                      disabled={!isOneDayView || (dayJobCount === 0 && dayExpenseCount === 0)}
+                      title={isOneDayView ? `Delete every job and expense of ${fmtDate(effectiveTargetDate)}` : 'Open one day to delete it'}
+                      onClick={() => { setShowThreeDotMenu(false); setShowDeleteDay(true) }}
+                      className="w-full px-3.5 py-2 hover:bg-rose-50 flex items-center justify-between gap-2 text-left cursor-pointer transition-colors text-rose-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <span className="flex items-center gap-2.5 font-semibold"><Trash2 size={14} className="text-rose-600" /> {effectiveTargetDate === todayDubai() ? 'Delete Today' : 'Delete This Day'}</span>
+                      <span className="text-[10px] font-semibold text-rose-400">{isOneDayView ? fmtDate(effectiveTargetDate) : '—'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={dailyJobs.length === 0 && dailyExpenses.length === 0}
+                      onClick={() => { setShowThreeDotMenu(false); setShowDeleteAll(true) }}
+                      className="w-full px-3.5 py-2 bg-rose-50/50 hover:bg-rose-100/70 flex items-center gap-2.5 text-left cursor-pointer transition-colors font-bold text-rose-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <AlertTriangle size={14} className="text-rose-700" /> Delete All Data
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -5521,6 +5578,23 @@ export function JobSheetSpreadsheet() {
       />
 
       {/* ── Monthly Schedule Synchronization Modal ── */}
+      {/* UX-155: warning popups for Delete Today / Delete All (same as the Daily Job Sheet) */}
+      <DeleteDayConfirmModal
+        open={showDeleteDay}
+        onClose={() => setShowDeleteDay(false)}
+        selectedDate={effectiveTargetDate}
+        jobsCount={dayJobCount}
+        expensesCount={dayExpenseCount}
+        onConfirm={() => deleteOneDay(effectiveTargetDate)}
+      />
+      <DeleteAllConfirmModal
+        open={showDeleteAll}
+        onClose={() => setShowDeleteAll(false)}
+        totalJobsCount={dailyJobs.length}
+        totalExpensesCount={dailyExpenses.length}
+        onConfirm={deleteEverything}
+      />
+
       {showMonthlySyncModal && (
         <MonthlyScheduleSyncModal
           open={showMonthlySyncModal}

@@ -195,18 +195,24 @@ export function DeleteAllConfirmModal({
   onConfirm: () => Promise<void> | void
 }) {
   const [isDeleting, setIsDeleting] = useState(false)
+  // UX-155: Delete All only works after typing DELETE — a stray click can never wipe the database
+  const [typed, setTyped] = useState('')
+  const confirmed = typed.trim().toUpperCase() === 'DELETE'
+  const close = () => { if (!isDeleting) { setTyped(''); onClose() } }
 
   const handleConfirm = async () => {
+    if (!confirmed) return
     setIsDeleting(true)
     try {
       await onConfirm()
     } finally {
       setIsDeleting(false)
+      setTyped('')
     }
   }
 
   return (
-    <Modal open={open} onClose={() => { if (!isDeleting) onClose() }} title="Delete All Data" size="md">
+    <Modal open={open} onClose={close} title="Delete All Data" size="md">
       <div className="space-y-4 pt-1">
         <div className="flex items-start gap-3.5">
           <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0 border border-red-200 shadow-sm">
@@ -230,21 +236,39 @@ export function DeleteAllConfirmModal({
           <p className="text-[12px] text-red-700 leading-relaxed">
             By clicking <strong>"Yes, Delete All Data"</strong>, all historical job sheets, daily expenses, pending balances, and imported spreadsheet records will be permanently erased. This action cannot be undone.
           </p>
+          <p className="text-[11.5px] text-red-700/90 leading-relaxed">
+            A full copy is downloaded to this computer first and kept as a restore point (Settings → Backup → Before-delete copies).
+          </p>
         </div>
+
+        <label className="block">
+          <span className="text-[12px] font-semibold text-slate-700">Type <strong className="font-mono text-red-700">DELETE</strong> to confirm</span>
+          <input
+            type="text"
+            value={typed}
+            onChange={e => setTyped(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && confirmed) handleConfirm() }}
+            disabled={isDeleting}
+            autoComplete="off"
+            aria-label="Type DELETE to confirm"
+            placeholder="DELETE"
+            className="mt-1.5 w-full h-10 px-3 rounded-xl border border-red-200 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none text-[13px] font-mono tracking-wider"
+          />
+        </label>
 
         <div className="flex items-center gap-3 pt-3 border-t border-slate-100">
           <Button
             type="button"
             variant="outline"
             className="flex-1 py-2.5"
-            onClick={onClose}
+            onClick={close}
             disabled={isDeleting}
           >
             Cancel
           </Button>
           <button
             type="button"
-            disabled={isDeleting}
+            disabled={isDeleting || !confirmed}
             onClick={handleConfirm}
             className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-[13px] shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
           >

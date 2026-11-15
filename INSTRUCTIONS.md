@@ -82,6 +82,9 @@
 - Sab se upar **jamni "—" block** sirf tab aata hai jab kisi job par cleaner na laga ho (misaal: monthly visit jiska cleaner us waqt busy tha). Us row mein cleaner chun lein. Khali din par ye block nahi aata.
 - Right-click menu: Copy / Paste / Duplicate / Clear upar, delete wale (Delete Row, phir Delete Block) sab se neeche.
 - Row height: 24, 26, 32, 38, 46 px.
+- **Three dots (⋮) → Delete:** sirf us role ko nazar aata hai jis ke paas *Import & delete a whole day* ki ijazat ho.
+  - **Delete Today** — jo din khula hai us ki saari jobs aur expenses delete. Pehle warning popup aata hai. Band (closed) din delete nahi hota. Booking se bani jobs nahi hatti.
+  - **Delete All Data** — saari Job Sheet ka data delete. Popup mein **DELETE** likhna zaroori hai, warna button nahi chalta. Delete se pehle poori copy computer par download hoti hai aur Settings → Backup → *Before-delete copies* mein bhi rehti hai, wahan se wapas laa sakte hain.
 - **Attendance** button sheet par hi popup kholta hai (neeche Attendance dekhein). Ctrl + Click se poori Attendance screen naye tab mein khulti hai.
 
 ---

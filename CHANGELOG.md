@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(excel-sheet): three-dot menu → Delete Today / Delete All Data with warning popups; Delete All (here and on the Daily Job Sheet) needs DELETE typed (UX-155)
 - fix(data): every job row keeps its client's id, so a renamed client or edited address no longer splits a client in two — needs migration `2026-11-16_daily_jobs_client_id.sql` (R-DATA-12)
 - fix(employees): renaming an employee also renames them on job-sheet rows and in monthly schedules (R-EMP-14)
 - fix(excel-sheet): an empty day no longer shows a nameless purple "—" block of 3 rows; "—" only appears for a real job without a cleaner (UX-154)
