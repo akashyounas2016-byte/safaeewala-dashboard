@@ -22,6 +22,7 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | A9 | **Re-enter the employee field values lost earlier** (Misbah's Work Permit year is fixed — 2027, checked 2026-11-13) | Empty profiles | Employees → Edit |
 | A15 | **Settings → Backup → This computer → Choose folder** on the office computer (Chrome / Edge), then "Allow on every visit" | Daily copy of all data on that computer, 30 days kept | Settings → Backup |
 | A11 | **Check today's new screens on the live site** (Excel sheet, Add Job, Employee popup, Agency popup) | Built and tested in code, not yet clicked through in a browser | crm.safaeewala.com |
+| A19 | **Run `supabase/migrations/2026-11-16_daily_jobs_client_id.sql`** in Supabase → SQL editor (prod.md 7k) | Until then jobs are linked to clients by address only, as before (R-DATA-12) | Supabase |
 
 ---
 
@@ -54,6 +55,21 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 ### B5. Lint warnings
 - ~800 ESLint warnings (mostly `any` types). No errors; clean up gradually when a file is touched.
 
+
+### B6. Contracts and money data in real tables (audit 2026-11-15)
+- Contracts, monthly payments, advance / pending items, attendance overrides and cash handovers live as JSON in `app_state`. Two devices are merged by adding lists together, so an item deleted on one device can come back from another that had unsaved changes. Move them to their own tables (one row each, with history), or add delete markers shared between devices.
+
+### B7. Load only recent jobs at start-up
+- The whole Job Sheet is loaded into the browser. Fine now (empty after the 2026-11-15 wipe); after a year (15–20k rows) start-up will be slow on phones. Load the last 2–3 months, older months on demand (reports, client history).
+
+### B8. Browser tests of the main flows
+- All 1,244 checks run in code; none clicks the real screens. Add Playwright tests for: add monthly client → visit on the sheet → edit / move → payment; Add Job; booking → job → complete. Needs a TEST database or TEST records (localhost uses live data) — owner to decide.
+
+### B9. One logic for the two job sheets
+- Daily Job Sheet (4.5k lines) and Excel Job Sheet (5.7k lines) repeat the same work, so every fix is needed twice. Move the shared logic to `src/lib/` step by step; later decide if one sheet is enough.
+
+### B10. Existing job rows have no client_id
+- R-DATA-12 sets it on every job saved from now on (after A19). Rows saved before keep matching by address; a one-time fill can be added if old data is imported again.
 ---
 
 ## C. Later / decided

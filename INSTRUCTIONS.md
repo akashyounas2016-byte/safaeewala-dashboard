@@ -52,6 +52,7 @@
 - Sheet par kisi visit ki date badlein (misaal: Tuesday se Wednesday) to wo **nayi date par hi rehti hai** — purani date par dobara nahi banti.
 
 ### Client ek hi dafa dikhta hai
+- Har job apne client se jurri rehti hai. Client ka naam ya building badlein to bhi uski purani aur nayi visits usi client ki rehti hain.
 - Monthly Clients list mein har client ek dafa aata hai. Uski visits (jaise *Villa# 06 - Zayan*) se alag nakli client nahi banta — edit hamesha asal client par hota hai.
 
 ### Cleaner na ho to
@@ -134,6 +135,7 @@
 ## 7. Employees
 
 - Employees table mein har cleaner ka **Short Name** dikhta hai — wahi jo Excel Job Sheet par hai. Poora naam dekhne ke liye naam par mouse rakhein. Short Name Edit mein badla ja sakta hai.
+- Kisi employee ka **poora naam badlein** to Job Sheet ki uski saari rows aur monthly clients ke schedule mein bhi naam khud badal jata hai — kuch dobara likhne ki zaroorat nahi.
 - Employees list mein kisi cleaner par click karein to **Employee Profile** popup khulta hai. Upar header mein tarteeb se: **Edit**, **Profile View**, laal 🗑, phir ✕.
   - **Profile View:** poora service record aur job history.
   - **Edit:** profile badlein. **Total Duty Hours** dropdown se chunein (6, 8, 9, 10, 12) ya koi aur number likhein; khali chhorein to 8 ghante maane jate hain — OT inhi se lagta hai.

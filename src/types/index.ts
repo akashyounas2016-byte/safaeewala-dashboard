@@ -388,6 +388,8 @@ export interface DailyJob {
   remarks: string
   service?: string
   booking_id?: string
+  /** R-DATA-12: the client this row belongs to (set on save from the booking / address); empty = matched by text */
+  client_id?: string | null
   status?: string
 }
 

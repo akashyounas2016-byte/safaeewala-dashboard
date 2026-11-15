@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency, RecurringContract } from '../types'
 import { supabase } from '@/lib/supabase'
-import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs, visitsOutsideContract, rememberRemovedMonthlyVisits, rememberMovedMonthlyVisits } from '@/lib/clientDataSync'
+import { jobRenamePatches, clientRenamePatches } from '@/lib/employeeRename'
+import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs, visitsOutsideContract, rememberRemovedMonthlyVisits, rememberMovedMonthlyVisits, clientIdForJob } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry, sanitizeOutboxPayload } from '@/lib/syncQueue'
 import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
@@ -490,6 +491,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           duty_hours: safeNum(job.duty_hours),
           ot_hours: safeNum(job.ot_hours),
           service: job.service || 'Regular Cleaning',
+          client_id: linkClient(job), // R-DATA-12
           id: uid(),
           created_at: now()
         }
@@ -509,13 +511,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [loading, allClients, viewDailyJobs])
 
+  /** R-DATA-12: the saved client a job row belongs to — the id given (if it is a saved client) or found from booking / address */
+  function linkClient(j: Pick<DailyJob, 'address' | 'area' | 'booking_id'> & { client_id?: string | null }): string | null {
+    if (j.client_id && clients.some(c => c.id === j.client_id)) return j.client_id
+    return clientIdForJob(j, clients, bookings) || null
+  }
+
   // ── Booking ↔ job-sheet helpers (R-SYNC-03, BJ-02…BJ-09) ──
   /** Add the job-sheet row of a booking (saved through the outbox) */
   function createJobForBooking(b: Booking, area?: string, entry?: Omit<DailyJob, 'id' | 'created_at'>): DailyJob {
     const clientArea = area || clients.find(c => c.id === b.client_id)?.area
     // R-SYNC-12: a booking entered in the Add Job form keeps that entry as its job-sheet row
     const base = entry ? { ...entry, booking_id: b.id } : jobFromBooking(b, crewToStaffName(b.assigned_crew, allEmployees), clientArea)
-    const job: DailyJob = { ...base, id: uid(), created_at: now() }
+    const job: DailyJob = { ...base, client_id: (b.client_id && clients.some(c => c.id === b.client_id) ? b.client_id : null) || linkClient(base), id: uid(), created_at: now() }
     setDailyJobs(p => {
       const next = [job, ...p]
       safeLocalStorageSet('safaeewala_daily_jobs', next)
@@ -806,6 +814,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // R-SYNC-13: a field cleared in the form is sent as null — left out, Supabase kept the old value and it came back on reload
       dbUpdate('employees', id, withoutInlineDocs(Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, v === undefined ? null : v])), EMP_FILE_FIELDS)) // R-SYNC-15
       docsToStorage('employees', id, patch)
+      // R-EMP-14: a new name reaches the job-sheet rows and the monthly schedules that store the name as text
+      const oldName = beforeEmp?.full_name || ''
+      const newName = typeof patch.full_name === 'string' ? patch.full_name.trim() : ''
+      if (oldName && newName && normalizeStaffName(oldName) !== normalizeStaffName(newName)) {
+        const jobPatches = jobRenamePatches(dailyJobs, oldName, newName)
+        const clientPatches = clientRenamePatches(clients, oldName, newName)
+        if (jobPatches.size) {
+          setDailyJobs(p => {
+            const next = p.map(j => (jobPatches.has(j.id) ? { ...j, ...jobPatches.get(j.id) } : j))
+            safeLocalStorageSet('safaeewala_daily_jobs', next)
+            return next
+          })
+          jobPatches.forEach((jp, jid) => dbUpdate('daily_jobs', jid, jp))
+        }
+        if (clientPatches.size) {
+          setClients(p => p.map(c => (clientPatches.has(c.id) ? { ...c, ...clientPatches.get(c.id) } : c)))
+          clientPatches.forEach((cp, cid) => dbUpdate('clients', cid, cp))
+        }
+        if (jobPatches.size || clientPatches.size) logAudit('updated', 'employee', id, newName, `Renamed from ${oldName}: ${jobPatches.size} job rows, ${clientPatches.size} client schedules`)
+      }
     },
     deleteEmployee: (id) => {
       const e = allEmployees.find(e => e.id === id)
@@ -949,6 +977,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         duty_hours: safeNum(j.duty_hours),
         ot_hours: safeNum(j.ot_hours),
         service: j.service || '',
+        client_id: linkClient(j), // R-DATA-12
         id: (j as any).id || uid(),
         created_at: (j as any).created_at || now()
       }
@@ -970,6 +999,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // Row history (UX-40): who changed which fields
       const before = dailyJobs.find(j => j.id === id)
       const change = before ? describeJobChange(before as unknown as Record<string, unknown>, sanitizedPatch as Record<string, unknown>) : ''
+      // R-DATA-12: a changed address can mean another client — the link is found again (same address → kept)
+      if (before && 'address' in sanitizedPatch && !('client_id' in patch) && normalizeKey(sanitizedPatch.address || '') !== normalizeKey(before.address || '')) {
+        sanitizedPatch.client_id = linkClient({ ...before, ...sanitizedPatch, client_id: null })
+      }
       if (before && ('date' in sanitizedPatch || 'address' in sanitizedPatch)) rememberMovedMonthlyVisits(before, { ...before, ...sanitizedPatch } as DailyJob, allClients) // R-SCHED-14
       if (before && change) logAudit('updated', 'daily_job', id, `${before.staff_name} · ${before.date}`, change, diffRecord(before as unknown as Record<string, unknown>, sanitizedPatch as Record<string, unknown>, ['date', 'staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'address', 'area', 'charges', 'received', 'payment_mode', 'material', 'service', 'remarks']))
       setDailyJobs(p => {

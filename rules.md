@@ -481,6 +481,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `QuickNewClientModal` → `ClientModalForm` (`prefill`).
 - **Status:** Active · Since: 2026-10-31
 
+### R-DATA-12 — A job row keeps its client's id
+- **Why:** a job was linked to its client only by the address text. A renamed client, an edited address or a name with "Monthly" in it split one client in two (duplicate "Villa# 06 - Zayan", double visits of "Monthly A", edits saved on the copy — audit 2026-11-15).
+  - Every job saved (Add Job, Excel Job Sheet, Daily Job Sheet, import, monthly sync, booking) gets `client_id`: the booking's client, else the client whose visit address it is, else the one client whose name / building fits. Two possible clients → left empty and matched by text as before.
+  - A row with `client_id` belongs to that client only. When its address is changed on a sheet, the link is found again; the same address keeps the link.
+  - Needs the column `daily_jobs.client_id` (migration `2026-11-16_daily_jobs_client_id.sql`). Before it is run the field is left out on save and everything works as before.
+- **Code:** `src/lib/clientDataSync.ts → clientIdForJob, jobMatchesClient, extractAllClientsFromDailyJobs`; `src/store/DataContext.tsx → linkClient`. Test: `tests/unit/data-links-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
+
 ---
 
 ## CLI — Clients
@@ -766,6 +774,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/employeeHealth.ts → COMPLAINT_PENALTY, calcEmployeeHealth`; `src/components/employees/CleanerComplaintsCard.tsx`; `EmployeeProfile.tsx`. Test: `tests/unit/complaints-roles-excel-1112.test.ts`.
 - **Status:** Active · Since: 2026-11-12
 
+
+### R-EMP-14 — A new employee name reaches the job sheet and the schedules
+- **Why:** the Job Sheet and the monthly schedules store the cleaner's name as text. After a rename in Edit Employee the old rows, OT, attendance and the monthly visits still used the old name (audit 2026-11-15).
+  - When the Full Name changes, the old name is replaced in every job row (single cleaner, team list, Split Mode) and in monthly clients' preferred cleaner, per-day cleaner and per-day schedule. Exact names only ("Rupa" never changes "Rupak").
+  - Bookings keep the employee id and need nothing. The change is written to the Activity Log with the number of rows changed.
+- **Code:** `src/lib/employeeRename.ts`; `src/store/DataContext.tsx → updateEmployee`. Test: `tests/unit/data-links-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
 ---
 
 ## AGN — Agencies

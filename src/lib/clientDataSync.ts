@@ -414,6 +414,32 @@ export function containsWords(a: string, b: string, minLength = 4): boolean {
  */
 export function jobMatchesClient(job: DailyJob, client: Client): boolean {
   if (!job || !client) return false
+  // R-DATA-12: a row linked to a client by id belongs to that client only — no guessing from the address
+  if (job.client_id) return job.client_id === client.id
+  return jobMatchesClientByText(job, client)
+}
+
+/**
+ * R-DATA-12: the registered client a job row belongs to, saved on the row as `client_id`. Order: the
+ * booking's client, the address the monthly sync writes for a client, then name / building — only
+ * when exactly one client fits (two possible clients → left empty, matched by text as before).
+ */
+export function clientIdForJob(
+  job: Pick<DailyJob, 'address' | 'area' | 'booking_id'>,
+  clients: Client[],
+  bookings: Pick<Booking, 'id' | 'client_id'>[] = [],
+): string | undefined {
+  const ids = new Set(clients.map(c => c.id))
+  const viaBooking = job.booking_id ? bookings.find(b => b.id === job.booking_id)?.client_id : undefined
+  if (viaBooking && ids.has(viaBooking)) return viaBooking
+  if (!String(job.address || '').trim()) return undefined
+  const own = clients.filter(c => isOwnVisitRow(job, c))
+  if (own.length === 1) return own[0].id
+  const byText = clients.filter(c => jobMatchesClientByText(job as DailyJob, c))
+  return byText.length === 1 ? byText[0].id : undefined
+}
+
+function jobMatchesClientByText(job: DailyJob, client: Client): boolean {
   const rawAddr = (job.address || job.area || '').trim()
   const jobNorm = normalizeKey(rawAddr)
   const cleanJobNorm = normalizeKey(cleanClientNameFromAddress(rawAddr))
@@ -601,7 +627,7 @@ export function extractMonthlyClientsFromDailyJobs(
     const matched = registeredClients.find(c => {
       const cNorm = normalizeKey(c.full_name)
       const bNorm = normalizeKey(c.building_name || '')
-      return cNorm === key || bNorm === key || c.id === `dj-${key}` || jobs.some(j => isOwnVisitRow(j, c))
+      return jobs.some(j => j.client_id === c.id) || cNorm === key || bNorm === key || c.id === `dj-${key}` || jobs.some(j => !j.client_id && isOwnVisitRow(j, c))
     })
 
     const id = matched ? matched.id : `dj-${key}`
@@ -701,7 +727,9 @@ export function extractAllClientsFromDailyJobs(
   const addressByKey = new Map<string, string>()
 
   validJobs.forEach(job => {
-    const linkedClientId = job.booking_id ? clientIdByBooking.get(job.booking_id) : undefined
+    // R-DATA-12: a row saved with its client's id belongs to that client, whatever the address says
+    const linkedClientId = (job.client_id && registeredIds.has(job.client_id) ? job.client_id : undefined)
+      || (job.booking_id ? clientIdByBooking.get(job.booking_id) : undefined)
     if (linkedClientId) {
       if (!linkedJobsByClient.has(linkedClientId)) linkedJobsByClient.set(linkedClientId, [])
       linkedJobsByClient.get(linkedClientId)!.push(job)
@@ -1628,6 +1656,7 @@ export function syncMonthlySchedulesToDailyJobs(
       is_overtime: false,
       remarks,
       service: shift.service,
+      client_id: shift.client.id, // R-DATA-12 (kept only when it is a saved client — DataContext.linkClient)
     })
     insertedClients.push(shift.client.full_name || shift.address)
   })

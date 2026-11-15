@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(data): every job row keeps its client's id, so a renamed client or edited address no longer splits a client in two — needs migration `2026-11-16_daily_jobs_client_id.sql` (R-DATA-12)
+- fix(employees): renaming an employee also renames them on job-sheet rows and in monthly schedules (R-EMP-14)
 - fix(excel-sheet): an empty day no longer shows a nameless purple "—" block of 3 rows; "—" only appears for a real job without a cleaner (UX-154)
 - fix(monthly): one visit per client per date — a client named "Monthly …" no longer gets a second visit without a cleaner every week; "Unassigned" is not treated as a busy cleaner; a visit moved to another date / address on the sheet no longer comes back on its old date (R-SCHED-14)
 - change(employees): popup header Edit · Profile View · Delete · ✕ (Job Sheet button removed); table shows Short Names like the Excel sheet; Store Cleaner tag on one line (UX-153)
