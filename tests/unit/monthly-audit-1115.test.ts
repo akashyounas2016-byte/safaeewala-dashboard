@@ -77,3 +77,11 @@ eq(JSON.parse(localStorage.getItem(REMOVED_VISITS_KEY) || '[]').length, 0, 'time
 // ── wiring ──
 eq(/rememberMovedMonthlyVisits\(before, \{ \.\.\.before, \.\.\.sanitizedPatch \}/.test(readFileSync('src/store/DataContext.tsx', 'utf8')), true, 'every job edit (Daily Job Sheet + Excel) goes through it')
 eq(/R-SCHED-14/.test(readFileSync('rules.md', 'utf8')), true, 'rule written in rules.md')
+
+// ── UX-154: no nameless purple "—" block on an empty day ──
+import { ensureThreeRowsPerStaff, withIdleCleaners } from '@/lib/excelSheet/rows'
+const emptyDay = withIdleCleaners(ensureThreeRowsPerStaff([], '2026-11-15'), [{ name: 'Cloud Test Ambika', status: 'Available' }], '2026-11-15')
+eq([emptyDay.length, emptyDay.every(r => r.staff_name === 'Cloud Test Ambika')], [3, true], 'empty day → only the cleaners\' blocks, no "—" block')
+const noCleaner = { id: 'v1', date: '2026-11-16', staff_name: '', start_time: '09:00', end_time: '12:00', address: 'Cloud Test Villa', area: 'Mirdif', charges: 0, received: 0, remarks: 'Monthly Contract' } as unknown as DailyJob
+const withVisit = withIdleCleaners(ensureThreeRowsPerStaff([noCleaner], '2026-11-16'), [{ name: 'Cloud Test Ambika', status: 'Available' }], '2026-11-16')
+eq(withVisit.filter(r => !r.staff_name).length, 3, 'a real visit without a cleaner still shows in the "—" block')

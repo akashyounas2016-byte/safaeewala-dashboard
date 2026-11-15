@@ -342,5 +342,9 @@ export function withIdleCleaners(rows: DailyJob[], idle: { name: string; status:
       } as DailyJob)
     }
   })
-  return extra.length ? [...rows, ...extra] : rows
+  if (!extra.length) return rows
+  // UX-154: an empty day used to show a nameless purple "—" block of 3 rows (the starter block from
+  // ensureThreeRowsPerStaff). Every cleaner now has a block, so that starter block is left out.
+  const base = rows.filter(r => !(String(r.id).startsWith('new_cleaner') && !String(r.staff_name || '').trim() && isBlankNewRow(r)))
+  return [...base, ...extra]
 }

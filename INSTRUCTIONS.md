@@ -78,6 +78,7 @@
 - Ek din ki kai shifts mil kar gini jati hain. OT haath se nahi likha ja sakta — system khud hisaab lagata hai.
 
 ### Excel Job Sheet
+- Sab se upar **jamni "—" block** sirf tab aata hai jab kisi job par cleaner na laga ho (misaal: monthly visit jiska cleaner us waqt busy tha). Us row mein cleaner chun lein. Khali din par ye block nahi aata.
 - Right-click menu: Copy / Paste / Duplicate / Clear upar, delete wale (Delete Row, phir Delete Block) sab se neeche.
 - Row height: 24, 26, 32, 38, 46 px.
 - **Attendance** button sheet par hi popup kholta hai (neeche Attendance dekhein). Ctrl + Click se poori Attendance screen naye tab mein khulti hai.
