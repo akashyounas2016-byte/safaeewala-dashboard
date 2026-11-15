@@ -437,6 +437,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `clientDataSync.ts → employeeMatchesStaff`.
 - **Status:** Active
 
+### R-SYNC-19 — Deleted on one computer stays deleted on all
+- **Why:** contracts, monthly payments, advance / pending items, attendance overrides, cash handovers and other shared lists are one JSON value each (`app_state`). Two computers were merged by adding their lists together, so an item deleted on one computer came back from another computer that still had it and had unsaved changes (audit 2026-11-15).
+  - Every deletion from such a list leaves a shared delete marker (`safaeewala_deleted_item_ids`), uploaded before the list itself. Merging leaves marked items out.
+  - Adding the item again later (e.g. a restore from Settings → Backup) is newer than the marker and wins. Markers are kept 120 days.
+  - No markers for looks and switches (Excel colours, alignment, auto-sync switch) and for the driver plan that cleaner logins write (they may not write other keys).
+- **Code:** `src/lib/cloudState.ts → mergeValues, mergeTombstones, markChanges, push`. Test: `tests/unit/cloud-delete-markers-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
 ---
 
 ### R-UI-01 — Screens speak English only

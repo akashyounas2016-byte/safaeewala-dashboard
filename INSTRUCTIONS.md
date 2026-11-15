@@ -151,4 +151,5 @@
 
 - Har save sab users ko foran nazar aata hai (live).
 - Delete ki gayi cheezon ka restore point banta hai (Settings).
+- Ek computer par delete ki gayi cheez (contract, payment, advance waghera) doosre computer se **wapas nahi aati**, chahe wo computer offline tha. Restore se wapas laayi gayi cheez rehti hai.
 - Website par test karna ho to naam ke shuru mein **TEST** likhein, taake asli data se alag rahe aur baad mein asani se hata sakein.

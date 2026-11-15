@@ -12,11 +12,17 @@ import { supabase } from '@/lib/supabase'
  * - Every `safeLocalStorageSet` of one of these keys schedules a push (debounced).
  * - Arrays are merged by `id` (objects by key) when this device has unpushed changes
  *   or syncs for the first time, so nothing recorded offline or on another device is lost.
- *   Trade-off: an item deleted on one device can come back if another device edited the
- *   same list before syncing.
+ * - R-SYNC-19: a deletion leaves a shared delete marker (TOMBSTONES_KEY: "<key>|<item>" -> "d:<time>"),
+ *   and merging leaves marked items out: an item deleted on one device no longer comes back from
+ *   another device that still had it. Adding the item again later ("r:<time>", e.g. a restore) wins
+ *   over an older marker. Markers are kept 120 days.
  */
 
+/** R-SYNC-19: shared delete markers of the lists below (first in the list: synced before them) */
+export const TOMBSTONES_KEY = 'safaeewala_deleted_item_ids'
+
 export const CLOUD_SYNCED_KEYS = [
+  TOMBSTONES_KEY,
   'safaeewala_monthly_client_payments',
   'safaeewala_daily_pending_items',
   'safaeewala_daily_pending_rcvd_items',
@@ -94,20 +100,54 @@ const isEmpty = (v: unknown) =>
   v === undefined || v === null || (Array.isArray(v) && v.length === 0) ||
   (typeof v === 'object' && !Array.isArray(v) && Object.keys(v as object).length === 0)
 
-/** Union of two values: arrays by `id` (local wins), objects by key (local wins) */
-function mergeValues(local: unknown, remote: unknown): unknown {
+const itemKeyOf = (item: unknown) =>
+  item && typeof item === 'object' && 'id' in item ? `id:${String((item as { id: unknown }).id)}` : `json:${JSON.stringify(item)}`
+/** Item keys of a list (arrays) or record (objects): what a delete marker points at */
+function itemKeys(v: unknown): Set<string> {
+  if (Array.isArray(v)) return new Set(v.map(itemKeyOf))
+  if (v && typeof v === 'object') return new Set(Object.keys(v as object).map(k => `key:${k}`))
+  return new Set()
+}
+
+// R-SYNC-19: delete markers
+type Tombstones = Record<string, string> // "<storage key>|<item key>" -> "d:<iso>" deleted / "r:<iso>" added again
+const markTime = (m?: string) => (m ? Date.parse(m.slice(2)) || 0 : 0)
+const isDeletedMark = (m?: string) => Boolean(m && m.startsWith('d:'))
+const readTombstones = (): Tombstones => {
+  const v = readLocal(TOMBSTONES_KEY)
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Tombstones) : {}
+}
+/** Markers of two devices: per item the later one wins; older than 120 days dropped */
+export function mergeTombstones(a: Tombstones, b: Tombstones, now = Date.now()): Tombstones {
+  const out: Tombstones = {}
+  const cutoff = now - 120 * 86400000
+  for (const src of [a || {}, b || {}]) {
+    for (const [k, m] of Object.entries(src)) {
+      if (typeof m !== 'string' || markTime(m) < cutoff) continue
+      if (!out[k] || markTime(m) > markTime(out[k])) out[k] = m
+    }
+  }
+  return out
+}
+/** Values last seen per key on this device: a local write is compared with it to find deletions */
+const lastSeen = new Map<string, Set<string>>()
+const remember = (key: string, v: unknown) => { if (key !== TOMBSTONES_KEY) lastSeen.set(key, itemKeys(v)) }
+
+/** Union of two values: arrays by `id` (local wins), objects by key (local wins); items with a delete marker left out */
+export function mergeValues(local: unknown, remote: unknown, key = '', marks: Tombstones = {}): unknown {
+  if (key === TOMBSTONES_KEY) return mergeTombstones((local || {}) as Tombstones, (remote || {}) as Tombstones)
+  const gone = (itemKey: string) => isDeletedMark(marks[`${key}|${itemKey}`])
   if (isEmpty(local)) return remote
   if (isEmpty(remote)) return local
   if (Array.isArray(local) && Array.isArray(remote)) {
     const out = new Map<string, unknown>()
-    const keyOf = (item: unknown) =>
-      item && typeof item === 'object' && 'id' in item ? `id:${String((item as { id: unknown }).id)}` : `json:${JSON.stringify(item)}`
-    remote.forEach(item => out.set(keyOf(item), item))
-    local.forEach(item => out.set(keyOf(item), item))
-    return Array.from(out.values())
+    remote.forEach(item => out.set(itemKeyOf(item), item))
+    local.forEach(item => out.set(itemKeyOf(item), item))
+    return Array.from(out.entries()).filter(([k]) => !gone(k)).map(([, v]) => v)
   }
   if (typeof local === 'object' && typeof remote === 'object' && !Array.isArray(local) && !Array.isArray(remote)) {
-    return { ...(remote as object), ...(local as object) }
+    const merged = { ...(remote as Record<string, unknown>), ...(local as Record<string, unknown>) }
+    return Object.fromEntries(Object.entries(merged).filter(([k]) => !gone(`key:${k}`)))
   }
   return local
 }
@@ -138,7 +178,7 @@ export async function pullCloudState(timeoutMs = 2500): Promise<void> {
       }
       if (!m.syncedAt || m.dirty) {
         // First sync on this device, or local edits not uploaded yet: keep both sides
-        const merged = mergeValues(local, remote.value)
+        const merged = mergeValues(local, remote.value, key, readTombstones())
         writeLocal(key, merged)
         const differs = JSON.stringify(merged) !== JSON.stringify(remote.value)
         meta[key] = { syncedAt: remote.updated_at, dirty: differs }
@@ -148,6 +188,7 @@ export async function pullCloudState(timeoutMs = 2500): Promise<void> {
       }
     }
     writeMeta(meta)
+    CLOUD_SYNCED_KEYS.forEach(key => remember(key, readLocal(key)))
     CLOUD_SYNCED_KEYS.forEach(key => { if (meta[key]?.dirty) schedulePush(key, 0) })
   } catch (err) {
     lastError = `Cloud sync unavailable: ${err instanceof Error ? err.message : String(err)}`
@@ -158,15 +199,21 @@ export async function pullCloudState(timeoutMs = 2500): Promise<void> {
 
 async function push(key: string): Promise<void> {
   try {
+    // R-SYNC-19: this device's delete markers go up first, so no other device merges a deleted item back
+    if (key !== TOMBSTONES_KEY && readMeta()[TOMBSTONES_KEY]?.dirty) await push(TOMBSTONES_KEY)
     const meta = readMeta()
-    // Someone else uploaded since our last sync → merge their version in first
-    const { data: remote, error: readErr } = await supabase.from(TABLE).select('value, updated_at').eq('key', key).maybeSingle()
+    // Someone else uploaded since our last sync → merge their version in first (with everyone's delete markers)
+    const { data: rows, error: readErr } = await supabase.from(TABLE).select('key, value, updated_at').in('key', key === TOMBSTONES_KEY ? [key] : [key, TOMBSTONES_KEY])
     if (readErr) throw new Error(readErr.message)
+    const remote = (rows || []).find(r => r.key === key) as { value: unknown; updated_at: string } | undefined
+    const remoteMarks = (rows || []).find(r => r.key === TOMBSTONES_KEY)?.value as Tombstones | undefined
+    if (remoteMarks && key !== TOMBSTONES_KEY) writeLocal(TOMBSTONES_KEY, mergeTombstones(readTombstones(), remoteMarks))
     let value = readLocal(key)
     // Compare as instants — Postgres may return the timestamp in a different text format
     if (remote && Date.parse(remote.updated_at) !== Date.parse(meta[key]?.syncedAt || '')) {
-      value = mergeValues(value, remote.value)
+      value = mergeValues(value, remote.value, key, readTombstones())
       writeLocal(key, value)
+      remember(key, value)
     }
     const updated_at = new Date().toISOString()
     const { error } = await supabase.from(TABLE).upsert({ key, value: value ?? null, updated_at })
@@ -188,8 +235,29 @@ function schedulePush(key: string, delay = 800) {
 /** Called by safeLocalStorageSet after every successful write */
 export function onLocalWrite(key: string) {
   if (!isSynced(key)) return
+  if (key !== TOMBSTONES_KEY) markChanges(key)
   setKeyMeta(key, { dirty: true })
   schedulePush(key)
+}
+
+/** R-SYNC-19: no markers for looks / switches (Excel colours, alignment) and the driver plan field logins write */
+const NO_MARKERS = new Set(['safaeewala_driver_plans', 'safaeewala_excel_cleaner_colors', 'safaeewala_excel_cell_colors', 'safaeewala_excel_column_colors', 'safaeewala_excel_column_align', 'safaeewala_row_filter_colors_v2', 'safaeewala_auto_sync_monthly_schedules'])
+/** R-SYNC-19: items gone since the last value seen get a delete marker; items back again get "added again" */
+function markChanges(key: string) {
+  if (NO_MARKERS.has(key)) return
+  const now = itemKeys(readLocal(key))
+  const before = lastSeen.get(key)
+  lastSeen.set(key, now)
+  if (!before) return // nothing seen yet on this device (cloud not read): no guessing
+  const at = new Date().toISOString()
+  const marks = readTombstones()
+  let changed = false
+  before.forEach(k => { if (!now.has(k)) { marks[`${key}|${k}`] = `d:${at}`; changed = true } })
+  now.forEach(k => { if (!before.has(k) && isDeletedMark(marks[`${key}|${k}`])) { marks[`${key}|${k}`] = `r:${at}`; changed = true } })
+  if (!changed) return
+  writeLocal(TOMBSTONES_KEY, mergeTombstones(marks, {}))
+  setKeyMeta(TOMBSTONES_KEY, { dirty: true })
+  schedulePush(TOMBSTONES_KEY, 0)
 }
 
 /** Retry keys that failed to upload (reconnect / every minute) */
@@ -210,6 +278,7 @@ export function subscribeCloudState(): () => void {
     if (row.updated_at && Date.parse(row.updated_at) === Date.parse(m.syncedAt || '')) return // our own upload
     if (m.dirty) { schedulePush(row.key, 0); return } // our unsaved change: the push merges theirs in
     writeLocal(row.key, row.value)
+    remember(row.key, row.value)
     setKeyMeta(row.key, { syncedAt: row.updated_at, dirty: false })
     window.dispatchEvent(new CustomEvent(REMOTE_CHANGE_EVENT, { detail: { key: row.key } }))
   }).subscribe()

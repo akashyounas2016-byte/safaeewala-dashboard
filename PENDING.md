@@ -56,7 +56,8 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 
 
 ### B6. Contracts and money data in real tables (audit 2026-11-15)
-- Contracts, monthly payments, advance / pending items, attendance overrides and cash handovers live as JSON in `app_state`. Two devices are merged by adding lists together, so an item deleted on one device can come back from another that had unsaved changes. Move them to their own tables (one row each, with history), or add delete markers shared between devices.
+- **Done 2026-11-16 (R-SYNC-19):** deletions leave shared delete markers, so a deleted item no longer comes back from another computer.
+- **Still open (optional, larger):** these lists are one JSON value each in `app_state` (no per-row history, whole list sent on each change). Move contracts and money lists to their own tables when the data grows.
 
 ### B7. Load only recent jobs at start-up
 - The whole Job Sheet is loaded into the browser. Fine now (empty after the 2026-11-15 wipe); after a year (15–20k rows) start-up will be slow on phones. Load the last 2–3 months, older months on demand (reports, client history).

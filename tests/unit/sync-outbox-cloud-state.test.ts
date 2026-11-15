@@ -76,7 +76,8 @@ async function main() {
   failing.add('app_state')
   safeLocalStorageSet(PAY, [{ id: 'p3' }])
   await sleep(1000)
-  check('upload failure is reported, data stays local', getCloudStateStatus().unsynced === 1 && !!getCloudStateStatus().lastError
+  // R-SYNC-19: replacing p2 by p3 also leaves a delete marker for p2 → 2 keys wait (list + markers)
+  check('upload failure is reported, data stays local', getCloudStateStatus().unsynced === 2 && !!getCloudStateStatus().lastError
     && safeLocalStorageGet<any[]>(PAY, [])[0]?.id === 'p3', getCloudStateStatus())
 
   console.log(failed ? `\n${failed} FAILED` : '\nALL PASSED')
