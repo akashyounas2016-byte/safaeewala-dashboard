@@ -22,7 +22,6 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | A9 | **Re-enter the employee field values lost earlier** (Misbah's Work Permit year is fixed — 2027, checked 2026-11-13) | Empty profiles | Employees → Edit |
 | A15 | **Settings → Backup → This computer → Choose folder** on the office computer (Chrome / Edge), then "Allow on every visit" | Daily copy of all data on that computer, 30 days kept | Settings → Backup |
 | A11 | **Check today's new screens on the live site** (Excel sheet, Add Job, Employee popup, Agency popup) | Built and tested in code, not yet clicked through in a browser | crm.safaeewala.com |
-| A19 | **Run `supabase/migrations/2026-11-16_daily_jobs_client_id.sql`** in Supabase → SQL editor (prod.md 7k) | Until then jobs are linked to clients by address only, as before (R-DATA-12) | Supabase |
 
 ---
 
@@ -50,7 +49,7 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 - Server route (e.g. `/api/ai/chat` in `webhookServer.cjs`) + the "Ask the CRM" panel in `src/pages/AIBot.tsx`; bookings only after the user clicks Confirm.
 
 ### B4. Security header
-- The Content-Security-Policy is still `Report-Only` (reports, does not block). Switch it to enforcing once no reports show up.
+- The Content-Security-Policy is still `Report-Only`. Since 2026-11-16 the browsers' reports are collected: Settings → Data health → *Security header (report only)*. After about a week, add any needed source to `nginx.conf` and rename the header to `Content-Security-Policy` to enforce it.
 
 ### B5. Lint warnings
 - ~800 ESLint warnings (mostly `any` types). No errors; clean up gradually when a file is touched.
@@ -68,8 +67,6 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 ### B9. One logic for the two job sheets
 - Daily Job Sheet (4.5k lines) and Excel Job Sheet (5.7k lines) repeat the same work, so every fix is needed twice. Move the shared logic to `src/lib/` step by step; later decide if one sheet is enough.
 
-### B10. Existing job rows have no client_id
-- R-DATA-12 sets it on every job saved from now on (after A19). Rows saved before keep matching by address; a one-time fill can be added if old data is imported again.
 ---
 
 ## C. Later / decided

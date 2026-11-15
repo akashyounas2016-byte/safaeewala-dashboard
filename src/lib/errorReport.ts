@@ -5,7 +5,7 @@
  * the data: kind, screen, person, app version, connection and how many changes are still waiting to be saved.
  * Never throws; at most 20 reports a minute; the same message within a minute is sent once.
  */
-export type ErrorKind = 'crash' | 'error' | 'sync' | 'server'
+export type ErrorKind = 'crash' | 'error' | 'sync' | 'server' | 'csp'
 
 export interface AppErrorReport {
   at: string
@@ -134,6 +134,7 @@ export function impactOf(kind: ErrorKind, r: AppErrorReport): string {
     return 'A change was not saved to the database yet. It waits on that device and is retried automatically.'
   }
   if (kind === 'crash') return 'A screen crashed and showed an error. Nothing was saved from that screen at that moment; saved data is not affected.'
+  if (kind === 'csp') return 'Nothing is blocked yet (report only). This source would be blocked once the security header is switched on — add it to the allowed list first if it is needed.'
   if (kind === 'server') return 'The server (VPS) failed on a request: leads, webhooks, backups or sign-in checks may have been affected.'
   return 'Something failed in the background. Usually no effect on saved data.'
 }
@@ -156,6 +157,6 @@ export function groupErrors(reports: AppErrorReport[]): ErrorGroup[] {
     if (r.at > g.last) { g.last = r.at; g.latest = r; g.message = r.message }
     add(g.screens, r.url); add(g.users, r.user); add(g.versions, r.version); add(g.tables, r.table)
   })
-  const rank: Record<ErrorKind, number> = { sync: 0, server: 1, crash: 2, error: 3 }
+  const rank: Record<ErrorKind, number> = { sync: 0, server: 1, crash: 2, error: 3, csp: 4 }
   return Array.from(map.values()).sort((a, b) => rank[a.kind] - rank[b.kind] || b.last.localeCompare(a.last))
 }

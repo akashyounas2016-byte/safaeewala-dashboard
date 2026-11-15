@@ -9,6 +9,7 @@ const KIND: Record<ErrorKind, { label: string; tone: string; dot: string }> = {
   server: { label: 'Server (VPS)',          tone: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500' },
   crash:  { label: 'Screen crashed',        tone: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
   error:  { label: 'Background error',      tone: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
+  csp:    { label: 'Security header (report only)', tone: 'bg-sky-50 text-sky-700 border-sky-200', dot: 'bg-sky-500' }, // B4
 }
 type Period = '24h' | '7d' | 'all'
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', dateStyle: 'medium', timeStyle: 'short' })

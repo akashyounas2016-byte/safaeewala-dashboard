@@ -560,6 +560,8 @@ async function signedInWithPublicKey(req) {
 /** { ok } or { ok:false, status, error } for every /api request except /api/admin (own checks) */
 async function authorizeApi(req, pathname, parsedUrl) {
   const isLeadWebhook = req.method === 'POST' && pathname === '/api/webhook/fluent-forms';
+  // B4: the browser sends Content-Security-Policy reports without a sign-in (write-only, small, deduplicated)
+  if (req.method === 'POST' && pathname === '/api/logs/csp') return { ok: true };
   if (isLeadWebhook && WEBHOOK_SECRET) {
     const given = req.headers['x-webhook-secret'] || parsedUrl.searchParams.get('secret') || '';
     if (given && safeEqual(given, WEBHOOK_SECRET)) return { ok: true };
@@ -689,6 +691,7 @@ function logServerError(where, err) {
 process.on('unhandledRejection', err => { console.error('[unhandledRejection]', err); logServerError('unhandledRejection', err); });
 process.on('uncaughtException', err => { console.error('[uncaughtException]', err); logServerError('uncaughtException', err); process.exit(1); });
 
+const cspSeen = new Map(); // B4: one CSP report per blocked source per hour
 function readErrorLog(limit = 100) {
   if (!fs.existsSync(ERROR_LOG)) return [];
   return fs.readFileSync(ERROR_LOG, 'utf8').trim().split('\n').filter(Boolean).slice(-limit).reverse()
@@ -745,6 +748,29 @@ function routeApi(req, res, parsedUrl, pathname) {
       return ghlFetch('/contacts/upsert', { method: 'POST', body: JSON.stringify(body) })
         .then(r => sendJson(res, r.ok ? 200 : 502, { success: r.ok, status: r.status }));
     }).catch(err => sendJson(res, err.status || 502, { success: false, message: err.message }));
+    return;
+  }
+
+  // B4: Content-Security-Policy reports (nginx report-uri). Kept in the error log as kind "csp", one line per
+  // blocked source per hour, so the policy can be switched from Report-Only to enforcing once it is quiet.
+  if (req.method === 'POST' && pathname === '/api/logs/csp') {
+    readJson(req, 8 * 1024).then(b => {
+      const r = (b && (b['csp-report'] || b.body || b)) || {};
+      const s = (v, n) => String(v == null ? '' : v).slice(0, n);
+      const directive = s(r['effective-directive'] || r.effectiveDirective || r['violated-directive'] || r.violatedDirective, 80);
+      const blocked = s(r['blocked-uri'] || r.blockedURL || r.blockedUri, 200);
+      const key = `${directive}|${blocked.replace(/^(https?:\/\/[^/]+).*$/, '$1')}`;
+      const now = Date.now();
+      if (!(now - (cspSeen.get(key) || 0) < 3600000)) {
+        cspSeen.set(key, now);
+        if (cspSeen.size > 500) cspSeen.clear();
+        appendErrorLog({
+          at: new Date().toISOString(), kind: 'csp', message: `Security header would block ${directive || 'a source'}: ${blocked || '(inline)'}`,
+          stack: '', where: 'csp', url: s(r['document-uri'] || r.documentURL, 300), userAgent: s(req.headers['user-agent'], 200), version: '',
+        });
+      }
+      res.writeHead(204); res.end();
+    }, err => sendJson(res, err.status || 400, { error: err.message }));
     return;
   }
 

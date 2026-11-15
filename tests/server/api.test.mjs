@@ -129,6 +129,16 @@ try {
   // E2E-25: health check for deploys
   r = await api('GET', '/api/health', null)
   check(r.status === 200 && r.body.ok === true, 'health check answers without sign-in (E2E-25)', r)
+  // B4: CSP reports are accepted without a sign-in and logged once per blocked source per hour
+  const csp = { 'csp-report': { 'document-uri': 'https://crm.safaeewala.com/x', 'effective-directive': 'script-src', 'blocked-uri': 'https://evil.example/a.js' } }
+  const c1 = await fetch('http://127.0.0.1:3001/api/logs/csp', { method: 'POST', headers: { 'Content-Type': 'application/csp-report' }, body: JSON.stringify(csp) })
+  await fetch('http://127.0.0.1:3001/api/logs/csp', { method: 'POST', headers: { 'Content-Type': 'application/csp-report' }, body: JSON.stringify(csp) })
+  check(c1.status === 204, 'CSP report accepted without sign-in', c1.status)
+  r = await api('GET', '/api/logs/errors', 'admin-token')
+  const cspRows = (r.body || []).filter(e => e.kind === 'csp')
+  check(cspRows.length === 1 && /script-src: https:\/\/evil\.example/.test(cspRows[0].message), 'CSP report logged once (B4)', cspRows)
+  r = await api('GET', '/api/logs/errors', null)
+  check(r.status === 401, 'reading the log still needs a sign-in', r.status)
   // E2E-15: flooding the webhook is cut off
   let limited = 0
   for (let i = 0; i < 130; i++) {
