@@ -2,7 +2,7 @@
 
 One list of what is still open, for the owner, Claude and Antigravity. **Update it in the same commit** whenever something is finished (remove it) or added. Finished items go to [CHANGELOG.md](CHANGELOG.md), not here.
 
-Last updated: 2026-11-15 · Live on crm.safaeewala.com: `1f09a9c` · 2026-11-15: all 174 test-period jobs deleted on owner's request (backup in ../Safaeewala-backups)
+Last updated: 2026-11-15 · Live on crm.safaeewala.com: `1f09a9c` · 2026-11-15: all 174 test-period jobs deleted on owner's request ; duplicate "Villa# 06 - Zayan" + TEST clients (TEST Villa, Test 2- NH bldg, ABC Test 1) deleted with their contracts (backups in ../Safaeewala-backups)
 
 ---
 
@@ -22,7 +22,6 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | A9 | **Re-enter the employee field values lost earlier** (Misbah's Work Permit year is fixed — 2027, checked 2026-11-13) | Empty profiles | Employees → Edit |
 | A15 | **Settings → Backup → This computer → Choose folder** on the office computer (Chrome / Edge), then "Allow on every visit" | Daily copy of all data on that computer, 30 days kept | Settings → Backup |
 | A11 | **Check today's new screens on the live site** (Excel sheet, Add Job, Employee popup, Agency popup) | Built and tested in code, not yet clicked through in a browser | crm.safaeewala.com |
-| A18 | **Duplicate client "Villa# 06 - Zayan"** (made by the old bug) — delete it on Clients if not needed; the real one is "Zayan" | Edits must go to "Zayan" | Clients |
 
 ---
 
