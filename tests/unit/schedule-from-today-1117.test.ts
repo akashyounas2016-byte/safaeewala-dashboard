@@ -61,3 +61,10 @@ const contact = form.slice(form.indexOf('Primary Contact & Identity'), form.inde
 eq(/name="email"/.test(contact), true, 'Email is in the contact row')
 const addr = form.slice(form.indexOf('Card 2: Address'))
 eq(addr.indexOf('name="building_name"') < addr.indexOf('name="preferred_cleaner"'), true, 'Address comes first in its card, the cleaner after')
+
+// Browser test 2026-11-17: another open sheet added a removed visit back; own contract save showed "Another user changed"
+const dc = readFileSync('src/store/DataContext.tsx', 'utf8')
+eq(/removals\.forEach\(j => rememberRemovedMonthlyVisits\(j, allClients\)\)\s*\n\s*void pushCloudKeyNow\(REMOVED_VISITS_KEY\)[^\n]*finally\(\(\) => removals\.forEach\(j => removeJobRow\(j\.id\)\)\)/.test(dc), true, 'removed visit is marked for every device before the row goes')
+const app = readFileSync('src/App.tsx', 'utf8')
+const cc = readFileSync('src/lib/clientContracts.ts', 'utf8')
+eq(/detail\?\.local\) setRemoteChange\(true\)/.test(app) && (cc.match(/local: true/g) || []).length === 2, true, 'own contract save does not say "Another user changed shared settings"')

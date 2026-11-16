@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(clients): a visit removed by a schedule change is not added back by another open sheet; own contract save no longer shows "Another user changed shared settings" (R-SCHED-21, R-SCHED-22) — found in the browser test
 - change(job-sheet): 40 new row colours, each clearly different, one colour menu for Add Job (Daily + Excel) and New Booking (UX-167)
 - feat(marketing): WhatsApp Clicks rows have Edit and Delete icons; needs migration `2026-11-17_whatsapp_clicks_edit.sql` (R-MKT-04)
 - feat(clients): a changed monthly schedule (day, time, hours, cleaner) updates the Job Sheet rows from today on; earlier rows stay, hand-made sheet changes stay (R-SCHED-21)

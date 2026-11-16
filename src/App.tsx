@@ -127,7 +127,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!synced) return
     const stop = subscribeCloudState()
-    const onRemote = () => setRemoteChange(true)
+    // a change made on this screen (e.g. saving a client's contract) is not "another user" — R-SCHED-22
+    const onRemote = (e: Event) => { if (!(e as CustomEvent<{ local?: boolean }>).detail?.local) setRemoteChange(true) }
     window.addEventListener(REMOTE_CHANGE_EVENT, onRemote)
     return () => { stop(); window.removeEventListener(REMOTE_CHANGE_EVENT, onRemote) }
   }, [synced])

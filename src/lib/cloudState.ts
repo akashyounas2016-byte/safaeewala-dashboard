@@ -227,6 +227,13 @@ async function push(key: string): Promise<void> {
   }
 }
 
+/** R-SCHED-21: push one key now (not after the 800 ms wait) — e.g. a removal marker that must reach other screens first */
+export function pushCloudKeyNow(key: string): Promise<void> {
+  window.clearTimeout(timers.get(key))
+  timers.delete(key)
+  return push(key)
+}
+
 function schedulePush(key: string, delay = 800) {
   window.clearTimeout(timers.get(key))
   timers.set(key, window.setTimeout(() => { timers.delete(key); void push(key) }, delay))

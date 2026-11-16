@@ -1,9 +1,10 @@
+import { pushCloudKeyNow } from '@/lib/cloudState'
 import { createContext, useContext, useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency, RecurringContract } from '../types'
 import { supabase } from '@/lib/supabase'
 import { jobRenamePatches, clientRenamePatches } from '@/lib/employeeRename'
 import { renamedRowAddress } from '@/lib/clientChanges'
-import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs, visitsOutsideContract, rememberRemovedMonthlyVisits, rememberMovedMonthlyVisits, clientIdForJob, jobMatchesClient, rescheduledVisitRows, SCHEDULE_FIELDS } from '@/lib/clientDataSync'
+import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs, visitsOutsideContract, rememberRemovedMonthlyVisits, rememberMovedMonthlyVisits, clientIdForJob, jobMatchesClient, rescheduledVisitRows, SCHEDULE_FIELDS, REMOVED_VISITS_KEY } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry, sanitizeOutboxPayload } from '@/lib/syncQueue'
 import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
@@ -776,7 +777,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const { updates, removals } = rescheduledVisitRows(before, after, dailyJobs, todayDubai())
         if (removals.length) {
           saveDeletionSnapshot(`Schedule change · ${after.full_name}`, { dailyJobs: removals })
-          removals.forEach(j => removeJobRow(j.id))
+          // R-SYNC-17: marked as removed for every device — another open sheet still holding the old schedule
+          // added the visit back at once (seen in the browser test, 2026-11-17). The mark goes up first, then the rows.
+          removals.forEach(j => rememberRemovedMonthlyVisits(j, allClients))
+          void pushCloudKeyNow(REMOVED_VISITS_KEY).catch(() => undefined).finally(() => removals.forEach(j => removeJobRow(j.id)))
         }
         if (updates.length) {
           const byId = new Map(updates.map(u => [u.id, u.patch]))

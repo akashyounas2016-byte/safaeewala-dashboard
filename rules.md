@@ -189,6 +189,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - A field that still has the old schedule's value gets the new one. A value changed by hand on the sheet for that date stays (R-SCHED-01: a sheet change is for that day only).
   - A row on a day that is no longer scheduled is removed (copy in Before-delete copies). A visit moved by hand to a day that was not scheduled is left alone. A newly added day gets its visit from the normal sync when the date is opened.
   - The new cleaner is not booked over another job at the same time (R-SCHED-06): the row is left without a cleaner, with a note.
+  - A row removed this way is marked removed for every device (R-SYNC-17) and the mark is sent first: in the browser test another open sheet still holding the old schedule added the visit straight back.
   - This is the other direction of R-SCHED-01: the master schedule changes the sheet from today on; the sheet never changes the master.
 - **Code:** `src/lib/clientDataSync.ts → rescheduledVisitRows, SCHEDULE_FIELDS`; `DataContext.tsx → updateClient`. Test: `tests/unit/schedule-from-today-1117.test.ts`.
 - **Status:** Active · Since: 2026-11-17
@@ -197,6 +198,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Why:** the Contract Start in the client popup showed today's date every day for a client without a saved contract, so it seemed to move daily (2026-11-17).
   - Without a saved contract the Start shown is the day the client was added (a new client: today). Saving a Monthly / Bi-Weekly client now always saves its contract, so the Start shown is the one kept; a saved Start never changes unless typed.
   - The popup reads the contract again each time it opens (it could show an older copy).
+  - Saving the contract on this screen no longer shows "Another user changed shared settings" (that note is for changes from other users only).
 - **Code:** `src/lib/clientContracts.ts → detailsOfContract(c, fallbackStart), saveClientContract({ always })`; `ClientModalForm.tsx`. Test: `tests/unit/schedule-from-today-1117.test.ts`.
 - **Status:** Active · Since: 2026-11-17
 

@@ -78,7 +78,7 @@ export function removeClientContracts(clientName: string): number {
   const kept = list.filter(c => normalizeKey(c.clientName || '') !== key)
   if (kept.length === list.length) return 0
   safeLocalStorageSet(CONTRACTS_KEY, kept)
-  try { window.dispatchEvent(new CustomEvent(REMOTE_CHANGE_EVENT, { detail: { key: CONTRACTS_KEY } })) } catch { /* no window */ }
+  try { window.dispatchEvent(new CustomEvent(REMOTE_CHANGE_EVENT, { detail: { key: CONTRACTS_KEY, local: true } })) } catch { /* no window */ }
   return list.length - kept.length
 }
 
@@ -125,6 +125,6 @@ export function saveClientContract(args: {
   const saved = existing ? list.map(c => (c.id === existing.id ? next : c)) : [next, ...list]
   safeLocalStorageSet(CONTRACTS_KEY, saved)
   // an open Monthly Clients page reloads its Contracts list (it would otherwise save its older copy over this)
-  try { window.dispatchEvent(new CustomEvent(REMOTE_CHANGE_EVENT, { detail: { key: CONTRACTS_KEY } })) } catch { /* no window */ }
+  try { window.dispatchEvent(new CustomEvent(REMOTE_CHANGE_EVENT, { detail: { key: CONTRACTS_KEY, local: true } })) } catch { /* no window */ }
   return next
 }
