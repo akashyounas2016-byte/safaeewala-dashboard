@@ -270,7 +270,8 @@ export function AddMonthlyClientModalForm({
       }
     })
 
-    const primaryCleaner = Object.values(finalAssignments)[0] || '' // '' = no cleaner yet
+    // R-SCHED-16: saved without days → the client's cleaner stays (it was wiped: Office ABC lost Misbah)
+    const primaryCleaner = Object.values(finalAssignments)[0] || (activeDays.length === 0 ? (initialClient?.preferred_cleaner || '') : '') // '' = no cleaner yet
 
     onAdd({
       full_name: clientName,

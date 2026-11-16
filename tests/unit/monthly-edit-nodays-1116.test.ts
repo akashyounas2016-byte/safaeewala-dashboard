@@ -29,3 +29,5 @@ eq(/Apply Mon Times|Apply Mon Staff/.test(f), false, 'Apply Mon Times / Staff re
 eq(/onClick=\{toggleSchedule\}/.test(f) && /className=\{scheduleOpen \? 'overflow-x-auto' : 'hidden'\} data-field="schedule_days"/.test(f), true, 'Hide / Show toggle; the table stays in the form when hidden')
 eq(/if \(activeDays\.length === 0 && !initialClient\) setScheduleOpen\(true\)/.test(f), true, 'opens again when a day must be ticked')
 eq(/R-SCHED-17/.test(readFileSync('rules.md', 'utf8')), true, 'rule written')
+
+eq(/Object\.values\(finalAssignments\)\[0\] \|\| \(activeDays\.length === 0 \? \(initialClient\?\.preferred_cleaner \|\| ''\) : ''\)/.test(f), true, 'saved without days → the preferred cleaner is kept')
