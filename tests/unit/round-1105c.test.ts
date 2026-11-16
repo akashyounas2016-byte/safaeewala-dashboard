@@ -29,4 +29,4 @@ eq(/desc: 'Direct cash collection on-site'/.test(src('src/pages/JobSheetSpreadsh
 eq(clientNameOrAddress('', { apartment: '302', building_name: 'Al Khair Building', area: 'Mirdif' }), '302, Al Khair Building', 'address used when the name is empty')
 eq(clientNameOrAddress('Sarah', { apartment: '302', building_name: 'Al Khair' }), 'Sarah', 'a typed name is kept')
 eq([hasClientAddress({ area: 'Dubai' }), hasClientAddress({ apartment: 'Villa 25' }), hasClientAddress({ building_name: 'Al Khair' })], [false, true, true], 'an area alone is not an address')
-eq(/label="Full Name \(optional\)"/.test(src('src/components/clients/ClientModalForm.tsx')) && /label="Full Name \(optional\)"/.test(src('src/components/monthlyClients/AddMonthlyClientModalForm.tsx')), true, 'name optional in Add Client and Monthly Client')
+eq(/label="Full Name \(optional\)"/.test(src('src/components/clients/ClientModalForm.tsx')) && /label="Full Name \(optional\)"/.test((src('src/components/clients/ClientModalForm.tsx') + src('src/components/monthlyClients/WeeklyScheduleCard.tsx'))), true, 'name optional in Add Client and Monthly Client')

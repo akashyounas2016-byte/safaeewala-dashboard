@@ -1,20 +1,14 @@
-import React, { useState, useMemo } from 'react'
-import { requireFields } from '@/components/common/FormGuard'
-import { clientNameOrAddress, hasClientAddress, singleAddressOf, cleanAddresses } from '@/lib/clientAddress'
-import { AddressesEditor } from '@/components/clients/AddressesEditor'
+import { useMemo, useState } from 'react'
 import { Calendar, Clock, Users, Sparkles, Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { Input, Select, Textarea } from '@/components/ui/Input'
-import { Button } from '@/components/ui/Button'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import type { Client, Employee } from '@/types'
-import { useData } from '@/store/DataContext'
-import { findMonthlyScheduleClashes, realCleanerName } from '@/lib/clientDataSync'
-import { notify } from '@/lib/notify'
-import { ContractStatusToggle } from '@/components/clients/ContractStatusToggle'
-import { ContractDetailsCard } from '@/components/clients/ContractDetailsCard'
-import { contractDateError, contractOfClient, detailsOfContract, saveClientContract } from '@/lib/clientContracts'
+import { realCleanerName } from '@/lib/clientDataSync'
 import { addHoursToTime, subtractHoursFromTime, calcDurationFromTimes, formatTime12h } from '@/lib/utils'
 
+/**
+ * R-SCHED-20: the weekly schedule of a Monthly client (day, start, end, duration, cleaner) — one card used by
+ * the one client popup for every Mode (was only inside the separate monthly form).
+ */
 export const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 export const DAY_SHORT: Record<string, string> = {
   Monday: 'Mon',
@@ -25,41 +19,11 @@ export const DAY_SHORT: Record<string, string> = {
   Saturday: 'Sat',
 }
 
-export interface AddMonthlyClientModalFormProps {
-  onClose: () => void
-  onAdd: (client: Omit<Client, 'id' | 'created_at'>) => void
-  employees: Employee[]
-  initialClient?: Client | null
-  isEdit?: boolean
-  /** Values typed in Add New Client before Mode → Monthly was chosen (R-CLI-02) */
-  prefill?: Partial<Client>
-}
+export interface DayRow { enabled: boolean; startTime: string; endTime: string; duration: number; cleaner: string }
+export type WeekSchedule = Record<string, DayRow>
 
-export function AddMonthlyClientModalForm({
-  onClose,
-  onAdd,
-  employees,
-  initialClient,
-  isEdit = false,
-  prefill,
-}: AddMonthlyClientModalFormProps) {
-  const seedClient: Partial<Client> | null | undefined = initialClient ?? prefill
-  // R-CLI-05: the client's contract (Monthly Clients → Contracts) is edited here too
-  // UX-161: the Weekly Schedule section can be hidden (choice kept per browser)
-  const [scheduleOpen, setScheduleOpen] = useState<boolean>(() => { try { return localStorage.getItem('safaeewala_monthly_schedule_open') !== '0' } catch { return true } })
-  const toggleSchedule = () => setScheduleOpen(o => { const n = !o; try { localStorage.setItem('safaeewala_monthly_schedule_open', n ? '1' : '0') } catch { /* ignore */ } return n })
-  const [savedContract] = useState(() => (initialClient ? contractOfClient(initialClient.full_name) : undefined))
-  const [contract, setContract] = useState(() => detailsOfContract(savedContract))
-  // R-SCHED-08: Off when the client or its contract is switched off
-  const [contractOn, setContractOn] = useState(() => seedClient?.contract_active !== false && (!savedContract || savedContract.status === 'active'))
-  // ── 7-Day Specific Schedule State ──
-  const [daySchedules, setDaySchedules] = useState<Record<string, {
-    enabled: boolean
-    startTime: string
-    endTime: string
-    duration: number
-    cleaner: string
-  }>>(() => {
+/** The week of a saved client (or the default Mon / Wed / Fri, 9–1) */
+export function initialWeekSchedule(initialClient?: Partial<Client> | null): WeekSchedule {
     if (initialClient) {
       const activeDaysList = initialClient.service_days || []
       const daySchedMap = initialClient.day_schedules || {}
@@ -96,7 +60,42 @@ export function AddMonthlyClientModalForm({
       Friday:    { enabled: true,  startTime: '09:00', endTime: '13:00', duration: 4, cleaner: '' },
       Saturday:  { enabled: false, startTime: '09:00', endTime: '13:00', duration: 4, cleaner: '' },
     }
+}
+
+export const activeDaysOf = (w: WeekSchedule) => DAYS_OF_WEEK.filter(day => w[day]?.enabled)
+
+/**
+ * The client fields of a week. Days with a picked cleaner are listed in `day_cleaner_assignments` (R-SCHED-10);
+ * with no day ticked the client's times and cleaner stay as they were (R-SCHED-16).
+ */
+export function monthlyFieldsOf(w: WeekSchedule, initialClient?: Partial<Client> | null) {
+  const activeDays = activeDaysOf(w)
+  const firstRow = w[activeDays[0]]
+  const firstDuration = firstRow?.duration || (firstRow ? calcDurationFromTimes(firstRow.startTime, firstRow.endTime) : 4) || 4
+  const day_cleaner_assignments: Record<string, string> = {}
+  const day_schedules: Record<string, { startTime: string; endTime: string; cleaner: string; duration: number }> = {}
+  activeDays.forEach(day => {
+    const row = w[day]
+    const cleaner = realCleanerName(row.cleaner)
+    if (cleaner) day_cleaner_assignments[day] = cleaner
+    day_schedules[day] = { startTime: row.startTime, endTime: row.endTime, cleaner, duration: row.duration || calcDurationFromTimes(row.startTime, row.endTime) || 4 }
   })
+  return {
+    service_days: activeDays,
+    scheduled_time: firstRow?.startTime ?? initialClient?.scheduled_time ?? '09:00',
+    end_time: firstRow?.endTime ?? initialClient?.end_time ?? '13:00',
+    duration_hours: firstDuration,
+    day_cleaner_assignments,
+    day_schedules,
+    preferred_cleaner: Object.values(day_cleaner_assignments)[0] || (activeDays.length === 0 ? (initialClient?.preferred_cleaner || '') : ''),
+  }
+}
+
+export function WeeklyScheduleCard({ value: daySchedules, onChange, employees }: { value: WeekSchedule; onChange: (w: WeekSchedule) => void; employees: Employee[] }) {
+  const setDaySchedules = (u: (p: WeekSchedule) => WeekSchedule) => onChange(u(daySchedules))
+  // UX-161: the Weekly Schedule section can be hidden (choice kept per browser)
+  const [scheduleOpen, setScheduleOpen] = useState<boolean>(() => { try { return localStorage.getItem('safaeewala_monthly_schedule_open') !== '0' } catch { return true } })
+  const toggleSchedule = () => setScheduleOpen(o => { const n = !o; try { localStorage.setItem('safaeewala_monthly_schedule_open', n ? '1' : '0') } catch { /* ignore */ } return n })
 
   // Distinct sorted list of employees
   const cleanerList = useMemo(() => {
@@ -217,126 +216,8 @@ export function AddMonthlyClientModalForm({
     }, 0)
   }, [activeDays, daySchedules])
 
-  const { clients: allClients, trimVisitsToContract } = useData()
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    const f = new FormData(e.currentTarget)
-    // R-SCHED-06: a cleaner cannot be scheduled for two monthly clients at the same time
-    const scheduled = Object.fromEntries(activeDays.map(d => [d, daySchedules[d]]))
-    // R-CLI-03: the name is optional; without one the address names the client
-    const addressParts = { apartment: String(f.get('apartment') || ''), building_name: String(f.get('building') || ''), area: String(f.get('area') || '') }
-    const selfName = clientNameOrAddress(f.get('full_name'), addressParts) || initialClient?.full_name || ''
-    const clashes = findMonthlyScheduleClashes(initialClient ? { id: initialClient.id, full_name: selfName } : { id: '', full_name: selfName }, scheduled, allClients || [])
-    if (clashes.length > 0) {
-      notify.error(`⛔ Time clash, not saved: ${clashes.slice(0, 3).map(c => `${c.cleaner} already works for ${c.other} on ${c.day} ${c.time}`).join('; ')}. Change the time or the cleaner.`)
-      return
-    }
-    const clientName = selfName
-    if (activeDays.length === 0 && !initialClient) setScheduleOpen(true) // UX-161: show the days that must be ticked
-    // UX-84: message at the top + outlined fields instead of a browser alert
-    if (!requireFields(e.currentTarget, [
-      { name: 'building', label: 'Address', ok: hasClientAddress(addressParts) },
-      // R-SCHED-16: a new monthly client needs a day; an existing one can be saved without (e.g. address only)
-      { name: 'schedule_days', label: 'Service days (tick at least one)', ok: activeDays.length > 0 || !!initialClient },
-      { name: 'contract_end', label: 'Contract End (on or after Contract Start)', ok: !contractDateError(contract) }, // R-SCHED-11
-    ])) return
-
-    const remarks = String(f.get('remarks') || '').trim()
-    const advance = parseFloat(String(f.get('advance_amount') || '0')) || 0
-    const adjustment = parseFloat(String(f.get('adjustment_amount') || '0')) || 0
-    const pending = parseFloat(String(f.get('pending_amount') || '0')) || 0
-
-    const firstDay = activeDays[0]
-    const firstRow = daySchedules[firstDay]
-    const firstDuration = firstRow?.duration || (firstRow ? calcDurationFromTimes(firstRow.startTime, firstRow.endTime) : 4) || 4
-    if (activeDays.length === 0) notify.warning('Saved without service days — no visits are added to the Job Sheet until a day is ticked.') // R-SCHED-16
-
-    // R-SCHED-10: only days with a picked cleaner are listed; no cleaner = left empty, never "Unassigned"
-    const finalAssignments: Record<string, string> = {}
-    activeDays.forEach(day => {
-      const cleaner = realCleanerName(daySchedules[day]?.cleaner)
-      if (cleaner) finalAssignments[day] = cleaner
-    })
-
-    // Construct day_schedules map
-    const finalDaySchedules: Record<string, { startTime: string; endTime: string; cleaner: string; duration: number }> = {}
-    activeDays.forEach(day => {
-      const row = daySchedules[day]
-      const dur = row.duration || calcDurationFromTimes(row.startTime, row.endTime) || 4
-      finalDaySchedules[day] = {
-        startTime: row.startTime,
-        endTime: row.endTime,
-        cleaner: realCleanerName(row.cleaner),
-        duration: dur,
-      }
-    })
-
-    // R-SCHED-16: saved without days → the client's cleaner stays (it was wiped: Office ABC lost Misbah)
-    const primaryCleaner = Object.values(finalAssignments)[0] || (activeDays.length === 0 ? (initialClient?.preferred_cleaner || '') : '') // '' = no cleaner yet
-
-    onAdd({
-      full_name: clientName,
-      phone: String(f.get('phone') || '').trim(),
-      whatsapp: String(f.get('whatsapp') || '').trim(),
-      email: String(f.get('email') || '').trim(),
-      nationality: initialClient?.nationality || '',
-      city: String(f.get('city') || 'Dubai'),
-      building_name: String(f.get('building') || '').trim(),
-      apartment: String(f.get('apartment') || '').trim(),
-      area: String(f.get('area') || 'Dubai').trim(),
-      remarks: remarks,
-      notes: remarks,
-      access_notes: remarks,
-      advance_amount: advance,
-      adjustment_amount: adjustment,
-      pending_amount: pending,
-      total_bookings: initialClient?.total_bookings || 0,
-      total_spent: initialClient?.total_spent || 0,
-      preferred_cleaner: primaryCleaner,
-      service_days: activeDays,
-      scheduled_time: firstRow?.startTime ?? initialClient?.scheduled_time ?? '09:00',
-      end_time: firstRow?.endTime ?? initialClient?.end_time ?? '13:00',
-      duration_hours: firstDuration,
-      day_cleaner_assignments: finalAssignments,
-      day_schedules: finalDaySchedules,
-      addresses: cleanAddresses(JSON.parse(String(f.get('addresses_json') || '[]'))), // R-CLI-09
-      // R-SCHED-08: sent only when Off or turned back On, so saves work before the column exists
-      ...(!contractOn || seedClient?.contract_active === false ? { contract_active: contractOn } : {}),
-    })
-    // R-CLI-05: the contract follows the client (name, phone) and its Contract Status (active / paused)
-    saveClientContract({ clientName, previousName: initialClient?.full_name, details: contract, active: contractOn, phone: String(f.get('phone') || '').trim(), email: String(f.get('email') || '').trim() })
-    trimVisitsToContract({ ...(initialClient || {}), full_name: clientName, building_name: String(f.get('building') || '').trim(), apartment: String(f.get('apartment') || '').trim() }) // R-SCHED-13
-  }
-
   return (
-    <form id="add-monthly-client-form" className="space-y-4" onSubmit={handleSubmit}>
-      <ContractStatusToggle on={contractOn} onChange={setContractOn} />
-      <ContractDetailsCard value={contract} onChange={setContract} existing={Boolean(savedContract)} />
-
-      {/* ── Client Basic Details (Compact 2 rows) ── */}
-      <div className="space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          <Input name="full_name" label="Full Name (optional)" placeholder="e.g. Sarah Al-Rashidi" defaultValue={seedClient?.full_name} />
-          <Input name="phone" label="Mobile Number *" placeholder="+971 50 000 0000" defaultValue={seedClient?.phone} required />
-          <Input name="whatsapp" label="WhatsApp (Optional)" placeholder="+971 50 000 0000" defaultValue={seedClient?.whatsapp ?? ''} />
-          <Input name="email" label="Email (Optional)" type="email" placeholder="client@example.com" defaultValue={seedClient?.email ?? ''} />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          {/* R-CLI-09: one Address field (was Apartment / Villa Number + Building / Villa Name) */}
-          <input type="hidden" name="apartment" value="" />
-          <div className="md:col-span-2"><Input name="building" label="Address *" placeholder="e.g. Al Khair Building Apt 302 / Villa 25" defaultValue={singleAddressOf(seedClient)} /></div>
-          <Input name="area" label="Area / Community" placeholder="Dubai Marina, JBR..." defaultValue={seedClient?.area ?? ''} />
-          <Select name="city" label="Emirate" defaultValue={seedClient?.city || 'Dubai'}>
-            <option>Dubai</option>
-            <option>Abu Dhabi</option>
-            <option>Sharjah</option>
-            <option>Ajman</option>
-          </Select>
-        </div>
-        {/* R-CLI-09: more addresses of the same client — chosen when booking */}
-        <AddressesEditor initial={seedClient?.addresses} />
-      </div>
-
+    <>
       {/* ── Section: 5-Column × 7-Row Day-by-Day Schedule Table ── */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
         {/* Table Top Toolbar */}
@@ -418,7 +299,7 @@ export function AddMonthlyClientModalForm({
         </div>
 
         {/* 5 Columns × 7 Rows Table */}
-        <div className={scheduleOpen ? 'overflow-x-auto' : 'hidden'} data-field="schedule_days">
+        <div className={scheduleOpen || activeDays.length === 0 ? 'overflow-x-auto' : 'hidden'} data-field="schedule_days" /* UX-161: shown while no day is ticked */>
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">
@@ -600,82 +481,6 @@ export function AddMonthlyClientModalForm({
           </div>
         </div>
       </div>
-
-      {/* ── Remarks / Notes (replaces Access Notes) ── */}
-      <div>
-        <label className="block text-[11.5px] font-bold text-slate-700 mb-1">
-          Remarks / Notes (Gate codes, keys, or client instructions)
-        </label>
-        <Textarea
-          name="remarks"
-          defaultValue={seedClient?.remarks ?? seedClient?.notes ?? seedClient?.access_notes ?? ''}
-          placeholder="Special instructions, gate codes, key locations, or client preferences..."
-          rows={2}
-        />
-      </div>
-
-      {/* ── Initial Financial Amounts (Advance, Adjustment ADJ, Pending) ── */}
-      <div className="bg-slate-50/90 rounded-2xl p-4 border border-[#E4E8EC] space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[12.5px] font-bold text-[#111827]">Initial Financial Amounts</p>
-            <p className="text-[11px] text-slate-500">Mention advance, adjustment (ADJ), and pending amounts on onboarding</p>
-          </div>
-          <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-            Optional
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <label className="block text-[11.5px] font-bold text-emerald-800 mb-1">
-              Advance Amount (AED)
-            </label>
-            <Input
-              name="advance_amount"
-              type="number"
-              step="any"
-              min="0"
-              placeholder="0.00"
-              defaultValue={initialClient?.advance_amount ? String(initialClient.advance_amount) : ''}
-              className="font-bold text-emerald-700 bg-white"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11.5px] font-bold text-indigo-800 mb-1 flex items-center gap-1.5">
-              <span>Adjustment Amount</span>
-              <span className="bg-indigo-700 text-white text-[8.5px] font-black px-1.5 py-0.2 rounded uppercase">
-                ADJ
-              </span>
-            </label>
-            <Input
-              name="adjustment_amount"
-              type="number"
-              step="any"
-              min="0"
-              placeholder="0.00"
-              defaultValue={initialClient?.adjustment_amount ? String(initialClient.adjustment_amount) : ''}
-              className="font-bold text-indigo-700 bg-white"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11.5px] font-bold text-rose-800 mb-1">
-              Pending Amount (AED)
-            </label>
-            <Input
-              name="pending_amount"
-              type="number"
-              step="any"
-              min="0"
-              placeholder="0.00"
-              defaultValue={initialClient?.pending_amount ? String(initialClient.pending_amount) : ''}
-              className="font-bold text-rose-700 bg-white"
-            />
-          </div>
-        </div>
-      </div>
-    </form>
+    </>
   )
 }

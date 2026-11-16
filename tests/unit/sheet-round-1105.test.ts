@@ -42,5 +42,5 @@ eq(/useRequiredFields\(/.test(src('src/components/dailyJobSheet/AddJobModal.tsx'
 eq(/useRequiredFields\(/.test(src('src/components/bookings/NewBookingModal.tsx')), true, 'New Booking checks its required fields')
 eq(/<FormGuard \/>/.test(src('src/components/layout/Layout.tsx')), true, 'FormGuard mounted for every popup with required fields')
 eq(/role="dialog"/.test(src('src/components/ui/Modal.tsx')), true, 'popups are marked as dialogs')
-eq(/alert\('Please/.test(src('src/components/monthlyClients/AddMonthlyClientModalForm.tsx') + src('src/components/payments/RecordPaymentModal.tsx') + src('src/pages/MarketingDashboard.tsx') + src('src/pages/RecurringSubscriptions.tsx')), false, 'no browser alerts for missing fields')
+eq(/alert\('Please/.test((src('src/components/clients/ClientModalForm.tsx') + src('src/components/monthlyClients/WeeklyScheduleCard.tsx')) + src('src/components/payments/RecordPaymentModal.tsx') + src('src/pages/MarketingDashboard.tsx') + src('src/pages/RecurringSubscriptions.tsx')), false, 'no browser alerts for missing fields')
 eq(/listRef\.current\.scrollTop = 0/.test(src('src/components/common/Time12hPicker.tsx')), true, 'Morning / Evening switch starts the time list at the top')

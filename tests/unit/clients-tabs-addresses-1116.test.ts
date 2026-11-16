@@ -19,10 +19,14 @@ eq(cleanAddresses([{ id: 'a', label: ' Office ', address: ' JLT Tower 5 ', area:
   [{ id: 'a', label: 'Office', address: 'JLT Tower 5', area: 'JLT' }], 'empty extra addresses are dropped')
 
 const modal = readFileSync('src/components/clients/ClientModalForm.tsx', 'utf8')
-const monthly = readFileSync('src/components/monthlyClients/AddMonthlyClientModalForm.tsx', 'utf8')
+const monthly = (readFileSync('src/components/clients/ClientModalForm.tsx', 'utf8') + readFileSync('src/components/monthlyClients/WeeklyScheduleCard.tsx', 'utf8'))
 eq(/label="Address \*"/.test(modal) && /label="Address \*"/.test(monthly) && !/label="Apartment \/ Villa Number"/.test(modal + monthly), true, 'both forms have one Address field')
-eq(/label="Mobile Number \*"[\s\S]{0,120}required/.test(modal) && /label="Mobile Number \*"[^\n]*required/.test(monthly), true, 'mobile number is required in both forms')
-eq(/<AddressesEditor initial=\{seed\?\.addresses\} \/>/.test(modal) && /<AddressesEditor initial=\{seedClient\?\.addresses\} \/>/.test(monthly) && /addresses: +cleanAddresses\(JSON\.parse/.test(modal) && /addresses: cleanAddresses\(JSON\.parse/.test(monthly), true, '"Add another address" in both forms, saved with the client')
+eq(/label="Mobile Number \*"[\s\S]{0,120}required/.test(modal), true, 'mobile number is required (one popup for every mode, R-SCHED-20)')
+eq(/<AddressesEditor initial=\{seed\?\.addresses\} \/>/.test(modal) && /addresses: +cleanAddresses\(JSON\.parse/.test(modal), true, '"Add another address", saved with the client (every mode)')
+// UX-164: row 1 Preferred Cleaner · Email · City; row 2 Address · Area; saved addresses as a list with an edit icon
+eq(modal.indexOf('name="preferred_cleaner"') < modal.indexOf('name="email"') && modal.indexOf('name="email"') < modal.indexOf('name="city"') && modal.indexOf('name="city"') < modal.indexOf('name="building_name"') && modal.indexOf('name="building_name"') < modal.indexOf('name="area"'), true, 'address card order')
+const editor = readFileSync('src/components/clients/AddressesEditor.tsx', 'utf8')
+eq(/aria-label="Edit address"/.test(editor) && /<Pencil size=\{13\} \/>/.test(editor) && /editing\.has\(a\.id\) \?/.test(editor), true, 'saved addresses show as a list with an edit (pencil) icon')
 const booking = readFileSync('src/components/bookings/NewBookingModal.tsx', 'utf8')
 eq(/\(c\.addresses \|\| \[\]\)\.forEach/.test(booking) && /handleSelectClient\(item\.client, cleanItemBuilding, item\.extraArea\)/.test(booking), true, 'the extra addresses can be picked when booking')
 eq(/add column if not exists addresses jsonb/.test(readFileSync('supabase/migrations/2026-11-16_client_addresses.sql', 'utf8')), true, 'migration')
@@ -41,3 +45,10 @@ eq(/prefill=\{modeTab === 'general' \? undefined : \{ service_mode: modeTab \}\}
 const prof = readFileSync('src/pages/ClientProfile.tsx', 'utf8')
 eq(/onClick=\{\(\) => setShowAllUpcoming\(true\)\}/.test(prof) && /upcoming\.map\(renderUpcomingVisit\)/.test(prof), true, '"+N more" opens the full list')
 eq(/\? 'bg-purple-600 text-white shadow-xs'/.test(prof), false, 'Daily Job Sheet tab no longer purple')
+
+// ── UX-165: deleting a client needs its exact name typed ──
+const host = readFileSync('src/components/common/ConfirmHost.tsx', 'utf8')
+eq(/typeToConfirm\?: string/.test(readFileSync('src/lib/notify.ts', 'utf8')) && /disabled=\{!typedOk\}/.test(host) && /if \(ok && !typedOk\) return/.test(host), true, 'Confirm stays off until the text is typed')
+eq((cl.match(/typeToConfirm: c\.full_name/g) || []).length, 2, 'Clients: card and table delete ask for the name')
+eq(/typeToConfirm: client\.full_name/.test(prof), true, 'client profile delete asks for the name')
+eq(cl.includes('disabled={deleteTyped.trim()') && cl.includes('setDeleteTyped'), true, 'the client popup delete box asks for the name too')

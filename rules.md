@@ -175,6 +175,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientContracts.ts → saveClientContract`. Test: `tests/unit/contract-client-link-1116.test.ts`.
 - **Status:** Active · Since: 2026-11-16
 
+### R-SCHED-20 — One client popup for every Mode
+- **Why:** the team asked that Add New Client and the client profile popup look the same for General, Monthly and Bi-Weekly (2026-11-16). Monthly had its own separate form.
+  - One popup (`ClientModalForm`) for adding and editing, from Clients, Monthly Clients, client profile and Add Job. The Mode only changes the cards shown: Bi-Weekly → contract + Bi-Weekly days; Monthly → contract + the **Weekly Schedule & Staff Assignment** card; General → neither. Everything typed stays when the Mode is switched.
+  - Monthly saves the week (service days, times, day cleaners), checks time clashes with other monthly clients (R-SCHED-06), needs a day for a new client (R-SCHED-16) and saves the contract (R-SCHED-19). The client's cleaner = the schedule's cleaner, else the Preferred Cleaner picked.
+  - The separate monthly form was removed; the week card is `WeeklyScheduleCard` (also used for the day names of the Bi-Weekly card).
+- **Code:** `src/components/clients/ClientModalForm.tsx`, `src/components/monthlyClients/WeeklyScheduleCard.tsx`, `src/pages/MonthlyClients.tsx`. Test: `tests/unit/monthly-edit-nodays-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
+
 ---
 
 ## ATT — Attendance

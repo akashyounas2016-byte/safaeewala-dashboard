@@ -63,5 +63,5 @@ eq(contractOffJobs(monthly, synced, '2026-11-05').map(j => j.id), ['today'], 'Of
 const bi = { ...monthly, id: 'b1', source: undefined, service_mode: 'biweekly', service_days: undefined, contract_active: false,
   biweekly_plan: { days: ['Thursday'], every_weeks: 1, start_date: '2026-11-01', end_date: '2026-12-31', day_schedules: { Thursday: { startTime: '09:00', endTime: '12:00', cleaner: 'Maria', duration: 3 } } } } as unknown as Client
 eq(getScheduledMonthlyShiftsForDate('2026-11-05', [bi]).shifts.length, 0, 'Bi-Weekly with contract Off → nothing syncs')
-eq(/ContractStatusToggle/.test(src('src/components/clients/ClientModalForm.tsx')) && /ContractStatusToggle/.test(src('src/components/monthlyClients/AddMonthlyClientModalForm.tsx')), true, 'toggle in Edit Client and the Monthly form')
+eq(/ContractStatusToggle/.test(src('src/components/clients/ClientModalForm.tsx')) && /ContractStatusToggle/.test((src('src/components/clients/ClientModalForm.tsx') + src('src/components/monthlyClients/WeeklyScheduleCard.tsx'))), true, 'toggle in Edit Client and the Monthly form')
 eq(/contract_active boolean/.test(src('supabase/migrations/2026-11-05_client_contract_active.sql')), true, 'migration adds the column')

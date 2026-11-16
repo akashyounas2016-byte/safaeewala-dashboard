@@ -27,7 +27,6 @@ import {
 import { formatTimeOnly, cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { SourceOriginTag, resolveClientSource } from '@/lib/sourceTracking'
-import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
 import { ClientModalForm } from '@/components/clients/ClientModalForm'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
 import type { MonthlyClientPayment } from '@/types'
@@ -797,7 +796,7 @@ export function ClientProfile() {
                 <button type="button"
                   onClick={async () => {
                     setHeroMenuOpen(false)
-                    const ok = await confirmAsync({ title: 'Delete client', message: `Delete "${client.full_name}"? Their jobs stay in the Daily Job Sheet.`, confirmLabel: 'Delete', tone: 'danger' })
+                    const ok = await confirmAsync({ title: 'Delete client', message: `Delete "${client.full_name}"? Their jobs stay in the Daily Job Sheet.`, confirmLabel: 'Delete', tone: 'danger', typeToConfirm: client.full_name }) // UX-165
                     if (!ok) return
                     deleteClient(client.id)
                     notify.success(`${client.full_name} deleted`)

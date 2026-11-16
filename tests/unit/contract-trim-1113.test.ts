@@ -22,5 +22,5 @@ eq(ids([]), [], 'no contract dates → nothing removed')
 
 const ctx = readFileSync('src/store/DataContext.tsx', 'utf8')
 eq([/trimVisitsToContract: \(patch, contracts\)/.test(ctx), /saveDeletionSnapshot\(`Contract dates/.test(ctx)], [true, true], 'removal keeps a restore snapshot')
-eq(['src/components/clients/ClientModalForm.tsx', 'src/components/monthlyClients/AddMonthlyClientModalForm.tsx', 'src/pages/MonthlyClients.tsx'].map(p => /trimVisitsToContract\(/.test(readFileSync(p, 'utf8'))),
-  [true, true, true], 'runs when the contract is saved from the client popups and the Contracts tab')
+eq(['src/components/clients/ClientModalForm.tsx', 'src/pages/MonthlyClients.tsx'].map(p => /trimVisitsToContract\(/.test(readFileSync(p, 'utf8'))),
+  [true, true], 'runs when the contract is saved from the client popup (every mode) and the Contracts tab')

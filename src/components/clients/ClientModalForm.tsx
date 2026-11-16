@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { requireFields } from '@/components/common/FormGuard'
 import { clientNameOrAddress, hasClientAddress, singleAddressOf, cleanAddresses } from '@/lib/clientAddress'
 import { AddressesEditor } from '@/components/clients/AddressesEditor'
+import { WeeklyScheduleCard, initialWeekSchedule, activeDaysOf, monthlyFieldsOf, type WeekSchedule } from '@/components/monthlyClients/WeeklyScheduleCard'
+import { findMonthlyScheduleClashes } from '@/lib/clientDataSync'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -20,7 +22,6 @@ import {
   Coins
 } from 'lucide-react'
 import type { Client, Employee } from '@/types'
-import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
 import { useData } from '@/store/DataContext'
 import { confirmAsync, notify } from '@/lib/notify'
 import { findDuplicateClient, isUaeMobile } from '@/lib/validation'
@@ -70,9 +71,10 @@ export function ClientModalForm({
   const [contract, setContract] = useState(() => detailsOfContract(savedContract))
   // R-SCHED-08: Off when the client or its contract is switched off
   const [contractOn, setContractOn] = useState(() => seed?.contract_active !== false && (!savedContract || savedContract.status === 'active'))
-  const [monthlyPrefill, setMonthlyPrefill] = useState<Partial<Client> | undefined>(undefined)
+  // R-SCHED-20: one popup for every Mode — Monthly shows its weekly schedule card here (no separate form)
+  const weekSeed = (): Partial<Client> | null => (seed?.service_days?.length ? seed : null)
+  const [week, setWeek] = useState<WeekSchedule>(() => initialWeekSchedule(weekSeed()))
   const formRef = useRef<HTMLFormElement>(null)
-  const showMonthlyFlow = mode === 'monthly' // R-SCHED-18: new and existing monthly clients alike
   // R-SCHED-18: was a monthly client (has a weekly schedule) — moving it to General / Bi-Weekly clears that schedule
   const hadMonthlySchedule = isEdit && Array.isArray(initialClient?.service_days) && (initialClient?.service_days?.length || 0) > 0
 
@@ -82,26 +84,12 @@ export function ClientModalForm({
       setMode(startMode())
       setPlan(seed?.biweekly_plan ?? emptyBiWeeklyPlan())
       setContractOn(seed?.contract_active !== false)
-      setMonthlyPrefill(undefined)
+      setWeek(initialWeekSchedule(weekSeed()))
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Switching mode keeps what was typed: Monthly opens the monthly client form with it filled in */
-  const chooseMode = (next: ClientServiceMode) => {
-    if (next === 'monthly' && formRef.current) {
-      const f = new FormData(formRef.current)
-      const v = (k: string) => String(f.get(k) || '').trim()
-      setMonthlyPrefill({
-        full_name: v('full_name'), phone: v('phone'), whatsapp: v('whatsapp'), email: v('email'),
-        apartment: v('apartment'), building_name: v('building_name'), area: v('area'), city: v('city') || 'Dubai',
-        remarks: v('remarks'),
-        advance_amount: Number(v('advance_amount')) || undefined,
-        adjustment_amount: Number(v('adjustment_amount')) || undefined,
-        pending_amount: Number(v('pending_amount')) || undefined,
-      })
-    }
-    setMode(next)
-  }
+  /** R-SCHED-20: the Mode only changes the cards shown — everything typed stays in this one form */
+  const chooseMode = (next: ClientServiceMode) => setMode(next)
   const modeSelect = (compact = false) => (
     <div className={compact ? 'w-40' : ''}>
       {!compact && <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Mode</label>}
@@ -155,7 +143,8 @@ export function ClientModalForm({
     const addressParts = { apartment: String(f.get('apartment') || ''), building_name: String(f.get('building_name') || ''), area: String(f.get('area') || '') }
     if (!requireFields(e.currentTarget, [
       { name: 'building_name', label: 'Address', ok: hasClientAddress(addressParts) },
-      { name: 'contract_end', label: 'Contract End (on or after Contract Start)', ok: mode !== 'biweekly' || !contractDateError(contract) }, // R-SCHED-11
+      { name: 'contract_end', label: 'Contract End (on or after Contract Start)', ok: mode === 'general' || !contractDateError(contract) }, // R-SCHED-11
+      { name: 'schedule_days', label: 'Service days (tick at least one)', ok: mode !== 'monthly' || activeDaysOf(week).length > 0 || isEdit }, // R-SCHED-16
     ])) return
     const clientName = clientNameOrAddress(f.get('full_name'), addressParts)
     const remarks = String(f.get('remarks') || '')
@@ -191,13 +180,29 @@ export function ClientModalForm({
       patch.biweekly_plan = plan
       if (!contractOn || seed?.contract_active === false) patch.contract_active = contractOn // R-SCHED-08 (sent only when Off or turned back On)
       if (!cleaner) patch.preferred_cleaner = Array.from(new Set(plan.days.map(d => plan.day_schedules[d]?.cleaner).filter(Boolean))).join(', ')
+    } else if (mode === 'monthly') {
+      // R-SCHED-20 / R-SCHED-06: a cleaner cannot be scheduled for two monthly clients at the same time
+      const active = activeDaysOf(week)
+      const clashes = findMonthlyScheduleClashes(initialClient ? { id: initialClient.id, full_name: clientName } : { id: '', full_name: clientName },
+        Object.fromEntries(active.map(d => [d, week[d]])), clients)
+      if (clashes.length > 0) {
+        notify.error(`⛔ Time clash, not saved: ${clashes.slice(0, 3).map(c => `${c.cleaner} already works for ${c.other} on ${c.day} ${c.time}`).join('; ')}. Change the time or the cleaner.`)
+        return
+      }
+      const fields = monthlyFieldsOf(week, initialClient)
+      Object.assign(patch, fields)
+      patch.service_mode = 'monthly'
+      patch.preferred_cleaner = fields.preferred_cleaner || cleaner // the schedule's cleaner, else the one picked above
+      if (!contractOn || seed?.contract_active === false) patch.contract_active = contractOn // R-SCHED-08
+      if (seed?.biweekly_plan) patch.biweekly_plan = null as unknown as undefined // no longer bi-weekly
+      if (active.length === 0) notify.warning('Saved without service days — no visits are added to the Job Sheet until a day is ticked.') // R-SCHED-16
     } else {
       patch.service_mode = 'general'
       if (seed?.biweekly_plan) patch.biweekly_plan = null as unknown as undefined // no longer bi-weekly
     }
 
     // R-SCHED-18: a monthly client moved to General / Bi-Weekly — its weekly schedule goes, so no monthly visits are made any more
-    if (hadMonthlySchedule) {
+    if (hadMonthlySchedule && mode !== 'monthly') {
       patch.service_days = []
       patch.day_schedules = {}
       patch.day_cleaner_assignments = {}
@@ -260,7 +265,6 @@ export function ClientModalForm({
       headerActions={
         <div className="flex items-center gap-2 mr-1">
           {/* R-SCHED-18: no Profile / 7-Day Schedule tabs any more — one form */}
-          {showMonthlyFlow && modeSelect(true)}
           {/* R-SCHED-17: Save on both tabs — the 7-Day Schedule tab had no Save button, so a picked day / cleaner
               could never be saved (2026-11-16); there it submits the schedule form */}
           <>
@@ -275,7 +279,7 @@ export function ClientModalForm({
               </Button>
               <Button
                 type="submit"
-                form={showMonthlyFlow ? 'add-monthly-client-form' : 'client-modal-form'}
+                form="client-modal-form"
                 size="sm"
                 disabled={isSaving}
                 className="h-9 px-4.5 text-[12.5px] font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs cursor-pointer flex items-center gap-1.5 rounded-xl transition-all"
@@ -287,21 +291,7 @@ export function ClientModalForm({
         </div>
       }
     >
-      {/* ── Monthly Client Recurring Schedule Tab ── */}
-      {showMonthlyFlow ? (
-        /* R-CLI-02: Mode → Monthly opens the monthly client form, with what was already typed */
-        <AddMonthlyClientModalForm
-          initialClient={isEdit ? initialClient : undefined}
-          prefill={isEdit ? undefined : monthlyPrefill}
-          isEdit={isEdit}
-          employees={employees}
-          onClose={onClose}
-          onAdd={monthlyData => {
-            onSave({ ...monthlyData, service_mode: 'monthly', ...(seed?.biweekly_plan ? { biweekly_plan: null as unknown as undefined } : {}) })
-            onClose()
-          }}
-        />
-      ) : (
+      {(
         /* ── Unified Profile & Financial Form (Organized into 3 Clean Cards) ── */
         <form
           id="client-modal-form"
@@ -360,7 +350,19 @@ export function ClientModalForm({
               <p className="text-[12.5px] font-black text-slate-800">Address & Crew Assignment</p>
             </div>
 
+            {/* UX-164: row 1 Preferred Cleaner · Email · City; row 2 Address · Area; then the other addresses */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+              <div className="md:col-span-4 min-w-0">
+                <CleanerMultiSelect
+                  alignRight
+                  label="Preferred Cleaner(s)"
+                  name="preferred_cleaner"
+                  cleaners={activeCleanersList}
+                  selected={selectedCleaners}
+                  onChange={setSelectedCleaners}
+                  placeholder="Assign cleaner(s)..."
+                />
+              </div>
               <div className="md:col-span-4">
                 <Input
                   name="email"
@@ -371,18 +373,6 @@ export function ClientModalForm({
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
-              {/* R-CLI-09: one Address field (was Apartment / Villa Number + Building / Villa Name) */}
-              <div className="md:col-span-8">
-                <input type="hidden" name="apartment" value="" />
-                <Input
-                  name="building_name"
-                  label="Address *"
-                  placeholder="e.g. Al Khair Building Apt 302 / Villa 25"
-                  defaultValue={singleAddressOf(seed)}
-                  className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
-                />
-              </div>
-
               <div className="md:col-span-4">
                 <Select
                   name="city"
@@ -399,7 +389,17 @@ export function ClientModalForm({
                   <option value="Umm Al Quwain">Umm Al Quwain</option>
                 </Select>
               </div>
-
+              {/* R-CLI-09: one Address field (was Apartment / Villa Number + Building / Villa Name) */}
+              <div className="md:col-span-8">
+                <input type="hidden" name="apartment" value="" />
+                <Input
+                  name="building_name"
+                  label="Address *"
+                  placeholder="e.g. Al Khair Building Apt 302 / Villa 25"
+                  defaultValue={singleAddressOf(seed)}
+                  className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
+                />
+              </div>
               <div className="md:col-span-4">
                 <Input
                   name="area"
@@ -407,18 +407,6 @@ export function ClientModalForm({
                   placeholder="e.g. Dubai Marina, JBR, Downtown"
                   defaultValue={seed?.area ?? ''}
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
-                />
-              </div>
-
-              <div className="md:col-span-4 min-w-0">
-                <CleanerMultiSelect
-                  alignRight
-                  label="Preferred Cleaner(s)"
-                  name="preferred_cleaner"
-                  cleaners={activeCleanersList}
-                  selected={selectedCleaners}
-                  onChange={setSelectedCleaners}
-                  placeholder="Assign cleaner(s)..."
                 />
               </div>
               {/* R-CLI-09: more addresses of the same client — chosen when booking */}
@@ -429,9 +417,11 @@ export function ClientModalForm({
           </div>
 
           {/* R-CLI-02: Bi-Weekly — days like the monthly schedule, and the contract duration */}
-          {mode === 'biweekly' && <ContractStatusToggle on={contractOn} onChange={setContractOn} />}
-          {mode === 'biweekly' && <ContractDetailsCard value={contract} onChange={setContract} existing={Boolean(savedContract)} />}
+          {mode !== 'general' && <ContractStatusToggle on={contractOn} onChange={setContractOn} />}
+          {mode !== 'general' && <ContractDetailsCard value={contract} onChange={setContract} existing={Boolean(savedContract)} />}
           {mode === 'biweekly' && <div data-field="biweekly_days"><BiWeeklyScheduleCard plan={plan} onChange={setPlan} cleaners={activeCleanersList} /></div>}
+          {/* R-SCHED-20: Monthly — the weekly schedule card in the same popup */}
+          {mode === 'monthly' && <WeeklyScheduleCard value={week} onChange={setWeek} employees={employees} />}
 
           {/* ── Card 3: Financial Balances & Service Remarks ── */}
           <div className="bg-white rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_rgba(15,23,42,0.02)] p-4.5">

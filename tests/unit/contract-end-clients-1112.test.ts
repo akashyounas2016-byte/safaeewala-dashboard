@@ -30,7 +30,7 @@ eq([contractValidity({ startDate: '2026-12-01' }, '2026-11-12'), contractValidit
   ['upcoming', 'running', 'ended'], 'validity: not started / running / ended')
 const card = readFileSync('src/components/clients/ContractDetailsCard.tsx', 'utf8')
 const tab = readFileSync('src/pages/MonthlyClients.tsx', 'utf8')
-eq([/name="contract_end"/.test(card), /Contract End Date \(optional\)/.test(tab), /contractDateError\(contract\)/.test(readFileSync('src/components/monthlyClients/AddMonthlyClientModalForm.tsx', 'utf8'))],
+eq([/name="contract_end"/.test(card), /Contract End Date \(optional\)/.test(tab), /contractDateError\(contract\)/.test((readFileSync('src/components/clients/ClientModalForm.tsx', 'utf8') + readFileSync('src/components/monthlyClients/WeeklyScheduleCard.tsx', 'utf8')))],
   [true, true, true], 'End date on the Contract card, in Monthly Clients → Contracts, checked before saving')
 
 // ── R-SCHED-10: a booking without a cleaner ──

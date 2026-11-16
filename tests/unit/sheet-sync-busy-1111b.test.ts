@@ -34,7 +34,7 @@ eq(/const fresh = expandTeamJob\(clone\(\[job\]\)\[0\], teamRef\)/.test(page), t
 eq([isAssignable({ status: 'inactive', role: 'cleaner' }), isAssignable({ status: 'active', role: 'csr' }), isAssignable({ status: 'on_leave', role: 'cleaner' })], [false, false, true], 'inactive and CSR not assignable')
 eq(/!isAssignable\(r\)/.test(readFileSync('src/components/dailyJobSheet/AddJobModal.tsx', 'utf8')), true, 'Add Job (Excel / Daily Job Sheet / Booking)')
 eq((readFileSync('src/components/bookings/NewBookingModal.tsx', 'utf8').match(/filter\(isAssignable\)/g) || []).length, 2, 'Booking pickers')
-eq(/e\.status !== 'inactive' && e\.role !== 'csr'/.test(readFileSync('src/components/monthlyClients/AddMonthlyClientModalForm.tsx', 'utf8')), true, 'Monthly client cleaner list')
+eq(/e\.status !== 'inactive' && e\.role !== 'csr'/.test((readFileSync('src/components/clients/ClientModalForm.tsx', 'utf8') + readFileSync('src/components/monthlyClients/WeeklyScheduleCard.tsx', 'utf8'))), true, 'Monthly client cleaner list')
 
 // ── UX-141: replacement only for real monthly-contract clients ──
 eq(/monthlyJobsNeedingCover\(gridRows, effectiveTargetDate, away, clients\)/.test(page), true, 'banner checks the client record')

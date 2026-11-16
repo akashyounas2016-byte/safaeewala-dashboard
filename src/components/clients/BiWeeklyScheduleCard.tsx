@@ -1,5 +1,5 @@
 import { CalendarRange, Clock, Users, CalendarClock } from 'lucide-react'
-import { DAYS_OF_WEEK, DAY_SHORT } from '@/components/monthlyClients/AddMonthlyClientModalForm'
+import { DAYS_OF_WEEK, DAY_SHORT } from '@/components/monthlyClients/WeeklyScheduleCard'
 import { biweeklyEndDate, biweeklyVisitDates, type BiWeeklyPlan, type BiWeeklyDay } from '@/lib/biweekly'
 import { todayDubai } from '@/lib/dubaiTime'
 import { ContractCalendar } from '@/components/clients/ContractCalendar'

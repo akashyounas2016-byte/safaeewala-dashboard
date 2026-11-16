@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(clients): one client popup for General / Monthly / Bi-Weekly (Monthly shows its weekly schedule card); address card reordered; saved addresses listed with an edit icon (R-SCHED-20, UX-164)
+- feat(clients): deleting a client needs its exact name typed (UX-165)
 - feat(clients): Clients · Monthly Clients · Bi-Weekly Clients tabs; Add Client opens in the tab's mode (UX-163)
 - feat(clients): one Address field, mobile number required, more addresses per client picked in New Booking — needs migration `2026-11-16_client_addresses.sql` (R-CLI-09)
 - fix(clients): Add Client (Clients screen and Add Job) keeps the Monthly / Bi-Weekly schedule; editing a client no longer leaves its old name as a second client (R-CLI-08, R-CLI-06)

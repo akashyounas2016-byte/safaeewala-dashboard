@@ -1,33 +1,42 @@
-// R-SCHED-16 (2026-11-16): "Office ABC Trading DMCC" (no service days) could not be saved at all — every edit
-// was refused with "Service days (tick at least one)", and with no day the save would have crashed.
+// R-SCHED-16..20 (2026-11-16): the monthly client in the one client popup.
+// "Office ABC Trading DMCC" (no service days) could not be saved; the 7-Day Schedule tab had no Save; two tabs had
+// two Contract sections; now one popup for every Mode with the weekly schedule card for Monthly.
 import { readFileSync } from 'node:fs'
+import { initialWeekSchedule, monthlyFieldsOf, activeDaysOf } from '@/components/monthlyClients/WeeklyScheduleCard'
+import type { Client } from '@/types'
 
 const eq = (a: unknown, b: unknown, m: string) => {
   if (JSON.stringify(a) !== JSON.stringify(b)) { console.log('FAIL', m, JSON.stringify(a), JSON.stringify(b)); process.exitCode = 1 } else console.log('PASS ', m)
 }
-const f = readFileSync('src/components/monthlyClients/AddMonthlyClientModalForm.tsx', 'utf8')
-eq(/ok: activeDays\.length > 0 \|\| !!initialClient/.test(f), true, 'an existing client saves without days; a new one still needs a day')
-eq(/if \(activeDays\.length === 0\) notify\.warning\(/.test(f), true, 'a warning says no visits are added without a day')
-eq(/scheduled_time: firstRow\?\.startTime \?\? initialClient\?\.scheduled_time/.test(f) && /end_time: firstRow\?\.endTime \?\? initialClient\?\.end_time/.test(f), true, 'no crash when no day is ticked')
-eq(/R-SCHED-16/.test(readFileSync('rules.md', 'utf8')), true, 'rule written')
-
-// R-SCHED-17: the 7-Day Schedule tab of Edit Monthly Client had no Save button
 const modal = readFileSync('src/components/clients/ClientModalForm.tsx', 'utf8')
-eq(/\{activeTab === 'profile' && \(/.test(modal), false, 'Save / Cancel are no longer only on the Profile tab')
-eq(/form=\{showMonthlyFlow \? 'add-monthly-client-form' : 'client-modal-form'\}/.test(modal), true, 'Save sends the form that is shown (R-SCHED-18)')
+const card = readFileSync('src/components/monthlyClients/WeeklyScheduleCard.tsx', 'utf8')
+const rules = readFileSync('rules.md', 'utf8')
 
-// R-SCHED-18: one form, chosen by the Mode; Mode can be changed after the client is created
+// ── R-SCHED-16: an existing client saves without days; its times and cleaner stay ──
+const abc = { full_name: 'Cloud Test ABC', service_days: [], scheduled_time: '10:00', end_time: '14:00', preferred_cleaner: 'Cloud Test Misbah' } as unknown as Client
+const none = Object.fromEntries(Object.entries(initialWeekSchedule()).map(([d, r]) => [d, { ...r, enabled: false }]))
+const f0 = monthlyFieldsOf(none, abc)
+eq([f0.service_days, f0.scheduled_time, f0.end_time, f0.preferred_cleaner], [[], '10:00', '14:00', 'Cloud Test Misbah'], 'no day ticked → no crash; times and cleaner kept')
+eq(/ok: mode !== 'monthly' \|\| activeDaysOf\(week\)\.length > 0 \|\| isEdit/.test(modal), true, 'a new Monthly client needs a day; an existing one saves without')
+eq(/if \(active\.length === 0\) notify\.warning\(/.test(modal), true, 'a warning says no visits are added without a day')
+
+// a week with days → the client fields
+const w = initialWeekSchedule({ service_days: ['Tuesday'], day_schedules: { Tuesday: { startTime: '09:00', endTime: '12:00', cleaner: 'Cloud Test Nobel', duration: 3 } } } as unknown as Client)
+const f1 = monthlyFieldsOf(w)
+eq([activeDaysOf(w), f1.service_days, f1.day_cleaner_assignments, f1.preferred_cleaner, f1.duration_hours], [['Tuesday'], ['Tuesday'], { Tuesday: 'Cloud Test Nobel' }, 'Cloud Test Nobel', 3], 'a saved week comes back and is saved the same')
+
+// ── R-SCHED-17 / 18 / 20: one popup, Save always, Mode changeable ──
 eq(/activeTab/.test(modal) || /7-Day Schedule<\/span>/.test(modal), false, 'no Profile / 7-Day Schedule tabs')
-eq(/const showMonthlyFlow = mode === 'monthly'/.test(modal), true, 'Monthly (new or existing) → the monthly form with contract, profile, balances and schedule')
+eq(/form="client-modal-form"/.test(modal) && !/add-monthly-client-form/.test(modal), true, 'one form, one Save')
+eq(/\{mode === 'monthly' && <WeeklyScheduleCard value=\{week\} onChange=\{setWeek\}/.test(modal) && /\{mode !== 'general' && <ContractDetailsCard/.test(modal), true, 'Monthly: weekly schedule and contract in the same popup')
 eq(/disabled=\{monthlyEdit\}/.test(modal), false, 'Mode can be changed for an existing client')
-eq(/mode === 'monthly' \? 'Edit Monthly Client' : mode === 'biweekly' \? 'Edit Bi-Weekly Client' : 'Edit Client Profile'/.test(modal), true, '"Edit Monthly Client" only for Monthly; Bi-Weekly / General have their own title')
-eq(/if \(hadMonthlySchedule\) \{\s*patch\.service_days = \[\]/.test(modal), true, 'Monthly → General / Bi-Weekly clears the weekly schedule (no more monthly visits)')
-eq(/R-SCHED-18/.test(readFileSync('rules.md', 'utf8')), true, 'R-SCHED-18 written')
+eq(/mode === 'monthly' \? 'Edit Monthly Client' : mode === 'biweekly' \? 'Edit Bi-Weekly Client' : 'Edit Client Profile'/.test(modal), true, 'title follows the Mode')
+eq(/if \(hadMonthlySchedule && mode !== 'monthly'\) \{\s*patch\.service_days = \[\]/.test(modal), true, 'Monthly → General / Bi-Weekly clears the weekly schedule')
+eq(/findMonthlyScheduleClashes\(/.test(modal), true, 'monthly time clashes are checked before saving')
+eq(/<ClientModalForm[\s\S]{0,200}prefill=\{\{ service_mode: 'monthly' \}\}/.test(readFileSync('src/pages/MonthlyClients.tsx', 'utf8')), true, 'Monthly Clients → Add opens the same popup in Monthly mode')
 
-// UX-161: Weekly Schedule section can be hidden; Apply Mon Times / Staff removed
-eq(/Apply Mon Times|Apply Mon Staff/.test(f), false, 'Apply Mon Times / Staff removed')
-eq(/onClick=\{toggleSchedule\}/.test(f) && /className=\{scheduleOpen \? 'overflow-x-auto' : 'hidden'\} data-field="schedule_days"/.test(f), true, 'Hide / Show toggle; the table stays in the form when hidden')
-eq(/if \(activeDays\.length === 0 && !initialClient\) setScheduleOpen\(true\)/.test(f), true, 'opens again when a day must be ticked')
-eq(/R-SCHED-17/.test(readFileSync('rules.md', 'utf8')), true, 'rule written')
+// ── UX-161: Weekly Schedule card ──
+eq(/Apply Mon Times|Apply Mon Staff/.test(card), false, 'Apply Mon Times / Staff removed')
+eq(/onClick=\{toggleSchedule\}/.test(card) && /scheduleOpen \|\| activeDays\.length === 0 \? 'overflow-x-auto' : 'hidden'/.test(card), true, 'Hide / Show; shown while no day is ticked')
 
-eq(/Object\.values\(finalAssignments\)\[0\] \|\| \(activeDays\.length === 0 \? \(initialClient\?\.preferred_cleaner \|\| ''\) : ''\)/.test(f), true, 'saved without days → the preferred cleaner is kept')
+eq(['R-SCHED-16', 'R-SCHED-17', 'R-SCHED-18', 'R-SCHED-20'].every(id => rules.includes(id)), true, 'rules written')

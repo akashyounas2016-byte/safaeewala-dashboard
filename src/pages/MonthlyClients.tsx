@@ -32,7 +32,7 @@ import {
   type MonthlyClientSummary,
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
-import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
+import { ClientModalForm } from '@/components/clients/ClientModalForm'
 import { ClientCardShell, CleanerStack, WeekStrip, MoneyStrip, CardAction } from '@/components/clients/ClientCardParts'
 import { todayDubai, addDays, calendarDate } from '@/lib/dubaiTime'
 import { REMOTE_CHANGE_EVENT } from '@/lib/cloudState'
@@ -2905,44 +2905,17 @@ export function MonthlyClients() {
         )
       })()}
 
-      {/* Add Client Modal */}
-      <Modal
+      {/* R-SCHED-20: Add Monthly Client = the same client popup as everywhere, opened in Monthly mode */}
+      <ClientModalForm
         open={showModal}
         onClose={() => setShowModal(false)}
-        title="Add New Monthly Client"
-        size="xl"
-        headerActions={
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowModal(false)}
-              className="h-8 px-3 text-[11.5px] font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              form="add-monthly-client-form"
-              size="sm"
-              className="h-8 px-4 text-[11.5px] bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer flex items-center gap-1.5 shadow-xs"
-            >
-              <Check size={13} className="stroke-[2.5]" />
-              <span>Save Client</span>
-            </Button>
-          </div>
-        }
-      >
-        <AddMonthlyClientModalForm
-          onClose={() => setShowModal(false)}
-          onAdd={clientData => {
-            addClient(clientData)
-            setShowModal(false)
-          }}
-          employees={employees}
-        />
-      </Modal>
+        employees={employees}
+        prefill={{ service_mode: 'monthly' }}
+        onSave={clientData => {
+          addClient(clientData as Omit<Client, 'id' | 'created_at'>)
+          setShowModal(false)
+        }}
+      />
 
       {/* New Booking Modal */}
       <Modal open={showBookingModal} onClose={() => setShowBookingModal(false)} title="New Booking" size="lg">
@@ -3699,5 +3672,4 @@ function ClientBookingForm({ clientName, clientPhone, onClose, onAdd }: { client
 }
 
 
-export { AddMonthlyClientModalForm, DAYS_OF_WEEK, DAY_SHORT } from '@/components/monthlyClients/AddMonthlyClientModalForm'
-export type { AddMonthlyClientModalFormProps } from '@/components/monthlyClients/AddMonthlyClientModalForm'
+export { DAYS_OF_WEEK, DAY_SHORT } from '@/components/monthlyClients/WeeklyScheduleCard'

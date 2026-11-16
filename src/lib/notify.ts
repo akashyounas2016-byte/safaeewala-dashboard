@@ -18,6 +18,8 @@ export interface ConfirmOptions {
   confirmLabel?: string
   cancelLabel?: string
   tone?: 'danger' | 'default'
+  /** UX-165: the user must type (or paste) exactly this text before Confirm works — e.g. the client's name */
+  typeToConfirm?: string
 }
 
 export const CONFIRM_EVENT = 'safaeewala:confirm'

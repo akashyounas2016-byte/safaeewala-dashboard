@@ -49,5 +49,5 @@ const legacy = {
 } as unknown as Client
 eq(getClientShiftDetailsForDay(legacy, 'Monday' as never).cleanerName, '', 'an old client saved with "Unassigned" adds its visits without a cleaner')
 eq(scheduleCleanerAlerts([legacy], [] as Employee[]).length, 0, 'no "cleaner who is not an employee: Unassigned" alert')
-const form = readFileSync('src/components/monthlyClients/AddMonthlyClientModalForm.tsx', 'utf8')
-eq([/\|\| 'Unassigned'/.test(form), /if \(cleaner\) finalAssignments\[day\] = cleaner/.test(form)], [false, true], 'the form saves no cleaner as empty, never "Unassigned"')
+const form = (readFileSync('src/components/clients/ClientModalForm.tsx', 'utf8') + readFileSync('src/components/monthlyClients/WeeklyScheduleCard.tsx', 'utf8'))
+eq([/\|\| 'Unassigned'/.test(form), /if \(cleaner\) day_cleaner_assignments\[day\] = cleaner/.test(form)], [false, true], 'the form saves no cleaner as empty, never "Unassigned"')

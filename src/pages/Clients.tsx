@@ -18,7 +18,6 @@ import type { BookingFrequency, Client } from '@/types'
 import { isMonthlyJob, jobMatchesClient, isMonthlyClient, extractMonthlyClientsFromDailyJobs, calcClientPendingBalance } from '@/lib/clientDataSync'
 import { SourceOriginTag, resolveClientSource } from '@/lib/sourceTracking'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
-import { AddMonthlyClientModalForm } from '@/components/monthlyClients/AddMonthlyClientModalForm'
 import { ClientModalForm } from '@/components/clients/ClientModalForm'
 import { ClientCardShell, CleanerStack, WeekStrip, MoneyStrip, CardAction } from '@/components/clients/ClientCardParts'
 import { clientCrewMix } from '@/lib/clientCrew'
@@ -169,6 +168,7 @@ export function Clients() {
 
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [deleteTyped, setDeleteTyped] = useState('') // UX-165
   // UX-163: Clients · Monthly Clients · Bi-Weekly Clients — each client in the tab of its Mode
   type ModeTab = 'general' | 'monthly' | 'biweekly'
   const [modeTab, setModeTabState] = useState<ModeTab>(() => {
@@ -970,7 +970,7 @@ export function Clients() {
                         type="button"
                         onClick={async () => {
                           // UX-105: the table asks first, like the cards (it deleted at once)
-                          const ok = await confirmAsync({ title: 'Delete client', message: `Delete "${c.full_name}"? Their jobs stay in the Daily Job Sheet.`, confirmLabel: 'Delete', tone: 'danger' })
+                          const ok = await confirmAsync({ title: 'Delete client', message: `Delete "${c.full_name}"? Their jobs stay in the Daily Job Sheet.`, confirmLabel: 'Delete', tone: 'danger', typeToConfirm: c.full_name }) // UX-165
                           if (ok) deleteClient(c.id)
                         }}
                         className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
@@ -1362,7 +1362,7 @@ export function Clients() {
                   <CardAction tone="slate" icon={<ExternalLink size={12} />} label="Profile" onClick={() => navigate(`/clients/${c.id}`)} />
                   <CardAction tone="rose" icon={<Trash2 size={12} />} label="Delete" title="Delete client"
                     onClick={async () => {
-                      const ok = await confirmAsync({ title: 'Delete client', message: `Delete "${c.full_name}"? Their jobs stay in the Daily Job Sheet.`, confirmLabel: 'Delete', tone: 'danger' })
+                      const ok = await confirmAsync({ title: 'Delete client', message: `Delete "${c.full_name}"? Their jobs stay in the Daily Job Sheet.`, confirmLabel: 'Delete', tone: 'danger', typeToConfirm: c.full_name }) // UX-165
                       if (ok) deleteClient(c.id)
                     }} />
                 </div>
@@ -1565,12 +1565,20 @@ export function Clients() {
               <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                 <p className="text-[13px] font-semibold text-red-700 mb-1">Delete this client?</p>
                 <p className="text-[12px] text-red-600 mb-3">This will permanently remove <strong>{selected.full_name}</strong> from Supabase. This cannot be undone.</p>
+                {/* UX-165: type the client's name first */}
+                <label className="block mb-3">
+                  <span className="text-[12px] font-semibold text-red-700">Type <strong className="select-all">{selected.full_name}</strong> to confirm</span>
+                  <input value={deleteTyped} onChange={e => setDeleteTyped(e.target.value)} aria-label="Type the client name to confirm" placeholder={selected.full_name}
+                    className="mt-1 w-full h-9 px-3 rounded-lg border border-red-200 bg-white focus:border-red-400 outline-none text-[13px]" />
+                </label>
                 <div className="flex gap-3">
-                  <Button type="button" variant="outline" className="flex-1" size="sm" onClick={() => setConfirmDelete(false)}>Cancel</Button>
+                  <Button type="button" variant="outline" className="flex-1" size="sm" onClick={() => { setConfirmDelete(false); setDeleteTyped('') }}>Cancel</Button>
                   <button
                     type="button"
-                    className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[13px] font-semibold py-2 rounded-xl transition-colors"
+                    disabled={deleteTyped.trim().replace(/\s+/g, ' ') !== selected.full_name.trim().replace(/\s+/g, ' ')}
+                    className="flex-1 bg-red-600 hover:bg-red-700 text-white text-[13px] font-semibold py-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => {
+                      setDeleteTyped('')
                       deleteClient(selected!.id)
                       setSelected(null)
                       setConfirmDelete(false)

@@ -22,7 +22,7 @@ const c2 = contractOfClient('TEST Contract Client B')
 eq([list().length, c2?.id === c1?.id, c2?.amount, c2?.status], [1, true, 2000, 'paused'], 'edit / rename updates the same contract; Contract Status Off → paused')
 eq(isMonthlyContractStopped({ full_name: 'TEST Contract Client B' }, list()), true, 'a paused contract stops the monthly visits (R-SCHED-05)')
 eq(renewalDateOf('2026-02-28'), '2027-02-28', 'renewal date')
-const form = readFileSync('src/components/monthlyClients/AddMonthlyClientModalForm.tsx', 'utf8')
+const form = (readFileSync('src/components/clients/ClientModalForm.tsx', 'utf8') + readFileSync('src/components/monthlyClients/WeeklyScheduleCard.tsx', 'utf8'))
 const general = readFileSync('src/components/clients/ClientModalForm.tsx', 'utf8')
 eq([/<ContractDetailsCard/.test(form), /saveClientContract\(/.test(form), /<ContractDetailsCard/.test(general), /patch\.service_mode !== 'general'/.test(general)], [true, true, true, true], 'the card is on the Monthly and Bi-Weekly client popup; a General client has no contract')
 

@@ -23,6 +23,6 @@ eq(isMonthlyClient(bw, []), false, 'bi-weekly plan does not make the client mont
 const form = fs.readFileSync('src/components/clients/ClientModalForm.tsx', 'utf8')
 eq(/<option value="general">General<\/option>[\s\S]*<option value="biweekly">Bi-Weekly<\/option>[\s\S]*<option value="monthly">Monthly<\/option>/.test(form), true, 'Mode offers General, Bi-Weekly, Monthly')
 eq(!/Enter client name and direct communication/.test(form) && !/Physical service address, community/.test(form), true, 'description lines removed')
-eq(/showMonthlyFlow \? \(\s*\/\*[^*]*\*\/\s*<AddMonthlyClientModalForm/.test(form), true, 'Monthly opens the monthly client form')
+eq(/\{mode === 'monthly' && <WeeklyScheduleCard value=\{week\} onChange=\{setWeek\}/.test(form), true, 'Monthly shows the weekly schedule card in the same popup (R-SCHED-20)')
 const sql = fs.readFileSync('supabase/migrations/2026-11-04_clients_service_mode.sql', 'utf8')
 eq(/add column if not exists service_mode text/.test(sql) && /add column if not exists biweekly_plan jsonb/.test(sql), true, 'migration adds both columns')
