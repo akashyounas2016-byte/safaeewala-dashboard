@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { requireFields } from '@/components/common/FormGuard'
 import { clientNameOrAddress, hasClientAddress } from '@/lib/clientAddress'
-import { Calendar, Clock, Users, Sparkles, Check } from 'lucide-react'
+import { Calendar, Clock, Users, Sparkles, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
@@ -44,6 +44,9 @@ export function AddMonthlyClientModalForm({
 }: AddMonthlyClientModalFormProps) {
   const seedClient: Partial<Client> | null | undefined = initialClient ?? prefill
   // R-CLI-05: the client's contract (Monthly Clients → Contracts) is edited here too
+  // UX-161: the Weekly Schedule section can be hidden (choice kept per browser)
+  const [scheduleOpen, setScheduleOpen] = useState<boolean>(() => { try { return localStorage.getItem('safaeewala_monthly_schedule_open') !== '0' } catch { return true } })
+  const toggleSchedule = () => setScheduleOpen(o => { const n = !o; try { localStorage.setItem('safaeewala_monthly_schedule_open', n ? '1' : '0') } catch { /* ignore */ } return n })
   const [savedContract] = useState(() => (initialClient ? contractOfClient(initialClient.full_name) : undefined))
   const [contract, setContract] = useState(() => detailsOfContract(savedContract))
   // R-SCHED-08: Off when the client or its contract is switched off
@@ -202,41 +205,6 @@ export function AddMonthlyClientModalForm({
     })
   }
 
-  // Quick bulk copy helpers
-  const copyTimesToAllActive = (sourceDay = 'Monday') => {
-    const src = daySchedules[sourceDay]
-    if (!src) return
-    const srcDur = src.duration || calcDurationFromTimes(src.startTime, src.endTime) || 4
-    setDaySchedules(prev => {
-      const next = { ...prev }
-      DAYS_OF_WEEK.forEach(day => {
-        if (next[day].enabled) {
-          next[day] = {
-            ...next[day],
-            startTime: src.startTime,
-            endTime: src.endTime,
-            duration: srcDur,
-          }
-        }
-      })
-      return next
-    })
-  }
-
-  const copyCleanerToAllActive = (sourceDay = 'Monday') => {
-    const src = daySchedules[sourceDay]
-    if (!src || !src.cleaner) return
-    setDaySchedules(prev => {
-      const next = { ...prev }
-      DAYS_OF_WEEK.forEach(day => {
-        if (next[day].enabled) {
-          next[day] = { ...next[day], cleaner: src.cleaner }
-        }
-      })
-      return next
-    })
-  }
-
   const activeDays = useMemo(() => {
     return DAYS_OF_WEEK.filter(day => daySchedules[day]?.enabled)
   }, [daySchedules])
@@ -263,6 +231,7 @@ export function AddMonthlyClientModalForm({
       return
     }
     const clientName = selfName
+    if (activeDays.length === 0 && !initialClient) setScheduleOpen(true) // UX-161: show the days that must be ticked
     // UX-84: message at the top + outlined fields instead of a browser alert
     if (!requireFields(e.currentTarget, [
       { name: 'building', label: 'Address (apartment / villa number or building name)', ok: hasClientAddress(addressParts) },
@@ -385,8 +354,9 @@ export function AddMonthlyClientModalForm({
             </div>
           </div>
 
-          {/* Quick Presets & Bulk Actions */}
+          {/* Quick day presets (UX-161: the copy-Monday buttons are replaced by Hide / Show) */}
           <div className="flex items-center gap-1.5 flex-wrap">
+            {scheduleOpen && <>
             <span className="text-[10px] text-slate-400 font-bold mr-0.5">Presets:</span>
             <button
               type="button"
@@ -428,28 +398,21 @@ export function AddMonthlyClientModalForm({
             >
               Clear
             </button>
-            <div className="h-4 w-px bg-slate-300 mx-1" />
+            </>}
             <button
               type="button"
-              onClick={() => copyTimesToAllActive('Monday')}
-              className="text-[10px] font-bold px-2 py-1 rounded-md bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 transition-colors cursor-pointer shadow-2xs"
-              title="Copy Monday's start & end times and duration to all active days"
+              onClick={toggleSchedule}
+              aria-expanded={scheduleOpen}
+              className="ml-1 inline-flex items-center gap-1 text-[10.5px] font-bold px-2.5 py-1 rounded-md bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition-colors cursor-pointer shadow-2xs"
+              title={scheduleOpen ? 'Hide the weekly schedule' : 'Show the weekly schedule'}
             >
-              Apply Mon Times
-            </button>
-            <button
-              type="button"
-              onClick={() => copyCleanerToAllActive('Monday')}
-              className="text-[10px] font-bold px-2 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 transition-colors cursor-pointer shadow-2xs"
-              title="Copy Monday's assigned cleaner to all active days"
-            >
-              Apply Mon Staff
+              {scheduleOpen ? <><ChevronUp size={12} /> Hide</> : <><ChevronDown size={12} /> Show</>}
             </button>
           </div>
         </div>
 
         {/* 5 Columns × 7 Rows Table */}
-        <div className="overflow-x-auto" data-field="schedule_days">
+        <div className={scheduleOpen ? 'overflow-x-auto' : 'hidden'} data-field="schedule_days">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">

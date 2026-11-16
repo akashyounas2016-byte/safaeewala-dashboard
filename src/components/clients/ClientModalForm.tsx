@@ -56,7 +56,9 @@ export function ClientModalForm({
   const seed: Partial<Client> | null | undefined = initialClient ?? prefill
 
   // Tab state for monthly client (Profile & Financials vs 7-Day Recurring Schedule)
-  const [activeTab, setActiveTab] = useState<'profile' | 'schedule'>('profile')
+  // R-SCHED-18: no Profile / 7-Day Schedule tabs. The form follows the Mode: Monthly → the monthly form
+  // (contract, profile, balances and the 7-day schedule in one), General / Bi-Weekly → this form. The two tabs
+  // each had their own Contract section and a change made in one did not show in the other (2026-11-16).
 
   // R-CLI-02: Mode — General (stay here), Bi-Weekly (days + duration here), Monthly (the monthly client form)
   const startMode = (): ClientServiceMode => (isMonthly ? 'monthly' : seed?.service_mode === 'biweekly' ? 'biweekly' : seed?.service_mode === 'monthly' ? 'monthly' : 'general')
@@ -69,13 +71,13 @@ export function ClientModalForm({
   const [contractOn, setContractOn] = useState(() => seed?.contract_active !== false && (!savedContract || savedContract.status === 'active'))
   const [monthlyPrefill, setMonthlyPrefill] = useState<Partial<Client> | undefined>(undefined)
   const formRef = useRef<HTMLFormElement>(null)
-  const monthlyEdit = isMonthly && isEdit // an existing monthly client keeps its Profile / 7-Day Schedule tabs
-  const showMonthlyFlow = mode === 'monthly' && !monthlyEdit
+  const showMonthlyFlow = mode === 'monthly' // R-SCHED-18: new and existing monthly clients alike
+  // R-SCHED-18: was a monthly client (has a weekly schedule) — moving it to General / Bi-Weekly clears that schedule
+  const hadMonthlySchedule = isEdit && Array.isArray(initialClient?.service_days) && (initialClient?.service_days?.length || 0) > 0
 
   // Reset tab when modal opens
   useEffect(() => {
     if (open) {
-      setActiveTab('profile')
       setMode(startMode())
       setPlan(seed?.biweekly_plan ?? emptyBiWeeklyPlan())
       setContractOn(seed?.contract_active !== false)
@@ -104,9 +106,8 @@ export function ClientModalForm({
       {!compact && <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1.5">Mode</label>}
       <select
         value={mode}
-        disabled={monthlyEdit}
         onChange={e => chooseMode(e.target.value as ClientServiceMode)}
-        title={monthlyEdit ? 'Monthly client — change the schedule in the 7-Day Schedule tab' : 'General: one-off jobs · Bi-Weekly: chosen days every other week · Monthly: monthly client form'}
+        title="General: one-off jobs · Bi-Weekly: chosen days every other week · Monthly: weekly schedule. Can be changed any time (R-SCHED-18)"
         className={`w-full ${compact ? 'h-9' : 'h-9.5'} px-3 text-[13px] font-bold rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-teal-500 cursor-pointer disabled:cursor-not-allowed disabled:bg-slate-50 ${mode === 'biweekly' ? 'text-violet-800' : mode === 'monthly' ? 'text-emerald-800' : 'text-slate-800'}`}
       >
         <option value="general">General</option>
@@ -153,7 +154,7 @@ export function ClientModalForm({
     const addressParts = { apartment: String(f.get('apartment') || ''), building_name: String(f.get('building_name') || ''), area: String(f.get('area') || '') }
     if (!requireFields(e.currentTarget, [
       { name: 'building_name', label: 'Address (apartment / villa number or building name)', ok: hasClientAddress(addressParts) },
-      { name: 'contract_end', label: 'Contract End (on or after Contract Start)', ok: !(mode === 'biweekly' || monthlyEdit) || !contractDateError(contract) }, // R-SCHED-11
+      { name: 'contract_end', label: 'Contract End (on or after Contract Start)', ok: mode !== 'biweekly' || !contractDateError(contract) }, // R-SCHED-11
     ])) return
     const clientName = clientNameOrAddress(f.get('full_name'), addressParts)
     const remarks = String(f.get('remarks') || '')
@@ -189,9 +190,15 @@ export function ClientModalForm({
       if (!contractOn || seed?.contract_active === false) patch.contract_active = contractOn // R-SCHED-08 (sent only when Off or turned back On)
       if (!cleaner) patch.preferred_cleaner = Array.from(new Set(plan.days.map(d => plan.day_schedules[d]?.cleaner).filter(Boolean))).join(', ')
     } else {
-      patch.service_mode = monthlyEdit ? 'monthly' : 'general'
-      if (monthlyEdit && (!contractOn || seed?.contract_active === false)) patch.contract_active = contractOn // R-SCHED-08
+      patch.service_mode = 'general'
       if (seed?.biweekly_plan) patch.biweekly_plan = null as unknown as undefined // no longer bi-weekly
+    }
+
+    // R-SCHED-18: a monthly client moved to General / Bi-Weekly — its weekly schedule goes, so no monthly visits are made any more
+    if (hadMonthlySchedule) {
+      patch.service_days = []
+      patch.day_schedules = {}
+      patch.day_cleaner_assignments = {}
     }
 
     // VAL-03: UAE mobile format (other countries are allowed after a confirm)
@@ -231,7 +238,7 @@ export function ClientModalForm({
       </div>
       <div>
         <h3 className="text-[16px] font-black text-slate-900 tracking-tight">
-          {isEdit ? (isMonthly ? 'Edit Monthly Client' : 'Edit Client Profile') : 'Add New Client'}
+          {isEdit ? (mode === 'monthly' ? 'Edit Monthly Client' : mode === 'biweekly' ? 'Edit Bi-Weekly Client' : 'Edit Client Profile') : 'Add New Client'}
         </h3>
         <p className="text-[11px] font-semibold text-slate-500">
           {isEdit ? 'Update client details, address, crew assignment & opening balances' : 'Register a new client with contact details, address & opening financials'}
@@ -250,36 +257,7 @@ export function ClientModalForm({
       bodyClassName="px-6 py-5 pb-6 bg-slate-50/50"
       headerActions={
         <div className="flex items-center gap-2 mr-1">
-          {/* Monthly tab switcher if client is monthly and editing */}
-          {isMonthly && isEdit && (
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg mr-2 border border-slate-200">
-              <button
-                type="button"
-                onClick={() => setActiveTab('profile')}
-                className={`px-3 py-1 text-[11.5px] font-bold rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
-                  activeTab === 'profile'
-                    ? 'bg-white text-emerald-800 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <UserCheck size={13} />
-                <span>Profile & Financials</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('schedule')}
-                className={`px-3 py-1 text-[11.5px] font-bold rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
-                  activeTab === 'schedule'
-                    ? 'bg-white text-purple-800 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Calendar size={13} />
-                <span>7-Day Schedule</span>
-              </button>
-            </div>
-          )}
-
+          {/* R-SCHED-18: no Profile / 7-Day Schedule tabs any more — one form */}
           {showMonthlyFlow && modeSelect(true)}
           {/* R-SCHED-17: Save on both tabs — the 7-Day Schedule tab had no Save button, so a picked day / cleaner
               could never be saved (2026-11-16); there it submits the schedule form */}
@@ -295,7 +273,7 @@ export function ClientModalForm({
               </Button>
               <Button
                 type="submit"
-                form={showMonthlyFlow || (isMonthly && isEdit && activeTab === 'schedule') ? 'add-monthly-client-form' : 'client-modal-form'}
+                form={showMonthlyFlow ? 'add-monthly-client-form' : 'client-modal-form'}
                 size="sm"
                 disabled={isSaving}
                 className="h-9 px-4.5 text-[12.5px] font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs cursor-pointer flex items-center gap-1.5 rounded-xl transition-all"
@@ -318,17 +296,6 @@ export function ClientModalForm({
           onClose={onClose}
           onAdd={monthlyData => {
             onSave({ ...monthlyData, service_mode: 'monthly', ...(seed?.biweekly_plan ? { biweekly_plan: null as unknown as undefined } : {}) })
-            onClose()
-          }}
-        />
-      ) : isMonthly && isEdit && activeTab === 'schedule' ? (
-        <AddMonthlyClientModalForm
-          initialClient={initialClient}
-          isEdit={true}
-          employees={employees}
-          onClose={onClose}
-          onAdd={updatedMonthlyData => {
-            onSave(updatedMonthlyData)
             onClose()
           }}
         />
@@ -463,8 +430,8 @@ export function ClientModalForm({
           </div>
 
           {/* R-CLI-02: Bi-Weekly — days like the monthly schedule, and the contract duration */}
-          {(mode === 'biweekly' || monthlyEdit) && <ContractStatusToggle on={contractOn} onChange={setContractOn} />}
-          {(mode === 'biweekly' || monthlyEdit) && <ContractDetailsCard value={contract} onChange={setContract} existing={Boolean(savedContract)} />}
+          {mode === 'biweekly' && <ContractStatusToggle on={contractOn} onChange={setContractOn} />}
+          {mode === 'biweekly' && <ContractDetailsCard value={contract} onChange={setContract} existing={Boolean(savedContract)} />}
           {mode === 'biweekly' && <div data-field="biweekly_days"><BiWeeklyScheduleCard plan={plan} onChange={setPlan} cleaners={activeCleanersList} /></div>}
 
           {/* ── Card 3: Financial Balances & Service Remarks ── */}

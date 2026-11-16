@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(clients): Edit client popup is one form chosen by the Mode (no Profile / 7-Day Schedule tabs, one Contract section); Mode can be changed after creation; "Edit Monthly Client" only for Monthly; Weekly Schedule section can be hidden, Apply Mon Times / Staff removed (R-SCHED-18, UX-161)
 - fix(monthly): the 7-Day Schedule tab of Edit Monthly Client has a Save button — picked days and cleaners can be saved (R-SCHED-17)
 - fix(monthly): an existing monthly client without service days (Office ABC Trading DMCC) can be edited and saved again; no crash without a day (R-SCHED-16)
 - change(clients): Clients screen has Grid Card / Table / Wide Grid like Monthly Clients, and search, area, date and sort in one row (UX-160)

@@ -59,8 +59,11 @@
 - Har job apne client se jurri rehti hai. Client ka naam ya building badlein to bhi uski purani aur nayi visits usi client ki rehti hain.
 - Monthly Clients list mein har client ek dafa aata hai. Uski visits (jaise *Villa# 06 - Zayan*) se alag nakli client nahi banta — edit hamesha asal client par hota hai.
 
-### Schedule badalna
-- Client ka popup → **7-Day Schedule** tab → din, waqt aur cleaner chunein → upar **Save Changes** dabayein. (Pehle is tab par Save button nahi tha.)
+### Client edit karna (ek hi form)
+- Client ka popup ab **ek hi form** hai — Contract, naam / address, balances aur hafte ka schedule sab ek jagah. Upar **Save Changes**.
+- **Mode** (General / Bi-Weekly / Monthly) baad mein bhi badal sakte hain. Popup ka naam mode ke mutabiq: *Edit Monthly Client*, *Edit Bi-Weekly Client* ya *Edit Client Profile*.
+- Monthly se General ya Bi-Weekly karne par hafte ka monthly schedule hat jata hai, us ki nayi visits nahi banti.
+- **Weekly Schedule & Staff Assignment** ke saath **Hide / Show** button hai — zaroorat na ho to chhupa dein.
 
 ### Bina din ke client
 - Naye Monthly client ke liye kam se kam ek din tick karna zaroori hai. Pehle se maujood client ko bina din ke bhi save kar sakte hain (misaal: sirf address badalna) — tab ek warning aati hai ke din tick hone tak us ki visits Job Sheet par nahi banengi.

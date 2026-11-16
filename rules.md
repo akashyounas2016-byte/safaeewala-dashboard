@@ -160,6 +160,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/components/clients/ClientModalForm.tsx`. Test: `tests/unit/monthly-edit-nodays-1116.test.ts`.
 - **Status:** Active · Since: 2026-11-16
 
+### R-SCHED-18 — One client form, chosen by the Mode; Mode can be changed later
+- **Why:** Edit Monthly Client had two tabs (Profile & Financials, 7-Day Schedule), each with its own Contract section — a change made in one did not show in the other, and the schedule tab had no Save (R-SCHED-17). The team also asked that the Mode can be changed after a client is created (2026-11-16).
+  - No tabs. The popup shows the form of the chosen **Mode**: Monthly → the monthly form (contract, profile, balances and the weekly schedule together); Bi-Weekly / General → the client form (Bi-Weekly with its days and contract).
+  - Title follows the Mode: *Edit Monthly Client*, *Edit Bi-Weekly Client* or *Edit Client Profile* — a General client never sees the monthly popup.
+  - The Mode select works for existing clients too. Monthly → General / Bi-Weekly clears the weekly schedule (service days, day schedules, day cleaners), so no monthly visits are made any more; Bi-Weekly → Monthly removes the Bi-Weekly plan.
+- **Code:** `src/components/clients/ClientModalForm.tsx`. Test: `tests/unit/monthly-edit-nodays-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
+
 ---
 
 ## ATT — Attendance
