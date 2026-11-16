@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(marketing): WhatsApp Clicks rows have Edit and Delete icons; needs migration `2026-11-17_whatsapp_clicks_edit.sql` (R-MKT-04)
 - feat(clients): a changed monthly schedule (day, time, hours, cleaner) updates the Job Sheet rows from today on; earlier rows stay, hand-made sheet changes stay (R-SCHED-21)
 - fix(clients): Contract Start no longer shows today every day — kept once saved, else the day the client was added (R-SCHED-22)
 - feat(job-sheet): a client's other addresses can be picked on the Daily Job Sheet and Excel sheet; such jobs belong to the client (R-CLI-12)

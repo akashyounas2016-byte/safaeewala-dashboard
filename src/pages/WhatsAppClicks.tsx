@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MessageCircle, MousePointerClick, Smartphone, FileText, RefreshCw, Search, Megaphone } from 'lucide-react'
+import { MessageCircle, MousePointerClick, Smartphone, FileText, RefreshCw, Search, Megaphone, Pencil, Trash2 } from 'lucide-react'
+import { Modal } from '@/components/ui/Modal'
+import { confirmAsync, notify } from '@/lib/notify'
+import { logAudit } from '@/lib/auditLog'
 import { PageHero } from '@/components/layout/PageHero'
 import { KpiCard, Widget } from '@/components/ui/KpiCard'
 import { supabase } from '@/lib/supabase'
@@ -22,6 +25,58 @@ function Bars({ list }: { list: { key: string; count: number }[] }) {
   )
 }
 
+const EDIT_FIELDS: { key: keyof WhatsAppClick; label: string; wide?: boolean }[] = [
+  { key: 'page_title', label: 'Page', wide: true },
+  { key: 'page_url', label: 'Page link', wide: true },
+  { key: 'button_text', label: 'Button' },
+  { key: 'button_location', label: 'Button place' },
+  { key: 'utm_source', label: 'Source' },
+  { key: 'utm_campaign', label: 'Campaign' },
+  { key: 'device', label: 'Device' },
+  { key: 'wa_message', label: 'Message', wide: true },
+]
+const NO_RIGHTS = 'Not saved — run supabase/migrations/2026-11-17_whatsapp_clicks_edit.sql (admin / manager only).'
+
+/** R-MKT-04: edit one click (page, button, source, device, message) */
+function EditClickModal({ click, onClose, onSaved }: { click: WhatsAppClick | null; onClose: () => void; onSaved: (c: WhatsAppClick) => void }) {
+  const [form, setForm] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    if (click) setForm(Object.fromEntries(EDIT_FIELDS.map(f => [f.key, String(click[f.key] ?? '')])))
+  }, [click])
+  if (!click) return null
+  const save = async () => {
+    setSaving(true)
+    const patch = Object.fromEntries(EDIT_FIELDS.map(f => [f.key, (form[f.key] || '').trim() || null]))
+    const { data, error } = await supabase.from('whatsapp_clicks').update(patch).eq('id', click.id).select()
+    setSaving(false)
+    if (error || !data?.length) { notify.error(error ? `Not saved: ${error.message}` : NO_RIGHTS); return }
+    logAudit({ action: 'updated', entity: 'whatsapp_click', entity_id: click.id, entity_name: click.page_title || click.page_url || 'WhatsApp click' })
+    onSaved({ ...click, ...(data[0] as WhatsAppClick) })
+    notify.success('Click updated')
+    onClose()
+  }
+  return (
+    <Modal open onClose={onClose} title="Edit WhatsApp click" size="lg"
+      footer={<div className="flex justify-end gap-2">
+        <button type="button" onClick={onClose} className="h-9 px-4 rounded-xl border border-slate-200 text-[12.5px] font-semibold text-slate-600 bg-white cursor-pointer">Cancel</button>
+        <button type="button" onClick={() => void save()} disabled={saving} className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[12.5px] font-bold cursor-pointer disabled:opacity-60">{saving ? 'Saving…' : 'Save'}</button>
+      </div>}>
+      <p className="text-[12px] text-slate-500 mb-3">{new Date(click.clicked_at).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {EDIT_FIELDS.map(f => (
+          <label key={f.key} className={`block ${f.wide ? 'sm:col-span-2' : ''}`}>
+            <span className="block text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-1">{f.label}</span>
+            {f.key === 'wa_message'
+              ? <textarea rows={3} value={form[f.key] || ''} onChange={e => setForm({ ...form, [f.key]: e.target.value })} className="w-full text-[13px] px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500 resize-none" />
+              : <input value={form[f.key] || ''} onChange={e => setForm({ ...form, [f.key]: e.target.value })} className="w-full h-9.5 text-[13px] px-3 border border-slate-200 rounded-xl focus:outline-none focus:border-emerald-500" />}
+          </label>
+        ))}
+      </div>
+    </Modal>
+  )
+}
+
 /**
  * R-MKT-03: clicks on the website's WhatsApp buttons (WordPress plugin → /api/webhook/whatsapp-clicks →
  * whatsapp_clicks). A click has no customer phone — it shows which pages, buttons and campaigns bring chats.
@@ -32,6 +87,18 @@ export function WhatsAppClicks() {
   const [error, setError] = useState('')
   const [range, setRange] = useState<ClickRange>('30')
   const [q, setQ] = useState('')
+  const [editing, setEditing] = useState<WhatsAppClick | null>(null)
+
+  // R-MKT-04: delete one click (a test click, a duplicate)
+  const remove = async (c: WhatsAppClick) => {
+    const ok = await confirmAsync({ title: 'Delete click', message: `Delete this click?\n${c.page_title || c.page_url || ''} · ${c.button_text || ''}`, confirmLabel: 'Delete', tone: 'danger' })
+    if (!ok) return
+    const { data, error } = await supabase.from('whatsapp_clicks').delete().eq('id', c.id).select()
+    if (error || !data?.length) { notify.error(error ? `Not deleted: ${error.message}` : NO_RIGHTS.replace('Not saved', 'Not deleted')); return }
+    logAudit({ action: 'deleted', entity: 'whatsapp_click', entity_id: c.id, entity_name: c.page_title || c.page_url || 'WhatsApp click' })
+    setRows(prev => prev.filter(x => x.id !== c.id))
+    notify.success('Click deleted')
+  }
 
   const load = async () => {
     setLoading(true)
@@ -89,14 +156,14 @@ export function WhatsAppClicks() {
 
       <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left border-collapse">
+          <table className="w-full min-w-[940px] text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200/80 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
-                <th className="py-3 px-4">When</th><th className="py-3 px-3">Page</th><th className="py-3 px-3">Button</th><th className="py-3 px-3">Source</th><th className="py-3 px-3">Device</th><th className="py-3 px-4">Message</th>
+                <th className="py-3 px-4">When</th><th className="py-3 px-3">Page</th><th className="py-3 px-3">Button</th><th className="py-3 px-3">Source</th><th className="py-3 px-3">Device</th><th className="py-3 px-3">Message</th><th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-[12.5px]">
-              {shown.length === 0 && <tr><td colSpan={6} className="py-12 text-center text-slate-400">{loading ? 'Loading…' : 'No clicks in this period'}</td></tr>}
+              {shown.length === 0 && <tr><td colSpan={7} className="py-12 text-center text-slate-400">{loading ? 'Loading…' : 'No clicks in this period'}</td></tr>}
               {shown.slice(0, 300).map(c => (
                 <tr key={c.id} className="hover:bg-emerald-50/40">
                   <td className="py-2.5 px-4 whitespace-nowrap text-slate-700">{new Date(c.clicked_at).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
@@ -104,7 +171,14 @@ export function WhatsAppClicks() {
                   <td className="py-2.5 px-3 text-slate-700">{c.button_text || '—'}{c.button_location ? <span className="text-slate-400"> · {c.button_location}</span> : null}</td>
                   <td className="py-2.5 px-3 text-slate-700">{sourceOf(c)}</td>
                   <td className="py-2.5 px-3 capitalize text-slate-700">{c.device || '—'}</td>
-                  <td className="py-2.5 px-4 text-slate-500 max-w-[280px] truncate" title={c.wa_message || ''}>{c.wa_message || '—'}</td>
+                  <td className="py-2.5 px-3 text-slate-500 max-w-[280px] truncate" title={c.wa_message || ''}>{c.wa_message || '—'}</td>
+                  <td className="py-2.5 px-4">
+                    {/* R-MKT-04: edit / delete the row */}
+                    <div className="flex justify-end gap-1.5">
+                      <button type="button" onClick={() => setEditing(c)} title="Edit" aria-label="Edit click" className="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-emerald-700 hover:border-emerald-300 flex items-center justify-center cursor-pointer"><Pencil size={14} /></button>
+                      <button type="button" onClick={() => void remove(c)} title="Delete" aria-label="Delete click" className="w-8 h-8 rounded-lg border border-red-200 bg-white text-red-600 hover:bg-red-50 flex items-center justify-center cursor-pointer"><Trash2 size={14} /></button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -112,6 +186,7 @@ export function WhatsAppClicks() {
         </div>
         {shown.length > 300 && <p className="text-[11.5px] text-slate-400 text-center py-2.5 border-t border-slate-100">Showing the newest 300 of {shown.length} — narrow the search or the date range</p>}
       </div>
+      <EditClickModal click={editing} onClose={() => setEditing(null)} onSaved={c => setRows(prev => prev.map(x => (x.id === c.id ? c : x)))} />
     </div>
   )
 }

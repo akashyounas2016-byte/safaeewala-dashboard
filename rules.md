@@ -1193,6 +1193,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - A click has no customer phone (`whatsapp.number` is the business number), so clicks are not leads. Screen **WhatsApp Clicks** (same access as Marketing): Clicks / Today / On mobile / Top page cards, date range and search, clicks by page, by source / campaign and by button, and the list of clicks.
 - **Code:** `webhookServer.cjs → /api/webhook/whatsapp-clicks, whatsappClickRow`; `src/pages/WhatsAppClicks.tsx`; `src/lib/whatsappClicks.ts`. Tests: `tests/server/api.test.mjs`, `tests/unit/whatsapp-clicks-1116.test.ts`.
 - **Status:** Active · Since: 2026-11-16
+
+### R-MKT-04 — Editing and deleting WhatsApp clicks
+- **Why:** the owner wants to correct or remove a click (test clicks, duplicates) on the WhatsApp Clicks screen (2026-11-17).
+  - Every row ends with an **Edit** (pencil) and a **Delete** (bin) icon. Edit opens a popup for page, page link, button, button place, source, campaign, device and message. Delete asks first.
+  - Admin and manager can edit and delete (migration `2026-11-17_whatsapp_clicks_edit.sql`); Marketing only reads. When the database refuses, the screen says nothing was saved. Each edit / delete is in the Activity Log.
+- **Code:** `src/pages/WhatsAppClicks.tsx → EditClickModal, remove`. Test: `tests/unit/whatsapp-clicks-edit-1117.test.ts`.
+- **Status:** Active · Since: 2026-11-17
 ### R-GHL-01 — Google review link in client messages
 - **Rule:** owner's GHL / Google Business Profile plan, step 1 (2026-11-09): ask every client for a Google review.
   - Conversations → Settings → Notifications → **Google review link**: paste the link from Google Business Profile → "Ask for reviews". The CRM checks that it looks like a Google review link.
