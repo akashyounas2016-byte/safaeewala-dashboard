@@ -26,6 +26,8 @@ services:
       - WHATSAPP_APP_SECRET=${WHATSAPP_APP_SECRET:-}
       - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-}
       - WHATSAPP_APP_ID=${WHATSAPP_APP_ID:-}   # R-WA-05: only for media samples in templates
+      # R-MKT-03: website WhatsApp Clicks webhook (same secret as the WordPress plugin)
+      - WACT_SIGNING_SECRET=${WACT_SIGNING_SECRET:-}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.safaeewala-crm.rule=Host(`crm.srv1646539.hstgr.cloud`) || Host(`safaeewala.srv1646539.hstgr.cloud`) || Host(`crm.safaeewala.com`)"

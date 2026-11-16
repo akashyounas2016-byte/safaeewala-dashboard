@@ -7,6 +7,7 @@
 ## Unreleased (in `main`, not yet confirmed deployed)
 
 - fix(clients): renaming a client updates its job rows from today on (R-CLI-10); the delete popup lists what is deleted and what is kept, and Restore brings back the client and its contract (R-CLI-11)
+- fix(marketing): docker-compose passes `WACT_SIGNING_SECRET` to the container — without it the WhatsApp Clicks webhook answered 503 even with the secret in `.env` (R-MKT-03)
 - feat(marketing): WhatsApp Clicks screen — clicks on the website's WhatsApp buttons arrive by a signed webhook from the WordPress plugin; needs migration `2026-11-16_whatsapp_clicks.sql` and `WACT_SIGNING_SECRET` (R-MKT-03)
 - change(clients): one client popup for General / Monthly / Bi-Weekly (Monthly shows its weekly schedule card); address card reordered; saved addresses listed with an edit icon (R-SCHED-20, UX-164)
 - feat(clients): deleting a client needs its exact name typed (UX-165)
