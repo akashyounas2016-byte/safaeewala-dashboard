@@ -2,7 +2,7 @@
 
 One list of what is still open, for the owner, Claude and Antigravity. **Update it in the same commit** whenever something is finished (remove it) or added. Finished items go to [CHANGELOG.md](CHANGELOG.md), not here.
 
-Last updated: 2026-11-17 · Live on crm.safaeewala.com: `0102cd8` · 2026-11-15: all 174 test-period jobs deleted on owner's request ; duplicate "Villa# 06 - Zayan" + TEST clients (TEST Villa, Test 2- NH bldg, ABC Test 1) deleted with their contracts (backups in ../Safaeewala-backups)
+Last updated: 2026-11-17 · Live on crm.safaeewala.com: `f33be16` · 2026-11-15: all 174 test-period jobs deleted on owner's request ; duplicate "Villa# 06 - Zayan" + TEST clients (TEST Villa, Test 2- NH bldg, ABC Test 1) deleted with their contracts (backups in ../Safaeewala-backups)
 
 ---
 
