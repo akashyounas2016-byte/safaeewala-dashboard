@@ -52,6 +52,8 @@ export interface Client {
   nationality?: string
   building_name?: string
   apartment?: string
+  /** R-CLI-09: more addresses of the same client (other properties / locations), chosen when booking */
+  addresses?: { id: string; label: string; address: string; area?: string }[] | null
   area: string
   city: string
   access_notes?: string

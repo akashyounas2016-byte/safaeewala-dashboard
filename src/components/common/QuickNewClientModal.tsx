@@ -45,7 +45,10 @@ export function QuickNewClientModal({
       employees={employees}
       prefill={prefill}
       onSave={data => {
+        // R-CLI-08: keep what the form sent (mode, weekly schedule, Bi-Weekly plan); the id is known, so the job gets the real one
+        const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `client-${Date.now()}`
         const payload: Omit<Client, 'id' | 'created_at'> = {
+          ...(data as Omit<Client, 'id' | 'created_at'>),
           full_name: data.full_name || 'New Client',
           phone: data.phone || data.whatsapp || '—',
           whatsapp: data.whatsapp || data.phone || '',
@@ -65,9 +68,9 @@ export function QuickNewClientModal({
           total_bookings: 1,
           total_spent: 0,
         }
-        addClient(payload)
+        addClient({ ...payload, id })
         notify.success(`New client "${payload.full_name}" registered in system!`)
-        onClientRegistered({ ...payload, id: `client-${Date.now()}`, created_at: new Date().toISOString() })
+        onClientRegistered({ ...payload, id, created_at: new Date().toISOString() })
       }}
     />
   )

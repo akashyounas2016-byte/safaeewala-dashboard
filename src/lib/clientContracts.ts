@@ -97,7 +97,9 @@ export function saveClientContract(args: {
   const { clientName, previousName, details, active, phone, email } = args
   const list = readContracts()
   const existing = contractOfClient(previousName || clientName, list) || contractOfClient(clientName, list)
-  if (!existing && !hasContractDetails(details)) return null
+  // R-SCHED-19: dates alone are a contract too — only Start / End typed was never saved (lost on refresh, 2026-11-16)
+  const touched = hasContractDetails(details) || Boolean(details.endDate) || Boolean(details.notes.trim()) || (Boolean(details.startDate) && details.startDate !== todayDubai())
+  if (!existing && !touched) return null
   const startDate = details.startDate || existing?.startDate || todayDubai()
   const next: RecurringContract = {
     id: existing?.id || `ct-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,

@@ -19,6 +19,7 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | A7 | **Google review link** in Settings | Review-request messages need it | Settings |
 | A15 | **Settings → Backup → This computer → Choose folder** on the office computer (Chrome / Edge), then "Allow on every visit" | Daily copy of all data on that computer, 30 days kept | Settings → Backup |
 | A11 | **Check today's new screens on the live site** (Excel sheet, Add Job, Employee popup, Agency popup) | Built and tested in code, not yet clicked through in a browser | crm.safaeewala.com |
+| A20 | **Run `supabase/migrations/2026-11-16_client_addresses.sql`** in Supabase → SQL editor (prod.md 7l) | Until then extra client addresses are not saved (R-CLI-09) | Supabase |
 
 ---
 

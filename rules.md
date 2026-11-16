@@ -168,6 +168,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/components/clients/ClientModalForm.tsx`. Test: `tests/unit/monthly-edit-nodays-1116.test.ts`.
 - **Status:** Active · Since: 2026-11-16
 
+### R-SCHED-19 — Contract dates alone are saved
+- **Why:** a contract was saved only when Service or Amount was filled. Start / End typed alone were never saved, so after a refresh they were gone, and without them the client's visits were not limited to the contract period (shown before the Start date on the Excel sheet, 2026-11-16).
+  - A contract is saved when Service, Amount, an End date, notes, or a Start date other than today is given. An untouched card still creates nothing.
+  - Saved dates limit the visits (R-SCHED-11) and take off upcoming unpaid visits outside them (R-SCHED-13).
+- **Code:** `src/lib/clientContracts.ts → saveClientContract`. Test: `tests/unit/contract-client-link-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
+
 ---
 
 ## ATT — Attendance
@@ -587,6 +594,26 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `Clients.tsx → isRecentClient`.
 - **Status:** Active · Since: 2026-11-06
 
+
+### R-CLI-06 — Editing a client keeps its sheet rows (no second client)
+- **Why:** a client built from sheet rows ("def") was renamed to "Zayan"; its rows still said "def", so the old name came back as a second client — it looked like editing created a new client (2026-11-16).
+  - When a client is renamed or its address changes, or a client built from sheet rows is saved for the first time, its rows (matched by name / address, without an id yet) get the client's id (R-DATA-12) and stay with it.
+- **Code:** `src/store/DataContext.tsx → linkRowsToClient, updateClient, addClient`. Test: `tests/unit/contract-client-link-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
+
+### R-CLI-08 — Add Client keeps everything of its Mode
+- **Why:** Clients → Add Client and Add Job → new client saved only a fixed list of fields — a Monthly or Bi-Weekly client lost its mode, weekly schedule and Bi-Weekly plan and became General.
+  - Everything the form sends is saved (mode, service days, day schedules, day cleaners, Bi-Weekly plan, contract status, addresses); defaults only fill what is missing. The new client's real id goes back to the job.
+- **Code:** `src/pages/Clients.tsx`, `src/components/common/QuickNewClientModal.tsx`. Test: `tests/unit/clients-tabs-addresses-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
+
+### R-CLI-09 — One Address field, more addresses per client, mobile required
+- **Why:** the team asked for one Address field instead of Apartment / Villa Number + Building / Villa Name, a required mobile number, and several addresses (properties / locations) per client to pick when booking (2026-11-16).
+  - **Address \*** (one field) is saved as the building; the apartment is folded in as "Building Apt 302", the way monthly visits write it, so visits saved before keep matching.
+  - **Mobile Number \*** is required in both client forms (General / Bi-Weekly and Monthly).
+  - **Add another address**: label, address and area; saved in `clients.addresses` (migration `2026-11-16_client_addresses.sql`). In New Booking every extra address is its own line under the client; picking it fills the address and its area.
+- **Code:** `src/lib/clientAddress.ts → singleAddressOf, cleanAddresses`; `src/components/clients/AddressesEditor.tsx`; `ClientModalForm.tsx`, `AddMonthlyClientModalForm.tsx`, `NewBookingModal.tsx`. Test: `tests/unit/clients-tabs-addresses-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
 ---
 
 ## LEAD — Website form leads

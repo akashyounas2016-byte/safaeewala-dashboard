@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useMemo, useRef, type R
 import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency, RecurringContract } from '../types'
 import { supabase } from '@/lib/supabase'
 import { jobRenamePatches, clientRenamePatches } from '@/lib/employeeRename'
-import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs, visitsOutsideContract, rememberRemovedMonthlyVisits, rememberMovedMonthlyVisits, clientIdForJob } from '@/lib/clientDataSync'
+import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs, visitsOutsideContract, rememberRemovedMonthlyVisits, rememberMovedMonthlyVisits, clientIdForJob, jobMatchesClient } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry, sanitizeOutboxPayload } from '@/lib/syncQueue'
 import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
@@ -511,6 +511,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [loading, allClients, viewDailyJobs])
 
+  /** R-CLI-06: the client's sheet rows matched by name / address get its id, so they stay with it after a rename */
+  function linkRowsToClient(client: Client, id: string) {
+    const own = dailyJobs.filter(j => !j.client_id && jobMatchesClient(j, client))
+    if (!own.length) return
+    const ids = new Set(own.map(j => j.id))
+    setDailyJobs(p => {
+      const next = p.map(j => (ids.has(j.id) ? { ...j, client_id: id } : j))
+      safeLocalStorageSet('safaeewala_daily_jobs', next)
+      return next
+    })
+    own.forEach(j => dbUpdate('daily_jobs', j.id, { client_id: id }))
+  }
+
   /** R-DATA-12: the saved client a job row belongs to — the id given (if it is a saved client) or found from booking / address */
   function linkClient(j: Pick<DailyJob, 'address' | 'area' | 'booking_id'> & { client_id?: string | null }): string | null {
     if (j.client_id && clients.some(c => c.id === j.client_id)) return j.client_id
@@ -712,6 +725,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     /* ── Clients ── */
     addClient: (c) => {
       const row = { ...c, id: c.id || uid(), created_at: now() }
+      // R-CLI-06: a client built from sheet rows and saved under its id keeps those rows
+      const fromRows = c.id ? allClients.find(x => x.id === c.id) : undefined
+      if (fromRows) linkRowsToClient(fromRows, row.id)
       setClients(p => [row, ...p])
       dbInsert('clients', row)
       logAudit('created', 'client', row.id, c.full_name)
@@ -727,6 +743,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       }
       if (before) logEdit('client', id, before.full_name, before, patch) // R-OPS-06
+      // R-CLI-06: renamed / new address, or a client built from sheet rows saved for the first time — its rows
+      // stay its own (the old name came back as a second client: "def" → "Zayan", 2026-11-16)
+      const identityChanged = !!before && (['full_name', 'building_name', 'apartment'] as const).some(k => k in patch && (patch[k] || '') !== (before[k] || ''))
+      if (before && (identityChanged || !clients.some(c => c.id === id))) linkRowsToClient(before, id)
       setClients(p => {
         const exists = p.some(c => c.id === id)
         if (exists) {

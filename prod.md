@@ -119,6 +119,7 @@ There are **two** ways code reaches production. Both need the owner's permission
 7i. (R-AGN-07) Supabase → SQL editor: run `supabase/migrations/2026-11-11_agency_trade_licenses.sql` (trade licenses of a Third Party (Group) agency).
 7j. (UX-138) Supabase → SQL editor: run `supabase/migrations/2026-11-11_daily_jobs_charges_per_hour.sql` (typed Charges (hrs) on each job).
 7k. (R-DATA-12) Supabase → SQL editor: run `supabase/migrations/2026-11-16_daily_jobs_client_id.sql` (each job keeps its client's id). Safe before or after the deploy.
+7l. (R-CLI-09) Supabase → SQL editor: run `supabase/migrations/2026-11-16_client_addresses.sql` (more addresses per client). Safe before or after the deploy.
 8. If the number is not registered / the app gets no messages: WhatsApp → Settings → **Connect** (admin; a 6-digit PIN registers the number, and the WhatsApp account is subscribed to the app).
 
 ### Facebook + Instagram in the Inbox (R-INBOX-01)

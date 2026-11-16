@@ -53,6 +53,7 @@
 
 ### Client ek hi dafa dikhta hai
 - **Client profile:** upar header ke neeche ek row mein Charges, Received, Pending, Advance, Adjustment aur Overtime ke cards — har tab par wahi. Neeche **Upcoming Bookings** (hara, har visit ka din, tareekh, waqt aur cleaner) aur **Financial Summary** saath saath.
+- **Clients screen ke tabs:** Clients, Monthly Clients, Bi-Weekly Clients — har client apne mode wale tab mein. Add Client har tab par ek jaisa hai aur usi tab ka mode chun kar khulta hai.
 - **Clients screen:** teen views — Grid Card (2 cards, widgets right par), Table, aur Wide Grid (3–4 cards, widgets neeche). Search, area, date aur sort ek hi row mein.
 - Client card par visits aur revenue sirf Job Sheet ki asal rows se gine jate hain. Rows na hon to 0.
 - Client ki profile par **Upcoming** mein agle 4 hafte ki schedule wali visits bhi dikhti hain (**Scheduled** badge). Ye sheet par us din khud aati hain jab wo din khula ho.
@@ -60,6 +61,9 @@
 - Monthly Clients list mein har client ek dafa aata hai. Uski visits (jaise *Villa# 06 - Zayan*) se alag nakli client nahi banta — edit hamesha asal client par hota hai.
 
 ### Client edit karna (ek hi form)
+- **Address** ab ek hi field hai (misaal: "Al Khair Building Apt 302"). **Mobile number zaroori** hai.
+- **Add another address** se ek hi client ke aur addresses (doosra villa, office) daal sakte hain. New Booking mein client ke neeche har address alag nazar aata hai — wahi chunein.
+- **Contract** mein sirf Start / End date bhi bharein to save hoti hai. Client ki visits sirf in dates ke andar banti hain.
 - Client ka popup ab **ek hi form** hai — Contract, naam / address, balances aur hafte ka schedule sab ek jagah. Upar **Save Changes**.
 - **Mode** (General / Bi-Weekly / Monthly) baad mein bhi badal sakte hain. Popup ka naam mode ke mutabiq: *Edit Monthly Client*, *Edit Bi-Weekly Client* ya *Edit Client Profile*.
 - Monthly se General ya Bi-Weekly karne par hafte ka monthly schedule hat jata hai, us ki nayi visits nahi banti.

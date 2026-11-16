@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { requireFields } from '@/components/common/FormGuard'
-import { clientNameOrAddress, hasClientAddress } from '@/lib/clientAddress'
+import { clientNameOrAddress, hasClientAddress, singleAddressOf, cleanAddresses } from '@/lib/clientAddress'
+import { AddressesEditor } from '@/components/clients/AddressesEditor'
 import { Modal } from '@/components/ui/Modal'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -153,7 +154,7 @@ export function ClientModalForm({
     // R-CLI-03: the name is optional, the address is required and names the client when the name is empty
     const addressParts = { apartment: String(f.get('apartment') || ''), building_name: String(f.get('building_name') || ''), area: String(f.get('area') || '') }
     if (!requireFields(e.currentTarget, [
-      { name: 'building_name', label: 'Address (apartment / villa number or building name)', ok: hasClientAddress(addressParts) },
+      { name: 'building_name', label: 'Address', ok: hasClientAddress(addressParts) },
       { name: 'contract_end', label: 'Contract End (on or after Contract Start)', ok: mode !== 'biweekly' || !contractDateError(contract) }, // R-SCHED-11
     ])) return
     const clientName = clientNameOrAddress(f.get('full_name'), addressParts)
@@ -179,6 +180,7 @@ export function ClientModalForm({
       advance_amount:    advance,
       adjustment_amount: adjustment,
       pending_amount:    pending,
+      addresses:         cleanAddresses(JSON.parse(String(f.get('addresses_json') || '[]'))), // R-CLI-09
     }
 
     // R-CLI-02: the mode, and the Bi-Weekly days and duration
@@ -329,9 +331,10 @@ export function ClientModalForm({
               <div className="md:col-span-3">
                 <Input
                   name="phone"
-                  label="Phone Number"
+                  label="Mobile Number *"
                   placeholder="+971 50 000 0000"
                   defaultValue={seed?.phone || ''}
+                  required // R-CLI-09: mobile number is required
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
@@ -368,22 +371,14 @@ export function ClientModalForm({
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
-              {/* R-CLI-01: number first, then the building / villa name, then the area */}
-              <div className="md:col-span-4">
-                <Input
-                  name="apartment"
-                  label="Apartment / Villa Number"
-                  placeholder="e.g. 302 / Villa 25"
-                  defaultValue={seed?.apartment ?? ''}
-                  className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
-                />
-              </div>
-              <div className="md:col-span-4">
+              {/* R-CLI-09: one Address field (was Apartment / Villa Number + Building / Villa Name) */}
+              <div className="md:col-span-8">
+                <input type="hidden" name="apartment" value="" />
                 <Input
                   name="building_name"
-                  label="Building / Villa Name *"
-                  placeholder="e.g. Al Khair Building"
-                  defaultValue={seed?.building_name ?? ''}
+                  label="Address *"
+                  placeholder="e.g. Al Khair Building Apt 302 / Villa 25"
+                  defaultValue={singleAddressOf(seed)}
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
@@ -425,6 +420,10 @@ export function ClientModalForm({
                   onChange={setSelectedCleaners}
                   placeholder="Assign cleaner(s)..."
                 />
+              </div>
+              {/* R-CLI-09: more addresses of the same client — chosen when booking */}
+              <div className="md:col-span-12">
+                <AddressesEditor initial={seed?.addresses} />
               </div>
             </div>
           </div>

@@ -294,6 +294,8 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
       area: string
       apartment: string
       client: Client
+      /** R-CLI-09: area of an extra address */
+      extraArea?: string
     }[] = []
     const seen = new Set<string>()
 
@@ -312,6 +314,19 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
           client: c,
         })
       }
+      // R-CLI-09: the client's other addresses (another villa, office …) can be picked for the booking
+      ;(c.addresses || []).forEach(a => {
+        if (!a?.address?.trim()) return
+        list.push({
+          key: `${c.id}__${a.id}`,
+          building: cleanAddressDisplay(a.address),
+          clientName: a.label ? `${name} · ${a.label}` : name,
+          area: a.area || c.area || '',
+          apartment: '',
+          client: c,
+          extraArea: a.area || '',
+        } as (typeof list)[number])
+      })
     })
     return list
   }, [clients])
@@ -396,13 +411,13 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
   }
 
   // Client Selection
-  const handleSelectClient = (c: Client, building: string) => {
+  const handleSelectClient = (c: Client, building: string, extraArea?: string) => {
     const cleanB = cleanAddressDisplay(building)
     setAddress(cleanB)
     setSelectedClientId(c.id)
     setClientName(c.full_name)
     setClientPhone(c.whatsapp || c.phone || '')
-    if (c.area) setArea(c.area)
+    if (extraArea || c.area) setArea(extraArea || c.area || '') // R-CLI-09: the chosen address's area
     setBuildingDropdownOpen(false)
   }
 
@@ -846,7 +861,7 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
                           return (
                             <div
                               key={item.key}
-                              onClick={() => handleSelectClient(item.client, cleanItemBuilding)}
+                              onClick={() => handleSelectClient(item.client, cleanItemBuilding, item.extraArea)}
                               className={`px-3 py-2 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between ${
                                 isSelected ? 'bg-emerald-50/80 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
                               }`}

@@ -149,6 +149,7 @@ export function ClientProfile() {
   const [reviewMap,     setReviewMap]     = useState<Record<string, string>>({})
   const [copied,        setCopied]        = useState(false)
   const [editOpen,      setEditOpen]      = useState(false)
+  const [showAllUpcoming, setShowAllUpcoming] = useState(false) // UX-162
   const [editSaving,    setEditSaving]    = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [paymentsVersion, setPaymentsVersion]   = useState(0)
@@ -447,6 +448,37 @@ export function ClientProfile() {
   // R-SCHED-15: plus the schedule's visits of the next 4 weeks not on the sheet yet
   const upcoming      = [...upcomingVisits(clientBookings, clientDailyJobs, todayDubai()), ...(client ? scheduledVisitsAhead(client, clientDailyJobs, todayDubai()) : [])]
     .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time))
+  // UX-162: one visit row — the Upcoming widget and the full list ("+N more")
+  const renderUpcomingVisit = (v: (typeof upcoming)[number]) => {
+    const d = new Date(`${v.date}T00:00:00`)
+    return (
+      <li key={v.key} className="flex items-center gap-3 bg-white/90 rounded-2xl border border-emerald-100 px-3 py-2.5">
+        <div className="w-12 shrink-0 rounded-xl bg-emerald-600 text-white text-center py-1 leading-tight">
+          <p className="text-[9.5px] font-bold uppercase tracking-wide opacity-90">{d.toLocaleDateString('en-GB', { weekday: 'short' })}</p>
+          <p className="text-[16px] font-black">{d.getDate()}</p>
+          <p className="text-[9.5px] font-semibold opacity-90">{d.toLocaleDateString('en-GB', { month: 'short' })}</p>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-bold text-[#111827] truncate">{v.label}</p>
+          <p className="text-[11.5px] text-slate-600 flex items-center gap-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1"><CalendarDays size={11} className="text-emerald-600" />{d.toLocaleDateString('en-GB', { weekday: 'long' })}, {formatDate(v.date)}</span>
+            {v.time && <span className="inline-flex items-center gap-1"><Clock size={11} className="text-emerald-600" />{formatTimeOnly(v.time)}</span>}
+          </p>
+          <p className="text-[11.5px] mt-0.5 flex items-center gap-1 min-w-0">
+            <Users size={11} className="text-emerald-600 shrink-0" />
+            {v.cleaners
+              ? <span className="font-semibold text-emerald-900 truncate" title={v.cleaners}>{v.cleaners}</span>
+              : <span className="text-amber-700 font-semibold">No cleaner yet</span>}
+          </p>
+        </div>
+        {v.status === 'on_sheet'
+          ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 shrink-0">On sheet</span>
+          : v.status === 'scheduled'
+            ? <span title="From the monthly schedule — added to the Job Sheet when that day is opened" className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 shrink-0">Scheduled</span>
+            : <StatusPill status={v.status} />}
+      </li>
+    )
+  }
   const sheetSummary  = jobSheetSummary(clientDailyJobs, todayDubai())
   const bookingSpent  = completed.reduce((s, b) => s + b.total_amount, 0)
   const reviewedCount = completed.filter(b => reviewMap[b.id]).length
@@ -858,7 +890,7 @@ export function ClientProfile() {
                 onClick={() => setActiveTab('job_sheet')}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold transition-all cursor-pointer ${
                   activeTab === 'job_sheet'
-                    ? 'bg-purple-600 text-white shadow-xs'
+                    ? 'bg-emerald-700 text-white shadow-xs' /* UX-162: was purple */
                     : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100'
                 }`}
               >
@@ -913,7 +945,7 @@ export function ClientProfile() {
               <div className="px-6 py-4 border-b border-[#E4E8EC] flex items-center justify-between flex-wrap gap-3">
                 <div>
                   <h3 className="text-[15px] font-bold text-[#111827] flex items-center gap-2">
-                    <FileText size={16} className="text-purple-600" />
+                    <FileText size={16} className="text-emerald-700" />
                     Daily Job Sheet Service History
                   </h3>
                   <p className="text-[12px] text-slate-500 mt-0.5">
@@ -929,7 +961,7 @@ export function ClientProfile() {
                       placeholder="Search shifts, cleaner, remarks…"
                       value={jobSearch}
                       onChange={e => setJobSearch(e.target.value)}
-                      className="text-[12px] pl-8 pr-3 py-1.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-purple-400"
+                      className="text-[12px] pl-8 pr-3 py-1.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500"
                     />
                   </div>
                 </div>
@@ -963,7 +995,7 @@ export function ClientProfile() {
                   ot:        { th: 'OT', head: 'py-3 px-2 text-center', td: 'py-3 px-2 text-center', cell: j => (j.otHours > 0
                     ? <span className="inline-block bg-amber-100 text-amber-800 font-extrabold px-2 py-0.5 rounded-full text-[10.5px] border border-amber-200">{j.otHours}h OT</span>
                     : <span className="text-slate-400">0h</span>) },
-                  charges:   { th: 'Charges', head: 'py-3 px-3 text-right', td: 'py-3 px-3 text-right font-extrabold text-purple-700 whitespace-nowrap', cell: j => `AED ${j.cleanCharges.toLocaleString()}` },
+                  charges:   { th: 'Charges', head: 'py-3 px-3 text-right', td: 'py-3 px-3 text-right font-extrabold text-slate-900 whitespace-nowrap', cell: j => `AED ${j.cleanCharges.toLocaleString()}` },
                   received:  { th: 'Received', head: 'py-3 px-3 text-right', td: 'py-3 px-3 text-right font-semibold text-emerald-700 whitespace-nowrap', cell: j => `AED ${j.cleanReceived.toLocaleString()}` },
                   pending:   { th: 'Pending', head: 'py-3 px-3 text-right', td: 'py-3 px-3 text-right font-bold whitespace-nowrap', cell: j => (j.pending > 0
                     ? <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-600 border border-red-200">AED {j.pending.toLocaleString()}</span> : dash) },
@@ -1003,7 +1035,7 @@ export function ClientProfile() {
                       </thead>
                       <tbody className="divide-y divide-[#E4E8EC]">
                         {filteredDailyJobs.map(job => (
-                          <tr key={job.id} className="hover:bg-purple-50/30 transition-colors" title={cols.remarks && job.remarks ? job.remarks : undefined}>
+                          <tr key={job.id} className="hover:bg-emerald-50/40 transition-colors" title={cols.remarks && job.remarks ? job.remarks : undefined}>
                             {historyCols.visible.map(id => <td key={id} className={cols[id].td}>{cols[id].cell(job)}</td>)}
                           </tr>
                         ))}
@@ -1421,37 +1453,15 @@ export function ClientProfile() {
                 <p className="text-[12.5px] text-emerald-900/60 text-center py-6">No upcoming bookings or visits</p>
               ) : (
                 <ul className="space-y-2">
-                  {upcoming.slice(0, 6).map(v => {
-                    const d = new Date(`${v.date}T00:00:00`)
-                    return (
-                      <li key={v.key} className="flex items-center gap-3 bg-white/90 rounded-2xl border border-emerald-100 px-3 py-2.5">
-                        <div className="w-12 shrink-0 rounded-xl bg-emerald-600 text-white text-center py-1 leading-tight">
-                          <p className="text-[9.5px] font-bold uppercase tracking-wide opacity-90">{d.toLocaleDateString('en-GB', { weekday: 'short' })}</p>
-                          <p className="text-[16px] font-black">{d.getDate()}</p>
-                          <p className="text-[9.5px] font-semibold opacity-90">{d.toLocaleDateString('en-GB', { month: 'short' })}</p>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-bold text-[#111827] truncate">{v.label}</p>
-                          <p className="text-[11.5px] text-slate-600 flex items-center gap-1.5 flex-wrap">
-                            <span className="inline-flex items-center gap-1"><CalendarDays size={11} className="text-emerald-600" />{d.toLocaleDateString('en-GB', { weekday: 'long' })}, {formatDate(v.date)}</span>
-                            {v.time && <span className="inline-flex items-center gap-1"><Clock size={11} className="text-emerald-600" />{formatTimeOnly(v.time)}</span>}
-                          </p>
-                          <p className="text-[11.5px] mt-0.5 flex items-center gap-1 min-w-0">
-                            <Users size={11} className="text-emerald-600 shrink-0" />
-                            {v.cleaners
-                              ? <span className="font-semibold text-emerald-900 truncate" title={v.cleaners}>{v.cleaners}</span>
-                              : <span className="text-amber-700 font-semibold">No cleaner yet</span>}
-                          </p>
-                        </div>
-                        {v.status === 'on_sheet'
-                          ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 shrink-0">On sheet</span>
-                          : v.status === 'scheduled'
-                            ? <span title="From the monthly schedule — added to the Job Sheet when that day is opened" className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 shrink-0">Scheduled</span>
-                            : <StatusPill status={v.status} />}
-                      </li>
-                    )
-                  })}
-                  {upcoming.length > 6 && <li className="text-[11.5px] text-emerald-900/60 text-center pt-1">+{upcoming.length - 6} more</li>}
+                  {upcoming.slice(0, 6).map(renderUpcomingVisit)}
+                  {upcoming.length > 6 && (
+                    <li className="text-center pt-1">
+                      <button type="button" onClick={() => setShowAllUpcoming(true)}
+                        className="text-[12px] font-bold text-emerald-800 hover:text-emerald-950 underline underline-offset-2 cursor-pointer">
+                        +{upcoming.length - 6} more — see all
+                      </button>
+                    </li>
+                  )}
                 </ul>
               )}
             </div>
@@ -1532,16 +1542,16 @@ export function ClientProfile() {
             <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-[15px] font-bold text-[#111827] flex items-center gap-1.5">
-                  <FileText size={16} className="text-purple-600" /> Job Sheet Summary
+                  <FileText size={16} className="text-emerald-700" /> Job Sheet Summary
                 </h3>
-                <span className="text-[11px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full" title="Shifts up to today · scheduled ahead">
+                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full" title="Shifts up to today · scheduled ahead">
                   {sheetSummary.worked} worked{sheetSummary.ahead > 0 ? ` · ${sheetSummary.ahead} ahead` : ''}
                 </span>
               </div>
               <div className="space-y-2 text-[12px]">
                 <div className="flex justify-between py-1.5 border-b border-[#edf2f7]">
                   <span className="text-slate-500">Charges</span>
-                  <span className="font-extrabold text-purple-700">AED {totalDJCharges.toLocaleString()}</span>
+                  <span className="font-extrabold text-slate-900">AED {totalDJCharges.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-[#edf2f7]">
                   <span className="text-slate-500">Overtime (OT)</span>
@@ -1574,6 +1584,11 @@ export function ClientProfile() {
           )}
         </div>
       </div>
+      {/* UX-162: every upcoming booking / visit ("+N more") */}
+      <Modal open={showAllUpcoming} onClose={() => setShowAllUpcoming(false)} title={`Upcoming bookings · ${upcoming.length}`} size="lg">
+        <ul className="space-y-2">{upcoming.map(renderUpcomingVisit)}</ul>
+      </Modal>
+
       {/* ── Edit Client Modal (Unified with Add New Client pop-up) ── */}
       <ClientModalForm
         open={editOpen}

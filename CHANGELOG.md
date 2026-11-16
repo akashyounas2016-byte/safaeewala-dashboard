@@ -6,6 +6,11 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(clients): Clients · Monthly Clients · Bi-Weekly Clients tabs; Add Client opens in the tab's mode (UX-163)
+- feat(clients): one Address field, mobile number required, more addresses per client picked in New Booking — needs migration `2026-11-16_client_addresses.sql` (R-CLI-09)
+- fix(clients): Add Client (Clients screen and Add Job) keeps the Monthly / Bi-Weekly schedule; editing a client no longer leaves its old name as a second client (R-CLI-08, R-CLI-06)
+- fix(contracts): Start / End dates alone are saved and limit the visits (R-SCHED-19)
+- change(client-profile): Daily Job Sheet tab green instead of purple; "+N more" opens all upcoming visits (UX-162)
 - change(clients): Edit client popup is one form chosen by the Mode (no Profile / 7-Day Schedule tabs, one Contract section); Mode can be changed after creation; "Edit Monthly Client" only for Monthly; Weekly Schedule section can be hidden, Apply Mon Times / Staff removed (R-SCHED-18, UX-161)
 - fix(monthly): the 7-Day Schedule tab of Edit Monthly Client has a Save button — picked days and cleaners can be saved (R-SCHED-17)
 - fix(monthly): an existing monthly client without service days (Office ABC Trading DMCC) can be edited and saved again; no crash without a day (R-SCHED-16)

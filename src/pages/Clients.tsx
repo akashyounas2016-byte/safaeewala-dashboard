@@ -14,7 +14,7 @@ import { Time12hPicker } from '@/components/common/Time12hPicker'
 import { PageHero } from '@/components/layout/PageHero'
 import { formatDate, addHoursToTime, calcDurationFromTimes } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
-import type { BookingFrequency } from '@/types'
+import type { BookingFrequency, Client } from '@/types'
 import { isMonthlyJob, jobMatchesClient, isMonthlyClient, extractMonthlyClientsFromDailyJobs, calcClientPendingBalance } from '@/lib/clientDataSync'
 import { SourceOriginTag, resolveClientSource } from '@/lib/sourceTracking'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
@@ -169,6 +169,14 @@ export function Clients() {
 
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
+  // UX-163: Clients · Monthly Clients · Bi-Weekly Clients — each client in the tab of its Mode
+  type ModeTab = 'general' | 'monthly' | 'biweekly'
+  const [modeTab, setModeTabState] = useState<ModeTab>(() => {
+    const fromUrl = searchParams.get('tab')
+    if (fromUrl === 'general' || fromUrl === 'monthly' || fromUrl === 'biweekly') return fromUrl
+    return safeLocalStorageGet<ModeTab>('clients_mode_tab', 'general')
+  })
+  const setModeTab = (t: ModeTab) => { setModeTabState(t); safeLocalStorageSet('clients_mode_tab', t) }
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selected, setSelected] = useState<typeof clients[0] | null>(null)
   const [isEditingClient, setIsEditingClient] = useState(false)
@@ -374,6 +382,13 @@ export function Clients() {
     return Math.max(c.total_bookings || 0, bookings.filter(b => b.client_id === c.id || (b.client_name || '').toLowerCase().trim() === n).length)
   }
 
+  /** UX-163: the client's Mode — Bi-Weekly plan, else a monthly schedule, else General */
+  const modeOfClient = (c: Client): 'general' | 'monthly' | 'biweekly' =>
+    c.service_mode === 'biweekly' || (c.biweekly_plan?.days?.length ?? 0) > 0 ? 'biweekly'
+      : isMonthlyClient(c, dailyJobs, allMonthlySummaries) ? 'monthly' : 'general'
+  const tabCounts = { general: 0, monthly: 0, biweekly: 0 }
+  clients.forEach(c => { tabCounts[modeOfClient(c)]++ })
+
   const filtered = (() => {
     const base = clients.filter(c => {
       const q = search.toLowerCase().trim()
@@ -398,7 +413,8 @@ export function Clients() {
         true
       )
       const matchDate = isClientInDateRange(c)
-      return matchSearch && matchArea && matchFilter && matchDate
+      const matchTab = modeOfClient(c) === modeTab // UX-163
+      return matchSearch && matchArea && matchFilter && matchDate && matchTab
     })
 
     if (sortOrder === 'top_spent') return [...base].sort((a, b) => b.total_spent - a.total_spent)
@@ -1047,6 +1063,17 @@ export function Clients() {
         )}
       </div>
 
+      {/* ── UX-163: Clients / Monthly Clients / Bi-Weekly Clients ── */}
+      <div role="tablist" aria-label="Client type" className="flex items-center gap-1.5 bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-1.5 w-fit max-w-full overflow-x-auto">
+        {([['general', 'Clients'], ['monthly', 'Monthly Clients'], ['biweekly', 'Bi-Weekly Clients']] as const).map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={modeTab === id} onClick={() => setModeTab(id)}
+            className={`px-4 py-2 rounded-xl text-[13px] font-bold whitespace-nowrap transition-colors cursor-pointer flex items-center gap-2 ${modeTab === id ? 'bg-emerald-700 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'}`}>
+            {label}
+            <span className={`text-[10.5px] font-black px-1.5 py-0.5 rounded-full ${modeTab === id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{tabCounts[id]}</span>
+          </button>
+        ))}
+      </div>
+
       {/* ── Single Unified Filter & Search Bar directly below summary cards ── */}
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 sm:p-5 space-y-3.5">
         
@@ -1364,6 +1391,7 @@ export function Clients() {
         open={showModal}
         onClose={() => setShowModal(false)}
         employees={employees}
+        prefill={modeTab === 'general' ? undefined : { service_mode: modeTab }} // UX-163: the tab's Mode is chosen
         onSave={clientData => {
           const clientName = clientData.full_name || 'New Client'
           const remarks = clientData.remarks || ''
@@ -1374,6 +1402,9 @@ export function Clients() {
           const newClientId = crypto.randomUUID()
 
           addClient({
+            // R-CLI-08: everything the form sent (mode, weekly schedule, Bi-Weekly plan, contract status) — the
+            // fields below only fill defaults. Monthly / Bi-Weekly clients added here lost their schedule.
+            ...clientData,
             id:                newClientId,
             full_name:         clientName,
             phone:             clientData.phone || '',

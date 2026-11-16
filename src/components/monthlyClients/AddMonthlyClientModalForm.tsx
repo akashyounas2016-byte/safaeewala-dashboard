@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { requireFields } from '@/components/common/FormGuard'
-import { clientNameOrAddress, hasClientAddress } from '@/lib/clientAddress'
+import { clientNameOrAddress, hasClientAddress, singleAddressOf, cleanAddresses } from '@/lib/clientAddress'
+import { AddressesEditor } from '@/components/clients/AddressesEditor'
 import { Calendar, Clock, Users, Sparkles, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
@@ -234,7 +235,7 @@ export function AddMonthlyClientModalForm({
     if (activeDays.length === 0 && !initialClient) setScheduleOpen(true) // UX-161: show the days that must be ticked
     // UX-84: message at the top + outlined fields instead of a browser alert
     if (!requireFields(e.currentTarget, [
-      { name: 'building', label: 'Address (apartment / villa number or building name)', ok: hasClientAddress(addressParts) },
+      { name: 'building', label: 'Address', ok: hasClientAddress(addressParts) },
       // R-SCHED-16: a new monthly client needs a day; an existing one can be saved without (e.g. address only)
       { name: 'schedule_days', label: 'Service days (tick at least one)', ok: activeDays.length > 0 || !!initialClient },
       { name: 'contract_end', label: 'Contract End (on or after Contract Start)', ok: !contractDateError(contract) }, // R-SCHED-11
@@ -298,6 +299,7 @@ export function AddMonthlyClientModalForm({
       duration_hours: firstDuration,
       day_cleaner_assignments: finalAssignments,
       day_schedules: finalDaySchedules,
+      addresses: cleanAddresses(JSON.parse(String(f.get('addresses_json') || '[]'))), // R-CLI-09
       // R-SCHED-08: sent only when Off or turned back On, so saves work before the column exists
       ...(!contractOn || seedClient?.contract_active === false ? { contract_active: contractOn } : {}),
     })
@@ -315,13 +317,14 @@ export function AddMonthlyClientModalForm({
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <Input name="full_name" label="Full Name (optional)" placeholder="e.g. Sarah Al-Rashidi" defaultValue={seedClient?.full_name} />
-          <Input name="phone" label="Phone Number *" placeholder="+971 50 000 0000" defaultValue={seedClient?.phone} required />
+          <Input name="phone" label="Mobile Number *" placeholder="+971 50 000 0000" defaultValue={seedClient?.phone} required />
           <Input name="whatsapp" label="WhatsApp (Optional)" placeholder="+971 50 000 0000" defaultValue={seedClient?.whatsapp ?? ''} />
           <Input name="email" label="Email (Optional)" type="email" placeholder="client@example.com" defaultValue={seedClient?.email ?? ''} />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          <Input name="apartment" label="Apartment / Villa Number" placeholder="302 / Villa 25" defaultValue={seedClient?.apartment ?? ''} />
-          <Input name="building" label="Building / Villa Name *" placeholder="Al Khair Building" defaultValue={seedClient?.building_name ?? ''} />
+          {/* R-CLI-09: one Address field (was Apartment / Villa Number + Building / Villa Name) */}
+          <input type="hidden" name="apartment" value="" />
+          <div className="md:col-span-2"><Input name="building" label="Address *" placeholder="e.g. Al Khair Building Apt 302 / Villa 25" defaultValue={singleAddressOf(seedClient)} /></div>
           <Input name="area" label="Area / Community" placeholder="Dubai Marina, JBR..." defaultValue={seedClient?.area ?? ''} />
           <Select name="city" label="Emirate" defaultValue={seedClient?.city || 'Dubai'}>
             <option>Dubai</option>
@@ -330,6 +333,8 @@ export function AddMonthlyClientModalForm({
             <option>Ajman</option>
           </Select>
         </div>
+        {/* R-CLI-09: more addresses of the same client — chosen when booking */}
+        <AddressesEditor initial={seedClient?.addresses} />
       </div>
 
       {/* ── Section: 5-Column × 7-Row Day-by-Day Schedule Table ── */}
