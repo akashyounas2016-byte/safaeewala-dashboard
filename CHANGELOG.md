@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(job-sheet): 40 new row colours, each clearly different, one colour menu for Add Job (Daily + Excel) and New Booking (UX-167)
 - feat(marketing): WhatsApp Clicks rows have Edit and Delete icons; needs migration `2026-11-17_whatsapp_clicks_edit.sql` (R-MKT-04)
 - feat(clients): a changed monthly schedule (day, time, hours, cleaner) updates the Job Sheet rows from today on; earlier rows stay, hand-made sheet changes stay (R-SCHED-21)
 - fix(clients): Contract Start no longer shows today every day — kept once saved, else the day the client was added (R-SCHED-22)

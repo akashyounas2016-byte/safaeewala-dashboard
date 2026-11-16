@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { RowColorMenu } from '@/components/common/RowColorMenu'
 import { busyCleaners, useDubaiMinute, type BusyInfo } from '@/lib/staffBusy'
 import { useJobCheckins } from '@/lib/jobCheckins'
 import { findStaffClash, clashMessage } from '@/lib/shiftClash'
@@ -1261,52 +1262,7 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
                 </div>
 
                 {/* Color Dropdown Popover */}
-                {colorDropdownOpen && (
-                  <div className="absolute z-50 right-0 bottom-full mb-1.5 w-full sm:w-[320px] bg-white border border-slate-200 rounded-2xl shadow-2xl p-3 animate-in fade-in slide-in-from-bottom-1 duration-150 flex flex-col">
-                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
-                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                        <Palette size={12} className="text-slate-400" />
-                        Select Row Theme
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRowColor('default')
-                          setColorDropdownOpen(false)
-                        }}
-                        className="text-[10px] font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
-                      >
-                        Reset
-                      </button>
-                    </div>
-
-                    <div className="max-h-56 overflow-y-auto grid grid-cols-2 gap-1.5 pr-0.5">
-                      {ROW_COLOR_PRESETS.map(preset => {
-                        const isSelected = rowColor === preset.id
-                        return (
-                          <div
-                            key={preset.id}
-                            onClick={() => {
-                              setRowColor(preset.id)
-                              setColorDropdownOpen(false)
-                            }}
-                            className={`flex items-center gap-2 p-1.5 rounded-xl border text-[11.5px] cursor-pointer transition-all ${
-                              isSelected
-                                ? 'border-emerald-500 bg-emerald-50/80 font-bold text-emerald-950 shadow-2xs'
-                                : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-700'
-                            }`}
-                          >
-                            <span
-                              className="w-3.5 h-3.5 rounded-full border border-black/10 shrink-0"
-                              style={{ backgroundColor: preset.circleColor || '#cbd5e1' }}
-                            />
-                            <span className="truncate">{preset.label.replace('Soft ', '')}</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
+                {colorDropdownOpen && <RowColorMenu value={rowColor} onPick={id => { setRowColor(id); setColorDropdownOpen(false) }} />} {/* UX-167 */}
               </div>
             </div>
           </div>

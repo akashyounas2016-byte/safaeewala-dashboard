@@ -46,8 +46,11 @@ const de2000 = ([L1, a1, b1]: number[], [L2, a2, b2]: number[]) => {
 }
 let minDist = Infinity
 colours.forEach((p, i) => colours.slice(i + 1).forEach(q => { minDist = Math.min(minDist, de2000(lab(p.circleColor), lab(q.circleColor))) }))
-eq(minDist >= 7, true, `no two colours look alike (closest CIEDE2000 ${minDist.toFixed(1)})`)
-eq(colours.every(p => lab(p.circleColor)[0] >= 80), true, 'all colours are fully light')
+eq(minDist >= 9, true, `no two colours look alike (closest CIEDE2000 ${minDist.toFixed(1)}) — UX-167`)
+// UX-167: three tones instead of only pastels — dark text stays readable on every colour (WCAG contrast >= 7)
+const lum = (h: string) => { const [r, g, b] = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(c => (c > 0.04045 ? ((c + 0.055) / 1.055) ** 2.4 : c / 12.92)); return 0.2126 * r + 0.7152 * g + 0.0722 * b }
+eq(colours.every(p => (lum(p.circleColor) + 0.05) / (lum('#0f172a') + 0.05) >= 7), true, 'dark text readable on every colour')
+eq(new Set(colours.map(p => p.circleColor)).size, 40, 'no colour repeated')
 eq(['rose', 'orange', 'teal', 'blue', 'slate'].every(id => ROW_COLOR_PRESETS.some(p => p.id === id)), true, 'older ids still have a colour')
 
 // Split Mode: per-cleaner money; totals; equal share when not split

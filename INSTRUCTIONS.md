@@ -109,6 +109,10 @@
 - 8 PM se pehle agar cleaner apne **basic ghanton** (Add Employee mein *Total Duty Hours*, khali ho to 8) se zyada kaam kare to wo extra ghante bhi OT hain.
 - Ek din ki kai shifts mil kar gini jati hain. OT haath se nahi likha ja sakta — system khud hisaab lagata hai.
 
+### Row ka rang (Row Color)
+- Add Job (Daily aur Excel sheet) aur New Booking mein **Row Color** ki list ek jaisi hai: 40 rang, har rang apne naam ke saath aur button usi rang mein. Koi do rang ek jaise nahi.
+- **Default (no colour)** dabayein to row ka rang hat jata hai. Pehle se rangi hui rows apne qareebi naye rang mein dikhti hain.
+
 ### Excel Job Sheet
 - Sab se upar **jamni "—" block** sirf tab aata hai jab kisi job par cleaner na laga ho (misaal: monthly visit jiska cleaner us waqt busy tha). Us row mein cleaner chun lein. Khali din par ye block nahi aata.
 - Right-click menu: Copy / Paste / Duplicate / Clear upar, delete wale (Delete Row, phir Delete Block) sab se neeche.
