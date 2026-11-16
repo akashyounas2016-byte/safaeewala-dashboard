@@ -54,6 +54,7 @@ const AgencyProfile          = lazyWithRetry(() => import('@/pages/AgencyProfile
 const PaymentsHub            = lazyWithRetry(() => import('@/pages/PaymentsHub').then(m => ({ default: m.PaymentsHub })))
 const CustomerFeedback       = lazyWithRetry(() => import('@/pages/CustomerFeedback').then(m => ({ default: m.CustomerFeedback })))
 const MarketingDashboard     = lazyWithRetry(() => import('@/pages/MarketingDashboard').then(m => ({ default: m.MarketingDashboard })))
+const WhatsAppClicks         = lazyWithRetry(() => import('@/pages/WhatsAppClicks').then(m => ({ default: m.WhatsAppClicks }))) // R-MKT-03
 const AIBot                  = lazyWithRetry(() => import('@/pages/AIBot').then(m => ({ default: m.AIBot })))
 const Complaints             = lazyWithRetry(() => import('@/pages/Complaints').then(m => ({ default: m.Complaints })))
 const BusinessAnalytics      = lazyWithRetry(() => import('@/pages/BusinessAnalytics').then(m => ({ default: m.BusinessAnalytics })))
@@ -218,6 +219,7 @@ function AppRoutes() {
                 <Route path="payments" element={<PaymentsHub />} /> {/* R-FIN-08: Pending lives inside Payments */}
                 <Route path="feedback" element={<CustomerFeedback />} />
                 <Route path="marketing" element={<MarketingDashboard />} />
+                <Route path="whatsapp-clicks" element={<WhatsAppClicks />} />
                 <Route path="complaints" element={<Complaints />} />
                 <Route path="ai-bot" element={<AIBot />} />
                 <Route path="analytics" element={<BusinessAnalytics />} />

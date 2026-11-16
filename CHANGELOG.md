@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(marketing): WhatsApp Clicks screen — clicks on the website's WhatsApp buttons arrive by a signed webhook from the WordPress plugin; needs migration `2026-11-16_whatsapp_clicks.sql` and `WACT_SIGNING_SECRET` (R-MKT-03)
 - change(clients): one client popup for General / Monthly / Bi-Weekly (Monthly shows its weekly schedule card); address card reordered; saved addresses listed with an edit icon (R-SCHED-20, UX-164)
 - feat(clients): deleting a client needs its exact name typed (UX-165)
 - feat(clients): Clients · Monthly Clients · Bi-Weekly Clients tabs; Add Client opens in the tab's mode (UX-163)

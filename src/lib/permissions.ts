@@ -22,7 +22,7 @@ export const APP_MODULES = [
   { key: 'Excel Job Sheet', paths: ['/daily-job-sheet/spreadsheet'] }, // R-SEC-09: its own permission (longest path wins)
   { key: 'Job Sheet Import & Delete', paths: [] }, // R-SEC-09: Import, Delete Day's Data, Delete All Data
   { key: 'Fluent Forms',    paths: ['/fluent-forms', '/feedback'] },
-  { key: 'Marketing',       paths: ['/marketing'] }, // R-MKT-01: own screen (was under Fluent Forms)
+  { key: 'Marketing',       paths: ['/marketing', '/whatsapp-clicks'] }, // R-MKT-01: own screen (was under Fluent Forms); R-MKT-03 WhatsApp Clicks
   { key: 'Complaints',      paths: ['/complaints'] }, // R-CMP-01
   { key: 'Inbox',           paths: ['/inbox'] }, // R-INBOX-01: WhatsApp + Facebook + Instagram
   { key: 'WhatsApp',        paths: ['/whatsapp-crm', '/conversations'] }, // R-WA-01; R-INBOX-03: Sidebar → Conversations

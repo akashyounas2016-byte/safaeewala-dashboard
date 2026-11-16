@@ -8,7 +8,7 @@ import {
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
   CreditCard, TrendingUp, Globe, Clock, LogOut, ChevronLeft, Building2,
   CalendarDays, Star, SlidersHorizontal, ArrowUp, ArrowDown, RotateCcw, Sparkles, Truck, Navigation, Eye, EyeOff, Bell,
-  Megaphone, MessageCircle, Bot, MessageSquareWarning,
+  Megaphone, MessageCircle, Bot, MessageSquareWarning, MousePointerClick,
 } from 'lucide-react'
 import { useLayout } from './Layout'
 import { useWhatsAppUnread } from '@/store/useWhatsAppUnread'
@@ -40,6 +40,7 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { to: '/fluent-forms',     label: 'Leads (Website)',   icon: Globe,                               category: 'Workspace' }, // owner 2026-11-09 (was Fluent Forms)
   { to: '/whatsapp-crm',     label: 'Conversations',     icon: MessageCircle,                       category: 'Workspace' }, // R-WA-01, R-INBOX-02: one screen for WhatsApp + Facebook + Instagram
   { to: '/marketing',        label: 'Marketing',         icon: Megaphone,                           category: 'Workspace' }, // owner request 2026-11-06
+  { to: '/whatsapp-clicks',  label: 'WhatsApp Clicks',   icon: MousePointerClick,                   category: 'Workspace' }, // R-MKT-03: website WhatsApp button clicks
   { to: '/clients',          label: 'Clients',           icon: Users,                               category: 'Workspace' },
   { to: '/employees',        label: 'Employees',         icon: UserCheck,                           category: 'Workspace' },
   { to: '/drivers',          label: 'Drivers',           icon: Truck,                               category: 'Workspace' },

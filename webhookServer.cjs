@@ -560,6 +560,8 @@ async function signedInWithPublicKey(req) {
 /** { ok } or { ok:false, status, error } for every /api request except /api/admin (own checks) */
 async function authorizeApi(req, pathname, parsedUrl) {
   const isLeadWebhook = req.method === 'POST' && pathname === '/api/webhook/fluent-forms';
+  // R-MKT-03: WhatsApp click webhook from the website — checked in the handler with the X-WACT-Signature HMAC
+  if (req.method === 'POST' && pathname === '/api/webhook/whatsapp-clicks') return { ok: true };
   // B4: the browser sends Content-Security-Policy reports without a sign-in (write-only, small, deduplicated)
   if (req.method === 'POST' && pathname === '/api/logs/csp') return { ok: true };
   if (isLeadWebhook && WEBHOOK_SECRET) {
@@ -726,6 +728,29 @@ function saveLeadToCloud(lead) {
     .catch(err => console.error('[Webhook] Lead kept in leads.json, cloud copy failed:', err.message));
 }
 
+/** R-MKT-03: the plugin's click JSON → one whatsapp_clicks row (long values cut, unknown fields kept in raw) */
+function whatsappClickRow(b) {
+  const s = (v, n = 500) => (v == null ? null : String(v).slice(0, n))
+  const o = v => (v && typeof v === 'object' ? v : {})
+  const site = o(b.site), page = o(b.page), button = o(b.button), wa = o(b.whatsapp), visitor = o(b.visitor)
+  const clickId = b.id != null ? String(b.id) : String(b.timestamp || Date.now())
+  const when = Date.parse(b.timestamp || '')
+  return {
+    id: s(`${site.url || 'site'}#${clickId}`, 300),
+    click_id: s(clickId, 60),
+    clicked_at: Number.isNaN(when) ? new Date().toISOString() : new Date(when).toISOString(),
+    local_time: s(b.local_time, 40),
+    site_name: s(site.name, 200), site_url: s(site.url, 300),
+    page_url: s(page.url, 1000), page_title: s(page.title, 300),
+    button_text: s(button.text, 200), button_location: s(button.location, 100),
+    wa_number: s(wa.number, 40), wa_message: s(wa.message, 1000),
+    device: s(visitor.device, 40), referrer: s(visitor.referrer, 1000),
+    utm_source: s(visitor.utm_source, 200), utm_medium: s(visitor.utm_medium, 200), utm_campaign: s(visitor.utm_campaign, 200),
+    visitor_ip: s(visitor.ip || b.ip, 64),
+    raw: b,
+  }
+}
+
 function routeApi(req, res, parsedUrl, pathname) {
   if (whatsapp.route(req, res, parsedUrl, pathname)) return; // R-WA-01
   if (ghl.route(req, res, parsedUrl, pathname)) return; // R-INBOX-01
@@ -749,6 +774,30 @@ function routeApi(req, res, parsedUrl, pathname) {
         .then(r => sendJson(res, r.ok ? 200 : 502, { success: r.ok, status: r.status }));
     }).catch(err => sendJson(res, err.status || 502, { success: false, message: err.message }));
     return;
+  }
+
+  // R-MKT-03: WhatsApp click from the WordPress plugin. Body signed: X-WACT-Signature = "sha256=" + HMAC-SHA256(raw
+  // body, WACT_SIGNING_SECRET). Unsigned / wrong → 401; secret not set on the server → 503 (nothing accepted).
+  if (req.method === 'POST' && pathname === '/api/webhook/whatsapp-clicks') {
+    const chunks = []; let size = 0
+    req.on('data', c => { size += c.length; if (size <= 64 * 1024) chunks.push(c) })
+    req.on('end', () => {
+      if (size > 64 * 1024) return sendJson(res, 413, { error: 'Request too large' })
+      const raw = Buffer.concat(chunks)
+      const secret = process.env.WACT_SIGNING_SECRET || ''
+      if (!secret) return sendJson(res, 503, { error: 'WhatsApp click webhook is not set up (WACT_SIGNING_SECRET)' })
+      const given = String(req.headers['x-wact-signature'] || '').replace(/^sha256=/i, '').trim().toLowerCase()
+      const want = require('crypto').createHmac('sha256', secret).update(raw).digest('hex')
+      if (!given || !safeEqual(given, want)) return sendJson(res, 401, { error: 'Bad signature' })
+      let b
+      try { b = JSON.parse(raw.toString('utf8') || '{}') } catch { return sendJson(res, 400, { error: 'Invalid JSON' }) }
+      const row = whatsappClickRow(b)
+      if (!SUPABASE_URL || !SERVICE_KEY) return sendJson(res, 503, { error: 'Database not set up on the server' })
+      supa('/rest/v1/whatsapp_clicks?on_conflict=id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: row })
+        .then(() => sendJson(res, 201, { ok: true, id: row.id }))
+        .catch(err => { logServerError('whatsapp-clicks', err); sendJson(res, 502, { error: 'Not saved' }) })
+    })
+    return
   }
 
   // B4: Content-Security-Policy reports (nginx report-uri). Kept in the error log as kind "csp", one line per

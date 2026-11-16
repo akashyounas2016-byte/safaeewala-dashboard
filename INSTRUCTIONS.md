@@ -133,6 +133,10 @@
 
 ---
 
+### WhatsApp Clicks (website)
+- Website par jab koi WhatsApp button dabata hai, wo click CRM ki **WhatsApp Clicks** screen par aata hai: kis page se, kaun sa button, kis campaign / Google / Facebook se, mobile ya computer.
+- Ye **lead nahi** hai — click mein customer ka number nahi hota. Ye batata hai ke kaun se pages aur campaigns WhatsApp chats la rahe hain. Asal chat Conversations mein aati hai.
+
 ## 5. Complaints aur Health Score
 
 - Har complaint ka **track record** rehta hai: kab aayi, kisne likhi, har change (status, severity, cleaner…) kisne aur kab kiya, kab hal hui.

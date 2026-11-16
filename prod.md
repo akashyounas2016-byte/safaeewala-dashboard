@@ -120,6 +120,11 @@ There are **two** ways code reaches production. Both need the owner's permission
 7j. (UX-138) Supabase → SQL editor: run `supabase/migrations/2026-11-11_daily_jobs_charges_per_hour.sql` (typed Charges (hrs) on each job).
 7k. (R-DATA-12) Supabase → SQL editor: run `supabase/migrations/2026-11-16_daily_jobs_client_id.sql` (each job keeps its client's id). Safe before or after the deploy.
 7l. (R-CLI-09) Supabase → SQL editor: run `supabase/migrations/2026-11-16_client_addresses.sql` (more addresses per client). Safe before or after the deploy.
+7m. (R-MKT-03) WhatsApp Clicks from the website:
+    1. Supabase → SQL editor: run `supabase/migrations/2026-11-16_whatsapp_clicks.sql`.
+    2. WordPress → WhatsApp Clicks → Settings & Webhook: make a new **Signing secret** (the old one was shown in a screenshot), Save.
+    3. VPS `/var/www/safaeewala/.env`: `WACT_SIGNING_SECRET=<that secret>` (never in git or chat), then `cd /var/www/safaeewala && docker compose up -d`.
+    4. Plugin: tick **Enable webhook delivery**, Webhook URL `https://crm.safaeewala.com/api/webhook/whatsapp-clicks`, Bearer token empty, Save → **Send test webhook** → the click shows on CRM → WhatsApp Clicks.
 8. If the number is not registered / the app gets no messages: WhatsApp → Settings → **Connect** (admin; a 6-digit PIN registers the number, and the WhatsApp account is subscribed to the app).
 
 ### Facebook + Instagram in the Inbox (R-INBOX-01)

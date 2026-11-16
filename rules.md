@@ -1146,6 +1146,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/leadLists.ts`, `src/components/marketing/LeadLists.tsx`, `MarketingDashboard.tsx`.
 - **Status:** Built · Since: 2026-11-09
 
+
+### R-MKT-03 — WhatsApp button clicks of the website
+- **Why:** the website (WordPress plugin "WhatsApp Clicks") records every click on a WhatsApp button and can send it to a webhook. The owner wants these clicks in the CRM (2026-11-16).
+  - The plugin posts each click to `https://crm.safaeewala.com/api/webhook/whatsapp-clicks`. The server checks `X-WACT-Signature` = `sha256=` + HMAC-SHA256 of the raw body with `WACT_SIGNING_SECRET` (VPS `.env`): missing / wrong → 401; secret not set → 503, nothing accepted.
+  - Saved in `whatsapp_clicks` (migration `2026-11-16_whatsapp_clicks.sql`): time, page, button, the pre-filled message, device, referrer and UTM. Id = site + plugin click id, so a resent click is not counted twice. Only the server writes; admin / manager / Marketing can read.
+  - A click has no customer phone (`whatsapp.number` is the business number), so clicks are not leads. Screen **WhatsApp Clicks** (same access as Marketing): Clicks / Today / On mobile / Top page cards, date range and search, clicks by page, by source / campaign and by button, and the list of clicks.
+- **Code:** `webhookServer.cjs → /api/webhook/whatsapp-clicks, whatsappClickRow`; `src/pages/WhatsAppClicks.tsx`; `src/lib/whatsappClicks.ts`. Tests: `tests/server/api.test.mjs`, `tests/unit/whatsapp-clicks-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
 ### R-GHL-01 — Google review link in client messages
 - **Rule:** owner's GHL / Google Business Profile plan, step 1 (2026-11-09): ask every client for a Google review.
   - Conversations → Settings → Notifications → **Google review link**: paste the link from Google Business Profile → "Ask for reviews". The CRM checks that it looks like a Google review link.

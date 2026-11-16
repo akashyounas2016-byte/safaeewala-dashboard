@@ -19,6 +19,7 @@ const profiles = [
 const authUsers = new Map([[ADMIN, { id: ADMIN, email: 'admin@staff.safaeewala.com' }], [EMP, { id: EMP, email: 'sw-0001@staff.safaeewala.com' }]])
 const calls = []
 const leadsInCloud = []
+const clicksInCloud = []
 let n = 3
 const mock = http.createServer((req, res) => {
   let body = ''
@@ -52,12 +53,13 @@ const mock = http.createServer((req, res) => {
     }
     if (u.pathname.startsWith('/auth/v1/admin/users/')) return json(200, {})
     if (u.pathname === '/rest/v1/fluent_form_leads' && req.method === 'POST') { leadsInCloud.push(b); return json(201, []) }
+    if (u.pathname === '/rest/v1/whatsapp_clicks' && req.method === 'POST') { clicksInCloud.push(b); return json(201, []) }
     json(404, { message: 'mock: unknown ' + u.pathname })
   })
 })
 await new Promise(r => mock.listen(54329, r))
 
-const child = spawn(process.execPath, [serverFile], { env: { ...process.env, SUPABASE_URL: 'http://127.0.0.1:54329', SUPABASE_SERVICE_ROLE_KEY: 'test-key', DATA_DIR: dataDir, FLUENT_WEBHOOK_SECRET: 'hook-secret' }, stdio: 'pipe' })
+const child = spawn(process.execPath, [serverFile], { env: { ...process.env, SUPABASE_URL: 'http://127.0.0.1:54329', SUPABASE_SERVICE_ROLE_KEY: 'test-key', DATA_DIR: dataDir, FLUENT_WEBHOOK_SECRET: 'hook-secret', WACT_SIGNING_SECRET: 'wact-test-secret' }, stdio: 'pipe' })
 await new Promise(r => setTimeout(r, 700))
 
 const api = async (method, p, token, body) => {
@@ -139,6 +141,26 @@ try {
   check(cspRows.length === 1 && /script-src: https:\/\/evil\.example/.test(cspRows[0].message), 'CSP report logged once (B4)', cspRows)
   r = await api('GET', '/api/logs/errors', null)
   check(r.status === 401, 'reading the log still needs a sign-in', r.status)
+  // R-MKT-03: WhatsApp click webhook — signed with the plugin's secret
+  const click = JSON.stringify({ event: 'whatsapp_click', id: 152, timestamp: '2026-11-15T08:41:09+00:00', local_time: '2026-11-15T12:41:09+04:00',
+    site: { name: 'Cloud Test Site', url: 'https://example.com/' }, page: { url: 'https://example.com/service/sofa-cleaning/', title: 'Sofa Cleaning Dubai' },
+    button: { text: 'WhatsApp for a price', location: 'content' }, whatsapp: { number: '+971500000000', message: 'Hi' },
+    visitor: { device: 'mobile', referrer: 'https://www.google.com/', utm_source: 'google', utm_medium: 'cpc', utm_campaign: 'sofa' } })
+  const sig = 'sha256=' + (await import('node:crypto')).createHmac('sha256', 'wact-test-secret').update(click).digest('hex')
+  const post = (headers, body = click) => fetch('http://127.0.0.1:3001/api/webhook/whatsapp-clicks', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body })
+  let w = await post({})
+  check(w.status === 401, 'WhatsApp click without signature → 401', w.status)
+  w = await post({ 'X-WACT-Signature': 'sha256=' + '0'.repeat(64) })
+  check(w.status === 401, 'WhatsApp click with a wrong signature → 401', w.status)
+  w = await post({ 'X-WACT-Signature': sig }, click.replace('sofa', 'SOFA'))
+  check(w.status === 401, 'a changed body fails the signature', w.status)
+  w = await post({ 'X-WACT-Signature': sig })
+  check(w.status === 201, 'signed WhatsApp click accepted', w.status)
+  await new Promise(res => setTimeout(res, 100))
+  const c0 = clicksInCloud[0] || {}
+  check(c0.id === 'https://example.com/#152' && c0.page_title === 'Sofa Cleaning Dubai' && c0.utm_campaign === 'sofa' && c0.device === 'mobile' && c0.wa_number === '+971500000000' && c0.clicked_at === '2026-11-15T08:41:09.000Z',
+    'click saved with page, button, campaign, device (R-MKT-03)', c0)
+
   // E2E-15: flooding the webhook is cut off
   let limited = 0
   for (let i = 0; i < 130; i++) {
