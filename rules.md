@@ -154,6 +154,12 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/components/monthlyClients/AddMonthlyClientModalForm.tsx → handleSubmit`. Test: `tests/unit/monthly-edit-nodays-1116.test.ts`.
 - **Status:** Active · Since: 2026-11-16
 
+### R-SCHED-17 — Edit Monthly Client saves from the 7-Day Schedule tab
+- **Why:** the Save Changes button was shown only on the Profile & Financials tab. On the 7-Day Schedule tab there was no button, so days and cleaners picked there could never be saved; switching to the Profile tab and saving sent the other form, and the schedule was lost (reported by the team, 2026-11-16).
+  - Cancel and Save are in the popup header on both tabs. On the 7-Day Schedule tab Save sends the schedule form.
+- **Code:** `src/components/clients/ClientModalForm.tsx`. Test: `tests/unit/monthly-edit-nodays-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
+
 ---
 
 ## ATT — Attendance

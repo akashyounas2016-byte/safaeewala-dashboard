@@ -281,8 +281,9 @@ export function ClientModalForm({
           )}
 
           {showMonthlyFlow && modeSelect(true)}
-          {activeTab === 'profile' && (
-            <>
+          {/* R-SCHED-17: Save on both tabs — the 7-Day Schedule tab had no Save button, so a picked day / cleaner
+              could never be saved (2026-11-16); there it submits the schedule form */}
+          <>
               <Button
                 type="button"
                 variant="outline"
@@ -294,7 +295,7 @@ export function ClientModalForm({
               </Button>
               <Button
                 type="submit"
-                form={showMonthlyFlow ? 'add-monthly-client-form' : 'client-modal-form'}
+                form={showMonthlyFlow || (isMonthly && isEdit && activeTab === 'schedule') ? 'add-monthly-client-form' : 'client-modal-form'}
                 size="sm"
                 disabled={isSaving}
                 className="h-9 px-4.5 text-[12.5px] font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs cursor-pointer flex items-center gap-1.5 rounded-xl transition-all"
@@ -302,8 +303,7 @@ export function ClientModalForm({
                 <Save size={13} />
                 <span>{isSaving ? 'Saving…' : (isEdit ? 'Save Changes' : 'Save Client')}</span>
               </Button>
-            </>
-          )}
+          </>
         </div>
       }
     >

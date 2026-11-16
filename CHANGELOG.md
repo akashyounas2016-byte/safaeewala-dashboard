@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(monthly): the 7-Day Schedule tab of Edit Monthly Client has a Save button — picked days and cleaners can be saved (R-SCHED-17)
 - fix(monthly): an existing monthly client without service days (Office ABC Trading DMCC) can be edited and saved again; no crash without a day (R-SCHED-16)
 - change(clients): Clients screen has Grid Card / Table / Wide Grid like Monthly Clients, and search, area, date and sort in one row (UX-160)
 - change(client-profile): totals as cards under the header (not repeated in tabs); Upcoming Bookings wide and light green with day, date, time and cleaners next to Financial Summary (60/40); Customize keeps only columns (UX-159)
