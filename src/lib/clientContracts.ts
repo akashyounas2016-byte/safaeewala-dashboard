@@ -62,9 +62,10 @@ export function contractOfClient(clientName: string | undefined, list: Recurring
   return own.find(c => c.status === 'active') || own[0]
 }
 
-export function detailsOfContract(c: RecurringContract | undefined): ContractDetails {
-  if (!c) return emptyContractDetails()
-  return { serviceType: c.serviceType || '', amount: Number(c.amount) || 0, frequency: c.frequency || 'monthly', startDate: c.startDate || todayDubai(), endDate: c.endDate || '', notes: c.notes || '' }
+/** `fallbackStart`: the Start shown when there is no saved date (the day the client was added) — R-SCHED-22 */
+export function detailsOfContract(c: RecurringContract | undefined, fallbackStart?: string): ContractDetails {
+  if (!c) return { ...emptyContractDetails(), ...(fallbackStart ? { startDate: fallbackStart } : {}) }
+  return { serviceType: c.serviceType || '', amount: Number(c.amount) || 0, frequency: c.frequency || 'monthly', startDate: c.startDate || fallbackStart || todayDubai(), endDate: c.endDate || '', notes: c.notes || '' }
 }
 
 export const hasContractDetails = (d: ContractDetails) => Boolean(d.serviceType.trim()) || d.amount > 0
@@ -93,13 +94,15 @@ export function saveClientContract(args: {
   active: boolean
   phone?: string
   email?: string
+  /** R-SCHED-22: save even an empty card, so the Start date shown is the one kept (it moved with "today") */
+  always?: boolean
 }): RecurringContract | null {
-  const { clientName, previousName, details, active, phone, email } = args
+  const { clientName, previousName, details, active, phone, email, always } = args
   const list = readContracts()
   const existing = contractOfClient(previousName || clientName, list) || contractOfClient(clientName, list)
   // R-SCHED-19: dates alone are a contract too — only Start / End typed was never saved (lost on refresh, 2026-11-16)
   const touched = hasContractDetails(details) || Boolean(details.endDate) || Boolean(details.notes.trim()) || (Boolean(details.startDate) && details.startDate !== todayDubai())
-  if (!existing && !touched) return null
+  if (!existing && !touched && !always) return null
   const startDate = details.startDate || existing?.startDate || todayDubai()
   const next: RecurringContract = {
     id: existing?.id || `ct-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,

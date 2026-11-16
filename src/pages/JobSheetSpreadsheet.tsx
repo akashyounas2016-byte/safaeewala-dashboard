@@ -1,3 +1,4 @@
+import { extraAddressChoices, isExtraAddressOf } from '@/lib/clientAddress'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { awayCleanerNames } from '@/lib/attendance'
 import { monthlyJobsNeedingCover, replaceCleanerOnRow, isFreeFor, pasteRowInto } from '@/lib/excelSheet/replacement'
@@ -226,6 +227,7 @@ export function JobSheetSpreadsheet() {
   const addressOptions = useMemo(() => {
     const set = new Set<string>()
     getAssignableClients(clients).forEach(c => { if (c.full_name) set.add(c.full_name.trim()); if (c.building_name) set.add(c.building_name.trim()) })
+    extraAddressChoices(clients).forEach(x => set.add(x.address)) // R-CLI-12
     return Array.from(set).sort((a, b) => a.localeCompare(b)).slice(0, 1000)
   }, [clients])
   const areaOptions = useMemo(() => Array.from(new Set(dailyJobs.map(j => (j.area || '').trim()).filter(a => a && a !== '—'))).sort().slice(0, 300), [dailyJobs])
@@ -248,6 +250,11 @@ export function JobSheetSpreadsheet() {
           client: c
         })
       }
+    })
+    // R-CLI-12: the clients' other addresses
+    extraAddressChoices(clients).forEach(x => {
+      const c = clients.find(k => k.id === x.clientId)
+      if (c && !seen.has(x.address.toLowerCase())) { seen.add(x.address.toLowerCase()); list.push({ key: x.key, building: x.address, name: c.full_name || x.address, area: x.area, isMonthly: false, client: { ...c, apartment: '' } }) }
     })
     return list
   }, [clients])
@@ -1153,7 +1160,8 @@ export function JobSheetSpreadsheet() {
       const isRegistered = clients.some(c =>
         c.full_name?.toLowerCase().trim() === trimmed.toLowerCase() ||
         c.building_name?.toLowerCase().trim() === trimmed.toLowerCase() ||
-        `${c.full_name} (${c.building_name || c.area})`.toLowerCase().trim() === trimmed.toLowerCase()
+        `${c.full_name} (${c.building_name || c.area})`.toLowerCase().trim() === trimmed.toLowerCase() ||
+        isExtraAddressOf(c, trimmed) // R-CLI-12
       )
       if (!isRegistered) {
         setQuickClientState({

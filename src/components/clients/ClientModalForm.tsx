@@ -29,6 +29,7 @@ import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
 import { BiWeeklyScheduleCard, emptyBiWeeklyPlan } from '@/components/clients/BiWeeklyScheduleCard'
 import { ContractStatusToggle } from '@/components/clients/ContractStatusToggle'
 import { ContractDetailsCard } from '@/components/clients/ContractDetailsCard'
+import { toDubaiDate } from '@/lib/dubaiTime'
 import { contractDateError, contractOfClient, detailsOfContract, saveClientContract } from '@/lib/clientContracts'
 import type { BiWeeklyPlan, ClientServiceMode } from '@/lib/biweekly'
 
@@ -67,8 +68,12 @@ export function ClientModalForm({
   const [mode, setMode] = useState<ClientServiceMode>(startMode)
   const [plan, setPlan] = useState<BiWeeklyPlan>(() => seed?.biweekly_plan ?? emptyBiWeeklyPlan())
   // R-CLI-05: the client's contract (Monthly Clients → Contracts) is edited here too
-  const [savedContract] = useState(() => (initialClient ? contractOfClient(initialClient.full_name) : undefined))
-  const [contract, setContract] = useState(() => detailsOfContract(savedContract))
+  // R-SCHED-22: read again each time the popup opens, and a client without a contract starts on the day it was
+  // added — the Start date showed "today" every day and moved with it (2026-11-16)
+  const readSaved = () => (initialClient ? contractOfClient(initialClient.full_name) : undefined)
+  const firstDetails = (c: ReturnType<typeof readSaved>) => detailsOfContract(c, initialClient?.created_at ? toDubaiDate(new Date(initialClient.created_at)) : undefined)
+  const [savedContract, setSavedContract] = useState(readSaved)
+  const [contract, setContract] = useState(() => firstDetails(savedContract))
   // R-SCHED-08: Off when the client or its contract is switched off
   const [contractOn, setContractOn] = useState(() => seed?.contract_active !== false && (!savedContract || savedContract.status === 'active'))
   // R-SCHED-20: one popup for every Mode — Monthly shows its weekly schedule card here (no separate form)
@@ -85,6 +90,9 @@ export function ClientModalForm({
       setPlan(seed?.biweekly_plan ?? emptyBiWeeklyPlan())
       setContractOn(seed?.contract_active !== false)
       setWeek(initialWeekSchedule(weekSeed()))
+      const saved = readSaved()
+      setSavedContract(saved)
+      setContract(firstDetails(saved))
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -232,7 +240,7 @@ export function ClientModalForm({
     onSave(patch)
     // R-CLI-05: Bi-Weekly / monthly clients keep their contract with them (a General client has none)
     if (patch.service_mode !== 'general') {
-      saveClientContract({ clientName: patch.full_name || '', previousName: initialClient?.full_name, details: contract, active: contractOn, phone: patch.phone, email: patch.email })
+      saveClientContract({ clientName: patch.full_name || '', previousName: initialClient?.full_name, details: contract, active: contractOn, phone: patch.phone, email: patch.email, always: true }) // R-SCHED-22: the Start date is kept
       trimVisitsToContract({ ...(initialClient || {}), ...patch }) // R-SCHED-13
     }
     onClose()
@@ -308,6 +316,7 @@ export function ClientModalForm({
               <p className="text-[12.5px] font-black text-slate-800">Primary Contact & Identity</p>
             </div>
 
+            {/* UX-166: Name · Mobile · WhatsApp · Email · Mode in one row (Email was under Address) */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
               <div className="md:col-span-3">
                 <Input
@@ -318,7 +327,7 @@ export function ClientModalForm({
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
-              <div className="md:col-span-3">
+              <div className="md:col-span-2">
                 <Input
                   name="phone"
                   label="Mobile Number *"
@@ -328,7 +337,7 @@ export function ClientModalForm({
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
-              <div className="md:col-span-3">
+              <div className="md:col-span-2">
                 <Input
                   name="whatsapp"
                   label="WhatsApp Number"
@@ -337,7 +346,17 @@ export function ClientModalForm({
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
-              <div className="md:col-span-3">{modeSelect()}</div>
+              <div className="md:col-span-3">
+                <Input
+                  name="email"
+                  label="Email Address"
+                  type="email"
+                  placeholder="client@example.com"
+                  defaultValue={seed?.email ?? ''}
+                  className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
+                />
+              </div>
+              <div className="md:col-span-2">{modeSelect()}</div>
             </div>
           </div>
 
@@ -350,30 +369,29 @@ export function ClientModalForm({
               <p className="text-[12.5px] font-black text-slate-800">Address & Crew Assignment</p>
             </div>
 
-            {/* UX-164: row 1 Preferred Cleaner · Email · City; row 2 Address · Area; then the other addresses */}
+            {/* UX-166: Address first (under the contact) · Area · City, then the other addresses, then the cleaner */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
-              <div className="md:col-span-4 min-w-0">
-                <CleanerMultiSelect
-                  alignRight
-                  label="Preferred Cleaner(s)"
-                  name="preferred_cleaner"
-                  cleaners={activeCleanersList}
-                  selected={selectedCleaners}
-                  onChange={setSelectedCleaners}
-                  placeholder="Assign cleaner(s)..."
-                />
-              </div>
-              <div className="md:col-span-4">
+              {/* R-CLI-09: one Address field (was Apartment / Villa Number + Building / Villa Name) */}
+              <div className="md:col-span-6">
+                <input type="hidden" name="apartment" value="" />
                 <Input
-                  name="email"
-                  label="Email Address"
-                  type="email"
-                  placeholder="client@example.com"
-                  defaultValue={seed?.email ?? ''}
+                  name="building_name"
+                  label="Address *"
+                  placeholder="e.g. Al Khair Building Apt 302 / Villa 25"
+                  defaultValue={singleAddressOf(seed)}
                   className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
                 />
               </div>
-              <div className="md:col-span-4">
+              <div className="md:col-span-3">
+                <Input
+                  name="area"
+                  label="Area / Community"
+                  placeholder="e.g. Dubai Marina, JBR, Downtown"
+                  defaultValue={seed?.area ?? ''}
+                  className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
+                />
+              </div>
+              <div className="md:col-span-3">
                 <Select
                   name="city"
                   label="Emirate (City)"
@@ -389,29 +407,19 @@ export function ClientModalForm({
                   <option value="Umm Al Quwain">Umm Al Quwain</option>
                 </Select>
               </div>
-              {/* R-CLI-09: one Address field (was Apartment / Villa Number + Building / Villa Name) */}
-              <div className="md:col-span-8">
-                <input type="hidden" name="apartment" value="" />
-                <Input
-                  name="building_name"
-                  label="Address *"
-                  placeholder="e.g. Al Khair Building Apt 302 / Villa 25"
-                  defaultValue={singleAddressOf(seed)}
-                  className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
-                />
-              </div>
-              <div className="md:col-span-4">
-                <Input
-                  name="area"
-                  label="Area / Community"
-                  placeholder="e.g. Dubai Marina, JBR, Downtown"
-                  defaultValue={seed?.area ?? ''}
-                  className="h-9.5 text-[13px] rounded-xl border-slate-200 focus:border-teal-500"
-                />
-              </div>
-              {/* R-CLI-09: more addresses of the same client — chosen when booking */}
+              {/* R-CLI-09 / R-CLI-12: more addresses of the same client — chosen on bookings and the job sheets */}
               <div className="md:col-span-12">
                 <AddressesEditor initial={seed?.addresses} />
+              </div>
+              <div className="md:col-span-6 min-w-0">
+                <CleanerMultiSelect
+                  label="Preferred Cleaner(s)"
+                  name="preferred_cleaner"
+                  cleaners={activeCleanersList}
+                  selected={selectedCleaners}
+                  onChange={setSelectedCleaners}
+                  placeholder="Assign cleaner(s)..."
+                />
               </div>
             </div>
           </div>

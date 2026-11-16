@@ -1,3 +1,4 @@
+import { isExtraAddressOf } from '@/lib/clientAddress'
 import React, { useState, useEffect, useMemo } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -152,7 +153,8 @@ export function SpreadsheetEditModal({
     const isRegistered = clients.some(c =>
       c.full_name?.toLowerCase().trim() === trimmedAddr.toLowerCase() ||
       c.building_name?.toLowerCase().trim() === trimmedAddr.toLowerCase() ||
-      `${c.full_name} (${c.building_name || c.area})`.toLowerCase().trim() === trimmedAddr.toLowerCase()
+      `${c.full_name} (${c.building_name || c.area})`.toLowerCase().trim() === trimmedAddr.toLowerCase() ||
+      isExtraAddressOf(c, trimmedAddr) // R-CLI-12
     )
 
     if (!isRegistered && !hasConfirmedUnregistered && trimmedAddr.length > 1) {

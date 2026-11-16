@@ -1,3 +1,4 @@
+import { extraAddressChoices, isExtraAddressOf } from '@/lib/clientAddress'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { busyCleaners, useDubaiMinute } from '@/lib/staffBusy'
 import { useJobCheckins } from '@/lib/jobCheckins'
@@ -354,13 +355,18 @@ export function AddJobForm({
         })
       }
     })
+    // R-CLI-12: the clients' other addresses are in the list too
+    extraAddressChoices(clients).forEach(x => {
+      const c = clients.find(k => k.id === x.clientId)
+      if (c) list.push({ key: x.key, building: cleanAddressDisplay(x.address), clientName: c.full_name?.trim() || '', area: x.area, apartment: '', isMonthly: false, client: c })
+    })
     return list
   }, [clients])
 
   // UX-135 / R-FIN-10: the client picked in the list — its advance / pending is shown and used on save
   const [pickedClient, setPickedClient] = useState<Client | null>(() => {
     const a = (initial?.address || '').trim().toLowerCase()
-    return a ? clients.find(c => [c.building_name, c.full_name].some(n => (n || '').trim().toLowerCase() === a)) || null : null
+    return a ? clients.find(c => [c.building_name, c.full_name].some(n => (n || '').trim().toLowerCase() === a) || isExtraAddressOf(c, a)) || null : null
   })
   const pickedStatus = useMemo<ClientMoneyStatus | null>(
     () => (pickedClient ? clientMoneyStatus(pickedClient, dailyJobs) : null),
@@ -401,11 +407,11 @@ export function AddJobForm({
   }, [availableAreas, areaSearch])
 
   // Client Selection Handler
-  const handleSelectClient = (c: Client, chosenAddress?: string) => {
+  const handleSelectClient = (c: Client, chosenAddress?: string, chosenArea?: string) => {
     const finalAddr = chosenAddress || c.building_name || c.full_name || ''
     setPickedClient(c)
     setAddress(finalAddr)
-    if (c.area) setArea(c.area)
+    if (chosenArea || c.area) setArea(chosenArea || c.area) // R-CLI-12: an other address has its own area
     if (c.preferred_cleaner && selectedStaff.length === 0) {
       setSelectedStaff(c.preferred_cleaner.split(/[,+/&]|\band\b/i).map(s => s.trim()).filter(Boolean))
     }
@@ -454,7 +460,8 @@ export function AddJobForm({
     const isRegistered = clients.some(c =>
       c.full_name?.toLowerCase().trim() === trimmedAddr.toLowerCase() ||
       c.building_name?.toLowerCase().trim() === trimmedAddr.toLowerCase() ||
-      `${c.full_name} (${c.building_name || c.area})`.toLowerCase().trim() === trimmedAddr.toLowerCase()
+      `${c.full_name} (${c.building_name || c.area})`.toLowerCase().trim() === trimmedAddr.toLowerCase() ||
+      isExtraAddressOf(c, trimmedAddr) // R-CLI-12
     )
 
     if (!isRegistered && !hasConfirmedUnregistered) {
@@ -716,7 +723,7 @@ export function AddJobForm({
                                 b => b.building.toLowerCase() === trimmed.toLowerCase()
                               )
                               if (match) {
-                                handleSelectClient(match.client, match.building)
+                                handleSelectClient(match.client, match.building, match.area)
                               } else {
                                 setAddress(cleanAddressDisplay(trimmed)); setPickedClient(null)
                                 setUnregisteredClientName(trimmed)
@@ -761,7 +768,7 @@ export function AddJobForm({
                           return (
                             <div
                               key={item.key}
-                              onClick={() => handleSelectClient(item.client, cleanItemBuilding)}
+                              onClick={() => handleSelectClient(item.client, cleanItemBuilding, item.area)}
                               className={`px-3 py-2 rounded-lg transition-colors cursor-pointer text-left flex items-center justify-between ${
                                 isSelected ? 'bg-emerald-50/80 text-emerald-950 font-bold' : 'hover:bg-slate-50 text-slate-700'
                               }`}

@@ -3,6 +3,7 @@ import { cleanNum, calcHours, calcOTHours, calcDailyCleanerShiftsOT } from '@/co
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { todayDubai, toDubaiDate } from '@/lib/dubaiTime'
 import { biweeklyVisitOn } from '@/lib/biweekly'
+import { isExtraAddressOf } from '@/lib/clientAddress'
 
 /** Ids of the old demo clients (seed data, removed 2026-10-27) — may still exist in old stored data */
 const SEED_CLIENT_ID_PREFIX = 'c1000001-0000-0000-0000-'
@@ -453,6 +454,8 @@ function jobMatchesClientByText(job: DailyJob, client: Client): boolean {
   // Match by full name or building
   if (jobNorm && clientNameNorm && (jobNorm === clientNameNorm || cleanJobNorm === clientNameNorm)) return true
   if (clientBldgNorm && (jobNorm === clientBldgNorm || cleanJobNorm === clientBldgNorm)) return true
+  // R-CLI-12: one of the client's other addresses
+  if (isExtraAddressOf(client, rawAddr)) return true
 
   // Whole-word match for substantial names ("Villa 3" must not match "Villa 31")
   if (containsWords(cleanClientNameFromAddress(rawAddr), client.full_name)) return true
@@ -1286,6 +1289,56 @@ export function contractOffJobs(client: Client, dailyJobs: DailyJob[], today: st
     (j.payment_mode === 'Monthly' || /\((?:Monthly|Bi-Weekly) Schedule\)/i.test(j.remarks || '')) &&
     jobMatchesClient(j, client))
 }
+
+/**
+ * R-SCHED-21: a monthly client's weekly schedule was changed (day, time, duration, cleaner) — its visit rows
+ * from `today` on follow the new schedule; rows before today keep what they had (history, salaries).
+ *  - a row on a day that is no longer scheduled is removed (not paid only — see contractOffJobs)
+ *  - a field still holding the old schedule's value gets the new one; a value changed by hand on the sheet
+ *    (a temporary change, R-SCHED-01) stays
+ *  - a row on a day the old schedule did not have was moved there by hand — it is left alone
+ * The new cleaner is not booked over another job at the same time (R-SCHED-06): the row is left without a
+ * cleaner, with a note. Visits for newly added days are made by the normal sync when the date is opened.
+ */
+export function rescheduledVisitRows(before: Client, after: Client, dailyJobs: DailyJob[], today: string): { updates: { id: string; patch: Partial<DailyJob> }[]; removals: DailyJob[] } {
+  const updates: { id: string; patch: Partial<DailyJob> }[] = []
+  const removals: DailyJob[] = []
+  const rows = contractOffJobs(before, dailyJobs, today).filter(j => !/\(Bi-Weekly Schedule\)/i.test(j.remarks || ''))
+  const sameTime = (a?: string, b?: string) => {
+    const x = clockMinutes(a), y = clockMinutes(b)
+    return x !== null && y !== null ? x === y : String(a || '').trim() === String(b || '').trim()
+  }
+  const sameStaff = (a?: string, b?: string) => normalizeKey(splitStaffNames(a || '').join(',')) === normalizeKey(splitStaffNames(b || '').join(','))
+  const removedIds = new Set<string>()
+  rows.forEach(j => {
+    const date = (j.date || '').slice(0, 10)
+    const day = getDayNameFromDate(date)
+    if (!isClientScheduledForDay(before, day)) return // moved here by hand
+    if (!isClientScheduledForDay(after, day)) { removals.push(j); removedIds.add(j.id); return }
+    const was = getClientShiftDetailsForDay(before, day)
+    const now = getClientShiftDetailsForDay(after, day)
+    const patch: Partial<DailyJob> = {}
+    if (sameTime(j.start_time, was.startTime) && !sameTime(was.startTime, now.startTime)) patch.start_time = now.startTime
+    if (sameTime(j.end_time, was.endTime) && !sameTime(was.endTime, now.endTime)) patch.end_time = now.endTime
+    if (Number(j.duty_hours || 0) === Number(was.durationHours || 0) && Number(was.durationHours || 0) !== Number(now.durationHours || 0)) patch.duty_hours = now.durationHours
+    if (sameStaff(j.staff_name, was.cleanerName) && !sameStaff(was.cleanerName, now.cleanerName)) patch.staff_name = now.cleanerName
+    if (!Object.keys(patch).length) return
+    const staff = patch.staff_name ?? j.staff_name ?? ''
+    if (staff) {
+      const others = dailyJobs.filter(o => o.id !== j.id && !removedIds.has(o.id))
+      const busy = busyJobOf(others, staff, j.date, patch.start_time ?? j.start_time ?? '', patch.end_time ?? j.end_time ?? '')
+      if (busy && normalizeKey(busy.address || '') !== normalizeKey(j.address || '')) {
+        patch.staff_name = ''
+        patch.remarks = `${(j.remarks || '').replace(/\s*·\s*⚠.*$/, '')} · ⚠ ${staff} is already booked ${busy.start_time}–${busy.end_time} at ${busy.address || 'another job'}: assign a cleaner`
+      }
+    }
+    updates.push({ id: j.id, patch })
+  })
+  return { updates, removals }
+}
+
+/** R-SCHED-21: the schedule fields of a client — a change in any of them reschedules its rows from today on */
+export const SCHEDULE_FIELDS = ['service_days', 'day_schedules', 'day_cleaner_assignments', 'scheduled_time', 'end_time', 'duration_hours', 'preferred_cleaner'] as const
 
 /**
  * R-SCHED-11: the first date a monthly client's visits are added on: the contract's start date

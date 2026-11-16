@@ -183,6 +183,23 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/components/clients/ClientModalForm.tsx`, `src/components/monthlyClients/WeeklyScheduleCard.tsx`, `src/pages/MonthlyClients.tsx`. Test: `tests/unit/monthly-edit-nodays-1116.test.ts`.
 - **Status:** Active · Since: 2026-11-16
 
+### R-SCHED-21 — A changed weekly schedule shows on the sheet from today on
+- **Why:** a change to a monthly client's day, time, duration or cleaner was saved on the client but the visit rows already on the Daily Job Sheet kept the old values (2026-11-17). The owner: change from the day it is made; rows before that day stay.
+  - When the client's schedule (`service_days`, `day_schedules`, `day_cleaner_assignments`, time, duration, preferred cleaner) is saved changed, its **unpaid** visit rows **from today on** follow it. Rows before today are never touched (history, salaries, OT).
+  - A field that still has the old schedule's value gets the new one. A value changed by hand on the sheet for that date stays (R-SCHED-01: a sheet change is for that day only).
+  - A row on a day that is no longer scheduled is removed (copy in Before-delete copies). A visit moved by hand to a day that was not scheduled is left alone. A newly added day gets its visit from the normal sync when the date is opened.
+  - The new cleaner is not booked over another job at the same time (R-SCHED-06): the row is left without a cleaner, with a note.
+  - This is the other direction of R-SCHED-01: the master schedule changes the sheet from today on; the sheet never changes the master.
+- **Code:** `src/lib/clientDataSync.ts → rescheduledVisitRows, SCHEDULE_FIELDS`; `DataContext.tsx → updateClient`. Test: `tests/unit/schedule-from-today-1117.test.ts`.
+- **Status:** Active · Since: 2026-11-17
+
+### R-SCHED-22 — Contract Start stays fixed
+- **Why:** the Contract Start in the client popup showed today's date every day for a client without a saved contract, so it seemed to move daily (2026-11-17).
+  - Without a saved contract the Start shown is the day the client was added (a new client: today). Saving a Monthly / Bi-Weekly client now always saves its contract, so the Start shown is the one kept; a saved Start never changes unless typed.
+  - The popup reads the contract again each time it opens (it could show an older copy).
+- **Code:** `src/lib/clientContracts.ts → detailsOfContract(c, fallbackStart), saveClientContract({ always })`; `ClientModalForm.tsx`. Test: `tests/unit/schedule-from-today-1117.test.ts`.
+- **Status:** Active · Since: 2026-11-17
+
 ---
 
 ## ATT — Attendance
@@ -637,6 +654,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - The delete popup lists these with counts, and the client name must be typed (UX-165). The copy in Settings → Backup → Before-delete copies now holds the client, the removed visits and the contracts; Restore brings all three back.
 - **Code:** `src/lib/clientChanges.ts → clientDeletionImpact, deletionMessage`; `DataContext.tsx → deleteClient, restoreRecords`; `Clients.tsx`, `ClientProfile.tsx`. Test: `tests/unit/client-rename-delete-1116.test.ts`.
 - **Status:** Active · Since: 2026-11-16
+
+### R-CLI-12 — Other addresses on the job sheets
+- **Why:** a client's "Other addresses" could be picked on New Booking only, not on the Daily Job Sheet or the Excel sheet (2026-11-17).
+  - The Add Job address list (Daily Job Sheet) and the Excel sheet's Client / Address list show each other address under the client's name, with its own area; picking one fills the address and area.
+  - A job written with an other address belongs to that client (client profile, balances, links — R-DATA-12) and does not ask to register a new client.
+- **Code:** `src/lib/clientAddress.ts → extraAddressChoices, isExtraAddressOf`; `clientDataSync.ts → jobMatchesClientByText`; `AddJobModal.tsx`, `JobSheetSpreadsheet.tsx`, `SpreadsheetEditModal.tsx`. Test: `tests/unit/schedule-from-today-1117.test.ts`.
+- **Status:** Active · Since: 2026-11-17
 ---
 
 ## LEAD — Website form leads

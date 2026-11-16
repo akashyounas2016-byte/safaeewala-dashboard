@@ -32,7 +32,7 @@
 | 18 Jan | Nahi | Contract khatam |
 
 ### Contract Start / End date
-- Client popup ke **Contract** hisse mein Start aur End (optional) date hoti hai. Upar badge batata hai: *Starts …* (abhi shuru nahi hua), *Running* (chal raha hai), ya *Ended* (khatam).
+- Client popup ke **Contract** hisse mein Start aur End (optional) date hoti hai. **Start date fixed rehti hai** — ek dafa save ho to roz nahi badalti. Contract save na hua ho to Start wo din dikhata hai jab client add hua tha. Upar badge batata hai: *Starts …* (abhi shuru nahi hua), *Running* (chal raha hai), ya *Ended* (khatam).
 - End date, Start date se pehle nahi ho sakti.
 - **Dates badal kar save karein** to aaj se aage ki jo unpaid visits nayi dates ke bahar hon, wo sheet se khud hat jati hain. Pichli visits, paid visits aur aam jobs kabhi nahi hatti. Hatai gayi visits Settings → restore se wapas aa sakti hain.
 
@@ -43,6 +43,13 @@
 ### Daily Job Sheet par change sirf usi din ka hai
 - Daily Job Sheet par kisi visit ka time, date, cleaner ya ghante badlein to **sirf usi din ki row** badlegi. Client ka asal (permanent) schedule nahi badlega.
 - Permanent change sirf **Monthly Clients** screen ya client ke popup se karein.
+
+### Schedule badalna (client popup se)
+- Client popup ke **Weekly Schedule** mein din, time, ghante ya cleaner badal kar save karein to Daily Job Sheet par **aaj se aage** ki visits naye schedule par aa jati hain.
+- **Aaj se pehle** ki rows bilkul nahi badalti (salary aur history theek rehti hai). Paid visits bhi nahi badalti.
+- Sheet par kisi din haath se kiya hua change (misaal: us din doosra cleaner) waisa hi rehta hai.
+- Koi din hata dein to aaj se aage us din ki unpaid visits hat jati hain (Settings → Backup se wapas aa sakti hain). Naya din jor dein to us ki visit sheet par wo din kholne par khud ban jati hai.
+- Naya cleaner us waqt kahin aur busy ho to visit bina cleaner ke rehti hai, Remarks mein warning ke saath.
 
 ### Cleaner pehle se busy ho to
 - Agar client ke din par uska cleaner usi waqt kisi aur job par hai, to visit **bina cleaner** ke banti hai (Excel sheet par jamni "—" block) aur Remarks mein likha hota hai: *"⚠ Ambika … is already booked … assign a cleaner"*. Sheet par koi aur cleaner chun lein. Agle hafte cleaner free ho to visit khud uske naam par banti hai.
@@ -62,14 +69,14 @@
 
 ### Client edit karna (ek hi form)
 - **Ek hi popup har mode ke liye:** General, Monthly ya Bi-Weekly — form wahi hai. Mode badlein to neeche sirf us mode ke cards aate hain (Monthly: Contract + hafte ka schedule; Bi-Weekly: Contract + Bi-Weekly din).
-- Address wale hisse mein pehle **Preferred Cleaner, Email, City**, phir **Address aur Area**. Save hue doosre addresses ek list mein dikhte hain — badalne ke liye ✏️ dabayein.
+- Upar contact wali line mein **Naam, Mobile, WhatsApp, Email aur Mode**. Address wale hisse mein pehle **Address, Area, City**, phir doosre addresses, phir **Preferred Cleaner**. Save hue doosre addresses ek list mein dikhte hain — badalne ke liye ✏️ dabayein.
 - **Client delete karna:** popup mein client ka **poora naam** likhna zaroori hai. Popup saaf batata hai:
   - **Mit jata hai:** client ka record, aaj se aage ki **unpaid** visits, aur contract.
   - **Rehta hai:** pichli aur paid jobs (kaam aur paise ki history), bookings, invoices, payments aur advance.
   - Ghalti se delete ho jaye to Settings → Backup → *Before-delete copies* se **Restore** — client, visits aur contract wapas aa jate hain.
 - **Naam / address badalna:** client ka naam ya address badlein to Job Sheet par **aaj se aage** ki us ki rows mein naya naam aa jata hai. Pichli rows mein purana naam history ke liye rehta hai.
 - **Address** ab ek hi field hai (misaal: "Al Khair Building Apt 302"). **Mobile number zaroori** hai.
-- **Add another address** se ek hi client ke aur addresses (doosra villa, office) daal sakte hain. New Booking mein client ke neeche har address alag nazar aata hai — wahi chunein.
+- **Add another address** se ek hi client ke aur addresses (doosra villa, office) daal sakte hain. New Booking, Daily Job Sheet ke **Add Job** aur Excel sheet ki Client / Address list mein client ke neeche har address alag nazar aata hai (apne Area ke saath) — wahi chunein. Us address wali job usi client ki ginti hoti hai.
 - **Contract** mein sirf Start / End date bhi bharein to save hoti hai. Client ki visits sirf in dates ke andar banti hain.
 - Client ka popup ab **ek hi form** hai — Contract, naam / address, balances aur hafte ka schedule sab ek jagah. Upar **Save Changes**.
 - **Mode** (General / Bi-Weekly / Monthly) baad mein bhi badal sakte hain. Popup ka naam mode ke mutabiq: *Edit Monthly Client*, *Edit Bi-Weekly Client* ya *Edit Client Profile*.

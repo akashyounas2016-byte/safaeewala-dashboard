@@ -3,7 +3,7 @@ import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, Daily
 import { supabase } from '@/lib/supabase'
 import { jobRenamePatches, clientRenamePatches } from '@/lib/employeeRename'
 import { renamedRowAddress } from '@/lib/clientChanges'
-import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs, visitsOutsideContract, rememberRemovedMonthlyVisits, rememberMovedMonthlyVisits, clientIdForJob, jobMatchesClient } from '@/lib/clientDataSync'
+import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs, visitsOutsideContract, rememberRemovedMonthlyVisits, rememberMovedMonthlyVisits, clientIdForJob, jobMatchesClient, rescheduledVisitRows, SCHEDULE_FIELDS } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry, sanitizeOutboxPayload } from '@/lib/syncQueue'
 import { getCompanyInfo, loadCompanyInfo, updateCompanySettings } from '@/lib/companyInfo'
@@ -770,6 +770,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const identityChanged = !!before && (['full_name', 'building_name', 'apartment'] as const).some(k => k in patch && (patch[k] || '') !== (before[k] || ''))
       if (before && (identityChanged || !clients.some(c => c.id === id))) linkRowsToClient(before, id)
       if (before && identityChanged) renameRowsOfClient(before, { ...before, ...patch }, id) // R-CLI-10
+      // R-SCHED-21: a changed weekly schedule shows on the sheet from today on; earlier rows stay as they were
+      if (before && patch.contract_active !== false && SCHEDULE_FIELDS.some(k => k in patch && JSON.stringify(patch[k] ?? null) !== JSON.stringify(before[k] ?? null))) {
+        const after = { ...before, ...patch } as Client
+        const { updates, removals } = rescheduledVisitRows(before, after, dailyJobs, todayDubai())
+        if (removals.length) {
+          saveDeletionSnapshot(`Schedule change · ${after.full_name}`, { dailyJobs: removals })
+          removals.forEach(j => removeJobRow(j.id))
+        }
+        if (updates.length) {
+          const byId = new Map(updates.map(u => [u.id, u.patch]))
+          setDailyJobs(p => {
+            const next = p.map(j => (byId.has(j.id) ? { ...j, ...byId.get(j.id)! } : j))
+            safeLocalStorageSet('safaeewala_daily_jobs', next)
+            return next
+          })
+          updates.forEach(u => dbUpdate('daily_jobs', u.id, u.patch))
+        }
+        if (updates.length || removals.length) logAudit('updated', 'client', id, after.full_name, `New schedule on the Job Sheet from today: ${updates.length} visit(s) changed, ${removals.length} removed`)
+        hasAutoSyncedTodayRef.current = false // a day added for today gets its visit
+      }
       setClients(p => {
         const exists = p.some(c => c.id === id)
         if (exists) {

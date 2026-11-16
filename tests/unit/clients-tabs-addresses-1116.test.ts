@@ -23,8 +23,8 @@ const monthly = (readFileSync('src/components/clients/ClientModalForm.tsx', 'utf
 eq(/label="Address \*"/.test(modal) && /label="Address \*"/.test(monthly) && !/label="Apartment \/ Villa Number"/.test(modal + monthly), true, 'both forms have one Address field')
 eq(/label="Mobile Number \*"[\s\S]{0,120}required/.test(modal), true, 'mobile number is required (one popup for every mode, R-SCHED-20)')
 eq(/<AddressesEditor initial=\{seed\?\.addresses\} \/>/.test(modal) && /addresses: +cleanAddresses\(JSON\.parse/.test(modal), true, '"Add another address", saved with the client (every mode)')
-// UX-164: row 1 Preferred Cleaner · Email · City; row 2 Address · Area; saved addresses as a list with an edit icon
-eq(modal.indexOf('name="preferred_cleaner"') < modal.indexOf('name="email"') && modal.indexOf('name="email"') < modal.indexOf('name="city"') && modal.indexOf('name="city"') < modal.indexOf('name="building_name"') && modal.indexOf('name="building_name"') < modal.indexOf('name="area"'), true, 'address card order')
+// UX-166 (replaces UX-164): Email with the contact; Address · Area · City first, then other addresses, then the cleaner
+eq(modal.indexOf('name="email"') < modal.indexOf('name="building_name"') && modal.indexOf('name="building_name"') < modal.indexOf('name="area"') && modal.indexOf('name="area"') < modal.indexOf('name="city"') && modal.indexOf('name="city"') < modal.indexOf('name="preferred_cleaner"'), true, 'address card order')
 const editor = readFileSync('src/components/clients/AddressesEditor.tsx', 'utf8')
 eq(/aria-label="Edit address"/.test(editor) && /<Pencil size=\{13\} \/>/.test(editor) && /editing\.has\(a\.id\) \?/.test(editor), true, 'saved addresses show as a list with an edit (pencil) icon')
 const booking = readFileSync('src/components/bookings/NewBookingModal.tsx', 'utf8')

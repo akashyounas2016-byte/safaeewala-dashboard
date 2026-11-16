@@ -56,3 +56,20 @@ export function cleanAddresses(list: unknown): ClientAddress[] {
     }))
     .filter(x => x.address)
 }
+
+/**
+ * R-CLI-12: the extra addresses ("Other addresses") of the clients, for the address lists of the Daily Job Sheet
+ * and the Excel sheet. A job written with one of them belongs to that client. Only real extra addresses — the
+ * client's main address is listed by the sheets already.
+ */
+export function extraAddressChoices(clients: Pick<Client, 'id' | 'area' | 'addresses'>[]): { key: string; address: string; area: string; clientId: string }[] {
+  const out: { key: string; address: string; area: string; clientId: string }[] = []
+  clients.forEach(c => cleanAddresses(c.addresses).forEach(a => out.push({ key: `${c.id}__${a.id}`, address: a.address, area: a.area || c.area || '', clientId: c.id })))
+  return out
+}
+
+/** R-CLI-12: the text is one of the client's extra addresses */
+export function isExtraAddressOf(c: Pick<Client, 'addresses'>, text: string): boolean {
+  const k = String(text || '').trim().toLowerCase()
+  return Boolean(k) && cleanAddresses(c.addresses).some(a => a.address.toLowerCase() === k)
+}

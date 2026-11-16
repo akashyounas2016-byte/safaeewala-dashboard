@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(clients): a changed monthly schedule (day, time, hours, cleaner) updates the Job Sheet rows from today on; earlier rows stay, hand-made sheet changes stay (R-SCHED-21)
+- fix(clients): Contract Start no longer shows today every day — kept once saved, else the day the client was added (R-SCHED-22)
+- feat(job-sheet): a client's other addresses can be picked on the Daily Job Sheet and Excel sheet; such jobs belong to the client (R-CLI-12)
+- change(clients): Email in the contact row; Address first in the address card, Preferred Cleaner last (UX-166)
 - fix(clients): renaming a client updates its job rows from today on (R-CLI-10); the delete popup lists what is deleted and what is kept, and Restore brings back the client and its contract (R-CLI-11)
 - fix(marketing): docker-compose passes `WACT_SIGNING_SECRET` to the container — without it the WhatsApp Clicks webhook answered 503 even with the secret in `.env` (R-MKT-03)
 - feat(marketing): WhatsApp Clicks screen — clicks on the website's WhatsApp buttons arrive by a signed webhook from the WordPress plugin; needs migration `2026-11-16_whatsapp_clicks.sql` and `WACT_SIGNING_SECRET` (R-MKT-03)
