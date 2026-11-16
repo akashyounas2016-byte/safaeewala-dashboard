@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(monthly): an existing monthly client without service days (Office ABC Trading DMCC) can be edited and saved again; no crash without a day (R-SCHED-16)
 - change(clients): Clients screen has Grid Card / Table / Wide Grid like Monthly Clients, and search, area, date and sort in one row (UX-160)
 - change(client-profile): totals as cards under the header (not repeated in tabs); Upcoming Bookings wide and light green with day, date, time and cleaners next to Financial Summary (60/40); Customize keeps only columns (UX-159)
 - fix(clients): a client without sheet rows shows 0 visits / AED 0 — Office ABC Trading DMCC showed 25 visits and AED 564 from an old stored snapshot (R-DATA-13)

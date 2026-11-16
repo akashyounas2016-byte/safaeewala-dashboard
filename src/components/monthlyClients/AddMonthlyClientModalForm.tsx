@@ -266,7 +266,8 @@ export function AddMonthlyClientModalForm({
     // UX-84: message at the top + outlined fields instead of a browser alert
     if (!requireFields(e.currentTarget, [
       { name: 'building', label: 'Address (apartment / villa number or building name)', ok: hasClientAddress(addressParts) },
-      { name: 'schedule_days', label: 'Service days (tick at least one)', ok: activeDays.length > 0 },
+      // R-SCHED-16: a new monthly client needs a day; an existing one can be saved without (e.g. address only)
+      { name: 'schedule_days', label: 'Service days (tick at least one)', ok: activeDays.length > 0 || !!initialClient },
       { name: 'contract_end', label: 'Contract End (on or after Contract Start)', ok: !contractDateError(contract) }, // R-SCHED-11
     ])) return
 
@@ -278,6 +279,7 @@ export function AddMonthlyClientModalForm({
     const firstDay = activeDays[0]
     const firstRow = daySchedules[firstDay]
     const firstDuration = firstRow?.duration || (firstRow ? calcDurationFromTimes(firstRow.startTime, firstRow.endTime) : 4) || 4
+    if (activeDays.length === 0) notify.warning('Saved without service days — no visits are added to the Job Sheet until a day is ticked.') // R-SCHED-16
 
     // R-SCHED-10: only days with a picked cleaner are listed; no cleaner = left empty, never "Unassigned"
     const finalAssignments: Record<string, string> = {}
@@ -321,8 +323,8 @@ export function AddMonthlyClientModalForm({
       total_spent: initialClient?.total_spent || 0,
       preferred_cleaner: primaryCleaner,
       service_days: activeDays,
-      scheduled_time: firstRow.startTime,
-      end_time: firstRow.endTime,
+      scheduled_time: firstRow?.startTime ?? initialClient?.scheduled_time ?? '09:00',
+      end_time: firstRow?.endTime ?? initialClient?.end_time ?? '13:00',
       duration_hours: firstDuration,
       day_cleaner_assignments: finalAssignments,
       day_schedules: finalDaySchedules,

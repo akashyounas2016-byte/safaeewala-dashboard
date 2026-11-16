@@ -59,6 +59,9 @@
 - Har job apne client se jurri rehti hai. Client ka naam ya building badlein to bhi uski purani aur nayi visits usi client ki rehti hain.
 - Monthly Clients list mein har client ek dafa aata hai. Uski visits (jaise *Villa# 06 - Zayan*) se alag nakli client nahi banta — edit hamesha asal client par hota hai.
 
+### Bina din ke client
+- Naye Monthly client ke liye kam se kam ek din tick karna zaroori hai. Pehle se maujood client ko bina din ke bhi save kar sakte hain (misaal: sirf address badalna) — tab ek warning aati hai ke din tick hone tak us ki visits Job Sheet par nahi banengi.
+
 ### Cleaner na ho to
 - Client ka cleaner abhi tay nahi to visit **khali cleaner** ke sath banti hai ("Unassigned" nahi likha jata). Sheet par cleaner baad mein chunein.
 

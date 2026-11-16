@@ -147,6 +147,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientProfileSummary.ts → scheduledVisitsAhead`; `src/pages/ClientProfile.tsx`. Test: `tests/unit/profile-upcoming-1116.test.ts`.
 - **Status:** Active · Since: 2026-11-16
 
+### R-SCHED-16 — An existing monthly client can be saved without service days
+- **Why:** "Office ABC Trading DMCC" had no service days (it came from old sheet rows and a contract). Every edit in Edit Monthly Client was refused with "Service days (tick at least one)", so name / address changes were never saved (2026-11-16). With no day the save would also have crashed.
+  - A **new** monthly client still needs at least one day. An **existing** one saves without days; a warning says that no visits are added to the Job Sheet until a day is ticked.
+  - Without a day the start / end time of the client are kept as they were.
+- **Code:** `src/components/monthlyClients/AddMonthlyClientModalForm.tsx → handleSubmit`. Test: `tests/unit/monthly-edit-nodays-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
+
 ---
 
 ## ATT — Attendance
