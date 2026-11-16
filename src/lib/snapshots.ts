@@ -1,4 +1,4 @@
-import type { Agency, DailyExpense, DailyJob, Employee } from '@/types'
+import type { Agency, Client, DailyExpense, DailyJob, Employee, RecurringContract } from '@/types'
 
 /**
  * Automatic backup before destructive actions (BAK-5): "Delete All Data", replacing a day
@@ -18,6 +18,9 @@ export interface DeletionSnapshot {
     dailyExpenses?: DailyExpense[]
     employees?: Employee[]
     agencies?: Agency[]
+    /** R-CLI-11: a deleted client and its contracts can be restored */
+    clients?: Client[]
+    contracts?: RecurringContract[]
     appState?: Record<string, unknown>
   }
 }

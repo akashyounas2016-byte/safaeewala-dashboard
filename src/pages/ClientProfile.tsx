@@ -17,6 +17,8 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { clientDeletionImpact, deletionMessage } from '@/lib/clientChanges'
+import { CONTRACTS_KEY } from '@/lib/clientContracts'
 import type { Booking, PaymentMode, DailyJob, Invoice, DailyAdvanceItem, Client } from '@/types'
 import { advanceMatchesClient } from '@/lib/clientAdvance'
 import {
@@ -796,7 +798,7 @@ export function ClientProfile() {
                 <button type="button"
                   onClick={async () => {
                     setHeroMenuOpen(false)
-                    const ok = await confirmAsync({ title: 'Delete client', message: `Delete "${client.full_name}"? Their jobs stay in the Daily Job Sheet.`, confirmLabel: 'Delete', tone: 'danger', typeToConfirm: client.full_name }) // UX-165
+                    const ok = await confirmAsync({ title: 'Delete client', message: deletionMessage(client, clientDeletionImpact(client, dailyJobs, todayDubai(), { bookings, invoices, contractNames: safeLocalStorageGet<{ clientName?: string }[]>(CONTRACTS_KEY, []).map(k => k.clientName || '') })), confirmLabel: 'Delete', tone: 'danger', typeToConfirm: client.full_name }) // UX-165, R-CLI-11
                     if (!ok) return
                     deleteClient(client.id)
                     notify.success(`${client.full_name} deleted`)

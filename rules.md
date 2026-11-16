@@ -622,6 +622,21 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - **Add another address**: label, address and area; saved in `clients.addresses` (migration `2026-11-16_client_addresses.sql`). In New Booking every extra address is its own line under the client; picking it fills the address and its area.
 - **Code:** `src/lib/clientAddress.ts → singleAddressOf, cleanAddresses`; `src/components/clients/AddressesEditor.tsx`; `ClientModalForm.tsx`, `AddMonthlyClientModalForm.tsx`, `NewBookingModal.tsx`. Test: `tests/unit/clients-tabs-addresses-1116.test.ts`.
 - **Status:** Active · Since: 2026-11-16
+
+### R-CLI-10 — A renamed client shows its new name on the sheet
+- **Why:** a client was renamed "def" → "def1", but the Excel Job Sheet still said "def": a row's address is its own text (2026-11-16).
+  - When the name, building or apartment changes, the client's rows **from today on** get the new address — only where the row's text is one of the client's old names (monthly visit address, building, name, or the address it was built from). Other text typed on a row stays.
+  - Past rows keep what was written then (work history) but stay linked to the client (R-CLI-06). Written to the Activity Log.
+- **Code:** `src/lib/clientChanges.ts → renamedRowAddress`; `src/store/DataContext.tsx → renameRowsOfClient`. Test: `tests/unit/client-rename-delete-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
+
+### R-CLI-11 — Deleting a client: what goes, what stays
+- **Why:** the team asked whether deleting a client removes only future visits or also history and money (2026-11-16).
+  - **Deleted:** the client record, its **upcoming unpaid** visits on the Job Sheet (from today on) and its contract(s) (R-SCHED-12).
+  - **Kept:** past and paid job rows (work and money history), bookings, invoices, payments, advances and adjustments.
+  - The delete popup lists these with counts, and the client name must be typed (UX-165). The copy in Settings → Backup → Before-delete copies now holds the client, the removed visits and the contracts; Restore brings all three back.
+- **Code:** `src/lib/clientChanges.ts → clientDeletionImpact, deletionMessage`; `DataContext.tsx → deleteClient, restoreRecords`; `Clients.tsx`, `ClientProfile.tsx`. Test: `tests/unit/client-rename-delete-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-16
 ---
 
 ## LEAD — Website form leads

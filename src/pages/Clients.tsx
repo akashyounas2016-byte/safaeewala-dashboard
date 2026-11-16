@@ -18,6 +18,8 @@ import type { BookingFrequency, Client } from '@/types'
 import { isMonthlyJob, jobMatchesClient, isMonthlyClient, extractMonthlyClientsFromDailyJobs, calcClientPendingBalance } from '@/lib/clientDataSync'
 import { SourceOriginTag, resolveClientSource } from '@/lib/sourceTracking'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
+import { clientDeletionImpact, deletionMessage } from '@/lib/clientChanges'
+import { CONTRACTS_KEY } from '@/lib/clientContracts'
 import { ClientModalForm } from '@/components/clients/ClientModalForm'
 import { ClientCardShell, CleanerStack, WeekStrip, MoneyStrip, CardAction } from '@/components/clients/ClientCardParts'
 import { clientCrewMix } from '@/lib/clientCrew'
@@ -169,6 +171,10 @@ export function Clients() {
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [deleteTyped, setDeleteTyped] = useState('') // UX-165
+  // R-CLI-11: the delete popup says what goes and what stays
+  const deleteText = (c: Client) => deletionMessage(c, clientDeletionImpact(c, dailyJobs, todayDubai(), {
+    bookings, invoices, contractNames: safeLocalStorageGet<{ clientName?: string }[]>(CONTRACTS_KEY, []).map(k => k.clientName || ''),
+  }))
   // UX-163: Clients · Monthly Clients · Bi-Weekly Clients — each client in the tab of its Mode
   type ModeTab = 'general' | 'monthly' | 'biweekly'
   const [modeTab, setModeTabState] = useState<ModeTab>(() => {
@@ -970,7 +976,7 @@ export function Clients() {
                         type="button"
                         onClick={async () => {
                           // UX-105: the table asks first, like the cards (it deleted at once)
-                          const ok = await confirmAsync({ title: 'Delete client', message: `Delete "${c.full_name}"? Their jobs stay in the Daily Job Sheet.`, confirmLabel: 'Delete', tone: 'danger', typeToConfirm: c.full_name }) // UX-165
+                          const ok = await confirmAsync({ title: 'Delete client', message: deleteText(c), confirmLabel: 'Delete', tone: 'danger', typeToConfirm: c.full_name }) // UX-165, R-CLI-11
                           if (ok) deleteClient(c.id)
                         }}
                         className="p-1.5 rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition-colors"
@@ -1362,7 +1368,7 @@ export function Clients() {
                   <CardAction tone="slate" icon={<ExternalLink size={12} />} label="Profile" onClick={() => navigate(`/clients/${c.id}`)} />
                   <CardAction tone="rose" icon={<Trash2 size={12} />} label="Delete" title="Delete client"
                     onClick={async () => {
-                      const ok = await confirmAsync({ title: 'Delete client', message: `Delete "${c.full_name}"? Their jobs stay in the Daily Job Sheet.`, confirmLabel: 'Delete', tone: 'danger', typeToConfirm: c.full_name }) // UX-165
+                      const ok = await confirmAsync({ title: 'Delete client', message: deleteText(c), confirmLabel: 'Delete', tone: 'danger', typeToConfirm: c.full_name }) // UX-165, R-CLI-11
                       if (ok) deleteClient(c.id)
                     }} />
                 </div>
@@ -1564,7 +1570,7 @@ export function Clients() {
             {confirmDelete ? (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4">
                 <p className="text-[13px] font-semibold text-red-700 mb-1">Delete this client?</p>
-                <p className="text-[12px] text-red-600 mb-3">This will permanently remove <strong>{selected.full_name}</strong> from Supabase. This cannot be undone.</p>
+                <p className="text-[12px] text-red-700 mb-3 whitespace-pre-line">{deleteText(selected)}</p>
                 {/* UX-165: type the client's name first */}
                 <label className="block mb-3">
                   <span className="text-[12px] font-semibold text-red-700">Type <strong className="select-all">{selected.full_name}</strong> to confirm</span>

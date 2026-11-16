@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useMemo, useRef, type R
 import type { Booking, Client, Employee, Invoice, InventoryItem, DailyJob, DailyExpense, Agency, RecurringContract } from '../types'
 import { supabase } from '@/lib/supabase'
 import { jobRenamePatches, clientRenamePatches } from '@/lib/employeeRename'
+import { renamedRowAddress } from '@/lib/clientChanges'
 import { extractAllClientsFromDailyJobs, extractAllEmployeesFromDailyJobs, crewToStaffName, staffNameToCrew, normalizeStaffName, normalizeKey, splitStaffNames, employeeMatchesStaff, cleanClientNameFromAddress, getDayNameFromDate, getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, markInitialDataLoaded, contractOffJobs, visitsOutsideContract, rememberRemovedMonthlyVisits, rememberMovedMonthlyVisits, clientIdForJob, jobMatchesClient } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { dbInsert, dbUpdate, dbDelete, applyOutbox, startOutboxRetry, sanitizeOutboxPayload } from '@/lib/syncQueue'
@@ -72,7 +73,7 @@ interface DataStore {
   clearDailyData:     (date: string) => void
   clearAllDailyData:  () => Promise<void>
   /** Put back records from a before-delete copy, keeping their ids; existing ids are skipped (BAK-5) */
-  restoreRecords:     (r: { dailyJobs?: DailyJob[]; dailyExpenses?: DailyExpense[]; employees?: Employee[]; agencies?: Agency[] }) => number
+  restoreRecords:     (r: { dailyJobs?: DailyJob[]; dailyExpenses?: DailyExpense[]; employees?: Employee[]; agencies?: Agency[]; clients?: Client[]; contracts?: RecurringContract[] }) => number
 
   /** Present / Absent / Leave marks by "<date>_id:<employeeId>" or "<date>_<name>" (R-ATT-03, R-ATT-05, R-SYNC-10) */
   attendanceMarks:     AttendanceMarks
@@ -524,6 +525,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
     own.forEach(j => dbUpdate('daily_jobs', j.id, { client_id: id }))
   }
 
+  /** R-CLI-10: the client's rows from today on show its new name / address (the sheet showed the old one) */
+  function renameRowsOfClient(before: Client, after: Partial<Client>, id: string) {
+    const today = todayDubai()
+    const changes = new Map<string, string>()
+    dailyJobs.forEach(j => {
+      if ((j.date || '').slice(0, 10) < today) return // past rows keep what was written then (history)
+      if (j.client_id && j.client_id !== id) return
+      if (!j.client_id && !jobMatchesClient(j, before)) return
+      const next = renamedRowAddress(j.address || '', before, after)
+      if (next) changes.set(j.id, next)
+    })
+    if (!changes.size) return
+    setDailyJobs(p => {
+      const next = p.map(j => (changes.has(j.id) ? { ...j, address: changes.get(j.id)!, client_id: id } : j))
+      safeLocalStorageSet('safaeewala_daily_jobs', next)
+      return next
+    })
+    changes.forEach((address, jid) => dbUpdate('daily_jobs', jid, { address, client_id: id }))
+    logAudit('updated', 'client', id, after.full_name || before.full_name, `New name / address on ${changes.size} job row(s) from today`)
+  }
+
   /** R-DATA-12: the saved client a job row belongs to — the id given (if it is a saved client) or found from booking / address */
   function linkClient(j: Pick<DailyJob, 'address' | 'area' | 'booking_id'> & { client_id?: string | null }): string | null {
     if (j.client_id && clients.some(c => c.id === j.client_id)) return j.client_id
@@ -747,6 +769,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // stay its own (the old name came back as a second client: "def" → "Zayan", 2026-11-16)
       const identityChanged = !!before && (['full_name', 'building_name', 'apartment'] as const).some(k => k in patch && (patch[k] || '') !== (before[k] || ''))
       if (before && (identityChanged || !clients.some(c => c.id === id))) linkRowsToClient(before, id)
+      if (before && identityChanged) renameRowsOfClient(before, { ...before, ...patch }, id) // R-CLI-10
       setClients(p => {
         const exists = p.some(c => c.id === id)
         if (exists) {
@@ -768,7 +791,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // today on (not paid) and its contract go too; past visits stay as work history. Restorable.
       if (c) {
         const visits = contractOffJobs(c, dailyJobs, todayDubai())
-        saveDeletionSnapshot(`Client ${c.full_name}`, { dailyJobs: visits })
+        // R-CLI-11: the copy holds the client and its contracts too, so Restore brings the whole client back
+        const saved = clients.find(x => x.id === id)
+        const ownContracts = safeLocalStorageGet<RecurringContract[]>(CONTRACTS_KEY, []).filter(k => normalizeKey(k.clientName || '') === normalizeKey(c.full_name))
+        saveDeletionSnapshot(`Client ${c.full_name}`, { dailyJobs: visits, clients: saved ? [saved] : [], contracts: ownContracts })
         visits.forEach(j => removeJobRow(j.id))
         removeClientContracts(c.full_name)
       }
@@ -1170,6 +1196,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
       putBack(r.employees, employees, setEmployees, 'employees', 'safaeewala_employees')
       putBack(r.dailyJobs, dailyJobs, setDailyJobs, 'daily_jobs', 'safaeewala_daily_jobs')
       putBack(r.dailyExpenses, dailyExpenses, setDailyExpenses, 'daily_expenses', 'safaeewala_daily_expenses')
+      putBack(r.clients, clients, setClients, 'clients', 'safaeewala_clients') // R-CLI-11
+      if (r.clients?.length) {
+        const back = new Set(r.clients.flatMap(c => [normalizeKey(c.full_name), c.id.startsWith('dj-') ? c.id.slice(3) : '']).filter(Boolean))
+        setDeletedClientKeys(prev => { const next = prev.filter(k => !back.has(k)); safeLocalStorageSet('safaeewala_deleted_clients', next); return next })
+      }
+      if (r.contracts?.length) {
+        const list = safeLocalStorageGet<RecurringContract[]>(CONTRACTS_KEY, [])
+        const have = new Set(list.map(k => k.id))
+        const missing = r.contracts.filter(k => k?.id && !have.has(k.id))
+        if (missing.length) { safeLocalStorageSet(CONTRACTS_KEY, [...missing, ...list]); restored += missing.length }
+      }
       if (restored > 0) logAudit('restored', 'snapshot', '', `${restored} records`)
       return restored
     },

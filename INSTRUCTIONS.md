@@ -63,7 +63,11 @@
 ### Client edit karna (ek hi form)
 - **Ek hi popup har mode ke liye:** General, Monthly ya Bi-Weekly — form wahi hai. Mode badlein to neeche sirf us mode ke cards aate hain (Monthly: Contract + hafte ka schedule; Bi-Weekly: Contract + Bi-Weekly din).
 - Address wale hisse mein pehle **Preferred Cleaner, Email, City**, phir **Address aur Area**. Save hue doosre addresses ek list mein dikhte hain — badalne ke liye ✏️ dabayein.
-- **Client delete karna:** popup mein client ka **poora naam** likhna (ya paste karna) zaroori hai, tab Delete chalta hai.
+- **Client delete karna:** popup mein client ka **poora naam** likhna zaroori hai. Popup saaf batata hai:
+  - **Mit jata hai:** client ka record, aaj se aage ki **unpaid** visits, aur contract.
+  - **Rehta hai:** pichli aur paid jobs (kaam aur paise ki history), bookings, invoices, payments aur advance.
+  - Ghalti se delete ho jaye to Settings → Backup → *Before-delete copies* se **Restore** — client, visits aur contract wapas aa jate hain.
+- **Naam / address badalna:** client ka naam ya address badlein to Job Sheet par **aaj se aage** ki us ki rows mein naya naam aa jata hai. Pichli rows mein purana naam history ke liye rehta hai.
 - **Address** ab ek hi field hai (misaal: "Al Khair Building Apt 302"). **Mobile number zaroori** hai.
 - **Add another address** se ek hi client ke aur addresses (doosra villa, office) daal sakte hain. New Booking mein client ke neeche har address alag nazar aata hai — wahi chunein.
 - **Contract** mein sirf Start / End date bhi bharein to save hoti hai. Client ki visits sirf in dates ke andar banti hain.
