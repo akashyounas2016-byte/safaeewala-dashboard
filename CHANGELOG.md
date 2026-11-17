@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(job-sheet): 40 light row colours as swatches without names; a colour already on another cleaner's row that day cannot be picked (warning) (UX-169)
+- change(clients): Monthly tab — no duplicate New Contract / Record Payment buttons, header Add Payment opens the monthly payment form (UX-170); date filters moved into More Filters on the search row (UX-171)
+- feat(marketing): WhatsApp click webhook deliveries logged on the server and shown as "Website connection"; the screen refreshes every minute (R-MKT-05)
+- feat(attendance): Excel attendance popup names office staff who are on leave / absent (R-ATT-09)
 - change(clients): one row of tabs — Clients (all clients) · Monthly Clients (the whole Monthly screen inside) · Bi-Weekly; the top Clients | Monthly Clients bar removed (UX-168)
 - fix(clients): deleting a client built from sheet rows (dj- id) now deletes it from the database — it came back with its visits (R-CLI-13); monthly visits only up to 90 days ahead, no visits on mistyped years (R-SCHED-24)
 - fix(excel): the Excel sheet adds the monthly visits of the date it opens on (one-day range), and only after the data has loaded (R-SCHED-23); our own cloud upload no longer shows "Another user changed shared settings" — browser audit

@@ -11,6 +11,12 @@ const path = require('path');
 const PORT = 3001;
 const DATA_DIR = process.env.DATA_DIR || '/data';
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json');
+// R-MKT-05: WhatsApp click webhook deliveries (last 200), in the data folder so a deploy does not clear them
+const WACT_LOG_FILE = path.join(DATA_DIR, 'whatsapp-clicks-log.json');
+function readWactLog() { try { return JSON.parse(fs.readFileSync(WACT_LOG_FILE, 'utf8')) } catch { return [] } }
+function logWact(status, reason, page = '') {
+  try { const list = readWactLog(); list.push({ at: new Date().toISOString(), status, reason, page: String(page).slice(0, 120) }); fs.writeFileSync(WACT_LOG_FILE, JSON.stringify(list.slice(-200))) } catch { /* the log must not break the webhook */ }
+}
 const AGENCIES_FILE = path.join(DATA_DIR, 'agencies.json');
 
 // Ensure data directory exists
@@ -776,26 +782,31 @@ function routeApi(req, res, parsedUrl, pathname) {
     return;
   }
 
+  // R-MKT-05: the last webhook deliveries (time, result) — shown on the WhatsApp Clicks screen, kept across deploys
+  if (req.method === 'GET' && pathname === '/api/webhook/whatsapp-clicks/log') {
+    return sendJson(res, 200, readWactLog().slice(-50).reverse())
+  }
+
   // R-MKT-03: WhatsApp click from the WordPress plugin. Body signed: X-WACT-Signature = "sha256=" + HMAC-SHA256(raw
   // body, WACT_SIGNING_SECRET). Unsigned / wrong → 401; secret not set on the server → 503 (nothing accepted).
   if (req.method === 'POST' && pathname === '/api/webhook/whatsapp-clicks') {
     const chunks = []; let size = 0
     req.on('data', c => { size += c.length; if (size <= 64 * 1024) chunks.push(c) })
     req.on('end', () => {
-      if (size > 64 * 1024) return sendJson(res, 413, { error: 'Request too large' })
+      if (size > 64 * 1024) { logWact(413, 'Request too large'); return sendJson(res, 413, { error: 'Request too large' }) }
       const raw = Buffer.concat(chunks)
       const secret = process.env.WACT_SIGNING_SECRET || ''
-      if (!secret) return sendJson(res, 503, { error: 'WhatsApp click webhook is not set up (WACT_SIGNING_SECRET)' })
+      if (!secret) { logWact(503, 'WACT_SIGNING_SECRET not set on the server'); return sendJson(res, 503, { error: 'WhatsApp click webhook is not set up (WACT_SIGNING_SECRET)' }) }
       const given = String(req.headers['x-wact-signature'] || '').replace(/^sha256=/i, '').trim().toLowerCase()
       const want = require('crypto').createHmac('sha256', secret).update(raw).digest('hex')
-      if (!given || !safeEqual(given, want)) return sendJson(res, 401, { error: 'Bad signature' })
+      if (!given || !safeEqual(given, want)) { logWact(401, given ? 'Signature does not match — the plugin secret differs from WACT_SIGNING_SECRET' : 'No X-WACT-Signature header'); return sendJson(res, 401, { error: 'Bad signature' }) }
       let b
-      try { b = JSON.parse(raw.toString('utf8') || '{}') } catch { return sendJson(res, 400, { error: 'Invalid JSON' }) }
+      try { b = JSON.parse(raw.toString('utf8') || '{}') } catch { logWact(400, 'Invalid JSON'); return sendJson(res, 400, { error: 'Invalid JSON' }) }
       const row = whatsappClickRow(b)
       if (!SUPABASE_URL || !SERVICE_KEY) return sendJson(res, 503, { error: 'Database not set up on the server' })
       supa('/rest/v1/whatsapp_clicks?on_conflict=id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: row })
-        .then(() => sendJson(res, 201, { ok: true, id: row.id }))
-        .catch(err => { logServerError('whatsapp-clicks', err); sendJson(res, 502, { error: 'Not saved' }) })
+        .then(() => { logWact(201, 'Saved', row.page_title || row.page_url || ''); sendJson(res, 201, { ok: true, id: row.id }) })
+        .catch(err => { logServerError('whatsapp-clicks', err); logWact(502, `Not saved: ${String(err && err.message || err).slice(0, 160)}`); sendJson(res, 502, { error: 'Not saved' }) })
     })
     return
   }

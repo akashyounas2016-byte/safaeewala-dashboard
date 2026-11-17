@@ -1,5 +1,5 @@
 import { extraAddressChoices, isExtraAddressOf } from '@/lib/clientAddress'
-import { RowColorMenu } from '@/components/common/RowColorMenu'
+import { RowColorMenu, rowColoursInUse } from '@/components/common/RowColorMenu'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { busyCleaners, useDubaiMinute } from '@/lib/staffBusy'
 import { useJobCheckins } from '@/lib/jobCheckins'
@@ -1137,7 +1137,7 @@ export function AddJobForm({
                     style={{ backgroundColor: selectedColorPreset?.circleColor || '#f1f5f9' }}
                   />
                   <span className="font-bold text-slate-900 truncate">
-                    {selectedColorPreset?.label ? selectedColorPreset.label.replace('Soft ', '') : 'Default'}
+                    {selectedColorPreset && selectedColorPreset.id !== 'default' ? 'Colour chosen' : 'No colour'} {/* UX-169: no colour names */}
                   </span>
                 </div>
                 <ChevronDown
@@ -1149,7 +1149,7 @@ export function AddJobForm({
               </div>
 
               {/* Color Dropdown Popover (Drop-Up Mode: Opens Upwards) */}
-              {colorDropdownOpen && <RowColorMenu value={rowColor} onPick={id => { setRowColor(id); setColorDropdownOpen(false) }} />} {/* UX-167 */}
+              {colorDropdownOpen && <RowColorMenu value={rowColor} onPick={id => { setRowColor(id); setColorDropdownOpen(false) }} usedBy={rowColoursInUse(dailyJobs, date, selectedStaff, address, initial?.id)} />} {/* UX-167 */}
             </div>
           </div>
         </div>

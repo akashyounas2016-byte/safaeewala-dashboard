@@ -194,6 +194,19 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientDataSync.ts → rescheduledVisitRows, SCHEDULE_FIELDS`; `DataContext.tsx → updateClient`. Test: `tests/unit/schedule-from-today-1117.test.ts`.
 - **Status:** Active · Since: 2026-11-17
 
+### R-MKT-05 — WhatsApp click deliveries are logged
+- **Why:** the plugin showed clicks on 17 Nov that never reached the CRM, and the server kept no record (logs reset on every deploy).
+  - Every POST to `/api/webhook/whatsapp-clicks` is written to `/data/whatsapp-clicks-log.json` (last 200, kept across deploys): time, result (201 saved, 401 bad / missing signature, 503 secret not set, 400, 413, 502) and the page.
+  - The WhatsApp Clicks screen shows "Website connection": the last delivery and whether it was refused, and reloads clicks every minute.
+- **Code:** `webhookServer.cjs → logWact, /api/webhook/whatsapp-clicks/log`; `src/pages/WhatsAppClicks.tsx`. Test: `tests/unit/ui-sync-1117b.test.ts`.
+- **Status:** Active · Since: 2026-11-17
+
+### R-ATT-09 — Office staff on leave are named on the Excel attendance popup
+- **Why:** Amina Qamar's sick leave (17 Nov) did not show in the Excel Job Sheet's Attendance popup. She is a CSR (office staff), and the sheet and its popup list cleaners only (R-SHEET-02) — the leave itself was saved and synced.
+  - The popup now names office staff who are absent or on leave that day under the list ("Also away today (office staff, not on the sheet)").
+- **Code:** `src/components/dailyJobSheet/QuickAttendanceModal.tsx → awayOffSheet`. Test: `tests/unit/ui-sync-1117b.test.ts`.
+- **Status:** Active · Since: 2026-11-17
+
 ### R-SCHED-24 — Monthly visits only up to 90 days ahead
 - **Why:** a mistyped date (2041-12-17) opened on the Excel sheet got real-looking monthly visits, as the contracts had no End date (team report 2026-11-17).
   - Monthly / Bi-Weekly visits are added only for dates up to 90 days from today (`MONTHLY_SYNC_DAYS_AHEAD`). Further dates show no visits; they are added when the date comes within 90 days.

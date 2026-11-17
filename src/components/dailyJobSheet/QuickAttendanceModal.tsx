@@ -69,6 +69,11 @@ export function QuickAttendanceModal({ open, onClose, date, onViewDetails, sheet
       })
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [employees, dailyJobs, sheetJobs, attendanceMarks, date])
+  // R-ATT-09: office staff (CSR …) are not on the sheet, so not in this list — their leave / absence is still named here
+  const awayOffSheet = useMemo(() => employees
+    .filter(e => e.status !== 'inactive' && e.full_name && !isSheetCleaner(e))
+    .map(e => ({ name: e.full_name.trim(), mark: findMark(attendanceMarks || {}, date, e.full_name.trim(), e.id) }))
+    .filter(x => x.mark?.status === 'absent' || x.mark?.status === 'on_leave'), [employees, attendanceMarks, date])
 
   const statusOf = (r: (typeof rows)[number]): Quick => {
     const p = pending.get(r.name)
@@ -120,7 +125,10 @@ export function QuickAttendanceModal({ open, onClose, date, onViewDetails, sheet
     <Modal open={open} onClose={() => { void close() }} title={`Attendance · ${formatDate(date)}`} size="2xl"
       footer={
         <div className="flex items-center justify-between gap-2 w-full">
-          <p className="text-[11.5px] text-slate-500 hidden md:block">Present / Available follow the Excel sheet. Only a marked Absent or Leave counts as away.</p>
+          <div className="hidden md:block">
+            <p className="text-[11.5px] text-slate-500">Present / Available follow the Excel sheet. Only a marked Absent or Leave counts as away.</p>
+            {awayOffSheet.length > 0 && <p className="text-[11.5px] text-amber-800 mt-0.5">Also away today (office staff, not on the sheet): {awayOffSheet.map(x => `${x.name} · ${x.mark?.category || (x.mark?.status === 'on_leave' ? 'Leave' : 'Absent')}`).join(', ')}</p>}
+          </div>
           <div className="flex gap-2 ml-auto">
             <button type="button" onClick={onViewDetails} className="px-3.5 py-2 rounded-xl border border-[#E2E5E0] text-slate-700 text-[13px] font-semibold inline-flex items-center gap-1.5 hover:bg-slate-50 cursor-pointer">
               View details <ExternalLink size={13} />

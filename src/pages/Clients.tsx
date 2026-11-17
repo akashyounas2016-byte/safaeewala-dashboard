@@ -25,7 +25,7 @@ import { ClientCardShell, CleanerStack, WeekStrip, MoneyStrip, CardAction } from
 import { clientCrewMix } from '@/lib/clientCrew'
 import { confirmAsync } from '@/lib/notify'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
-import { MonthlyClients } from '@/pages/MonthlyClients'
+import { MonthlyClients, MONTHLY_RECORD_PAYMENT_EVENT } from '@/pages/MonthlyClients'
 import { useModuleAccess } from '@/store/useModuleAccess'
 import { todayDubai, calendarDate, addDays } from '@/lib/dubaiTime'
 
@@ -1028,7 +1028,7 @@ export function Clients() {
             </button>
             <button
               type="button"
-              onClick={() => setShowPaymentModal(true)}
+              onClick={() => (shownTab === 'monthly' ? window.dispatchEvent(new Event(MONTHLY_RECORD_PAYMENT_EVENT)) : setShowPaymentModal(true))} // UX-170
               className="h-11 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg transition-colors shrink-0 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Wallet size={15} />

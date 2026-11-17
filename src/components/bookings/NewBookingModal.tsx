@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { RowColorMenu } from '@/components/common/RowColorMenu'
+import { RowColorMenu, rowColoursInUse } from '@/components/common/RowColorMenu'
 import { busyCleaners, useDubaiMinute, type BusyInfo } from '@/lib/staffBusy'
 import { useJobCheckins } from '@/lib/jobCheckins'
 import { findStaffClash, clashMessage } from '@/lib/shiftClash'
@@ -1250,7 +1250,7 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
                       style={{ backgroundColor: selectedColorPreset?.circleColor || '#f1f5f9' }}
                     />
                     <span className="font-bold text-slate-900 truncate">
-                      {selectedColorPreset?.label ? selectedColorPreset.label.replace('Soft ', '') : 'Default'}
+                      {selectedColorPreset && selectedColorPreset.id !== 'default' ? 'Colour chosen' : 'No colour'} {/* UX-169: no colour names */}
                     </span>
                   </div>
                   <ChevronDown
@@ -1262,7 +1262,7 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
                 </div>
 
                 {/* Color Dropdown Popover */}
-                {colorDropdownOpen && <RowColorMenu value={rowColor} onPick={id => { setRowColor(id); setColorDropdownOpen(false) }} />} {/* UX-167 */}
+                {colorDropdownOpen && <RowColorMenu value={rowColor} onPick={id => { setRowColor(id); setColorDropdownOpen(false) }} usedBy={rowColoursInUse(dailyJobs || [], scheduledDate, selectedStaff)} />} {/* UX-167 */}
               </div>
             </div>
           </div>

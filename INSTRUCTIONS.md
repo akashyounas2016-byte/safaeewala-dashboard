@@ -109,13 +109,20 @@
 - 8 PM se pehle agar cleaner apne **basic ghanton** (Add Employee mein *Total Duty Hours*, khali ho to 8) se zyada kaam kare to wo extra ghante bhi OT hain.
 - Ek din ki kai shifts mil kar gini jati hain. OT haath se nahi likha ja sakta — system khud hisaab lagata hai.
 
+### Monthly tab
+- Payment ke liye upar **Add Payment** dabayein — Monthly tab khula ho to ye monthly payment form kholta hai. Naya contract: **Recurring Contracts → New Recurring Contract**.
+- Search, Area, Sort aur **More Filters** ek hi line mein. Tareekh (Last 28 Days, mahina, saal, custom) **More Filters** mein hai.
+
+### Attendance popup (Excel)
+- Popup mein sirf cleaners hain. Office staff (CSR) ki chhutti / ghair-haazri neeche ek line mein likhi hoti hai.
+
 ### Excel sheet par Monthly visits
 - Excel sheet par koi bhi aik din kholein to us din ki Monthly / Bi-Weekly visits khud aa jati hain — sirf contract ki Start aur End date ke andar.
 - Visits sirf **aaj se 90 din aage tak** khud banti hain. Ghalti se koi door ki date (jaise 2041) khul jaye to wahan visits nahi banengi.
 - Client delete karein to wo ab hamesha ke liye hat jata hai — dobara wapas nahi aata.
 
 ### Row ka rang (Row Color)
-- Add Job (Daily aur Excel sheet) aur New Booking mein **Row Color** ki list ek jaisi hai: 40 rang, har rang apne naam ke saath aur button usi rang mein. Koi do rang ek jaise nahi.
+- Add Job (Daily aur Excel sheet) aur New Booking mein **Row Color** ek jaisa hai: 40 **halke** rang ke dabbe (naam nahi). Jo rang aaj kisi aur cleaner ki row ko mil chuka hai wo dhaariyon wala dikhta hai aur chuna nahi ja sakta — warning batati hai kis ke paas hai. Ek hi team (same address) ki rows ka ek rang rehta hai.
 - **Default (no colour)** dabayein to row ka rang hat jata hai. Pehle se rangi hui rows apne qareebi naye rang mein dikhti hain.
 
 ### Excel Job Sheet
@@ -154,6 +161,7 @@
 ---
 
 ### WhatsApp Clicks (website)
+- Upar **Website connection** batata hai website se aakhri click kab aaya, ya wo kyun ruka (misaal: secret ghalat). Screen har minute khud refresh hoti hai.
 - Website par jab koi WhatsApp button dabata hai, wo click CRM ki **WhatsApp Clicks** screen par aata hai: kis page se, kaun sa button, kis campaign / Google / Facebook se, mobile ya computer.
 - Ye **lead nahi** hai — click mein customer ka number nahi hota. Ye batata hai ke kaun se pages aur campaigns WhatsApp chats la rahe hain. Asal chat Conversations mein aati hai.
 - Har row ke aakhir mein ✏️ (**Edit**) aur 🗑️ (**Delete**) hai. Edit se page, button, source, device ya message theek karein; Delete se test ya double click hata dein (pehle poochhta hai). Ye sirf admin / manager kar sakte hain.

@@ -167,6 +167,9 @@ export interface MonthlyClientPayment {
   createdAt: string
 }
 
+/** UX-170: the Clients header's Add Payment, while the Monthly tab is open */
+export const MONTHLY_RECORD_PAYMENT_EVENT = 'safaeewala:monthly-record-payment'
+
 /** UX-168: `embedded` — shown as the Monthly tab of Clients: no header of its own, its buttons in a row */
 export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}) {
   const { clients, dailyJobs, employees, addClient, addBooking, addInvoice, invoices, trimVisitsToContract } = useData()
@@ -630,6 +633,14 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
   const totalMonthlyBalanceDue = useMemo(() => {
     return Math.max(0, totalMonthlyCharges - (totalMonthlyReceived + totalPaymentsRecorded))
   }, [totalMonthlyCharges, totalMonthlyReceived, totalPaymentsRecorded])
+
+  // UX-170: on the Monthly tab of Clients, the header's Add Payment opens this form (one button, not three)
+  useEffect(() => {
+    if (!embedded) return
+    const open = () => handleOpenRecordPayment()
+    window.addEventListener(MONTHLY_RECORD_PAYMENT_EVENT, open)
+    return () => window.removeEventListener(MONTHLY_RECORD_PAYMENT_EVENT, open)
+  }) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOpenRecordPayment = (clientName?: string, defaultAmount?: number) => {
     setPaymentFormClient(clientName || '')
@@ -1412,10 +1423,6 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
       {embedded ? (
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-[12.5px] text-slate-600"><span className="font-bold text-slate-800">{monthlySummaries.length} Monthly Clients</span> · Billed AED {totalMonthlyCharges.toLocaleString()} · Received AED {(totalMonthlyReceived + totalPaymentsRecorded).toLocaleString()} · {activeRange.label}</p>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => handleAddContract()} className="h-9 px-4 rounded-xl text-[12.5px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"><Plus size={14} /> New Contract</button>
-            <button type="button" onClick={() => handleOpenRecordPayment()} className="h-9 px-4 rounded-xl text-[12.5px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors bg-emerald-700 hover:bg-emerald-800 text-white"><Plus size={14} /> Record Payment</button>
-          </div>
         </div>
       ) : (
       <>{/* Page Hero with Unified Summary */}
@@ -1603,88 +1610,41 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
          ═══════════════════════════════════════════════════════════════ */}
       {activeTab === 'clients' && (
         <div className="space-y-6">
-          {/* Date Range Filter Bar with Quick Pills and Dropdown Presets */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center justify-between flex-wrap gap-3">
-            {/* Left: Active Date Range Display & Month Stepper */}
+          {/* Toolbar (Full Width across table/grid views) */}
+          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4">
             <div className="flex items-center gap-3 flex-wrap">
-              <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
-                <Calendar size={18} />
+              <div className="relative flex-1 min-w-[180px] max-w-[420px]">
+                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search by client name, address, cleaner…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full text-[13px] pl-10 pr-4 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-400 placeholder-slate-400 transition-colors"
+                />
               </div>
 
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-[17px] font-extrabold text-[#111827]">
-                    {activeRange.label}
-                  </h2>
-                  <span className="text-[10.5px] font-bold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 border border-teal-200">
-                    {monthlySummaries.length} {monthlySummaries.length === 1 ? 'Client' : 'Clients'}
-                  </span>
-                </div>
-                <p className="text-[11.5px] text-slate-400 mt-0.5 font-medium">
-                  {activeRange.sub}
-                </p>
-              </div>
+              <select
+                value={areaFilter}
+                onChange={e => setAreaFilter(e.target.value)}
+                className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-400 text-slate-700 cursor-pointer"
+              >
+                <option value="all">All Areas ({areas.length})</option>
+                {areas.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
 
-              {datePreset === 'this_month' && (
-                <div className="flex items-center gap-1 ml-2 pl-3 border-l border-slate-200">
-                  <button
-                    onClick={() => {
-                      const d = new Date(selectedMonth)
-                      d.setMonth(d.getMonth() - 1)
-                      setSelectedMonth(d)
-                    }}
-                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors cursor-pointer"
-                    title="Previous Month"
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <button
-                    onClick={() => {
-                      const d = new Date(selectedMonth)
-                      d.setMonth(d.getMonth() + 1)
-                      setSelectedMonth(d)
-                    }}
-                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors cursor-pointer"
-                    title="Next Month"
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              )}
-            </div>
+              <select
+                value={sortOrder}
+                onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
+                className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-400 text-slate-700 cursor-pointer font-medium"
+              >
+                <option value="top_charges">Sort: Highest Charges</option>
+                <option value="top_ot">Sort: Highest Overtime (OT)</option>
+                <option value="visits">Sort: Most Visits</option>
+                <option value="name">Sort: Name (A-Z)</option>
+              </select>
 
-            {/* Right: Quick Pills + More Filters Dropdown */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <div className="flex items-center bg-slate-100/90 p-1 rounded-xl border border-[#E4E8EC] gap-0.5 text-[11.5px] font-bold">
-                {(
-                  [
-                    { id: 'today', label: 'Today' },
-                    { id: '7days', label: 'Last 7 Days' },
-                    { id: '14days', label: 'Last 14 Days' },
-                    { id: '28days', label: 'Last 28 Days' },
-                    { id: 'this_month', label: 'This Month' },
-                    { id: 'this_year', label: `${currentYear}` },
-                    { id: 'last_year', label: `${lastYear}` },
-                  ] as const
-                ).map(preset => {
-                  const isSelected = datePreset === preset.id
-                  return (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => setDatePreset(preset.id)}
-                      className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-teal-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  )
-                })}
-              </div>
-
+              {/* UX-171: date range in More Filters, same row as the search */}
               {/* More Presets & Custom Dropdown Button */}
               <div className="relative">
                 <button
@@ -1699,6 +1659,7 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
                 >
                   <Calendar size={13} className="text-teal-600" />
                   <span>More Filters</span>
+                  <span className="text-teal-700 font-bold">· {activeRange.label}</span>
                   <ChevronDown size={13} className="text-slate-400" />
                 </button>
 
@@ -1815,42 +1776,6 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
                   </>
                 )}
               </div>
-            </div>
-          </div>
-
-          {/* Toolbar (Full Width across table/grid views) */}
-          <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search by client name, address, cleaner…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="w-full text-[13px] pl-10 pr-4 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-400 placeholder-slate-400 transition-colors"
-                />
-              </div>
-
-              <select
-                value={areaFilter}
-                onChange={e => setAreaFilter(e.target.value)}
-                className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-400 text-slate-700 cursor-pointer"
-              >
-                <option value="all">All Areas ({areas.length})</option>
-                {areas.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-
-              <select
-                value={sortOrder}
-                onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
-                className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-400 text-slate-700 cursor-pointer font-medium"
-              >
-                <option value="top_charges">Sort: Highest Charges</option>
-                <option value="top_ot">Sort: Highest Overtime (OT)</option>
-                <option value="visits">Sort: Most Visits</option>
-                <option value="name">Sort: Name (A-Z)</option>
-              </select>
 
               {/* View Mode Switcher */}
               <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 shrink-0">
@@ -2046,12 +1971,6 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
                   AED {filteredPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0).toLocaleString()}
                 </span>
               </div>
-              <Button
-                onClick={() => handleOpenRecordPayment()}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[12px] h-10 px-4 shadow-xs"
-              >
-                <Plus size={14} className="mr-1" /> Record New Payment
-              </Button>
             </div>
           </div>
 
@@ -2128,12 +2047,7 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
                       ? 'No payments match your search filter.'
                       : 'Record client payments here to track collections against monthly charges.'}
                   </p>
-                  <Button
-                    onClick={() => handleOpenRecordPayment()}
-                    className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                  >
-                    <Plus size={14} className="mr-1" /> Record First Payment
-                  </Button>
+                  <p className="text-[12px] text-slate-500 mt-2">Use <span className="font-bold">Add Payment</span> at the top of the screen.</p>
                 </div>
               )}
             </div>

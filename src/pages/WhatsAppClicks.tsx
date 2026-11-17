@@ -88,6 +88,8 @@ export function WhatsAppClicks() {
   const [range, setRange] = useState<ClickRange>('30')
   const [q, setQ] = useState('')
   const [editing, setEditing] = useState<WhatsAppClick | null>(null)
+  // R-MKT-05: the last deliveries from the WordPress plugin (time and result), so a missing click can be traced
+  const [deliveries, setDeliveries] = useState<{ at: string; status: number; reason: string; page?: string }[] | null>(null)
 
   // R-MKT-04: delete one click (a test click, a duplicate)
   const remove = async (c: WhatsAppClick) => {
@@ -107,7 +109,15 @@ export function WhatsAppClicks() {
     else { setError(''); setRows((data || []) as WhatsAppClick[]) }
     setLoading(false)
   }
-  useEffect(() => { void load() }, [])
+  const loadLog = async () => {
+    try { const r = await fetch('/api/webhook/whatsapp-clicks/log'); setDeliveries(r.ok ? await r.json() : []) } catch { setDeliveries([]) }
+  }
+  useEffect(() => {
+    void load(); void loadLog()
+    // R-MKT-05: new clicks show without pressing Refresh
+    const t = window.setInterval(() => { void load(); void loadLog() }, 60_000)
+    return () => window.clearInterval(t)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const today = todayDubai()
   const inRange = useMemo(() => clicksInRange(rows, range, today), [rows, range, today])
@@ -125,6 +135,22 @@ export function WhatsAppClicks() {
     <div className="space-y-6">
       <PageHero title="WhatsApp Clicks" subtitle="Clicks on the WhatsApp buttons of the website — which pages and campaigns bring chats" showSearch={false}
         actions={<button type="button" onClick={() => void load()} className="h-11 px-5 rounded-2xl bg-white text-emerald-700 font-bold text-sm shadow-lg hover:bg-emerald-50 flex items-center gap-2 cursor-pointer"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh</button>} />
+
+      {/* R-MKT-05: is the website sending? */}
+      {deliveries && (() => {
+        const last = deliveries[0]
+        const okToday = deliveries.some(d => d.status === 201 && toDubaiDate(new Date(d.at)) === today)
+        const fmt = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+        const bad = last && last.status !== 201
+        return (
+          <div className={`px-4 py-3 rounded-2xl border text-[12.5px] ${!last ? 'border-slate-200 bg-white text-slate-600' : bad ? 'border-red-200 bg-red-50 text-red-800' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}>
+            <span className="font-bold">Website connection: </span>
+            {!last ? 'no delivery from the website plugin recorded yet (recording started 17 Nov). If the plugin shows clicks today, check in WordPress → WhatsApp Clicks → Settings & Webhook that "Enable webhook delivery" is ticked and the URL is https://crm.safaeewala.com/api/webhook/whatsapp-clicks.'
+              : bad ? `last delivery ${fmt(last.at)} was refused (${last.status}): ${last.reason}.`
+              : `last click received ${fmt(last.at)}${okToday ? '' : ' — none today yet'}.`}
+          </div>
+        )
+      })()}
 
       {error && <div role="alert" className="px-4 py-3 rounded-2xl border border-amber-300 bg-amber-50 text-amber-900 text-[13px]">{error}</div>}
 
