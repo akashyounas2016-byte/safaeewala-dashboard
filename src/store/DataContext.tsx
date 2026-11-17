@@ -823,7 +823,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         removeClientContracts(c.full_name)
       }
       setClients(p => p.filter(c => c.id !== id))
-      if (!id.startsWith('dj-')) dbDelete('clients', id)
+      // R-CLI-13: a client first built from sheet rows ("dj-…" id) is saved under that id once edited, so it is
+      // deleted from the database too — it was skipped and came back on every reload with its monthly visits
+      // (Office ABC, Qamar … deleted three times on 2026-11-17)
+      dbDelete('clients', id)
       // Keep a deleted client from re-appearing from job-sheet addresses (AUD-17)
       if (c) {
         const keys = [normalizeKey(c.full_name), normalizeKey(cleanClientNameFromAddress(c.full_name))]

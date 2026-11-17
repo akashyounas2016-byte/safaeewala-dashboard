@@ -1630,6 +1630,9 @@ export function rememberMovedMonthlyVisits(before: DailyJob, after: DailyJob, cl
 // screens could insert the same visit. So: nothing until the first load is done, and each
 // client/day is inserted at most once per session.
 let initialDataLoaded = false
+/** R-SCHED-24: how far ahead monthly / Bi-Weekly visits are added when a date is opened */
+export const MONTHLY_SYNC_DAYS_AHEAD = 90
+const addDaysIso = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10)
 const insertedThisSession = new Set<string>()
 export function markInitialDataLoaded(loaded = true): void { initialDataLoaded = loaded }
 /** R-SCHED-23: the first load is done — before it a sync adds nothing, so a screen must not count the date as done */
@@ -1677,7 +1680,9 @@ export function syncMonthlySchedulesToDailyJobs(
   insertedClients: string[]
 } {
   const result = getScheduledMonthlyShiftsForDate(dateStr, clients, dailyJobs)
-  if (!initialDataLoaded) {
+  // R-SCHED-24: no visits are made more than MONTHLY_SYNC_DAYS_AHEAD days ahead — a mistyped year (2041-12-17)
+  // opened on the Excel sheet added real-looking visits there (2026-11-17)
+  if (!initialDataLoaded || dateStr > addDaysIso(todayDubai(), MONTHLY_SYNC_DAYS_AHEAD)) {
     return { insertedCount: 0, alreadySyncedCount: result.alreadySyncedCount, dayName: result.dayName, insertedClients: [] }
   }
   const sessionKey = (s: { client: Client }) => `${dateStr}|${s.client.id || normalizeKey(s.client.full_name)}`

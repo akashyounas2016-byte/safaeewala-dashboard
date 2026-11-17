@@ -11,3 +11,9 @@ eq(/if \(loading \|\| !isInitialDataLoaded\(\)\) return/.test(xl), true, 'Excel:
 eq([sameJson({ a: 1, b: [{ x: 1, y: 2 }] }, { b: [{ y: 2, x: 1 }], a: 1 }), sameJson({ a: 1 }, { a: 2 })], [true, false], 'same value in another key order is our own upload, not another user')
 const cs = readFileSync('src/lib/cloudState.ts', 'utf8')
 eq(/if \(sameJson\(row\.value, readLocal\(row\.key\)\)\)/.test(cs), true, 'echo of our own upload shows no "Another user changed" note')
+
+// R-CLI-13 / R-SCHED-24 (team report 2026-11-17: deleted clients came back, visits on 2041-12-17)
+const dc = readFileSync('src/store/DataContext.tsx', 'utf8')
+eq(/if \(!id\.startsWith\('dj-'\)\) dbDelete\('clients', id\)/.test(dc), false, 'a client with a dj- id is deleted from the database too')
+const sync = readFileSync('src/lib/clientDataSync.ts', 'utf8')
+eq(/export const MONTHLY_SYNC_DAYS_AHEAD = 90/.test(sync) && /dateStr > addDaysIso\(todayDubai\(\), MONTHLY_SYNC_DAYS_AHEAD\)/.test(sync), true, 'no monthly visits more than 90 days ahead')

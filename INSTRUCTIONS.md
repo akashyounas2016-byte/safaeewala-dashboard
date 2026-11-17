@@ -111,6 +111,8 @@
 
 ### Excel sheet par Monthly visits
 - Excel sheet par koi bhi aik din kholein to us din ki Monthly / Bi-Weekly visits khud aa jati hain — sirf contract ki Start aur End date ke andar.
+- Visits sirf **aaj se 90 din aage tak** khud banti hain. Ghalti se koi door ki date (jaise 2041) khul jaye to wahan visits nahi banengi.
+- Client delete karein to wo ab hamesha ke liye hat jata hai — dobara wapas nahi aata.
 
 ### Row ka rang (Row Color)
 - Add Job (Daily aur Excel sheet) aur New Booking mein **Row Color** ki list ek jaisi hai: 40 rang, har rang apne naam ke saath aur button usi rang mein. Koi do rang ek jaise nahi.

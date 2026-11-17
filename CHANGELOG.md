@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(clients): deleting a client built from sheet rows (dj- id) now deletes it from the database — it came back with its visits (R-CLI-13); monthly visits only up to 90 days ahead, no visits on mistyped years (R-SCHED-24)
 - fix(excel): the Excel sheet adds the monthly visits of the date it opens on (one-day range), and only after the data has loaded (R-SCHED-23); our own cloud upload no longer shows "Another user changed shared settings" — browser audit
 - fix(clients): a visit removed by a schedule change is not added back by another open sheet; own contract save no longer shows "Another user changed shared settings" (R-SCHED-21, R-SCHED-22) — found in the browser test
 - change(job-sheet): 40 new row colours, each clearly different, one colour menu for Add Job (Daily + Excel) and New Booking (UX-167)

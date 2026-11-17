@@ -194,6 +194,12 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientDataSync.ts → rescheduledVisitRows, SCHEDULE_FIELDS`; `DataContext.tsx → updateClient`. Test: `tests/unit/schedule-from-today-1117.test.ts`.
 - **Status:** Active · Since: 2026-11-17
 
+### R-SCHED-24 — Monthly visits only up to 90 days ahead
+- **Why:** a mistyped date (2041-12-17) opened on the Excel sheet got real-looking monthly visits, as the contracts had no End date (team report 2026-11-17).
+  - Monthly / Bi-Weekly visits are added only for dates up to 90 days from today (`MONTHLY_SYNC_DAYS_AHEAD`). Further dates show no visits; they are added when the date comes within 90 days.
+- **Code:** `src/lib/clientDataSync.ts → syncMonthlySchedulesToDailyJobs`. Test: `tests/unit/audit-excel-sync-1117.test.ts`.
+- **Status:** Active · Since: 2026-11-17
+
 ### R-SCHED-23 — The Excel sheet adds the monthly visits of the day it shows
 - **Why:** in the browser audit (2026-11-17) the Excel Job Sheet opened on another date showed none of that day's monthly visits, even inside the contract dates.
   - The sheet opens in "range" mode with the same start and end date; that one-day range now counts as one day open, so its monthly / Bi-Weekly visits are added like on the Daily Job Sheet (inside the contract dates only, R-SCHED-11).
@@ -663,6 +669,12 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - The delete popup lists these with counts, and the client name must be typed (UX-165). The copy in Settings → Backup → Before-delete copies now holds the client, the removed visits and the contracts; Restore brings all three back.
 - **Code:** `src/lib/clientChanges.ts → clientDeletionImpact, deletionMessage`; `DataContext.tsx → deleteClient, restoreRecords`; `Clients.tsx`, `ClientProfile.tsx`. Test: `tests/unit/client-rename-delete-1116.test.ts`.
 - **Status:** Active · Since: 2026-11-16
+
+### R-CLI-13 — A deleted client is deleted from the database
+- **Why:** clients first built from sheet rows have a `dj-…` id; once edited they are saved under that id, but Delete skipped the database for `dj-` ids. They came back on every reload and kept making monthly visits (Office ABC deleted three times, 2026-11-17).
+  - Delete now always removes the client row from Supabase (a missing row is no error).
+- **Code:** `DataContext.tsx → deleteClient`. Test: `tests/unit/audit-excel-sync-1117.test.ts`.
+- **Status:** Active · Since: 2026-11-17
 
 ### R-CLI-12 — Other addresses on the job sheets
 - **Why:** a client's "Other addresses" could be picked on New Booking only, not on the Daily Job Sheet or the Excel sheet (2026-11-17).
