@@ -167,7 +167,8 @@ export interface MonthlyClientPayment {
   createdAt: string
 }
 
-export function MonthlyClients() {
+/** UX-168: `embedded` — shown as the Monthly tab of Clients: no header of its own, its buttons in a row */
+export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}) {
   const { clients, dailyJobs, employees, addClient, addBooking, addInvoice, invoices, trimVisitsToContract } = useData()
   const navigate = useNavigate()
 
@@ -1408,7 +1409,16 @@ export function MonthlyClients() {
         </div>
       )}
 
-      {/* Page Hero with Unified Summary */}
+      {embedded ? (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-[12.5px] text-slate-600"><span className="font-bold text-slate-800">{monthlySummaries.length} Monthly Clients</span> · Billed AED {totalMonthlyCharges.toLocaleString()} · Received AED {(totalMonthlyReceived + totalPaymentsRecorded).toLocaleString()} · {activeRange.label}</p>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => handleAddContract()} className="h-9 px-4 rounded-xl text-[12.5px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"><Plus size={14} /> New Contract</button>
+            <button type="button" onClick={() => handleOpenRecordPayment()} className="h-9 px-4 rounded-xl text-[12.5px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors bg-emerald-700 hover:bg-emerald-800 text-white"><Plus size={14} /> Record Payment</button>
+          </div>
+        </div>
+      ) : (
+      <>{/* Page Hero with Unified Summary */}
       <PageHero
         title="Monthly Clients & Contracts"
         subtitle={`${monthlySummaries.length} Monthly Clients · Billed: AED ${totalMonthlyCharges.toLocaleString()} · Received: AED ${(totalMonthlyReceived + totalPaymentsRecorded).toLocaleString()}`}
@@ -1436,7 +1446,8 @@ export function MonthlyClients() {
           </>
         }
         showSearch={false}
-      />
+      /></>
+      )}
 
       {/* Unified Executive KPI Cards (Real Cashflow & Payments) */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">

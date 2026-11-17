@@ -25,6 +25,8 @@ import { ClientCardShell, CleanerStack, WeekStrip, MoneyStrip, CardAction } from
 import { clientCrewMix } from '@/lib/clientCrew'
 import { confirmAsync } from '@/lib/notify'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
+import { MonthlyClients } from '@/pages/MonthlyClients'
+import { useModuleAccess } from '@/store/useModuleAccess'
 import { todayDubai, calendarDate, addDays } from '@/lib/dubaiTime'
 
 export type ClientDatePreset = 'all' | '7days' | '30days' | '3months' | '6months' | '1year' | 'custom'
@@ -183,6 +185,9 @@ export function Clients() {
     return safeLocalStorageGet<ModeTab>('clients_mode_tab', 'general')
   })
   const setModeTab = (t: ModeTab) => { setModeTabState(t); safeLocalStorageSet('clients_mode_tab', t) }
+  // UX-168: the Monthly tab is the Monthly Clients screen (cards, payments, contracts) — shown to who may open it
+  const canMonthly = useModuleAccess('Monthly Clients')
+  const shownTab: ModeTab = modeTab === 'monthly' && !canMonthly ? 'general' : modeTab
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selected, setSelected] = useState<typeof clients[0] | null>(null)
   const [isEditingClient, setIsEditingClient] = useState(false)
@@ -392,8 +397,8 @@ export function Clients() {
   const modeOfClient = (c: Client): 'general' | 'monthly' | 'biweekly' =>
     c.service_mode === 'biweekly' || (c.biweekly_plan?.days?.length ?? 0) > 0 ? 'biweekly'
       : isMonthlyClient(c, dailyJobs, allMonthlySummaries) ? 'monthly' : 'general'
-  const tabCounts = { general: 0, monthly: 0, biweekly: 0 }
-  clients.forEach(c => { tabCounts[modeOfClient(c)]++ })
+  const tabCounts = { general: clients.length, monthly: 0, biweekly: 0 } // UX-168: Clients = every client
+  clients.forEach(c => { const m = modeOfClient(c); if (m !== 'general') tabCounts[m]++ })
 
   const filtered = (() => {
     const base = clients.filter(c => {
@@ -419,7 +424,7 @@ export function Clients() {
         true
       )
       const matchDate = isClientInDateRange(c)
-      const matchTab = modeOfClient(c) === modeTab // UX-163
+      const matchTab = shownTab === 'general' || modeOfClient(c) === shownTab // UX-168: Clients tab = all clients
       return matchSearch && matchArea && matchFilter && matchDate && matchTab
     })
 
@@ -1071,15 +1076,17 @@ export function Clients() {
 
       {/* ── UX-163: Clients / Monthly Clients / Bi-Weekly Clients ── */}
       <div role="tablist" aria-label="Client type" className="flex items-center gap-1.5 bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-1.5 w-fit max-w-full overflow-x-auto">
-        {([['general', 'Clients'], ['monthly', 'Monthly Clients'], ['biweekly', 'Bi-Weekly Clients']] as const).map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={modeTab === id} onClick={() => setModeTab(id)}
-            className={`px-4 py-2 rounded-xl text-[13px] font-bold whitespace-nowrap transition-colors cursor-pointer flex items-center gap-2 ${modeTab === id ? 'bg-emerald-700 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'}`}>
+        {([['general', 'Clients'], ['monthly', 'Monthly Clients'], ['biweekly', 'Bi-Weekly Clients']] as const).filter(([id]) => id !== 'monthly' || canMonthly).map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={shownTab === id} onClick={() => setModeTab(id)}
+            className={`px-4 py-2 rounded-xl text-[13px] font-bold whitespace-nowrap transition-colors cursor-pointer flex items-center gap-2 ${shownTab === id ? 'bg-emerald-700 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'}`}>
             {label}
-            <span className={`text-[10.5px] font-black px-1.5 py-0.5 rounded-full ${modeTab === id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{tabCounts[id]}</span>
+            <span className={`text-[10.5px] font-black px-1.5 py-0.5 rounded-full ${shownTab === id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{tabCounts[id]}</span>
           </button>
         ))}
       </div>
 
+      {/* UX-168: the Monthly tab shows the Monthly Clients screen itself (its cards, payments, contracts, coverage) */}
+      {shownTab === 'monthly' ? <MonthlyClients embedded /> : (<>
       {/* ── Single Unified Filter & Search Bar directly below summary cards ── */}
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 sm:p-5 space-y-3.5">
         
@@ -1391,13 +1398,14 @@ export function Clients() {
 
       </div>
     )}
+      </>)}
 
       {/* ── Add Client Modal (Unified No-Scroll High-Efficiency Form) ── */}
       <ClientModalForm
         open={showModal}
         onClose={() => setShowModal(false)}
         employees={employees}
-        prefill={modeTab === 'general' ? undefined : { service_mode: modeTab }} // UX-163: the tab's Mode is chosen
+        prefill={shownTab === 'general' ? undefined : { service_mode: shownTab }} // UX-163: the tab's Mode is chosen
         onSave={clientData => {
           const clientName = clientData.full_name || 'New Client'
           const remarks = clientData.remarks || ''

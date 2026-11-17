@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth, useRolePerms } from '@/store/UserContext'
 import { useFieldStaff } from '@/store/useFieldStaff'
 import { canAccessModule, moduleForPath } from '@/lib/permissions'
-import { MODULE_GROUPS } from '@/lib/moduleGroups'
+import { MODULE_GROUPS, TABS_IN_PAGE } from '@/lib/moduleGroups'
 
 /** UX-117: the tabs of a merged screen (Clients · Monthly Clients, Expenses · Inventory, …) — only the allowed ones */
 export function ModuleTabs({ tone = 'light' }: { tone?: 'light' | 'dark' } = {}) {
@@ -13,7 +13,7 @@ export function ModuleTabs({ tone = 'light' }: { tone?: 'light' | 'dark' } = {})
   // only on the tab screens themselves (not on a client profile, …)
   const path = pathname.replace(/\/+$/, '')
   const parent = Object.keys(MODULE_GROUPS).find(p => MODULE_GROUPS[p].some(t => t.to === path))
-  if (!parent) return null
+  if (!parent || TABS_IN_PAGE.has(parent)) return null // UX-168
   const staffRole = user?.role === 'employee' ? field.employee?.role : undefined
   const tabs = MODULE_GROUPS[parent].filter(t => { const m = moduleForPath(t.to); return !m || canAccessModule(user?.role, perms, m, staffRole) })
   if (tabs.length < 2) return null

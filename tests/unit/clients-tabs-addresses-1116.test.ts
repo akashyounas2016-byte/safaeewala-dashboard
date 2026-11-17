@@ -38,8 +38,8 @@ const quick = readFileSync('src/components/common/QuickNewClientModal.tsx', 'utf
 eq(/\.\.\.\(data as Omit<Client, 'id' \| 'created_at'>\),/.test(quick) && /addClient\(\{ \.\.\.payload, id \}\)/.test(quick) && /onClientRegistered\(\{ \.\.\.payload, id,/.test(quick), true, 'Add Job → new client keeps them too, and the job gets the real client id')
 
 // ── UX-163: tabs ──
-eq(/\['general', 'Clients'\], \['monthly', 'Monthly Clients'\], \['biweekly', 'Bi-Weekly Clients'\]/.test(cl) && /const matchTab = modeOfClient\(c\) === modeTab/.test(cl), true, 'Clients · Monthly Clients · Bi-Weekly Clients, each client in its tab')
-eq(/prefill=\{modeTab === 'general' \? undefined : \{ service_mode: modeTab \}\}/.test(cl), true, 'Add Client opens in the tab\'s mode (same popup on every tab)')
+eq(/\['general', 'Clients'\], \['monthly', 'Monthly Clients'\], \['biweekly', 'Bi-Weekly Clients'\]/.test(cl) && /const matchTab = shownTab === 'general' \|\| modeOfClient\(c\) === shownTab/.test(cl), true, 'Clients (all, UX-168) · Monthly Clients · Bi-Weekly Clients tabs')
+eq(/prefill=\{shownTab === 'general' \? undefined : \{ service_mode: shownTab \}\}/.test(cl), true, 'Add Client opens in the tab\'s mode (same popup on every tab)')
 
 // ── UX-162 ──
 const prof = readFileSync('src/pages/ClientProfile.tsx', 'utf8')

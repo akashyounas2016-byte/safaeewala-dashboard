@@ -13,6 +13,9 @@ export const MODULE_GROUPS: Record<string, GroupTab[]> = {
   '/alerts': [{ to: '/alerts', label: 'Alerts' }, { to: '/complaints', label: 'Complaints' }],
 }
 
+/** UX-168: groups whose tabs live inside the screen itself (Clients · Monthly · Bi-Weekly), so no tab bar on top */
+export const TABS_IN_PAGE = new Set(['/clients'])
+
 /** Sidebar items that became tabs (no sidebar item of their own) */
 export const MERGED_PATHS = Object.values(MODULE_GROUPS).flatMap(g => g.slice(1).map(t => t.to))
 

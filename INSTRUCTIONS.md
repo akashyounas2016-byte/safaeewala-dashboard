@@ -60,7 +60,7 @@
 
 ### Client ek hi dafa dikhta hai
 - **Client profile:** upar header ke neeche ek row mein Charges, Received, Pending, Advance, Adjustment aur Overtime ke cards — har tab par wahi. Neeche **Upcoming Bookings** (hara, har visit ka din, tareekh, waqt aur cleaner) aur **Financial Summary** saath saath.
-- **Clients screen ke tabs:** Clients, Monthly Clients, Bi-Weekly Clients — har client apne mode wale tab mein. Add Client har tab par ek jaisa hai aur usi tab ka mode chun kar khulta hai.
+- **Clients screen ke tabs (ek hi line):** **Clients** mein saare clients; **Monthly Clients** mein poori Monthly screen — monthly clients, Payments, Contracts aur Coverage, upar New Contract aur Record Payment; **Bi-Weekly Clients** mein sirf bi-weekly. Upar wali "Clients | Monthly Clients" patti hata di gayi hai. Add Client har tab par ek jaisa hai aur usi tab ka mode chun kar khulta hai.
 - **Clients screen:** teen views — Grid Card (2 cards, widgets right par), Table, aur Wide Grid (3–4 cards, widgets neeche). Search, area, date aur sort ek hi row mein.
 - Client card par visits aur revenue sirf Job Sheet ki asal rows se gine jate hain. Rows na hon to 0.
 - Client ki profile par **Upcoming** mein agle 4 hafte ki schedule wali visits bhi dikhti hain (**Scheduled** badge). Ye sheet par us din khud aati hain jab wo din khula ho.

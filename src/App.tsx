@@ -59,7 +59,6 @@ const AIBot                  = lazyWithRetry(() => import('@/pages/AIBot').then(
 const Complaints             = lazyWithRetry(() => import('@/pages/Complaints').then(m => ({ default: m.Complaints })))
 const BusinessAnalytics      = lazyWithRetry(() => import('@/pages/BusinessAnalytics').then(m => ({ default: m.BusinessAnalytics })))
 const MonthlyInvoices        = lazyWithRetry(() => import('@/pages/MonthlyInvoices').then(m => ({ default: m.MonthlyInvoices })))
-const MonthlyClients         = lazyWithRetry(() => import('@/pages/MonthlyClients').then(m => ({ default: m.MonthlyClients })))
 const Invoices               = lazyWithRetry(() => import('@/pages/Invoices').then(m => ({ default: m.Invoices })))
 const Inventory              = lazyWithRetry(() => import('@/pages/Inventory').then(m => ({ default: m.Inventory })))
 const Expenses               = lazyWithRetry(() => import('@/pages/Expenses').then(m => ({ default: m.Expenses })))
@@ -216,7 +215,7 @@ function AppRoutes() {
                 <Route path="employees/:id" element={<EmployeeProfile />} />
                 <Route path="agencies"   element={<Agencies />} />
                 <Route path="agencies/:id" element={<AgencyProfile />} />
-                <Route path="subscriptions" element={<Navigate to="/monthly-clients" replace />} />
+                <Route path="subscriptions" element={<Navigate to="/clients?tab=monthly" replace />} />
                 <Route path="payments" element={<PaymentsHub />} /> {/* R-FIN-08: Pending lives inside Payments */}
                 <Route path="feedback" element={<CustomerFeedback />} />
                 <Route path="marketing" element={<MarketingDashboard />} />
@@ -225,7 +224,7 @@ function AppRoutes() {
                 <Route path="ai-bot" element={<AIBot />} />
                 <Route path="analytics" element={<BusinessAnalytics />} />
                 <Route path="monthly-invoices" element={<MonthlyInvoices />} />
-                <Route path="monthly-clients" element={<MonthlyClients />} />
+                <Route path="monthly-clients" element={<Navigate to="/clients?tab=monthly" replace />} /> {/* UX-168: a tab of Clients now */}
                 <Route path="invoices"   element={<Invoices />} />
                 <Route path="inventory"  element={<Inventory />} />
                 <Route path="expenses"   element={<Expenses />} />
