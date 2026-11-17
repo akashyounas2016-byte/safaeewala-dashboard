@@ -22,6 +22,8 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | A20 | **Run `supabase/migrations/2026-11-16_client_addresses.sql`** in Supabase → SQL editor (prod.md 7l) | Until then extra client addresses are not saved (R-CLI-09) | Supabase |
 | A21 | ~~WhatsApp Clicks from the website~~ — done 2026-11-17: secret on the VPS, table made, clicks arriving | — | — |
 | A22 | **Edit / delete WhatsApp clicks** — run `supabase/migrations/2026-11-17_whatsapp_clicks_edit.sql` in Supabase → SQL editor | Until then Edit says "Not saved" and only an admin can delete (R-MKT-04) | Supabase |
+| A23 | **Clients deleted on 2026-11-17 still in the database** — Office ABC, Mohammad, Qamar, def1, Yousaf (dj- ids, old delete skipped them) + their rows (Office ABC 23 Nov / 7 Dec, Yousaf 7 Dec, Qamar 2041-12-17, def1 2066-01-17). After the R-CLI-13 push: delete them again, or tell Claude to remove them | They come back on reload and keep adding visits | CRM |
+| A24 | **Finish the browser audit** after Shani's testing (on hold, owner 2026-11-17): Bi-Weekly + General client add/delete, Employee and Agency add/delete, Excel sync inside contract dates, then delete all TEST data. Done so far: Cancel saves nothing (client popup + Contracts), contract window on Excel, fixes R-SCHED-23 / R-SCHED-24 / R-CLI-13. Nobody else should use the CRM while it runs | Two people testing on the same live data mix up the results | Owner / Claude |
 
 ---
 
