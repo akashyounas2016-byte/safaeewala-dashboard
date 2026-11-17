@@ -109,6 +109,12 @@
 - 8 PM se pehle agar cleaner apne **basic ghanton** (Add Employee mein *Total Duty Hours*, khali ho to 8) se zyada kaam kare to wo extra ghante bhi OT hain.
 - Ek din ki kai shifts mil kar gini jati hain. OT haath se nahi likha ja sakta — system khud hisaab lagata hai.
 
+### Upcoming Bookings (client profile)
+- **On sheet** = us din ki row Job Sheet par ban chuki hai (time / cleaner wahan badlein). **Scheduled** = sirf schedule mein hai, row us din sheet kholne par banegi. Dono par mouse rakhne se yahi likha aata hai.
+
+### Client Profile popup
+- Upar ✕ ke saath: 🗑️ Delete, **Edit Profile**, **New Booking**. Monthly Client Details mein upar **Edit** client ka form kholta hai; payment ke liye Clients screen par **Add Payment**.
+
 ### Monthly tab
 - Payment ke liye upar **Add Payment** dabayein — Monthly tab khula ho to ye monthly payment form kholta hai. Naya contract: **Recurring Contracts → New Recurring Contract**.
 - Search, Area, Sort aur **More Filters** ek hi line mein. Tareekh (Last 28 Days, mahina, saal, custom) **More Filters** mein hai.

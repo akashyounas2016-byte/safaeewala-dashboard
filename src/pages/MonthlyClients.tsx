@@ -172,7 +172,8 @@ export const MONTHLY_RECORD_PAYMENT_EVENT = 'safaeewala:monthly-record-payment'
 
 /** UX-168: `embedded` — shown as the Monthly tab of Clients: no header of its own, its buttons in a row */
 export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}) {
-  const { clients, dailyJobs, employees, addClient, addBooking, addInvoice, invoices, trimVisitsToContract } = useData()
+  const { clients, dailyJobs, employees, addClient, updateClient, addBooking, addInvoice, invoices, trimVisitsToContract } = useData()
+  const [editClient, setEditClient] = useState<Client | null>(null) // UX-173
   const navigate = useNavigate()
 
   // ── Tab state ──
@@ -2548,11 +2549,16 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {/* UX-173: Edit (the client popup) instead of a second Record Payment */}
                   <Button
-                    onClick={() => handleOpenRecordPayment(selectedSummary.name, clientBalanceDue > 0 ? clientBalanceDue : undefined)}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[12.5px] font-bold shadow-xs cursor-pointer"
+                    onClick={() => {
+                      const c = clients.find(x => x.id === selectedSummary.matchedClientId || x.id === selectedSummary.id) || clients.find(x => x.full_name.trim().toLowerCase() === clientKey)
+                      if (c) setEditClient(c)
+                      else notify.warning('This client is not saved yet — add it with Add Client first.')
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 rounded-xl text-[12.5px] font-bold shadow-xs cursor-pointer"
                   >
-                    <DollarSign size={13} /> Record Payment
+                    <Edit2 size={13} /> Edit
                   </Button>
                   <Button
                     onClick={() => handleOpenCreateInvoice(selectedSummary)}
@@ -2840,6 +2846,15 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
           addClient(clientData as Omit<Client, 'id' | 'created_at'>)
           setShowModal(false)
         }}
+      />
+
+      {/* UX-173: Edit from Monthly Client Details — the same client popup as everywhere */}
+      <ClientModalForm
+        open={!!editClient}
+        onClose={() => setEditClient(null)}
+        employees={employees}
+        initialClient={editClient}
+        onSave={patch => { if (editClient) updateClient(editClient.id, patch); setEditClient(null) }}
       />
 
       {/* New Booking Modal */}

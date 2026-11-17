@@ -473,9 +473,9 @@ export function ClientProfile() {
           </p>
         </div>
         {v.status === 'on_sheet'
-          ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 shrink-0">On sheet</span>
+          ? <span title="Already a row on the Job Sheet for this date — change the time or cleaner there (UX-172)" className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 shrink-0 cursor-help">On sheet</span>
           : v.status === 'scheduled'
-            ? <span title="From the monthly schedule — added to the Job Sheet when that day is opened" className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 shrink-0">Scheduled</span>
+            ? <span title="From the monthly schedule — added to the Job Sheet when that day is opened" className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 shrink-0 cursor-help">Scheduled</span>
             : <StatusPill status={v.status} />}
       </li>
     )

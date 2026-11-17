@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(clients): Client Profile popup wider with Delete / Edit Profile / New Booking on top; Monthly Client Details has Edit instead of a second Record Payment (UX-173); On sheet visits show a tooltip (UX-172)
 - change(job-sheet): 40 light row colours as swatches without names; a colour already on another cleaner's row that day cannot be picked (warning) (UX-169)
 - change(clients): Monthly tab — no duplicate New Contract / Record Payment buttons, header Add Payment opens the monthly payment form (UX-170); date filters moved into More Filters on the search row (UX-171)
 - feat(marketing): WhatsApp click webhook deliveries logged on the server and shown as "Website connection"; the screen refreshes every minute (R-MKT-05)

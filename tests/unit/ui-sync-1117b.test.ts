@@ -30,3 +30,10 @@ const srv = readFileSync('webhookServer.cjs', 'utf8')
 eq(/pathname === '\/api\/webhook\/whatsapp-clicks\/log'/.test(srv) && /logWact\(401/.test(srv) && /logWact\(201, 'Saved'/.test(srv), true, 'R-MKT-05: every webhook delivery is logged and readable')
 const wc = readFileSync('src/pages/WhatsAppClicks.tsx', 'utf8')
 eq(/Website connection: /.test(wc) && /setInterval\(\(\) => \{ void load\(\); void loadLog\(\) \}, 60_000\)/.test(wc), true, 'R-MKT-05: screen shows the last delivery and refreshes every minute')
+
+// UX-172 / UX-173
+const cp = readFileSync('src/pages/ClientProfile.tsx', 'utf8')
+eq(/title="Already a row on the Job Sheet for this date/.test(cp), true, 'UX-172: On sheet shows an info tooltip like Scheduled')
+const cl = readFileSync('src/pages/Clients.tsx', 'utf8')
+eq(/size="xl"\s*\n\s*className="max-w-4xl"/.test(cl) && /aria-label="Delete client"/.test(cl) && /headerActions=\{selected && !confirmDelete/.test(cl), true, 'UX-173: Client Profile popup wider, Delete icon / Edit Profile / New Booking on top')
+eq(/UX-173: Edit \(the client popup\) instead of a second Record Payment/.test(mc) && /<ClientModalForm\s*\n\s*open=\{!!editClient\}/.test(readFileSync('src/pages/MonthlyClients.tsx', 'utf8')), true, 'UX-173: Monthly Client Details has Edit (client popup), no Record Payment on top')

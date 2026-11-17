@@ -1482,11 +1482,21 @@ export function Clients() {
         open={!!selected && !isEditingClient}
         onClose={() => { setSelected(null); setIsEditingClient(false); setConfirmDelete(false) }}
         title="Client Profile"
-        size="lg"
+        size="xl"
+        className="max-w-4xl" // UX-173: wider
+        headerActions={selected && !confirmDelete ? (
+          <div className="flex items-center gap-2 mr-1">
+            <button type="button" onClick={() => setConfirmDelete(true)} title="Delete client" aria-label="Delete client"
+              className="w-9 h-9 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 flex items-center justify-center cursor-pointer"><Trash2 size={15} /></button>
+            <Button variant="outline" size="sm" className="h-9 px-4 rounded-xl" onClick={() => setIsEditingClient(true)}>Edit Profile</Button>
+            <Button size="sm" className="h-9 px-4 rounded-xl" onClick={() => { setBookingClient({ name: selected.full_name, phone: selected.phone }); setSelected(null); setIsEditingClient(false); setShowBookingModal(true) }}>New Booking</Button>
+          </div>
+        ) : undefined}
       >
         {selected && (
           <div className="space-y-4">
-            <div className="flex items-center gap-4">
+            {/* UX-173: header bar like Monthly Client Details */}
+            <div className="flex items-center gap-4 bg-gradient-to-r from-teal-50 via-slate-50 to-white rounded-2xl p-4 border border-teal-100">
               <Avatar name={selected.full_name} size="lg" idx={0} />
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1602,26 +1612,7 @@ export function Clients() {
                   </button>
                 </div>
               </div>
-            ) : (
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 text-red-600 text-[12px] font-semibold hover:bg-red-50 transition-colors"
-                >
-                  <Trash2 size={13} /> Delete
-                </button>
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  size="sm"
-                  onClick={() => setIsEditingClient(true)}
-                >
-                  Edit Profile
-                </Button>
-                <Button className="flex-1" size="sm" onClick={() => { setBookingClient({ name: selected!.full_name, phone: selected!.phone }); setSelected(null); setIsEditingClient(false); setShowBookingModal(true) }}>New Booking</Button>
-              </div>
-            )}
+            ) : null /* UX-173: Delete / Edit Profile / New Booking are on top, next to ✕ */}
           </div>
         )}
       </Modal>
