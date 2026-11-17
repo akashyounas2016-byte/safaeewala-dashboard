@@ -1632,6 +1632,8 @@ export function rememberMovedMonthlyVisits(before: DailyJob, after: DailyJob, cl
 let initialDataLoaded = false
 const insertedThisSession = new Set<string>()
 export function markInitialDataLoaded(loaded = true): void { initialDataLoaded = loaded }
+/** R-SCHED-23: the first load is done — before it a sync adds nothing, so a screen must not count the date as done */
+export const isInitialDataLoaded = (): boolean => initialDataLoaded
 
 /** Minutes after midnight of "09:00", "9:00 AM", "01:00 PM" — null when unreadable */
 function clockMinutes(t?: string): number | null {

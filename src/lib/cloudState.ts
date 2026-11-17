@@ -276,6 +276,13 @@ export function retryCloudState() {
 /** Fired when another user / device changed a cloud-synced setting while this page is open */
 export const REMOTE_CHANGE_EVENT = 'safaeewala:remote-change'
 
+/** Same JSON value, whatever the key order */
+export function sameJson(a: unknown, b: unknown): boolean {
+  const canon = (v: unknown): unknown => Array.isArray(v) ? v.map(canon) : v && typeof v === 'object'
+    ? Object.fromEntries(Object.keys(v as object).sort().map(k => [k, canon((v as Record<string, unknown>)[k])])) : v
+  try { return JSON.stringify(canon(a)) === JSON.stringify(canon(b)) } catch { return false }
+}
+
 /** Live updates of cloud-synced settings (E2E-17, R-SYNC-09) */
 export function subscribeCloudState(): () => void {
   const channel = supabase.channel('crm-app-state').on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, payload => {
@@ -284,6 +291,9 @@ export function subscribeCloudState(): () => void {
     const m = readMeta()[row.key] || {}
     if (row.updated_at && Date.parse(row.updated_at) === Date.parse(m.syncedAt || '')) return // our own upload
     if (m.dirty) { schedulePush(row.key, 0); return } // our unsaved change: the push merges theirs in
+    // our own upload coming back before the push had noted its time: same value as here → not another user's change
+    // (the database stores JSON with its own key order, so both sides are compared with sorted keys)
+    if (sameJson(row.value, readLocal(row.key))) { setKeyMeta(row.key, { syncedAt: row.updated_at, dirty: false }); return }
     writeLocal(row.key, row.value)
     remember(row.key, row.value)
     setKeyMeta(row.key, { syncedAt: row.updated_at, dirty: false })

@@ -18,7 +18,7 @@ import { calcHours, calcOTHours, recalculateAllRowsOT, formatTimeOnly, formatTim
 import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured, getDriveWebhookUrl, sendDailySheetBackupViaWebhook } from '@/lib/googleDrive'
 import { GoogleDriveWebhookModal } from '@/components/dailyJobSheet/GoogleDriveWebhookModal'
 import { MonthlyScheduleSyncModal } from '@/components/dailyJobSheet/MonthlyScheduleSyncModal'
-import { getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, buildPendingCalcContext, calcJobCollectable, getAssignableClients, splitStaffNames, type ScheduledShiftPlan } from '@/lib/clientDataSync'
+import { getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, isInitialDataLoaded, buildPendingCalcContext, calcJobCollectable, getAssignableClients, splitStaffNames, type ScheduledShiftPlan } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
 import { confirmAsync, notify } from '@/lib/notify'
@@ -49,7 +49,7 @@ export { checkTimesOverlap } from '@/components/dailyJobSheet/jobSheetUtils'
 export function JobSheetSpreadsheet() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { dailyJobs, dailyExpenses, clients, employees, invoices, addDailyJob, updateDailyJob, deleteDailyJob, clearDailyData, clearAllDailyData, attendanceMarks } = useData()
+  const { dailyJobs, dailyExpenses, clients, employees, invoices, loading, addDailyJob, updateDailyJob, deleteDailyJob, clearDailyData, clearAllDailyData, attendanceMarks } = useData()
   const canBulk = useModuleAccess('Job Sheet Import & Delete') // R-SEC-09: Delete Today / Delete All only for this role option
 
   // ── Target Date Selection & Dynamic Date Presets ──
@@ -96,17 +96,21 @@ export function JobSheetSpreadsheet() {
     return selectedDate
   }, [selectedDate, dateFilterMode, rangeStart])
 
+  // R-SCHED-23: one day is open — also a "range" of one day, the mode the sheet opens in (it never synced then:
+  // a monthly visit on another date opened here was missing, browser audit 2026-11-17)
+  const oneDayOpen = dateFilterMode === 'single' || dateFilterMode === 'today' || dateFilterMode === 'yesterday' || (dateFilterMode === 'range' && !!rangeStart && rangeStart === rangeEnd)
   const monthlySyncStatus = useMemo(() => {
-    if (dateFilterMode !== 'single' && dateFilterMode !== 'today' && dateFilterMode !== 'yesterday') {
+    if (!oneDayOpen) {
       return { totalScheduled: 0, alreadySyncedCount: 0, pendingSyncCount: 0, dayName: 'Monday' as const, shifts: [] }
     }
     return getScheduledMonthlyShiftsForDate(effectiveTargetDate, clients, dailyJobs)
-  }, [effectiveTargetDate, dateFilterMode, clients, dailyJobs])
+  }, [effectiveTargetDate, oneDayOpen, clients, dailyJobs])
 
   // Auto-fetch repeating schedules for the target date if enabled
   useEffect(() => {
     if (!autoSyncMonthly) return
-    if (dateFilterMode !== 'single' && dateFilterMode !== 'today' && dateFilterMode !== 'yesterday') return
+    if (!oneDayOpen) return
+    if (loading || !isInitialDataLoaded()) return // R-SCHED-23: data still loading — the date was marked done with nothing added
     if (autoSyncedDatesRef.current.has(effectiveTargetDate)) return
 
     if (monthlySyncStatus.pendingSyncCount > 0) {
@@ -117,7 +121,7 @@ export function JobSheetSpreadsheet() {
         setTimeout(() => setToastMessage(null), 3500)
       }
     }
-  }, [effectiveTargetDate, autoSyncMonthly, dateFilterMode, monthlySyncStatus.pendingSyncCount, clients, dailyJobs, addDailyJob])
+  }, [effectiveTargetDate, autoSyncMonthly, oneDayOpen, loading, monthlySyncStatus.pendingSyncCount, clients, dailyJobs, addDailyJob])
 
   const handleSyncAllMonthlyShifts = () => {
     const res = syncMonthlySchedulesToDailyJobs(effectiveTargetDate, clients, dailyJobs, addDailyJob)

@@ -194,11 +194,18 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientDataSync.ts → rescheduledVisitRows, SCHEDULE_FIELDS`; `DataContext.tsx → updateClient`. Test: `tests/unit/schedule-from-today-1117.test.ts`.
 - **Status:** Active · Since: 2026-11-17
 
+### R-SCHED-23 — The Excel sheet adds the monthly visits of the day it shows
+- **Why:** in the browser audit (2026-11-17) the Excel Job Sheet opened on another date showed none of that day's monthly visits, even inside the contract dates.
+  - The sheet opens in "range" mode with the same start and end date; that one-day range now counts as one day open, so its monthly / Bi-Weekly visits are added like on the Daily Job Sheet (inside the contract dates only, R-SCHED-11).
+  - A date is marked synced only after the data has loaded — before, a date opened while loading was marked done with nothing added and never tried again.
+- **Code:** `src/pages/JobSheetSpreadsheet.tsx → oneDayOpen`; `clientDataSync.ts → isInitialDataLoaded`. Test: `tests/unit/audit-excel-sync-1117.test.ts`.
+- **Status:** Active · Since: 2026-11-17
+
 ### R-SCHED-22 — Contract Start stays fixed
 - **Why:** the Contract Start in the client popup showed today's date every day for a client without a saved contract, so it seemed to move daily (2026-11-17).
   - Without a saved contract the Start shown is the day the client was added (a new client: today). Saving a Monthly / Bi-Weekly client now always saves its contract, so the Start shown is the one kept; a saved Start never changes unless typed.
   - The popup reads the contract again each time it opens (it could show an older copy).
-  - Saving the contract on this screen no longer shows "Another user changed shared settings" (that note is for changes from other users only).
+  - Saving the contract on this screen no longer shows "Another user changed shared settings" (that note is for changes from other users only). Our own upload coming back from the cloud (same value, other key order) is not counted as another user's change either (`cloudState.sameJson`).
 - **Code:** `src/lib/clientContracts.ts → detailsOfContract(c, fallbackStart), saveClientContract({ always })`; `ClientModalForm.tsx`. Test: `tests/unit/schedule-from-today-1117.test.ts`.
 - **Status:** Active · Since: 2026-11-17
 
