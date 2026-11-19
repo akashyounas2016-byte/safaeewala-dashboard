@@ -129,6 +129,9 @@
 ### Team mein har cleaner ka apna time
 - Excel par team ke kisi ek cleaner ka time badlein to sirf usi ka badlega. Save par wo cleaner usi jagah aur team mein apni alag job ban jata hai; paisa leader ki row par rehta hai.
 
+### Ghalat page address
+- CRM ka ghalat address likhein to ab "Page not found" aata hai (pehle khaali page). **Go to Overview** dabayein ya baayen menu istemal karein.
+
 ### Ek address, do alag jobs (Excel)
 - Ek hi building mein ek waqt do alag jobs hon (misaal: ek solo job aur ek team), to har job ki apni charges apni row par dikhti hain. Pehle sheet doosri job ko team ka member samajh kar uski charges chhupa deti thi.
 - Save ka message ab sirf asal jobs ginta hai — khaali rows "deleted" nahi likhi jatin.

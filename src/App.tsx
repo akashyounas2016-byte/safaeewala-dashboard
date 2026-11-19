@@ -188,6 +188,21 @@ function ModuleGate() {
   )
 }
 
+/** UX-178: a mistyped or old CRM address — say so and offer the way back (it was an empty page) */
+function NotFound() {
+  const { pathname } = useLocation()
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center p-6">
+      <div className="text-center max-w-sm">
+        <div className="text-3xl mb-3">🧭</div>
+        <h2 className="text-[18px] font-black text-[#111827]">Page not found</h2>
+        <p className="text-[13px] text-slate-500 mt-1 break-all">There is no screen at <span className="font-mono">{pathname}</span>. Use the menu on the left, or go back to the start.</p>
+        <Link to="/" className="inline-block mt-4 text-[13px] font-bold text-emerald-700 hover:underline">Go to Overview</Link>
+      </div>
+    </div>
+  )
+}
+
 function AppRoutes() {
   const { bookings, invoices, inventory } = useData()
   return (
@@ -237,6 +252,7 @@ function AppRoutes() {
                 <Route path="my-duties"  element={<MyDuties />} />
                 <Route path="daily-job-sheet" element={<DailyJobSheet />} />
                 <Route path="login" element={<Navigate to="/" replace />} />
+                <Route path="*" element={<NotFound />} /> {/* UX-178: a wrong address shows "Page not found", not an empty page */}
                </Route>
               </Route>
             </Routes>

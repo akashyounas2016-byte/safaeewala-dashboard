@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(app): "Page not found" screen for a wrong address instead of an empty page (UX-178)
+- data: removed the test job "test123" (Adnan, 19 Nov) on owner request; backup in Safaeewala-backups/test123-job-2026-11-19.json
 - fix(excel): a row with its own money at the same address and time as a team is its own job — its charges were hidden and the next save set them to 0; split-off members point to their own team lead (R-SYNC-20)
 - fix(excel): save message no longer counts empty filler rows as deleted (UX-177)
 - data: removed the 4 duplicate visits of 17 Nov (A26, backup in Safaeewala-backups/a26-duplicates-2026-11-17.json)
