@@ -30,6 +30,22 @@ export function syncDutyWithTimes<T extends { start_time?: string; end_time?: st
 }
 
 export const NUMERIC_FIELDS = new Set<string>(['duty_hours', 'ot_hours', 'charges', 'received', 'charges_per_hour'])
+
+/**
+ * UX-175: Charges follow the hourly rate — Charges = Charges Per Hour × Duty Hrs. Typing the rate or changing the hours /
+ * times (with a rate set) works out Charges; typing Charges works out the rate. Rows without hours are left as typed.
+ */
+export function syncHourlyCharges<T extends { charges?: number; charges_per_hour?: number | null; duty_hours?: number }>(row: T, changed: string): T {
+  const rate = Number(row.charges_per_hour) || 0
+  const hours = Number(row.duty_hours) || 0
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  if (hours <= 0) return row
+  if (changed === 'charges_per_hour' || ((changed === 'duty_hours' || changed === 'start_time' || changed === 'end_time') && rate > 0)) {
+    return { ...row, charges: r2(rate * hours) }
+  }
+  if (changed === 'charges') return { ...row, charges_per_hour: Number(row.charges) > 0 ? r2(Number(row.charges) / hours) : 0 }
+  return row
+}
 export const fieldValue = (row: DailyJob, k: (typeof SAVED_FIELDS)[number]) =>
   NUMERIC_FIELDS.has(k) ? cleanNum(row[k]) : String(row[k] ?? '').trim()
 /**
@@ -345,9 +361,25 @@ export function withIdleCleaners(rows: DailyJob[], idle: { name: string; status:
       } as DailyJob)
     }
   })
-  if (!extra.length) return rows
+  if (!extra.length) return orderBlocksByName(rows)
   // UX-154: an empty day used to show a nameless purple "—" block of 3 rows (the starter block from
   // ensureThreeRowsPerStaff). Every cleaner now has a block, so that starter block is left out.
   const base = rows.filter(r => !(String(r.id).startsWith('new_cleaner') && !String(r.staff_name || '').trim() && isBlankNewRow(r)))
-  return [...base, ...extra]
+  return orderBlocksByName([...base, ...extra])
+}
+
+/**
+ * UX-174: the cleaner blocks keep one fixed order — by name, A→Z, rows without a cleaner last. A new job, a team
+ * job or a payment no longer moves blocks up or down (they followed the order the jobs came in, team members were
+ * pulled together and idle cleaners went to the bottom). A block's own rows keep their order.
+ */
+export function orderBlocksByName(rows: DailyJob[]): DailyJob[] {
+  const blocks = new Map<string, DailyJob[]>()
+  rows.forEach(r => {
+    const k = String(r.staff_name || '').trim().toLowerCase()
+    blocks.set(k, [...(blocks.get(k) || []), r])
+  })
+  return Array.from(blocks.entries())
+    .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
+    .flatMap(([, list]) => list)
 }

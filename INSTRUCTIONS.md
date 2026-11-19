@@ -122,6 +122,14 @@
 ### Attendance popup (Excel)
 - Popup mein sirf cleaners hain. Office staff (CSR) ki chhutti / ghair-haazri neeche ek line mein likhi hoti hai.
 
+### Excel sheet: cleaners ki tarteeb
+- Cleaners ke blocks hamesha **naam ke hisaab se A→Z** rehte hain. Nayi job, team job ya payment se koi block upar neeche nahi hota.
+- Team member ki Mode mein **Team** likha hota hai (paisa leader ki row par hai — REF chip leader ka naam batata hai).
+
+### Charges Per Hour
+- Add Job mein **Charges Per Hour** likhein (Advance Received se pehle). Total khud banta hai: rate × duty hours.
+- Excel mein ye **Charges / Hr** column mein dikhta hai. Rate ya time badlein to Charges khud badal jate hain; Charges seedha likhein to rate us ke hisaab se badal jata hai.
+
 ### Excel sheet par Monthly visits
 - Excel sheet par koi bhi aik din kholein to us din ki Monthly / Bi-Weekly visits khud aa jati hain — sirf contract ki Start aur End date ke andar.
 - Visits sirf **aaj se 90 din aage tak** khud banti hain. Ghalti se koi door ki date (jaise 2041) khul jaye to wahan visits nahi banengi.

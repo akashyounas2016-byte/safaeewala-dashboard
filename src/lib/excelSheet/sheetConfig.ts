@@ -54,7 +54,9 @@ export const memberReceivedLabel = (row: DailyJob, lead: string, employees?: Arr
   const shortName = getLeadShortName(lead, employees)
   return e ? `Collected ${e.received} · Ref ${shortName}` : `REF: ${shortName}`
 }
-export const memberModeLabel = (row: DailyJob) => memberEntry(row)?.payment_mode || 'Above'
+// UX-174: shown as "Team" — the blocks are now A→Z, so the lead's row is not always above (it said "Above" while
+// the lead was below). The saved mode stays 'Above'; the REF chip names the lead.
+export const memberModeLabel = (row: DailyJob) => { const m = memberEntry(row)?.payment_mode; return !m || m === 'Above' ? 'Team' : m }
 /** R-PAY-05: a team member's money is shown by reference to the lead only in Lump Sum mode; Split Mode rows are plain and editable */
 export const refMoney = (mc: MultiCleanerPaymentInfo | null | undefined, row: DailyJob) => Boolean(mc?.isSecondary) && !isSplitJob(row)
 /** Columns whose cells open their dropdown on a single click, filled or empty (UX-35) */

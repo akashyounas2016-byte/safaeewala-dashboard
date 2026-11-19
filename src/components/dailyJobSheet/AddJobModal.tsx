@@ -243,6 +243,17 @@ export function AddJobForm({
 
   // ── Financials ──
   const [charges, setCharges] = useState<number | string>(initial?.charges ?? '')
+  // UX-175: the job is priced per hour — Charges = Charges Per Hour × Duty Hrs
+  const [rate, setRate] = useState<number | string>(() => {
+    const saved = Number(initial?.charges_per_hour) || 0
+    if (saved > 0) return saved
+    const c = Number(initial?.charges) || 0, h = Number(initial?.duty_hours) || 0
+    return c > 0 && h > 0 ? Math.round((c / h) * 100) / 100 : ''
+  })
+  useEffect(() => { // UX-175: new hours → new Charges at the same rate
+    const r = cleanNum(rate)
+    if (r > 0 && dutyHours > 0) setCharges(String(Math.round(r * dutyHours * 100) / 100))
+  }, [rate, dutyHours])
   const [received, setReceived] = useState<number | string>(initial?.received ?? '')
   // R-PAY-05: Lump Sum (whole amount on the lead) or Split Mode (each cleaner's charges / received / mode)
   const [splitOn, setSplitOn] = useState(() => (initial?.charge_split || []).length > 0)
@@ -515,7 +526,8 @@ export function AddJobForm({
       address:      address.trim(),
       area:         area.trim(),
       material:     selectedMaterial as MaterialType,
-      charges:      useSplit ? totals.charges : cleanNum(charges),
+      charges:      useSplit ? totals.charges : (cleanNum(rate) > 0 && dutyHours > 0 ? Math.round(cleanNum(rate) * dutyHours * 100) / 100 : cleanNum(charges)),
+      charges_per_hour: useSplit ? undefined : (cleanNum(rate) || undefined), // UX-175: shown in the Excel "Charges / Hr" column
       received:     useSplit ? totals.received : cleanNum(received),
       payment_mode: (useSplit ? totals.payment_mode : paymentMode) as PaymentMode,
       // back to Lump Sum on an edit clears the split ([]); a new lump-sum job sends nothing
@@ -961,6 +973,7 @@ export function AddJobForm({
           <ChargesCard
             staff={selectedStaff}
             charges={charges} setCharges={setCharges}
+            rate={rate} setRate={setRate} dutyHours={dutyHours}
             received={received} setReceived={setReceived}
             paymentMode={paymentMode} setPaymentMode={m => setPaymentMode(m as PaymentMode)}
             splitOn={splitOn} setSplitOn={setSplitOn}

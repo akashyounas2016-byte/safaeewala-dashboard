@@ -27,7 +27,7 @@ export const DEFAULT_COLUMN_DEFS: Omit<ColumnDef, 'col'>[] = [
   { id: 'material',     label: 'Material',   width: '120px', type: 'select', options: ['Yes', 'No', 'Sofa'] },
   { id: 'charges',      label: 'Charges',    width: '95px',  type: 'number', formulaHint: 'Gross charges' },
   // UX-138: fee per hour, typed by hand (was worked out from Charges ÷ Duty Hrs, UX-134)
-  { id: 'charges_per_hour', label: 'Charges (hrs)', width: '95px', type: 'number', formulaHint: 'Charges per hour (typed)' },
+  { id: 'charges_per_hour', label: 'Charges / Hr', width: '95px', type: 'number', formulaHint: 'Charges per hour — Charges = this × Duty Hrs (UX-175)' },
   { id: 'received',     label: 'Received',   width: '95px',  type: 'number', formulaHint: 'Amount received' },
   { id: 'pending',      label: 'Pending',    width: '95px',  type: 'formula', formulaHint: 'Pending amount' },
   { id: 'advance',      label: 'Advance',    width: '95px',  type: 'formula', formulaHint: 'Paid more than the charges (UX-72)' },

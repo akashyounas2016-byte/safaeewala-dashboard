@@ -35,7 +35,7 @@ import { splitTotals, isSplitJob } from '@/lib/chargeSplit'
 import { type ColumnDef, DEFAULT_COLUMN_DEFS, mergeNewColumns, buildColumnsWithLetters, COLUMNS, type ExcelDatePresetKey, EXCEL_DATE_PRESETS, chargesPerHour } from '@/lib/excelSheet/columns'
 import { type BlockPalette, BLOCK_PALETTES, SOLID_PALETTE_KEYS, LIGHT_PALETTE_KEYS, PALETTE_KEYS, hslToHex, makeHexPalette } from '@/lib/excelSheet/palettes'
 import { QuickAttendanceModal } from '@/components/dailyJobSheet/QuickAttendanceModal'
-import { newRowId, sameJobRow, isBlankNewRow, isClearedRow, teamJobsDeletedElsewhere, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes } from '@/lib/excelSheet/rows'
+import { newRowId, sameJobRow, isBlankNewRow, isClearedRow, teamJobsDeletedElsewhere, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes, syncHourlyCharges, orderBlocksByName } from '@/lib/excelSheet/rows'
 import { DRAFT_PREFIX, COLUMN_PRESETS, READ_ONLY_COLS, DEFAULT_ROW_BG, projectKeyOf, memberChargesLabel, memberReceivedLabel, memberModeLabel, refMoney, DROPDOWN_COLS, TIME_SUGGESTIONS, DUBAI_AREAS, RENDER_PAGE, safeGet, safeSet, rowColorConflict } from '@/lib/excelSheet/sheetConfig'
 import { evaluateFormula } from '@/lib/excelSheet/formula'
 import { jobFlags, splitSyncNote, type JobFlag } from '@/lib/jobFlags'
@@ -1025,9 +1025,9 @@ export function JobSheetSpreadsheet() {
     else if (colId === 'start_time' || colId === 'end_time') {
       const fmt = formatTimeOnly(v)
       next[colId] = fmt !== '—' ? fmt : v
-      return syncDutyWithTimes(next, !v) // UX-139: a removed time clears Duty Hrs and OT
+      return syncHourlyCharges(syncDutyWithTimes(next, !v), colId) // UX-139: a removed time clears Duty Hrs and OT; UX-175
     } else next[colId] = v
-    return next
+    return syncHourlyCharges(next, colId) // UX-175
   }
 
   const blankRow = (base?: Partial<DailyJob>): DailyJob => ({
@@ -1137,6 +1137,7 @@ export function JobSheetSpreadsheet() {
     } else {
       ;(row as any)[colId] = trimmed
     }
+    Object.assign(row, syncHourlyCharges(row, colId)) // UX-175
 
     // If editing staff_name, synchronize all rows in this staff member's block so they stay together
     if (colId === 'staff_name') {
@@ -1773,6 +1774,7 @@ export function JobSheetSpreadsheet() {
       } else {
         ;(row as any)[colId] = newVal
       }
+      Object.assign(row, syncHourlyCharges(row, colId)) // UX-175
 
       updated[activeCell.rowIdx] = row
       pushState(updated)
@@ -5747,7 +5749,7 @@ export function JobSheetSpreadsheet() {
                   : ''
                 const newRows = expandTeamJob(newJob, teamRef)
                 // UX-84: a cleaner's block always has 3 rows, also for a cleaner new to the sheet
-                pushState(recalculateAllRowsOT(padCleanerBlocks(placeRowsInCleanerBlocks(gridRows, newRows), effectiveTargetDate)))
+                pushState(recalculateAllRowsOT(orderBlocksByName(padCleanerBlocks(placeRowsInCleanerBlocks(gridRows, newRows), effectiveTargetDate)))) // UX-174: blocks stay A→Z
                 setShowAddJobModal(false)
                 showToast(names.length > 1
                   ? `✓ ${teamRef} added — ${names.length} cleaners, one row each`

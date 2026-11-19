@@ -26,6 +26,7 @@ export function expandTeamJob(job: DailyJob, teamRef: string): DailyJob[] {
       team_name: teamRef,
       charges: own ? cleanNum(own.charges) : isPrimary ? cleanNum(job.charges) : 0,
       received: own ? cleanNum(own.received) : isPrimary ? cleanNum(job.received) : 0,
+      charges_per_hour: own ? null : isPrimary ? job.charges_per_hour : null, // UX-175: the rate is on the lead row (like the charges)
       payment_mode: own ? (own.payment_mode as DailyJob['payment_mode']) : isPrimary ? job.payment_mode : ('Above' as DailyJob['payment_mode']),
       _isSplitShift: true,
       _isPrimaryCleaner: isPrimary,
