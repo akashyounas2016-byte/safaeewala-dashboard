@@ -494,16 +494,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ot_hours: safeNum(job.ot_hours),
           service: job.service || 'Regular Cleaning',
           client_id: linkClient(job), // R-DATA-12
-          id: uid(),
+          id: (job as { id?: string }).id || uid(), // R-SCHED-25: the visit's fixed id
           created_at: now()
         }
         newJobs.push(row)
         dbInsert('daily_jobs', row)
+        logAudit('created', 'daily_job', row.id, `${row.staff_name || 'No cleaner'} · ${row.date}`, `${row.address || '—'} · ${row.start_time || ''}–${row.end_time || ''} · monthly schedule (app start)`) // R-SCHED-25: traceable
       })
 
       if (newJobs.length > 0) {
         setDailyJobs(prev => {
-          const next = [...newJobs, ...prev]
+          const ids = new Set(newJobs.map(j => j.id))
+          const next = [...newJobs, ...prev.filter(j => !ids.has(j.id))] // R-SCHED-25
           safeLocalStorageSet('safaeewala_daily_jobs', next)
           return next
         })
@@ -1055,7 +1057,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         created_at: (j as any).created_at || now()
       }
       setDailyJobs(p => {
-        const next = [row, ...p]
+        const next = [row, ...p.filter(x => x.id !== row.id)] // R-SCHED-25: the same visit is never listed twice
         safeLocalStorageSet('safaeewala_daily_jobs', next)
         return next
       })

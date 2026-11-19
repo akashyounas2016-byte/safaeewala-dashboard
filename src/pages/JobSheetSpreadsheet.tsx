@@ -2548,16 +2548,22 @@ export function JobSheetSpreadsheet() {
       const now = rows.filter(r => splitOrigin(r) === jobId && !isClearedRow(r))
       if (now.length === 0) return null
       const before = Array.from(loadedSnapshot.values()).filter(r => splitOrigin(r) === jobId)
-      const lead = now.find(r => (r as any)._isPrimaryCleaner) || before.find(r => (r as any)._isPrimaryCleaner) || now[0]
-      const shared = ['start_time', 'end_time', 'duty_hours', 'ot_hours', 'address', 'area', 'material', 'remarks', 'service'] as const
+      const leadAll = now.find(r => (r as any)._isPrimaryCleaner) || before.find(r => (r as any)._isPrimaryCleaner) || now[0]
+      // UX-176: each cleaner's time is their own. A cleaner whose start / end now differs from the lead's leaves the team
+      // job as their own job (same place and team, money stays on the lead). One changed time used to move every cleaner.
+      const sameTime = (r: DailyJob) => (r.start_time || '') === (leadAll.start_time || '') && (r.end_time || '') === (leadAll.end_time || '')
+      const ownTime = now.filter(r => r.id !== leadAll.id && !sameTime(r))
+      const stay = now.filter(r => !ownTime.includes(r))
+      const lead = stay.find(r => r.id === leadAll.id) || stay[0]
+      const shared = ['address', 'area', 'material', 'remarks', 'service'] as const
       const value = <K extends (typeof shared)[number]>(k: K): DailyJob[K] => {
         const changed = now.find(r => { const b = before.find(x => x.id === r.id); return b && String(b[k] ?? '') !== String(r[k] ?? '') })
         return (changed ?? now.find(r => (r as any)._isPrimaryCleaner) ?? now[0])[k]
       }
-      const names = now.map(r => (r.staff_name || '').trim()).filter(Boolean)
+      const names = stay.map(r => (r.staff_name || '').trim()).filter(Boolean)
       // R-PAY-05 Split Mode: each cleaner's row is their entry; the job holds the totals
-      const split = now.some(r => isSplitJob(r))
-        ? now.filter(r => (r.staff_name || '').trim()).map(r => ({
+      const split = stay.some(r => isSplitJob(r)) && stay.length > 1
+        ? stay.filter(r => (r.staff_name || '').trim()).map(r => ({
             cleaner: (r.staff_name || '').trim(),
             charges: cleanNum(r.charges),
             received: cleanNum(r.received),
@@ -2565,14 +2571,27 @@ export function JobSheetSpreadsheet() {
           }))
         : null
       const sum = split ? splitTotals(split) : null
-      return {
+      const teamRef = String((leadAll as any)._teamReference || leadAll.team_name || '')
+      const extras = ownTime.map(r => {
+        const splitRow = isSplitJob(r)
+        return {
+          ...payload(r),
+          team_name: teamRef,
+          charges: splitRow ? cleanNum(r.charges) : 0,
+          received: splitRow ? cleanNum(r.received) : 0,
+          payment_mode: (splitRow ? r.payment_mode : 'Above') as DailyJob['payment_mode'],
+          charge_split: undefined,
+          charges_per_hour: null as unknown as number,
+        }
+      })
+      const team = {
         date: lead.date || selectedDate,
         staff_name: names.join(', '),
         team_name: names.length > 1 ? String((lead as any)._teamReference || lead.team_name || '') : '',
-        start_time: value('start_time'),
-        end_time: value('end_time'),
-        duty_hours: cleanNum(value('duty_hours')),
-        ot_hours: cleanNum(value('ot_hours')),
+        start_time: lead.start_time,
+        end_time: lead.end_time,
+        duty_hours: cleanNum(lead.duty_hours),
+        ot_hours: cleanNum(lead.ot_hours),
         address: value('address'),
         area: value('area'),
         material: value('material'),
@@ -2586,6 +2605,7 @@ export function JobSheetSpreadsheet() {
         charges_per_hour: (cleanNum(lead.charges_per_hour) || null) as unknown as number, // UX-138: null clears it
         is_overtime: false,
       }
+      return { team, extras }
     }
 
     reloadAfterSaveRef.current = true
@@ -2602,10 +2622,11 @@ export function JobSheetSpreadsheet() {
       else if (!isClearedRow(r)) addKeepingColors(r, payload(r)) // deleted elsewhere — the user chose to keep their version (UX-156: never an empty row)
     })
     splitJobIds.forEach(jobId => {
-      const p = splitJobPayload(jobId)
-      if (!p) { if (live.has(jobId)) deleteDailyJob(jobId); return } // every cleaner row removed
-      if (live.has(jobId)) updateDailyJob(jobId, p)
-      else addDailyJob(p)
+      const res = splitJobPayload(jobId)
+      if (!res) { if (live.has(jobId)) deleteDailyJob(jobId); return } // every cleaner row removed
+      if (live.has(jobId)) updateDailyJob(jobId, res.team)
+      else addDailyJob(res.team)
+      res.extras.forEach(e => addDailyJob(e)) // UX-176: a cleaner with their own time is their own job
     })
     plainAdded.forEach(r => addKeepingColors(r, payload(r)))
     if (colorMoves.length) {

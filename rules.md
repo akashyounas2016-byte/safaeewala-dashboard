@@ -198,6 +198,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Why:** the plugin showed clicks on 17 Nov that never reached the CRM, and the server kept no record (logs reset on every deploy).
   - Every POST to `/api/webhook/whatsapp-clicks` is written to `/data/whatsapp-clicks-log.json` (last 200, kept across deploys): time, result (201 saved, 401 bad / missing signature, 503 secret not set, 400, 413, 502) and the page.
   - The WhatsApp Clicks screen shows "Website connection": the last delivery and whether it was refused, and reloads clicks every minute.
+  - The webhook also takes a batch (`{ clicks: [...] }` or an array, up to 500) so the plugin can resend missed clicks; the click id keeps each one single. 19 Nov: no request reached the webhook for 46 h — the plugin does not send; what it must do is in `docs/whatsapp-clicks-plugin.md`.
 - **Code:** `webhookServer.cjs → logWact, /api/webhook/whatsapp-clicks/log`; `src/pages/WhatsAppClicks.tsx`. Test: `tests/unit/ui-sync-1117b.test.ts`.
 - **Status:** Active · Since: 2026-11-17
 
@@ -206,6 +207,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - The popup now names office staff who are absent or on leave that day under the list ("Also away today (office staff, not on the sheet)").
 - **Code:** `src/components/dailyJobSheet/QuickAttendanceModal.tsx → awayOffSheet`. Test: `tests/unit/ui-sync-1117b.test.ts`.
 - **Status:** Active · Since: 2026-11-17
+
+### R-SCHED-25 — A monthly visit is one row, whichever screens add it
+- **Why:** duplicate visits made the Excel sheet show a time clash and refuse to save that day (Villa 4-34B on 1 Oct; LAHM PURE TRADING, 807 Nilofer Tower, Al Arabi Trustees, 501 Dome 1 on 17 Nov — 2026-11-17). Two screens added the same visit: the Daily Job Sheet and the Excel sheet open together (a second apart), or a screen still on an hour-old copy of the data.
+  - A synced visit gets a fixed id from the client and the date (`monthlyVisitRowId`, a UUID). Saves are upserts by id, so a second screen adding the same visit writes the same row, and a list never shows the same id twice.
+  - The visits added when the app starts are now in the Activity Log ("monthly schedule (app start)").
+- **Code:** `src/lib/clientDataSync.ts → monthlyVisitRowId, syncMonthlySchedulesToDailyJobs`; `DataContext.tsx → addDailyJob, auto-sync`. Test: `tests/unit/excel-order-rate-1119.test.ts`.
+- **Status:** Active · Since: 2026-11-19
 
 ### R-SCHED-24 — Monthly visits only up to 90 days ahead
 - **Why:** a mistyped date (2041-12-17) opened on the Excel sheet got real-looking monthly visits, as the contracts had no End date (team report 2026-11-17).

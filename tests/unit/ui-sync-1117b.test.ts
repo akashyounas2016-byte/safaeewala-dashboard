@@ -27,7 +27,7 @@ eq(/UX-171: date range in More Filters, same row as the search/.test(mc), true, 
 const qa = readFileSync('src/components/dailyJobSheet/QuickAttendanceModal.tsx', 'utf8')
 eq(/Also away today \(office staff, not on the sheet\)/.test(qa), true, 'R-ATT-09: office staff on leave are named in the Excel attendance popup')
 const srv = readFileSync('webhookServer.cjs', 'utf8')
-eq(/pathname === '\/api\/webhook\/whatsapp-clicks\/log'/.test(srv) && /logWact\(401/.test(srv) && /logWact\(201, 'Saved'/.test(srv), true, 'R-MKT-05: every webhook delivery is logged and readable')
+eq(/pathname === '\/api\/webhook\/whatsapp-clicks\/log'/.test(srv) && /logWact\(401/.test(srv) && /logWact\(201, rowsIn\.length > 1/.test(srv), true, 'R-MKT-05: every webhook delivery is logged and readable')
 const wc = readFileSync('src/pages/WhatsAppClicks.tsx', 'utf8')
 eq(/Website connection: /.test(wc) && /setInterval\(\(\) => \{ void load\(\); void loadLog\(\) \}, 60_000\)/.test(wc), true, 'R-MKT-05: screen shows the last delivery and refreshes every minute')
 

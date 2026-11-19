@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(sync): a monthly visit has a fixed id, so two screens never add it twice (duplicates caused time clashes and blocked Excel saves) (R-SCHED-25)
+- fix(excel): one team cleaner's time change no longer moves the whole team — that cleaner becomes their own job (UX-176)
+- feat(marketing): WhatsApp click webhook takes batches; plugin hand-over `docs/whatsapp-clicks-plugin.md` (R-MKT-05)
 - change(excel): cleaner blocks in a fixed A→Z order — new / team jobs and payments no longer move them; team member Mode shows "Team" (UX-174)
 - feat(jobs): Charges Per Hour in Add Job (before Advance Received); Charges = rate × hours, Excel "Charges / Hr" column kept in step both ways (UX-175)
 - change(clients): Client Profile popup wider with Delete / Edit Profile / New Booking on top; Monthly Client Details has Edit instead of a second Record Payment (UX-173); On sheet visits show a tooltip (UX-172)

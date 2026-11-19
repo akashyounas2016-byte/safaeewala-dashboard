@@ -1586,6 +1586,21 @@ export function getScheduledMonthlyShiftsForDate(
 export const REMOVED_VISITS_KEY = 'safaeewala_removed_monthly_visits'
 interface RemovedVisit { id: string; date: string; client: string; at: string }
 const monthlyVisitId = (date: string, client: Client) => `${date}|${client.id || normalizeKey(client.full_name)}`
+/**
+ * R-SCHED-25: the row id of a client's synced visit on a date — the same on every screen and device, so two screens
+ * adding the same visit at once write one row (saves are upserts by id). Seen 2026-11-17: the Daily Job Sheet and
+ * the Excel sheet, open together, each added Villa 4-34B on 1 Oct a second apart.
+ */
+export function monthlyVisitRowId(date: string, client: Pick<Client, 'id' | 'full_name'>): string {
+  const text = `visit|${date}|${client.id || normalizeKey(client.full_name || '')}`
+  let hex = ''
+  for (let seed = 0; hex.length < 32; seed++) {
+    let h = (0x811c9dc5 ^ seed) >>> 0
+    for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
+    hex += h.toString(16).padStart(8, '0')
+  }
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`
+}
 function removedMonthlyVisitIds(): Set<string> {
   const list = safeLocalStorageGet<RemovedVisit[]>(REMOVED_VISITS_KEY, [])
   return new Set((Array.isArray(list) ? list : []).map(v => v.id))
@@ -1720,7 +1735,8 @@ export function syncMonthlySchedulesToDailyJobs(
       remarks,
       service: shift.service,
       client_id: shift.client.id, // R-DATA-12 (kept only when it is a saved client — DataContext.linkClient)
-    })
+      id: monthlyVisitRowId(dateStr, shift.client), // R-SCHED-25: one row even when two screens add it
+    } as Omit<DailyJob, 'id' | 'created_at'>)
     insertedClients.push(shift.client.full_name || shift.address)
   })
 

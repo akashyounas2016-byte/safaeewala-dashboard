@@ -126,6 +126,12 @@
 - Cleaners ke blocks hamesha **naam ke hisaab se A→Z** rehte hain. Nayi job, team job ya payment se koi block upar neeche nahi hota.
 - Team member ki Mode mein **Team** likha hota hai (paisa leader ki row par hai — REF chip leader ka naam batata hai).
 
+### Team mein har cleaner ka apna time
+- Excel par team ke kisi ek cleaner ka time badlein to sirf usi ka badlega. Save par wo cleaner usi jagah aur team mein apni alag job ban jata hai; paisa leader ki row par rehta hai.
+
+### Double visit (duplicate)
+- Daily aur Excel sheet ek saath khuli hon tab bhi ek visit ab ek hi dafa banti hai. Pehle double ban jati thi aur "time clash" aata tha jis se us din ka save ruk jata tha.
+
 ### Charges Per Hour
 - Add Job mein **Charges Per Hour** likhein (Advance Received se pehle). Total khud banta hai: rate × duty hours.
 - Excel mein ye **Charges / Hr** column mein dikhta hai. Rate ya time badlein to Charges khud badal jate hain; Charges seedha likhein to rate us ke hisaab se badal jata hai.

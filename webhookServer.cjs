@@ -791,9 +791,9 @@ function routeApi(req, res, parsedUrl, pathname) {
   // body, WACT_SIGNING_SECRET). Unsigned / wrong → 401; secret not set on the server → 503 (nothing accepted).
   if (req.method === 'POST' && pathname === '/api/webhook/whatsapp-clicks') {
     const chunks = []; let size = 0
-    req.on('data', c => { size += c.length; if (size <= 64 * 1024) chunks.push(c) })
+    req.on('data', c => { size += c.length; if (size <= 1024 * 1024) chunks.push(c) })
     req.on('end', () => {
-      if (size > 64 * 1024) { logWact(413, 'Request too large'); return sendJson(res, 413, { error: 'Request too large' }) }
+      if (size > 1024 * 1024) { logWact(413, 'Request too large'); return sendJson(res, 413, { error: 'Request too large' }) }
       const raw = Buffer.concat(chunks)
       const secret = process.env.WACT_SIGNING_SECRET || ''
       if (!secret) { logWact(503, 'WACT_SIGNING_SECRET not set on the server'); return sendJson(res, 503, { error: 'WhatsApp click webhook is not set up (WACT_SIGNING_SECRET)' }) }
@@ -802,10 +802,13 @@ function routeApi(req, res, parsedUrl, pathname) {
       if (!given || !safeEqual(given, want)) { logWact(401, given ? 'Signature does not match — the plugin secret differs from WACT_SIGNING_SECRET' : 'No X-WACT-Signature header'); return sendJson(res, 401, { error: 'Bad signature' }) }
       let b
       try { b = JSON.parse(raw.toString('utf8') || '{}') } catch { logWact(400, 'Invalid JSON'); return sendJson(res, 400, { error: 'Invalid JSON' }) }
-      const row = whatsappClickRow(b)
+      // R-MKT-05: one click, or a batch ({ clicks: [...] } or [...]) — the plugin can resend missed clicks; the id keeps them single
+      const list = (Array.isArray(b) ? b : Array.isArray(b && b.clicks) ? b.clicks : [b]).slice(0, 500)
+      const rowsIn = list.map(whatsappClickRow)
+      const row = rowsIn[0] || whatsappClickRow({})
       if (!SUPABASE_URL || !SERVICE_KEY) return sendJson(res, 503, { error: 'Database not set up on the server' })
-      supa('/rest/v1/whatsapp_clicks?on_conflict=id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: row })
-        .then(() => { logWact(201, 'Saved', row.page_title || row.page_url || ''); sendJson(res, 201, { ok: true, id: row.id }) })
+      supa('/rest/v1/whatsapp_clicks?on_conflict=id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates' }, body: rowsIn.length === 1 ? row : rowsIn })
+        .then(() => { logWact(201, rowsIn.length > 1 ? `Saved ${rowsIn.length} clicks` : 'Saved', row.page_title || row.page_url || ''); sendJson(res, 201, { ok: true, id: row.id, saved: rowsIn.length }) })
         .catch(err => { logServerError('whatsapp-clicks', err); logWact(502, `Not saved: ${String(err && err.message || err).slice(0, 160)}`); sendJson(res, 502, { error: 'Not saved' }) })
     })
     return
