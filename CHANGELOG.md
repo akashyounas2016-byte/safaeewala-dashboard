@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(excel): a row with its own money at the same address and time as a team is its own job — its charges were hidden and the next save set them to 0; split-off members point to their own team lead (R-SYNC-20)
+- fix(excel): save message no longer counts empty filler rows as deleted (UX-177)
+- data: removed the 4 duplicate visits of 17 Nov (A26, backup in Safaeewala-backups/a26-duplicates-2026-11-17.json)
 - fix(sync): a monthly visit has a fixed id, so two screens never add it twice (duplicates caused time clashes and blocked Excel saves) (R-SCHED-25)
 - fix(excel): one team cleaner's time change no longer moves the whole team — that cleaner becomes their own job (UX-176)
 - feat(marketing): WhatsApp click webhook takes batches; plugin hand-over `docs/whatsapp-clicks-plugin.md` (R-MKT-05)

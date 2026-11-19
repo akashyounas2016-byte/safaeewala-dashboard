@@ -534,6 +534,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `clientDataSync.ts → employeeMatchesStaff`.
 - **Status:** Active
 
+### R-SYNC-20 — A row with its own money is its own job on the Excel sheet
+- **Why:** browser test 2026-11-19 (TEST Villa 1119): two separate jobs at one address at the same time (a solo job AED 240 and a team job AED 160). The sheet guesses a team from "same address + overlapping time" and made the solo row a member of the other team: its AED 240 was hidden, and the next edit of that row would have saved its charges as 0. The same guess wrote a made-up team name ("Team H") on it.
+  - A row that holds charges or received is never shown or saved as another lead's member; a solo job there gets no team name.
+  - A member that got its own time (UX-176) points to the lead of its **own** team (same team name), not to any paid row at that place.
+  - The lead keeps the team name when a member leaves as its own job (it was cleared, so the team link was half).
+- **Code:** `src/lib/excelSheet/rows.ts → getMultiCleanerPaymentInfo`; `JobSheetSpreadsheet.tsx → splitJobPayload`. Test: `tests/unit/excel-team-money-1119.test.ts`.
+- **Status:** Active · Since: 2026-11-19
+
 ### R-SYNC-19 — Deleted on one computer stays deleted on all
 - **Why:** contracts, monthly payments, advance / pending items, attendance overrides, cash handovers and other shared lists are one JSON value each (`app_state`). Two computers were merged by adding their lists together, so an item deleted on one computer came back from another computer that still had it and had unsaved changes (audit 2026-11-15).
   - Every deletion from such a list leaves a shared delete marker (`safaeewala_deleted_item_ids`), uploaded before the list itself. Merging leaves marked items out.

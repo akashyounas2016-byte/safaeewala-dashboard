@@ -173,12 +173,27 @@ export function getMultiCleanerPaymentInfo(row: DailyJob | undefined, allRows: D
   }
 
   // Primary cleaner row: either has _isPrimaryCleaner, positive charges/received, or first row in sequence
+  // R-SYNC-20: the lead of the row's own team first (a member saved as its own job keeps the team name)
+  const teamOf = (r: DailyJob) => String((r as any)._teamReference || r.team_name || '').trim().toLowerCase()
+  const myTeam = teamOf(row)
+  const holdsMoney = (r: DailyJob) => cleanNum(r.charges) > 0 || cleanNum(r.received) > 0
   const primaryRow =
+    (myTeam && myTeam !== 'project team' ? matchingRows.find(r => r.id !== row.id && teamOf(r) === myTeam && ((r as any)._isPrimaryCleaner || holdsMoney(r))) : undefined) ||
     matchingRows.find(r => (r as any)._isPrimaryCleaner) ||
     matchingRows.find(r => cleanNum(r.charges) > 0 || cleanNum(r.received) > 0) ||
     matchingRows[0]
 
-  const isPrimary = row.id === primaryRow.id
+  // R-SYNC-20: a row that holds its own money is its own job, never another lead's member — treating it as a
+  // member hid its charges and the next save set them to 0 (two jobs at one address at the same time, 19 Nov test)
+  const ownsMoney = holdsMoney(row)
+  const isPrimary = row.id === primaryRow.id || ownsMoney
+  // its own job: its own team name, not the other job's (a save wrote "Team H" over it). Also when it is the
+  // "first" row but another job there holds money too — several paid jobs at one place are separate jobs.
+  const otherPaidJob = ownsMoney && !(row as any)._isPrimaryCleaner && matchingRows.some(r => r.id !== row.id && teamOf(r) !== myTeam && ((r as any)._isPrimaryCleaner || holdsMoney(r)))
+  if ((isPrimary && row.id !== primaryRow.id) || otherPaidJob) {
+    if (!(row.team_name || '').trim()) return null // a solo job that just shares the place and time
+    return { isMultiCleaner: true, isPrimary: true, isSecondary: false, primaryCleaner: row.staff_name, teamRef: (row.team_name || '').trim(), allCleaners: [row.staff_name] }
+  }
 
   // Determine unique deterministic team reference for this specific address cluster
   let teamRef = (primaryRow.team_name || row.team_name || '').trim()

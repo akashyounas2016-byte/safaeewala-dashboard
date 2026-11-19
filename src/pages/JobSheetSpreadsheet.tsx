@@ -2587,7 +2587,8 @@ export function JobSheetSpreadsheet() {
       const team = {
         date: lead.date || selectedDate,
         staff_name: names.join(', '),
-        team_name: names.length > 1 ? String((lead as any)._teamReference || lead.team_name || '') : '',
+        // UX-176: the lead keeps the team name while a cleaner of the team has their own time (their own job)
+        team_name: names.length > 1 || extras.length > 0 ? String((lead as any)._teamReference || lead.team_name || teamRef) : '',
         start_time: lead.start_time,
         end_time: lead.end_time,
         duty_hours: cleanNum(lead.duty_hours),
@@ -2650,7 +2651,9 @@ export function JobSheetSpreadsheet() {
     setDraftOffer(null)
     setRemoteConflict(false)
     const emptied = edited.filter(emptiedHere).length
-    const parts = [added.length && `${added.length} added`, edited.length - emptied && `${edited.length - emptied} updated`, removed.length + emptied && `${removed.length + emptied} deleted`].filter(Boolean)
+    // UX-177: an empty filler row that made way for a new job is not a deleted job — don't count it
+    const removedJobs = removed.filter(r => !isClearedRow(r)).length
+    const parts = [added.length && `${added.length} added`, edited.length - emptied && `${edited.length - emptied} updated`, removedJobs + emptied && `${removedJobs + emptied} deleted`].filter(Boolean)
     showToast(`✓ ${auto ? 'Auto-saved' : 'Saved'}: ${parts.join(', ')}`)
   }
 
