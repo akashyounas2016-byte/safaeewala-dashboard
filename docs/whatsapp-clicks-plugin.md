@@ -57,56 +57,22 @@ One click:
 | `413` | The body is larger than 1 MB. |
 | `502` | The CRM database did not save it. Send it again later. |
 
-## 3. Plugin change: send each click at once, retry what failed
+## 3. Plugin change (done: version 1.0.1, 20 Nov 2026)
 
-Two parts:
+The plugin is "WhatsApp Click Tracker" 1.0.0 (`whatsapp-click-tracker`). It already sends each click at the end of the visitor's request and retries every hour. The gap:
 
-- **Send at once.** Where the plugin stores a click (its AJAX / REST handler), send it straight away with a short timeout. A failure must not break the visitor's click.
-- **Retry.** Keep a "delivered" flag per click, and resend undelivered clicks in batches every 5 minutes. This also brings the 20 clicks of 17–19 Nov into the CRM.
+- The retry sent only clicks with status **failed**.
+- Clicks saved while "Enable webhook delivery" was off got status **off**. Clicks whose send never ran stayed **pending**. Neither was ever sent.
+- That is how the clicks of 17–19 Nov were missed.
 
-```php
-// 1) Right after the click row is inserted ($click = the array above, $row_id = its DB id)
-function wact_send_to_crm( array $payload ) {
-    $opt    = get_option( 'wact_settings', [] );
-    $url    = $opt['webhook_url'] ?? '';
-    $secret = $opt['signing_secret'] ?? '';
-    if ( empty( $opt['webhook_enabled'] ) || ! $url || ! $secret ) return false;
-    $body = wp_json_encode( $payload );
-    $res  = wp_remote_post( $url, [
-        'timeout' => 5,
-        'headers' => [
-            'Content-Type'     => 'application/json',
-            'X-WACT-Signature' => 'sha256=' . hash_hmac( 'sha256', $body, $secret ),
-        ],
-        'body'    => $body,
-    ] );
-    return ! is_wp_error( $res ) && (int) wp_remote_retrieve_response_code( $res ) === 201;
-}
-if ( wact_send_to_crm( $click ) ) {
-    $wpdb->update( "{$wpdb->prefix}wact_clicks", [ 'delivered' => 1 ], [ 'id' => $row_id ] );
-}
+Version 1.0.1 (zip: `Downloads\whatsapp-click-tracker-1.0.1.zip` on the owner's PC) changes two files:
 
-// 2) Retry undelivered clicks every 5 minutes (also sends the old ones once)
-add_filter( 'cron_schedules', fn( $s ) => $s + [ 'wact_5min' => [ 'interval' => 300, 'display' => 'Every 5 minutes' ] ] );
-if ( ! wp_next_scheduled( 'wact_resend' ) ) wp_schedule_event( time(), 'wact_5min', 'wact_resend' );
-add_action( 'wact_resend', function () {
-    global $wpdb;
-    $rows = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}wact_clicks WHERE delivered = 0 ORDER BY id LIMIT 200", ARRAY_A );
-    if ( ! $rows ) return;
-    $clicks = array_map( 'wact_click_payload', $rows ); // builds the JSON shape above from a DB row
-    if ( wact_send_to_crm( [ 'clicks' => $clicks ] ) ) {
-        $ids = implode( ',', array_map( 'intval', array_column( $rows, 'id' ) ) );
-        $wpdb->query( "UPDATE {$wpdb->prefix}wact_clicks SET delivered = 1 WHERE id IN ($ids)" );
-    }
-} );
-```
+- `includes/class-wact-db.php → failed_webhooks()`: also picks clicks with status **off**, and **pending** clicks older than 5 minutes (still at most 3 attempts each). The missed clicks are sent once delivery is on. The CRM stores each click once (`site.url` + `id`), so resending is safe.
+- `whatsapp-click-tracker.php`: the retry job runs **every 5 minutes** (new schedule `wact_5min`), set up again on load, so no re-activation is needed. Version 1.0.1.
 
-Notes for the plugin developer:
+**Install:** WordPress → Plugins → Add New → Upload Plugin → choose the zip → **Replace current with uploaded**. Settings and clicks are kept.
 
-- Table, option and function names (`wact_clicks`, `wact_settings`, `wact_click_payload`) are examples — use the plugin's own.
-- The table needs a `delivered TINYINT DEFAULT 0` column. Mark the existing rows `0` once, so the old clicks are sent.
-- WP-Cron only runs on page visits, and WP Rocket can stop it. Add a real server cron on the hosting: `*/5 * * * * wget -q -O - https://safaeewala.com/wp-cron.php?doing_wp_cron >/dev/null 2>&1`.
-- Sign the **exact** string that is sent. Encoding the JSON again after signing breaks the signature (401).
+WP-Cron only runs on site visits, and caching (e.g. WP Rocket) can stop it. A server cron on the hosting makes the 5-minute retry reliable: `*/5 * * * * wget -q -O - https://safaeewala.com/wp-cron.php?doing_wp_cron >/dev/null 2>&1`.
 
 ## 4. How to check it works
 
