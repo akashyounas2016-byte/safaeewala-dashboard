@@ -65,12 +65,14 @@ The plugin is "WhatsApp Click Tracker" 1.0.0 (`whatsapp-click-tracker`). It alre
 - Clicks saved while "Enable webhook delivery" was off got status **off**. Clicks whose send never ran stayed **pending**. Neither was ever sent.
 - That is how the clicks of 17–19 Nov were missed.
 
-Version 1.0.1 (zip: `Downloads\whatsapp-click-tracker-1.0.1.zip` on the owner's PC) changes two files:
+Version 1.0.1 (zip: `Downloads\whatsapp-click-tracker-1.0.1.zip` on the owner's PC) changes three files:
 
 - `includes/class-wact-db.php → failed_webhooks()`: also picks clicks with status **off**, and **pending** clicks older than 5 minutes (still at most 3 attempts each). The missed clicks are sent once delivery is on. The CRM stores each click once (`site.url` + `id`), so resending is safe.
 - `whatsapp-click-tracker.php`: the retry job runs **every 5 minutes** (new schedule `wact_5min`), set up again on load, so no re-activation is needed. Version 1.0.1.
+- `includes/class-wact-admin.php`: a **Send all missed clicks now** button under Settings & Webhook sends every click not yet received (any status except Sent, up to 500) at once. The click list also shows **Resend** on Off and Pending clicks, not only on Failed ones.
+- 20 Nov check: the website still runs 1.0.0 (`readme.txt` Stable tag 1.0.0). The CRM has clicks 1–11 of 16 Nov and the new clicks 31–33; clicks 12–30 are still waiting in WordPress.
 
-**Install:** WordPress → Plugins → Add New → Upload Plugin → choose the zip → **Replace current with uploaded**. Settings and clicks are kept.
+**Install:** WordPress → Plugins → Add New → Upload Plugin → choose the zip → **Replace current with uploaded**. Settings and clicks are kept. Then press **Send all missed clicks now** once.
 
 WP-Cron only runs on site visits, and caching (e.g. WP Rocket) can stop it. A server cron on the hosting makes the 5-minute retry reliable: `*/5 * * * * wget -q -O - https://safaeewala.com/wp-cron.php?doing_wp_cron >/dev/null 2>&1`.
 
