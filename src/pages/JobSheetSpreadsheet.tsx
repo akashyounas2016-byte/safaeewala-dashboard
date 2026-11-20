@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { awayCleanerNames } from '@/lib/attendance'
 import { monthlyJobsNeedingCover, replaceCleanerOnRow, isFreeFor, pasteRowInto } from '@/lib/excelSheet/replacement'
 import { SearchSelect } from '@/components/common/SearchSelect'
-import { isSheetCleaner, shortStaffLabel, isAssignable } from '@/lib/staffRoles'
+import { isSheetCleaner, shortStaffLabel, isAssignable, isEmployedOn } from '@/lib/staffRoles'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import { ArrowLeft, FileSpreadsheet, Plus, Trash2, Save, Download, RotateCcw, Search, Check, X, Sparkles, Filter, Copy, Maximize2, Minimize2, Undo2, Redo2, Palette, Layers, Table, Printer, MoreVertical, ChevronDown, ExternalLink, ChevronUp, Eye, SlidersHorizontal, ArrowUp, ArrowDown, ArrowUpCircle, ArrowDownCircle, CloudUpload, Calendar, GripVertical, Info, History, Pencil, Building2, Star, Package, MapPin, Clock, CreditCard, UserPlus, Users, AlignLeft, AlignCenter, AlignRight, UserCheck, Rows, ClipboardPaste, UserCog, AlertTriangle } from 'lucide-react'
@@ -18,7 +18,8 @@ import { calcHours, calcOTHours, recalculateAllRowsOT, formatTimeOnly, formatTim
 import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured, getDriveWebhookUrl, sendDailySheetBackupViaWebhook } from '@/lib/googleDrive'
 import { GoogleDriveWebhookModal } from '@/components/dailyJobSheet/GoogleDriveWebhookModal'
 import { MonthlyScheduleSyncModal } from '@/components/dailyJobSheet/MonthlyScheduleSyncModal'
-import { getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, isInitialDataLoaded, buildPendingCalcContext, calcJobCollectable, getAssignableClients, splitStaffNames, type ScheduledShiftPlan } from '@/lib/clientDataSync'
+import { getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, isInitialDataLoaded, buildPendingCalcContext, calcJobCollectable, getAssignableClients, splitStaffNames, calcClientPendingBalance, loadClientAdjustments, loadPendingReceipts, type ScheduledShiftPlan } from '@/lib/clientDataSync'
+import { calcClientAdvanceBalance } from '@/lib/clientAdvance'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
 import { confirmAsync, notify } from '@/lib/notify'
@@ -35,7 +36,8 @@ import { splitTotals, isSplitJob } from '@/lib/chargeSplit'
 import { type ColumnDef, DEFAULT_COLUMN_DEFS, mergeNewColumns, buildColumnsWithLetters, COLUMNS, type ExcelDatePresetKey, EXCEL_DATE_PRESETS, chargesPerHour } from '@/lib/excelSheet/columns'
 import { type BlockPalette, BLOCK_PALETTES, SOLID_PALETTE_KEYS, LIGHT_PALETTE_KEYS, PALETTE_KEYS, hslToHex, makeHexPalette } from '@/lib/excelSheet/palettes'
 import { QuickAttendanceModal } from '@/components/dailyJobSheet/QuickAttendanceModal'
-import { newRowId, sameJobRow, isBlankNewRow, isClearedRow, teamJobsDeletedElsewhere, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes, syncHourlyCharges, orderBlocksByName } from '@/lib/excelSheet/rows'
+import { newRowId, sameJobRow, isBlankNewRow, isClearedRow, teamJobsDeletedElsewhere, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes, syncHourlyCharges, orderBlocksByName, orderBlocksCustom, BLOCK_ORDER_KEY } from '@/lib/excelSheet/rows'
+import { BlockOrderModal } from '@/components/dailyJobSheet/BlockOrderModal'
 import { DRAFT_PREFIX, COLUMN_PRESETS, READ_ONLY_COLS, DEFAULT_ROW_BG, projectKeyOf, memberChargesLabel, memberReceivedLabel, memberModeLabel, refMoney, DROPDOWN_COLS, TIME_SUGGESTIONS, DUBAI_AREAS, RENDER_PAGE, safeGet, safeSet, rowColorConflict } from '@/lib/excelSheet/sheetConfig'
 import { evaluateFormula } from '@/lib/excelSheet/formula'
 import { jobFlags, splitSyncNote, type JobFlag } from '@/lib/jobFlags'
@@ -226,7 +228,7 @@ export function JobSheetSpreadsheet() {
   // R-ATT-08: cleaners absent or on leave on the sheet's date are not suggested
   const staffOptions = useMemo(() => {
     const away = awayCleanerNames(attendanceMarks || {}, employees, selectedDate)
-    return employees.filter(e => e.status !== 'inactive' && e.full_name && isSheetCleaner(e) && !away.has(e.full_name.trim().toLowerCase())).map(e => e.full_name.trim()).sort((a, b) => a.localeCompare(b)) // R-SHEET-02: cleaners only
+    return employees.filter(e => e.status !== 'inactive' && e.full_name && isSheetCleaner(e) && isEmployedOn(e, selectedDate) && !away.has(e.full_name.trim().toLowerCase())).map(e => e.full_name.trim()).sort((a, b) => a.localeCompare(b)) // R-SHEET-02: cleaners only; R-EMP-16: only inside the contract dates
   }, [employees, attendanceMarks, selectedDate])
   const addressOptions = useMemo(() => {
     const set = new Set<string>()
@@ -434,6 +436,31 @@ export function JobSheetSpreadsheet() {
       item.area.toLowerCase().includes(q)
     )
   }, [clientBuildingList, editingCell, gridRows])
+  // UX-179: each client's Pending / Advance balance in the Address dropdown (same formulas as the Client Profile),
+  // worked out only while that dropdown is open
+  const addressOpen = editingCell?.colId === 'address'
+  const addressBalances = useMemo(() => {
+    const m = new Map<string, { pending: number; advance: number }>()
+    if (!addressOpen) return m
+    const adjustments = loadClientAdjustments()
+    const receipts = loadPendingReceipts()
+    for (const item of clientBuildingList) {
+      const c = item.client
+      if (!c?.id || m.has(c.id)) continue
+      m.set(c.id, { pending: calcClientPendingBalance(c, dailyJobs, receipts, adjustments), advance: calcClientAdvanceBalance(c, dailyJobs, adjustments) })
+    }
+    return m
+  }, [addressOpen, clientBuildingList, dailyJobs])
+  // UX-180: a cell dropdown closes as soon as any popup opens (Add Job, a client popup …) — it stayed on top of it before
+  useEffect(() => {
+    if (!editingCell) return
+    const before = new Set(document.querySelectorAll('[role="dialog"]'))
+    const obs = new MutationObserver(() => {
+      if (Array.from(document.querySelectorAll('[role="dialog"]')).some(d => !before.has(d))) setEditingCell(null)
+    })
+    obs.observe(document.body, { childList: true, subtree: true })
+    return () => obs.disconnect()
+  }, [!!editingCell]) // eslint-disable-line react-hooks/exhaustive-deps
   // What the grid was loaded from — Save All writes only the differences (AUD-49)
   const [loadedSnapshot, setLoadedSnapshot] = useState<Map<string, DailyJob>>(() => new Map())
   // R-SYNC-16: the jobs exactly as saved when the sheet loaded (a team job is one job here, several rows in the grid).
@@ -488,6 +515,9 @@ export function JobSheetSpreadsheet() {
     return safeGet('safaeewala_excel_view_mode', 'flat')
   })
   const [soloAtBottom, setSoloAtBottom] = useState<boolean>(() => safeGet('safaeewala_excel_solo_bottom', false))
+  // UX-182: the cleaner blocks' own order (shared); empty = A→Z
+  const [blockOrder, setBlockOrder] = useState<Record<string, number>>(() => safeGet(BLOCK_ORDER_KEY, {}))
+  const [showBlockOrder, setShowBlockOrder] = useState(false)
   const [showFormulaBar, setShowFormulaBar] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [zoomLevel, setZoomLevel] = useState<number>(100)
@@ -647,7 +677,7 @@ export function JobSheetSpreadsheet() {
     if (!oneDay) return [] as { name: string; status: 'Available' | 'Absent' }[]
     const away = awayCleanerNames(attendanceMarks || {}, employees, effectiveTargetDate)
     return employees
-      .filter(e => e.status !== 'inactive' && isSheetCleaner(e) && e.full_name) // R-SHEET-02: no CSR / driver / technical
+      .filter(e => e.status !== 'inactive' && isSheetCleaner(e) && e.full_name && isEmployedOn(e, effectiveTargetDate)) // R-SHEET-02: no CSR / driver / technical; R-EMP-16: contract dates
       .map(e => ({ name: e.full_name.trim(), status: (away.has(e.full_name.trim().toLowerCase()) ? 'Absent' : 'Available') as 'Available' | 'Absent' }))
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [oneDay, employees, attendanceMarks, effectiveTargetDate])
@@ -1363,6 +1393,15 @@ export function JobSheetSpreadsheet() {
                   icon={Building2}
                   label={cleanAddressDisplay(item.building)}
                   sub={`${item.name} ${item.client?.apartment ? `· Apt ${item.client.apartment}` : ''} ${item.area ? `· ${item.area}` : ''}`}
+                  action={(() => {
+                    // UX-179: Pending / Advance tags
+                    const b = item.client?.id ? addressBalances.get(item.client.id) : undefined
+                    if (!b || (b.pending <= 0 && b.advance <= 0)) return null
+                    return <span className="flex flex-col items-end gap-0.5">
+                      {b.pending > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 whitespace-nowrap">Pending AED {Math.round(b.pending).toLocaleString()}</span>}
+                      {b.advance > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">Advance AED {Math.round(b.advance).toLocaleString()}</span>}
+                    </span>
+                  })()}
                 />
               ))
             )}
@@ -2941,7 +2980,10 @@ export function JobSheetSpreadsheet() {
         organized.push(...group.members)
       })
       list = organized
-    } else if (soloAtBottom) {
+    } else {
+      list = orderBlocksCustom(list, blockOrder) // UX-182: the sheet's own block order
+    }
+    if (paymentModeFilter !== 'Project' && soloAtBottom) {
       // UX-61: team cleaners first, then cleaners who only have solo jobs. A cleaner's rows stay together.
       const blocks = new Map<string, DailyJob[]>()
       list.forEach(r => {
@@ -2961,7 +3003,7 @@ export function JobSheetSpreadsheet() {
       (r.payment_mode || '').toLowerCase().includes(q) ||
       (r.remarks || '').toLowerCase().includes(q)
     )
-  }, [gridRows, paymentModeFilter, filterSearch, pendingCtx, soloAtBottom])
+  }, [gridRows, paymentModeFilter, filterSearch, pendingCtx, soloAtBottom, blockOrder])
   const visibleGridRows = useMemo(() => filteredGridRows.slice(0, renderLimit), [filteredGridRows, renderLimit])
   /** UX-132: position of each visible row (gridRows index → screen position) */
   const rowPosOf = useMemo(() => {
@@ -3812,6 +3854,32 @@ export function JobSheetSpreadsheet() {
           >
             <span>Solo at bottom</span>
           </button>
+
+          {/* UX-182: set the order of the cleaner blocks */}
+          <button
+            type="button"
+            onClick={() => setShowBlockOrder(true)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[12px] font-bold cursor-pointer transition-all ${
+              Object.keys(blockOrder).length ? 'bg-teal-50 border-teal-300 text-teal-900' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+            title="Set the order of the cleaner blocks (kept for every day and every user)"
+          >
+            <span>Block order</span>
+          </button>
+          {showBlockOrder && (
+            <BlockOrderModal
+              names={Array.from(new Set(employees.filter(e => e.status !== 'inactive' && e.full_name && isSheetCleaner(e)).map(e => e.full_name.trim())))}
+              labelOf={n => shortStaffLabel(n, employees)}
+              order={blockOrder}
+              onClose={() => setShowBlockOrder(false)}
+              onSave={next => {
+                setBlockOrder(next)
+                safeSet(BLOCK_ORDER_KEY, next)
+                setShowBlockOrder(false)
+                showToast(Object.keys(next).length ? '✓ Block order saved' : '✓ Blocks back to A→Z')
+              }}
+            />
+          )}
 
           {/* Mode Switcher: Icons only at the very right end */}
           <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 shadow-2xs">

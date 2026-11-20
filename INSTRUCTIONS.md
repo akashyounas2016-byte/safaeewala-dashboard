@@ -153,6 +153,10 @@
 - **Default (no colour)** dabayein to row ka rang hat jata hai. Pehle se rangi hui rows apne qareebi naye rang mein dikhti hain.
 
 ### Excel Job Sheet
+- **Address dropdown:** har client ke saath laal **Pending AED …** ya hara **Advance AED …** tag dikhta hai.
+- Koi bhi popup (Add Job waghera) khulte hi cell ka dropdown khud band ho jata hai.
+- **Charges Per Hour** likhein to Charges = rate × ghante khud bhar jata hai. Charges baad mein haath se badal sakte hain (VAT ya extra fee) — rate wahi rehta hai.
+- **Block order** button: cleaners ke blocks ki tarteeb khud set karein (khenchein ya ↑ ↓). Ye tarteeb har din aur har user ke liye rehti hai, naye jobs se nahi badalti. **A→Z** dabane se wapas naam ki tarteeb.
 - Sab se upar **jamni "—" block** sirf tab aata hai jab kisi job par cleaner na laga ho (misaal: monthly visit jiska cleaner us waqt busy tha). Us row mein cleaner chun lein. Khali din par ye block nahi aata.
 - Right-click menu: Copy / Paste / Duplicate / Clear upar, delete wale (Delete Row, phir Delete Block) sab se neeche.
 - Row height: 24, 26, 32, 38, 46 px.
@@ -229,6 +233,8 @@
   - **Profile View:** poora service record aur job history.
   - **Edit:** profile badlein. **Total Duty Hours** dropdown se chunein (6, 8, 9, 10, 12) ya koi aur number likhein; khali chhorein to 8 ghante maane jate hain — OT inhi se lagta hai.
   - **Laal 🗑 icon:** delete — pehle popup ke upar poochha jata hai.
+- **Documents ka preview:** har document (EID, passport, visa …) 👁 par click karne se popup mein khulta hai — download karne ki zaroorat nahi. Bina extension wali purani files bhi ab khulti hain (pehle sirf Download aata tha).
+- **Contract dates:** Excel Job Sheet par employee sirf **Joined Date** se **Contract End Date** tak nazar aata hai (trainee ke liye **Training Start** se). Is se pehle ya baad ki sheet par uska khali block, Staff suggestion, Add Job aur Attendance popup mein naam nahi aata. Purani saved jobs nazar aati rehti hain.
 - Jis employee ki photo upload hai, list (grid aur table) mein uske initials (jaise MA) ki jagah **photo** dikhti hai. Photo par click karein to bari ho kar khulti hai; band karne ke liye kahin bhi click, ✕ ya Esc. Photo Full Profile par upload / change hoti hai.
 
 ---

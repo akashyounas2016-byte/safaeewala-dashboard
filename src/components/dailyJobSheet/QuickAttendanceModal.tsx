@@ -3,7 +3,7 @@ import { ExternalLink, Search, Save, UserCheck, UserMinus, UserX, CalendarOff, U
 import { Modal } from '@/components/ui/Modal'
 import { useData } from '@/store/DataContext'
 import { useAuth } from '@/store/UserContext'
-import { isSheetCleaner } from '@/lib/staffRoles'
+import { isSheetCleaner, isEmployedOn } from '@/lib/staffRoles'
 import { employeeMatchesStaff, splitStaffNames } from '@/lib/clientDataSync'
 import { attendanceKeyFor, canApproveLeave, findMark, newAbsenceMark, LEAVE_CATEGORIES, type AttendanceOverride } from '@/lib/attendance'
 import { confirmAsync } from '@/lib/notify'
@@ -58,7 +58,7 @@ export function QuickAttendanceModal({ open, onClose, date, onViewDetails, sheet
   const rows = useMemo(() => {
     const jobs = (sheetJobs ?? dailyJobs).filter(j => j.date === date && isWorkRow(j))
     return employees
-      .filter(e => e.status !== 'inactive' && e.full_name && isSheetCleaner(e))
+      .filter(e => e.status !== 'inactive' && e.full_name && isSheetCleaner(e) && isEmployedOn(e, date)) // R-EMP-16
       .map(e => {
         const name = e.full_name.trim()
         const mark = findMark(attendanceMarks || {}, date, name, e.id)

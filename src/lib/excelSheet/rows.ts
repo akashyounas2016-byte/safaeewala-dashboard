@@ -33,7 +33,8 @@ export const NUMERIC_FIELDS = new Set<string>(['duty_hours', 'ot_hours', 'charge
 
 /**
  * UX-175: Charges follow the hourly rate — Charges = Charges Per Hour × Duty Hrs. Typing the rate or changing the hours /
- * times (with a rate set) works out Charges; typing Charges works out the rate. Rows without hours are left as typed.
+ * times (with a rate set) works out Charges. Rows without hours are left as typed.
+ * UX-181: one way only — typing Charges (VAT, an extra fee) keeps the rate as it is.
  */
 export function syncHourlyCharges<T extends { charges?: number; charges_per_hour?: number | null; duty_hours?: number }>(row: T, changed: string): T {
   const rate = Number(row.charges_per_hour) || 0
@@ -43,7 +44,6 @@ export function syncHourlyCharges<T extends { charges?: number; charges_per_hour
   if (changed === 'charges_per_hour' || ((changed === 'duty_hours' || changed === 'start_time' || changed === 'end_time') && rate > 0)) {
     return { ...row, charges: r2(rate * hours) }
   }
-  if (changed === 'charges') return { ...row, charges_per_hour: Number(row.charges) > 0 ? r2(Number(row.charges) / hours) : 0 }
   return row
 }
 export const fieldValue = (row: DailyJob, k: (typeof SAVED_FIELDS)[number]) =>
@@ -388,6 +388,25 @@ export function withIdleCleaners(rows: DailyJob[], idle: { name: string; status:
  * job or a payment no longer moves blocks up or down (they followed the order the jobs came in, team members were
  * pulled together and idle cleaners went to the bottom). A block's own rows keep their order.
  */
+/**
+ * UX-182: the sheet's own order of cleaner blocks (Block order popup), shared by every user: cleaner (lower-case full
+ * name) → position. Listed cleaners come first in that order, the others after them A→Z, rows without a cleaner last.
+ * Display only — the saved jobs do not change.
+ */
+export const BLOCK_ORDER_KEY = 'safaeewala_excel_block_order'
+export function orderBlocksCustom(rows: DailyJob[], order: Record<string, number>): DailyJob[] {
+  if (!order || !Object.keys(order).length) return rows
+  const blocks = new Map<string, DailyJob[]>()
+  rows.forEach(r => {
+    const k = String(r.staff_name || '').trim().toLowerCase()
+    blocks.set(k, [...(blocks.get(k) || []), r])
+  })
+  const pos = (k: string) => (k === '' ? Infinity : Number.isFinite(order[k]) ? order[k] : 1e9)
+  return Array.from(blocks.entries())
+    .sort(([a], [b]) => pos(a) - pos(b) || (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
+    .flatMap(([, list]) => list)
+}
+
 export function orderBlocksByName(rows: DailyJob[]): DailyJob[] {
   const blocks = new Map<string, DailyJob[]>()
   rows.forEach(r => {

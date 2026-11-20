@@ -30,6 +30,7 @@ export function withoutInlineDocs<T extends object>(rec: T, fileFields: readonly
 }
 
 const signed = new Map<string, { url: string; until: number }>()
+const localCopy = new Map<string, string>()
 const loading = new Set<string>()
 const listeners = new Set<() => void>()
 
@@ -37,6 +38,8 @@ const listeners = new Set<() => void>()
 export function docSrc(fileData?: string): string {
   if (!fileData) return ''
   if (!isStoredDoc(fileData)) return fileData
+  const local = localCopy.get(fileData) // R-EMP-15: a file stored without its type, shown from a typed local copy
+  if (local) return local
   const hit = signed.get(fileData)
   if (hit && hit.until > Date.now()) return hit.url
   if (!loading.has(fileData)) {
@@ -63,9 +66,67 @@ export function useDocUrls(): void {
   }, [])
 }
 
-/** image / pdf / other — from the data URL, the stored type, or the file name */
-export function docKind(doc: { file_data?: string; file_type?: string; name?: string } | null | undefined): 'image' | 'pdf' | 'other' {
+type DocKind = 'image' | 'pdf' | 'other'
+
+/** R-EMP-15: kind of a stored file read from its first bytes (a file saved without an extension, e.g. "__eid_file-eid_file") */
+const sniffed = new Map<string, DocKind>()
+const sniffing = new Set<string>()
+
+/** image / pdf / other from the first bytes of a file */
+export function kindFromBytes(b: Uint8Array): DocKind {
+  const hex = Array.from(b.slice(0, 12), x => x.toString(16).padStart(2, '0')).join('')
+  if (hex.startsWith('25504446')) return 'pdf' // %PDF
+  if (hex.startsWith('ffd8ff') || hex.startsWith('89504e47') || hex.startsWith('47494638')) return 'image' // JPEG, PNG, GIF
+  if (hex.startsWith('52494646') && hex.slice(16, 24) === '57454250') return 'image' // RIFF....WEBP
+  return 'other'
+}
+
+function sniff(fileData: string) {
+  if (sniffed.has(fileData) || sniffing.has(fileData)) return
+  const url = docSrc(fileData)
+  if (!url) return // the signed link is not ready yet: the next render asks again
+  sniffing.add(fileData)
+  void fetch(url)
+    .then(async r => {
+      if (!r.ok) throw new Error(String(r.status))
+      const type = (r.headers.get('content-type') || '').toLowerCase()
+      const buf = await r.arrayBuffer()
+      const kind = kindFromBytes(new Uint8Array(buf, 0, Math.min(16, buf.byteLength)))
+      // Stored as "application/octet-stream": the browser would download it instead of showing it, so show a local copy with the right type
+      if (kind !== 'other' && !(kind === 'pdf' ? type.includes('pdf') : type.startsWith('image/'))) {
+        const mime = kind === 'pdf' ? 'application/pdf' : /^ffd8/.test(new Uint8Array(buf, 0, 2).reduce((h, x) => h + x.toString(16).padStart(2, '0'), '')) ? 'image/jpeg' : 'image/png'
+        localCopy.set(fileData, URL.createObjectURL(new Blob([buf], { type: mime })))
+      }
+      sniffed.set(fileData, kind)
+    })
+    .catch(() => { sniffed.set(fileData, 'other') })
+    .finally(() => { sniffing.delete(fileData); listeners.forEach(l => l()) })
+}
+
+/** True while the kind of a stored file without a known type is still being read (R-EMP-15) */
+export function docKindPending(doc: { file_data?: string; file_type?: string; name?: string } | null | undefined): boolean {
+  return Boolean(doc && needsSniff(doc) && guessKind(doc) === 'other' && !sniffed.has(doc.file_data!))
+}
+
+/** Only a stored file whose path has no extension (".docx" etc. is known not to preview) and no stored type */
+function needsSniff(doc: { file_data?: string; file_type?: string }): boolean {
+  if (!isStoredDoc(doc.file_data) || doc.file_type) return false
+  const last = doc.file_data!.split('/').pop() || ''
+  return !/\.[a-z0-9]{2,5}$/i.test(last)
+}
+
+/** image / pdf / other — from the data URL, the stored type, the file name, or (R-EMP-15) the file's first bytes */
+export function docKind(doc: { file_data?: string; file_type?: string; name?: string } | null | undefined): DocKind {
   if (!doc) return 'other'
+  const kind = guessKind(doc)
+  if (kind !== 'other' || !needsSniff(doc)) return kind
+  const known = sniffed.get(doc.file_data!)
+  if (known) return known
+  sniff(doc.file_data!)
+  return 'other'
+}
+
+function guessKind(doc: { file_data?: string; file_type?: string; name?: string }): DocKind {
   const probe = `${doc.file_data?.startsWith('data:') ? doc.file_data.slice(0, 40) : ''} ${doc.file_type || ''} ${doc.name || ''} ${isStoredDoc(doc.file_data) ? doc.file_data : ''}`.toLowerCase()
   if (/image\/|\.(png|jpe?g|gif|webp|svg)\b/.test(probe)) return 'image'
   if (/application\/pdf|\.pdf\b/.test(probe)) return 'pdf'

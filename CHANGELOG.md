@@ -6,6 +6,11 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(excel): Pending / Advance tags in the Address dropdown (UX-179); a cell dropdown closes when a popup opens (UX-180)
+- change(excel): Charges editable, the hourly rate fills it one way only (UX-181); Block order popup for the cleaner blocks (UX-182)
+- feat(employees): employees offered on the Excel sheet only inside their contract dates (R-EMP-16)
+- fix(employees): documents saved without a type preview instead of downloading (Ambika D's EID) (R-EMP-15)
+- docs(ops): nothing is reverted without the owner's words (R-OPS-09)
 - feat(app): "Page not found" screen for a wrong address instead of an empty page (UX-178)
 - data: removed the test job "test123" (Adnan, 19 Nov) on owner request; backup in Safaeewala-backups/test123-job-2026-11-19.json
 - fix(excel): a row with its own money at the same address and time as a team is its own job — its charges were hidden and the next save set them to 0; split-off members point to their own team lead (R-SYNC-20)

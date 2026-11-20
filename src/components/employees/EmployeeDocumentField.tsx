@@ -6,7 +6,7 @@ import {
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import type { EmployeeDocument } from '@/types'
-import { docSrc, docKind, useDocUrls } from '@/lib/docStorage'
+import { docSrc, docKind, docKindPending, useDocUrls } from '@/lib/docStorage'
 
 export interface DocumentSectionProps {
   category?: EmployeeDocument['category']
@@ -198,6 +198,9 @@ export function EmployeeDocumentPreviewModal({
             title={doc.name}
             className="w-full h-[520px] rounded-xl border border-slate-200"
           />
+        ) : docKindPending(doc) ? (
+          // R-EMP-15: a file saved without its type is read first, then shown (not offered as a download)
+          <p className="text-[12.5px] font-semibold text-slate-500">Loading preview…</p>
         ) : (
           <div className="text-center p-6">
             <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center mx-auto mb-3 shadow-xs">

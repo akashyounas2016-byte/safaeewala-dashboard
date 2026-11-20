@@ -45,6 +45,7 @@ It is the short form — the full, ID-numbered rules live in [rules.md](rules.md
 1. **Browser Access Permission**: Do NOT launch browser subagents without user confirmation.
 2. **VPS Deployment Permission**: Strictly local development (`localhost:5058`). Do NOT push or run `scp`/deployment commands to the production VPS server (`187.77.116.14`) without asking for explicit user permission. **`git push origin main` also deploys** (GitHub Actions) — it needs permission too.
 3. **Main folder, VPS on request** (since 2026-11-03): Claude works in the main folder (`main`, port 5058) so the owner sees changes on localhost first. Push or deploy to the VPS only when the owner says so. Antigravity may work in the same folder: check `git status` and stage only your own files.
+4. **Nothing is reverted without the owner's words** (R-OPS-09, 2026-11-20): never undo, roll back, overwrite or remove a finished feature, a rule's behaviour or saved data unless the owner asks for exactly that. No `git revert` / `reset` / `checkout -- <file>` over someone else's work, no restoring an old copy of a file or of data, no "simplifying" a feature away. When a new request conflicts with an existing rule, ask first.
 
 ---
 

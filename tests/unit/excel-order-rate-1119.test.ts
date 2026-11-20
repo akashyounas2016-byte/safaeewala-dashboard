@@ -17,7 +17,7 @@ eq(names(team), ['Ambika', 'Asmita', 'Uma Kumari'], 'a team job keeps the A→Z 
 eq(memberModeLabel(j('m', 'Uma Kumari', { payment_mode: 'Above' as DailyJob['payment_mode'] })), 'Team', 'member mode shows "Team", not "Above" (the lead may be below)')
 eq(syncHourlyCharges({ charges: 0, charges_per_hour: 60, duty_hours: 2.5 }, 'charges_per_hour').charges, 150, 'rate × hours = charges')
 eq(syncHourlyCharges({ charges: 150, charges_per_hour: 60, duty_hours: 3 }, 'duty_hours').charges, 180, 'more hours at the same rate → more charges')
-eq(syncHourlyCharges({ charges: 200, charges_per_hour: 60, duty_hours: 4 }, 'charges').charges_per_hour, 50, 'typed charges → rate worked out')
+eq(syncHourlyCharges({ charges: 210, charges_per_hour: 50, duty_hours: 4 }, 'charges').charges_per_hour, 50, 'typed charges (VAT) keep the rate (UX-181)')
 eq(syncHourlyCharges({ charges: 99, charges_per_hour: 0, duty_hours: 3 }, 'duty_hours').charges, 99, 'no rate → charges stay as typed')
 const card = readFileSync('src/components/dailyJobSheet/ChargesCard.tsx', 'utf8')
 eq(card.indexOf('>Charges Per Hour<') > 0 && card.indexOf('>Charges Per Hour<') < card.indexOf('>Advance Received<'), true, 'Add Job: Charges Per Hour before Advance Received')

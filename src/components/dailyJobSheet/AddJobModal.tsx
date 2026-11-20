@@ -5,7 +5,7 @@ import { busyCleaners, useDubaiMinute } from '@/lib/staffBusy'
 import { useJobCheckins } from '@/lib/jobCheckins'
 import { awayCleanerNames } from '@/lib/attendance'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
-import { isAssignable } from '@/lib/staffRoles'
+import { isAssignable, isEmployedOn } from '@/lib/staffRoles'
 import { clientMoneyStatus, calcClientAdvanceBalance, autoAdvanceRemark, type ClientMoneyStatus } from '@/lib/clientAdvance'
 import { QuickNewClientModal } from '@/components/common/QuickNewClientModal'
 import { Time12hPicker, parseTimeToMinutes } from '@/components/common/Time12hPicker'
@@ -113,12 +113,13 @@ export function AddJobForm({
   const pickableStaff = useMemo(() => {
     const chosen = new Set(selectedStaff.map(n => n.trim().toLowerCase()))
     // R-SHEET-02 / R-EMP-12: a CSR or an Inactive employee is never offered for a job (one already on this job stays)
-    const csr = new Set((staffRecords || []).filter(r => !isAssignable(r)).map(r => r.full_name.trim().toLowerCase()))
+    // R-EMP-16: nor someone outside their contract dates on the job date
+    const csr = new Set((staffRecords || []).filter(r => !isAssignable(r) || !isEmployedOn(r, date)).map(r => r.full_name.trim().toLowerCase()))
     return employees.filter(e => {
       const k = e.full_name.trim().toLowerCase()
       return (!awayOnDate.has(k) && !csr.has(k)) || chosen.has(k)
     })
-  }, [employees, awayOnDate, selectedStaff, staffRecords])
+  }, [employees, awayOnDate, selectedStaff, staffRecords, date])
   const awayList = useMemo(() => employees.filter(e => awayOnDate.has(e.full_name.trim().toLowerCase())).map(e => e.full_name), [employees, awayOnDate])
 
   // Auto-generate team name when multiple cleaners selected
@@ -250,7 +251,13 @@ export function AddJobForm({
     const c = Number(initial?.charges) || 0, h = Number(initial?.duty_hours) || 0
     return c > 0 && h > 0 ? Math.round((c / h) * 100) / 100 : ''
   })
-  useEffect(() => { // UX-175: new hours → new Charges at the same rate
+  // UX-175: new hours → new Charges at the same rate. UX-181: only when the rate or the hours really change —
+  // opening a job keeps its saved Charges (VAT / an extra fee typed by hand)
+  const lastRateHours = useRef(`${cleanNum(rate)}|${dutyHours}`)
+  useEffect(() => {
+    const key = `${cleanNum(rate)}|${dutyHours}`
+    if (key === lastRateHours.current) return
+    lastRateHours.current = key
     const r = cleanNum(rate)
     if (r > 0 && dutyHours > 0) setCharges(String(Math.round(r * dutyHours * 100) / 100))
   }, [rate, dutyHours])
@@ -526,7 +533,7 @@ export function AddJobForm({
       address:      address.trim(),
       area:         area.trim(),
       material:     selectedMaterial as MaterialType,
-      charges:      useSplit ? totals.charges : (cleanNum(rate) > 0 && dutyHours > 0 ? Math.round(cleanNum(rate) * dutyHours * 100) / 100 : cleanNum(charges)),
+      charges:      useSplit ? totals.charges : cleanNum(charges), // UX-181: Charges as shown (filled by the rate, editable)
       charges_per_hour: useSplit ? undefined : (cleanNum(rate) || undefined), // UX-175: shown in the Excel "Charges / Hr" column
       received:     useSplit ? totals.received : cleanNum(received),
       payment_mode: (useSplit ? totals.payment_mode : paymentMode) as PaymentMode,

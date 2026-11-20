@@ -949,6 +949,22 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Status:** Active · Since: 2026-11-16
 ---
 
+### R-EMP-15 — Every document previews, also a file saved without its type
+- **Why:** Ambika D's Emirates ID, passport, visa and work permit were saved as `__eid_file-eid_file` (no extension, no type), so the preview offered only a Download (2026-11-20).
+  - A stored file without extension or type is read once (its first bytes: PDF, JPEG, PNG, GIF, WEBP) and then shown like any other; "Loading preview…" meanwhile. A file stored as "application/octet-stream" is shown from a local copy with the right type.
+- **Code:** `src/lib/docStorage.ts → docKind, kindFromBytes, docKindPending`; `EmployeeDocumentField.tsx`. Test: `tests/unit/batch-1120.test.ts`.
+- **Status:** Active · Since: 2026-11-20
+
+### R-EMP-16 — An employee is on the Excel Job Sheet only inside the contract dates
+- **Rule:** *"Employees ka data Excel Job Sheet par sirf unke Contract Start Date aur Contract End Date ke darmiyan hi show hona chahiye … Under-trainee employees ke liye … Training Start Date se shuru ho kar Contract End Date tak."* (2026-11-20)
+  - Start = **Joined Date** (Contract Start), or **Training Start** when earlier. End = **Contract End Date**. A missing date = no limit on that side.
+  - Outside these dates the employee gets no empty block on the Excel sheet, is not suggested in the Staff column or Add Job, and is not in the attendance popup.
+  - **Jobs already saved** outside the dates still show (not hidden): many Joined Dates are the day the employee was added to the CRM (9–10 Nov) while their October jobs (about 240, with money) are real. Asked of the owner (PENDING A29).
+- **Code:** `src/lib/staffRoles.ts → isEmployedOn, employmentStart`; `JobSheetSpreadsheet.tsx → staffOptions, idleCleaners`; `QuickAttendanceModal.tsx`; `AddJobModal.tsx → pickableStaff`. Test: `tests/unit/batch-1120.test.ts`.
+- **Status:** Active · Since: 2026-11-20
+
+---
+
 ## AGN — Agencies
 
 ### R-AGN-01 — Safaeewala is the parent company
@@ -1585,6 +1601,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Then *Download a copy now* (Excel / JSON), the before-delete copies, Restore; the Google Drive connection settings and server details are folded under **Advanced**.
 - **Code:** `src/components/settings/BackupOverview.tsx`, `DailyLocalBackup.tsx` (in `Layout`); `src/lib/localBackup.ts`; `src/lib/backupStatus.ts → backupSummary`.
 - **Status:** Active · Google Drive on the server waits for the owner (A2) · Since: 2026-11-12
+
+---
+
+### R-OPS-09 — Nothing is reverted without the owner's words
+- **Rule:** *"Ek sakht rule set karein keh user ki wazeh instructions ke baghair koi function ya data revert nahi hona chahiye."* (2026-11-20)
+  - No agent or developer undoes, rolls back, overwrites or removes a finished feature, a rule's behaviour or saved data unless the owner asks for exactly that.
+  - No `git revert` / `git reset` / `git checkout -- <file>` over another person's work, no restoring an old copy of a file or of data, no "simplifying" a feature away. A new request that conflicts with an existing rule is asked about first.
+  - 20 Nov check: git has no revert or reset of code since the last deploy; every attendance warning (R-ATT-08 tag, R-SCHED-09 banner, R-ATT-10 column, R-ATT-11 popup) is still in the code. Which warning the team saw go back is asked of the owner (PENDING A30).
+- **Where:** `AGENTS.md §3`.
+- **Status:** Active · Since: 2026-11-20
 
 ---
 

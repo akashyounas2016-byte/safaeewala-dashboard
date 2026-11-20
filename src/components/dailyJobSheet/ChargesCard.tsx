@@ -120,19 +120,22 @@ export function ChargesCard({
 
       {!split_ ? (
         /* Lump Sum: the whole amount on the lead cleaner's record */
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-          {setRate ? (
+        <div className={`grid grid-cols-1 gap-2.5 ${setRate ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
+          {setRate && (
             <div>
               <label className={lbl}>Charges Per Hour</label>
               <input type="number" min="0" step="0.01" value={rate ?? ''} onChange={e => { setRate(e.target.value); const r = cleanNum(e.target.value); setCharges(r > 0 && dutyHours > 0 ? String(Math.round(r * dutyHours * 100) / 100) : '') }} placeholder="0.00" className={`${inp} text-slate-800`} />
-              <p className="text-[10.5px] text-slate-500 mt-1">{cleanNum(rate) > 0 ? `Total AED ${(Math.round(cleanNum(rate) * dutyHours * 100) / 100).toLocaleString()} (${dutyHours || 0} h)` : 'Total = rate × duty hours'}</p>
-            </div>
-          ) : (
-            <div>
-              <label className={lbl}>Charges</label>
-              <input type="number" min="0" step="0.01" value={charges} onChange={e => setCharges(e.target.value)} placeholder="0.00" className={`${inp} text-slate-800`} />
+              <p className="text-[10.5px] text-slate-500 mt-1">{cleanNum(rate) > 0 ? `${cleanNum(rate)} × ${dutyHours || 0} h` : 'Fills Charges'}</p>
             </div>
           )}
+          <div>
+            <label className={lbl} title="Rate × duty hours; change it for VAT or an extra fee — the rate stays">Charges</label>
+            {/* UX-181: always editable; the rate fills it, typing here never changes the rate */}
+            <input type="number" min="0" step="0.01" value={charges} onChange={e => setCharges(e.target.value)} placeholder="0.00" className={`${inp} text-slate-800`} />
+            {setRate && cleanNum(rate) > 0 && dutyHours > 0 && Math.abs(cleanNum(charges) - Math.round(cleanNum(rate) * dutyHours * 100) / 100) > 0.004 && (
+              <p className="text-[10.5px] text-amber-700 mt-1">Rate × hours = AED {(Math.round(cleanNum(rate) * dutyHours * 100) / 100).toLocaleString()}</p>
+            )}
+          </div>
           <div>
             <label className={lbl} title="The first payment taken when the job is entered">Advance Received</label>
             <input type="number" min="0" step="0.01" value={received} onChange={e => setReceived(e.target.value)} placeholder="0.00" className={`${inp} text-emerald-800`} />
