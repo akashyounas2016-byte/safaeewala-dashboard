@@ -65,7 +65,7 @@ The plugin is "WhatsApp Click Tracker" 1.0.0 (`whatsapp-click-tracker`). It alre
 - Clicks saved while "Enable webhook delivery" was off got status **off**. Clicks whose send never ran stayed **pending**. Neither was ever sent.
 - That is how the clicks of 17–19 Nov were missed.
 
-Version 1.0.1 (zip: `Downloads\whatsapp-click-tracker-1.0.1.zip` on the owner's PC) changes three files:
+Version 1.0.1 (zip: `Downloads\whatsapp-click-tracker-1.1.0.zip — 1.1.0 includes all of 1.0.1` on the owner's PC) changes three files:
 
 - `includes/class-wact-db.php → failed_webhooks()`: also picks clicks with status **off**, and **pending** clicks older than 5 minutes (still at most 3 attempts each). The missed clicks are sent once delivery is on. The CRM stores each click once (`site.url` + `id`), so resending is safe.
 - `whatsapp-click-tracker.php`: the retry job runs **every 5 minutes** (new schedule `wact_5min`), set up again on load, so no re-activation is needed. Version 1.0.1.
@@ -75,6 +75,19 @@ Version 1.0.1 (zip: `Downloads\whatsapp-click-tracker-1.0.1.zip` on the owner's 
 **Install:** WordPress → Plugins → Add New → Upload Plugin → choose the zip → **Replace current with uploaded**. Settings and clicks are kept. Then press **Send all missed clicks now** once.
 
 WP-Cron only runs on site visits, and caching (e.g. WP Rocket) can stop it. A server cron on the hosting makes the 5-minute retry reliable: `*/5 * * * * wget -q -O - https://safaeewala.com/wp-cron.php?doing_wp_cron >/dev/null 2>&1`.
+
+## 3b. Form Entries screen (version 1.1.0, 20 Nov 2026)
+
+WordPress → WhatsApp Clicks → **Form Entries** shows the Fluent Forms submissions. It reads the Fluent Forms tables (`wp_fluentform_submissions`, `wp_fluentform_forms`) directly; nothing is copied. New file: `includes/class-wact-forms.php` (plus styles in `assets/css/admin.css`).
+
+- **Cards:** Today, Yesterday, Last 7 days, Last 30 days, Unread, Starred. Click a card to filter by it. They follow the chosen form.
+- **Chart:** entries per day for 14 days (click a day to see its entries). Beside it, entries per form and the top pages.
+- **Filters:** form, dates (today, yesterday, 7 / 30 days, this month, last month, all, custom from–to), status (unread, read, starred, spam, trash), and search (name, phone, email, any answer, entry number).
+- **Table:** entry number, date, form, name, phone (call or WhatsApp link), email, the first answers, and **View all** for every answer plus device and IP.
+- **Actions:** mark read / unread, star, trash, restore, and **Open** in Fluent Forms. Bulk actions on ticked rows. Trash is the same trash as in Fluent Forms: nothing is deleted for good.
+- **Export CSV (filtered):** the entries of the current filters, one column per question.
+
+Tested on 20 Nov on a WordPress stand-in with 40 test entries (all filters, actions and the CSV). Not yet tested on the real site.
 
 ## 4. How to check it works
 
