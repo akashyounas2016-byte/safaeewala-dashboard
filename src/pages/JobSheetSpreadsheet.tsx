@@ -38,6 +38,7 @@ import { type BlockPalette, BLOCK_PALETTES, SOLID_PALETTE_KEYS, LIGHT_PALETTE_KE
 import { QuickAttendanceModal } from '@/components/dailyJobSheet/QuickAttendanceModal'
 import { newRowId, sameJobRow, isBlankNewRow, isClearedRow, teamJobsDeletedElsewhere, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes, syncHourlyCharges, orderBlocksByName, orderBlocksCustom, BLOCK_ORDER_KEY } from '@/lib/excelSheet/rows'
 import { BlockOrderModal } from '@/components/dailyJobSheet/BlockOrderModal'
+import { applyRowPatch, applyCellPatch, type UndoStep } from '@/lib/excelSheet/undo'
 import { DRAFT_PREFIX, COLUMN_PRESETS, READ_ONLY_COLS, DEFAULT_ROW_BG, projectKeyOf, memberChargesLabel, memberReceivedLabel, memberModeLabel, refMoney, DROPDOWN_COLS, TIME_SUGGESTIONS, DUBAI_AREAS, RENDER_PAGE, safeGet, safeSet, rowColorConflict } from '@/lib/excelSheet/sheetConfig'
 import { evaluateFormula } from '@/lib/excelSheet/formula'
 import { jobFlags, splitSyncNote, type JobFlag } from '@/lib/jobFlags'
@@ -230,6 +231,15 @@ export function JobSheetSpreadsheet() {
     const away = awayCleanerNames(attendanceMarks || {}, employees, selectedDate)
     return employees.filter(e => e.status !== 'inactive' && e.full_name && isSheetCleaner(e) && isEmployedOn(e, selectedDate) && !away.has(e.full_name.trim().toLowerCase())).map(e => e.full_name.trim()).sort((a, b) => a.localeCompare(b)) // R-SHEET-02: cleaners only; R-EMP-16: only inside the contract dates
   }, [employees, attendanceMarks, selectedDate])
+  // UX-186: the Staff cell dropdown — cleaners and technical staff (never CSR or drivers) inside their contract dates,
+  // not away, and not already on this sheet
+  const staffPickOptions = useMemo(() => {
+    const away = awayCleanerNames(attendanceMarks || {}, employees, selectedDate)
+    return employees
+      .filter(e => e.status !== 'inactive' && e.full_name && ['cleaner', 'technical', 'ducting'].includes(String(e.role || 'cleaner')) && isEmployedOn(e, selectedDate) && !away.has(e.full_name.trim().toLowerCase()))
+      .map(e => ({ name: e.full_name.trim(), short: (e.short_name || '').trim(), role: String(e.role || 'cleaner') }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [employees, attendanceMarks, selectedDate])
   const addressOptions = useMemo(() => {
     const set = new Set<string>()
     getAssignableClients(clients).forEach(c => { if (c.full_name) set.add(c.full_name.trim()); if (c.building_name) set.add(c.building_name.trim()) })
@@ -398,8 +408,10 @@ export function JobSheetSpreadsheet() {
     const chg = cleanNum(r.charges), rec = cleanNum(r.received)
     return rec > chg ? rec - chg : 0
   }
-  const [history, setHistory]   = useState<DailyJob[][]>([])
-  const [future, setFuture]     = useState<DailyJob[][]>([])
+  // UX-184: undo steps are patches (rows before / after one change), kept across auto-saves
+  const [history, setHistory]   = useState<UndoStep[]>([])
+  const [future, setFuture]     = useState<UndoStep[]>([])
+  const savedIdsRef = useRef<Map<string, string>>(new Map()) // a new row's temporary id → the id it was saved under
 
   // Active & Editing Cell State
   const [activeCell, setActiveCell] = useState<{ rowIdx: number; colId: string } | null>(null)
@@ -603,7 +615,7 @@ export function JobSheetSpreadsheet() {
 
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - resizingCol.startX
-      const newWidth = Math.max(55, resizingCol.startWidth + deltaX)
+      const newWidth = Math.max(12, resizingCol.startWidth + deltaX) // UX-185: no real minimum (was 55 px) — any column can be made very narrow or wide
       setColWidths(prev => ({
         ...prev,
         [resizingCol.id]: newWidth,
@@ -732,8 +744,7 @@ export function JobSheetSpreadsheet() {
       loadedRawRef.current = new Map(clone(periodJobs).map(j => [j.id, j]))
       setGridRows(rows)
       setLoadedSnapshot(new Map(rows.map(r => [r.id, r])))
-      setHistory([])
-      setFuture([])
+      if (periodChanged) { setHistory([]); setFuture([]); savedIdsRef.current = new Map() } // UX-184: an auto-save no longer wipes Undo
       setRemoteConflict(false)
       if (periodChanged) {
         const draft = safeGet<{ rows: DailyJob[]; savedAt: number } | null>(DRAFT_PREFIX + periodKey, null)
@@ -839,21 +850,50 @@ export function JobSheetSpreadsheet() {
 
   // ── Push State to Undo Stack ──
   const pushState = (newRows: DailyJob[]) => {
-    setHistory(prev => [...prev.slice(-40), JSON.parse(JSON.stringify(gridRows))])
+    const step: UndoStep = { before: JSON.parse(JSON.stringify(gridRows)), after: JSON.parse(JSON.stringify(newRows)) }
+    setHistory(prev => [...prev.slice(-40), step])
     setFuture([])
     setGridRows(newRows)
   }
+  // UX-184: cell colours are part of Undo too
+  const changeCellColors = (make: (prev: Record<string, string>) => Record<string, string>) => {
+    const next = make(cellColors)
+    setHistory(prev => [...prev.slice(-40), { before: [], after: [], cells: { before: { ...cellColors }, after: { ...next } } }])
+    setFuture([])
+    setCellColors(next)
+    safeSet('safaeewala_excel_cell_colors', next)
+  }
+  // follows the chain: a row put back by Redo is saved again under another new id
+  const resolveId = (id: string) => {
+    let cur = id
+    for (let i = 0; i < 20 && savedIdsRef.current.has(cur); i++) cur = savedIdsRef.current.get(cur)!
+    return cur
+  }
+  const resolveCellKey = (k: string) => {
+    for (const from of savedIdsRef.current.keys()) if (k.startsWith(`${from}_`)) return `${resolveId(from)}_${k.slice(from.length + 1)}`
+    return k
+  }
+  const applyStep = (step: UndoStep, dir: 'undo' | 'redo') => {
+    const [from, to] = dir === 'undo' ? [step.after, step.before] : [step.before, step.after]
+    if (from.length || to.length) setGridRows(rows => applyRowPatch(rows, from, to, resolveId))
+    if (step.cells) {
+      const [cf, ct] = dir === 'undo' ? [step.cells.after, step.cells.before] : [step.cells.before, step.cells.after]
+      const next = applyCellPatch(cellColors, cf, ct, resolveCellKey)
+      setCellColors(next)
+      safeSet('safaeewala_excel_cell_colors', next)
+    }
+  }
 
-  // ── Undo & Redo ──
+  // ── Undo & Redo ── (UX-184: every change — values, rows, row and cell colours — also after an auto-save)
   const handleUndo = () => {
     if (history.length === 0) {
       showToast('Nothing to undo')
       return
     }
-    const previous = history[history.length - 1]
-    setFuture(prev => [JSON.parse(JSON.stringify(gridRows)), ...prev])
+    const step = history[history.length - 1]
+    applyStep(step, 'undo')
+    setFuture(prev => [step, ...prev])
     setHistory(prev => prev.slice(0, prev.length - 1))
-    setGridRows(previous)
     showToast('Undo executed (Ctrl+Z)')
   }
 
@@ -862,10 +902,10 @@ export function JobSheetSpreadsheet() {
       showToast('Nothing to redo')
       return
     }
-    const next = future[0]
-    setHistory(prev => [...prev, JSON.parse(JSON.stringify(gridRows))])
+    const step = future[0]
+    applyStep(step, 'redo')
+    setHistory(prev => [...prev, step])
     setFuture(prev => prev.slice(1))
-    setGridRows(next)
     showToast('Redo executed (Ctrl+Y)')
   }
 
@@ -1145,9 +1185,10 @@ export function JobSheetSpreadsheet() {
   }
 
   // Commit Cell Edit
-  const commitCellEdit = (): DailyJob[] => {
+  const commitCellEdit = (picked?: unknown): DailyJob[] => {
     if (!editingCell) return gridRows
-    const { rowIdx, colId, tempValue } = editingCell
+    const { rowIdx, colId } = editingCell
+    const tempValue = typeof picked === 'string' ? picked : editingCell.tempValue // UX-186: a value picked in a dropdown
     const trimmed = tempValue.trim()
 
     const updated = [...gridRows]
@@ -2183,21 +2224,16 @@ export function JobSheetSpreadsheet() {
     const many = selCells()
     const rowIdxOf = gridRows.findIndex(r => r.id === rowId)
     if (many.length && isInSel(rowIdxOf, colId)) {
-      setCellColors(prev => {
+      changeCellColors(prev => {
         const next = { ...prev }
         many.forEach(c => { const id = gridRows[c.rowIdx]?.id; if (id) next[`${id}_${c.colId}`] = paletteKey })
-        safeSet('safaeewala_excel_cell_colors', next)
         return next
       })
       setContextMenu(null)
       showToast(`✓ Color applied to ${many.length} selected cells`)
       return
     }
-    setCellColors(prev => {
-      const next = { ...prev, [cellKey]: paletteKey }
-      safeSet('safaeewala_excel_cell_colors', next)
-      return next
-    })
+    changeCellColors(prev => ({ ...prev, [cellKey]: paletteKey }))
     setContextMenu(null)
     const colDef = columns.find(c => c.id === colId)
     showToast(`✓ Color applied to this cell only (${colDef?.label || colId})`)
@@ -2207,20 +2243,18 @@ export function JobSheetSpreadsheet() {
     const cellKey = `${rowId}_${colId}`
     const many = selCells()
     if (many.length && isInSel(gridRows.findIndex(r => r.id === rowId), colId)) {
-      setCellColors(prev => {
+      changeCellColors(prev => {
         const next = { ...prev }
         many.forEach(c => { const id = gridRows[c.rowIdx]?.id; if (id) delete next[`${id}_${c.colId}`] })
-        safeSet('safaeewala_excel_cell_colors', next)
         return next
       })
       setContextMenu(null)
       showToast(`✓ Reset color on ${many.length} selected cells`)
       return
     }
-    setCellColors(prev => {
+    changeCellColors(prev => {
       const next = { ...prev }
       delete next[cellKey]
-      safeSet('safaeewala_excel_cell_colors', next)
       return next
     })
     setContextMenu(null)
@@ -2654,6 +2688,7 @@ export function JobSheetSpreadsheet() {
     const addKeepingColors = (r: DailyJob, p: Omit<DailyJob, 'id' | 'created_at'>) => {
       const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : undefined
       addDailyJob(id ? { ...p, id } : p)
+      if (id) savedIdsRef.current.set(r.id, id) // UX-184: Undo finds the row under its saved id
       if (id && Object.keys(cellColors).some(k => k.startsWith(`${r.id}_`))) colorMoves.push([r.id, id])
     }
     plainRemoved.forEach(r => { if (live.has(r.id)) deleteDailyJob(r.id) })
@@ -2713,13 +2748,14 @@ export function JobSheetSpreadsheet() {
   // Keyboard: Undo/Redo/Save/Esc + Excel keys (arrows, Tab, Enter/F2, Delete, Ctrl+D, type to edit) — UX-36.
   // The listener reads the latest handler through a ref, so Save never works on stale data.
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
-  const clipboardRef = useRef<{ copy: (e: ClipboardEvent) => void; paste: (e: ClipboardEvent) => void }>({ copy: () => {}, paste: () => {} })
+  const clipboardRef = useRef<{ copy: (e: ClipboardEvent) => void; paste: (e: ClipboardEvent) => void; cut: (e: ClipboardEvent) => void }>({ copy: () => {}, paste: () => {}, cut: () => {} })
   useEffect(() => {
     const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
     keyHandlerRef.current = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey
-      if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); return }
-      if (mod && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); handleRedo(); return }
+      // UX-184: inside a text box Ctrl+Z / Ctrl+Y undo the typing (the browser's own), elsewhere the sheet's steps
+      if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey && !isTyping(e.target)) { e.preventDefault(); handleUndo(); return }
+      if (mod && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z')) && !isTyping(e.target)) { e.preventDefault(); handleRedo(); return }
       if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); void handleSaveAll(); return }
       if (e.key === 'Escape') {
         setContextMenu(null)
@@ -2784,6 +2820,13 @@ export function JobSheetSpreadsheet() {
         e.clipboardData?.setData('text/plain', v == null ? '' : String(v))
         e.preventDefault()
       },
+      // UX-184: Ctrl+X copies the chosen cells and empties them (one Undo step); Ctrl+V puts them elsewhere
+      cut: (e: ClipboardEvent) => {
+        if (editingCell || !activeCell || isTyping(e.target)) return
+        clipboardRef.current.copy(e)
+        clearActiveCell()
+        showToast('Cut — paste with Ctrl+V')
+      },
       paste: (e: ClipboardEvent) => {
         if (editingCell || !activeCell || isTyping(e.target)) return
         const text = e.clipboardData?.getData('text/plain') || ''
@@ -2797,13 +2840,16 @@ export function JobSheetSpreadsheet() {
     const onKey = (e: KeyboardEvent) => keyHandlerRef.current(e)
     const onCopy = (e: ClipboardEvent) => clipboardRef.current.copy(e)
     const onPaste = (e: ClipboardEvent) => clipboardRef.current.paste(e)
+    const onCut = (e: ClipboardEvent) => clipboardRef.current.cut(e)
     window.addEventListener('keydown', onKey)
     document.addEventListener('copy', onCopy)
     document.addEventListener('paste', onPaste)
+    document.addEventListener('cut', onCut)
     return () => {
       window.removeEventListener('keydown', onKey)
       document.removeEventListener('copy', onCopy)
       document.removeEventListener('paste', onPaste)
+      document.removeEventListener('cut', onCut)
     }
   }, [])
 
@@ -3134,7 +3180,7 @@ export function JobSheetSpreadsheet() {
     return <ExcelAttendanceCell name={name} date={date} hasJob={workingOn.has(`${date}|${name.toLowerCase()}`)} />
   }
 
-  // UX-131: OT shows once per cleaner — on the last row of the cleaner's block, the total of all the block's jobs
+  // UX-131: OT shows once per cleaner, the total of all the block's jobs. UX-187: on the block's top row (was the last)
   const blockOTByLastRow = useMemo(() => {
     const sums = new Map<number, number>()
     const lastId = new Map<number, string>()
@@ -3142,7 +3188,7 @@ export function JobSheetSpreadsheet() {
       const b = staffBlockInfoMap.get(r.id)
       if (!b) return
       sums.set(b.lastRowIdx, (sums.get(b.lastRowIdx) || 0) + cleanNum(r.ot_hours))
-      if (b.isLast) lastId.set(b.lastRowIdx, r.id)
+      if (b.blockRowIdx === 0) lastId.set(b.lastRowIdx, r.id)
     })
     const out = new Map<string, number>()
     lastId.forEach((id, k) => out.set(id, Math.round((sums.get(k) || 0) * 100) / 100))
@@ -4264,8 +4310,8 @@ export function JobSheetSpreadsheet() {
                               const d = cleanNum(rawVal)
                               displayVal = isBlankShift ? '' : (d > 0 ? d.toFixed(2) : '')
                             } else if (col.id === 'ot_hours') {
-                              // UX-131: the cleaner's total OT, on the group's last row only
-                              const isLastJob = group.jobs[group.jobs.length - 1]?.row.id === row.id
+                              // UX-131: the cleaner's total OT once; UX-187: on the group's top row, empty when there is none
+                              const isLastJob = group.jobs[0]?.row.id === row.id
                               displayVal = isLastJob && group.totalOT > 0 ? (Math.round(group.totalOT * 100) / 100).toFixed(2) : ''
                             } else if (col.type === 'number') {
                               displayVal = isBlankShift ? '' : cleanNum(displayVal)
@@ -4530,16 +4576,51 @@ export function JobSheetSpreadsheet() {
                             title="Staff Member · Double-click to edit Staff Name"
                           >
                             {isStaffCellEditing ? (
+                              <div className="relative">
                               <input
                                 ref={inputRef}
-                                list="xl-staff"
                                 value={editingCell.tempValue}
                                 onChange={e => setEditingCell({ ...editingCell, tempValue: e.target.value })}
-                                onBlur={commitCellEdit}
+                                onBlur={() => commitCellEdit()}
                                 onKeyDown={handleEditorKeyDown}
+                                placeholder="Search staff…"
                                 className={`w-full ${staffAlign === 'center' ? 'text-center' : staffAlign === 'right' ? 'text-right' : 'text-left'} text-[12px] font-bold border border-emerald-500 rounded p-1 outline-none bg-white text-slate-900 shadow-inner`}
                                 autoFocus
                               />
+                              {(() => {
+                                // UX-186: same dropdown design as the Address column
+                                const current = String(gridRows[targetIdx]?.staff_name || '').trim().toLowerCase()
+                                const onSheet = new Set(gridRows.map(r => String(r.staff_name || '').trim().toLowerCase()).filter(Boolean))
+                                const q = editingCell.tempValue.trim().toLowerCase()
+                                const typedIsCurrent = q === current
+                                const list = staffPickOptions.filter(o => {
+                                  const k = o.name.toLowerCase()
+                                  if (onSheet.has(k) && k !== current) return false
+                                  return !q || typedIsCurrent || k.includes(q) || o.short.toLowerCase().includes(q)
+                                })
+                                return (
+                                  <ExcelCellPopover
+                                    width={360}
+                                    title="Staff (not yet on this sheet)"
+                                    icon={Users}
+                                    search={{ value: editingCell.tempValue, onChange: v => setEditingCell({ ...editingCell, tempValue: v }), placeholder: 'Search cleaner or technical staff…' }}
+                                  >
+                                    {list.length === 0 ? (
+                                      <ExcelPopoverEmpty>Everyone is already on this sheet</ExcelPopoverEmpty>
+                                    ) : list.map(o => (
+                                      <ExcelPopoverItem
+                                        key={o.name}
+                                        selected={o.name.toLowerCase() === current}
+                                        onPick={() => { commitCellEdit(o.name); setEditingCell(null) }}
+                                        icon={Users}
+                                        label={o.short && o.short.toLowerCase() !== o.name.toLowerCase() ? `${o.short} · ${o.name}` : o.name}
+                                        sub={o.role === 'cleaner' ? 'Cleaner' : 'Technical'}
+                                      />
+                                    ))}
+                                  </ExcelCellPopover>
+                                )
+                              })()}
+                              </div>
                             ) : (
                               <div className={`flex flex-col ${staffAlignClass} justify-center h-full min-h-[48px] px-2 gap-1`}>
                                 <span className="inline-flex items-center gap-1">
@@ -4599,10 +4680,10 @@ export function JobSheetSpreadsheet() {
                         else if (refMoney(mcInfo, row)) displayVal = memberModeLabel(row)
                         else displayVal = rawVal || ''
                       } else if (col.id === 'ot_hours') {
-                        // UX-131: only the block's last row shows OT — the total of the cleaner's jobs
+                        // UX-131: one OT per block, the total of the cleaner's jobs; UX-187: on the top row, empty when 0
                         const total = blockOTByLastRow.get(row.id)
                         const hasJobs = staffBlockInfoMap.get(row.id)?.staffName
-                        displayVal = total === undefined || !hasJobs ? '' : (total > 0 ? total.toFixed(2) : '0.00')
+                        displayVal = total === undefined || !hasJobs || !(total > 0) ? '' : total.toFixed(2)
                       } else if (col.id === 'duty_hours') {
                         const d = cleanNum(rawVal)
                         displayVal = d > 0 ? d.toFixed(2) : ''

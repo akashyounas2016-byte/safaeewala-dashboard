@@ -45,3 +45,43 @@ export function countBy<T>(list: T[], key: (x: T) => string): { key: string; cou
 }
 
 export const pageOf = (c: WhatsAppClick) => c.page_title || c.page_url || '—'
+
+/** R-MKT-06: date filters of the WhatsApp Clicks screen */
+export type ClickPreset = 'today' | 'yesterday' | '7' | '30' | 'all' | 'custom'
+const dayBefore = (today: string, n: number) => toDubaiDate(new Date(Date.parse(`${today}T12:00:00+04:00`) - n * 86400000))
+
+/** First and last Dubai date of a preset ('' = open) */
+export function presetDates(preset: ClickPreset, today: string, custom: { from?: string; to?: string } = {}): { from: string; to: string } {
+  switch (preset) {
+    case 'today': return { from: today, to: today }
+    case 'yesterday': { const y = dayBefore(today, 1); return { from: y, to: y } }
+    case '7': return { from: dayBefore(today, 6), to: today }
+    case '30': return { from: dayBefore(today, 29), to: today }
+    case 'custom': return { from: custom.from || '', to: custom.to || '' }
+    default: return { from: '', to: '' }
+  }
+}
+
+/** Clicks between two Dubai dates (inclusive; '' = open), newest first */
+export function clicksBetween(list: WhatsAppClick[], from: string, to: string): WhatsAppClick[] {
+  return list
+    .filter(c => { const d = toDubaiDate(new Date(c.clicked_at)); return (!from || d >= from) && (!to || d <= to) })
+    .sort((a, b) => b.clicked_at.localeCompare(a.clicked_at))
+}
+
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+/**
+ * R-MKT-06: the Dubai area a click is about, read from the page link / title / message (e.g. "/maid-service-jlt/" →
+ * Jumeirah Lake Towers (JLT)). A click has no address of its own, so pages without an area name give "No area".
+ */
+export function areaOf(c: WhatsAppClick, areas: readonly string[]): string {
+  let path = c.page_url || ''
+  try { path = new URL(path).pathname } catch { /* keep the text */ }
+  const hay = ` ${norm(`${path} ${c.page_title || ''} ${c.wa_message || ''}`)} `
+  for (const area of areas) {
+    const short = /\(([^)]+)\)/.exec(area)?.[1]
+    const names = [area.replace(/\s*\([^)]*\)/, ''), short].filter(Boolean) as string[]
+    if (names.some(n => { const k = norm(n); return k.length >= 3 && hay.includes(` ${k} `) })) return area
+  }
+  return 'No area'
+}

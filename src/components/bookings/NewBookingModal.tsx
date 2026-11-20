@@ -626,6 +626,7 @@ export function NewBookingModal({ open, onClose, onAdd, initialBooking, onUpdate
                   onChange={setSelectedStaff}
                   placeholder="Select cleaner(s)…"
                   busyCleaners={busyCleanersMap}
+                  technicalToggle // UX-183
                 />
               </div>
               <div {...req.field('date')}>

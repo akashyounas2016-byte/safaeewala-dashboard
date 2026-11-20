@@ -588,6 +588,7 @@ export function AddJobForm({
                   placeholder="Select cleaner(s)…"
                   required
                   busyCleaners={busyCleanersMap}
+                  technicalToggle // UX-183: cleaners by default, Technical switch for technical staff / drivers
                 />
                 {awayList.length > 0 && (
                   <p className="mt-1 text-[10.5px] text-amber-700" title="Marked in Attendance (R-ATT-08)">

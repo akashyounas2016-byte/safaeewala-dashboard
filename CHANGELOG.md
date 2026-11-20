@@ -6,6 +6,12 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- ops(marketing): website plugin 1.1.0 installed (20 Nov) — the missed clicks reached the CRM (32 clicks), A25 closed (R-MKT-05)
+- feat(jobs): staff pickers list cleaners only, Technical switch for technical staff and drivers, never a CSR (UX-183)
+- fix(excel): Undo / Redo survive the auto-save and include colours; Ctrl+X cut (UX-184); columns resize to 12 px (UX-185)
+- change(excel): Staff cell dropdown in the Address design, only staff not yet on the sheet (UX-186); block OT on the top row, empty when 0 (UX-187)
+- feat(employees): no two employees with the same full name or shown name (R-EMP-17)
+- feat(marketing): WhatsApp Clicks cards and filters (period, custom range, page, area), live updates (R-MKT-06)
 - feat(excel): Pending / Advance tags in the Address dropdown (UX-179); a cell dropdown closes when a popup opens (UX-180)
 - change(excel): Charges editable, the hourly rate fills it one way only (UX-181); Block order popup for the cleaner blocks (UX-182)
 - feat(employees): employees offered on the Excel sheet only inside their contract dates (R-EMP-16)

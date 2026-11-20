@@ -153,6 +153,10 @@
 - **Default (no colour)** dabayein to row ka rang hat jata hai. Pehle se rangi hui rows apne qareebi naye rang mein dikhti hain.
 
 ### Excel Job Sheet
+- **Undo / Redo:** har tabdeeli (likhna, row ya cell ka rang, row hatana) Ctrl+Z se wapas hoti hai — auto-save ke baad bhi. Ctrl+Y se dobara. **Ctrl+X** se cell kaat kar Ctrl+V se doosri jagah lagayein.
+- **Column chhota / bara:** column ke kinare ko khench kar jitna chahein chhota ya bara karein (Staff bhi).
+- **Staff cell:** naye khali block ke Staff cell par double-click karein — Address jaisa dropdown khulta hai, sirf wo cleaners aur technical staff jo abhi sheet par nahi hain.
+- **OT:** cleaner ka kul OT uske block ki **sab se upar** wali row mein; OT na ho to khana khali.
 - **Address dropdown:** har client ke saath laal **Pending AED …** ya hara **Advance AED …** tag dikhta hai.
 - Koi bhi popup (Add Job waghera) khulte hi cell ka dropdown khud band ho jata hai.
 - **Charges Per Hour** likhein to Charges = rate × ghante khud bhar jata hai. Charges baad mein haath se badal sakte hain (VAT ya extra fee) — rate wahi rehta hai.
@@ -195,6 +199,8 @@
 - Upar **Website connection** batata hai website se aakhri click kab aaya, ya wo kyun ruka (misaal: secret ghalat). Screen har minute khud refresh hoti hai.
 - Website par jab koi WhatsApp button dabata hai, wo click CRM ki **WhatsApp Clicks** screen par aata hai: kis page se, kaun sa button, kis campaign / Google / Facebook se, mobile ya computer.
 - Ye **lead nahi** hai — click mein customer ka number nahi hota. Ye batata hai ke kaun se pages aur campaigns WhatsApp chats la rahe hain. Asal chat Conversations mein aati hai.
+- **Cards:** Today, Yesterday, 7 din, 30 din, All time — card par click karein to wahi muddat lag jati hai. **More cards** se Mobile clicks, Top pages, Top areas.
+- **Filters:** muddat (Custom range bhi), **By page**, **By area**, search. Page / area chunein to cards bhi badal jate hain. Naya click foran aata hai.
 - Har row ke aakhir mein ✏️ (**Edit**) aur 🗑️ (**Delete**) hai. Edit se page, button, source, device ya message theek karein; Delete se test ya double click hata dein (pehle poochhta hai). Ye sirf admin / manager kar sakte hain.
 
 ## 5. Complaints aur Health Score
@@ -234,7 +240,9 @@
   - **Edit:** profile badlein. **Total Duty Hours** dropdown se chunein (6, 8, 9, 10, 12) ya koi aur number likhein; khali chhorein to 8 ghante maane jate hain — OT inhi se lagta hai.
   - **Laal 🗑 icon:** delete — pehle popup ke upar poochha jata hai.
 - **Documents ka preview:** har document (EID, passport, visa …) 👁 par click karne se popup mein khulta hai — download karne ki zaroorat nahi. Bina extension wali purani files bhi ab khulti hain (pehle sirf Download aata tha).
+- **Add Job mein Staff:** list mein sirf cleaners; **Technical** tick karein to technical staff aur drivers bhi aate hain. CSR kabhi nahi.
 - **Contract dates:** Excel Job Sheet par employee sirf **Joined Date** se **Contract End Date** tak nazar aata hai (trainee ke liye **Training Start** se). Is se pehle ya baad ki sheet par uska khali block, Staff suggestion, Add Job aur Attendance popup mein naam nahi aata. Purani saved jobs nazar aati rehti hain.
+- **Naam:** do employees ka poora naam ek jaisa nahi ho sakta, aur Short Name bhi kisi aur jaisa nahi (misaal: "Ambika" aur "Ambika D"). Aisa ho to Save par message aata hai — last name ka pehla harf laga dein.
 - Jis employee ki photo upload hai, list (grid aur table) mein uske initials (jaise MA) ki jagah **photo** dikhti hai. Photo par click karein to bari ho kar khulti hai; band karne ke liye kahin bhi click, ✕ ya Esc. Photo Full Profile par upload / change hoti hai.
 
 ---

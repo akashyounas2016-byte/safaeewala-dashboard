@@ -202,6 +202,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `webhookServer.cjs → logWact, /api/webhook/whatsapp-clicks/log`; `src/pages/WhatsAppClicks.tsx`. Test: `tests/unit/ui-sync-1117b.test.ts`.
 - **Status:** Active · Since: 2026-11-17
 
+### R-MKT-06 — WhatsApp Clicks: period cards, filters by date, page and area
+- **Rule:** *"WhatsApp Click screen ko redesign karein … cards … 'Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'All Time', 'Mobile Clicks', aur 'Top Pages' … filter … 'Custom Range' … 'By Page' aur 'By Area' … cards ka data real-time mein update."* (2026-11-20)
+  - Cards in the Daily Job Sheet design: Today, Yesterday, Last 7 days, Last 30 days, All time (a click on one sets the period). **More cards** opens a second row: Mobile clicks, Top pages, Top areas.
+  - Filters: period (Today, Yesterday, 7 / 30 days, All time, Custom range from–to), By page, By area, search. Page, area and search also change the cards; the period changes the second row and the lists.
+  - **Area** is read from the page link, title or message (a click has no address). The website's pages name no area today, so every click shows "No area" until area pages exist.
+  - New clicks arrive live (Supabase channel), with the minute reload as a fallback.
+- **Code:** `src/pages/WhatsAppClicks.tsx`; `src/lib/whatsappClicks.ts → presetDates, clicksBetween, areaOf`. Test: `tests/unit/batch-1120b.test.ts`.
+- **Status:** Active · Since: 2026-11-20
+
 ### R-ATT-09 — Office staff on leave are named on the Excel attendance popup
 - **Why:** Amina Qamar's sick leave (17 Nov) did not show in the Excel Job Sheet's Attendance popup. She is a CSR (office staff), and the sheet and its popup list cleaners only (R-SHEET-02) — the leave itself was saved and synced.
   - The popup now names office staff who are absent or on leave that day under the list ("Also away today (office staff, not on the sheet)").
@@ -961,6 +970,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Outside these dates the employee gets no empty block on the Excel sheet, is not suggested in the Staff column or Add Job, and is not in the attendance popup.
   - **Jobs already saved** outside the dates still show (not hidden): many Joined Dates are the day the employee was added to the CRM (9–10 Nov) while their October jobs (about 240, with money) are real. Asked of the owner (PENDING A29).
 - **Code:** `src/lib/staffRoles.ts → isEmployedOn, employmentStart`; `JobSheetSpreadsheet.tsx → staffOptions, idleCleaners`; `QuickAttendanceModal.tsx`; `AddJobModal.tsx → pickableStaff`. Test: `tests/unit/batch-1120.test.ts`.
+- **Status:** Active · Since: 2026-11-20
+
+---
+
+### R-EMP-17 — Two employees never share a name
+- **Rule:** *"System mein cleaners kay naam ki unique identification ke liye first aur last name dono ko consider karein. Do cleaners ke mukammal naam same nahi honay chahiye taake Ambika aur Ambika D jaise naamoon mein farq wazeh rahay."* (2026-11-20)
+  - Add / Edit Employee refuses a Full Name another employee already has (case and spaces ignored), and a Short Name that is already the shown name (Short Name, else Full Name) of someone else, e.g. a second "Ambika".
+  - 20 Nov: no two of the 51 employees clash ("Ambika" and "Ambika Devi Tharu" = "Ambika D").
+- **Code:** `src/lib/staffRoles.ts → findNameClash`; `EmployeeFormModal.tsx → handleSubmit`. Test: `tests/unit/batch-1120b.test.ts`.
 - **Status:** Active · Since: 2026-11-20
 
 ---

@@ -1,13 +1,45 @@
-import { useEffect, useMemo, useState } from 'react'
-import { MessageCircle, MousePointerClick, Smartphone, FileText, RefreshCw, Search, Megaphone, Pencil, Trash2 } from 'lucide-react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { MessageCircle, MousePointerClick, Smartphone, FileText, RefreshCw, Search, Megaphone, Pencil, Trash2, CalendarDays, CalendarRange, History, MapPin, ChevronDown, ChevronUp, X } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { confirmAsync, notify } from '@/lib/notify'
 import { logAudit } from '@/lib/auditLog'
 import { PageHero } from '@/components/layout/PageHero'
-import { KpiCard, Widget } from '@/components/ui/KpiCard'
+import { Widget } from '@/components/ui/KpiCard'
 import { supabase } from '@/lib/supabase'
 import { todayDubai, toDubaiDate } from '@/lib/dubaiTime'
-import { clicksInRange, countBy, pageOf, sourceOf, type ClickRange, type WhatsAppClick } from '@/lib/whatsappClicks'
+import { areaOf, clicksBetween, countBy, pageOf, presetDates, sourceOf, type ClickPreset, type WhatsAppClick } from '@/lib/whatsappClicks'
+import { DUBAI_AREAS } from '@/lib/excelSheet/sheetConfig'
+
+/** R-MKT-06: a summary card in the Daily Job Sheet design; a date card sets the date filter */
+function ClickCard({ label, value, sub, icon: Icon, tone, active, onClick, children }: {
+  label: string; value: string | number; sub?: string; icon: typeof MousePointerClick
+  tone: { label: string; icon: string }; active?: boolean; onClick?: () => void; children?: React.ReactNode
+}) {
+  return (
+    <button type="button" onClick={onClick} disabled={!onClick}
+      className={`group relative rounded-[16px] bg-white hover:bg-[#FAFBF9] border ${active ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-[#E2E5E0] hover:border-[#C9D2CC]'} shadow-[0_1px_2px_rgba(20,32,27,0.04)] p-4 sm:p-5 transition-all duration-200 ${onClick ? 'hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] cursor-pointer' : 'cursor-default'} flex flex-col justify-between text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-400`}>
+      <div className="flex items-start justify-between gap-2 mb-2 w-full">
+        <span className={`text-[11px] font-bold tracking-wider uppercase leading-[1.3] ${tone.label}`}>{label}</span>
+        <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0 text-white shadow-md ${tone.icon}`}><Icon size={18} strokeWidth={2.2} /></div>
+      </div>
+      <div className="w-full">
+        <p className="text-[23px] sm:text-[26px] font-black tracking-tight leading-tight truncate text-slate-900">{value}</p>
+        {sub && <p className="text-[11px] sm:text-[11.5px] font-medium mt-1 truncate text-slate-500" title={sub}>{sub}</p>}
+        {children}
+      </div>
+    </button>
+  )
+}
+const TONES = {
+  emerald: { label: 'text-emerald-700', icon: 'bg-[#059669] shadow-emerald-500/25' },
+  teal: { label: 'text-teal-700', icon: 'bg-[#0d9488] shadow-teal-500/25' },
+  blue: { label: 'text-blue-700', icon: 'bg-[#2563eb] shadow-blue-500/25' },
+  indigo: { label: 'text-indigo-700', icon: 'bg-[#4f46e5] shadow-indigo-500/25' },
+  slate: { label: 'text-slate-700', icon: 'bg-[#334155] shadow-slate-500/25' },
+  sky: { label: 'text-sky-700', icon: 'bg-[#0284c7] shadow-sky-500/25' },
+  purple: { label: 'text-purple-700', icon: 'bg-[#7c3aed] shadow-purple-500/25' },
+  amber: { label: 'text-amber-800', icon: 'bg-[#ea580c] shadow-amber-500/25' },
+}
 
 /** Count per key as bars (biggest first, top 8) */
 function Bars({ list }: { list: { key: string; count: number }[] }) {
@@ -85,7 +117,13 @@ export function WhatsAppClicks() {
   const [rows, setRows] = useState<WhatsAppClick[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [range, setRange] = useState<ClickRange>('30')
+  // R-MKT-06: date preset (or custom range), page and area filters; the cards follow them
+  const [preset, setPreset] = useState<ClickPreset>('30')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
+  const [pageFilter, setPageFilter] = useState('')
+  const [areaFilter, setAreaFilter] = useState('')
+  const [moreCards, setMoreCards] = useState(false)
   const [q, setQ] = useState('')
   const [editing, setEditing] = useState<WhatsAppClick | null>(null)
   // R-MKT-05: the last deliveries from the WordPress plugin (time and result), so a missing click can be traced
@@ -116,21 +154,34 @@ export function WhatsAppClicks() {
     void load(); void loadLog()
     // R-MKT-05: new clicks show without pressing Refresh
     const t = window.setInterval(() => { void load(); void loadLog() }, 60_000)
-    return () => window.clearInterval(t)
+    // R-MKT-06: a new click shows at once (live channel); the minute reload stays as a fallback
+    const ch = supabase.channel('whatsapp-clicks-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_clicks' }, () => { void load() })
+      .subscribe()
+    return () => { window.clearInterval(t); void supabase.removeChannel(ch) }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const today = todayDubai()
-  const inRange = useMemo(() => clicksInRange(rows, range, today), [rows, range, today])
-  const shown = useMemo(() => {
+  // R-MKT-06: page, area and search filter everything; the date cards count inside them
+  const base = useMemo(() => {
     const t = q.trim().toLowerCase()
-    if (!t) return inRange
-    return inRange.filter(c => [c.page_title, c.page_url, c.button_text, c.utm_campaign, c.utm_source, c.referrer, c.device].some(v => String(v || '').toLowerCase().includes(t)))
-  }, [inRange, q])
-  const todayCount = rows.filter(c => toDubaiDate(new Date(c.clicked_at)) === today).length
+    return rows.filter(c =>
+      (!pageFilter || pageOf(c) === pageFilter) &&
+      (!areaFilter || areaOf(c, DUBAI_AREAS) === areaFilter) &&
+      (!t || [c.page_title, c.page_url, c.button_text, c.utm_campaign, c.utm_source, c.referrer, c.device, c.wa_message].some(v => String(v || '').toLowerCase().includes(t))))
+  }, [rows, pageFilter, areaFilter, q])
+  const { from, to } = presetDates(preset, today, { from: customFrom, to: customTo })
+  const shown = useMemo(() => clicksBetween(base, from, to), [base, from, to])
+  const countFor = (p: ClickPreset) => { const r = presetDates(p, today); return clicksBetween(base, r.from, r.to).length }
   const mobile = shown.filter(c => (c.device || '').toLowerCase() === 'mobile').length
   const byPage = countBy(shown, pageOf)
   const bySource = countBy(shown, sourceOf)
   const byButton = countBy(shown, c => c.button_text || '—')
+  const byArea = countBy(shown, c => areaOf(c, DUBAI_AREAS))
+  const pageChoices = useMemo(() => countBy(rows, pageOf).map(r => r.key), [rows])
+  const areaChoices = useMemo(() => countBy(rows, c => areaOf(c, DUBAI_AREAS)).map(r => r.key), [rows])
+  const periodLabel = preset === 'today' ? 'Today' : preset === 'yesterday' ? 'Yesterday' : preset === 'all' ? 'All time' : preset === 'custom' ? `${from || '…'} → ${to || '…'}` : `Last ${preset} days`
+  const filtered = Boolean(pageFilter || areaFilter || q.trim())
   return (
     <div className="space-y-6">
       <PageHero title="WhatsApp Clicks" subtitle="Clicks on the WhatsApp buttons of the website — which pages and campaigns bring chats" showSearch={false}
@@ -154,30 +205,79 @@ export function WhatsAppClicks() {
 
       {error && <div role="alert" className="px-4 py-3 rounded-2xl border border-amber-300 bg-amber-50 text-amber-900 text-[13px]">{error}</div>}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-3.5">
-        <KpiCard label="Clicks" value={shown.length} sub={range === 'all' ? 'All time' : `Last ${range} days`} icon={MousePointerClick} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" />
-        <KpiCard label="Today" value={todayCount} sub={today} icon={MessageCircle} labelColor="text-teal-700" iconSolid="bg-[#0d9488] shadow-teal-500/25" />
-        <KpiCard label="On mobile" value={shown.length ? `${Math.round((mobile / shown.length) * 100)}%` : '—'} sub={`${mobile} of ${shown.length}`} icon={Smartphone} labelColor="text-sky-700" iconSolid="bg-[#0284c7] shadow-sky-500/25" />
-        <KpiCard label="Top page" value={byPage[0]?.count ?? 0} sub={byPage[0]?.key || '—'} icon={FileText} labelColor="text-purple-700" iconSolid="bg-[#7c3aed] shadow-purple-500/25" />
-      </div>
-
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search page, button, campaign…" className="w-full text-[13px] pl-10 pr-3 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500" />
+      {/* R-MKT-06: summary cards (Daily Job Sheet design). Row 1 = the periods, row 2 opens with "More cards" */}
+      <div className="space-y-3 sm:space-y-3.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-3.5">
+          <ClickCard label="Today" value={countFor('today')} sub={today} icon={MessageCircle} tone={TONES.emerald} active={preset === 'today'} onClick={() => setPreset('today')} />
+          <ClickCard label="Yesterday" value={countFor('yesterday')} sub={presetDates('yesterday', today).from} icon={History} tone={TONES.teal} active={preset === 'yesterday'} onClick={() => setPreset('yesterday')} />
+          <ClickCard label="Last 7 days" value={countFor('7')} sub="Click to filter" icon={CalendarDays} tone={TONES.blue} active={preset === '7'} onClick={() => setPreset('7')} />
+          <ClickCard label="Last 30 days" value={countFor('30')} sub="Click to filter" icon={CalendarRange} tone={TONES.indigo} active={preset === '30'} onClick={() => setPreset('30')} />
+          <ClickCard label="All time" value={countFor('all')} sub="Total clicks" icon={MousePointerClick} tone={TONES.slate} active={preset === 'all'} onClick={() => setPreset('all')} />
         </div>
-        <select value={range} onChange={e => setRange(e.target.value as ClickRange)} aria-label="Date range" className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-700 font-medium cursor-pointer">
-          <option value="7">Last 7 days</option>
-          <option value="30">Last 30 days</option>
-          <option value="90">Last 90 days</option>
-          <option value="all">All time</option>
-        </select>
+        {moreCards && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-3.5">
+            <ClickCard label="Mobile clicks" value={mobile} sub={shown.length ? `${Math.round((mobile / shown.length) * 100)}% of ${shown.length} · ${periodLabel}` : periodLabel} icon={Smartphone} tone={TONES.sky} />
+            <ClickCard label="Top pages" value={byPage[0]?.count ?? 0} sub={periodLabel} icon={FileText} tone={TONES.purple}>
+              <ul className="mt-2 space-y-1">{byPage.slice(0, 3).map(r => <li key={r.key} className="flex justify-between gap-2 text-[11.5px]"><span className="truncate text-slate-600" title={r.key}>{r.key}</span><b className="text-slate-900">{r.count}</b></li>)}</ul>
+            </ClickCard>
+            <ClickCard label="Top areas" value={byArea[0]?.count ?? 0} sub={periodLabel} icon={MapPin} tone={TONES.amber}>
+              <ul className="mt-2 space-y-1">{byArea.slice(0, 3).map(r => <li key={r.key} className="flex justify-between gap-2 text-[11.5px]"><span className="truncate text-slate-600" title={r.key}>{r.key}</span><b className="text-slate-900">{r.count}</b></li>)}</ul>
+            </ClickCard>
+          </div>
+        )}
+        <button type="button" onClick={() => setMoreCards(v => !v)} className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl border border-dashed border-slate-300 text-[12px] font-bold text-slate-600 hover:bg-white cursor-pointer">
+          {moreCards ? <><ChevronUp size={14} /> Fewer cards</> : <><ChevronDown size={14} /> More cards: mobile clicks, top pages, top areas</>}
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+      {/* R-MKT-06: filters (period, custom range, page, area, search); the cards above follow them */}
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 space-y-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search page, button, campaign, message…" className="w-full text-[13px] pl-10 pr-3 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500" />
+          </div>
+          <select value={preset} onChange={e => setPreset(e.target.value as ClickPreset)} aria-label="Date range" className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-700 font-medium cursor-pointer">
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="all">All time</option>
+            <option value="custom">Custom range…</option>
+          </select>
+          {preset === 'custom' && (
+            <div className="flex items-center gap-1.5 text-[12.5px] text-slate-600">
+              <input type="date" value={customFrom} max={customTo || undefined} onChange={e => setCustomFrom(e.target.value)} aria-label="From" className="px-2.5 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl" />
+              <span>to</span>
+              <input type="date" value={customTo} min={customFrom || undefined} onChange={e => setCustomTo(e.target.value)} aria-label="To" className="px-2.5 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl" />
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="flex items-center gap-2 text-[12px] font-semibold text-slate-500">By page
+            <select value={pageFilter} onChange={e => setPageFilter(e.target.value)} className="max-w-[320px] text-[13px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-700 font-medium cursor-pointer">
+              <option value="">All pages</option>
+              {pageChoices.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-[12px] font-semibold text-slate-500">By area
+            <select value={areaFilter} onChange={e => setAreaFilter(e.target.value)} className="max-w-[260px] text-[13px] px-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl text-slate-700 font-medium cursor-pointer">
+              <option value="">All areas</option>
+              {areaChoices.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
+          <span className="text-[12px] text-slate-500"><b className="text-slate-800">{shown.length}</b> clicks · {periodLabel}</span>
+          {filtered && (
+            <button type="button" onClick={() => { setPageFilter(''); setAreaFilter(''); setQ('') }} className="flex items-center gap-1 text-[12px] font-bold text-rose-600 hover:underline cursor-pointer"><X size={12} /> Clear filters</button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 items-start">
         <Widget title="By page" note="Which pages bring WhatsApp chats" icon={FileText}><Bars list={byPage} /></Widget>
         <Widget title="By source / campaign" note="UTM campaign, source or referring site" icon={Megaphone}><Bars list={bySource} /></Widget>
         <Widget title="By button" note="Which button was clicked" icon={MousePointerClick}><Bars list={byButton} /></Widget>
+        <Widget title="By area" note="Area named in the page link or title (R-MKT-06)" icon={MapPin}><Bars list={byArea} /></Widget>
       </div>
 
       <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] overflow-hidden">

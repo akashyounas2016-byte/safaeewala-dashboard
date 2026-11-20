@@ -1,3 +1,4 @@
+import { findNameClash } from '@/lib/staffRoles'
 import React, { useState } from 'react'
 import { isWrongDocDate } from '@/lib/utils'
 import { isSaneDate } from '@/lib/dateInputs'
@@ -262,6 +263,14 @@ function EmployeeFormModalContent({
     if (patch.phone && !isUaeMobile(patch.phone)) {
       const ok = await confirmAsync({ title: 'Phone number', message: `"${patch.phone}" does not look like a UAE mobile (050 123 4567). Save it anyway?`, confirmLabel: 'Save anyway' })
       if (!ok) return
+    }
+    // R-EMP-17: no two employees with the same full name or the same name on the sheet (Ambika / Ambika D)
+    const clash = findNameClash(employees, { full_name: patch.full_name, short_name: patch.short_name }, initialEmployee?.id)
+    if (clash) {
+      notify.error(clash.field === 'full name'
+        ? `"${clash.employee.full_name}" already exists. Use the full first and last name so the two are told apart.`
+        : `The name "${patch.short_name || patch.full_name}" is already shown for ${clash.employee.full_name}${clash.employee.short_name ? ` (${clash.employee.short_name})` : ''}. Choose a different Short Name, e.g. with the first letter of the last name.`)
+      return
     }
     // VAL-01: the same Emirates ID / passport / phone means the same person — never two records
     const dup = findDuplicateEmployee(employees, { emirates_id: patch.emirates_id || '', passport_number: patch.passport_number, phone: patch.phone || '' }, initialEmployee?.id)

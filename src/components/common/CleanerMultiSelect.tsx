@@ -24,6 +24,8 @@ export interface CleanerMultiSelectProps {
   busyCleaners?: Map<string, { shiftCount?: number; info?: string; until?: string }> | Set<string> | string[]
   /** Open the list from the right edge — for a picker in the last column of a popup (UX-76) */
   alignRight?: boolean
+  /** UX-183: cleaners only by default; a "Technical" switch under the search adds technical staff and drivers. CSR never */
+  technicalToggle?: boolean
 }
 
 export function CleanerMultiSelect({
@@ -39,7 +41,9 @@ export function CleanerMultiSelect({
   className = '',
   busyCleaners,
   alignRight = false,
+  technicalToggle = false,
 }: CleanerMultiSelectProps) {
+  const [showTechnical, setShowTechnical] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const [search, setSearch] = useState('')
@@ -63,17 +67,30 @@ export function CleanerMultiSelect({
     return map
   }, [allEmps, allAgencies])
 
+  // UX-183: role of each name (employees list); a name not found counts as a cleaner
+  const roleOf = useMemo(() => {
+    const m = new Map<string, string>()
+    allEmps.forEach(e => { if (e.full_name) m.set(e.full_name.trim().toLowerCase(), String(e.role || 'cleaner')) })
+    return (n: string) => m.get(n.trim().toLowerCase()) || 'cleaner'
+  }, [allEmps])
+
   // Normalize cleaners into unique string list
   const cleanerList = useMemo(() => {
     const set = new Set<string>()
+    const picked = new Set(selected.map(s => s.trim().toLowerCase()))
     cleaners.forEach(c => {
       const nameStr = typeof c === 'string' ? c : c?.full_name
       if (nameStr && nameStr.trim()) {
+        if (technicalToggle && !picked.has(nameStr.trim().toLowerCase())) {
+          const role = roleOf(nameStr)
+          if (role === 'csr') return // UX-183: never a CSR
+          if (!showTechnical && role !== 'cleaner') return // technical / driver / ducting only with the switch on
+        }
         set.add(nameStr.trim())
       }
     })
     return Array.from(set).sort((a, b) => a.localeCompare(b))
-  }, [cleaners])
+  }, [cleaners, technicalToggle, showTechnical, roleOf, selected])
 
   // Filtered by search
   const filtered = useMemo(() => {
@@ -278,6 +295,12 @@ export function CleanerMultiSelect({
               )}
             </div>
 
+            {technicalToggle && (
+              <label className="flex items-center gap-2 px-1 text-[11.5px] font-semibold text-slate-600 cursor-pointer select-none">
+                <input type="checkbox" checked={showTechnical} onChange={e => setShowTechnical(e.target.checked)} className="accent-emerald-600 cursor-pointer" />
+                Technical <span className="font-normal text-slate-400">— also show technical staff and drivers</span>
+              </label>
+            )}
             <div className="flex items-center justify-between text-[11px] px-1 font-bold">
               <span className="text-slate-500">
                 {selected.length} of {cleanerList.length} selected
