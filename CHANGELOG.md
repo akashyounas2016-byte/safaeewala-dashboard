@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- data: Joined Date of 21 employees set to their first job on the sheet (most 9–10 Nov → 1 Oct), so their October jobs are inside the contract dates (R-EMP-16, A29); backup a29-employees-before-2026-11-21.json
+- data: second client profile "KVC 1" (phone 39) deleted on owner request (A35); backup a35-client-kvc1-2026-11-21.json
 - docs(pending): A32 (old dates getting monthly visits back) closed — owner: already resolved (2026-11-21)
 - change(leads): Leads (Website) under Marketing with tabs Fluent Forms | WhatsApp Clicks (R-LEAD-11); cards follow the filters, Last 30 Days card (R-LEAD-09); no Estimated Value, Lead Status in the edit popup header, one-line Edit Submission (R-LEAD-10)
 - feat(excel): Sum / Count / Avg of chosen cells in the footer (UX-193); Pending Due / Advance tags in Mode (UX-192); team remarks on the Leader only (UX-194)

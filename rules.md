@@ -1004,7 +1004,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** *"Employees ka data Excel Job Sheet par sirf unke Contract Start Date aur Contract End Date ke darmiyan hi show hona chahiye … Under-trainee employees ke liye … Training Start Date se shuru ho kar Contract End Date tak."* (2026-11-20)
   - Start = **Joined Date** (Contract Start), or **Training Start** when earlier. End = **Contract End Date**. A missing date = no limit on that side.
   - Outside these dates the employee gets no empty block on the Excel sheet, is not suggested in the Staff column or Add Job, and is not in the attendance popup.
-  - **Jobs already saved** outside the dates still show (not hidden): many Joined Dates are the day the employee was added to the CRM (9–10 Nov) while their October jobs (about 240, with money) are real. Asked of the owner (PENDING A29).
+  - **Jobs already saved** outside the dates still show (not hidden): many Joined Dates are the day the employee was added to the CRM (9–10 Nov) while their October jobs (about 240, with money) are real. 2026-11-21 (A29, owner): the Joined Dates were corrected to each employee's first job instead, so those jobs are inside the dates now.
 - **Code:** `src/lib/staffRoles.ts → isEmployedOn, employmentStart`; `JobSheetSpreadsheet.tsx → staffOptions, idleCleaners`; `QuickAttendanceModal.tsx`; `AddJobModal.tsx → pickableStaff`. Test: `tests/unit/batch-1120.test.ts`.
 - **Status:** Active · Since: 2026-11-20
 
