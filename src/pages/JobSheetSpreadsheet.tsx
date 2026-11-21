@@ -36,7 +36,7 @@ import { splitTotals, isSplitJob } from '@/lib/chargeSplit'
 import { type ColumnDef, DEFAULT_COLUMN_DEFS, mergeNewColumns, buildColumnsWithLetters, COLUMNS, type ExcelDatePresetKey, EXCEL_DATE_PRESETS, chargesPerHour } from '@/lib/excelSheet/columns'
 import { type BlockPalette, BLOCK_PALETTES, SOLID_PALETTE_KEYS, LIGHT_PALETTE_KEYS, PALETTE_KEYS, hslToHex, makeHexPalette } from '@/lib/excelSheet/palettes'
 import { QuickAttendanceModal } from '@/components/dailyJobSheet/QuickAttendanceModal'
-import { newRowId, sameJobRow, isBlankNewRow, isClearedRow, teamJobsDeletedElsewhere, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes, syncHourlyCharges, orderBlocksByName, orderBlocksCustom, BLOCK_ORDER_KEY } from '@/lib/excelSheet/rows'
+import { newRowId, sameJobRow, isBlankNewRow, isClearedRow, teamJobsDeletedElsewhere, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes, syncHourlyCharges, orderBlocksByName, orderBlocksCustom, sortBlockJobsByTime, BLOCK_ORDER_KEY } from '@/lib/excelSheet/rows'
 import { BlockOrderModal } from '@/components/dailyJobSheet/BlockOrderModal'
 import { applyRowPatch, applyCellPatch, type UndoStep } from '@/lib/excelSheet/undo'
 import { DRAFT_PREFIX, COLUMN_PRESETS, READ_ONLY_COLS, DEFAULT_ROW_BG, projectKeyOf, memberChargesLabel, memberReceivedLabel, memberModeLabel, refMoney, DROPDOWN_COLS, TIME_SUGGESTIONS, DUBAI_AREAS, RENDER_PAGE, safeGet, safeSet, rowColorConflict } from '@/lib/excelSheet/sheetConfig'
@@ -740,7 +740,8 @@ export function JobSheetSpreadsheet() {
     if (periodChanged || !dirty || reloadAfterSaveRef.current) {
       reloadAfterSaveRef.current = false
       latest.current.periodKey = periodKey
-      const rows = withIdleCleaners(ensureThreeRowsPerStaff(clone(periodJobs), effectiveTargetDate), idleCleaners, effectiveTargetDate)
+      // UX-190: inside each block the jobs run by Start Time (set on load and after every save, so the grid and the screen keep one order)
+      const rows = sortBlockJobsByTime(withIdleCleaners(ensureThreeRowsPerStaff(clone(periodJobs), effectiveTargetDate), idleCleaners, effectiveTargetDate))
       loadedRawRef.current = new Map(clone(periodJobs).map(j => [j.id, j]))
       setGridRows(rows)
       setLoadedSnapshot(new Map(rows.map(r => [r.id, r])))
@@ -2140,28 +2141,25 @@ export function JobSheetSpreadsheet() {
     return true
   }
 
-  // ── Change Staff Block Color (Block-isolated: applies row_color directly across all rows of that block) ──
+  // ── Staff block colour from the Staff cell's right-click menu ──
+  // UX-189: only that block's Staff cell is coloured — not the rows or the other columns (it used to set row_color
+  // on every row of the block). Kept per date and cleaner, so it stays when the jobs are re-ordered (UX-190).
+  const staffBlockColorKey = (job: DailyJob) => `staffblock:${job.date || effectiveTargetDate}:${String(job.staff_name || '').trim().toLowerCase()}`
   const setBlockColor = (targetJob: DailyJob, rowIdx: number, paletteKey: string) => {
+    const key = staffBlockColorKey(targetJob)
+    // R-SHEET-01: a colour already used by another row or another Staff cell that day cannot be chosen
     const bInfo = staffBlockInfoMap.get(targetJob.id)
     const blockStartIndex = Math.max(0, rowIdx - (bInfo?.blockRowIdx ?? 0))
-    const blockRowCount = bInfo?.rowCount ?? 3
-
-    const updated = [...gridRows]
-    // R-SHEET-01: a colour already used by another row (not the same team) cannot be chosen
-    const blockIds = updated.slice(blockStartIndex, blockStartIndex + blockRowCount).map(r => r.id)
+    const blockIds = gridRows.slice(blockStartIndex, blockStartIndex + (bInfo?.rowCount ?? 3)).map(r => r.id)
     if (refuseUsedColor(blockIds, paletteKey)) return
-    for (let i = 0; i < blockRowCount; i++) {
-      const idx = blockStartIndex + i
-      if (updated[idx]) {
-        updated[idx] = { ...updated[idx], row_color: paletteKey }
-      }
-    }
-    pushState(updated)
+    const prefix = key.slice(0, key.lastIndexOf(':') + 1)
+    const other = paletteKey !== 'white' && Object.entries(cellColors).find(([k, v]) => k !== key && k.startsWith(prefix) && v === paletteKey)
+    if (other) { showToast(`⛔ This colour is already on ${other[0].slice(prefix.length)}'s Staff cell today — choose another`); return }
+    changeCellColors(prev => ({ ...prev, [key]: paletteKey }))
     setColorPickerCleaner(null)
     setContextMenu(null)
-
     const staffLabel = targetJob.staff_name?.trim() || 'Staff Block'
-    showToast(`✓ Block color for "${staffLabel}" set to ${BLOCK_PALETTES[paletteKey]?.name || paletteKey}`)
+    showToast(`✓ Staff cell colour for "${staffLabel}" set to ${BLOCK_PALETTES[paletteKey]?.name || paletteKey}`)
   }
 
   // ── Reset Block Color (Block-isolated: clears row_color on all rows of that block) ──
@@ -2179,6 +2177,8 @@ export function JobSheetSpreadsheet() {
         updated[idx] = next
       }
     }
+    // UX-189: the Staff cell colour of this block goes too
+    if (cellColors[staffBlockColorKey(targetJob)]) changeCellColors(prev => { const next = { ...prev }; delete next[staffBlockColorKey(targetJob)]; return next })
     if (targetJob.staff_name?.trim()) {
       const key = targetJob.staff_name.trim().toLowerCase()
       if (cleanerColors[key]) {
@@ -4546,8 +4546,11 @@ export function JobSheetSpreadsheet() {
                         // UX-70 & User Rule: Team row background color applies ONLY from Start Time onwards!
                         // Staff column stays default white (#ffffff) unless user explicitly customized cleaner color or staff cell color
                         const staffCellCustomColor = cellColors[`${row.id}_staff_name`] || cellColors[`${targetIdx}_staff_name`]
-                        const staffBg = hasCustomBlockColor ? palette.solidBg : (staffCellCustomColor || DEFAULT_ROW_BG)
-                        const isStaffDark = hasCustomBlockColor ? !palette.isLight : false
+                        // UX-189: the colour picked on the Staff cell (this block only)
+                        const staffOwnKey = cellColors[staffBlockColorKey(row)]
+                        const staffOwnPal = staffOwnKey && staffOwnKey !== 'white' ? (BLOCK_PALETTES[staffOwnKey] || (staffOwnKey.startsWith('#') ? makeHexPalette(staffOwnKey) : null)) : null
+                        const staffBg = staffOwnKey === 'white' ? '#ffffff' : staffOwnPal ? staffOwnPal.solidBg : hasCustomBlockColor ? palette.solidBg : (staffCellCustomColor || DEFAULT_ROW_BG)
+                        const isStaffDark = staffOwnKey === 'white' ? false : staffOwnPal ? !staffOwnPal.isLight : hasCustomBlockColor ? !palette.isLight : false
 
                         // Staff text alignment (default left, controlled via toolbar alignment buttons)
                         const staffAlign = columnAlign['staff_name'] || 'left'
@@ -5057,7 +5060,7 @@ export function JobSheetSpreadsheet() {
                     </div>
 
                     <div className="flex items-center justify-between text-[11px] mb-1 px-0.5">
-                      <span className="text-slate-500 font-medium">Whole Staff Block:</span>
+                      <span className="text-slate-500 font-medium">Staff cell only:</span>
                       <span className="text-teal-900 font-bold truncate max-w-[150px] bg-teal-50 px-2 py-0.5 rounded border border-teal-200 text-[10.5px]">
                         {contextMenu.job.staff_name || 'Staff Block'}
                       </span>

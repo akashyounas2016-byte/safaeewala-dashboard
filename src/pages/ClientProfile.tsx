@@ -850,6 +850,12 @@ export function ClientProfile() {
               ) : (
                 <span className="text-teal-300/50 text-[11.5px] italic">No phone added</span>
               )}
+              {/* R-CLI-14: the client's other numbers */}
+              {(client.other_phones || []).filter(Boolean).map(n => (
+                <a key={n} href={`tel:${n}`} title="Other number" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 hover:border-teal-400 hover:text-white transition-colors">
+                  <Phone size={12} className="text-teal-400/70" /> {n}
+                </a>
+              ))}
               {client.email && (
                 <a href={`mailto:${client.email}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/70 border border-slate-700/70 hover:border-teal-400 hover:text-white transition-colors">
                   <Mail size={12} className="text-teal-400" /> {client.email}

@@ -407,6 +407,27 @@ export function orderBlocksCustom(rows: DailyJob[], order: Record<string, number
     .flatMap(([, list]) => list)
 }
 
+/**
+ * UX-190: inside a cleaner's block the jobs run by date, then Start Time — the morning job first. Rows without a
+ * start time (empty rows of the block) stay after the jobs, in their own order. The blocks keep their order.
+ * Display only — the saved jobs do not change.
+ */
+export function sortBlockJobsByTime(rows: DailyJob[]): DailyJob[] {
+  const blocks = new Map<string, DailyJob[]>()
+  rows.forEach(r => {
+    const k = String(r.staff_name || '').trim().toLowerCase() || `__blank_${r.id}`
+    blocks.set(k, [...(blocks.get(k) || []), r])
+  })
+  return Array.from(blocks.values()).flatMap(list => {
+    const timed = list.map((r, i) => ({ r, i, m: parseTimeToMinutes(r.start_time) }))
+    return timed.sort((a, b) => {
+      if ((a.m === null) !== (b.m === null)) return a.m === null ? 1 : -1
+      if (a.m === null || b.m === null) return a.i - b.i
+      return String(a.r.date || '').localeCompare(String(b.r.date || '')) || a.m - b.m || a.i - b.i
+    }).map(x => x.r)
+  })
+}
+
 export function orderBlocksByName(rows: DailyJob[]): DailyJob[] {
   const blocks = new Map<string, DailyJob[]>()
   rows.forEach(r => {

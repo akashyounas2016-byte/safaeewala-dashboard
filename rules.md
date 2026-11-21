@@ -341,6 +341,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - A colour given to one row, or to one cleaner block, cannot be given to another row on the same date. Trying it shows an error naming the row that already has the colour, and nothing changes.
   - **Exception:** the rows of one team job (same location and date, R-PAY-05 / UX-66) share their colour.
   - White / default are not colours and are always allowed. Other dates do not count. Cell colours (single cells) are not rows and are not limited.
+  - 2026-11-21 (UX-189): the Staff cell's colour is now that cell only; it is still checked against the rows and the other Staff cells of the day.
 - **Code:** `src/lib/excelSheet/sheetConfig.ts → rowColorConflict`; `JobSheetSpreadsheet.tsx → refuseUsedColor` (in `setBlockColor`, `handleSetSingleRowColor`). Test: `tests/unit/excel-attendance-busy-1110.test.ts`.
 - **Status:** Active · Since: 2026-11-10
 
@@ -707,6 +708,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - The delete popup lists these with counts, and the client name must be typed (UX-165). The copy in Settings → Backup → Before-delete copies now holds the client, the removed visits and the contracts; Restore brings all three back.
 - **Code:** `src/lib/clientChanges.ts → clientDeletionImpact, deletionMessage`; `DataContext.tsx → deleteClient, restoreRecords`; `Clients.tsx`, `ClientProfile.tsx`. Test: `tests/unit/client-rename-delete-1116.test.ts`.
 - **Status:** Active · Since: 2026-11-16
+
+### R-CLI-14 — A client can have more phone numbers
+- **Rule:** *"Is pop-up mein 'Mobile Number' wale field ko extend karein ya is mein 'Add Another Number' ka option shamil karein, taake aik hi client kay liye multiple numbers save kiye ja sakein."* (2026-11-21)
+  - Add New Client / Edit Client (the same popup on the Clients screen, the Excel Job Sheet, Add Job and the profile): **+ Add another number** under Mobile / WhatsApp; each extra number has ✕ to remove it. Blanks, repeats and the Mobile / WhatsApp number itself are left out.
+  - The numbers show as call links in the Client Profile header.
+  - Saved in `clients.other_phones` (jsonb) — migration `2026-11-21_client_other_phones.sql` (PENDING A31). Until it has run the client still saves, without the extra numbers.
+- **Code:** `ClientModalForm.tsx → otherPhones`; `ClientProfile.tsx`; `types → Client.other_phones`. Test: `tests/unit/excel-client-1121.test.ts`.
+- **Status:** Active once the migration has run · Since: 2026-11-21
 
 ### R-CLI-13 — A deleted client is deleted from the database
 - **Why:** clients first built from sheet rows have a `dj-…` id; once edited they are saved under that id, but Delete skipped the database for `dj-` ids. They came back on every reload and kept making monthly visits (Office ABC deleted three times, 2026-11-17).

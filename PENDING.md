@@ -25,6 +25,8 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | A27 | **Two cleaners look the same on the sheet:** "Ambika" (added 17 Nov) and "Ambika Devi Tharu" (short name "Ambika") both show as **Ambika**. If they are one person, delete the extra employee; if two, give one a different short name (Employees → Edit) | The team may book the wrong Ambika | Owner (confirming with the client) |
 | A29 | **Jobs saved before an employee's Joined Date** (R-EMP-16): many Joined Dates are the day the cleaner was added to the CRM (9–10 Nov), but about 240 October jobs of Nim, Shanti, Sita, Ayesha, Rupa … exist. Hide them on old sheets, or correct the Joined Dates? Until then they still show | Hiding them would hide October money | Owner |
 | A30 | **Which attendance warning went back?** (R-OPS-09) Git shows no revert; all warnings are in the code. Name the screen and the warning (screenshot) | Cannot be fixed without knowing which one | Owner / Shani |
+| A31 | **Run `supabase/migrations/2026-11-21_client_other_phones.sql`** in Supabase → SQL editor | Until then "+ Add another number" is not saved (the client still saves) (R-CLI-14) | Supabase |
+| A32 | **Old dates get their monthly visits back** (R-SCHED-23): opening the Excel sheet on a past date adds that day's monthly / Bi-Weekly visits. The days before 15 Nov were cleared on purpose (test period), so opening one (e.g. 11 Nov) adds them again — happened on 21 Nov (9 rows, removed). Should visits be added only from today on, or from a start date you choose? | Old days fill up again when opened | Owner |
 
 ---
 

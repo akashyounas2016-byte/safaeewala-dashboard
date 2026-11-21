@@ -1,3 +1,4 @@
+import { StandaloneShell } from '@/components/layout/StandaloneShell'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { pullCloudState, subscribeCloudState, REMOTE_CHANGE_EVENT } from '@/lib/cloudState'
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation, Link } from 'react-router-dom'
@@ -212,8 +213,11 @@ function AppRoutes() {
           <Suspense fallback={<PageLoader />}>
             <Routes>
               {/* Standalone Full-Width Excel Spreadsheet (No Sidebar) */}
-              <Route element={<ModuleGate />}>
+              {/* UX-188: confirm dialog, toasts and required-field check on the full-screen sheet too */}
+              <Route element={<StandaloneShell />}>
+               <Route element={<ModuleGate />}>
                 <Route path="daily-job-sheet/spreadsheet" element={<JobSheetSpreadsheet />} />
+               </Route>
               </Route>
 
               <Route element={<Layout />}>

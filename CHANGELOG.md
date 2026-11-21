@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(excel): Add New Client on the Excel sheet saves — the confirm dialog / toasts were missing on the full-screen page, so a "Save anyway?" question never showed (UX-188)
+- feat(clients): "+ Add another number" — more phone numbers per client (R-CLI-14, migration 2026-11-21_client_other_phones.sql)
+- change(excel): Staff cell right-click colour only colours that Staff cell (UX-189); jobs inside a block run by Start Time (UX-190)
+- data: 9 monthly visits added to 11 Nov by a test window on 21 Nov removed (backup test-session-1111-visits-2026-11-21.json); TEST clients / rows of 21 Nov removed
 - data: removed the last row of the clients deleted on 17 Nov — job "def1" dated 2066-01-17 (AED 0), on owner request; backup Safaeewala-backups/a23-def1-job-2026-11-21.json; A23 closed
 - ops(marketing): website plugin 1.1.0 installed (20 Nov) — the missed clicks reached the CRM (32 clicks), A25 closed (R-MKT-05)
 - feat(jobs): staff pickers list cleaners only, Technical switch for technical staff and drivers, never a CSR (UX-183)

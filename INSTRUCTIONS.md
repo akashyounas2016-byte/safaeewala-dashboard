@@ -67,6 +67,9 @@
 - Har job apne client se jurri rehti hai. Client ka naam ya building badlein to bhi uski purani aur nayi visits usi client ki rehti hain.
 - Monthly Clients list mein har client ek dafa aata hai. Uski visits (jaise *Villa# 06 - Zayan*) se alag nakli client nahi banta — edit hamesha asal client par hota hai.
 
+### Ek client ke kai numbers
+- Add New Client / Edit Client mein Mobile ke neeche **+ Add another number** — jitne chahein number daalein, ✕ se hatayein. Client Profile ke upar sab numbers dikhte hain. (Pehle Supabase mein ek SQL chalni hai — PENDING A31.)
+
 ### Client edit karna (ek hi form)
 - **Ek hi popup har mode ke liye:** General, Monthly ya Bi-Weekly — form wahi hai. Mode badlein to neeche sirf us mode ke cards aate hain (Monthly: Contract + hafte ka schedule; Bi-Weekly: Contract + Bi-Weekly din).
 - Upar contact wali line mein **Naam, Mobile, WhatsApp, Email aur Mode**. Address wale hisse mein pehle **Address, Area, City**, phir doosre addresses, phir **Preferred Cleaner**. Save hue doosre addresses ek list mein dikhte hain — badalne ke liye ✏️ dabayein.
@@ -153,6 +156,9 @@
 - **Default (no colour)** dabayein to row ka rang hat jata hai. Pehle se rangi hui rows apne qareebi naye rang mein dikhti hain.
 
 ### Excel Job Sheet
+- **Naya client (Excel):** address mein naya naam likh kar Enter — wahi "Add New Client" popup khulta hai jo Clients screen par hai. Number UAE format ka na ho to "Save anyway?" poochha jata hai — ab ye Excel par bhi dikhta hai (pehle nahi dikhta tha, is liye save nahi hota tha).
+- **Staff ka rang:** Staff cell par right-click se rang sirf us cleaner ke Staff cell par lagta hai, poori row par nahi. **Reset Block** se hat jata hai.
+- **Jobs ki tarteeb:** har cleaner ki jobs subah se shaam ki tarteeb mein. Time badlein to save (3 second) ke baad row apni jagah chali jati hai.
 - **Undo / Redo:** har tabdeeli (likhna, row ya cell ka rang, row hatana) Ctrl+Z se wapas hoti hai — auto-save ke baad bhi. Ctrl+Y se dobara. **Ctrl+X** se cell kaat kar Ctrl+V se doosri jagah lagayein.
 - **Column chhota / bara:** column ke kinare ko khench kar jitna chahein chhota ya bara karein (Staff bhi).
 - **Staff cell:** naye khali block ke Staff cell par double-click karein — Address jaisa dropdown khulta hai, sirf wo cleaners aur technical staff jo abhi sheet par nahi hain.

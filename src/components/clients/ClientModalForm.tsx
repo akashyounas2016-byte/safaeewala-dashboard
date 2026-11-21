@@ -67,6 +67,8 @@ export function ClientModalForm({
   const startMode = (): ClientServiceMode => (isMonthly ? 'monthly' : seed?.service_mode === 'biweekly' ? 'biweekly' : seed?.service_mode === 'monthly' ? 'monthly' : 'general')
   const [mode, setMode] = useState<ClientServiceMode>(startMode)
   const [plan, setPlan] = useState<BiWeeklyPlan>(() => seed?.biweekly_plan ?? emptyBiWeeklyPlan())
+  // R-CLI-14: more numbers of the same client ("Add another number")
+  const [otherPhones, setOtherPhones] = useState<string[]>(() => (seed?.other_phones || []).filter(Boolean))
   // R-CLI-05: the client's contract (Monthly Clients → Contracts) is edited here too
   // R-SCHED-22: read again each time the popup opens, and a client without a contract starts on the day it was
   // added — the Start date showed "today" every day and moved with it (2026-11-16)
@@ -178,6 +180,14 @@ export function ClientModalForm({
       adjustment_amount: adjustment,
       pending_amount:    pending,
       addresses:         cleanAddresses(JSON.parse(String(f.get('addresses_json') || '[]'))), // R-CLI-09
+    }
+    // R-CLI-14: the other numbers, without blanks, repeats or the Mobile / WhatsApp number itself
+    {
+      const digits = (s: string) => s.replace(/\D/g, '')
+      const taken = new Set([digits(patch.phone || ''), digits(patch.whatsapp || '')].filter(Boolean))
+      const extra: string[] = []
+      otherPhones.map(n => n.trim()).filter(Boolean).forEach(n => { const d = digits(n); if (d && !taken.has(d)) { taken.add(d); extra.push(n) } })
+      if (extra.length || (seed?.other_phones || []).length) patch.other_phones = extra
     }
 
     // R-CLI-02: the mode, and the Bi-Weekly days and duration
@@ -357,6 +367,26 @@ export function ClientModalForm({
                 />
               </div>
               <div className="md:col-span-2">{modeSelect()}</div>
+            </div>
+            {/* R-CLI-14: more numbers of the same client */}
+            <div className="mt-3 space-y-2">
+              {otherPhones.map((n, i) => (
+                <div key={i} className="flex items-center gap-2 max-w-md">
+                  <input
+                    value={n}
+                    onChange={e => setOtherPhones(list => list.map((x, j) => (j === i ? e.target.value : x)))}
+                    placeholder="+971 50 000 0000"
+                    aria-label={`Other number ${i + 1}`}
+                    className="flex-1 h-9.5 px-3 text-[13px] rounded-xl border border-slate-200 focus:border-teal-500 focus:outline-none"
+                  />
+                  <button type="button" onClick={() => setOtherPhones(list => list.filter((_, j) => j !== i))} title="Remove this number" aria-label="Remove this number"
+                    className="w-8 h-8 rounded-lg border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-300 flex items-center justify-center cursor-pointer">×</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setOtherPhones(list => [...list, ''])}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-teal-300 text-teal-700 text-[12px] font-bold hover:bg-teal-50 cursor-pointer">
+                + Add another number
+              </button>
             </div>
           </div>
 

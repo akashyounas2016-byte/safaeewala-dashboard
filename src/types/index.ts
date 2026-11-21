@@ -54,6 +54,8 @@ export interface Client {
   apartment?: string
   /** R-CLI-09: more addresses of the same client (other properties / locations), chosen when booking */
   addresses?: { id: string; label: string; address: string; area?: string }[] | null
+  /** R-CLI-14: more phone numbers of the same client (office, family …) besides Mobile and WhatsApp */
+  other_phones?: string[] | null
   area: string
   city: string
   access_notes?: string
