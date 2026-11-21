@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- data: removed the last row of the clients deleted on 17 Nov — job "def1" dated 2066-01-17 (AED 0), on owner request; backup Safaeewala-backups/a23-def1-job-2026-11-21.json; A23 closed
 - ops(marketing): website plugin 1.1.0 installed (20 Nov) — the missed clicks reached the CRM (32 clicks), A25 closed (R-MKT-05)
 - feat(jobs): staff pickers list cleaners only, Technical switch for technical staff and drivers, never a CSR (UX-183)
 - fix(excel): Undo / Redo survive the auto-save and include colours; Ctrl+X cut (UX-184); columns resize to 12 px (UX-185)
