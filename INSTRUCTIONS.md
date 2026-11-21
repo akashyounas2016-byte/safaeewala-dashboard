@@ -71,7 +71,7 @@
 - Client ke doosre address (KVC 2, KVC 3 …) par lagi jobs ab usi client ki hain — alag client ban kar list mein nahi aate.
 
 ### Ek client ke kai numbers
-- Add New Client / Edit Client mein Mobile ke neeche **+ Add another number** — jitne chahein number daalein, ✕ se hatayein. Client Profile ke upar sab numbers dikhte hain. (Pehle Supabase mein ek SQL chalni hai — PENDING A31.)
+- Add New Client / Edit Client mein Mobile ke neeche **+ Add another number** — jitne chahein number daalein, ✕ se hatayein. Client Profile ke upar sab numbers dikhte hain.
 
 ### Client edit karna (ek hi form)
 - **Ek hi popup har mode ke liye:** General, Monthly ya Bi-Weekly — form wahi hai. Mode badlein to neeche sirf us mode ke cards aate hain (Monthly: Contract + hafte ka schedule; Bi-Weekly: Contract + Bi-Weekly din).
@@ -161,7 +161,7 @@
 ### Excel Job Sheet
 - **Sum:** cells khench kar chunein, ya column ka harf (A, B, C …) dabayein — neeche patti mein **Sum · Count · Avg** aata hai (Charges se pehle).
 - **Mode / Material list:** har item ke saath ✏️ (naam badlein) aur 🗑 (hatayein — pehle poochhta hai). Jobs ka purana Mode / Material nahi badalta.
-- **Split payment:** Mode dropdown → **Split payment** → modes tick karein (Cash, Online …) aur har ek ki raqam likhein → **Save split**. Mode "Cash + Online" ho jata hai, Received kul raqam. (Pehle SQL chalni hai — PENDING A33.)
+- **Split payment:** Mode dropdown → **Split payment** → modes tick karein (Cash, Online …) aur har ek ki raqam likhein → **Save split**. Mode "Cash + Online" ho jata hai, Received kul raqam.
 - **Mode ke tags:** jis job ke paise baqi hain uske Mode ke saath **Pending Due**, jo zyada paise de chuka ho uske saath **Advance**.
 - **Team ke remarks** sirf Leader ki row mein dikhte hain.
 - **Advance:** client ka advance ho to nayi job ki raqam khud usmein se kat jati hai — poori, ya jitna advance ho (remark: "Paid from advance AED 150", Advance column mein **ADJ −150**). Baqi raqam pending rehti hai.
@@ -243,7 +243,7 @@
 - Har important change likha jata hai: kisne, kab, kis screen se, aur pehle → baad kya badla. Filter aur CSV export maujood hai.
 
 ### Activity Log → Restore
-- Kisi entry par click karein → **Restore** (sirf admin / manager): delete hui job / client / employee / expense wapas, badli hui cheez pehle jaisi, nayi job **Undo (remove)**. Pehle poochhta hai. (Poora Restore SQL chalne ke baad — PENDING A34.)
+- Kisi entry par click karein → **Restore** (sirf admin / manager): delete hui job / client / employee / expense wapas, badli hui cheez pehle jaisi, nayi job **Undo (remove)**. Pehle poochhta hai.
 
 ### Data health
 - Data mein masle dikhata hai (misaal: job par aisa staff jo Employees mein nahi). Item click karein to seedha wahi job khulti hai.

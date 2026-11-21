@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- ops(db): owner ran the 21 Nov migrations — clients.other_phones, daily_jobs.mode_split, audit_log.snapshot checked present (A31, A33, A34 closed); all 297 columns / tables of supabase/migrations checked, only bookings.row_color absent (not sent by the app)
 - data: Joined Date of 21 employees set to their first job on the sheet (most 9–10 Nov → 1 Oct), so their October jobs are inside the contract dates (R-EMP-16, A29); backup a29-employees-before-2026-11-21.json
 - data: second client profile "KVC 1" (phone 39) deleted on owner request (A35); backup a35-client-kvc1-2026-11-21.json
 - docs(pending): A32 (old dates getting monthly visits back) closed — owner: already resolved (2026-11-21)

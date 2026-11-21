@@ -24,9 +24,6 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | A24 | **Finish the browser audit** after Shani's testing (on hold, owner 2026-11-17): Bi-Weekly + General client add/delete, Employee and Agency add/delete, Excel sync inside contract dates, then delete all TEST data. Done so far: Cancel saves nothing (client popup + Contracts), contract window on Excel, fixes R-SCHED-23 / R-SCHED-24 / R-CLI-13. Nobody else should use the CRM while it runs | Two people testing on the same live data mix up the results | Owner / Claude |
 | A27 | **Two cleaners look the same on the sheet:** "Ambika" (added 17 Nov) and "Ambika Devi Tharu" (short name "Ambika") both show as **Ambika**. If they are one person, delete the extra employee; if two, give one a different short name (Employees → Edit) | The team may book the wrong Ambika | Owner (confirming with the client) |
 | A30 | **Which attendance warning went back?** (R-OPS-09) Git shows no revert; all warnings are in the code. Name the screen and the warning (screenshot) | Cannot be fixed without knowing which one | Owner / Shani |
-| A31 | **Run `supabase/migrations/2026-11-21_client_other_phones.sql`** in Supabase → SQL editor | Until then "+ Add another number" is not saved (the client still saves) (R-CLI-14) | Supabase |
-| A33 | **Run `supabase/migrations/2026-11-21_daily_jobs_mode_split.sql`** in Supabase → SQL editor | Until then a split payment keeps "Cash + Online" and the total, not each mode's amount (R-PAY-07) | Supabase |
-| A34 | **Run `supabase/migrations/2026-11-21_audit_log_snapshot.sql`** in Supabase → SQL editor | Until then Activity Log Restore only offers Undo of added jobs (R-OPS-10) | Supabase |
 
 ---
 

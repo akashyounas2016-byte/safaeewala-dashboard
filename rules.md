@@ -713,7 +713,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** *"Is pop-up mein 'Mobile Number' wale field ko extend karein ya is mein 'Add Another Number' ka option shamil karein, taake aik hi client kay liye multiple numbers save kiye ja sakein."* (2026-11-21)
   - Add New Client / Edit Client (the same popup on the Clients screen, the Excel Job Sheet, Add Job and the profile): **+ Add another number** under Mobile / WhatsApp; each extra number has ✕ to remove it. Blanks, repeats and the Mobile / WhatsApp number itself are left out.
   - The numbers show as call links in the Client Profile header.
-  - Saved in `clients.other_phones` (jsonb) — migration `2026-11-21_client_other_phones.sql` (PENDING A31). Until it has run the client still saves, without the extra numbers.
+  - Saved in `clients.other_phones` (jsonb) — migration `2026-11-21_client_other_phones.sql` (run 2026-11-21). Until it has run the client still saves, without the extra numbers.
 - **Code:** `ClientModalForm.tsx → otherPhones`; `ClientProfile.tsx`; `types → Client.other_phones`. Test: `tests/unit/excel-client-1121.test.ts`.
 - **Status:** Active once the migration has run · Since: 2026-11-21
 
@@ -1184,7 +1184,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** *"Excel Job Sheet mein Mode column ko configure karein taake multiple payment modes aik sath select kiye ja sakein … kuch amount cash aur baqi online."* (2026-11-21)
   - Mode dropdown → **Split payment**: tick the modes, type each amount, **Save split**. The Mode shows "Cash + Online", the cell shows the parts (Cash 100 + Online 50), Received becomes their total. Picking one mode again ends the split.
   - Cash / Online totals (Daily Job Sheet cards, close-day summary, Cash Book, employee cash collected) count each part in its own mode; the Cash / Online filters find split jobs.
-  - Saved in `daily_jobs.mode_split` — migration `2026-11-21_daily_jobs_mode_split.sql` (PENDING A33). Until it has run the Mode text and Received save, the amounts per mode do not.
+  - Saved in `daily_jobs.mode_split` — migration `2026-11-21_daily_jobs_mode_split.sql` (run 2026-11-21). Until it has run the Mode text and Received save, the amounts per mode do not.
 - **Code:** `src/lib/paymentSplit.ts`; `JobSheetSpreadsheet.tsx → commitModeSplit`; `DailyJobSheet.tsx`, `CashBook.tsx`, `EmployeeProfile.tsx`. Test: `tests/unit/batch-1121b.test.ts`.
 - **Status:** Active once the migration has run · Since: 2026-11-21
 
@@ -1688,7 +1688,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
     - a **deleted** job / client / employee / expense comes back as it was;
     - a **changed** job / client / employee / expense gets the values from before that change (the old → new list is shown in the confirm);
     - an **added** job / expense gets **Undo (remove)**.
-  - Each entry now keeps a snapshot (the deleted record, or the replaced values) in `audit_log.snapshot` — migration `2026-11-21_audit_log_snapshot.sql` (PENDING A34). Entries written before it has run have no snapshot and show no Restore (except Undo of an added job).
+  - Each entry now keeps a snapshot (the deleted record, or the replaced values) in `audit_log.snapshot` — migration `2026-11-21_audit_log_snapshot.sql` (run 2026-11-21). Entries written before it has run have no snapshot and show no Restore (except Undo of an added job).
   - This is the owner's own restore (R-OPS-09 stays: nothing is reverted unless a person chooses it).
 - **Code:** `src/lib/auditLog.ts → restoreKindOf, snapshot`; `DataContext.tsx → logAudit, beforeOf`; `ActivityLogPanel.tsx → restore`. Test: `tests/unit/batch-1121b.test.ts`.
 - **Status:** Active (fully once the migration has run) · Since: 2026-11-21
