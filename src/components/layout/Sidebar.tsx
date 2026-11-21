@@ -8,7 +8,7 @@ import {
   FileText, Package, TrendingDown, BarChart3, Settings, X, ClipboardList,
   CreditCard, TrendingUp, Globe, Clock, LogOut, ChevronLeft, Building2,
   CalendarDays, Star, SlidersHorizontal, ArrowUp, ArrowDown, RotateCcw, Sparkles, Truck, Navigation, Eye, EyeOff, Bell,
-  Megaphone, MessageCircle, Bot, MessageSquareWarning, MousePointerClick,
+  Megaphone, MessageCircle, Bot, MessageSquareWarning,
 } from 'lucide-react'
 import { useLayout } from './Layout'
 import { useWhatsAppUnread } from '@/store/useWhatsAppUnread'
@@ -37,10 +37,10 @@ export const ALL_NAV_ITEMS: NavItemConfig[] = [
   { to: '/alerts',           label: 'Alerts',            icon: Bell,            category: 'Workspace' }, // R-ALERT-01
   { to: '/bookings',         label: 'Bookings',          icon: CalendarCheck,                              category: 'Workspace' },
   { to: '/daily-job-sheet',  label: 'Daily Job Sheet',   icon: ClipboardList,   adminOnly: true,    category: 'Workspace' },
-  { to: '/fluent-forms',     label: 'Leads (Website)',   icon: Globe,                               category: 'Workspace' }, // owner 2026-11-09 (was Fluent Forms)
   { to: '/whatsapp-crm',     label: 'Conversations',     icon: MessageCircle,                       category: 'Workspace' }, // R-WA-01, R-INBOX-02: one screen for WhatsApp + Facebook + Instagram
   { to: '/marketing',        label: 'Marketing',         icon: Megaphone,                           category: 'Workspace' }, // owner request 2026-11-06
-  { to: '/whatsapp-clicks',  label: 'WhatsApp Clicks',   icon: MousePointerClick,                   category: 'Workspace' }, // R-MKT-03: website WhatsApp button clicks
+  // R-LEAD-11: Leads (Website) under Marketing; its tabs are Fluent Forms and WhatsApp Clicks (no separate WhatsApp Clicks item)
+  { to: '/fluent-forms',     label: 'Leads (Website)',   icon: Globe,                               category: 'Workspace' }, // owner 2026-11-09 (was Fluent Forms)
   { to: '/clients',          label: 'Clients',           icon: Users,                               category: 'Workspace' },
   { to: '/employees',        label: 'Employees',         icon: UserCheck,                           category: 'Workspace' },
   { to: '/drivers',          label: 'Drivers',           icon: Truck,                               category: 'Workspace' },

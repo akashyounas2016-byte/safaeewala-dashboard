@@ -763,6 +763,26 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ---
 
+### R-LEAD-09 — Leads cards follow the filters; Last 30 Days card
+- **Rule:** *"'Villa Cleaning' card ki jagah 'Last 30 Days' ka data shamil karein. Tamam summary cards ko neeche diay gaye filters kay sath mukammal tor par synchronize karein."* (2026-11-21)
+  - The Top Category card (it showed "Villa Cleaning") is now **Last 30 Days** (with the last 7 days under it).
+  - Today / Yesterday / Last 30 Days count inside the search, page, category and status filters; Conversion Rate and Action Required count the leads of all the filters, dates too.
+- **Code:** `FluentFormsLeads.tsx → matchesNonDate, baseLeads`.
+- **Status:** Active · Since: 2026-11-21
+
+### R-LEAD-10 — Form submission popups: no Estimated Value, Lead Status on top
+- **Rule:** *"'Edit Submission' ka text single line mein … Fluent Form kay level par tamam pop-ups say 'Estimated Value' ka field mukammal tor par remove … Edit Form Submission pop-up mein 'Lead Status' … top header mein close button kay sath."* (2026-11-21)
+  - Form Submission Details and Edit Form Submission show no Estimated Value (a saved value stays in the record, unused).
+  - Lead Status is in the Edit popup's header next to ✕ (still saved with Save Changes); the Edit Submission button stays on one line.
+- **Code:** `FluentFormsLeads.tsx` (Modal 4).
+- **Status:** Active · Since: 2026-11-21
+
+### R-LEAD-11 — Leads (Website) has two tabs: Fluent Forms and WhatsApp Clicks
+- **Rule:** *"Leads navigation menu ko re-structure karein; … Leads section mein Fluent Forms aur WhatsApp Clicks ki alag tabs ban jayein."* (2026-11-21)
+  - The sidebar has one **Leads (Website)** item, under Marketing; the separate WhatsApp Clicks item is gone. Both screens show the tabs **Fluent Forms | WhatsApp Clicks** on top. `/whatsapp-clicks` still opens (permission: Marketing, as before).
+- **Code:** `src/components/leads/LeadsTabs.tsx`; `Sidebar.tsx`. Test: `tests/unit/whatsapp-clicks-1116.test.ts`.
+- **Status:** Active · Since: 2026-11-21
+
 ## DATA — Data hygiene
 
 ### R-DATA-01 — Ignore Excel summary / bogus rows

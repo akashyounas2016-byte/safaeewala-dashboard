@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- docs(pending): A32 (old dates getting monthly visits back) closed — owner: already resolved (2026-11-21)
+- change(leads): Leads (Website) under Marketing with tabs Fluent Forms | WhatsApp Clicks (R-LEAD-11); cards follow the filters, Last 30 Days card (R-LEAD-09); no Estimated Value, Lead Status in the edit popup header, one-line Edit Submission (R-LEAD-10)
 - feat(excel): Sum / Count / Avg of chosen cells in the footer (UX-193); Pending Due / Advance tags in Mode (UX-192); team remarks on the Leader only (UX-194)
 - fix(excel): Mode / Material dropdown Delete works (asks first), Edit added (UX-191); address lists open at once (UX-196)
 - feat(payments): split payment — several modes on one job (R-PAY-07, migration 2026-11-21_daily_jobs_mode_split.sql)

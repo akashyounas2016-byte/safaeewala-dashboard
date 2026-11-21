@@ -1,3 +1,4 @@
+import { LeadsTabs } from '@/components/leads/LeadsTabs'
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { copyText } from '@/lib/clipboard'
@@ -560,6 +561,24 @@ export function FluentFormsLeads() {
   }
 
   // Filtered Leads
+  // R-LEAD-09: the filters other than the dates (search, page, category, status) — the summary cards count inside them
+  const matchesNonDate = (l: typeof leads[number]) => {
+    const q = search.toLowerCase().trim()
+    const matchSearch = !q ||
+      l.client_name.toLowerCase().includes(q) ||
+      l.phone.toLowerCase().includes(q) ||
+      l.email.toLowerCase().includes(q) ||
+      l.page_source.toLowerCase().includes(q) ||
+      l.category.toLowerCase().includes(q) ||
+      (l.address && l.address.toLowerCase().includes(q)) ||
+      (l.message && l.message.toLowerCase().includes(q))
+    return matchSearch &&
+      (pageFilter === 'ALL' || l.page_source === pageFilter) &&
+      (catFilter === 'ALL' || l.category === catFilter) &&
+      (statusFilter === 'ALL' || l.status === statusFilter)
+  }
+  const baseLeads = useMemo(() => leads.filter(matchesNonDate), [leads, search, pageFilter, catFilter, statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const filteredLeads = useMemo(() => {
     return leads.filter(l => {
       // 1. Search filter
@@ -704,44 +723,43 @@ export function FluentFormsLeads() {
   const days3Min = getDaysAgoLocalDate(2)
 
   const todayLeads = useMemo(() => {
-    return leads.filter(l => getLeadLocalDate(l.created_at) === todayStr)
-  }, [leads, todayStr])
+    return baseLeads.filter(l => getLeadLocalDate(l.created_at) === todayStr) // R-LEAD-09: follows the filters
+  }, [baseLeads, todayStr])
   const todayLeadsCount = todayLeads.length
   const todayNewCount = todayLeads.filter(l => l.status === 'new').length
 
   const yesterdayLeads = useMemo(() => {
-    return leads.filter(l => getLeadLocalDate(l.created_at) === yesterdayStr)
-  }, [leads, yesterdayStr])
+    return baseLeads.filter(l => getLeadLocalDate(l.created_at) === yesterdayStr)
+  }, [baseLeads, yesterdayStr])
   const yesterdayLeadsCount = yesterdayLeads.length
 
   const count7Days = useMemo(() => {
-    return leads.filter(l => {
+    return baseLeads.filter(l => {
       const ld = getLeadLocalDate(l.created_at)
       return ld >= days7Min && ld <= todayStr
     }).length
-  }, [leads, days7Min, todayStr])
+  }, [baseLeads, days7Min, todayStr])
 
   const count30Days = useMemo(() => {
-    return leads.filter(l => {
+    return baseLeads.filter(l => {
       const ld = getLeadLocalDate(l.created_at)
       return ld >= days30Min && ld <= todayStr
     }).length
-  }, [leads, days30Min, todayStr])
+  }, [baseLeads, days30Min, todayStr])
 
   const count3Days = useMemo(() => {
-    return leads.filter(l => {
+    return baseLeads.filter(l => {
       const ld = getLeadLocalDate(l.created_at)
       return ld >= days3Min && ld <= todayStr
     }).length
-  }, [leads, days3Min, todayStr])
+  }, [baseLeads, days3Min, todayStr])
 
-  const totalLeads = leads.length
-  const totalConverted = leads.filter(l => l.status === 'converted').length
+  // R-LEAD-09: Conversion and Action Required count the leads of all the filters (dates too)
+  const totalLeads = filteredLeads.length
+  const totalConverted = filteredLeads.filter(l => l.status === 'converted').length
   const overallConvRate = totalLeads > 0 ? Math.round((totalConverted / totalLeads) * 100) : 0
-  const totalPipeline = leads.reduce((sum, l) => sum + (Number(l.estimated_value) || 0), 0)
-  const newLeadsCount = leads.filter(l => l.status === 'new').length
+  const newLeadsCount = filteredLeads.filter(l => l.status === 'new').length
   const bestPage = pageAnalytics[0]
-  const topCategory = categoryAnalytics[0]
 
   // Distinct lists for filter dropdowns
   const distinctPages = useMemo(() => Array.from(new Set(leads.map(l => l.page_source).filter(Boolean))), [leads])
@@ -760,6 +778,8 @@ export function FluentFormsLeads() {
           <button onClick={() => setToastNotice(null)} className="ml-2 text-slate-400 hover:text-white">✕</button>
         </div>
       )}
+
+      <LeadsTabs /> {/* R-LEAD-11 */}
 
       {/* ── Single Merged Hero Header ── */}
       <section className="gradient-card rounded-[24px] px-6 sm:px-7 py-5 sm:py-6 text-white shadow-[0_8px_32px_rgba(15,23,42,0.25)] ring-1 ring-black/10 relative overflow-hidden">
@@ -872,14 +892,14 @@ export function FluentFormsLeads() {
             highlight: 'Yesterday',
           },
           {
-            label: 'Top Category',
-            value: topCategory ? topCategory.category : '—',
-            sub: topCategory ? `${topCategory.count} inquiries · Top requested` : 'No live data yet',
+            // R-LEAD-09: Last 30 Days instead of the top category ("Villa Cleaning")
+            label: 'Last 30 Days',
+            value: count30Days,
+            sub: `${count7Days} in the last 7 days`,
             icon: BarChart3,
             iconBg: 'bg-purple-50',
             iconColor: 'text-purple-600',
-            highlight: topCategory ? 'High Demand' : 'None',
-            isSmallText: true,
+            highlight: '30 Days',
           },
           {
             label: 'Conversion Rate',
@@ -917,7 +937,7 @@ export function FluentFormsLeads() {
                 {card.highlight}
               </span>
             </div>
-            <p className={`font-black text-[#111827] tracking-tight truncate ${card.isSmallText ? 'text-lg' : 'text-2xl'}`} title={String(card.value)}>
+            <p className={`font-black text-[#111827] tracking-tight truncate text-2xl`} title={String(card.value)}>
               {card.value}
             </p>
             <p className="text-[12px] font-bold text-[#111827] mt-1 truncate">{card.label}</p>
@@ -1867,10 +1887,28 @@ export function FluentFormsLeads() {
         }}
         title={isEditingLead ? "Edit Form Submission" : "Form Submission Details"}
         size="lg"
+        headerActions={isEditingLead && selectedLead ? (
+          // R-LEAD-10: Lead Status at the top, next to close — it belongs to the form below (form="lead-edit-form")
+          <label className="flex items-center gap-2 mr-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Lead Status</span>
+            <select
+              form="lead-edit-form"
+              name="status"
+              defaultValue={selectedLead.status}
+              className="text-[12.5px] px-2.5 py-1.5 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+            >
+              <option value="new">New Lead</option>
+              <option value="contacted">Contacted</option>
+              <option value="quoted">Quoted</option>
+              <option value="converted">Converted (Auto-syncs to Bookings)</option>
+              <option value="lost">Lost</option>
+            </select>
+          </label>
+        ) : undefined}
       >
         {selectedLead && (
           isEditingLead ? (
-            <form onSubmit={handleSaveLeadEdit} className="space-y-4 text-[13px]">
+            <form id="lead-edit-form" onSubmit={handleSaveLeadEdit} className="space-y-4 text-[13px]">
               <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl text-indigo-950 text-[12px] flex items-center justify-between">
                 <span>Modifying submission details for <strong>{selectedLead.client_name}</strong> (Form #{selectedLead.form_id || 40}{selectedLead.entry_id ? ` · Entry #${selectedLead.entry_id}` : ''}).</span>
                 <span className="text-[11px] font-semibold text-indigo-600 bg-white/80 px-2 py-0.5 rounded border border-indigo-200">
@@ -1940,7 +1978,8 @@ export function FluentFormsLeads() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* R-LEAD-10: no Estimated Value; Lead Status is in the header */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input
                   label="Preferred Date"
                   name="preferred_date"
@@ -1952,29 +1991,6 @@ export function FluentFormsLeads() {
                   name="preferred_time"
                   defaultValue={selectedLead.preferred_time || '09:00 AM'}
                 />
-                <Input
-                  label="Estimated Value (AED)"
-                  name="estimated_value"
-                  type="number"
-                  defaultValue={selectedLead.estimated_value || 0}
-                />
-              </div>
-
-              <div>
-                <label className="block text-[12px] font-bold text-slate-700 mb-1">
-                  Lead Status
-                </label>
-                <select
-                  name="status"
-                  defaultValue={selectedLead.status}
-                  className="w-full text-[13px] px-3 py-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-indigo-500 font-semibold"
-                >
-                  <option value="new">New Lead</option>
-                  <option value="contacted">Contacted</option>
-                  <option value="quoted">Quoted</option>
-                  <option value="converted">Converted (Auto-syncs to Bookings)</option>
-                  <option value="lost">Lost</option>
-                </select>
               </div>
 
               <Textarea
@@ -2063,7 +2079,7 @@ export function FluentFormsLeads() {
                 </p>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 text-[12px]">
+              <div className="grid grid-cols-2 gap-3 text-[12px]">
                 <div className="p-3 bg-slate-50 rounded-xl border border-[#edf2f7]">
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">Address</span>
                   <strong className="text-slate-800">{selectedLead.address || selectedLead.area || 'Dubai'}</strong>
@@ -2071,10 +2087,6 @@ export function FluentFormsLeads() {
                 <div className="p-3 bg-slate-50 rounded-xl border border-[#edf2f7]">
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">Preferred Date</span>
                   <strong className="text-slate-800">{selectedLead.preferred_date || 'Flexible'}</strong>
-                </div>
-                <div className="p-3 bg-slate-50 rounded-xl border border-[#edf2f7]">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Estimated Value</span>
-                  <strong className="text-emerald-700 text-[14px]">AED {selectedLead.estimated_value || 0}</strong>
                 </div>
               </div>
 
@@ -2085,7 +2097,7 @@ export function FluentFormsLeads() {
                 <Button
                   type="button"
                   variant="outline"
-                  className="flex-1 border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold"
+                  className="flex-1 whitespace-nowrap border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold" // R-LEAD-10: one line
                   onClick={() => setIsEditingLead(true)}
                 >
                   <Pencil size={14} className="mr-1.5 text-indigo-600" />

@@ -210,6 +210,11 @@
 
 ---
 
+### Leads (Website) — do tabs
+- Sidebar mein **Leads (Website)** ab Marketing ke neeche hai. Upar do tabs: **Fluent Forms** aur **WhatsApp Clicks** (alag WhatsApp Clicks item hat gaya).
+- Upar ke cards (Today, Yesterday, **Last 30 Days**, Conversion, Action Required) neeche ke filters ke saath badalte hain.
+- Submission popup mein **Estimated Value** nahi hai. Edit popup mein **Lead Status** upar ✕ ke saath hai.
+
 ### WhatsApp Clicks (website)
 - Upar **Website connection** batata hai website se aakhri click kab aaya, ya wo kyun ruka (misaal: secret ghalat). Screen har minute khud refresh hoti hai.
 - Website par jab koi WhatsApp button dabata hai, wo click CRM ki **WhatsApp Clicks** screen par aata hai: kis page se, kaun sa button, kis campaign / Google / Facebook se, mobile ya computer.

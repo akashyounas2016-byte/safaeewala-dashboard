@@ -17,7 +17,7 @@ eq([sourceOf(list[0]), sourceOf(list[1]), sourceOf(list[2])], ['google · sofa',
 eq(countBy(list, pageOf), [{ key: 'Sofa Cleaning Dubai', count: 2 }, { key: 'https://example.com/deep/', count: 1 }], 'clicks per page')
 
 const app = readFileSync('src/App.tsx', 'utf8')
-eq(/path="whatsapp-clicks" element=\{<WhatsAppClicks \/>\}/.test(app) && /'\/whatsapp-clicks'/.test(readFileSync('src/components/layout/Sidebar.tsx', 'utf8')), true, 'screen in the menu')
+eq(/path="whatsapp-clicks" element=\{<WhatsAppClicks \/>\}/.test(app) && /'\/whatsapp-clicks'/.test(readFileSync('src/components/leads/LeadsTabs.tsx', 'utf8')), true, 'screen reachable — a tab of Leads (Website) since R-LEAD-11')
 eq(/paths: \['\/marketing', '\/whatsapp-clicks'\]/.test(readFileSync('src/lib/permissions.ts', 'utf8')), true, 'same access as Marketing')
 const sql = readFileSync('supabase/migrations/2026-11-16_whatsapp_clicks.sql', 'utf8')
 eq(/create table if not exists public\.whatsapp_clicks/.test(sql) && /enable row level security/.test(sql) && !/for insert/.test(sql), true, 'table with read rules; only the server writes')
