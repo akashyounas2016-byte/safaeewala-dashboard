@@ -1,3 +1,4 @@
+import { useClientMoney } from '@/lib/useClientMoney'
 import { extraAddressChoices, isExtraAddressOf } from '@/lib/clientAddress'
 import { RowColorMenu, rowColoursInUse } from '@/components/common/RowColorMenu'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
@@ -401,13 +402,8 @@ export function AddJobForm({
       b.area.toLowerCase().includes(q)
     )
   }, [buildingOptions, buildingSearch])
-  // Worked out only while the list is open, for the first rows shown
-  const listStatus = useMemo(() => {
-    const m = new Map<string, ClientMoneyStatus>()
-    if (!buildingDropdownOpen) return m
-    filteredBuildings.slice(0, 60).forEach(b => m.set(b.key, clientMoneyStatus(b.client, dailyJobs)))
-    return m
-  }, [buildingDropdownOpen, filteredBuildings, dailyJobs])
+  // UX-196: worked out only while the list is open, a few clients per frame (the list opens at once), each client once
+  const listMoney = useClientMoney(filteredBuildings.map(b => b.client), dailyJobs, buildingDropdownOpen)
 
 
   // ── All Available Areas (Presets + Clients) ──
@@ -517,7 +513,9 @@ export function AddJobForm({
       )
       if (note) {
         finalRemarks = note
-        notify.success(`Paid from ${pickedClient.full_name}'s advance — nothing to collect on site`)
+        // R-FIN-11: all of it, or the part the advance covers
+        const part = /AED\s*([0-9.]+)\s*$/.exec(note)?.[1]
+        notify.success(part ? `AED ${part} paid from ${pickedClient.full_name}'s advance — AED ${Math.round((cleanNum(charges) - cleanNum(received) - Number(part)) * 100) / 100} still to collect` : `Paid from ${pickedClient.full_name}'s advance — nothing to collect on site`)
       }
     }
 
@@ -804,7 +802,7 @@ export function AddJobForm({
                                 </div>
                               </div>
                               <span className="flex items-center gap-1.5 shrink-0">
-                                <MoneyChip status={listStatus.get(item.key)} />
+                                <MoneyChip status={listMoney.get(item.client.id)} />
                                 {isSelected && <Check size={14} className="text-emerald-600 stroke-[3] shrink-0" />}
                               </span>
                             </div>

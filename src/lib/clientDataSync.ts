@@ -206,6 +206,18 @@ export function isJobPaidFromAdvance(job: DailyJob): boolean {
   return /(?:deduct|from\s*adv|above|paid\s*by\s*adv)/i.test(job.remarks || '')
 }
 
+/**
+ * R-FIN-11: how much of the job was paid from the client's advance. "Paid from advance AED 150" (part of the
+ * charges) gives 150; the plain note / old remarks give the whole charges; otherwise 0.
+ */
+export function advanceUsedOf(job: DailyJob): number {
+  if (!isJobPaidFromAdvance(job)) return 0
+  const charges = Number(job.charges) || 0
+  const m = /paid\s*from\s*advance\s*(?:aed)?\s*([0-9]+(?:\.[0-9]+)?)/i.exec(job.remarks || '')
+  if (m) return Math.min(charges, parseFloat(m[1]) || 0)
+  return charges
+}
+
 /** Loads client adjustments, ignoring the old demo seed records */
 export function loadClientAdjustments(): JobAdjustmentRecord[] {
   const list = safeLocalStorageGet<JobAdjustmentRecord[]>(CLIENT_ADJUSTMENTS_KEY, [])
@@ -268,7 +280,7 @@ export function buildPendingCalcContext(
 export function calcJobAdjustment(job: DailyJob, linked?: LinkedJobAdjustment): number {
   const charges = cleanNum(job.charges)
   const base = (linked?.amount || 0) || extractAdjustmentFromRemarks(job.remarks)
-  const fromAdvance = !linked?.hasAdvanceDeduction && isJobPaidFromAdvance(job) ? charges : 0
+  const fromAdvance = !linked?.hasAdvanceDeduction ? advanceUsedOf(job) : 0 // R-FIN-11: part or all of the charges
   return base + fromAdvance
 }
 
@@ -769,6 +781,18 @@ export function extractAllClientsFromDailyJobs(
       associatedJobs = [...associatedJobs, ...(jobsByClientKey.get(visitKey) || [])]
       matchedJobKeys.add(visitKey)
     }
+    // R-CLI-15: jobs at the client's other addresses (R-CLI-09) are this client's — they were listed as new
+    // clients of their own ("KVC 2", "KVC 3") next to the real profile
+    ;(Array.isArray(c.addresses) ? c.addresses : []).forEach(a => {
+      const raw = String(a?.address || '').trim()
+      if (!raw) return
+      for (const k of [normalizeKey(cleanClientNameFromAddress(raw)), normalizeKey(raw)]) {
+        if (k && k !== cNorm && k !== bNorm && jobsByClientKey.has(k) && !matchedJobKeys.has(k)) {
+          associatedJobs = [...associatedJobs, ...(jobsByClientKey.get(k) || [])]
+          matchedJobKeys.add(k)
+        }
+      }
+    })
 
     // Also check partial (whole-word) matches — only for names specific enough to be safe:
     // a one-word name like "Ahmed" would swallow every address that mentions it (AUD-16)

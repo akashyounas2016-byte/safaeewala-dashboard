@@ -3,7 +3,11 @@ import { Link } from 'react-router-dom'
 import { ChevronDown, ChevronRight, Download, ExternalLink, Pencil, Plus, RefreshCw, Search, Trash2, Repeat, History } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { copyText } from '@/lib/clipboard'
-import { changesOf, type AuditEntry } from '@/lib/auditLog'
+import { changesOf, restoreKindOf, type AuditEntry } from '@/lib/auditLog'
+import { useData } from '@/store/DataContext'
+import { useCurrentUser } from '@/store/UserContext'
+import { confirmAsync, notify } from '@/lib/notify'
+import type { Client, DailyExpense, DailyJob, Employee } from '@/types'
 import { toDubaiDate, todayDubai, addDays } from '@/lib/dubaiTime'
 
 /**
@@ -90,6 +94,48 @@ export function ActivityLogPanel() {
   const [user, setUser] = useState('all')
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState<string | null>(null)
+  // R-OPS-10: Restore — admin / manager only
+  const me = useCurrentUser()
+  const canRestore = me?.role === 'admin' || me?.role === 'manager'
+  const data = useData()
+  const restore = async (e: AuditEntry) => {
+    const kind = restoreKindOf(e)
+    if (!kind) return
+    const what = `${ENTITY_LABEL[e.entity] || e.entity} "${e.entity_name || e.entity_id}"`
+    const by = `${e.user_name || 'System'}, ${new Date(e.created_at).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+    const message = kind === 'readd' ? `Bring back the deleted ${what}?\n(deleted by ${by})`
+      : kind === 'revert' ? `Put back the values of ${what} from before this change?\n(changed by ${by})\n${changesOf(e).map(c => `${c.field.replace(/_/g, ' ')}: ${c.to || '—'} → ${c.from || '—'}`).join('\n')}`
+      : `Remove the ${what} that was added?\n(added by ${by})`
+    if (!(await confirmAsync({ title: 'Restore', message, confirmLabel: kind === 'remove' ? 'Remove it' : 'Restore', tone: kind === 'remove' ? 'danger' : undefined }))) return
+    const snap = (e.snapshot || {}) as Record<string, unknown>
+    const id = e.entity_id
+    const exists = e.entity === 'daily_job' ? data.dailyJobs.some(j => j.id === id)
+      : e.entity === 'client' ? data.clients.some(c => c.id === id)
+      : e.entity === 'employee' ? data.employees.some(x => x.id === id)
+      : data.dailyExpenses.some(x => x.id === id)
+    if (kind === 'readd') {
+      if (exists) { notify.info('It is already there — nothing to bring back.'); return }
+      const n = data.restoreRecords(e.entity === 'daily_job' ? { dailyJobs: [snap as unknown as DailyJob] }
+        : e.entity === 'client' ? { clients: [snap as unknown as Client] }
+        : e.entity === 'employee' ? { employees: [snap as unknown as Employee] }
+        : { dailyExpenses: [snap as unknown as DailyExpense] })
+      if (n) notify.success(`${what} is back`)
+    } else if (kind === 'revert') {
+      if (!exists) { notify.error('This record no longer exists — restore its delete first.'); return }
+      const before = snap.before as Record<string, unknown>
+      if (e.entity === 'daily_job') data.updateDailyJob(id, before as Partial<DailyJob>)
+      else if (e.entity === 'client') data.updateClient(id, before as Partial<Client>)
+      else if (e.entity === 'employee') data.updateEmployee(id, before as Partial<Employee>)
+      else data.updateDailyExpense(id, before as Partial<DailyExpense>)
+      notify.success(`${what}: old values put back`)
+    } else {
+      if (!exists) { notify.info('It is already gone.'); return }
+      if (e.entity === 'daily_job') data.deleteDailyJob(id)
+      else data.deleteDailyExpense(id)
+      notify.success(`${what} removed`)
+    }
+    window.setTimeout(() => { void load() }, 2500)
+  }
 
   const load = async (append = false) => {
     setLoading(true)
@@ -246,7 +292,7 @@ export function ActivityLogPanel() {
                   const link = recordLink(e)
                   const screen = screenOf(e)
                   const isOpen = open === e.id
-                  const canOpen = changes.length > 0 || Boolean(detailText(e))
+                  const canOpen = changes.length > 0 || Boolean(detailText(e)) || Boolean(restoreKindOf(e))
                   return (
                     <li key={e.id}>
                       <button type="button" onClick={() => setOpen(isOpen ? null : e.id)} disabled={!canOpen}
@@ -287,7 +333,16 @@ export function ActivityLogPanel() {
                             </table>
                           ) : <p className="text-[12px] text-slate-600">{detailText(e)}</p>}
                           <p className="text-[11px] text-slate-400">{new Date(e.created_at).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', dateStyle: 'full', timeStyle: 'medium' })} (Dubai)</p>
-                          {link && <Link to={link} className="inline-flex items-center gap-1 text-[12px] font-bold text-emerald-700 hover:underline">Open this record <ExternalLink size={11} /></Link>}
+                          <div className="flex items-center gap-3 flex-wrap">
+                            {link && <Link to={link} className="inline-flex items-center gap-1 text-[12px] font-bold text-emerald-700 hover:underline">Open this record <ExternalLink size={11} /></Link>}
+                            {/* R-OPS-10: Restore — bring back a delete, put back old values, or remove what was added */}
+                            {canRestore && restoreKindOf(e) && (
+                              <button type="button" onClick={() => void restore(e)}
+                                className="inline-flex items-center gap-1.5 px-3 h-7 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 text-[12px] font-bold hover:bg-amber-100 cursor-pointer">
+                                <History size={12} /> {restoreKindOf(e) === 'remove' ? 'Undo (remove)' : 'Restore'}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
                     </li>

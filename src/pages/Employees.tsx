@@ -278,7 +278,7 @@ export function Employees() {
   // EMP-02: deleting asks first (the card and table buttons deleted at once)
   const deleteEmployee = async (id: string) => {
     const emp = employees.find(e => e.id === id)
-    const ok = await confirmAsync({ title: 'Delete employee', message: `Delete "${emp?.full_name || 'this employee'}"? Their past jobs stay in the job sheet.`, confirmLabel: 'Delete', tone: 'danger' })
+    const ok = await confirmAsync({ title: 'Delete employee', message: `Delete "${emp?.full_name || 'this employee'}"? Their past jobs stay in the job sheet.`, confirmLabel: 'Delete', tone: 'danger', typeToConfirm: 'DELETE' }) // UX-195
     if (ok) removeEmployee(id)
   }
 

@@ -503,7 +503,7 @@ export function PaymentProcessing({ embedded = false, tab }: { embedded?: boolea
       : record.type === 'Recovery' ? 'The amount becomes pending again.'
       : record.type === 'Booking' ? 'This deletes the booking itself.'
       : 'The monthly-contract payment is removed.'
-    const ok = await confirmAsync({ title: 'Delete payment', message: `Delete AED ${record.amount.toLocaleString()} (${record.type}) for ${record.client}? ${what}`, confirmLabel: 'Delete', tone: 'danger' })
+    const ok = await confirmAsync({ title: 'Delete payment', message: `Delete AED ${record.amount.toLocaleString()} (${record.type}) for ${record.client}? ${what}`, confirmLabel: 'Delete', tone: 'danger', typeToConfirm: 'DELETE' }) // UX-195
     if (!ok) return
     if (record.type === 'Monthly Contract') {
       setMonthlyPayments(prev => prev.filter(p => `mp-${p.id}` !== record.id))
@@ -1262,7 +1262,7 @@ export function PaymentProcessing({ embedded = false, tab }: { embedded?: boolea
                             <button
                               type="button"
                               onClick={async () => {
-                                if (await confirmAsync({ title: 'Delete payment', message: `Delete payment record of AED ${payment.amount} for ${payment.clientName}?`, confirmLabel: 'Delete', tone: 'danger' })) {
+                                if (await confirmAsync({ title: 'Delete payment', message: `Delete payment record of AED ${payment.amount} for ${payment.clientName}?`, confirmLabel: 'Delete', tone: 'danger', typeToConfirm: 'DELETE' })) {
                                   setMonthlyPayments(prev => prev.filter(p => p.id !== payment.id))
                                 }
                               }}

@@ -2,7 +2,7 @@ import type { Client, DailyAdvanceItem, DailyJob } from '@/types'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 import {
   buildPendingCalcContext, calcClientPendingBalance, calcJobAdjustment, getClientDailyJobsHistory,
-  isJobPaidFromAdvance, loadClientAdjustments, loadPendingReceipts, normalizeKey, type JobAdjustmentRecord,
+  isJobPaidFromAdvance, advanceUsedOf, loadClientAdjustments, loadPendingReceipts, normalizeKey, type JobAdjustmentRecord,
 } from '@/lib/clientDataSync'
 import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
 
@@ -59,7 +59,7 @@ export function calcClientAdvanceBalance(
     const charges = cleanNum(job.charges)
     const linkedDeduct = own.filter(a => a.reference_job_id === job.id && a.type === 'advance_deduction').reduce((s, a) => s + cleanNum(a.amount), 0)
     const deducted = linkedDeduct > 0 || isJobPaidFromAdvance(job)
-    if (deducted) { used += linkedDeduct > 0 ? linkedDeduct : charges; return }
+    if (deducted) { used += linkedDeduct > 0 ? linkedDeduct : advanceUsedOf(job); if (linkedDeduct > 0 || advanceUsedOf(job) >= charges) return } // R-FIN-11: a part payment keeps counting below
     const effectiveDue = Math.max(0, charges - calcJobAdjustment(job, ctx.adjustments.get(job.id)))
     const received = cleanNum(job.received)
     if (received > effectiveDue) held += received - effectiveDue
@@ -87,10 +87,13 @@ export function clientMoneyStatus(client: Client, dailyJobs: DailyJob[]): Client
  */
 export function autoAdvanceRemark(job: Pick<DailyJob, 'charges' | 'received' | 'payment_mode' | 'remarks'>, advanceBalance: number): string | null {
   const charges = cleanNum(job.charges)
-  if (charges <= 0 || cleanNum(job.received) > 0) return null
+  const due = charges - cleanNum(job.received)
+  if (charges <= 0 || due <= 0 || advanceBalance <= 0) return null
   if (String(job.payment_mode).toLowerCase() === 'monthly') return null
   if (isJobPaidFromAdvance(job as DailyJob)) return null
-  if (advanceBalance < charges) return null
+  // R-FIN-11: the advance pays what it can — all of what is due, or the part it covers ("Paid from advance AED 150")
+  const used = Math.round(Math.min(due, advanceBalance) * 100) / 100
+  const note = used >= charges ? PAID_FROM_ADVANCE_NOTE : `${PAID_FROM_ADVANCE_NOTE} AED ${used}`
   const r = (job.remarks || '').trim()
-  return r ? `${r} · ${PAID_FROM_ADVANCE_NOTE}` : PAID_FROM_ADVANCE_NOTE
+  return r ? `${r} · ${note}` : note
 }

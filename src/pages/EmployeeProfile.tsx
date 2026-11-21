@@ -1,3 +1,4 @@
+import { amountInMode } from '@/lib/paymentSplit'
 import { useState, useMemo, useEffect } from 'react'
 import { useSalaryAccess, SALARY_HIDDEN } from '@/store/useModuleAccess'
 import { isCurrent } from '@/lib/docVersions'
@@ -171,7 +172,7 @@ export function EmployeeProfile() {
   const totalOTHours = Math.round(empJobs.reduce((s, j) => s + calcCleanerOTHours(j, emp), 0) * 10) / 10
   // A shared shift's charge is split between its cleaners, not counted fully for each
   const totalRevenue = Math.round(empJobs.reduce((s, j) => s + (Number(j.charges) || 0) / Math.max(1, splitStaffNames(j.staff_name).length), 0))
-  const totalCashCollected = empJobs.filter(j => j.payment_mode === 'Cash').reduce((s, j) => s + (Number(j.received) || 0), 0)
+  const totalCashCollected = empJobs.reduce((s, j) => s + amountInMode(j, 'Cash'), 0) // R-PAY-07
   const uniqueClients = Array.from(new Set(empJobs.map(j => cleanClientNameFromAddress(j.address)).filter(Boolean)))
 
   // R-EMP-13: complaints about this cleaner — shown on the profile and counted in the Health Score

@@ -84,13 +84,19 @@ interface DataStore {
 const DataContext = createContext<DataStore | null>(null)
 
 /* ── Fire-and-forget audit logger (R-OPS-06): who, what, which fields, on which screen — batched, never blocks a save ── */
-function logAudit(action: string, entity: string, entityId: string, entityName: string, details?: string, changes?: FieldChange[]) {
-  writeAudit({ action, entity, entity_id: entityId, entity_name: entityName, details: details ?? null, changes: changes ?? null })
+function logAudit(action: string, entity: string, entityId: string, entityName: string, details?: string, changes?: FieldChange[], snapshot?: object | null) {
+  writeAudit({ action, entity, entity_id: entityId, entity_name: entityName, details: details ?? null, changes: changes ?? null, snapshot: (snapshot as Record<string, unknown>) ?? null })
+}
+/** R-OPS-10: the values a change replaced, so Activity Log → Restore can put them back */
+function beforeOf(before: object | undefined, changes: FieldChange[]): object | null {
+  if (!before || !changes.length) return null
+  const b = before as Record<string, unknown>
+  return { before: Object.fromEntries(changes.map(c => [c.field, b[c.field] ?? null])) }
 }
 /** R-OPS-06: an edit is logged with every changed field (nothing is logged when nothing changed) */
 function logEdit(entity: string, id: string, name: string, before: object | undefined, patch: object, skip: string[] = []) {
   const changes = diffRecord(before as Record<string, unknown>, patch as Record<string, unknown>).filter(c => !skip.includes(c.field))
-  if (changes.length) logAudit('updated', entity, id, name, changesText(changes), changes)
+  if (changes.length) logAudit('updated', entity, id, name, changesText(changes), changes, beforeOf(before, changes))
 }
 
 function uid() {
@@ -839,7 +845,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           return next
         })
       }
-      if (c) logAudit('deleted', 'client', id, c.full_name)
+      if (c) logAudit('deleted', 'client', id, c.full_name, undefined, undefined, withoutInlineDocs(c)) // R-OPS-10
     },
     trimVisitsToContract: (patch, contracts) => {
       const key = normalizeKey(patch.full_name || '')
@@ -918,7 +924,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // Keep the deleted person from re-appearing as a job-sheet-only employee (AUD-17)
       if (e) forgetStaffNames(staffKeysOf(e))
       if (e) saveDeletionSnapshot(`Employee ${e.full_name}`, { employees: [e] }) // R-SYNC-13: a wrong delete can be restored
-      if (e) logAudit('deleted', 'employee', id, e.full_name)
+      if (e) logAudit('deleted', 'employee', id, e.full_name, undefined, undefined, withoutInlineDocs(e, EMP_FILE_FIELDS)) // R-OPS-10
     },
 
     /* ── Agencies ── */
@@ -1079,7 +1085,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         sanitizedPatch.client_id = linkClient({ ...before, ...sanitizedPatch, client_id: null })
       }
       if (before && ('date' in sanitizedPatch || 'address' in sanitizedPatch)) rememberMovedMonthlyVisits(before, { ...before, ...sanitizedPatch } as DailyJob, allClients) // R-SCHED-14
-      if (before && change) logAudit('updated', 'daily_job', id, `${before.staff_name} · ${before.date}`, change, diffRecord(before as unknown as Record<string, unknown>, sanitizedPatch as Record<string, unknown>, ['date', 'staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'address', 'area', 'charges', 'received', 'payment_mode', 'material', 'service', 'remarks']))
+      if (before && change) {
+        const jobChanges = diffRecord(before as unknown as Record<string, unknown>, sanitizedPatch as Record<string, unknown>, ['date', 'staff_name', 'start_time', 'end_time', 'duty_hours', 'ot_hours', 'address', 'area', 'charges', 'received', 'payment_mode', 'material', 'service', 'remarks'])
+        logAudit('updated', 'daily_job', id, `${before.staff_name} · ${before.date}`, change, jobChanges, beforeOf(before, jobChanges)) // R-OPS-10
+      }
       setDailyJobs(p => {
         const next = p.map(j => j.id === id ? { ...j, ...sanitizedPatch } : j)
         safeLocalStorageSet('safaeewala_daily_jobs', next)
@@ -1113,7 +1122,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     },
     deleteDailyJob: (id) => {
       const gone = dailyJobs.find(j => j.id === id)
-      if (gone) logAudit('deleted', 'daily_job', id, `${gone.staff_name} · ${gone.date}`, `${gone.address || ''} · AED ${gone.charges ?? 0}`)
+      if (gone) logAudit('deleted', 'daily_job', id, `${gone.staff_name} · ${gone.date}`, `${gone.address || ''} · AED ${gone.charges ?? 0}`, undefined, gone) // R-OPS-10: the row, for Restore
       if (gone) rememberRemovedMonthlyVisits(gone, allClients) // R-SYNC-17: the monthly sync does not add it back
       setDailyJobs(p => {
         const next = p.filter(j => j.id !== id)
@@ -1146,7 +1155,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     },
     deleteDailyExpense: (id) => {
       const goneExp = dailyExpenses.find(e => e.id === id)
-      if (goneExp) logAudit('deleted', 'expense', id, `${goneExp.date} · AED ${goneExp.amount}`)
+      if (goneExp) logAudit('deleted', 'expense', id, `${goneExp.date} · AED ${goneExp.amount}`, undefined, undefined, goneExp) // R-OPS-10
       setDailyExpenses(p => {
         const next = p.filter(e => e.id !== id)
         safeLocalStorageSet('safaeewala_daily_expenses', next)

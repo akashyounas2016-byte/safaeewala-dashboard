@@ -482,8 +482,9 @@ export function AgencyDashboard({ agency: initialAgency, onBack }: AgencyDashboa
     setPayoutFormType('salary')
   }
 
-  const handleDeletePayout = (payoutId: string) => {
-    if (!window.confirm('Are you sure you want to delete this payment record?')) return
+  const handleDeletePayout = async (payoutId: string) => {
+    // UX-195: type DELETE to remove a payment record
+    if (!(await confirmAsync({ title: 'Delete payment', message: 'Delete this payment record?', confirmLabel: 'Delete', tone: 'danger', typeToConfirm: 'DELETE' }))) return
     const updated = (agency.payouts || []).filter(p => p.id !== payoutId)
     updateAgency(agency.id, {
       payouts: updated,

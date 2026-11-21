@@ -1,3 +1,4 @@
+import { amountInMode } from '@/lib/paymentSplit'
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowDownCircle, ArrowUpCircle, BookOpen, HandCoins, Plus, Trash2, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -44,8 +45,10 @@ export function CashBook({ receipts }: { receipts: DailyPendingReceivedItem[] })
       if (!j.date || isBogusJob(j)) return
       const amt = jobCollected(j)
       if (amt <= 0) return
-      if (String(j.payment_mode).toLowerCase() === 'cash') at(j.date).cashIn += amt
-      else at(j.date).onlineIn += amt
+      // R-PAY-07: a split job puts its cash part in Cash and the rest in Online
+      const cash = amountInMode(j, 'Cash', amt)
+      at(j.date).cashIn += cash
+      at(j.date).onlineIn += amt - cash
     })
     receipts.forEach(r => {
       if (!r.date) return

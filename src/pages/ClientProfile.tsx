@@ -24,7 +24,7 @@ import { advanceMatchesClient } from '@/lib/clientAdvance'
 import {
   getClientDailyJobsHistory, calcJobOTHours, isMonthlyJob, normalizeKey, isMonthlyClient,
   buildPendingCalcContext, calcJobAdjustment, calcJobPending, calcClientOpeningPending,
-  isJobPaidFromAdvance, loadClientAdjustments, loadPendingReceipts,
+  isJobPaidFromAdvance, advanceUsedOf, loadClientAdjustments, loadPendingReceipts,
 } from '@/lib/clientDataSync'
 import { formatTimeOnly, cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
@@ -381,7 +381,7 @@ export function ClientProfile() {
       const isAdvanceDeducted = linkedAdvDeduct > 0 || isRemarkDeduction
       const advanceDeductionAmount = linkedAdvDeduct > 0
         ? linkedAdvDeduct
-        : (isRemarkDeduction ? charges : 0)
+        : (isRemarkDeduction ? advanceUsedOf(job) : 0) // R-FIN-11: part payments from advance
 
       // Total adjustment for this job (includes advance deduction per user rule:
       // "Agar service amount advance mein say deduct ho, toh usay adjustment amount consider kartay huay us par 'ADJ' ka tag lagaya jaye.")

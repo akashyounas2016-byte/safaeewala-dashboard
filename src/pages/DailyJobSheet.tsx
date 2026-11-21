@@ -1,3 +1,4 @@
+import { amountInMode, hasMode } from '@/lib/paymentSplit'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { splitEntryOf as splitEntryOfJob, withSplitEntry, isSplitJob } from '@/lib/chargeSplit'
 import { buildTeamColorMap, projectKey } from '@/lib/excelTeams'
@@ -1084,9 +1085,9 @@ export function DailyJobSheet() {
       } else if (paymentFilter === 'Monthly') {
         list = list.filter(j => j.payment_mode === 'Monthly')
       } else if (paymentFilter === 'Cash') {
-        list = list.filter(j => j.payment_mode === 'Cash')
+        list = list.filter(j => hasMode(j, 'Cash')) // R-PAY-07: split jobs too
       } else if (paymentFilter === 'Online') {
-        list = list.filter(j => j.payment_mode === 'Online')
+        list = list.filter(j => hasMode(j, 'Online'))
       } else if (paymentFilter === 'Pending') {
         list = list.filter(j => jobPending(j) > 0)
       } else if (paymentFilter === 'Checks') {
@@ -1269,7 +1270,7 @@ export function DailyJobSheet() {
   // AUD-54: collected uses the Overview rule (jobCollected, R-FIN-03)
   const grossCollected = todayJobs.reduce((s, j) => s + jobCollected(j), 0)
   const pendingTotal   = todayPendingTotalAmt
-  const onlineTotal    = todayJobs.filter(j => j.payment_mode === 'Online').reduce((s, j) => s + jobCollected(j), 0)
+  const onlineTotal    = todayJobs.reduce((s, j) => s + amountInMode(j, 'Online', jobCollected(j)), 0) // R-PAY-07: a split job counts its Online part
   const totalExpenses  = todayExpenses.reduce((s, e) => s + cleanNum(e.amount), 0)
 
   // Net Total updated formula: (Gross Collected + Pending Cash Received + Standalone Cash Advances) - Total Expenses
@@ -1745,7 +1746,7 @@ export function DailyJobSheet() {
 
   /** UX-26: close the selected day after showing its cash summary */
   async function closeDay() {
-    const cashIn = todayJobs.filter(j => String(j.payment_mode).toLowerCase() === 'cash').reduce((s, j) => s + jobCollected(j), 0)
+    const cashIn = todayJobs.reduce((s, j) => s + amountInMode(j, 'Cash', jobCollected(j)), 0) // R-PAY-07
     const summary = `${todayJobs.length} jobs · collected AED ${grossCollected.toLocaleString()} (cash AED ${cashIn.toLocaleString()}) · expenses AED ${totalExpenses.toLocaleString()} · net AED ${netTotal.toLocaleString()}`
     const ok = await confirmAsync({
       title: `Close ${fmtDate(selectedDate)}?`,

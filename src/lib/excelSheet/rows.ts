@@ -16,6 +16,7 @@ export const SAVED_FIELDS = [
   'material', 'charges', 'received', 'payment_mode', 'remarks',
   'charges_per_hour', // UX-138: typed by hand
   'row_color', // R-SYNC-11: a colour change alone is a change to save (it showed 'Nothing to save')
+  'mode_split', // R-PAY-07: the amounts of a split payment
 ] as const
 /**
  * UX-139: Duty Hrs and OT follow the two times. Both times set → worked out; a time removed (`removed`) → both cleared
@@ -47,7 +48,7 @@ export function syncHourlyCharges<T extends { charges?: number; charges_per_hour
   return row
 }
 export const fieldValue = (row: DailyJob, k: (typeof SAVED_FIELDS)[number]) =>
-  NUMERIC_FIELDS.has(k) ? cleanNum(row[k]) : String(row[k] ?? '').trim()
+  NUMERIC_FIELDS.has(k) ? cleanNum(row[k]) : Array.isArray(row[k]) ? (((row[k] as unknown[]).length ? JSON.stringify(row[k]) : '')) : String(row[k] ?? '').trim()
 /**
  * True when the two rows hold the same saved values.
  * R-SYNC-16: OT is not compared — it is always worked out (DEC-015) and changes on its own when another of the

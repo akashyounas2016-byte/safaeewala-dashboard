@@ -378,6 +378,8 @@ export interface DailyJob {
   row_color?: string
   /** R-PAY-05: Split Mode — each cleaner's charges, received and payment mode; charges / received are the totals */
   charge_split?: { cleaner: string; charges: number; received: number; payment_mode: string }[]
+  /** R-PAY-07: one job paid in several modes — each mode's amount (Mode shows "Cash + Online") */
+  mode_split?: { mode: string; amount: number }[] | null
   start_time: string
   end_time: string
   duty_hours: number

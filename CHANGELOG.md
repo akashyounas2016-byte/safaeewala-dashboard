@@ -6,6 +6,12 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(excel): Sum / Count / Avg of chosen cells in the footer (UX-193); Pending Due / Advance tags in Mode (UX-192); team remarks on the Leader only (UX-194)
+- fix(excel): Mode / Material dropdown Delete works (asks first), Edit added (UX-191); address lists open at once (UX-196)
+- feat(payments): split payment — several modes on one job (R-PAY-07, migration 2026-11-21_daily_jobs_mode_split.sql)
+- feat(finance): the advance pays part of a job too, and jobs typed in the Excel grid (R-FIN-11)
+- feat(settings): Activity Log Restore (R-OPS-10, migration 2026-11-21_audit_log_snapshot.sql); type DELETE to delete employees / payments (UX-195)
+- fix(clients): other addresses no longer listed as clients of their own ("KVC 2") (R-CLI-15)
 - fix(excel): Add New Client on the Excel sheet saves — the confirm dialog / toasts were missing on the full-screen page, so a "Save anyway?" question never showed (UX-188)
 - feat(clients): "+ Add another number" — more phone numbers per client (R-CLI-14, migration 2026-11-21_client_other_phones.sql)
 - change(excel): Staff cell right-click colour only colours that Staff cell (UX-189); jobs inside a block run by Start Time (UX-190)

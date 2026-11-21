@@ -56,6 +56,7 @@ export const CLOUD_SYNCED_KEYS = [
   'safaeewala_auto_sync_monthly_schedules',
   'safaeewala_removed_monthly_visits', // R-SYNC-17: a deleted monthly visit is not added again on any device
   'safaeewala_excel_block_order', // UX-182: the cleaner blocks' own order on the Excel Job Sheet
+  'safaeewala_deleted_materials', // UX-191: materials removed from the dropdowns
 ] as const
 
 const TABLE = 'app_state'

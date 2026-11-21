@@ -1,3 +1,5 @@
+import { amountInMode, hasMode, cleanModeSplit, splitModeLabel } from '@/lib/paymentSplit'
+import { useClientMoney } from '@/lib/useClientMoney'
 import { extraAddressChoices, isExtraAddressOf } from '@/lib/clientAddress'
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { awayCleanerNames } from '@/lib/attendance'
@@ -18,8 +20,8 @@ import { calcHours, calcOTHours, recalculateAllRowsOT, formatTimeOnly, formatTim
 import { authorizeGoogleDrive, getAccessToken, uploadToDrive, gdriveConfigured, getDriveWebhookUrl, sendDailySheetBackupViaWebhook } from '@/lib/googleDrive'
 import { GoogleDriveWebhookModal } from '@/components/dailyJobSheet/GoogleDriveWebhookModal'
 import { MonthlyScheduleSyncModal } from '@/components/dailyJobSheet/MonthlyScheduleSyncModal'
-import { getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, isInitialDataLoaded, buildPendingCalcContext, calcJobCollectable, getAssignableClients, splitStaffNames, calcClientPendingBalance, loadClientAdjustments, loadPendingReceipts, type ScheduledShiftPlan } from '@/lib/clientDataSync'
-import { calcClientAdvanceBalance } from '@/lib/clientAdvance'
+import { getScheduledMonthlyShiftsForDate, syncMonthlySchedulesToDailyJobs, isInitialDataLoaded, buildPendingCalcContext, calcJobCollectable, getAssignableClients, splitStaffNames, calcClientPendingBalance, loadClientAdjustments, loadPendingReceipts, advanceUsedOf, type ScheduledShiftPlan } from '@/lib/clientDataSync'
+import { calcClientAdvanceBalance, autoAdvanceRemark } from '@/lib/clientAdvance'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
 import { confirmAsync, notify } from '@/lib/notify'
@@ -434,6 +436,14 @@ export function JobSheetSpreadsheet() {
   const [deletedPaymentModes, setDeletedPaymentModes] = useState<string[]>(() => {
     return safeLocalStorageGet<string[]>('safaeewala_deleted_payment_modes', [])
   })
+  // UX-191: the shared materials list (the same as Add Job / New Booking) and the removed ones
+  const [jobMaterials, setJobMaterials] = useState<string[]>(() => safeLocalStorageGet<string[]>('safaeewala_job_materials', ['No', 'Yes', 'Chemicals Only', 'Machines Only', 'Sofa Kit', 'Ladder']))
+  const [deletedMaterials, setDeletedMaterials] = useState<string[]>(() => safeLocalStorageGet<string[]>('safaeewala_deleted_materials', []))
+  // UX-191: an item of the Mode / Material dropdown being renamed
+  const [renamingItem, setRenamingItem] = useState<{ kind: 'mode' | 'material'; from: string; value: string } | null>(null)
+  // R-PAY-07: the split-payment editor inside the Mode dropdown
+  const [splitDraft, setSplitDraft] = useState<{ mode: string; amount: string }[] | null>(null)
+  useEffect(() => { if (editingCell?.colId !== 'payment_mode') { setSplitDraft(null) } if (!editingCell) setRenamingItem(null) }, [editingCell?.colId, !!editingCell]) // eslint-disable-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
 
   // Filtered Client & Building list for Address dropdown matching Add Job Entry selector
   const filteredClientBuildings = useMemo(() => {
@@ -451,18 +461,8 @@ export function JobSheetSpreadsheet() {
   // UX-179: each client's Pending / Advance balance in the Address dropdown (same formulas as the Client Profile),
   // worked out only while that dropdown is open
   const addressOpen = editingCell?.colId === 'address'
-  const addressBalances = useMemo(() => {
-    const m = new Map<string, { pending: number; advance: number }>()
-    if (!addressOpen) return m
-    const adjustments = loadClientAdjustments()
-    const receipts = loadPendingReceipts()
-    for (const item of clientBuildingList) {
-      const c = item.client
-      if (!c?.id || m.has(c.id)) continue
-      m.set(c.id, { pending: calcClientPendingBalance(c, dailyJobs, receipts, adjustments), advance: calcClientAdvanceBalance(c, dailyJobs, adjustments) })
-    }
-    return m
-  }, [addressOpen, clientBuildingList, dailyJobs])
+  // UX-196: a few clients per frame for the rows shown, each client once — the dropdown opens at once
+  const addressBalances = useClientMoney(filteredClientBuildings.map(item => item.client).filter(Boolean), dailyJobs, addressOpen)
   // UX-180: a cell dropdown closes as soon as any popup opens (Add Job, a client popup …) — it stayed on top of it before
   useEffect(() => {
     if (!editingCell) return
@@ -1328,6 +1328,7 @@ export function JobSheetSpreadsheet() {
     const updated = [...gridRows]
     const row = { ...updated[rowIdx] }
     row.payment_mode = mode as PaymentMode
+    row.mode_split = null // R-PAY-07: one mode again
     updated[rowIdx] = row
     pushState(updated)
     setEditingCell(null)
@@ -1343,6 +1344,7 @@ export function JobSheetSpreadsheet() {
    */
   const handleEditorArrows = (e: React.KeyboardEvent) => {
     if (!editingCell) return
+    if ((e.target as HTMLElement).closest?.('[data-xl-own-keys]')) return // UX-191 / R-PAY-07: inputs inside a dropdown keep their keys
     // UX-142: in an open dropdown, Up / Down walk the list and Enter picks the highlighted item;
     // past the last (or above the first) item the keys fall through and move to the next row as before
     if (DROPDOWN_COLS.has(editingCell.colId) && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
@@ -1364,6 +1366,90 @@ export function JobSheetSpreadsheet() {
     const step: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }
     moveActive(...step[e.key], from)
   }
+
+  // ── R-PAY-07: a job paid in several modes ──
+  const commitModeSplit = (rowIdx: number) => {
+    const lines = cleanModeSplit((splitDraft || []).map(l => ({ mode: l.mode, amount: l.amount }))).filter(l => l.amount > 0)
+    if (lines.length < 2) { showToast('Pick at least two modes with an amount'); return }
+    const updated = [...gridRows]
+    const row = { ...updated[rowIdx] }
+    row.mode_split = lines
+    row.payment_mode = splitModeLabel(lines) as PaymentMode
+    row.received = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100
+    updated[rowIdx] = row
+    pushState(updated)
+    setSplitDraft(null)
+    setEditingCell(null)
+    showToast(`✓ Split payment: ${lines.map(l => `${l.mode} ${l.amount}`).join(' + ')}`)
+  }
+
+  // ── UX-191: Edit / Delete inside the Mode and Material dropdowns ──
+  const saveMaterials = (next: string[]) => { setJobMaterials(next); safeLocalStorageSet('safaeewala_job_materials', next) }
+  const saveDeletedMaterials = (next: string[]) => { setDeletedMaterials(next); safeLocalStorageSet('safaeewala_deleted_materials', next) }
+  const removeListItem = async (kind: 'mode' | 'material', name: string, value = name) => {
+    // UX-191: ask first — the item leaves the dropdown for every user (jobs keep what they have)
+    const ok = await confirmAsync({ title: kind === 'mode' ? 'Delete payment mode' : 'Delete material', message: `Remove "${name}" from the ${kind === 'mode' ? 'Mode' : 'Material'} list?\nJobs that already have it keep it.`, confirmLabel: 'Delete', tone: 'danger' })
+    if (!ok) return
+    if (kind === 'mode') {
+      const updated = customPaymentModes.filter(x => x !== name && x !== value)
+      setCustomPaymentModes(updated)
+      safeLocalStorageSet('safaeewala_custom_payment_modes', updated)
+      const nextDeleted = Array.from(new Set([...deletedPaymentModes, name, value]))
+      setDeletedPaymentModes(nextDeleted)
+      safeLocalStorageSet('safaeewala_deleted_payment_modes', nextDeleted)
+      showToast(`Payment mode "${name}" removed`)
+    } else {
+      saveMaterials(jobMaterials.filter(m => m.toLowerCase() !== name.toLowerCase()))
+      saveDeletedMaterials(Array.from(new Set([...deletedMaterials, name])))
+      showToast(`Material "${name}" removed`)
+    }
+  }
+  const renameListItem = () => {
+    if (!renamingItem) return
+    const { kind, from } = renamingItem
+    const to = renamingItem.value.trim()
+    setRenamingItem(null)
+    if (!to || to === from) return
+    if (kind === 'mode') {
+      const updated = Array.from(new Set(customPaymentModes.map(x => (x === from ? to : x)).concat(customPaymentModes.includes(from) ? [] : [to])))
+      setCustomPaymentModes(updated)
+      safeLocalStorageSet('safaeewala_custom_payment_modes', updated)
+      const nextDeleted = Array.from(new Set([...deletedPaymentModes.filter(x => x !== to), from]))
+      setDeletedPaymentModes(nextDeleted)
+      safeLocalStorageSet('safaeewala_deleted_payment_modes', nextDeleted)
+    } else {
+      saveMaterials(Array.from(new Set(jobMaterials.map(m => (m.toLowerCase() === from.toLowerCase() ? to : m)).concat(jobMaterials.some(m => m.toLowerCase() === from.toLowerCase()) ? [] : [to]))))
+      saveDeletedMaterials(Array.from(new Set([...deletedMaterials.filter(m => m.toLowerCase() !== to.toLowerCase()), from])))
+    }
+    // the rows of this sheet that use the old name follow (one Undo step)
+    const field = kind === 'mode' ? 'payment_mode' : 'material'
+    if (gridRows.some(r => String((r as any)[field] || '') === from)) {
+      pushState(gridRows.map(r => (String((r as any)[field] || '') === from ? { ...r, [field]: to } as DailyJob : r)))
+    }
+    showToast(`✓ "${from}" renamed to "${to}"`)
+  }
+  const listItemActions = (kind: 'mode' | 'material', name: string, value = name, fixed = false) => (
+    <span className="flex items-center gap-0.5">
+      {!fixed && (
+        <button type="button" title={`Edit ${name}`} aria-label={`Edit ${name}`}
+          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setRenamingItem({ kind, from: name, value: name }) }}
+          className="p-1 rounded-md text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 cursor-pointer"><Pencil size={12} /></button>
+      )}
+      <button type="button" title={`Delete ${name}`} aria-label={`Delete ${name}`}
+        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); void removeListItem(kind, name, value) }}
+        className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"><Trash2 size={12} /></button>
+    </span>
+  )
+  const renameRow = () => renamingItem && (
+    <div data-xl-own-keys="" className="px-2 py-1.5 flex items-center gap-1.5" onMouseDown={e => e.stopPropagation()}>
+      <input autoFocus value={renamingItem.value} aria-label="New name"
+        onChange={e => setRenamingItem({ ...renamingItem, value: e.target.value })}
+        onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); renameListItem() } else if (e.key === 'Escape') setRenamingItem(null) }}
+        className="flex-1 text-[12.5px] px-2 py-1 border border-emerald-400 rounded-lg outline-none" />
+      <button type="button" title="Save name" onMouseDown={e => { e.preventDefault(); renameListItem() }} className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center cursor-pointer"><Check size={13} /></button>
+      <button type="button" title="Cancel" onMouseDown={e => { e.preventDefault(); setRenamingItem(null) }} className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"><X size={13} /></button>
+    </div>
+  )
 
   const renderCellEditor = (col: ColumnDef, targetIdx: number, isLightBg: boolean = true) => {
     if (!editingCell || editingCell.rowIdx !== targetIdx || editingCell.colId !== col.id) return null
@@ -1523,15 +1609,22 @@ export function JobSheetSpreadsheet() {
       const usedCustom = Array.from(new Set(gridRows.map(r => String(r.material || '').trim()).filter(Boolean)))
         .filter(m => !['yes', 'no', 'no material', 'sofa', '—'].includes(m.toLowerCase()))
         .sort()
-      const standardMaterials = ['Yes', 'No Material', 'Sofa', ...usedCustom]
+      // UX-191: the shared list (Add Job / New Booking) plus what this sheet uses, without removed items
+      const gone = new Set(deletedMaterials.map(m => m.toLowerCase()))
+      const shared = jobMaterials.filter(m => m && m.toLowerCase() !== 'no')
+      const standardMaterials = ['No Material', ...Array.from(new Set([...shared, ...usedCustom].map(m => m.trim()))).filter(m => !gone.has(m.toLowerCase()))]
       const curMat = editingCell.tempValue || 'No'
       const q = untouched ? '' : editingCell.tempValue.toLowerCase().trim()
       const filteredMaterials = q
         ? standardMaterials.filter(m => m.toLowerCase().includes(q) || (m === 'No Material' && 'client supplies'.includes(q)))
         : standardMaterials
       const saveCustom = () => {
-        if (excelCustomMaterial.trim()) {
-          commitMaterialSelect(targetIdx, excelCustomMaterial.trim())
+        const val = excelCustomMaterial.trim()
+        if (val) {
+          // UX-191: a typed material joins the shared list
+          if (!jobMaterials.some(m => m.toLowerCase() === val.toLowerCase())) saveMaterials([...jobMaterials, val])
+          if (gone.has(val.toLowerCase())) saveDeletedMaterials(deletedMaterials.filter(m => m.toLowerCase() !== val.toLowerCase()))
+          commitMaterialSelect(targetIdx, val)
           setExcelCustomMaterial('')
         }
       }
@@ -1589,6 +1682,7 @@ export function JobSheetSpreadsheet() {
             ) : (
               filteredMaterials.map(mat => {
                 const isNo = mat === 'No Material'
+                if (renamingItem?.kind === 'material' && renamingItem.from === mat) return <div key={mat}>{renameRow()}</div>
                 return (
                   <ExcelPopoverItem
                     key={mat}
@@ -1597,6 +1691,7 @@ export function JobSheetSpreadsheet() {
                     icon={Package}
                     label={isNo ? 'No' : mat}
                     sub={isNo ? 'No material — client supplies' : mat === 'Yes' ? 'Our cleaning material' : mat === 'Sofa' ? 'Sofa cleaning kit' : 'Custom'}
+                    action={isNo ? undefined : listItemActions('material', mat)}
                   />
                 )
               })
@@ -1733,20 +1828,6 @@ export function JobSheetSpreadsheet() {
         setExcelCustomPaymentMode('')
       }
 
-      const handleDeletePaymentMode = (name: string, val: string) => {
-        if (customPaymentModes.includes(name) || customPaymentModes.includes(val)) {
-          const updated = customPaymentModes.filter(x => x !== name && x !== val)
-          setCustomPaymentModes(updated)
-          safeLocalStorageSet('safaeewala_custom_payment_modes', updated)
-        }
-        if (!deletedPaymentModes.includes(name) || !deletedPaymentModes.includes(val)) {
-          const nextDeleted = Array.from(new Set([...deletedPaymentModes, name, val]))
-          setDeletedPaymentModes(nextDeleted)
-          safeLocalStorageSet('safaeewala_deleted_payment_modes', nextDeleted)
-        }
-        showToast(`Payment mode "${name}" removed`)
-      }
-
       return (
         <div className="relative w-full h-7 flex items-center">
           <input
@@ -1763,6 +1844,7 @@ export function JobSheetSpreadsheet() {
             title="Payment Mode"
             icon={CreditCard}
             banner={
+              <>
               <div className="flex items-center gap-1.5 p-1 bg-slate-50 border border-slate-200 rounded-xl mb-2">
                 <input
                   type="text"
@@ -1788,12 +1870,58 @@ export function JobSheetSpreadsheet() {
                   <span>Add</span>
                 </button>
               </div>
+              {/* R-PAY-07: paid in several modes */}
+              {!splitDraft ? (
+                <button type="button"
+                  onMouseDown={e => {
+                    e.preventDefault()
+                    const row = gridRows[targetIdx]
+                    const have = cleanModeSplit(row?.mode_split)
+                    setSplitDraft(have.length > 1 ? have.map(l => ({ mode: l.mode, amount: String(l.amount) })) : [{ mode: 'Cash', amount: cleanNum(row?.received) ? String(cleanNum(row?.received)) : '' }, { mode: 'Online', amount: '' }])
+                  }}
+                  className="w-full mb-2 py-1.5 rounded-lg border border-dashed border-indigo-300 text-indigo-700 text-[11.5px] font-bold hover:bg-indigo-50 cursor-pointer">
+                  Split payment — part Cash, part Online …
+                </button>
+              ) : (
+                <div data-xl-own-keys="" className="mb-2 p-2 rounded-xl border border-indigo-200 bg-indigo-50/60 space-y-1.5" onMouseDown={e => e.stopPropagation()}>
+                  <div className="flex flex-wrap gap-1">
+                    {allModeOptions.filter(m => m.value !== 'Pending' && m.value !== 'Monthly').map(m => {
+                      const on = splitDraft.some(l => l.mode === m.value)
+                      return (
+                        <button key={m.id} type="button"
+                          onMouseDown={e => { e.preventDefault(); setSplitDraft(d => (on ? (d || []).filter(l => l.mode !== m.value) : [...(d || []), { mode: m.value, amount: '' }])) }}
+                          className={`px-2 py-0.5 rounded-full text-[11px] font-bold border cursor-pointer ${on ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200'}`}>
+                          {m.value}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {splitDraft.map((l, i) => (
+                    <label key={l.mode} className="flex items-center gap-2 text-[12px]">
+                      <span className="w-16 font-bold text-slate-700">{l.mode}</span>
+                      <input type="number" min="0" step="0.01" value={l.amount} placeholder="AED" aria-label={`${l.mode} amount`}
+                        onChange={e => setSplitDraft(d => (d || []).map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commitModeSplit(targetIdx) } else if (e.key === 'Escape') setSplitDraft(null) }}
+                        className="flex-1 px-2 py-1 border border-slate-200 rounded-lg bg-white outline-none focus:border-indigo-400" />
+                    </label>
+                  ))}
+                  <div className="flex items-center justify-between text-[11.5px]">
+                    <span className="text-slate-600">Total <b>AED {Math.round(splitDraft.reduce((s, l) => s + cleanNum(l.amount), 0) * 100) / 100}</b> → Received</span>
+                    <span className="flex gap-1">
+                      <button type="button" onMouseDown={e => { e.preventDefault(); setSplitDraft(null) }} className="px-2 py-0.5 rounded-lg border border-slate-200 bg-white text-slate-600 font-bold cursor-pointer">Cancel</button>
+                      <button type="button" onMouseDown={e => { e.preventDefault(); commitModeSplit(targetIdx) }} className="px-2.5 py-0.5 rounded-lg bg-indigo-600 text-white font-bold cursor-pointer">Save split</button>
+                    </span>
+                  </div>
+                </div>
+              )}
+              </>
             }
           >
             {filteredModes.length === 0 ? (
               <ExcelPopoverEmpty>No payment modes found — type above to add</ExcelPopoverEmpty>
             ) : (
               filteredModes.map(m => {
+                if (renamingItem?.kind === 'mode' && renamingItem.from === m.id) return <div key={m.id}>{renameRow()}</div>
                 const isSelected = curMode.toLowerCase() === m.value.toLowerCase() || curMode.toLowerCase() === m.id.toLowerCase()
                 return (
                   <ExcelPopoverItem
@@ -1802,19 +1930,7 @@ export function JobSheetSpreadsheet() {
                     onPick={() => commitPaymentModeSelect(targetIdx, m.value)}
                     icon={CreditCard}
                     label={<span className="text-[12.5px] font-bold text-slate-900">{m.id}</span>} // UX-91: name only, no description
-                    action={
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDeletePaymentMode(m.id, m.value)
-                        }}
-                        className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                        title={`Delete ${m.id}`}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    }
+                    action={listItemActions('mode', m.id, m.value, defaultModes.some(d => d.id === m.id))}
                   />
                 )
               })
@@ -2606,6 +2722,7 @@ export function JobSheetSpreadsheet() {
         received: isSec ? 0 : cleanNum(row.received),
         payment_mode: isSec ? ('Above' as any) : row.payment_mode,
         charge_split: row.charge_split, // R-PAY-05
+        mode_split: isSec ? null : (cleanModeSplit(row.mode_split).length > 1 ? cleanModeSplit(row.mode_split) : null), // R-PAY-07
         row_color: row.row_color,           // R-SYNC-11
         charges_per_hour: (cleanNum(row.charges_per_hour) || null) as unknown as number, // UX-138: null clears it
         is_overtime: false, // DEC-015: OT is automatic, this old flag is not used
@@ -2677,6 +2794,7 @@ export function JobSheetSpreadsheet() {
         charge_split: split ?? lead.charge_split, // R-PAY-05: each cleaner's money of the team job
         row_color: lead.row_color,           // R-SYNC-11
         charges_per_hour: (cleanNum(lead.charges_per_hour) || null) as unknown as number, // UX-138: null clears it
+        mode_split: cleanModeSplit(lead.mode_split).length > 1 ? cleanModeSplit(lead.mode_split) : null, // R-PAY-07
         is_overtime: false,
       }
       return { team, extras }
@@ -2685,7 +2803,26 @@ export function JobSheetSpreadsheet() {
     reloadAfterSaveRef.current = true
     // UX-158: a new row is saved under a new id — its cell colours move with it (they were lost on refresh)
     const colorMoves: [string, string][] = []
-    const addKeepingColors = (r: DailyJob, p: Omit<DailyJob, 'id' | 'created_at'>) => {
+    // R-FIN-11: a new job of a client with advance left is paid from it (all, or the part it covers) — also when typed in the grid
+    const advanceLeft = new Map<string, number>()
+    let advanceUsedTotal = 0
+    const withAdvance = (p: Omit<DailyJob, 'id' | 'created_at'>): Omit<DailyJob, 'id' | 'created_at'> => {
+      const addr = String(p.address || '').trim().toLowerCase()
+      if (!addr) return p
+      const c = clients.find(k => (p as any).client_id && k.id === (p as any).client_id)
+        || clients.find(k => [k.building_name, k.full_name].some(v => String(v || '').trim().toLowerCase() === addr) || isExtraAddressOf(k, addr))
+      if (!c) return p
+      const balance = advanceLeft.has(c.id) ? advanceLeft.get(c.id)! : calcClientAdvanceBalance(c, dailyJobs)
+      const note = autoAdvanceRemark(p as DailyJob, balance)
+      if (!note) return p
+      const next = { ...p, remarks: note }
+      const used = advanceUsedOf(next as DailyJob)
+      advanceLeft.set(c.id, Math.max(0, balance - used))
+      advanceUsedTotal += used
+      return next
+    }
+    const addKeepingColors = (r: DailyJob, p0: Omit<DailyJob, 'id' | 'created_at'>) => {
+      const p = withAdvance(p0)
       const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : undefined
       addDailyJob(id ? { ...p, id } : p)
       if (id) savedIdsRef.current.set(r.id, id) // UX-184: Undo finds the row under its saved id
@@ -2693,7 +2830,12 @@ export function JobSheetSpreadsheet() {
     }
     plainRemoved.forEach(r => { if (live.has(r.id)) deleteDailyJob(r.id) })
     plainEdited.forEach(r => {
-      if (live.has(r.id)) updateDailyJob(r.id, payload(r))
+      if (live.has(r.id)) {
+        // R-FIN-11: a job saved earlier without charges (filled in bit by bit) that now gets its charges is paid from the advance too
+        const before = loadedRawRef.current.get(r.id)
+        const p = payload(r)
+        updateDailyJob(r.id, before && cleanNum(before.charges) === 0 && cleanNum(p.charges) > 0 ? withAdvance(p) : p)
+      }
       else if (!isClearedRow(r)) addKeepingColors(r, payload(r)) // deleted elsewhere — the user chose to keep their version (UX-156: never an empty row)
     })
     splitJobIds.forEach(jobId => {
@@ -2728,7 +2870,7 @@ export function JobSheetSpreadsheet() {
     // UX-177: an empty filler row that made way for a new job is not a deleted job — don't count it
     const removedJobs = removed.filter(r => !isClearedRow(r)).length
     const parts = [added.length && `${added.length} added`, edited.length - emptied && `${edited.length - emptied} updated`, removedJobs + emptied && `${removedJobs + emptied} deleted`].filter(Boolean)
-    showToast(`✓ ${auto ? 'Auto-saved' : 'Saved'}: ${parts.join(', ')}`)
+    showToast(`✓ ${auto ? 'Auto-saved' : 'Saved'}: ${parts.join(', ')}${advanceUsedTotal > 0 ? ` · AED ${advanceUsedTotal} paid from client advance` : ''}`)
   }
 
   // UX-123: leaving the sheet (sidebar, another screen) saves what is waiting, without asking
@@ -2950,8 +3092,8 @@ export function JobSheetSpreadsheet() {
     const projects = new Set<string>() // UX-66: one project per location and date, however many cleaners
     for (const r of gridRows) {
       if (r.payment_mode === 'Monthly') monthly++
-      else if (r.payment_mode === 'Cash') cash++
-      else if (r.payment_mode === 'Online') online++
+      else if (hasMode(r, 'Cash')) { cash++; if (hasMode(r, 'Online')) online++ } // R-PAY-07: a split counts in both
+      else if (hasMode(r, 'Online')) online++
       if (r.payment_mode === 'Pending' || rowPending(r) > 0) pending++
 
       const key = projectKeyOf(r, gridRows)
@@ -2969,9 +3111,9 @@ export function JobSheetSpreadsheet() {
     if (paymentModeFilter === 'Monthly') {
       list = list.filter(r => r.payment_mode === 'Monthly' || (isBlankRow(r) && !r.payment_mode))
     } else if (paymentModeFilter === 'Cash') {
-      list = list.filter(r => r.payment_mode === 'Cash' || (isBlankRow(r) && !r.payment_mode))
+      list = list.filter(r => hasMode(r, 'Cash') || (isBlankRow(r) && !r.payment_mode))
     } else if (paymentModeFilter === 'Online') {
-      list = list.filter(r => r.payment_mode === 'Online' || (isBlankRow(r) && !r.payment_mode))
+      list = list.filter(r => hasMode(r, 'Online') || (isBlankRow(r) && !r.payment_mode))
     } else if (paymentModeFilter === 'Pending') {
       list = list.filter(r => r.payment_mode === 'Pending' || rowPending(r) > 0 || (isBlankRow(r) && !r.payment_mode))
     } else if (paymentModeFilter === 'Project') {
@@ -4275,6 +4417,8 @@ export function JobSheetSpreadsheet() {
                             if (col.id === 'remarks') displayVal = splitSyncNote(rawVal).text // UX-86: the note is the flag
                             const isBlankShift = !row.address && !row.start_time && !row.end_time && cleanNum(row.charges) === 0 && cleanNum(row.received) === 0
                             const mcInfo = getMultiCleanerPaymentInfo(row, gridRows)
+                            // UX-194: a team job's remarks show on the Leader's row only, not repeated on every cleaner
+                            if (col.id === 'remarks' && ((row as any)._isSecondaryCleaner || (mcInfo?.isSecondary && String(rawVal || '').trim() && gridRows.some(g => g.id !== row.id && (g as any)._isPrimaryCleaner && String(g.remarks || '').trim() === String(rawVal || '').trim())))) displayVal = ''
 
                             if (col.id === 'team_name') {
                               if (isBlankShift) displayVal = ''
@@ -4648,6 +4792,8 @@ export function JobSheetSpreadsheet() {
                       const isBlankShift = !row.address && !row.start_time && !row.end_time && cleanNum(row.charges) === 0 && cleanNum(row.received) === 0
                       const pendVal = rowPending(row)
                       const mcInfo = getMultiCleanerPaymentInfo(row, gridRows)
+                      // UX-194: a team job's remarks show on the Leader's row only, not repeated on every cleaner
+                      if (col.id === 'remarks' && ((row as any)._isSecondaryCleaner || (mcInfo?.isSecondary && String(rawVal || '').trim() && gridRows.some(g => g.id !== row.id && (g as any)._isPrimaryCleaner && String(g.remarks || '').trim() === String(rawVal || '').trim())))) displayVal = ''
                       const isPendingDue = col.id === 'pending' && pendVal > 0 && !refMoney(mcInfo, row)
 
                       if (col.id === 'team_name') {
@@ -4794,6 +4940,19 @@ export function JobSheetSpreadsheet() {
                               {col.id === 'address' ? (
                                 <span>{cleanAddressDisplay(displayVal)}</span>
                               ) : (displayVal !== undefined && displayVal !== null && displayVal !== '' ? String(displayVal) : '')}
+                              {/* R-FIN-11: the part of this job paid from the client's advance, shown on its own */}
+                              {col.id === 'advance' && !isBlankShift && advanceUsedOf(row) > 0 && (
+                                <span className="ml-1 text-[9.5px] font-bold px-1 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200" title="Paid from the client's advance balance">ADJ −{advanceUsedOf(row)}</span>
+                              )}
+                              {/* UX-192: the money state next to the Mode — Pending Due / Advance (the saved Mode itself is not changed) */}
+                              {col.id === 'payment_mode' && !isBlankShift && !refMoney(mcInfo, row) && (() => {
+                                const split = cleanModeSplit(row.mode_split)
+                                if (split.length > 1) return <span className="ml-1 text-[9.5px] font-bold px-1 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200" title="Split payment (R-PAY-07)">{split.map(x => `${x.mode} ${x.amount}`).join(' + ')}</span>
+                                const due = rowPending(row), adv = rowAdvance(row)
+                                if (due > 0 && row.payment_mode !== 'Pending') return <span className="ml-1 text-[9.5px] font-bold px-1 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200" title={`AED ${due} still to collect`}>Pending Due</span>
+                                if (adv > 0) return <span className="ml-1 text-[9.5px] font-bold px-1 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200" title={`AED ${adv} paid above the charges`}>Advance</span>
+                                return null
+                              })()}
                             </span>
                           )}
                           {!isCellEditing && DROPDOWN_COLS.has(col.id) && (
@@ -5624,6 +5783,29 @@ export function JobSheetSpreadsheet() {
         </div>
 
         <div className="flex items-center gap-5 font-mono text-[12px] font-bold">
+          {/* UX-193: like Excel — the Sum / Count / Average of the chosen cells (a dragged block, or a whole column by its letter) */}
+          {(() => {
+            const cells = selCells()
+            if (cells.length < 2) return null
+            const nums: number[] = []
+            cells.forEach(({ rowIdx, colId }) => {
+              const row = gridRows[rowIdx]
+              if (!row) return
+              // empty rows of a block are not values (Excel counts only filled cells)
+              if (!row.address && !row.start_time && !row.end_time && !cleanNum(row.charges) && !cleanNum(row.received)) return
+              const v = colId === 'pending' ? rowPending(row) : colId === 'advance' ? rowAdvance(row) : colId === 'charges_per_hour' ? chargesPerHour(row) : (row as any)[colId]
+              if (v === '' || v === null || v === undefined || typeof v === 'boolean') return
+              const n = typeof v === 'number' ? v : Number(String(v).replace(/,/g, ''))
+              if (Number.isFinite(n) && String(v).trim() !== '') nums.push(n)
+            })
+            if (!nums.length) return <span className="text-slate-500">Count: {cells.length}</span>
+            const sum = Math.round(nums.reduce((s, n) => s + n, 0) * 100) / 100
+            return (
+              <span className="px-2 py-0.5 rounded-md bg-white border border-emerald-300 text-emerald-900" title="Chosen cells">
+                Sum: <strong className="font-black">{sum.toLocaleString()}</strong> · Count: {nums.length} · Avg: {(Math.round((sum / nums.length) * 100) / 100).toLocaleString()}
+              </span>
+            )
+          })()}
           <span>Charges: <strong className="text-indigo-950 font-black">AED {totals.totalCharges.toLocaleString()}</strong></span>
           <span>Received: <strong className="text-emerald-950 font-black">AED {totals.totalReceived.toLocaleString()}</strong></span>
           <span>Pending: <strong className="text-rose-700 font-black">AED {totals.totalPending.toLocaleString()}</strong></span>

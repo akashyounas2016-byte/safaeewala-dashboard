@@ -717,6 +717,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `ClientModalForm.tsx → otherPhones`; `ClientProfile.tsx`; `types → Client.other_phones`. Test: `tests/unit/excel-client-1121.test.ts`.
 - **Status:** Active once the migration has run · Since: 2026-11-21
 
+### R-CLI-15 — A client's other addresses never become profiles of their own
+- **Why:** "KVC 2", "KVC 3" (the other addresses of client KVC) showed in the client list as clients of their own, because jobs at those addresses were matched only to a client's main address (2026-11-21).
+  - Jobs at any of a client's other addresses (R-CLI-09) now belong to that client in the list, profile and totals. The Excel / Add Job address lists already offered the other addresses under the client.
+  - The second "KVC 1" profile (phone 39, made by hand on 20 Nov) is a separate record — left for the owner (PENDING A35).
+- **Code:** `clientDataSync.ts → extractAllClientsFromDailyJobs`. Test: `tests/unit/excel-client-1121.test.ts`.
+- **Status:** Active · Since: 2026-11-21
+
 ### R-CLI-13 — A deleted client is deleted from the database
 - **Why:** clients first built from sheet rows have a `dj-…` id; once edited they are saved under that id, but Delete skipped the database for `dj-` ids. They came back on every reload and kept making monthly visits (Office ABC deleted three times, 2026-11-17).
   - Delete now always removes the client row from Supabase (a missing row is no error).
@@ -1144,6 +1151,22 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Not automatic yet: jobs typed straight into the Excel grid, and recurring monthly rows (paid through the monthly contract anyway).
 - **Code:** `src/lib/clientAdvance.ts → calcClientAdvanceBalance, autoAdvanceRemark, clientMoneyStatus`; `AddJobModal.tsx → handleSubmit`; `clientDataSync.ts → isJobPaidFromAdvance`. Test: `tests/unit/ot-advance-agency-1111.test.ts`.
 - **Status:** Active · Since: 2026-11-11
+
+### R-FIN-11 — The advance pays what it can, also on the Excel grid
+- **Rule:** *"Jab bhi koi nayi job add ho aur client ka advance balance maujood ho, toh job ki amount automatically us Advance Balance mein say deduct ho kar remaining balance update ho jana chahiye. Adjustment amount ko alag say show karein."* (2026-11-21)
+  - Extends R-FIN-10: when the advance covers only part of a new job, that part is paid from it — the remark says **"Paid from advance AED 150"** and the rest stays pending. All of it → "Paid from advance" as before.
+  - The Excel grid does it too: a new job of a client with advance left (found by the client id, address or one of the client's other addresses), and a saved job that gets its charges for the first time (rows are filled in bit by bit). Several new jobs of one client in one save use the advance one after the other. Old jobs are never changed.
+  - Shown on its own: the Advance column has an **ADJ −150** tag on that job; the save message says how much was paid from advance; Add Job says the part paid and the part still to collect. The existing Advance column is used — no new column.
+- **Code:** `clientDataSync.ts → advanceUsedOf, calcJobAdjustment`; `clientAdvance.ts → autoAdvanceRemark, calcClientAdvanceBalance`; `JobSheetSpreadsheet.tsx → withAdvance`; `AddJobModal.tsx`. Tests: `tests/unit/ot-advance-agency-1111.test.ts`, `tests/unit/excel-client-1121.test.ts`.
+- **Status:** Active · Since: 2026-11-21
+
+### R-PAY-07 — One job paid in several modes
+- **Rule:** *"Excel Job Sheet mein Mode column ko configure karein taake multiple payment modes aik sath select kiye ja sakein … kuch amount cash aur baqi online."* (2026-11-21)
+  - Mode dropdown → **Split payment**: tick the modes, type each amount, **Save split**. The Mode shows "Cash + Online", the cell shows the parts (Cash 100 + Online 50), Received becomes their total. Picking one mode again ends the split.
+  - Cash / Online totals (Daily Job Sheet cards, close-day summary, Cash Book, employee cash collected) count each part in its own mode; the Cash / Online filters find split jobs.
+  - Saved in `daily_jobs.mode_split` — migration `2026-11-21_daily_jobs_mode_split.sql` (PENDING A33). Until it has run the Mode text and Received save, the amounts per mode do not.
+- **Code:** `src/lib/paymentSplit.ts`; `JobSheetSpreadsheet.tsx → commitModeSplit`; `DailyJobSheet.tsx`, `CashBook.tsx`, `EmployeeProfile.tsx`. Test: `tests/unit/batch-1121b.test.ts`.
+- **Status:** Active once the migration has run · Since: 2026-11-21
 
 ### R-FIN-04 — Invoice numbers
 - **Rule:** One scheme: `SAF-<year>-<NNNN>`, next = highest of the year + 1; `addInvoice` replaces any missing, legacy or duplicate number.
@@ -1638,6 +1661,17 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - 20 Nov check: git has no revert or reset of code since the last deploy; every attendance warning (R-ATT-08 tag, R-SCHED-09 banner, R-ATT-10 column, R-ATT-11 popup) is still in the code. Which warning the team saw go back is asked of the owner (PENDING A30).
 - **Where:** `AGENTS.md §3`.
 - **Status:** Active · Since: 2026-11-20
+
+### R-OPS-10 — Activity Log → Restore
+- **Rule:** *"Settings mein 'Activity Log' … activity karnay walay user ka naam show ho aur har entry kay sath aik 'Restore' ka button diya jaye, taake zaroorat parnay par wo specific action revert kiya ja sakay."* (2026-11-21)
+  - The Activity Log already tracks every change with the user's name (R-OPS-06). Opening an entry now shows **Restore** (admin / manager only), after a confirm:
+    - a **deleted** job / client / employee / expense comes back as it was;
+    - a **changed** job / client / employee / expense gets the values from before that change (the old → new list is shown in the confirm);
+    - an **added** job / expense gets **Undo (remove)**.
+  - Each entry now keeps a snapshot (the deleted record, or the replaced values) in `audit_log.snapshot` — migration `2026-11-21_audit_log_snapshot.sql` (PENDING A34). Entries written before it has run have no snapshot and show no Restore (except Undo of an added job).
+  - This is the owner's own restore (R-OPS-09 stays: nothing is reverted unless a person chooses it).
+- **Code:** `src/lib/auditLog.ts → restoreKindOf, snapshot`; `DataContext.tsx → logAudit, beforeOf`; `ActivityLogPanel.tsx → restore`. Test: `tests/unit/batch-1121b.test.ts`.
+- **Status:** Active (fully once the migration has run) · Since: 2026-11-21
 
 ---
 

@@ -15,6 +15,8 @@ export interface AuditEntry {
   screen?: string | null
   /** R-OPS-06: every changed field, before → after */
   changes?: FieldChange[] | null
+  /** R-OPS-10: what Restore puts back (migration 2026-11-21_audit_log_snapshot.sql) */
+  snapshot?: Record<string, unknown> | null
 }
 
 /** Who changed one record and when (UX-40) — newest first; empty when the audit table is missing */
@@ -105,12 +107,15 @@ export interface AuditWrite {
   details?: string | null
   changes?: FieldChange[] | null
   screen?: string | null
+  /** R-OPS-10: what Restore puts back — the whole record (deleted) or { before } of the changed fields (updated) */
+  snapshot?: Record<string, unknown> | null
 }
 
 // Entries are sent in batches (an import adds hundreds of rows at once) and never block or break the app.
 let queue: AuditWrite[] = []
 let timer: ReturnType<typeof setTimeout> | null = null
 let hasDetailColumns = true // false until migration 2026-11-12_audit_log_details.sql has run
+let hasSnapshotColumn = true // false until migration 2026-11-21_audit_log_snapshot.sql has run (R-OPS-10)
 
 export function logAudit(entry: AuditWrite): void {
   try {
@@ -126,16 +131,41 @@ export async function flushAudit(): Promise<void> {
   try {
     const { data } = await supabase.auth.getSession()
     const user = data.session?.user?.email ?? 'System'
-    const rows = batch.map(e => ({ ...e, user_name: user, details: e.details ?? null, changes: e.changes?.length ? e.changes : null }))
+    const all = batch.map(e => ({ ...e, user_name: user, details: e.details ?? null, changes: e.changes?.length ? e.changes : null, snapshot: e.snapshot ?? null }))
+    const noSnap = () => all.map(({ snapshot: _s, ...r }) => { void _s; return r })
+    let rows: Record<string, unknown>[] = hasSnapshotColumn ? all : noSnap()
     if (hasDetailColumns) {
-      const { error } = await supabase.from('audit_log').insert(rows)
+      let { error } = await supabase.from('audit_log').insert(rows)
+      if (error && hasSnapshotColumn && /snapshot/i.test(error.message || '')) {
+        hasSnapshotColumn = false // R-OPS-10: no snapshot column yet — log without it
+        rows = noSnap()
+        ;({ error } = await supabase.from('audit_log').insert(rows))
+      }
       if (!error) return
       if (!/screen|changes/i.test(error.message || '')) return
       hasDetailColumns = false // the table has the old columns only: keep the detail in the text
     }
-    await supabase.from('audit_log').insert(rows.map(({ screen, changes, ...r }) => ({
+    await supabase.from('audit_log').insert((noSnap() as AuditWrite[]).map(({ screen, changes, ...r }) => ({
       ...r,
       details: [r.details, changes?.length && !r.details ? changesText(changes) : '', screen ? `[${screen}]` : ''].filter(Boolean).join(' '),
     })))
   } catch { /* table missing or offline — the change itself is saved */ }
+}
+
+/**
+ * R-OPS-10: what Activity Log → Restore does with an entry —
+ *   readd  : a deleted job / client / employee / expense comes back (from the entry's snapshot)
+ *   revert : a changed job / client / employee / expense gets the values before the change
+ *   remove : an added job / expense is taken out again
+ * null when the entry cannot be restored (older entries have no snapshot).
+ */
+export type RestoreKind = 'readd' | 'revert' | 'remove'
+const RESTORABLE = new Set(['daily_job', 'client', 'employee', 'expense'])
+export function restoreKindOf(entry: Pick<AuditEntry, 'action' | 'entity' | 'entity_id' | 'snapshot'>): RestoreKind | null {
+  if (!RESTORABLE.has(entry.entity) || !entry.entity_id) return null
+  const snap = entry.snapshot as Record<string, unknown> | null | undefined
+  if (entry.action === 'deleted' && snap && typeof snap === 'object' && snap.id) return 'readd'
+  if (entry.action === 'updated' && snap && typeof snap.before === 'object' && snap.before && Object.keys(snap.before as object).length) return 'revert'
+  if (entry.action === 'created' && (entry.entity === 'daily_job' || entry.entity === 'expense')) return 'remove'
+  return null
 }

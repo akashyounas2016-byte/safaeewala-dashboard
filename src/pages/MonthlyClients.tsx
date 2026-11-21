@@ -665,7 +665,7 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
   }
 
   const deletePayment = async (id: string) => {
-    if (await confirmAsync({ title: 'Delete payment', message: 'Delete this payment record?', confirmLabel: 'Delete', tone: 'danger' })) {
+    if (await confirmAsync({ title: 'Delete payment', message: 'Delete this payment record?', confirmLabel: 'Delete', tone: 'danger', typeToConfirm: 'DELETE' })) { // UX-195
       setPayments(prev => prev.filter(p => p.id !== id))
       setPaymentNotice('Payment record deleted.')
     }

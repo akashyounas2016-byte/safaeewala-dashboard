@@ -57,10 +57,10 @@ eq([
   autoAdvanceRemark({ charges: 400, received: 0, payment_mode: 'Cash', remarks: '' }, 350),
   autoAdvanceRemark({ charges: 100, received: 100, payment_mode: 'Cash', remarks: '' }, 350),
   autoAdvanceRemark({ charges: 100, received: 0, payment_mode: 'Monthly', remarks: '' }, 350),
-], [null, null, null], 'not enough advance / already paid / monthly contract → unchanged')
+], ['Paid from advance AED 350', null, null], 'R-FIN-11: part of it from the advance (AED 350 of 400) / already paid / monthly contract → unchanged')
 const addJob = readFileSync('src/components/dailyJobSheet/AddJobModal.tsx', 'utf8')
 eq(/autoAdvanceRemark\(/.test(addJob) && /!initial\?\.id && pickedClient/.test(addJob), true, 'Add Job applies it to new jobs of a picked client')
-eq(/<MoneyChip status=\{listStatus\.get\(item\.key\)\}/.test(addJob) && /Advance AED/.test(addJob), true, 'client list and picked client show advance / pending (UX-135)')
+eq(/<MoneyChip status=\{listMoney\.get\(item\.client\.id\)\}/.test(addJob) && /Advance AED/.test(addJob), true, 'client list and picked client show advance / pending (UX-135)')
 eq(/sm:min-w-\[460px\]/.test(readFileSync('src/components/common/CleanerMultiSelect.tsx', 'utf8')), true, 'staff picker is wider')
 
 // ── UX-136: one date unless Custom Range ──
