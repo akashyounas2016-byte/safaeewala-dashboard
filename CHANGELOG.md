@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+## 2026-11-23 (Deploy to Production VPS, fda816b)
+
 - fix(excel-sheet): absent cleaner → replacement banner also for Bi-Weekly clients (R-SCHED-29, A30)
 - fix(money): opening advance / adjustment no longer counted twice (R-FIN-19, found in the A24 test)
 - test: A24 browser round on live with TEST records — all passed except R-FIN-19 (fixed); TEST data deleted (backup a24-test-2026-11-22.json)
