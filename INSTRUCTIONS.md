@@ -255,11 +255,25 @@
 ### Alerts — contract khatam
 - Monthly / Bi-Weekly contract 30 din mein khatam ho raha ho to Alerts mein aata hai (7 din ya kam = laal).
 
+### Contract renew (Client Profile)
+- Contract 30 din mein khatam ho raha ho to profile par peela banner aata hai: **+1 / +3 / +6 / +12 mo** dabayein — contract utne mahine aage barh jata hai.
+
+### Advance se pending clear karein
+- Client ka pending bhi ho aur advance bhi, to profile par **Settle AED X from advance** dabayein. Advance purani pending jobs par pehle lagta hai.
+
+### Payments — period aur Weekly report
+- Payments ke upar period chunein: This month, Last month, 3 ya 12 mahine. Cards usi period ke hote hain.
+- **Weekly report** dabayein — WhatsApp khulta hai pichle 7 din ki report ke sath (jobs, billed, collected, pending, naye clients, leads, clicks). Jis ko bhejna ho chunein.
+
+### Bi-Weekly client — rate zaroori
+- Bi-Weekly client har tick kiye din par **Charges / Hr** ke baghair save nahi hota (taake visit AED 0 par na bane).
+
 ### Activity Log → Restore
 - Kisi entry par click karein → **Restore** (sirf admin / manager): delete hui job / client / employee / expense wapas, badli hui cheez pehle jaisi, nayi job **Undo (remove)**. Pehle poochhta hai.
 
 ### Data health
 - Data mein masle dikhata hai (misaal: job par aisa staff jo Employees mein nahi). Item click karein to seedha wahi job khulti hai.
+- Ab yeh bhi: AED 0 charges wali jobs, Bi-Weekly client jis ke din par rate nahi, Pending Received jo kisi due par nahi laga, aur woh clients jin ka pending aur advance dono hain.
 
 ### Backup
 - Har raat 2 baje (Dubai) poora data — aur passport, EID, visa jaise **uploaded documents** bhi — server par copy hota hai, aur us ki ek copy **Google Drive** ke "Safaeewala-Backups" folder mein jati hai. Upar ka status batata hai ke backup chal raha hai ya nahi.

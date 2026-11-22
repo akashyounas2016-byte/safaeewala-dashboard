@@ -1,5 +1,6 @@
 import type { Client, DailyJob, Employee, Invoice } from '@/types'
-import { employeeMatchesStaff, isBogusJob, splitStaffNames } from '@/lib/clientDataSync'
+import { employeeMatchesStaff, isBogusJob, splitStaffNames, unallocatedReceipts, calcClientPendingBalance, loadPendingReceipts, loadClientAdjustments } from '@/lib/clientDataSync'
+import { calcClientAdvanceBalance } from '@/lib/clientAdvance'
 import { buildRowChecks } from '@/lib/jobChecks'
 import { normalizeEmiratesId, normalizePhone } from '@/lib/validation'
 import { addDays } from '@/lib/dubaiTime'
@@ -97,6 +98,23 @@ export function runDataHealth(input: {
   const noPhone = clients.filter(c => !normalizePhone(c.phone) && !normalizePhone(c.whatsapp))
     .map(c => ({ label: c.full_name || '(no name)', detail: 'no phone / WhatsApp', link: `/clients/${c.id}` }))
 
+  // R-OPS-11 (audit 2026-11-22): the money checks of the CRM audit, every day
+  // 7. Jobs with a time and an address but AED 0 charges and nothing received (not monthly / team member rows)
+  const zeroCharge = recentJobs.filter(j => !Number(j.charges) && !Number(j.received) && j.payment_mode !== 'Monthly' && j.payment_mode !== 'Above' && j.address && j.start_time && !/paid\s*from\s*adv/i.test(j.remarks || ''))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map(j => ({ label: `${j.date} · ${j.staff_name} · ${j.address}`, detail: 'no charges and nothing received — enter the charges (or the rate in the client schedule)', link: jobLink(j) }))
+  // 8. Bi-Weekly clients whose schedule has a day without Charges / Hr (their visits come at AED 0)
+  const noRate = clients.filter(c => c.service_mode === 'biweekly' && c.contract_active !== false && (c.biweekly_plan?.days || []).some(d => !(Number(c.biweekly_plan?.day_schedules?.[d]?.rate) > 0)))
+    .map(c => ({ label: c.full_name, detail: `no Charges / Hr on ${(c.biweekly_plan?.days || []).filter(d => !(Number(c.biweekly_plan?.day_schedules?.[d]?.rate) > 0)).join(', ')} — Edit client → schedule`, link: `/clients/${c.id}` }))
+  // 9. Pending Received with nothing pending (kept as advance, R-FIN-12) and 10. clients with both pending and advance
+  const receipts = loadPendingReceipts()
+  const adjustments = loadClientAdjustments()
+  const freeReceipts = clients.map(c => ({ c, v: unallocatedReceipts(c, receipts) })).filter(x => x.v > 0)
+    .map(({ c, v }) => ({ label: c.full_name, detail: `AED ${v} collected with nothing pending — kept as advance; delete it in Pending Received if it was not a payment`, link: `/clients/${c.id}` }))
+  const both = clients.map(c => ({ c, pending: calcClientPendingBalance(c, dailyJobs, receipts, adjustments), advance: calcClientAdvanceBalance(c, dailyJobs, adjustments) }))
+    .filter(x => x.pending > 0 && x.advance > 0)
+    .map(({ c, pending, advance }) => ({ label: c.full_name, detail: `pending AED ${Math.round(pending)} and advance AED ${Math.round(advance)} — settle one against the other (Client Profile → Settle)`, link: `/clients/${c.id}` }))
+
   return [
     { id: 'sync', title: 'Changes not saved to the cloud', severity: 'high', help: 'Saved in this browser only. They upload automatically when the connection works.', items: unsyncedChanges > 0 ? [{ label: `${unsyncedChanges} change${unsyncedChanges === 1 ? '' : 's'} waiting` }] : [] },
     { id: 'dup-emp', title: 'Possible duplicate employees', severity: 'high', help: 'Same Emirates ID, passport or phone on two records — keep one.', items: dupEmp },
@@ -104,6 +122,10 @@ export function runDataHealth(input: {
     { id: 'unregistered', title: 'Staff on jobs who are not registered', severity: 'medium', help: 'Names on the job sheet with no employee record (attendance and payroll miss them).', items: unregistered },
     { id: 'rows', title: 'Job rows to check (last 60 days)', severity: 'medium', help: 'End before start, received more than charged, monthly visit with cash, duplicate rows.', items: rowWarnings },
     { id: 'invoices', title: 'Invoices linked to deleted visits', severity: 'low', help: 'The invoice still lists visits that were deleted from the job sheet.', items: brokenInvoices },
+    { id: 'zero-charge', title: 'Jobs with no charges (last 60 days)', severity: 'medium', help: 'Work done but nothing billed or received — the totals are too low.', items: zeroCharge },
+    { id: 'no-rate', title: 'Bi-Weekly clients without a rate', severity: 'medium', help: 'Their visits are added at AED 0 until each day has Charges / Hr.', items: noRate },
+    { id: 'free-receipts', title: 'Collected with nothing pending', severity: 'low', help: 'Pending Received money that paid no due — counted as the client advance.', items: freeReceipts },
+    { id: 'pending-and-advance', title: 'Clients with both pending and advance', severity: 'low', help: 'The advance can pay the pending dues.', items: both },
     { id: 'no-phone', title: 'Clients without a phone number', severity: 'low', help: 'Reminders and WhatsApp cannot reach them.', items: noPhone },
   ]
 }

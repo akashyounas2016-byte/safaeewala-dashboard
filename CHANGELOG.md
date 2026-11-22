@@ -6,6 +6,16 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(clients): Bi-Weekly days need Charges / Hr before save (R-SCHED-28)
+- feat(money): settle pending from the advance in one click (R-FIN-16); one money summary per client (R-FIN-17)
+- feat(payments): period filter on the cards (R-FIN-18); Weekly report by WhatsApp (R-OPS-12)
+- feat(contracts): renew +1/+3/+6/+12 months from the Client Profile (R-ALERT-06)
+- feat(settings): Data health lists zero-charge jobs, Bi-Weekly days without a rate, unused receipts, pending-and-advance clients (R-OPS-11)
+- data: 567 old job rows linked to their client (A36, owner's yes; backup in Safaeewala-backups); 3 test jobs ("testing", "test") deleted (backup a38-test-jobs-2026-11-22.json)
+- docs: audit follow-up in docs/audit-2026-11-22.md
+
+## 2026-11-22 (Deploy to Production VPS, bf3e8ce)
+
 - fix(money): Villa 87b conflict — Pending Received with nothing pending counts as advance; card / profile Received agree (R-FIN-12); Payments advance and balances from the profile formula (R-FIN-15)
 - fix(data): job rows keep their client id — it was never sent to the database (R-DATA-14)
 - fix(clients): monthly remarks change reaches the coming visits (R-SCHED-26)

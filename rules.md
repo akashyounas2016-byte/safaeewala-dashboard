@@ -237,6 +237,12 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `WeeklyScheduleCard.tsx`, `BiWeeklyScheduleCard.tsx`, `ScheduleMaterialInput.tsx`; `clientDataSync.ts → daySpecOf, syncMonthlySchedulesToDailyJobs`. Test: `tests/unit/batch-1122.test.ts`.
 - **Status:** Active · Since: 2026-11-21
 
+### R-SCHED-28 — Bi-Weekly days need Charges / Hr
+- **Why:** 64 jobs had AED 0 charges, mostly Bi-Weekly visits made before the schedule had a rate (audit 2026-11-22).
+  - Add / Edit Client with service mode Bi-Weekly cannot be saved until every ticked day has Charges / Hr above 0; the missing days are named.
+- **Code:** `ClientModalForm.tsx` (required-field list). Test: `tests/unit/batch-1122b.test.ts`.
+- **Status:** Active · Since: 2026-11-22
+
 ### R-SCHED-24 — Monthly visits only up to 90 days ahead
 - **Why:** a mistyped date (2041-12-17) opened on the Excel sheet got real-looking monthly visits, as the contracts had no End date (team report 2026-11-17).
   - Monthly / Bi-Weekly visits are added only for dates up to 90 days from today (`MONTHLY_SYNC_DAYS_AHEAD`). Further dates show no visits; they are added when the date comes within 90 days.
@@ -746,7 +752,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ### R-DATA-14 — Every job row keeps its client id
 - **Why:** `client_id` (R-DATA-12) was not in the list of fields the sync sends, so no job ever kept its client (0 of 491 rows). After a rename, rows still under the old address became a new profile ("Warehouse no.7 - Art corner Showroom", deleted by the team on 20 Nov) (2026-11-21).
-  - The field is now sent; new and edited rows keep their client. The 487 older rows that match one client exactly can be linked once (backup ready) — waiting for the owner (PENDING A36).
+  - The field is now sent; new and edited rows keep their client. On 22 Nov (owner's yes, A36) 567 older rows that matched exactly one client were linked (backup `daily-jobs-before-client-link-2026-11-21.json`).
 - **Code:** `syncQueue.ts → DAILY_JOBS_COLUMNS`. Test: `tests/unit/batch-1122.test.ts`.
 - **Status:** Active · Since: 2026-11-21
 
@@ -1240,6 +1246,23 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Why:** Payments → Advance Balance and Client credit balances read only the opening advance (`advance_amount`); the cards did not count bookings without a sheet row while the history list did (audit 2026-11-22).
   - Advance = `calcClientAdvanceBalance` for each client; new cards: Adjustments, Opening balances, Active contracts. Collected includes bookings without a sheet row; the collection rate is job & booking money ÷ billed.
 - **Code:** `PaymentsHub.tsx`; `PaymentProcessing.tsx`.
+- **Status:** Active · Since: 2026-11-22
+
+### R-FIN-16 — Settle pending from the advance in one click
+- **Rule (audit 2026-11-22, owner: "is report k follow kro"):** a client with both pending and advance can settle one against the other.
+  - Client Profile shows a teal banner **Settle AED X from advance** (X = the smaller of pending and advance). After a confirm the advance is used on the oldest pending jobs first (one `advance_deduction` record per job, as R-FIN-11 does).
+  - Data health lists every client with both (R-OPS-11).
+- **Code:** `ClientProfile.tsx → settleFromAdvance`. Test: `tests/unit/batch-1122b.test.ts`.
+- **Status:** Active · Since: 2026-11-22
+
+### R-FIN-17 — One money summary per client
+- **Rule (audit 2026-11-22):** billed, paid, pending and advance of a client come from one function, so the client card, profile and Payments cannot drift apart again.
+- **Code:** `clientAdvance.ts → clientMoneySummary`; used by `Clients.tsx → paidByClient`. Test: `tests/unit/batch-1122b.test.ts`.
+- **Status:** Active · Since: 2026-11-22
+
+### R-FIN-18 — Payments: period filter on the cards
+- **Rule (audit 2026-11-22):** Payments cards show This month, Last month, Last 3 months or Last 12 months (`?period=this|last|3|12`, opens on This month — D-13). Card labels name the period. Balances (pending, advance) stay "now".
+- **Code:** `PaymentsHub.tsx`.
 - **Status:** Active · Since: 2026-11-22
 
 ### R-FIN-04 — Invoice numbers
@@ -1754,6 +1777,21 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Sidebar → Alerts lists each Monthly / Bi-Weekly client whose contract ends within 30 days (7 days or less = high) or has ended while the client is still On, with a link to the client.
 - **Code:** `alerts.ts → contractEndAlerts`; `useAlerts.ts`. Test: `tests/unit/batch-1122.test.ts`.
 - **Status:** Active · Since: 2026-11-21
+
+### R-ALERT-06 — Renew a contract from the Client Profile
+- **Rule (audit 2026-11-22):** when a Monthly / Bi-Weekly contract ends within 30 days (or has ended while the client is On), the Client Profile shows an amber banner with **+1 / +3 / +6 / +12 mo**. A click extends the contract end by that many months (from the old end, or from today if it has passed) and sets it active; for Bi-Weekly the plan's months grow too. Visits follow the new window (R-SCHED-24).
+- **Code:** `clientContracts.ts → addMonthsYMD, extendContractEnd`; `ClientProfile.tsx`. Test: `tests/unit/batch-1122b.test.ts`.
+- **Status:** Active · Since: 2026-11-22
+
+### R-OPS-11 — Data health finds money gaps
+- **Rule (audit 2026-11-22):** Settings → Data health also lists jobs of the last 60 days with no charges and nothing received, Bi-Weekly clients with a day without a rate, Pending Received money not used on any due, and clients with both pending and advance — so mismatches show up the same day.
+- **Code:** `dataHealth.ts`. Test: `tests/unit/batch-1122b.test.ts`.
+- **Status:** Active · Since: 2026-11-22
+
+### R-OPS-12 — Weekly report by WhatsApp
+- **Rule (audit 2026-11-22):** Payments → **Weekly report** opens WhatsApp with the last 7 days: jobs and cleaners, billed, collected, pending now, new clients, website leads and WhatsApp clicks. The owner picks who to send it to.
+- **Code:** `weeklyReport.ts → weeklyReportText`; `PaymentsHub.tsx → sendWeeklyReport`. Test: `tests/unit/batch-1122b.test.ts`.
+- **Status:** Active · Since: 2026-11-22
 
 ## Known issues (rules not yet fully honoured)
 

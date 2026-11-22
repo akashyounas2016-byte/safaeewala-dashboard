@@ -128,3 +128,26 @@ export function saveClientContract(args: {
   try { window.dispatchEvent(new CustomEvent(REMOTE_CHANGE_EVENT, { detail: { key: CONTRACTS_KEY, local: true } })) } catch { /* no window */ }
   return next
 }
+
+/** Add whole months to a YYYY-MM-DD date (the day is kept, or the month's last day) */
+export function addMonthsYMD(date: string, months: number): string {
+  const [y, m, d] = date.split('-').map(Number)
+  const target = new Date(Date.UTC(y, m - 1 + months, 1))
+  const last = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate()
+  target.setUTCDate(Math.min(d, last))
+  return target.toISOString().slice(0, 10)
+}
+
+/**
+ * R-ALERT-06: renew a contract in one click — the End date moves by `months` (from the old End, or from today
+ * when it has already ended). Returns the new End date, or null when the client has no contract record.
+ */
+export function extendContractEnd(clientName: string, months: number, today: string = todayDubai()): string | null {
+  const list = readContracts()
+  const c = contractOfClient(clientName, list)
+  if (!c) return null
+  const from = c.endDate && c.endDate >= today ? c.endDate : today
+  const endDate = addMonthsYMD(from, months)
+  safeLocalStorageSet(CONTRACTS_KEY, list.map(x => (x.id === c.id ? { ...x, endDate, status: 'active' as const } : x)))
+  return endDate
+}

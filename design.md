@@ -88,6 +88,7 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
 - **D-12 Paging:** lists that can grow past ~30 rows use `usePagination` + `<Pager />`.
 - **D-13 Periods:** finance screens use the presets from `lib/datePresets.ts` and open on "This Month".
 - **D-14 Explain numbers:** every KPI tile has a `title` tooltip saying where the number comes from; trend chips appear only when computed from data.
+- **Action banners (Client Profile):** amber = contract ending (R-ALERT-06) with small month buttons; teal = settle from advance (R-FIN-16). One line of text, buttons on the right, shown only when they apply.
 - **Module tabs:** related screens share one tab bar (e.g. `ReceivablesNav` on Pending and Payments).
 
 ## 6. Domain widgets

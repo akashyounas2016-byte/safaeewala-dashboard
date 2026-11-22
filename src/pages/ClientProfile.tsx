@@ -19,7 +19,9 @@ import { formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { clientDeletionImpact, deletionMessage } from '@/lib/clientChanges'
-import { CONTRACTS_KEY } from '@/lib/clientContracts'
+import { CONTRACTS_KEY, extendContractEnd } from '@/lib/clientContracts'
+import { contractWindowOf } from '@/lib/clientDataSync'
+import { biweeklyEndDate } from '@/lib/biweekly'
 import type { Booking, PaymentMode, DailyJob, Invoice, DailyAdvanceItem, Client } from '@/types'
 import { advanceMatchesClient } from '@/lib/clientAdvance'
 import {
@@ -430,6 +432,26 @@ export function ClientProfile() {
       created_at: new Date().toISOString(),
     }
     saveAdjustments([newRecord, ...adjustments])
+  }
+
+  // R-FIN-16: use the advance on the oldest unpaid jobs (one "Service Deducted from Advance" record per job, ADJ tag)
+  const settleFromAdvance = async () => {
+    if (!client) return
+    let left = Math.min(totalDJPending, netRemainingAdvance)
+    if (left <= 0) return
+    if (!(await confirmAsync({ title: 'Settle from advance', message: `Use AED ${left.toLocaleString()} of ${client.full_name}'s advance to pay the oldest pending jobs?
+Each job gets an "advance deduction" record (ADJ) in the ledger — it can be removed there.`, confirmLabel: 'Settle' }))) return
+    const now = new Date().toISOString()
+    const records: ClientFinancialAdjustment[] = []
+    ;[...enrichedDailyJobs].filter(j => j.pending > 0).sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach((j, i) => {
+      if (left <= 0) return
+      const amt = Math.round(Math.min(left, j.pending) * 100) / 100
+      left = Math.round((left - amt) * 100) / 100
+      records.push({ id: `adj-adv-${Date.now()}-${i}`, client_id: client.id, client_name: client.full_name, date: todayDubai(), type: 'advance_deduction', amount: amt, notes: `Settled from advance [ADJ] — job of ${j.date}`, reference_job_id: j.id, created_at: now })
+    })
+    if (!records.length) return
+    saveAdjustments([...records, ...adjustments])
+    notify.success(`AED ${records.reduce((s, r) => s + r.amount, 0).toLocaleString()} settled from advance on ${records.length} job${records.length === 1 ? '' : 's'}`)
   }
 
   if (!client) {
@@ -876,6 +898,44 @@ export function ClientProfile() {
         </div>
 
       </div>
+
+      {/* R-ALERT-06: contract ending within 30 days (or ended) — renew it in one click */}
+      {(() => {
+        const recurring = client.service_mode === 'biweekly' || (client.service_days || []).length > 0
+        if (!recurring || client.contract_active === false) return null
+        const contractEnd = contractWindowOf(client, safeLocalStorageGet(CONTRACTS_KEY, []), false).end
+        const planEnd = client.service_mode === 'biweekly' && client.biweekly_plan ? biweeklyEndDate(client.biweekly_plan) : ''
+        const end = [contractEnd, planEnd].filter(Boolean).sort()[0] || ''
+        if (!end) return null
+        const days = Math.round((Date.parse(`${end}T12:00:00Z`) - Date.parse(`${todayDubai()}T12:00:00Z`)) / 86400000)
+        if (days > 30) return null
+        const extend = async (months: number) => {
+          if (!(await confirmAsync({ title: 'Renew contract', message: `Extend ${client.full_name}'s contract by ${months} month${months === 1 ? '' : 's'}?`, confirmLabel: 'Extend' }))) return
+          const newEnd = extendContractEnd(client.full_name, months)
+          if (client.service_mode === 'biweekly' && client.biweekly_plan) updateClient(client.id, { biweekly_plan: { ...client.biweekly_plan, months: (client.biweekly_plan.months || 0) + months } })
+          notify.success(newEnd ? `Contract now runs to ${formatDate(newEnd)}` : `Bi-Weekly plan extended by ${months} month${months === 1 ? '' : 's'}`)
+        }
+        return (
+          <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-2xl border border-amber-300 bg-amber-50 text-[12.5px] text-amber-900">
+            <span>{days < 0 ? <>Contract <b>ended on {formatDate(end)}</b></> : <>Contract ends on <b>{formatDate(end)}</b> ({days} day{days === 1 ? '' : 's'})</>} — renew it:</span>
+            <span className="flex gap-1.5">
+              {[1, 3, 6, 12].map(n => (
+                <button key={n} type="button" onClick={() => void extend(n)} className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 font-bold hover:bg-amber-100 cursor-pointer">+{n} mo</button>
+              ))}
+            </span>
+          </div>
+        )
+      })()}
+
+      {/* R-FIN-16: pending dues and advance at the same time — the advance pays the oldest dues in one click */}
+      {totalDJPending > 0 && netRemainingAdvance > 0 && (
+        <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 rounded-2xl border border-teal-200 bg-teal-50 text-[12.5px] text-teal-900">
+          <span>This client has <b>AED {totalDJPending.toLocaleString()}</b> pending and <b>AED {netRemainingAdvance.toLocaleString()}</b> advance.</span>
+          <button type="button" onClick={() => void settleFromAdvance()} className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer">
+            Settle AED {Math.min(totalDJPending, netRemainingAdvance).toLocaleString()} from advance
+          </button>
+        </div>
+      )}
 
       {/* UX-159: the totals once, under the header (like the Daily Job Sheet) — not repeated in the tabs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-3.5">

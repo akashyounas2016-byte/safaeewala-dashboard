@@ -1,3 +1,4 @@
+import { clientMoneySummary } from '@/lib/clientAdvance'
 import { clientReceiptsOf, receiptTotal, loadPendingReceipts, getClientDailyJobsHistory } from '@/lib/clientDataSync'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { formatClientAddress } from '@/lib/clientAddress'
@@ -350,8 +351,7 @@ export function Clients() {
 
   // R-FIN-12: money the client paid — received on the jobs plus Pending Received collections (as the profile counts it)
   const receiptsAll = useMemo(() => loadPendingReceipts(), [dailyJobs]) // eslint-disable-line react-hooks/exhaustive-deps
-  const paidByClient = (c: typeof clients[0]) => Math.round((getClientDailyJobsHistory(c, dailyJobs).reduce((s, j) => s + (Number(j.received) || 0), 0)
-    + clientReceiptsOf(c, receiptsAll).reduce((s, r) => s + receiptTotal(r), 0)) * 100) / 100
+  const paidByClient = (c: typeof clients[0]) => clientMoneySummary(c, dailyJobs, receiptsAll).paid // R-FIN-17: the shared summary
 
   // Client pending balance & dues calculation
   const getClientOutstanding = (c: typeof clients[0]) => {

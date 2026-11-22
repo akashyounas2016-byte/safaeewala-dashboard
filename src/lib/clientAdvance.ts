@@ -1,8 +1,8 @@
-import type { Client, DailyAdvanceItem, DailyJob } from '@/types'
+import type { Client, DailyAdvanceItem, DailyJob, DailyPendingReceivedItem } from '@/types'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 import {
   buildPendingCalcContext, calcClientPendingBalance, calcJobAdjustment, getClientDailyJobsHistory,
-  isJobPaidFromAdvance, advanceUsedOf, loadClientAdjustments, loadPendingReceipts, normalizeKey, unallocatedReceipts, type JobAdjustmentRecord,
+  isJobPaidFromAdvance, advanceUsedOf, loadClientAdjustments, loadPendingReceipts, normalizeKey, unallocatedReceipts, clientReceiptsOf, receiptTotal, type JobAdjustmentRecord,
 } from '@/lib/clientDataSync'
 import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
 
@@ -97,4 +97,25 @@ export function autoAdvanceRemark(job: Pick<DailyJob, 'charges' | 'received' | '
   const note = used >= charges ? PAID_FROM_ADVANCE_NOTE : `${PAID_FROM_ADVANCE_NOTE} AED ${used}`
   const r = (job.remarks || '').trim()
   return r ? `${r} · ${note}` : note
+}
+
+/**
+ * R-FIN-17 (audit 2026-11-22): one money summary per client — billed, paid (on the jobs + Pending Received
+ * collections), pending and advance — so every screen adds up the same way.
+ */
+export interface ClientMoneySummary { billed: number; paid: number; pending: number; advance: number }
+export function clientMoneySummary(
+  client: Client,
+  dailyJobs: DailyJob[],
+  receipts: DailyPendingReceivedItem[] = loadPendingReceipts(),
+  adjustments: JobAdjustmentRecord[] = loadClientAdjustments(),
+): ClientMoneySummary {
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  const jobs = getClientDailyJobsHistory(client, dailyJobs)
+  return {
+    billed: r2(jobs.reduce((s, j) => s + cleanNum(j.charges), 0)),
+    paid: r2(jobs.reduce((s, j) => s + cleanNum(j.received), 0) + clientReceiptsOf(client, receipts).reduce((s, r) => s + receiptTotal(r), 0)),
+    pending: r2(calcClientPendingBalance(client, dailyJobs, receipts, adjustments)),
+    advance: calcClientAdvanceBalance(client, dailyJobs, adjustments),
+  }
 }

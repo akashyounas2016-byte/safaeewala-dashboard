@@ -193,7 +193,11 @@ export function ClientModalForm({
     // R-CLI-02: the mode, and the Bi-Weekly days and duration
     if (mode === 'biweekly') {
       // UX-84
-      if (!requireFields(e.currentTarget, [{ name: 'biweekly_days', label: 'Bi-Weekly days (tick at least one)', ok: plan.days.length > 0 }])) return
+      if (!requireFields(e.currentTarget, [
+        { name: 'biweekly_days', label: 'Bi-Weekly days (tick at least one)', ok: plan.days.length > 0 },
+        // R-SCHED-28 (audit 2026-11-22): a Bi-Weekly visit is charged per visit — every ticked day needs its Charges / Hr, or visits come at AED 0
+        { name: 'biweekly_days', label: `Charges / Hr for ${plan.days.filter(d => !(Number(plan.day_schedules[d]?.rate) > 0)).join(', ') || 'each day'}`, ok: plan.days.every(d => Number(plan.day_schedules[d]?.rate) > 0) },
+      ])) return
       patch.service_mode = 'biweekly'
       patch.biweekly_plan = plan
       if (!contractOn || seed?.contract_active === false) patch.contract_active = contractOn // R-SCHED-08 (sent only when Off or turned back On)
