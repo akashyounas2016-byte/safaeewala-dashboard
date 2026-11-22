@@ -9,6 +9,9 @@
 - fix(excel-sheet): absent cleaner → replacement banner also for Bi-Weekly clients (R-SCHED-29, A30)
 - fix(money): opening advance / adjustment no longer counted twice (R-FIN-19, found in the A24 test)
 - test: A24 browser round on live with TEST records — all passed except R-FIN-19 (fixed); TEST data deleted (backup a24-test-2026-11-22.json)
+- test: A24 round 2 (23 Nov) — absent cleaner → replacement on a Bi-Weekly visit (R-SCHED-29) with the client schedule unchanged (R-SCHED-01); Monthly client visit with material + rate (R-SCHED-27); monthly invoice line edit and save with job link (R-FIN-13); Invoices line edit (R-FIN-14); agency and employee add / delete — all passed; TEST data deleted (backup a24-test2-2026-11-23.json)
+- fix(invoices): the last line's delete button says why it is off (R-FIN-14)
+- data: test client "test123" deleted on owner's request (no jobs; backup test123-client-2026-11-23.json)
 
 ## 2026-11-22 (Deploy to Production VPS, 93ef1ed)
 

@@ -1245,7 +1245,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 
 ### R-FIN-14 — Invoices: View / Edit / Delete on each line
 - **Rule:** *"Invoices screen par … jobs ki rows kay end par 'Eye' (View), 'Delete', aur 'Edit' ke icons … Eye … pop-up … mukammal tafseelat."* (2026-11-22)
-  - Invoice view: 👁 shows the line (and its job when the invoice knows it); ✏️ changes description / qty / price; 🗑 removes the line after a confirm. Subtotal, discount (a % follows), VAT and total are worked out again. A paid invoice cannot be changed.
+  - Invoice view: 👁 shows the line (and its job when the invoice knows it); ✏️ changes description / qty / price; 🗑 removes the line after a confirm. Subtotal, discount (a % follows), VAT and total are worked out again. A paid invoice cannot be changed. The last line cannot be deleted — its 🗑 says so (edit the line, or void the invoice; 2026-11-23).
 - **Code:** `Invoices.tsx → InvoiceView`; `receivables.ts → recalcInvoiceTotals`. Test: `tests/unit/batch-1122.test.ts`.
 - **Status:** Active · Since: 2026-11-22
 
