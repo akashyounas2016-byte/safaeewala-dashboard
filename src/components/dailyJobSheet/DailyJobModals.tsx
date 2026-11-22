@@ -1286,7 +1286,13 @@ export function AddPendingReceivedModal({
           </div>
           {isOverpaid && (
             <div className="bg-amber-50 border border-amber-200 p-2 rounded-xl text-[11px] text-amber-800 font-semibold text-center">
-              Extra AED {overpaidAmount.toLocaleString()} — record it as an Advance for this client
+              Extra AED {overpaidAmount.toLocaleString()} — kept as this client's advance (R-FIN-12)
+            </div>
+          )}
+          {/* R-FIN-12: nothing is pending — the money is the client's advance; say so before it is saved */}
+          {selectedClient && previousPending <= 0 && totalReceived > 0 && (
+            <div className="bg-amber-50 border border-amber-300 p-2 rounded-xl text-[11px] text-amber-900 font-bold text-center">
+              {selectedClient.full_name} has nothing pending. AED {totalReceived.toLocaleString()} will be kept as advance — use the Advance widget if that is what it is.
             </div>
           )}
         </div>

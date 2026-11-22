@@ -261,6 +261,26 @@ export function buildJobReceiptMap(receipts: DailyPendingReceivedItem[]): Map<st
   return map
 }
 
+/**
+ * R-FIN-12: the Pending Received collections of one client and how much of them is not tied to a job or to the
+ * opening balance. That free part is money the client paid ahead — it counts as advance (it used to be counted
+ * nowhere: Villa 87b St 63d, AED 540 on 1 Oct with nothing pending).
+ */
+export function clientReceiptsOf(client: Pick<Client, 'id' | 'full_name'>, receipts: DailyPendingReceivedItem[] = loadPendingReceipts()): DailyPendingReceivedItem[] {
+  const name = (client.full_name || '').trim().toLowerCase()
+  return receipts.filter(r => (r.client_id ? r.client_id === client.id : (r.client || '').trim().toLowerCase() === name))
+}
+export function receiptTotal(r: DailyPendingReceivedItem): number {
+  return cleanNum(r.cash) + cleanNum(r.online)
+}
+export function unallocatedReceipts(client: Pick<Client, 'id' | 'full_name'>, receipts: DailyPendingReceivedItem[] = loadPendingReceipts()): number {
+  return Math.round(clientReceiptsOf(client, receipts).reduce((s, r) => {
+    if (r.job_id) return s // collected against one job
+    const used = (r.allocations || []).reduce((a, al) => a + cleanNum(al.amount), 0) + cleanNum(r.opening_applied)
+    return s + Math.max(0, receiptTotal(r) - used)
+  }, 0) * 100) / 100
+}
+
 export interface PendingCalcContext {
   adjustments: Map<string, LinkedJobAdjustment>
   receipts: Map<string, number>
@@ -480,6 +500,13 @@ function jobMatchesClientByText(job: DailyJob, client: Client): boolean {
  * Single source of truth to check if a client is a Monthly Client.
  * Synchronized across Clients screen, Monthly Clients screen, and Client Profiles.
  */
+/**
+ * R-BK-06: an Ad-Hoc job — an extra service for a Monthly / Bi-Weekly client outside the regular schedule. It is
+ * billed on its own (not in the monthly invoice) and paid like any job (not "Monthly"). Marked in the remarks.
+ */
+export const AD_HOC_TAG = 'Ad-hoc'
+export const isAdHocJob = (j: Pick<DailyJob, 'remarks'>) => /\bad-?hoc\b/i.test(j.remarks || '')
+
 export function isMonthlyClient(
   client: Client | null | undefined,
   dailyJobs: DailyJob[] = [],
@@ -1283,6 +1310,9 @@ export interface ScheduledShiftPlan {
   service: string
   paymentMode: 'Monthly' | 'Cash'
   charges: number
+  /** R-SCHED-27: from the schedule day */
+  material?: string
+  rate?: number
   alreadySynced: boolean
   existingJobId?: string
 }
@@ -1346,6 +1376,9 @@ export function rescheduledVisitRows(before: Client, after: Client, dailyJobs: D
     if (sameTime(j.end_time, was.endTime) && !sameTime(was.endTime, now.endTime)) patch.end_time = now.endTime
     if (Number(j.duty_hours || 0) === Number(was.durationHours || 0) && Number(was.durationHours || 0) !== Number(now.durationHours || 0)) patch.duty_hours = now.durationHours
     if (sameStaff(j.staff_name, was.cleanerName) && !sameStaff(was.cleanerName, now.cleanerName)) patch.staff_name = now.cleanerName
+    // R-SCHED-26: the client's remarks changed (e.g. Deep Cleaning → Sofa Cleaning) — rows still holding the old remark follow
+    const oldRemark = monthlyVisitRemark(before), newRemark = monthlyVisitRemark(after)
+    if (oldRemark !== newRemark && String(j.remarks || '').trim() === oldRemark.trim()) patch.remarks = newRemark
     if (!Object.keys(patch).length) return
     const staff = patch.staff_name ?? j.staff_name ?? ''
     if (staff) {
@@ -1362,6 +1395,18 @@ export function rescheduledVisitRows(before: Client, after: Client, dailyJobs: D
 }
 
 /** R-SCHED-21: the schedule fields of a client — a change in any of them reschedules its rows from today on */
+/** R-SCHED-27: the material / charges per hour set on the client's schedule day */
+function daySpecOf(client: Client, dayName: string): { material?: string; rate?: number } {
+  const spec = Object.entries(client.day_schedules || {}).find(([k]) => matchesDayName(k, dayName as DayOfWeekName))?.[1]
+  return { material: spec?.material || undefined, rate: Number(spec?.rate) || undefined }
+}
+
+/** The remark a monthly visit row gets from its client (R-SCHED-26: also used to follow a remarks change) */
+export function monthlyVisitRemark(client: Pick<Client, 'remarks'>): string {
+  const r = client.remarks || ''
+  return r ? (r.includes('Monthly') ? r : `${r} (Monthly Schedule)`) : '(Monthly Schedule)'
+}
+
 export const SCHEDULE_FIELDS = ['service_days', 'day_schedules', 'day_cleaner_assignments', 'scheduled_time', 'end_time', 'duration_hours', 'preferred_cleaner'] as const
 
 /**
@@ -1516,9 +1561,7 @@ export function getScheduledMonthlyShiftsForDate(
     const clientName = (client.full_name || 'Monthly Client').trim()
     const area = client.area || 'Dubai'
 
-    const remarks = client.remarks
-      ? (client.remarks.includes('Monthly') ? client.remarks : `${client.remarks} (Monthly Schedule)`)
-      : '(Monthly Schedule)'
+    const remarks = monthlyVisitRemark(client)
 
     // Check if this client already has a job on dateStr in dailyJobs
     const matchedJob = jobsOnDate.find(j => {
@@ -1544,7 +1587,8 @@ export function getScheduledMonthlyShiftsForDate(
       remarks,
       service: 'Regular Cleaning',
       paymentMode: 'Monthly',
-      charges: 0,
+      charges: 0, // paid through the monthly contract; the rate is kept for the invoice (R-SCHED-27)
+      ...daySpecOf(client, dayName),
       alreadySynced: Boolean(matchedJob),
       existingJobId: matchedJob?.id,
     })
@@ -1570,7 +1614,10 @@ export function getScheduledMonthlyShiftsForDate(
       remarks: '(Bi-Weekly Schedule)',
       service: 'Regular Cleaning',
       paymentMode: 'Cash',
-      charges: 0,
+      // R-SCHED-27: a Bi-Weekly visit is charged per visit — rate × duration
+      charges: Number(visit.rate) > 0 ? Math.round(Number(visit.rate) * (visit.duration || calcHours(visit.startTime, visit.endTime)) * 100) / 100 : 0,
+      material: visit.material || undefined,
+      rate: Number(visit.rate) || undefined,
       alreadySynced: Boolean(matchedJob),
       existingJobId: matchedJob?.id,
     })
@@ -1751,8 +1798,9 @@ export function syncMonthlySchedulesToDailyJobs(
       ot_hours: 0,
       address: shift.address,
       area: shift.area,
-      material: 'No',
+      material: shift.material || 'No', // R-SCHED-27
       charges: shift.charges,
+      ...(shift.rate ? { charges_per_hour: shift.rate } : {}),
       received: 0,
       payment_mode: shift.paymentMode,
       is_overtime: false,

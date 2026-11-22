@@ -5,6 +5,19 @@ import type { Invoice } from '@/types'
  */
 
 /** Amount still owed on an invoice (partial payments via amount_paid) */
+/**
+ * R-FIN-14: an invoice's totals after its lines changed (Invoices → Edit / Delete a line). A percentage discount
+ * follows the new gross; a fixed one stays; VAT at the invoice's rate.
+ */
+export function recalcInvoiceTotals(inv: Pick<Invoice, 'line_items' | 'discount_type' | 'discount_value' | 'discount_amount' | 'vat_rate'>): { subtotal: number; discount_amount: number; vat_amount: number; total: number } {
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  const gross = r2((inv.line_items || []).reduce((s, l) => s + (Number(l.amount) || 0), 0))
+  const discount = inv.discount_type === 'percentage' && inv.discount_value ? r2(gross * Number(inv.discount_value) / 100) : Math.min(gross, Number(inv.discount_amount) || 0)
+  const subtotal = r2(gross - discount)
+  const vat = r2(subtotal * (Number(inv.vat_rate) || 0) / 100)
+  return { subtotal, discount_amount: discount, vat_amount: vat, total: r2(subtotal + vat) }
+}
+
 export function invoiceBalance(inv: Pick<Invoice, 'total' | 'status' | 'amount_paid'>): number {
   if (inv.status === 'paid' || inv.status === 'void') return 0
   return Math.max(0, Math.round(((Number(inv.total) || 0) - (Number(inv.amount_paid) || 0)) * 100) / 100)

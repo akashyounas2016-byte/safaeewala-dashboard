@@ -5,7 +5,8 @@ import { PageHero } from '@/components/layout/PageHero'
 import { KpiCard, Widget } from '@/components/ui/KpiCard'
 import { useData } from '@/store/DataContext'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
-import { loadPendingReceipts } from '@/lib/clientDataSync'
+import { loadPendingReceipts, loadClientAdjustments, calcClientOpeningPending } from '@/lib/clientDataSync'
+import { calcClientAdvanceBalance } from '@/lib/clientAdvance'
 import { lastMonths, monthlyFigures, outstandingNow, type MonthlyPaymentLike } from '@/lib/businessMetrics'
 import { formatDate } from '@/lib/utils'
 import { PendingPayments } from '@/pages/PendingPayments'
@@ -35,18 +36,22 @@ export const hubTabOf = (t: string | null): HubTab => (t === 'pending' ? 'outsta
 const aed = (n: number) => `AED ${Math.round(n).toLocaleString()}`
 
 function AdvancesPanel() {
-  const { clients } = useData()
+  const { clients, dailyJobs } = useData()
   const items = safeLocalStorageGet<DailyAdvanceItem[]>('safaeewala_daily_advance_items', [])
-  const withCredit = clients.filter(c => (Number(c.advance_amount) || 0) > 0).sort((a, b) => (b.advance_amount || 0) - (a.advance_amount || 0))
+  // R-FIN-15: the advance each client really holds (same formula as the Client Profile) — it read the opening advance only
+  const withCredit = useMemo(() => {
+    const adj = loadClientAdjustments()
+    return clients.map(c => ({ c, held: calcClientAdvanceBalance(c, dailyJobs, adj) })).filter(x => x.held > 0).sort((a, b) => b.held - a.held)
+  }, [clients, dailyJobs])
   const recent = [...items].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 30)
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
       <Widget title="Client credit balances" note="Advance still held for each client" icon={PiggyBank}>
         {withCredit.length === 0 ? <p className="text-[12px] text-slate-400 text-center py-8">No client holds an advance</p> : (
-          <ul className="divide-y divide-slate-100">{withCredit.map(c => (
+          <ul className="divide-y divide-slate-100">{withCredit.map(({ c, held }) => (
             <li key={c.id} className="py-2.5 flex justify-between text-[13px]">
               <Link to={`/clients/${c.id}`} className="font-semibold text-slate-900 hover:text-emerald-700 truncate">{c.full_name}</Link>
-              <span className="font-bold text-emerald-700">{aed(Number(c.advance_amount) || 0)}</span>
+              <span className="font-bold text-emerald-700">{aed(held)}</span>
             </li>
           ))}</ul>
         )}
@@ -83,8 +88,14 @@ export function PaymentsHub() {
     const [m] = monthlyFigures({ dailyJobs, bookings, clients, dailyExpenses, invoices, monthlyPayments, pendingReceipts }, lastMonths(1))
     const thisMonth = m.key
     const recovered = pendingReceipts.filter(p => String(p.date).startsWith(thisMonth)).reduce((s, p) => s + (Number(p.cash) || 0) + (Number(p.online) || 0), 0)
-    const advance = clients.reduce((s, c) => s + (Number(c.advance_amount) || 0), 0)
-    return { outstanding: out.total + manual, out, manual, collected: m.collected, recovered, contracts: m.contractRevenue, advance, monthLabel: m.label }
+    // R-FIN-15: advance held, adjustments and opening balances — the same figures as the Client Profile
+    const adjustments = loadClientAdjustments()
+    const advance = clients.reduce((s, c) => s + calcClientAdvanceBalance(c, dailyJobs, adjustments), 0)
+    const advanceClients = clients.filter(c => calcClientAdvanceBalance(c, dailyJobs, adjustments) > 0).length
+    const adjusted = adjustments.filter(a => a.type !== 'advance' && a.type !== 'advance_deduction').reduce((s, a) => s + (Number(a.amount) || 0), 0) + clients.reduce((s, c) => s + (Number(c.adjustment_amount) || 0), 0)
+    const opening = clients.reduce((s, c) => s + calcClientOpeningPending(c, pendingReceipts), 0)
+    const activeContracts = clients.filter(c => c.contract_active !== false && (c.service_mode === 'biweekly' || (c.service_days || []).length > 0)).length
+    return { outstanding: out.total + manual, out, manual, collected: m.collected, recovered, contracts: m.contractRevenue, advance, advanceClients, adjusted, opening, activeContracts, monthLabel: m.label }
   }, [dailyJobs, bookings, clients, dailyExpenses, invoices])
 
   const go = (t: HubTab) => setParams(p => { const n = new URLSearchParams(p); n.set('tab', t); return n })
@@ -103,9 +114,25 @@ export function PaymentsHub() {
         <KpiCard label="Collected This Month" value={aed(figures.collected)} sub="Received, recoveries, contracts" icon={TrendingUp} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" chip="All payments" chipTone="up" active={tab === 'history'} onClick={() => go('history')} />
         <KpiCard label="Pending Recovered" value={aed(figures.recovered)} sub="Old dues collected this month" icon={CheckCircle2} labelColor="text-teal-700" iconSolid="bg-[#0d9488] shadow-teal-500/25" chip="Recovered" chipTone="up" active={tab === 'recovered'} onClick={() => go('recovered')} />
         <KpiCard label="Monthly Contracts" value={aed(figures.contracts)} sub="Contract payments this month" icon={Repeat} labelColor="text-indigo-700" iconSolid="bg-[#4f46e5] shadow-indigo-500/25" chip="Contracts" active={tab === 'monthly'} onClick={() => go('monthly')} />
-        <KpiCard label="Advance Balance" value={aed(figures.advance)} sub="Client credits held" icon={PiggyBank} labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25" chip="Advances" active={tab === 'advances'} onClick={() => go('advances')} />
+        <KpiCard label="Advance Balance" value={aed(figures.advance)} sub={`${figures.advanceClients} client${figures.advanceClients === 1 ? '' : 's'} paid ahead`} icon={PiggyBank} labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25" chip="Advances" active={tab === 'advances'} onClick={() => go('advances')} />
       </div>
 
+      {/* R-FIN-15: the other client balances, so this screen matches the Client Profile / Clients */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+        {[
+          { label: 'Adjustments', value: aed(figures.adjusted), sub: 'Discounts, waivers, corrections given', tone: 'text-indigo-700 bg-indigo-50' },
+          { label: 'Opening balances', value: aed(figures.opening), sub: 'Old dues brought in with the clients, still open', tone: 'text-rose-700 bg-rose-50' },
+          { label: 'Active contracts', value: String(figures.activeContracts), sub: 'Monthly + Bi-Weekly clients on', tone: 'text-emerald-700 bg-emerald-50' },
+        ].map(c => (
+          <div key={c.label} className="bg-white rounded-[18px] border border-[#E4E8EC] shadow-xs px-4 py-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <span className={`text-[10.5px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${c.tone}`}>{c.label}</span>
+              <p className="text-[11px] text-slate-500 mt-1 truncate">{c.sub}</p>
+            </div>
+            <p className="text-lg font-bold text-slate-900 shrink-0">{c.value}</p>
+          </div>
+        ))}
+      </div>
       <nav className="flex items-center gap-1.5 flex-wrap bg-white p-1.5 rounded-2xl border border-[#E4E8EC] shadow-xs" aria-label="Payments">
         {HUB_TABS.map(t => (
           <button key={t.key} type="button" onClick={() => go(t.key)} aria-current={tab === t.key ? 'page' : undefined}

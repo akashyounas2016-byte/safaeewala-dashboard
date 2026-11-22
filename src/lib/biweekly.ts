@@ -14,6 +14,9 @@ export interface BiWeeklyDay {
   endTime: string
   cleaner: string
   duration: number
+  /** R-SCHED-27: material of the visit and charges per hour (total = rate × duration) */
+  material?: string
+  rate?: number
 }
 
 export interface BiWeeklyPlan {

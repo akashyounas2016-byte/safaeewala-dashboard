@@ -1,3 +1,4 @@
+import { isAdHocJob } from '@/lib/clientDataSync'
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { requireFields, requireInPopup } from '@/components/common/FormGuard'
 import { formatClientAddress } from '@/lib/clientAddress'
@@ -9,7 +10,7 @@ import {
   ChevronDown, RotateCw, Plus, Edit2, Save, X, Power,
   Briefcase, CreditCard, CheckCircle2, PauseCircle, PlayCircle,
   Sparkles, Printer, Send, MessageCircle, FileSpreadsheet, Check, UserCheck,
-  LayoutGrid, List, Grid3x3,
+  LayoutGrid, List, Grid3x3, Eye,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -699,6 +700,12 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
   const [invoiceIssueDate, setInvoiceIssueDate] = useState<string>('')
   const [invoiceDueDate, setInvoiceDueDate] = useState<string>('')
   const [invoiceIncludeVat, setInvoiceIncludeVat] = useState<boolean>(true)
+  // R-FIN-13: per-line management of the invoice preview — left out, hours / rate changed for this invoice, details shown
+  const [invoiceExcluded, setInvoiceExcluded] = useState<Set<string>>(new Set())
+  const [invoiceIncludeAdHoc, setInvoiceIncludeAdHoc] = useState(false) // R-BK-06
+  const [invoiceOverrides, setInvoiceOverrides] = useState<Record<string, { hours: number; rate: number }>>({})
+  const [invoiceEditRow, setInvoiceEditRow] = useState<{ id: string; hours: string; rate: string } | null>(null)
+  const [invoiceViewJob, setInvoiceViewJob] = useState<DailyJob | null>(null)
   const [invoicePricingModel, setInvoicePricingModel] = useState<'shift_charges' | 'hourly_rate' | 'contract' | 'custom_total'>('shift_charges')
   const [invoiceHourlyRate, setInvoiceHourlyRate] = useState<number>(35)
   const [invoiceCustomAmount, setInvoiceCustomAmount] = useState<string>('')
@@ -777,6 +784,9 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
     setInvoiceType('detailed')
     setInvoiceIncludeVat(true)
     setInvoiceSuccessMsg(null)
+    setInvoiceExcluded(new Set()) // R-FIN-13
+    setInvoiceOverrides({})
+    setInvoiceEditRow(null)
     setShowInvoiceModal(true)
   }
 
@@ -813,10 +823,14 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
       if (!j.date) return false
       if (invoiceStartDate && j.date < invoiceStartDate) return false
       if (invoiceEndDate && j.date > invoiceEndDate) return false
+      if (invoiceExcluded.has(j.id)) return false // R-FIN-13: left out of this invoice
+      if (!invoiceIncludeAdHoc && isAdHocJob(j)) return false // R-BK-06: extra jobs are billed on their own
       return true
     }).sort((a, b) => (a.date || '').localeCompare(b.date || ''))
 
-    const totalHours = filteredShifts.reduce((sum, j) => sum + (Number(j.duty_hours) || 0), 0)
+    // R-FIN-13: hours / rate of a line can be changed for this invoice only
+    const hoursOf = (j: DailyJob) => (invoiceOverrides[j.id]?.hours ?? (Number(j.duty_hours) || 0))
+    const totalHours = filteredShifts.reduce((sum, j) => sum + hoursOf(j), 0)
     const totalOT = filteredShifts.reduce((sum, j) => sum + calcJobOTHours(j), 0)
     const recordedCharges = filteredShifts.reduce((sum, j) => sum + (Number(j.charges) || 0), 0)
 
@@ -848,14 +862,17 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
     } else {
       if (filteredShifts.length > 0) {
         lineItems = filteredShifts.map((j) => {
-          const hours = Number(j.duty_hours) || 0
-          const shiftCharge = Number(j.charges) || (invoicePricingModel === 'hourly_rate' ? hours * invoiceHourlyRate : baseSubtotal / Math.max(1, filteredShifts.length))
-          const ot = calcJobOTHours(j)
-          const cleaner = j.staff_name ? `Staff: ${j.staff_name}` : ''
-          const times = (j.start_time && j.end_time) ? `${j.start_time} - ${j.end_time}` : ''
-          const desc = `${formatDate(j.date)} — ${j.service || 'Cleaning Shift'} ${times ? `(${times})` : ''} ${cleaner ? `[${cleaner}]` : ''} [${hours}h${ot > 0 ? ` + ${ot}h OT` : ''}] ${j.remarks ? `· ${j.remarks}` : ''}`
+          const hours = hoursOf(j)
+          const own = invoiceOverrides[j.id]
+          // R-FIN-13: the line's own rate (edited), else the job's Charges Per Hour (from the schedule, R-SCHED-27), else the old way
+          const jobRate = Number(j.charges_per_hour) || 0
+          const shiftCharge = own ? own.hours * own.rate
+            : Number(j.charges) || (jobRate > 0 ? jobRate * hours : (invoicePricingModel === 'hourly_rate' ? hours * invoiceHourlyRate : baseSubtotal / Math.max(1, filteredShifts.length)))
+          // R-FIN-13: the line shows only the date (and its day) — e.g. "3-Nov (Tue)"
+          const d = new Date(`${(j.date || '').slice(0, 10)}T12:00:00Z`)
+          const desc = Number.isNaN(d.getTime()) ? String(j.date || '') : `${d.getUTCDate()}-${d.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' })} (${d.toLocaleString('en-GB', { weekday: 'short', timeZone: 'UTC' })})`
           return {
-            description: desc.trim(),
+            description: desc,
             quantity: hours || 1,
             unit_price: hours > 0 ? Math.round((shiftCharge / hours) * 100) / 100 : shiftCharge,
             amount: Math.round(shiftCharge * 100) / 100,
@@ -903,6 +920,9 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
     invoiceCustomAmount,
     invoiceIncludeVat,
     contractsByClientName,
+    invoiceExcluded,
+    invoiceOverrides,
+    invoiceIncludeAdHoc,
   ])
 
   const handlePrintGeneratedInvoice = () => {
@@ -915,6 +935,19 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
 
     const { lineItems, subtotal, vatAmount, grandTotal, totalHours, shifts } = invoiceCalculations
 
+    // R-FIN-13: an itemized invoice prints Sr# · Date · Day · Hours · Charges/hr · Amount
+    const dayOf = (desc: string) => /\(([^)]+)\)\s*$/.exec(desc)?.[1] || ''
+    const dateOf = (desc: string) => desc.replace(/\s*\([^)]+\)\s*$/, '')
+    const money = (n: number) => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const detailedRows = lineItems.map((item, idx) => `
+      <tr style="border-bottom: 1px solid #e2e8f0;">
+        <td style="padding: 8px 10px; text-align:center;">${idx + 1}</td>
+        <td style="padding: 8px 10px;">${escapeHtml(dateOf(item.description))}</td>
+        <td style="padding: 8px 10px;">${escapeHtml(dayOf(item.description))}</td>
+        <td style="padding: 8px 10px; text-align:center;">${item.quantity}</td>
+        <td style="padding: 8px 10px; text-align:right;">${money(item.unit_price)}</td>
+        <td style="padding: 8px 10px; text-align:right; font-weight:700;">${money(item.amount)}</td>
+      </tr>`).join('')
     const tableRows = lineItems.map((item, idx) => `
       <tr style="border-bottom: 1px solid #e2e8f0;">
         <td style="padding: 10px 12px; font-weight: 500; color: #1e293b; font-size: 12.5px;">
@@ -1005,6 +1038,21 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
           </div>
         </div>
 
+        ${invoiceType === 'detailed' ? `
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 50px;">Sr#</th><th style="text-align:left;">Date</th><th style="text-align:left;">Day</th>
+              <th style="width: 70px;">Hours</th><th style="text-align:right; width: 110px;">Charges/hr.</th><th style="text-align:right; width: 120px;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${detailedRows}
+            <tr><td colspan="5" style="padding: 8px 10px; font-weight:700;">Subtotal</td><td style="padding: 8px 10px; text-align:right; font-weight:700;">${money(subtotal)}</td></tr>
+            <tr><td colspan="5" style="padding: 8px 10px;">VAT @ ${invoiceIncludeVat ? '5' : '0'}%</td><td style="padding: 8px 10px; text-align:right;">${money(vatAmount)}</td></tr>
+            <tr><td colspan="5" style="padding: 8px 10px; font-weight:900;">Total</td><td style="padding: 8px 10px; text-align:right; font-weight:900;">${money(grandTotal)}</td></tr>
+          </tbody>
+        </table>` : `
         <table>
           <thead>
             <tr>
@@ -1017,7 +1065,7 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
           <tbody>
             ${tableRows}
           </tbody>
-        </table>
+        </table>`}
 
         <div class="totals-section">
           <div class="totals-box">
@@ -1071,6 +1119,8 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
       status: 'sent',
       due_date: invoiceDueDate,
       notes: invoiceNotes,
+      // R-FIN-13: line n of an itemized invoice is job n — Invoices → 👁 opens that job
+      ...(invoiceType === 'detailed' && invoiceCalculations.shifts.length === lineItems.length ? { job_ids: invoiceCalculations.shifts.map(j => j.id) } : {}),
     })
 
     setInvoiceSuccessMsg(`Invoice ${invoiceNumber} created and saved to system successfully!`)
@@ -3333,7 +3383,64 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
                   </h5>
                   <span className="text-[11px] text-slate-400 font-medium">What will appear on print / document</span>
                 </div>
-                <div className="max-h-64 overflow-y-auto">
+                <div className="max-h-72 overflow-y-auto">
+                  {invoiceType === 'detailed' && shifts.length > 0 ? (
+                    // R-FIN-13: Sr# · Date · Day · Hours · Charges/hr · Amount, with View / Edit / Delete per line
+                    <table className="w-full text-left border-collapse text-[12px]">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-[10.5px] font-bold text-slate-500 uppercase">
+                        <tr>
+                          <th className="py-2 px-3 text-center">Sr#</th>
+                          <th className="py-2 px-3">Date</th>
+                          <th className="py-2 px-3">Day</th>
+                          <th className="py-2 px-3 text-center">Hours</th>
+                          <th className="py-2 px-3 text-right">Charges/hr.</th>
+                          <th className="py-2 px-3 text-right">Amount</th>
+                          <th className="py-2 px-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E4E8EC]">
+                        {shifts.map((job, idx) => {
+                          const item = lineItems[idx]
+                          const day = /\(([^)]+)\)\s*$/.exec(item?.description || '')?.[1] || ''
+                          const date = (item?.description || '').replace(/\s*\([^)]+\)\s*$/, '')
+                          const editing = invoiceEditRow?.id === job.id
+                          return (
+                            <tr key={job.id} className="hover:bg-slate-50/70">
+                              <td className="py-2 px-3 text-center text-slate-500 font-mono text-[11px]">{idx + 1}</td>
+                              <td className="py-2 px-3 font-semibold text-slate-800">{date}</td>
+                              <td className="py-2 px-3 text-slate-600">{day}</td>
+                              <td className="py-2 px-3 text-center">
+                                {editing ? <input type="number" min="0" step="0.5" value={invoiceEditRow!.hours} onChange={e => setInvoiceEditRow({ ...invoiceEditRow!, hours: e.target.value })} aria-label="Hours" className="w-16 px-1.5 py-1 border border-slate-200 rounded-lg text-center" /> : item?.quantity}
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono">
+                                {editing ? <input type="number" min="0" step="0.5" value={invoiceEditRow!.rate} onChange={e => setInvoiceEditRow({ ...invoiceEditRow!, rate: e.target.value })} aria-label="Charges per hour" className="w-20 px-1.5 py-1 border border-slate-200 rounded-lg text-right" /> : Number(item?.unit_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-2 px-3 text-right font-bold font-mono text-slate-900">{Number(item?.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td className="py-2 px-3">
+                                <div className="flex justify-end gap-1">
+                                  {editing ? (
+                                    <>
+                                      <button type="button" title="Save this line" onClick={() => { setInvoiceOverrides(o => ({ ...o, [job.id]: { hours: Number(invoiceEditRow!.hours) || 0, rate: Number(invoiceEditRow!.rate) || 0 } })); setInvoiceEditRow(null) }} className="p-1.5 rounded-lg bg-teal-600 text-white cursor-pointer"><Check size={12} /></button>
+                                      <button type="button" title="Cancel" onClick={() => setInvoiceEditRow(null)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 cursor-pointer"><X size={12} /></button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button type="button" title="View job" aria-label="View job" onClick={() => setInvoiceViewJob(job)} className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-teal-700 cursor-pointer"><Eye size={12} /></button>
+                                      <button type="button" title="Edit hours / rate on this invoice" aria-label="Edit line" onClick={() => setInvoiceEditRow({ id: job.id, hours: String(item?.quantity ?? ''), rate: String(item?.unit_price ?? '') })} className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-indigo-700 cursor-pointer"><Edit2 size={12} /></button>
+                                      <button type="button" title="Leave this job out of the invoice (the job itself stays)" aria-label="Remove line" onClick={() => setInvoiceExcluded(s => new Set([...s, job.id]))} className="p-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 cursor-pointer"><Trash2 size={12} /></button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                        <tr className="bg-slate-50 font-bold"><td colSpan={5} className="py-2 px-3">Subtotal</td><td className="py-2 px-3 text-right font-mono">{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td /></tr>
+                        <tr className="bg-slate-50"><td colSpan={5} className="py-2 px-3">VAT @ {invoiceIncludeVat ? '5' : '0'}%</td><td className="py-2 px-3 text-right font-mono">{vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td /></tr>
+                        <tr className="bg-teal-50 font-black"><td colSpan={5} className="py-2 px-3">Total</td><td className="py-2 px-3 text-right font-mono">{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td /></tr>
+                      </tbody>
+                    </table>
+                  ) : (
                   <table className="w-full text-left border-collapse text-[12px]">
                     <thead className="bg-slate-50 border-b border-slate-200 text-[10.5px] font-bold text-slate-500 uppercase">
                       <tr>
@@ -3362,8 +3469,42 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
                       ))}
                     </tbody>
                   </table>
+                  )}
                 </div>
+                {/* R-BK-06: extra (Ad-hoc) jobs of the period — not in the monthly bill unless chosen */}
+                {invoiceClient && (() => {
+                  const extras = dailyJobs.filter(j => isAdHocJob(j) && j.date && (!invoiceStartDate || j.date >= invoiceStartDate) && (!invoiceEndDate || j.date <= invoiceEndDate) && normalizeKey(cleanClientNameFromAddress(j.address || '')) === normalizeKey(invoiceClient.name))
+                  if (!extras.length) return null
+                  return (
+                    <label className="px-4 py-2 border-t border-[#E4E8EC] text-[11.5px] text-indigo-800 flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={invoiceIncludeAdHoc} onChange={e => setInvoiceIncludeAdHoc(e.target.checked)} className="accent-indigo-600" />
+                      Include {extras.length} Ad-hoc job{extras.length === 1 ? '' : 's'} (AED {extras.reduce((s, j) => s + (Number(j.charges) || 0), 0)}) — normally billed on their own
+                    </label>
+                  )
+                })()}
+                {invoiceExcluded.size > 0 && (
+                  <div className="px-4 py-2 border-t border-[#E4E8EC] text-[11.5px] text-slate-600 flex items-center justify-between">
+                    <span>{invoiceExcluded.size} job{invoiceExcluded.size === 1 ? '' : 's'} left out of this invoice</span>
+                    <button type="button" onClick={() => setInvoiceExcluded(new Set())} className="font-bold text-teal-700 hover:underline cursor-pointer">Put back</button>
+                  </div>
+                )}
               </div>
+
+              {/* R-FIN-13: one job's full details */}
+              <Modal open={!!invoiceViewJob} onClose={() => setInvoiceViewJob(null)} title="Job details" size="md">
+                {invoiceViewJob && (
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px]">
+                    {([
+                      ['Date', formatDate(invoiceViewJob.date)], ['Cleaner', invoiceViewJob.staff_name], ['Time', `${invoiceViewJob.start_time || '—'} – ${invoiceViewJob.end_time || '—'}`],
+                      ['Duty hours', `${invoiceViewJob.duty_hours ?? 0} h`], ['OT', `${calcJobOTHours(invoiceViewJob)} h`], ['Address', invoiceViewJob.address], ['Area', invoiceViewJob.area],
+                      ['Material', invoiceViewJob.material], ['Charges', `AED ${invoiceViewJob.charges ?? 0}`], ['Charges / hr', invoiceViewJob.charges_per_hour ? `AED ${invoiceViewJob.charges_per_hour}` : '—'],
+                      ['Received', `AED ${invoiceViewJob.received ?? 0}`], ['Mode', invoiceViewJob.payment_mode], ['Remarks', invoiceViewJob.remarks],
+                    ] as [string, unknown][]).map(([k, v]) => (
+                      <div key={k} className="contents"><dt className="text-slate-500 font-semibold">{k}</dt><dd className="text-slate-900 font-bold break-words">{String(v || '—')}</dd></div>
+                    ))}
+                  </dl>
+                )}
+              </Modal>
 
               {/* Financial Totals & Bank Notes */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

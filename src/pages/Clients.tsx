@@ -1,3 +1,4 @@
+import { clientReceiptsOf, receiptTotal, loadPendingReceipts, getClientDailyJobsHistory } from '@/lib/clientDataSync'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { formatClientAddress } from '@/lib/clientAddress'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
@@ -346,6 +347,11 @@ export function Clients() {
   const monthlyCount  = useMemo(() => {
     return clients.filter(c => isMonthlyClient(c, dailyJobs, allMonthlySummaries)).length
   }, [clients, dailyJobs, allMonthlySummaries])
+
+  // R-FIN-12: money the client paid — received on the jobs plus Pending Received collections (as the profile counts it)
+  const receiptsAll = useMemo(() => loadPendingReceipts(), [dailyJobs]) // eslint-disable-line react-hooks/exhaustive-deps
+  const paidByClient = (c: typeof clients[0]) => Math.round((getClientDailyJobsHistory(c, dailyJobs).reduce((s, j) => s + (Number(j.received) || 0), 0)
+    + clientReceiptsOf(c, receiptsAll).reduce((s, r) => s + receiptTotal(r), 0)) * 100) / 100
 
   // Client pending balance & dues calculation
   const getClientOutstanding = (c: typeof clients[0]) => {
@@ -1366,7 +1372,8 @@ export function Clients() {
                     </div>
                   </div>
 
-                  <MoneyStrip billed={c.total_spent} received={Math.max(0, c.total_spent - outstanding)} due={outstanding} />
+                  {/* R-FIN-12: Received = what the client really paid (on the jobs + collected later), the same as the profile — it was Billed − Due */}
+                  <MoneyStrip billed={c.total_spent} received={paidByClient(c)} due={outstanding} />
                 </div>
 
                 <div className="grid grid-cols-3 gap-1.5 pt-2.5 border-t border-slate-100">

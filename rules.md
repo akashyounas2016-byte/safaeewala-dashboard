@@ -224,6 +224,19 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientDataSync.ts → monthlyVisitRowId, syncMonthlySchedulesToDailyJobs`; `DataContext.tsx → addDailyJob, auto-sync`. Test: `tests/unit/excel-order-rate-1119.test.ts`.
 - **Status:** Active · Since: 2026-11-19
 
+### R-SCHED-26 — A remarks change reaches the coming monthly visits
+- **Rule:** *"Monthly clients ko edit kartay waqt, jaisay remarks ko 'Deep Cleaning' say 'Sofa Cleaning' karnay par, data Excel Job Sheet par update nahi ho raha."* (2026-11-21)
+  - Changing a monthly client's remarks updates the visit rows from today on that still hold the old remark (a remark changed by hand on the sheet stays, R-SCHED-01).
+- **Code:** `clientDataSync.ts → monthlyVisitRemark, rescheduledVisitRows`; `DataContext.tsx → updateClient`. Test: `tests/unit/batch-1122.test.ts`.
+- **Status:** Active · Since: 2026-11-21
+
+### R-SCHED-27 — Material and Charges / Hr in the client's schedule
+- **Rule:** *"Monthly cleaning kay liye 'Material' (custom editable dropdown) aur 'Charges Per Hour' kay columns … Bi-Weekly mein … 'Total Charges' ka teesra column."* (2026-11-21)
+  - Weekly Schedule & Staff Assignment: columns Material (shared list, or typed) and Charges / Hr per day. Bi-Weekly: also Total Charges (rate × duration).
+  - Monthly visits get the material and the rate (Charges / Hr) — their charges stay 0 (paid through the contract; the rate prices the invoice, R-FIN-13). Bi-Weekly visits get charges = rate × duration.
+- **Code:** `WeeklyScheduleCard.tsx`, `BiWeeklyScheduleCard.tsx`, `ScheduleMaterialInput.tsx`; `clientDataSync.ts → daySpecOf, syncMonthlySchedulesToDailyJobs`. Test: `tests/unit/batch-1122.test.ts`.
+- **Status:** Active · Since: 2026-11-21
+
 ### R-SCHED-24 — Monthly visits only up to 90 days ahead
 - **Why:** a mistyped date (2041-12-17) opened on the Excel sheet got real-looking monthly visits, as the contracts had no End date (team report 2026-11-17).
   - Monthly / Bi-Weekly visits are added only for dates up to 90 days from today (`MONTHLY_SYNC_DAYS_AHEAD`). Further dates show no visits; they are added when the date comes within 90 days.
@@ -724,6 +737,19 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `clientDataSync.ts → extractAllClientsFromDailyJobs`. Test: `tests/unit/excel-client-1121.test.ts`.
 - **Status:** Active · Since: 2026-11-21
 
+### R-BK-06 — Ad-hoc jobs for monthly / bi-weekly clients
+- **Rule:** *"'Ad-Hoc Booking' ka feature … monthly clients ko regular schedule kay ilawa additional standard services … extra jobs ka bill alag say generate ho."* (2026-11-21)
+  - Add Job (Excel, Daily, Booking) for a Monthly / Bi-Weekly client shows **Ad-hoc job** — the remark gets "Ad-hoc" and the Mode is not "Monthly", so it is paid like any job.
+  - The monthly invoice leaves Ad-hoc jobs out (a tick includes them); they are billed on their own (Invoices).
+- **Code:** `clientDataSync.ts → AD_HOC_TAG, isAdHocJob`; `AddJobModal.tsx`; `MonthlyClients.tsx`. Test: `tests/unit/batch-1122.test.ts`.
+- **Status:** Active · Since: 2026-11-21
+
+### R-DATA-14 — Every job row keeps its client id
+- **Why:** `client_id` (R-DATA-12) was not in the list of fields the sync sends, so no job ever kept its client (0 of 491 rows). After a rename, rows still under the old address became a new profile ("Warehouse no.7 - Art corner Showroom", deleted by the team on 20 Nov) (2026-11-21).
+  - The field is now sent; new and edited rows keep their client. The 487 older rows that match one client exactly can be linked once (backup ready) — waiting for the owner (PENDING A36).
+- **Code:** `syncQueue.ts → DAILY_JOBS_COLUMNS`. Test: `tests/unit/batch-1122.test.ts`.
+- **Status:** Active · Since: 2026-11-21
+
 ### R-CLI-13 — A deleted client is deleted from the database
 - **Why:** clients first built from sheet rows have a `dj-…` id; once edited they are saved under that id, but Delete skipped the database for `dj-` ids. They came back on every reload and kept making monthly visits (Office ABC deleted three times, 2026-11-17).
   - Delete now always removes the client row from Supabase (a missing row is no error).
@@ -1187,6 +1213,34 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Saved in `daily_jobs.mode_split` — migration `2026-11-21_daily_jobs_mode_split.sql` (run 2026-11-21). Until it has run the Mode text and Received save, the amounts per mode do not.
 - **Code:** `src/lib/paymentSplit.ts`; `JobSheetSpreadsheet.tsx → commitModeSplit`; `DailyJobSheet.tsx`, `CashBook.tsx`, `EmployeeProfile.tsx`. Test: `tests/unit/batch-1121b.test.ts`.
 - **Status:** Active once the migration has run · Since: 2026-11-21
+
+### R-FIN-12 — Money collected with nothing pending is the client's advance
+- **Why:** Villa 87b St 63d showed three different figures (Daily Job Sheet Pending Received AED 540, client card Received AED 60, profile Received AED 100). A Pending Received of AED 540 had been entered while nothing was pending; no screen counted it, and the card showed Received as Billed − Due (2026-11-21).
+  - The part of a Pending Received collection not used on a due (not on a job, not on the opening balance) counts as the client's **advance** (Client Profile, Payments, auto-deduction R-FIN-11).
+  - Client card and profile **Received** = received on the jobs + all Pending Received collections (+ recorded payments on the profile).
+  - The Pending Received popup warns when the client has nothing pending.
+- **Code:** `clientDataSync.ts → clientReceiptsOf, unallocatedReceipts`; `clientAdvance.ts`; `ClientProfile.tsx`; `Clients.tsx → paidByClient`; `DailyJobModals.tsx`. Test: `tests/unit/batch-1122.test.ts`.
+- **Status:** Active · Since: 2026-11-21
+
+### R-FIN-13 — Monthly invoice: Sr# · Date · Day · Hours · Charges/hr · Amount, each line managed
+- **Rule:** *"Live Invoice Line Item Preview … har row mein 'View' (Eye), 'Edit', aur 'Delete' … sirf 'Date' show karein aur columns … screenshots kay mutabiq."* (2026-11-21)
+  - The detailed preview and the printed invoice: Sr#, Date, Day, Hours, Charges/hr, Amount, then Subtotal, VAT @ 5%, Total.
+  - Per line: 👁 the job's details; ✏️ hours / rate for this invoice only; 🗑 leave the job out of this invoice (the job stays; "Put back" restores).
+  - A line's rate = edited rate, else the job's Charges Per Hour (from the schedule, R-SCHED-27), else the pricing model. The saved invoice keeps the job of each line (`job_ids`).
+- **Code:** `MonthlyClients.tsx → invoiceCalculations, handlePrintGeneratedInvoice`. Test: `tests/unit/batch-1122.test.ts`.
+- **Status:** Active · Since: 2026-11-21
+
+### R-FIN-14 — Invoices: View / Edit / Delete on each line
+- **Rule:** *"Invoices screen par … jobs ki rows kay end par 'Eye' (View), 'Delete', aur 'Edit' ke icons … Eye … pop-up … mukammal tafseelat."* (2026-11-22)
+  - Invoice view: 👁 shows the line (and its job when the invoice knows it); ✏️ changes description / qty / price; 🗑 removes the line after a confirm. Subtotal, discount (a % follows), VAT and total are worked out again. A paid invoice cannot be changed.
+- **Code:** `Invoices.tsx → InvoiceView`; `receivables.ts → recalcInvoiceTotals`. Test: `tests/unit/batch-1122.test.ts`.
+- **Status:** Active · Since: 2026-11-22
+
+### R-FIN-15 — Payments shows the same balances as the Client Profile
+- **Why:** Payments → Advance Balance and Client credit balances read only the opening advance (`advance_amount`); the cards did not count bookings without a sheet row while the history list did (audit 2026-11-22).
+  - Advance = `calcClientAdvanceBalance` for each client; new cards: Adjustments, Opening balances, Active contracts. Collected includes bookings without a sheet row; the collection rate is job & booking money ÷ billed.
+- **Code:** `PaymentsHub.tsx`; `PaymentProcessing.tsx`.
+- **Status:** Active · Since: 2026-11-22
 
 ### R-FIN-04 — Invoice numbers
 - **Rule:** One scheme: `SAF-<year>-<NNNN>`, next = highest of the year + 1; `addInvoice` replaces any missing, legacy or duplicate number.
@@ -1694,6 +1748,12 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Status:** Active (fully once the migration has run) · Since: 2026-11-21
 
 ---
+
+### R-ALERT-05 — Contract ending soon
+- **Rule:** *"Bi-Weekly ya Monthly clients ka contract complete honay say pehlay management ko 'Alerts' section mein notification bhejein."* (2026-11-21)
+  - Sidebar → Alerts lists each Monthly / Bi-Weekly client whose contract ends within 30 days (7 days or less = high) or has ended while the client is still On, with a link to the client.
+- **Code:** `alerts.ts → contractEndAlerts`; `useAlerts.ts`. Test: `tests/unit/batch-1122.test.ts`.
+- **Status:** Active · Since: 2026-11-21
 
 ## Known issues (rules not yet fully honoured)
 

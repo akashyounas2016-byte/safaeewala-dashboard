@@ -1,3 +1,4 @@
+import { ScheduleMaterialInput } from '@/components/clients/ScheduleMaterialInput'
 import { useMemo, useState } from 'react'
 import { Calendar, Clock, Users, Sparkles, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { CleanerMultiSelect } from '@/components/common/CleanerMultiSelect'
@@ -19,7 +20,7 @@ export const DAY_SHORT: Record<string, string> = {
   Saturday: 'Sat',
 }
 
-export interface DayRow { enabled: boolean; startTime: string; endTime: string; duration: number; cleaner: string }
+export interface DayRow { enabled: boolean; startTime: string; endTime: string; duration: number; cleaner: string; material?: string; rate?: number } // R-SCHED-27: material, charges / hr
 export type WeekSchedule = Record<string, DayRow>
 
 /** The week of a saved client (or the default Mon / Wed / Fri, 9–1) */
@@ -33,7 +34,7 @@ export function initialWeekSchedule(initialClient?: Partial<Client> | null): Wee
       const baseDur = initialClient.duration_hours || calcDurationFromTimes(baseStart, baseEnd) || 4
       const baseCleaner = initialClient.preferred_cleaner || ''
 
-      const res: Record<string, { enabled: boolean; startTime: string; endTime: string; duration: number; cleaner: string }> = {}
+      const res: Record<string, DayRow> = {}
       DAYS_OF_WEEK.forEach(day => {
         const spec = daySchedMap[day]
         const isEnabled = activeDaysList.includes(day) || !!spec
@@ -48,6 +49,8 @@ export function initialWeekSchedule(initialClient?: Partial<Client> | null): Wee
           endTime: eTime,
           duration: dur,
           cleaner: realCleanerName(cln),
+          material: spec?.material || '',
+          rate: Number(spec?.rate) || 0,
         }
       })
       return res
@@ -73,12 +76,13 @@ export function monthlyFieldsOf(w: WeekSchedule, initialClient?: Partial<Client>
   const firstRow = w[activeDays[0]]
   const firstDuration = firstRow?.duration || (firstRow ? calcDurationFromTimes(firstRow.startTime, firstRow.endTime) : 4) || 4
   const day_cleaner_assignments: Record<string, string> = {}
-  const day_schedules: Record<string, { startTime: string; endTime: string; cleaner: string; duration: number }> = {}
+  const day_schedules: Record<string, { startTime: string; endTime: string; cleaner: string; duration: number; material?: string; rate?: number }> = {}
   activeDays.forEach(day => {
     const row = w[day]
     const cleaner = realCleanerName(row.cleaner)
     if (cleaner) day_cleaner_assignments[day] = cleaner
-    day_schedules[day] = { startTime: row.startTime, endTime: row.endTime, cleaner, duration: row.duration || calcDurationFromTimes(row.startTime, row.endTime) || 4 }
+    day_schedules[day] = { startTime: row.startTime, endTime: row.endTime, cleaner, duration: row.duration || calcDurationFromTimes(row.startTime, row.endTime) || 4,
+      ...(row.material?.trim() ? { material: row.material.trim() } : {}), ...(Number(row.rate) > 0 ? { rate: Number(row.rate) } : {}) } // R-SCHED-27
   })
   return {
     service_days: activeDays,
@@ -123,7 +127,7 @@ export function WeeklyScheduleCard({ value: daySchedules, onChange, employees }:
   // Update a day's specific schedule field with reactive auto-calculations
   const updateDaySchedule = (
     day: string,
-    field: 'startTime' | 'endTime' | 'duration' | 'cleaner' | 'calcStart' | 'calcEnd',
+    field: 'startTime' | 'endTime' | 'duration' | 'cleaner' | 'calcStart' | 'calcEnd' | 'material' | 'rate',
     value?: string | number
   ) => {
     setDaySchedules(prev => {
@@ -181,6 +185,8 @@ export function WeeklyScheduleCard({ value: daySchedules, onChange, employees }:
           [day]: { ...current, cleaner: String(value || '') },
         }
       }
+      if (field === 'material') return { ...prev, [day]: { ...current, material: String(value ?? '') } } // R-SCHED-27
+      if (field === 'rate') return { ...prev, [day]: { ...current, rate: Number(value) || 0 } }
       return prev
     })
   }
@@ -194,7 +200,7 @@ export function WeeklyScheduleCard({ value: daySchedules, onChange, employees }:
       preset === 'all' ? [...DAYS_OF_WEEK] : []
 
     setDaySchedules(prev => {
-      const next: Record<string, { enabled: boolean; startTime: string; endTime: string; duration: number; cleaner: string }> = {}
+      const next: Record<string, DayRow> = {}
       DAYS_OF_WEEK.forEach(day => {
         next[day] = {
           ...prev[day],
@@ -327,12 +333,15 @@ export function WeeklyScheduleCard({ value: daySchedules, onChange, employees }:
                     <span>4. Duration</span>
                   </div>
                 </th>
-                <th className="py-2.5 px-3 w-[28%]">
+                <th className="py-2.5 px-3 w-[24%]">
                   <div className="flex items-center gap-1.5">
                     <Users size={12} className="text-slate-400" />
                     <span>5. Cleaner (Staff)</span>
                   </div>
                 </th>
+                {/* R-SCHED-27 */}
+                <th className="py-2.5 px-3 w-[13%]">6. Material</th>
+                <th className="py-2.5 px-3 w-[11%]">7. Charges / Hr</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-[12px]">
@@ -455,6 +464,16 @@ export function WeeklyScheduleCard({ value: daySchedules, onChange, employees }:
                         disabled={!isEnabled}
                         placeholder="Pick cleaner(s)..."
                       />
+                    </td>
+                    {/* R-SCHED-27: material (list or typed) and charges per hour of the day */}
+                    <td className="py-2 px-3 align-middle">
+                      <ScheduleMaterialInput value={row.material || ''} disabled={!isEnabled} onChange={v => updateDaySchedule(day, 'material', v)}
+                        className={`w-full h-8 px-2 text-[12px] border rounded-lg focus:outline-none ${isEnabled ? 'bg-white border-slate-200 focus:border-emerald-500 text-slate-800' : 'bg-slate-100/60 border-slate-200/60 text-slate-400 cursor-not-allowed'}`} />
+                    </td>
+                    <td className="py-2 px-3 align-middle">
+                      <input type="number" min="0" step="0.5" value={row.rate || ''} disabled={!isEnabled} placeholder="AED" aria-label={`${day} charges per hour`}
+                        onChange={e => updateDaySchedule(day, 'rate', e.target.value)}
+                        className={`w-full h-8 px-2 text-[12px] font-mono border rounded-lg focus:outline-none ${isEnabled ? 'bg-white border-slate-200 focus:border-emerald-500 text-slate-800' : 'bg-slate-100/60 border-slate-200/60 text-slate-400 cursor-not-allowed'}`} />
                     </td>
                   </tr>
                 )

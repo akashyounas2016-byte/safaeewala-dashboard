@@ -1,3 +1,4 @@
+import { ScheduleMaterialInput } from '@/components/clients/ScheduleMaterialInput'
 import { CalendarRange, Clock, Users, CalendarClock } from 'lucide-react'
 import { DAYS_OF_WEEK, DAY_SHORT } from '@/components/monthlyClients/WeeklyScheduleCard'
 import { biweeklyEndDate, biweeklyVisitDates, type BiWeeklyPlan, type BiWeeklyDay } from '@/lib/biweekly'
@@ -61,11 +62,15 @@ export function BiWeeklyScheduleCard({ plan, onChange, cleaners }: { plan: BiWee
         <table className="w-full text-left">
           <thead className="bg-slate-50/80 text-[10.5px] font-extrabold uppercase tracking-wider text-slate-500">
             <tr>
-              <th className="py-2 px-3 w-[14%]">Day</th>
-              <th className="py-2 px-3 w-[19%]">Start</th>
-              <th className="py-2 px-3 w-[19%]">End</th>
-              <th className="py-2 px-3 w-[16%]"><span className="inline-flex items-center gap-1"><Clock size={11} />Duration</span></th>
-              <th className="py-2 px-3 w-[32%]"><span className="inline-flex items-center gap-1"><Users size={11} />Cleaner</span></th>
+              <th className="py-2 px-3 w-[10%]">Day</th>
+              <th className="py-2 px-3 w-[13%]">Start</th>
+              <th className="py-2 px-3 w-[13%]">End</th>
+              <th className="py-2 px-3 w-[12%]"><span className="inline-flex items-center gap-1"><Clock size={11} />Duration</span></th>
+              <th className="py-2 px-3 w-[18%]"><span className="inline-flex items-center gap-1"><Users size={11} />Cleaner</span></th>
+              {/* R-SCHED-27 */}
+              <th className="py-2 px-3 w-[13%]">Material</th>
+              <th className="py-2 px-3 w-[10%]">Charges / Hr</th>
+              <th className="py-2 px-3 w-[11%]">Total Charges</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-[12px]">
@@ -94,6 +99,10 @@ export function BiWeeklyScheduleCard({ plan, onChange, cleaners }: { plan: BiWee
                       {Array.from(new Set([...cleaners, row.cleaner].filter(Boolean))).map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
                   </td>
+                  {/* R-SCHED-27: material, charges per hour and the visit's total (rate × duration) */}
+                  <td className="py-2 px-3"><ScheduleMaterialInput value={row.material || ''} disabled={!on} onChange={v => setRow(day, { material: v })} className={field} /></td>
+                  <td className="py-2 px-3"><input type="number" min="0" step="0.5" value={row.rate || ''} disabled={!on} placeholder="AED" aria-label={`${day} charges per hour`} onChange={e => setRow(day, { rate: Number(e.target.value) || 0 })} className={`${field} font-mono`} /></td>
+                  <td className="py-2 px-3 font-mono font-bold text-slate-800">{on && Number(row.rate) > 0 ? `AED ${Math.round(Number(row.rate) * (row.duration || 0) * 100) / 100}` : '—'}</td>
                 </tr>
               )
             })}

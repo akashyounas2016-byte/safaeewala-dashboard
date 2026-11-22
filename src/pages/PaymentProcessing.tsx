@@ -22,7 +22,8 @@ import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem, Client } fro
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { formatDate } from '@/lib/utils'
 import { invoicedJobIds } from '@/lib/receivables'
-import { normalizeKey, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
+import { normalizeKey, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, calcJobLaterReceipts, isBogusJob, calcClientOpeningPending } from '@/lib/clientDataSync'
+import { calcClientAdvanceBalance } from '@/lib/clientAdvance'
 import * as XLSX from 'xlsx'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { RecordPaymentModal } from '@/components/payments/RecordPaymentModal'
@@ -380,10 +381,24 @@ export function PaymentProcessing({ embedded = false, tab }: { embedded?: boolea
   // billed = job charges only (monthly visits are already in it) — AUD-27, AUD-28
   const validJobs = dailyJobs.filter(j => !isBogusJob(j))
   const totalRecovered = pendingRcvdList.reduce((s, p) => s + cleanNum(p.cash) + cleanNum(p.online), 0)
-  const totalDailyCollected = validJobs.reduce((s, j) => s + cleanNum(j.received), 0) + totalRecovered
+  // R-FIN-15: the cards add up the same money as the history list below — bookings without a sheet row too
+  const bookingOnly = bookingsWithoutRow(bookings, dailyJobs)
+  const bookingReceived = bookingOnly.reduce((s, b) => s + cleanNum(b.received_amount), 0)
+  const totalDailyCollected = validJobs.reduce((s, j) => s + cleanNum(j.received), 0) + totalRecovered + bookingReceived
   const grandTotalCollected = totalDailyCollected + totalMonthlyPaid
-  const totalBilled = validJobs.reduce((s, j) => s + cleanNum(j.charges), 0)
-  const collectionRate = totalBilled > 0 ? Math.round((grandTotalCollected / totalBilled) * 100) : 100
+  const totalBilled = validJobs.reduce((s, j) => s + cleanNum(j.charges), 0) + bookingOnly.reduce((s, b) => s + cleanNum(b.total_amount), 0)
+  // job & booking money collected ÷ billed (monthly payments are contract money, shown on their own card)
+  const collectionRate = totalBilled > 0 ? Math.round((totalDailyCollected / totalBilled) * 100) : 100
+  // R-FIN-15: the client balances the other screens show — advance held, adjustments, opening balances, contracts
+  const clientBalances = useMemo(() => {
+    const adjustments = loadClientAdjustments()
+    const advance = Math.round(clients.reduce((s, c) => s + calcClientAdvanceBalance(c, dailyJobs, adjustments), 0) * 100) / 100
+    const adjusted = Math.round(adjustments.filter(a => a.type !== 'advance' && a.type !== 'advance_deduction').reduce((s, a) => s + cleanNum(a.amount), 0) * 100) / 100
+      + clients.reduce((s, c) => s + cleanNum(c.adjustment_amount), 0)
+    const opening = clients.reduce((s, c) => s + calcClientOpeningPending(c), 0)
+    const contracts = clients.filter(c => c.contract_active !== false && (c.service_mode === 'biweekly' || (c.service_days || []).length > 0)).length
+    return { advance, adjusted, opening, contracts, withAdvance: clients.filter(c => calcClientAdvanceBalance(c, dailyJobs, adjustments) > 0).length }
+  }, [clients, dailyJobs])
 
   // ── Handle Save New Monthly Payment ──
   const handleSaveMonthlyPayment = (e: React.FormEvent) => {
@@ -846,8 +861,24 @@ export function PaymentProcessing({ embedded = false, tab }: { embedded?: boolea
           </div>
           <p className="text-2xl font-bold text-slate-900 tracking-tight">{collectionRate}%</p>
           <p className="text-[12px] font-semibold text-slate-800 mt-1">Collection Efficiency</p>
-          <p className="text-[11px] text-slate-500 mt-0.5">Realized vs total booked</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">Jobs & bookings: collected ÷ billed</p>
         </div>
+      </div>
+
+      {/* R-FIN-15: client balances, the same figures as the Client Profile / Clients screen */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: 'Advance held', value: `AED ${clientBalances.advance.toLocaleString()}`, sub: `${clientBalances.withAdvance} client${clientBalances.withAdvance === 1 ? '' : 's'} paid ahead`, tone: 'text-teal-700 bg-teal-50' },
+          { label: 'Adjustments', value: `AED ${clientBalances.adjusted.toLocaleString()}`, sub: 'Discounts, waivers, corrections', tone: 'text-indigo-700 bg-indigo-50' },
+          { label: 'Opening balances', value: `AED ${clientBalances.opening.toLocaleString()}`, sub: 'Old dues still open', tone: 'text-rose-700 bg-rose-50' },
+          { label: 'Active contracts', value: String(clientBalances.contracts), sub: 'Monthly + Bi-Weekly clients', tone: 'text-emerald-700 bg-emerald-50' },
+        ].map(c => (
+          <div key={c.label} className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.04)] p-4">
+            <span className={`text-[10.5px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${c.tone}`}>{c.label}</span>
+            <p className="text-xl font-bold text-slate-900 tracking-tight mt-2">{c.value}</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">{c.sub}</p>
+          </div>
+        ))}
       </div>
 
       {/* ── Main Navigation Tabs Bar: Pending Amounts | Monthly Payments | All Transactions ── */}

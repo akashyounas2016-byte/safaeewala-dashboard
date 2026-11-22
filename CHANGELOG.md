@@ -6,6 +6,14 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(money): Villa 87b conflict — Pending Received with nothing pending counts as advance; card / profile Received agree (R-FIN-12); Payments advance and balances from the profile formula (R-FIN-15)
+- fix(data): job rows keep their client id — it was never sent to the database (R-DATA-14)
+- fix(clients): monthly remarks change reaches the coming visits (R-SCHED-26)
+- feat(schedule): Material and Charges / Hr per day, Total Charges for Bi-Weekly; visits get them (R-SCHED-27)
+- feat(invoices): monthly invoice Sr#/Date/Day/Hours/Charges/hr/Amount with View/Edit/Delete (R-FIN-13); Invoices line View/Edit/Delete (R-FIN-14)
+- feat(jobs): Ad-hoc jobs for monthly / bi-weekly clients, billed separately (R-BK-06)
+- feat(alerts): contract ending soon (R-ALERT-05)
+- docs: CRM audit with rating and recommendations — docs/audit-2026-11-22.md
 - ops(db): owner ran the 21 Nov migrations — clients.other_phones, daily_jobs.mode_split, audit_log.snapshot checked present (A31, A33, A34 closed); all 297 columns / tables of supabase/migrations checked, only bookings.row_color absent (not sent by the app)
 - data: Joined Date of 21 employees set to their first job on the sheet (most 9–10 Nov → 1 Oct), so their October jobs are inside the contract dates (R-EMP-16, A29); backup a29-employees-before-2026-11-21.json
 - data: second client profile "KVC 1" (phone 39) deleted on owner request (A35); backup a35-client-kvc1-2026-11-21.json

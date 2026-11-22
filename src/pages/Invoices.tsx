@@ -1,10 +1,12 @@
+import { recalcInvoiceTotals } from '@/lib/receivables'
+import { confirmAsync } from '@/lib/notify'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, Download, Send, AlertCircle, TrendingUp, CheckCircle, Clock,
   FileText, Percent, Trash2, DollarSign, User, MapPin, Sparkles,
   CalendarCheck, ArrowRight, Calendar, CalendarDays, Tag, X, RotateCcw,
-  ChevronDown, Check
+  ChevronDown, Check, Eye, Pencil,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -1297,7 +1299,22 @@ function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete, onRecordP
 }) {
   const company = useCompanyInfo()
   const [payAmount, setPayAmount] = useState('')
-  const paidSoFar = Number(invoice.amount_paid) || 0
+  // R-FIN-14: View / Edit / Delete on each line (the live copy of the invoice, so a change shows at once)
+  const { invoices: allInvoices, dailyJobs, updateInvoice } = useData()
+  const inv = allInvoices.find(i => i.id === invoice.id) || invoice
+  const locked = inv.status === 'paid'
+  const [lineEdit, setLineEdit] = useState<{ i: number; description: string; quantity: string; unit_price: string } | null>(null)
+  const [viewLine, setViewLine] = useState<number | null>(null)
+  const jobOfLine = (i: number) => { const id = inv.job_ids && inv.job_ids.length === inv.line_items.length ? inv.job_ids[i] : undefined; return id ? dailyJobs.find(j => j.id === id) : undefined }
+  const saveLines = (line_items: typeof inv.line_items, job_ids = inv.job_ids) => {
+    updateInvoice(inv.id, { line_items, ...(job_ids ? { job_ids } : {}), ...recalcInvoiceTotals({ ...inv, line_items }) })
+  }
+  const removeLine = async (i: number) => {
+    if (!(await confirmAsync({ title: 'Delete invoice line', message: `Remove line ${i + 1} ("${inv.line_items[i]?.description}") from ${inv.invoice_number}? The totals are worked out again. The job itself stays on the Job Sheet.`, confirmLabel: 'Delete line', tone: 'danger' }))) return
+    saveLines(inv.line_items.filter((_, k) => k !== i), inv.job_ids && inv.job_ids.length === inv.line_items.length ? inv.job_ids.filter((_, k) => k !== i) : inv.job_ids)
+    notify.success('Line removed — totals updated')
+  }
+  const paidSoFar = Number(inv.amount_paid) || 0
   const balance = invoiceBalance(invoice)
   const statusCfg: Record<string, { bg: string; text: string }> = {
     paid:    { bg: 'bg-emerald-50', text: 'text-emerald-700' },
@@ -1306,7 +1323,7 @@ function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete, onRecordP
     draft:   { bg: 'bg-slate-100',  text: 'text-slate-600' },
     void:    { bg: 'bg-slate-200',  text: 'text-slate-500 line-through' },
   }
-  const sc = statusCfg[invoice.status] ?? { bg: 'bg-slate-100', text: 'text-slate-600' }
+  const sc = statusCfg[inv.status] ?? { bg: 'bg-slate-100', text: 'text-slate-600' }
 
   return (
     <div className="space-y-6 font-sans">
@@ -1317,14 +1334,14 @@ function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete, onRecordP
             <p className="text-[15px] font-bold text-[#111827]">{company.company_name}</p>
           </div>
           <p className="text-[12px] text-slate-500">{company.address}</p>
-          {(invoice.company_trn || company.trn) && <p className="text-[12px] text-slate-500">TRN: {invoice.company_trn || company.trn}</p>}
+          {(inv.company_trn || company.trn) && <p className="text-[12px] text-slate-500">TRN: {inv.company_trn || company.trn}</p>}
           <p className="text-[12px] text-slate-500">{[company.phone, company.email].filter(Boolean).join(' · ')}</p>
         </div>
         <div className="text-right">
           <p className="text-[22px] font-black text-[#111827]">TAX INVOICE</p>
-          <p className="text-[12px] font-mono text-slate-500">{invoice.invoice_number}</p>
+          <p className="text-[12px] font-mono text-slate-500">{inv.invoice_number}</p>
           <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full capitalize ${sc.bg} ${sc.text}`}>
-            {invoice.status}
+            {inv.status}
           </span>
         </div>
       </div>
@@ -1332,16 +1349,16 @@ function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete, onRecordP
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-slate-50 rounded-xl p-4 border border-[#E4E8EC]">
           <p className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-2">Bill To</p>
-          <p className="text-[13px] font-bold text-[#111827]">{invoice.client_name}</p>
-          <p className="text-[12px] text-slate-500 mt-0.5">{invoice.client_address}</p>
-          {invoice.trn && <p className="text-[12px] text-slate-500 mt-0.5">TRN: {invoice.trn}</p>}
+          <p className="text-[13px] font-bold text-[#111827]">{inv.client_name}</p>
+          <p className="text-[12px] text-slate-500 mt-0.5">{inv.client_address}</p>
+          {inv.trn && <p className="text-[12px] text-slate-500 mt-0.5">TRN: {inv.trn}</p>}
         </div>
         <div className="bg-slate-50 rounded-xl p-4 border border-[#E4E8EC]">
           <p className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-[0.08em] mb-2">Invoice Details</p>
           <div className="space-y-1.5 text-[12px]">
-            <div className="flex justify-between"><span className="text-slate-500">Issue Date</span><span className="font-semibold text-[#111827]">{formatDate(invoice.created_at)}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Due Date</span><span className={`font-semibold ${invoice.status === 'overdue' ? 'text-red-600' : 'text-[#111827]'}`}>{formatDate(invoice.due_date)}</span></div>
-            {invoice.paid_date && <div className="flex justify-between"><span className="text-slate-500">Paid Date</span><span className="font-semibold text-emerald-600">{formatDate(invoice.paid_date)}</span></div>}
+            <div className="flex justify-between"><span className="text-slate-500">Issue Date</span><span className="font-semibold text-[#111827]">{formatDate(inv.created_at)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Due Date</span><span className={`font-semibold ${inv.status === 'overdue' ? 'text-red-600' : 'text-[#111827]'}`}>{formatDate(inv.due_date)}</span></div>
+            {inv.paid_date && <div className="flex justify-between"><span className="text-slate-500">Paid Date</span><span className="font-semibold text-emerald-600">{formatDate(inv.paid_date)}</span></div>}
           </div>
         </div>
       </div>
@@ -1354,49 +1371,93 @@ function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete, onRecordP
               <th className="text-right py-2 text-[10.5px] font-bold text-slate-500 uppercase tracking-[0.07em]">Qty</th>
               <th className="text-right py-2 text-[10.5px] font-bold text-slate-500 uppercase tracking-[0.07em]">Unit Price</th>
               <th className="text-right py-2 text-[10.5px] font-bold text-slate-500 uppercase tracking-[0.07em]">Amount</th>
+              <th className="text-right py-2 text-[10.5px] font-bold text-slate-500 uppercase tracking-[0.07em] w-[96px]">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#E4E8EC]">
-            {invoice.line_items.map((item, i) => (
+            {inv.line_items.map((item, i) => lineEdit?.i === i ? (
+              <tr key={i} className="bg-indigo-50/40">
+                <td className="py-1.5 pr-2"><input value={lineEdit.description} onChange={e => setLineEdit({ ...lineEdit, description: e.target.value })} aria-label="Description" className="w-full px-2 py-1 border border-slate-200 rounded-lg" /></td>
+                <td className="py-1.5 text-right"><input type="number" min="0" step="0.5" value={lineEdit.quantity} onChange={e => setLineEdit({ ...lineEdit, quantity: e.target.value })} aria-label="Quantity" className="w-16 px-2 py-1 border border-slate-200 rounded-lg text-right" /></td>
+                <td className="py-1.5 text-right"><input type="number" min="0" step="0.5" value={lineEdit.unit_price} onChange={e => setLineEdit({ ...lineEdit, unit_price: e.target.value })} aria-label="Unit price" className="w-20 px-2 py-1 border border-slate-200 rounded-lg text-right" /></td>
+                <td className="py-1.5 text-right font-semibold">AED {(Math.round((Number(lineEdit.quantity) || 0) * (Number(lineEdit.unit_price) || 0) * 100) / 100).toLocaleString()}</td>
+                <td className="py-1.5">
+                  <div className="flex justify-end gap-1">
+                    <button type="button" title="Save line" onClick={() => {
+                      const q = Number(lineEdit.quantity) || 0, p = Number(lineEdit.unit_price) || 0
+                      saveLines(inv.line_items.map((l, k) => (k === i ? { description: lineEdit.description.trim() || l.description, quantity: q, unit_price: p, amount: Math.round(q * p * 100) / 100 } : l)))
+                      setLineEdit(null); notify.success('Line updated — totals worked out again')
+                    }} className="p-1.5 rounded-lg bg-emerald-600 text-white cursor-pointer"><Check size={12} /></button>
+                    <button type="button" title="Cancel" onClick={() => setLineEdit(null)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 cursor-pointer"><X size={12} /></button>
+                  </div>
+                </td>
+              </tr>
+            ) : (
               <tr key={i}>
                 <td className="py-2.5 text-slate-700">{item.description}</td>
                 <td className="py-2.5 text-right text-slate-500">{item.quantity}</td>
                 <td className="py-2.5 text-right text-slate-500">AED {item.unit_price.toLocaleString()}</td>
                 <td className="py-2.5 text-right font-semibold text-[#111827]">AED {item.amount.toLocaleString()}</td>
+                <td className="py-2.5">
+                  {/* R-FIN-14: View / Edit / Delete the line */}
+                  <div className="flex justify-end gap-1">
+                    <button type="button" title="View" aria-label={`View line ${i + 1}`} onClick={() => setViewLine(i)} className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-emerald-700 cursor-pointer"><Eye size={12} /></button>
+                    <button type="button" title={locked ? 'A paid invoice cannot be changed' : 'Edit'} aria-label={`Edit line ${i + 1}`} disabled={locked} onClick={() => setLineEdit({ i, description: item.description, quantity: String(item.quantity), unit_price: String(item.unit_price) })} className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-indigo-700 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"><Pencil size={12} /></button>
+                    <button type="button" title={locked ? 'A paid invoice cannot be changed' : 'Delete'} aria-label={`Delete line ${i + 1}`} disabled={locked || inv.line_items.length <= 1} onClick={() => void removeLine(i)} className="p-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"><Trash2 size={12} /></button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
+      {/* R-FIN-14: a line's full details — its job when the invoice knows it */}
+      <Modal open={viewLine !== null} onClose={() => setViewLine(null)} title={viewLine !== null ? `Line ${viewLine + 1}` : ''} size="md">
+        {viewLine !== null && (() => {
+          const l = inv.line_items[viewLine]
+          const j = jobOfLine(viewLine)
+          const rows: [string, unknown][] = [['Description', l?.description], ['Quantity / hours', l?.quantity], ['Unit price', `AED ${l?.unit_price ?? 0}`], ['Amount', `AED ${l?.amount ?? 0}`]]
+          if (j) rows.push(['Date', formatDate(j.date)], ['Cleaner', j.staff_name], ['Time', `${j.start_time || '—'} – ${j.end_time || '—'}`], ['Duty hours', `${j.duty_hours ?? 0} h`], ['Address', j.address], ['Area', j.area], ['Material', j.material], ['Job charges', `AED ${j.charges ?? 0}`], ['Received', `AED ${j.received ?? 0}`], ['Mode', j.payment_mode], ['Remarks', j.remarks])
+          return (
+            <div className="space-y-2">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px]">
+                {rows.map(([k, v]) => <div key={k} className="contents"><dt className="text-slate-500 font-semibold">{k}</dt><dd className="text-slate-900 font-bold break-words">{String(v ?? '—') || '—'}</dd></div>)}
+              </dl>
+              {!j && <p className="text-[11.5px] text-slate-500">This invoice was made before its lines were linked to jobs, so only the line itself is shown.</p>}
+            </div>
+          )
+        })()}
+      </Modal>
+
       <div className="flex justify-end">
         <div className="w-72 space-y-2 text-[13px]">
           <div className="flex justify-between">
             <span className="text-slate-500">Subtotal</span>
-            <span className="text-[#111827]">AED {((invoice.subtotal || 0) + (invoice.discount_amount || 0)).toLocaleString()}</span>
+            <span className="text-[#111827]">AED {((inv.subtotal || 0) + (inv.discount_amount || 0)).toLocaleString()}</span>
           </div>
-          {invoice.discount_amount && invoice.discount_amount > 0 ? (
+          {inv.discount_amount && inv.discount_amount > 0 ? (
             <div className="flex justify-between text-red-600 font-medium">
-              <span>Discount {invoice.discount_type === 'percentage' && invoice.discount_value ? `(${invoice.discount_value}%)` : ''}</span>
-              <span>- AED {invoice.discount_amount.toLocaleString()}</span>
+              <span>Discount {inv.discount_type === 'percentage' && inv.discount_value ? `(${inv.discount_value}%)` : ''}</span>
+              <span>- AED {inv.discount_amount.toLocaleString()}</span>
             </div>
           ) : null}
-          {invoice.discount_amount && invoice.discount_amount > 0 ? (
+          {inv.discount_amount && inv.discount_amount > 0 ? (
             <div className="flex justify-between font-semibold text-slate-700">
               <span>Net Subtotal</span>
-              <span>AED {(invoice.subtotal || 0).toLocaleString()}</span>
+              <span>AED {(inv.subtotal || 0).toLocaleString()}</span>
             </div>
           ) : null}
           <div className="flex justify-between">
-            <span className="text-slate-500">VAT ({invoice.vat_rate || 0}%)</span>
+            <span className="text-slate-500">VAT ({inv.vat_rate || 0}%)</span>
             <span className="text-[#111827]">
-              {invoice.vat_rate === 0 ? 'Tax-Exempt (0%)' : `AED ${(invoice.vat_amount || 0).toLocaleString()}`}
+              {inv.vat_rate === 0 ? 'Tax-Exempt (0%)' : `AED ${(inv.vat_amount || 0).toLocaleString()}`}
             </span>
           </div>
           <div className="flex justify-between font-bold text-[15px] text-[#111827] pt-2 border-t-2 border-[#111827]">
-            <span>Total</span><span className="text-emerald-700">AED {(invoice.total || 0).toLocaleString()}</span>
+            <span>Total</span><span className="text-emerald-700">AED {(inv.total || 0).toLocaleString()}</span>
           </div>
-          {paidSoFar > 0 && invoice.status !== 'paid' && (
+          {paidSoFar > 0 && inv.status !== 'paid' && (
             <>
               <div className="flex justify-between text-emerald-700"><span>Paid so far</span><span>AED {paidSoFar.toLocaleString()}</span></div>
               <div className="flex justify-between font-bold text-red-700"><span>Balance due</span><span>AED {balance.toLocaleString()}</span></div>
@@ -1409,7 +1470,7 @@ function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete, onRecordP
         <Button variant="outline" size="sm" onClick={onPrint} title="Opens the print dialog — choose 'Save as PDF' to download">
           <Download size={14} className="mr-1.5" /> Print / Save PDF
         </Button>
-        {invoice.status !== 'paid' && invoice.status !== 'draft' && (
+        {inv.status !== 'paid' && inv.status !== 'draft' && (
           <form
             className="flex items-center gap-1.5"
             onSubmit={e => {
@@ -1433,11 +1494,11 @@ function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete, onRecordP
           onClick={onDelete}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 text-red-600 text-[12px] font-semibold hover:bg-red-50 transition-colors"
         >
-          <Trash2 size={13} /> {invoice.status === 'draft' ? 'Delete' : 'Void'}
+          <Trash2 size={13} /> {inv.status === 'draft' ? 'Delete' : 'Void'}
         </button>
-        {invoice.status !== 'paid' && invoice.status !== 'void' && (
+        {inv.status !== 'paid' && inv.status !== 'void' && (
           <>
-            {invoice.status !== 'sent' && (
+            {inv.status !== 'sent' && (
               <Button variant="secondary" className="flex-1" size="sm" onClick={onSend}>
                 <Send size={14} className="mr-1.5" /> Send
               </Button>

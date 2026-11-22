@@ -1,3 +1,5 @@
+import { contractWindowOf } from '@/lib/clientDataSync'
+import type { RecurringContract } from '@/types'
 import type { AppNotification } from '@/store/NotificationContext'
 import type { DetectedIssue } from '@/lib/crmAIBot'
 import type { TimelineIssue } from '@/lib/crewTimeline'
@@ -163,6 +165,32 @@ export function scheduleCleanerAlerts(clients: Client[], employees: Employee[]):
       title: `Schedule uses a cleaner who is not an employee: ${c.full_name}`,
       message: `${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not on the Employees list (deleted or spelt differently). Visits keep being added under ${missing.length === 1 ? 'this name' : 'these names'} — pick a cleaner in the schedule.`,
       actionUrl: '/monthly-clients', actionLabel: 'Open Monthly Clients',
+    })
+  })
+  return out
+}
+
+/**
+ * R-ALERT-05: a Monthly / Bi-Weekly client's contract ends within 30 days (or has ended while the client is still On),
+ * so renewal or end can be handled in time. 7 days or less (or ended) = high.
+ */
+export function contractEndAlerts(clients: Client[], contracts: RecurringContract[], today: string): CrmAlert[] {
+  const out: CrmAlert[] = []
+  clients.forEach(c => {
+    const recurring = c.service_mode === 'biweekly' || (c.service_days || []).length > 0 || c.service_mode === 'monthly'
+    if (!recurring || c.contract_active === false) return
+    const end = contractWindowOf(c, contracts, false).end
+    if (!end) return
+    const days = Math.round((Date.parse(`${end}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000)
+    if (days > 30) return
+    const kind = c.service_mode === 'biweekly' ? 'Bi-Weekly' : 'Monthly'
+    out.push({
+      id: `contract-end-${c.id}-${end}`, source: 'system', severity: days <= 7 ? 'high' : 'medium',
+      title: days < 0 ? `${kind} contract ended: ${c.full_name}` : `${kind} contract ends in ${days} day${days === 1 ? '' : 's'}: ${c.full_name}`,
+      message: days < 0
+        ? `The contract ended on ${formatDate(end)} but the client is still On — renew it (new End date) or switch the contract Off.`
+        : `The contract ends on ${formatDate(end)}. Renew it (new End date) or let it end — no visits are added after that date.`,
+      actionUrl: `/clients/${c.id}`, actionLabel: 'Open client',
     })
   })
   return out

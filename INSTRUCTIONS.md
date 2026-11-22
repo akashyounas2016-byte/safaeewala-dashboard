@@ -70,6 +70,12 @@
 ### Client ke doosre address
 - Client ke doosre address (KVC 2, KVC 3 …) par lagi jobs ab usi client ki hain — alag client ban kar list mein nahi aate.
 
+### Schedule mein Material aur Charges / Hr
+- Add / Edit Client → Monthly ya Bi-Weekly → schedule mein har din ka **Material** (list ya khud likhein) aur **Charges / Hr**. Bi-Weekly mein **Total Charges** khud banta hai. Bi-Weekly visit ke charges isi se bharte hain (0 nahi rehte).
+
+### Ad-hoc job (monthly client ka extra kaam)
+- Add Job mein monthly / bi-weekly client chunein to **Ad-hoc job** ka tick aata hai. Tick karein — job alag bill hogi, monthly invoice mein nahi aayegi (invoice mein tick se shamil kar sakte hain).
+
 ### Ek client ke kai numbers
 - Add New Client / Edit Client mein Mobile ke neeche **+ Add another number** — jitne chahein number daalein, ✕ se hatayein. Client Profile ke upar sab numbers dikhte hain.
 
@@ -241,6 +247,13 @@
 
 ### Activity Log
 - Har important change likha jata hai: kisne, kab, kis screen se, aur pehle → baad kya badla. Filter aur CSV export maujood hai.
+
+### Invoices
+- **Monthly Clients → Generate Invoice:** Sr#, Date, Day, Hours, Charges/hr, Amount — har line par 👁 (job dekhein), ✏️ (is invoice ke liye ghante / rate), 🗑 (job is invoice se nikalein; job khud rehti hai).
+- **Invoices screen:** invoice kholein — har line par 👁 ✏️ 🗑. Total khud dobara banta hai. Paid invoice nahi badalti.
+
+### Alerts — contract khatam
+- Monthly / Bi-Weekly contract 30 din mein khatam ho raha ho to Alerts mein aata hai (7 din ya kam = laal).
 
 ### Activity Log → Restore
 - Kisi entry par click karein → **Restore** (sirf admin / manager): delete hui job / client / employee / expense wapas, badli hui cheez pehle jaisi, nayi job **Undo (remove)**. Pehle poochhta hai.

@@ -780,7 +780,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (before && (identityChanged || !clients.some(c => c.id === id))) linkRowsToClient(before, id)
       if (before && identityChanged) renameRowsOfClient(before, { ...before, ...patch }, id) // R-CLI-10
       // R-SCHED-21: a changed weekly schedule shows on the sheet from today on; earlier rows stay as they were
-      if (before && patch.contract_active !== false && SCHEDULE_FIELDS.some(k => k in patch && JSON.stringify(patch[k] ?? null) !== JSON.stringify(before[k] ?? null))) {
+      // R-SCHED-26: a remarks change reaches the future visit rows too
+      if (before && patch.contract_active !== false && ([...SCHEDULE_FIELDS, 'remarks'] as const).some(k => k in patch && JSON.stringify(patch[k] ?? null) !== JSON.stringify(before[k] ?? null))) {
         const after = { ...before, ...patch } as Client
         const { updates, removals } = rescheduledVisitRows(before, after, dailyJobs, todayDubai())
         if (removals.length) {

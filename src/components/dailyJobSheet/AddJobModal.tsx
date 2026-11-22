@@ -1,3 +1,4 @@
+import { AD_HOC_TAG, isAdHocJob, isMonthlyClient } from '@/lib/clientDataSync'
 import { useClientMoney } from '@/lib/useClientMoney'
 import { extraAddressChoices, isExtraAddressOf } from '@/lib/clientAddress'
 import { RowColorMenu, rowColoursInUse } from '@/components/common/RowColorMenu'
@@ -293,6 +294,8 @@ export function AddJobForm({
 
   // ── Remarks ──
   const [remarks, setRemarks] = useState(initial?.remarks ?? '')
+  // R-BK-06: an extra (Ad-Hoc) job for a monthly / bi-weekly client — billed separately
+  const [adHoc, setAdHoc] = useState(() => isAdHocJob({ remarks: initial?.remarks || '' }))
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -388,6 +391,7 @@ export function AddJobForm({
     const a = (initial?.address || '').trim().toLowerCase()
     return a ? clients.find(c => [c.building_name, c.full_name].some(n => (n || '').trim().toLowerCase() === a) || isExtraAddressOf(c, a)) || null : null
   })
+  const pickedIsRecurring = Boolean(pickedClient && (pickedClient.service_mode === 'biweekly' || isMonthlyClient(pickedClient))) // R-BK-06
   const pickedStatus = useMemo<ClientMoneyStatus | null>(
     () => (pickedClient ? clientMoneyStatus(pickedClient, dailyJobs) : null),
     [pickedClient, dailyJobs],
@@ -506,6 +510,9 @@ export function AddJobForm({
     // R-FIN-10: a new job for a client whose advance covers the charges is paid from the advance —
     // the cleaner does not collect on site. Only new jobs with nothing received.
     let finalRemarks = remarks.trim()
+    // R-BK-06: tag the extra job and keep it out of the monthly contract's payment
+    if (adHoc && pickedIsRecurring && !isAdHocJob({ remarks: finalRemarks })) finalRemarks = finalRemarks ? `${AD_HOC_TAG} · ${finalRemarks}` : AD_HOC_TAG
+    if (!adHoc && isAdHocJob({ remarks: finalRemarks })) finalRemarks = finalRemarks.replace(/\bad-?hoc\b\s*·?\s*/i, '').trim()
     if (!initial?.id && pickedClient && !useSplit) {
       const note = autoAdvanceRemark(
         { charges: cleanNum(charges), received: cleanNum(received), payment_mode: paymentMode, remarks: finalRemarks },
@@ -814,6 +821,13 @@ export function AddJobForm({
                 )}
               </div>
 
+              {/* R-BK-06: extra job for a monthly / bi-weekly client */}
+              {pickedIsRecurring && (
+                <label className="-mt-1 flex items-center gap-2 text-[11.5px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg px-2.5 py-1.5 cursor-pointer select-none">
+                  <input type="checkbox" checked={adHoc} onChange={e => { setAdHoc(e.target.checked); if (e.target.checked && paymentMode === 'Monthly') setPaymentMode('Cash') }} className="accent-indigo-600 cursor-pointer" />
+                  Ad-hoc job — an extra service outside the {pickedClient?.service_mode === 'biweekly' ? 'Bi-Weekly' : 'monthly'} schedule, billed separately
+                </label>
+              )}
               {pickedStatus && (pickedStatus.advance > 0 || pickedStatus.pending > 0) && (
                 <div className="-mt-1 flex flex-wrap gap-1.5 text-[11px] font-bold">
                   {pickedStatus.advance > 0 && <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">Advance AED {pickedStatus.advance.toLocaleString()}</span>}

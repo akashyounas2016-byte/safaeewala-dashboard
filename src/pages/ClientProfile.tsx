@@ -1,3 +1,4 @@
+import { clientReceiptsOf, receiptTotal, unallocatedReceipts } from '@/lib/clientDataSync'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { copyText } from '@/lib/clipboard'
 import { formatClientAddress } from '@/lib/clientAddress'
@@ -486,7 +487,9 @@ export function ClientProfile() {
 
   // Financial summary from Job Sheet & Adjustments (including live recorded payments)
   const totalDJCharges = enrichedDailyJobs.reduce((s, j) => s + j.cleanCharges, 0)
-  const totalDJReceived = enrichedDailyJobs.reduce((s, j) => s + j.cleanReceived, 0) + recordedPaymentsTotal
+  // R-FIN-12: what the client paid — on the jobs, collected later (Pending Received) and recorded payments
+  const clientReceiptList = clientReceiptsOf(client, pendingReceipts)
+  const totalDJReceived = enrichedDailyJobs.reduce((s, j) => s + j.cleanReceived, 0) + clientReceiptList.reduce((s, r) => s + receiptTotal(r), 0) + recordedPaymentsTotal
   const totalDJOTHours = Math.round(enrichedDailyJobs.reduce((s, j) => s + j.otHours, 0) * 10) / 10
   const totalDJDutyHours = Math.round(clientDailyJobs.reduce((s, j) => s + (Number(j.duty_hours) || 0), 0) * 10) / 10
 
@@ -502,6 +505,7 @@ export function ClientProfile() {
   const standaloneAdvance = clientAdjustments.filter(a => a.type === 'advance').reduce((s, a) => s + cleanNum(a.amount), 0)
   const initialClientAdvance = cleanNum(client.advance_amount)
   const totalGrossAdvance = initialClientAdvance + standaloneAdvance + widgetAdvanceTotal + enrichedDailyJobs.reduce((s, j) => s + (!j.isAdvanceDeducted ? j.advance : 0), 0)
+    + unallocatedReceipts(client, pendingReceipts) // R-FIN-12: collected with nothing pending = advance
 
   // Total service amount deducted from advance
   const jobsAdvanceDeductionTotal = enrichedDailyJobs.filter(j => j.isAdvanceDeducted).reduce((s, j) => s + j.advanceDeductionAmount, 0)

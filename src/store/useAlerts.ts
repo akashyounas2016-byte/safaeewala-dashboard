@@ -4,7 +4,9 @@ import { useNotifications } from '@/store/NotificationContext'
 import { analyzeCRMHealth } from '@/lib/crmAIBot'
 import { buildCrewTimeline } from '@/lib/crewTimeline'
 import { backupHealth, type BackupStatus } from '@/lib/backupStatus'
-import { agencyAlerts, bookingAlerts, cleanerIssueAlerts, scheduleCleanerAlerts, buildAlerts, employeeDocAlerts, type CrmAlert } from '@/lib/alerts'
+import { agencyAlerts, bookingAlerts, cleanerIssueAlerts, scheduleCleanerAlerts, contractEndAlerts, buildAlerts, employeeDocAlerts, type CrmAlert } from '@/lib/alerts'
+import { CONTRACTS_KEY } from '@/lib/clientContracts'
+import type { RecurringContract } from '@/types'
 import { todayDubai } from '@/lib/dubaiTime'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { supabase } from '@/lib/supabase'
@@ -91,6 +93,7 @@ export function useAlerts(enabled = true): {
         ...agencyAlerts(agencies, employees),
         ...bookingAlerts(bookings, today),
         ...scheduleCleanerAlerts(clients, employees),
+        ...contractEndAlerts(clients, safeLocalStorageGet<RecurringContract[]>(CONTRACTS_KEY, []), today), // R-ALERT-05
         ...cleanerIssueAlerts(dutyIssues, dailyJobs),
       ],
     })

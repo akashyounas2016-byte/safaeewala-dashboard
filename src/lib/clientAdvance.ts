@@ -2,7 +2,7 @@ import type { Client, DailyAdvanceItem, DailyJob } from '@/types'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 import {
   buildPendingCalcContext, calcClientPendingBalance, calcJobAdjustment, getClientDailyJobsHistory,
-  isJobPaidFromAdvance, advanceUsedOf, loadClientAdjustments, loadPendingReceipts, normalizeKey, type JobAdjustmentRecord,
+  isJobPaidFromAdvance, advanceUsedOf, loadClientAdjustments, loadPendingReceipts, normalizeKey, unallocatedReceipts, type JobAdjustmentRecord,
 } from '@/lib/clientDataSync'
 import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
 
@@ -53,6 +53,7 @@ export function calcClientAdvanceBalance(
   let held = cleanNum(client.advance_amount)
   held += own.filter(a => a.type === 'advance').reduce((s, a) => s + cleanNum(a.amount), 0)
   held += (Array.isArray(advanceItems) ? advanceItems : []).filter(i => advanceMatchesClient(i, client)).reduce((s, i) => s + cleanNum(i.advance), 0)
+  held += unallocatedReceipts(client) // R-FIN-12: Pending Received money not used on any due
   let used = own.filter(a => !a.reference_job_id && a.type === 'advance_deduction').reduce((s, a) => s + cleanNum(a.amount), 0)
 
   getClientDailyJobsHistory(client, dailyJobs).forEach(job => {
