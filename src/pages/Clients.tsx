@@ -1447,38 +1447,9 @@ export function Clients() {
             total_spent:       0,
           })
 
-          // Sync initial advance or adjustment to financial adjustments ledger
-          if (advance > 0 || adjustment > 0) {
-            const todayStr = todayDubai()
-            const existingAdjs = safeLocalStorageGet<any[]>('safaeewala_client_adjustments', []) || []
-            const newEntries = [...existingAdjs]
+          // R-FIN-19: the opening advance / adjustment stays on the client record only — it is already counted
+          // from there (calcClientAdvanceBalance, the profile ADJ total); a ledger copy counted it twice
 
-            if (advance > 0) {
-              newEntries.push({
-                id: 'adj-init-adv-' + Date.now(),
-                client_id: newClientId, // CM-04
-                client_name: clientName,
-                date: todayStr,
-                type: 'advance',
-                amount: advance,
-                notes: 'Initial opening advance payment',
-                created_at: new Date().toISOString(),
-              })
-            }
-            if (adjustment > 0) {
-              newEntries.push({
-                id: 'adj-init-adj-' + Date.now(),
-                client_id: newClientId, // CM-04
-                client_name: clientName,
-                date: todayStr,
-                type: 'discount',
-                amount: adjustment,
-                notes: 'Initial opening account adjustment / discount (ADJ)',
-                created_at: new Date().toISOString(),
-              })
-            }
-            safeLocalStorageSet('safaeewala_client_adjustments', newEntries)
-          }
 
           setShowModal(false)
         }}

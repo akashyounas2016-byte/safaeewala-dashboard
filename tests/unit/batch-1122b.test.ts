@@ -35,3 +35,7 @@ import { monthlyJobsNeedingCover } from '@/lib/excelSheet/replacement'
 const bw = { ...client, service_mode: 'biweekly', biweekly_plan: { days: ['Friday'], day_schedules: {}, start_date: '2026-11-01', months: 3 } } as unknown as Client
 const cover = monthlyJobsNeedingCover([j('r1', '2026-11-20', 100, 0, { staff_name: 'Ambika' })], '2026-11-20', new Set(['ambika']), [bw])
 eq(cover.map(c => [c.cleaner, c.rows.length]), [['Ambika', 1]], 'absent cleaner on a Bi-Weekly job → replacement banner (R-SCHED-29)')
+
+// R-FIN-19: the opening advance / adjustment is not copied into the ledger (it was counted twice)
+const clientsPage = readFileSync('src/pages/Clients.tsx', 'utf8')
+eq(/adj-init-adv-|Updated opening advance balance/.test(clientsPage + prof), false, 'opening advance counted once (R-FIN-19)')

@@ -1272,6 +1272,12 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `PaymentsHub.tsx`.
 - **Status:** Active · Since: 2026-11-22
 
+### R-FIN-19 — Opening advance / adjustment counted once
+- **Why:** A24 browser test (2026-11-22): Edit Profile → Advance 100 showed **Advance AED 200**. Saving the form kept the amount on the client **and** wrote a copy into the adjustments ledger ("Updated opening advance balance"; Add Client wrote "Initial opening advance payment"); both were counted. The adjustment field was doubled the same way. No real client had such a copy (checked on live data).
+  - The opening advance / adjustment stays on the client record only; no ledger copy is written.
+- **Code:** `Clients.tsx` (Add Client), `ClientProfile.tsx` (Edit Profile). Test: `tests/unit/batch-1122b.test.ts`.
+- **Status:** Active · Since: 2026-11-22
+
 ### R-FIN-04 — Invoice numbers
 - **Rule:** One scheme: `SAF-<year>-<NNNN>`, next = highest of the year + 1; `addInvoice` replaces any missing, legacy or duplicate number.
   - The year is the Dubai year (INV-A02).

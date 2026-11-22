@@ -1676,41 +1676,8 @@ Each job gets an "advance deduction" record (ADJ) in the ledger — it can be re
           if (clients.some(c => c.id === client.id)) updateClient(client.id, patch)
           else addClient({ ...client, ...patch, id: client.id })
 
-          // Sync initial advance or adjustment to financial adjustments ledger if changed
-          const adv = patch.advance_amount ?? 0
-          const adj = patch.adjustment_amount ?? 0
-          if (adv > 0 || adj > 0) {
-            const todayStr = todayDubai()
-            const existingAdjs = safeLocalStorageGet<ClientFinancialAdjustment[]>('safaeewala_client_adjustments', []) || []
-            let newEntries = [...existingAdjs]
-
-            if (adv > 0 && adv !== (client.advance_amount ?? 0)) {
-              newEntries.push({
-                id: 'adj-adv-' + Date.now(),
-                client_id: client.id,
-                client_name: patch.full_name || client.full_name,
-                date: todayStr,
-                type: 'advance',
-                amount: adv,
-                notes: 'Updated opening advance balance',
-                created_at: new Date().toISOString(),
-              })
-            }
-            if (adj > 0 && adj !== (client.adjustment_amount ?? 0)) {
-              newEntries.push({
-                id: 'adj-adj-' + Date.now(),
-                client_id: client.id,
-                client_name: patch.full_name || client.full_name,
-                date: todayStr,
-                type: 'discount',
-                amount: adj,
-                notes: 'Updated opening adjustment balance (ADJ)',
-                created_at: new Date().toISOString(),
-              })
-            }
-            safeLocalStorageSet('safaeewala_client_adjustments', newEntries)
-            setAdjustments(newEntries)
-          }
+          // R-FIN-19: a changed opening advance / adjustment is saved on the client only (counted from there) —
+          // the ledger copy written here counted it twice (TEST: advance 100 showed as 200, 22 Nov)
 
           setEditSaving(false)
           setEditOpen(false)
