@@ -265,6 +265,9 @@
 - Payments ke upar period chunein: This month, Last month, 3 ya 12 mahine. Cards usi period ke hote hain.
 - **Weekly report** dabayein — WhatsApp khulta hai pichle 7 din ki report ke sath (jobs, billed, collected, pending, naye clients, leads, clicks). Jis ko bhejna ho chunein.
 
+### Cleaner absent → replacement (Excel sheet)
+- Cleaner ko absent / leave mark karein to upar peela banner aata hai: us ki Monthly **aur Bi-Weekly** jobs, aur replacement cleaner chunne ka option. Sirf us din ki job badalti hai, client ka schedule wahi rehta hai.
+
 ### Bi-Weekly client — rate zaroori
 - Bi-Weekly client har tick kiye din par **Charges / Hr** ke baghair save nahi hota (taake visit AED 0 par na bane).
 

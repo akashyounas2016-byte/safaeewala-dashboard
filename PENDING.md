@@ -2,7 +2,7 @@
 
 One list of what is still open, for the owner, Claude and Antigravity. **Update it in the same commit** whenever something is finished (remove it) or added. Finished items go to [CHANGELOG.md](CHANGELOG.md), not here.
 
-Last updated: 2026-11-22 · Live on crm.safaeewala.com: `bf3e8ce` · 2026-11-15: all 174 test-period jobs deleted on owner's request ; duplicate "Villa# 06 - Zayan" + TEST clients (TEST Villa, Test 2- NH bldg, ABC Test 1) deleted with their contracts (backups in ../Safaeewala-backups)
+Last updated: 2026-11-22 · Live on crm.safaeewala.com: `93ef1ed` · 2026-11-15: all 174 test-period jobs deleted on owner's request ; duplicate "Villa# 06 - Zayan" + TEST clients (TEST Villa, Test 2- NH bldg, ABC Test 1) deleted with their contracts (backups in ../Safaeewala-backups)
 
 ---
 
@@ -23,7 +23,6 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | A22 | ~~Edit / delete WhatsApp clicks migration~~ — owner ran it 2026-11-17 | — | — |
 | A24 | **Finish the browser audit** after Shani's testing (on hold, owner 2026-11-17): Bi-Weekly + General client add/delete, Employee and Agency add/delete, Excel sync inside contract dates, then delete all TEST data. Done so far: Cancel saves nothing (client popup + Contracts), contract window on Excel, fixes R-SCHED-23 / R-SCHED-24 / R-CLI-13. Nobody else should use the CRM while it runs | Two people testing on the same live data mix up the results | Owner / Claude |
 | A27 | **Two cleaners look the same on the sheet:** "Ambika" (added 17 Nov) and "Ambika Devi Tharu" (short name "Ambika") both show as **Ambika**. If they are one person, delete the extra employee; if two, give one a different short name (Employees → Edit) | The team may book the wrong Ambika | Owner (confirming with the client) |
-| A30 | **Which attendance warning went back?** (R-OPS-09) Git shows no revert; all warnings are in the code. Name the screen and the warning (screenshot) | Cannot be fixed without knowing which one | Owner / Shani |
 | A37 | **64 jobs with AED 0 charges and nothing received** — mostly Bi-Weekly visits without a rate: 306 Bldg 8B (24), Villa 13B St 57 (13), Villa 24 St 75 A (9), Villa 87b St 63d (8), 105 P1 Bldg (5). Enter the charges, and set Charges / Hr in each client's schedule (R-SCHED-27). Settings → Data health now lists them (R-OPS-11) | Billed and pending look too low | Team |
 | A38 | **Villa 87b St 63d: AED 540 Pending Received (1 Oct) with nothing pending** — now counted as advance. If it was not a real payment, delete it in the Pending Received widget (the 3 test jobs were deleted 22 Nov) | Advance AED 580 may be wrong | Team |
 

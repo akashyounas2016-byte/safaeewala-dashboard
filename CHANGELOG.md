@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(excel-sheet): absent cleaner → replacement banner also for Bi-Weekly clients (R-SCHED-29, A30)
+
+## 2026-11-22 (Deploy to Production VPS, 93ef1ed)
+
 - feat(clients): Bi-Weekly days need Charges / Hr before save (R-SCHED-28)
 - feat(money): settle pending from the advance in one click (R-FIN-16); one money summary per client (R-FIN-17)
 - feat(payments): period filter on the cards (R-FIN-18); Weekly report by WhatsApp (R-OPS-12)

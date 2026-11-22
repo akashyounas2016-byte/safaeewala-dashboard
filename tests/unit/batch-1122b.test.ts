@@ -29,3 +29,9 @@ const form = readFileSync('src/components/clients/ClientModalForm.tsx', 'utf8')
 eq(/R-SCHED-28/.test(form) && /Charges \/ Hr for/.test(form), true, 'Bi-Weekly days need a rate (R-SCHED-28)')
 const prof = readFileSync('src/pages/ClientProfile.tsx', 'utf8')
 eq(/settleFromAdvance/.test(prof) && /\+\{n\} mo/.test(prof), true, 'profile: settle from advance (R-FIN-16), renew buttons (R-ALERT-06)')
+
+// R-SCHED-29 (A30): replacement banner also for Bi-Weekly clients
+import { monthlyJobsNeedingCover } from '@/lib/excelSheet/replacement'
+const bw = { ...client, service_mode: 'biweekly', biweekly_plan: { days: ['Friday'], day_schedules: {}, start_date: '2026-11-01', months: 3 } } as unknown as Client
+const cover = monthlyJobsNeedingCover([j('r1', '2026-11-20', 100, 0, { staff_name: 'Ambika' })], '2026-11-20', new Set(['ambika']), [bw])
+eq(cover.map(c => [c.cleaner, c.rows.length]), [['Ambika', 1]], 'absent cleaner on a Bi-Weekly job → replacement banner (R-SCHED-29)')

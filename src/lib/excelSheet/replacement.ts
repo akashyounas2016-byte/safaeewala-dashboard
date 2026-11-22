@@ -22,7 +22,8 @@ export interface CoverNeed {
 export function monthlyJobsNeedingCover(rows: DailyJob[], date: string, away: Set<string>, clients: Client[]): CoverNeed[] {
   const byCleaner = new Map<string, CoverNeed>()
   if (!away.size) return []
-  const contracts = clients.filter(c => isMonthlyClient(c)) // no jobs passed → the client's own contract only
+  // R-SCHED-29 (A30, 2026-11-22): Bi-Weekly contract clients need cover too — the banner had stopped showing for them
+  const contracts = clients.filter(c => isMonthlyClient(c) || (c.service_mode === 'biweekly' && !!c.biweekly_plan)) // no jobs passed → the client's own contract only
   if (!contracts.length) return []
   rows.forEach(r => {
     if (r.date !== date || !(r.address || '').trim() || !contracts.some(c => jobMatchesClient(r, c))) return

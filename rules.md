@@ -243,6 +243,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `ClientModalForm.tsx` (required-field list). Test: `tests/unit/batch-1122b.test.ts`.
 - **Status:** Active · Since: 2026-11-22
 
+### R-SCHED-29 — Replacement cleaner also for Bi-Weekly clients
+- **Rule:** *"pehle jab hum koi cleaner ko absent krte the excel job sheet me to top pr ak option ata tha k ap is cleaner ki jaga konsa cleaner is job ko assign kren gen but ab wo option nahi ata"* (2026-11-22, PENDING A30)
+  - **Why it stopped:** the banner (R-SCHED-09) was for monthly-contract clients only (UX-141). Most contract clients are now Bi-Weekly — on 20 Nov Ambika was absent with two Bi-Weekly jobs (306 Bldg 8B, Villa 13B St 57) and no banner showed.
+  - The Excel sheet banner now lists the jobs of an absent / on-leave cleaner for Monthly **and Bi-Weekly** clients. Only that date changes (R-SCHED-01).
+- **Code:** `excelSheet/replacement.ts → monthlyJobsNeedingCover`; `JobSheetSpreadsheet.tsx`. Test: `tests/unit/batch-1122b.test.ts`.
+- **Status:** Active · Since: 2026-11-22
+
 ### R-SCHED-24 — Monthly visits only up to 90 days ahead
 - **Why:** a mistyped date (2041-12-17) opened on the Excel sheet got real-looking monthly visits, as the contracts had no End date (team report 2026-11-17).
   - Monthly / Bi-Weekly visits are added only for dates up to 90 days from today (`MONTHLY_SYNC_DAYS_AHEAD`). Further dates show no visits; they are added when the date comes within 90 days.

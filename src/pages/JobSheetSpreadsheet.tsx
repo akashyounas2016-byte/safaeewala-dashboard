@@ -4133,7 +4133,7 @@ export function JobSheetSpreadsheet() {
       {/* ── R-SCHED-09: monthly jobs whose cleaner is away today ── */}
       {coverNeeds.length > 0 && (
         <div role="alert" className="mx-3 my-2 px-4 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-950 text-[12.5px] space-y-2">
-          <p className="font-extrabold flex items-center gap-1.5"><UserCog size={14} /> Monthly clients need a replacement cleaner today (only this date changes — the monthly schedule stays the same)</p>
+          <p className="font-extrabold flex items-center gap-1.5"><UserCog size={14} /> Monthly / Bi-Weekly clients need a replacement cleaner today (only this date changes — the client's schedule stays the same)</p>
           {coverNeeds.map(need => {
             const key = need.cleaner.toLowerCase()
             const opts = staffOptions
