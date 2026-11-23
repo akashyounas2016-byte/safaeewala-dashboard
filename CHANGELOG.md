@@ -6,6 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- data: A39 fixed on owner request — 20 Nov Villa 56 St 43B second copy of the visit deleted (09:00 PM–01:00 PM, AED 105, 16 h false OT; its "Deep cleaning" note and Pending mode moved to the visit); 306 Bldg 8B Ambika team row charges 200 → 0. Pending AED 7,262.5 → 6,957.5 (backup a39-double-entries-2026-11-23.json) (R-FIN-20)
 ## 2026-11-23 (Deploy to Production VPS, ac63643)
 
 - fix(leads): WhatsApp Clicks By Area — clicks on the website's area pages get their area from the link (R-MKT-07)
