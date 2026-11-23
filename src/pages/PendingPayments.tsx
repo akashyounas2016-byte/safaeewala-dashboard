@@ -303,17 +303,22 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
   // ── Unified Outstanding Pending Records ──
   const allOutstandingRecords: UnifiedPendingRecord[] = useMemo(() => {
     const list: UnifiedPendingRecord[] = []
+    // R-FIN-20: a visit after today has not happened yet — it is not a due (opening a future date on the sheet
+    // creates the monthly / Bi-Weekly visit rows, which then showed as dues). The client's name, not the address twice.
+    const today = todayDubai()
+    const clientById = new Map(clients.map(c => [c.id, c]))
 
     // 1. From Daily Jobs: where charges > received or payment_mode is 'Pending'
     dailyJobs.forEach(job => {
       if (isBogusJob(job)) return
+      if (job.date && job.date > today) return
       const chg = cleanNum(job.charges)
       const rec = cleanNum(job.received) + calcJobLaterReceipts(job, pendingCtx)
       const due = calcJobCollectable(job, pendingCtx, invoicedIds)
 
       // Only real dues — a fully paid row stays out even if its mode says "Pending"
       if (due > 0) {
-        const client = job.address || job.area || 'Client'
+        const client = (job.client_id && clientById.get(job.client_id)?.full_name?.trim()) || job.address || job.area || 'Client'
         list.push({
           id: `job-${job.id}`,
           date: job.date || '',
@@ -381,7 +386,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
     })
 
     return list
-  }, [dailyJobs, pendingList, pendingCtx, invoices, invoicedIds])
+  }, [dailyJobs, pendingList, pendingCtx, invoices, invoicedIds, clients])
 
   // Filtered Outstanding Records
   const filteredOutstanding = useMemo(() => {
@@ -1159,7 +1164,8 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
                           <span className="font-extrabold text-[#111827]">{rec.clientName}</span>
                           <span className="text-[11px] text-slate-400 font-normal flex items-center gap-1 mt-0.5">
                             <MapPin size={11} className="text-slate-400 shrink-0" />
-                            <span className="truncate max-w-[240px]">{rec.address} ({rec.area || 'Dubai'})</span>
+                            {/* R-FIN-20: the address once — it used to repeat the name when the name was the address */}
+                            <span className="truncate max-w-[240px]">{rec.address && rec.address !== '—' && rec.address !== rec.clientName ? `${rec.address} · ` : ''}{rec.area && rec.area !== '—' ? rec.area : 'Dubai'}</span>
                           </span>
                         </div>
                       </td>

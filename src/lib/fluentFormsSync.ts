@@ -338,8 +338,31 @@ function leadRow(lead: Partial<FluentFormLead>): Record<string, unknown> & { id:
   return row as Record<string, unknown> & { id: string }
 }
 
+/*
+ * R-LEAD-13: ids of leads deleted in this browser (id → time). The 12-second polls (page + sidebar counter) could read
+ * the VPS list before a delete and finish after it: the lead came back on screen, and the "only on the VPS → copy to
+ * Supabase" step even wrote it back to the cloud, so it never went away. A deleted id is hidden, never copied back,
+ * and deleted again if a store still has it. Kept 30 days.
+ */
+const DELETED_KEY = 'safaeewala_fluent_form_deleted'
+const DELETED_KEEP_MS = 30 * 86400000
+export function readDeletedLeadIds(now = Date.now()): Map<string, number> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DELETED_KEY) || '{}') as Record<string, number>
+    return new Map(Object.entries(raw).filter(([, t]) => typeof t === 'number' && now - t < DELETED_KEEP_MS))
+  } catch { return new Map() }
+}
+function rememberDeletedLead(id: string) {
+  const m = readDeletedLeadIds(); m.set(id, Date.now())
+  try { localStorage.setItem(DELETED_KEY, JSON.stringify(Object.fromEntries(m))) } catch { /* quota */ }
+}
+/** Bumped on every delete: a poll that started before it drops its (older) result — see FluentFormsLeads */
+let deleteGeneration = 0
+export const leadDeleteGeneration = () => deleteGeneration
+
 export async function fetchFluentFormLeads(): Promise<FluentFormLead[]> {
   await flushLeadOutbox()
+  const startedAt = deleteGeneration
 
   // Read both stores and merge by id (VPS wins) so a lead that exists in only one of them still shows
   const [vps, db] = await Promise.all([
@@ -353,14 +376,24 @@ export async function fetchFluentFormLeads(): Promise<FluentFormLead[]> {
   ])
 
   if (vps || db) {
+    const deleted = readDeletedLeadIds()
     const byId = new Map<string, FluentFormLead>()
     ;(db || []).forEach(l => byId.set(l.id, l))
     ;(vps || []).forEach(l => byId.set(l.id, { ...byId.get(l.id), ...l }))
+    // R-LEAD-13: a lead deleted here that a store still has (a write lost, or a poll copied it back) is deleted
+    // again — once a minute has passed, so the delete in flight is not sent twice
+    deleted.forEach((at, id) => {
+      if (byId.has(id) && Date.now() - at > 60000) {
+        if (vps?.some(l => l.id === id)) void sendLeadWrite({ url: `/api/webhook/fluent-forms/${id}`, method: 'DELETE' })
+        if (db?.some(l => l.id === id)) dbDelete('fluent_form_leads', id)
+      }
+      byId.delete(id)
+    })
     // Leads that only reached the VPS file are copied to Supabase (the cloud store) — through the
-    // outbox, so a failed copy is retried
-    if (vps && db) {
+    // outbox, so a failed copy is retried. Not when a delete happened while the two lists were read (R-LEAD-13).
+    if (vps && db && startedAt === deleteGeneration) {
       const inDb = new Set(db.map(l => l.id))
-      vps.filter(l => l.id && !inDb.has(l.id) && !isDummyLead(l)).forEach(l => dbInsert('fluent_form_leads', leadRow(l)))
+      vps.filter(l => l.id && !inDb.has(l.id) && !deleted.has(l.id) && !isDummyLead(l)).forEach(l => dbInsert('fluent_form_leads', leadRow(l)))
     }
     const realData = Array.from(byId.values())
       .filter(l => !isDummyLead(l))
@@ -376,7 +409,8 @@ export async function fetchFluentFormLeads(): Promise<FluentFormLead[]> {
     if (saved) {
       const parsed = JSON.parse(saved)
       if (Array.isArray(parsed)) {
-        return (parsed as FluentFormLead[]).filter(l => !isDummyLead(l)).map(l => normalizeLeadWithRaw(l))
+        const deleted = readDeletedLeadIds()
+        return (parsed as FluentFormLead[]).filter(l => !isDummyLead(l) && !deleted.has(l.id)).map(l => normalizeLeadWithRaw(l))
       }
     }
   } catch { /* corrupt cache */ }
@@ -408,8 +442,11 @@ export async function updateFluentFormLeadStatus(id: string, status: LeadStatus,
 }
 
 export async function deleteFluentFormLeadRemote(id: string): Promise<void> {
-  await vpsWrite({ url: `/api/webhook/fluent-forms/${id}`, method: 'DELETE' })
+  // R-LEAD-13: remembered first, so a poll already running cannot bring the lead back
+  rememberDeletedLead(id)
+  deleteGeneration++
   dbDelete('fluent_form_leads', id)
+  await vpsWrite({ url: `/api/webhook/fluent-forms/${id}`, method: 'DELETE' })
 }
 
 /* ─── Export Leads to XLSX ─── */

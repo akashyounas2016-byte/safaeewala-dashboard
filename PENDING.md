@@ -23,6 +23,7 @@ Never paste keys or tokens in chat — put them in `/var/www/safaeewala/.env` on
 | A22 | ~~Edit / delete WhatsApp clicks migration~~ — owner ran it 2026-11-17 | — | — |
 | A27 | **Two cleaners look the same on the sheet:** "Ambika" (added 17 Nov) and "Ambika Devi Tharu" (short name "Ambika") both show as **Ambika**. If they are one person, delete the extra employee; if two, give one a different short name (Employees → Edit) | The team may book the wrong Ambika | Owner (confirming with the client) |
 | A37 | **64 jobs with AED 0 charges and nothing received** — mostly Bi-Weekly visits without a rate: 306 Bldg 8B (24), Villa 13B St 57 (13), Villa 24 St 75 A (9), Villa 87b St 63d (8), 105 P1 Bldg (5). Enter the charges, and set Charges / Hr in each client's schedule (R-SCHED-27). Settings → Data health now lists them (R-OPS-11) | Billed and pending look too low | Team |
+| A39 | **Two visits entered twice on 20 Nov (Pending shows both):** Villa 56 St 43B — Bi-Weekly visit (Cash, AED 105) + a hand-added row (Pending, AED 105, "Deep cleeaning", start 09:00 PM); 306 Bldg 8B — Asmita (AED 200) + a row pasted for Ambika "Team A" (AED 200). If each was one visit, set the extra row's charges to 0 or delete it (R-FIN-20). Not changed by Claude | Pending AED 305 too high | Team / Owner |
 | A38 | **Villa 87b St 63d: AED 540 Pending Received (1 Oct) with nothing pending** — now counted as advance. If it was not a real payment, delete it in the Pending Received widget (the 3 test jobs were deleted 22 Nov) | Advance AED 580 may be wrong | Team |
 
 ---

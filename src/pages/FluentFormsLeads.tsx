@@ -23,6 +23,7 @@ import {
   updateFluentFormLeadStatus,
   updateFluentFormLead,
   deleteFluentFormLeadRemote,
+  leadDeleteGeneration,
   exportLeadsToXLSX,
   getWebhookConfig,
   resolvePropertyType,
@@ -378,8 +379,10 @@ export function FluentFormsLeads() {
     let mounted = true
     const loadData = async () => {
       try {
+        const gen = leadDeleteGeneration()
         const data = await fetchFluentFormLeads()
-        if (mounted) {
+        // R-LEAD-13: a list read before a delete would put the deleted lead back — wait for the next poll
+        if (mounted && gen === leadDeleteGeneration()) {
           const realData = (data || []).filter(l => !isDummyLead(l))
           setLeads(realData)
           setLoading(false)
@@ -799,7 +802,7 @@ export function FluentFormsLeads() {
 
             <div className="flex items-center gap-3 flex-wrap mb-2">
               <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-                Safaeewala Website Leads
+                Website Leads
               </h1>
 
               {/* White Tag: Live and Connected */}
@@ -812,19 +815,21 @@ export function FluentFormsLeads() {
               </span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-white/80 text-[13px]">
-              <span>WordPress Fluent Forms Webhook is actively syncing in real-time from safaeewala.com</span>
+            {/* R-LEAD-14: two rows only — title + Live tag, then a short line with the count and the endpoint tag beside it */}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-white/80 text-[13px]">
+              <span>Fluent Forms from safaeewala.com, synced live</span>
               <span className="text-white/40 hidden sm:inline">·</span>
-              <span className="text-emerald-300 font-semibold">
-                {datePreset === '7days'
-                  ? `${count7Days} Inquiries in Last 7 Days`
-                  : datePreset === '30days'
-                  ? `${count30Days} Inquiries in Last 30 Days`
-                  : `${totalLeads} Total Inquiries Analyzed`}
-              </span>
-              <span className="text-white/40 hidden sm:inline">·</span>
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-white/95 bg-white/15 px-2.5 py-0.5 rounded-md border border-white/20">
-                Endpoint: 200 OK Listening
+              <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                <span className="text-emerald-300 font-semibold">
+                  {datePreset === '7days'
+                    ? `${count7Days} Inquiries in Last 7 Days`
+                    : datePreset === '30days'
+                    ? `${count30Days} Inquiries in Last 30 Days`
+                    : `${totalLeads} Total Inquiries`}
+                </span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-white/95 bg-white/15 px-2.5 py-0.5 rounded-md border border-white/20">
+                  Endpoint: 200 OK Listening
+                </span>
               </span>
             </div>
           </div>

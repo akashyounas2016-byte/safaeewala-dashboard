@@ -206,7 +206,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** *"WhatsApp Click screen ko redesign karein … cards … 'Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'All Time', 'Mobile Clicks', aur 'Top Pages' … filter … 'Custom Range' … 'By Page' aur 'By Area' … cards ka data real-time mein update."* (2026-11-20)
   - Cards in the Daily Job Sheet design: Today, Yesterday, Last 7 days, Last 30 days, All time (a click on one sets the period). **More cards** opens a second row: Mobile clicks, Top pages, Top areas.
   - Filters: period (Today, Yesterday, 7 / 30 days, All time, Custom range from–to), By page, By area, search. Page, area and search also change the cards; the period changes the second row and the lists.
-  - **Area** is read from the page link, title or message (a click has no address). Area pages give their area from the link (R-MKT-07).
+  - **Area** is read from the page link, title or message (a click has no address). Area pages give their area from the link (R-MKT-07); otherwise the visitor's location from the IP (R-MKT-08).
   - New clicks arrive live (Supabase channel), with the minute reload as a fallback.
 - **Code:** `src/pages/WhatsAppClicks.tsx`; `src/lib/whatsappClicks.ts → presetDates, clicksBetween, areaOf`. Test: `tests/unit/batch-1120b.test.ts`.
 - **Status:** Active · Since: 2026-11-20
@@ -219,11 +219,35 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `whatsappClicks.ts → areaOf`. Test: `tests/unit/batch-1123.test.ts`.
 - **Status:** Active · Since: 2026-11-23
 
+### R-MKT-08 — WhatsApp Clicks: visitor location from the IP, without a popup
+- **Rule:** *"bghair popup k koi method use kro jis se mjhe location ka pta chal jae"* (2026-11-23, after asking whether IP or another method can track the location).
+  - The plugin already sends the visitor's IP with each click (`visitor_ip`, real visitor addresses, not Cloudflare's). The CRM looks it up in an **offline UAE-only table** — the IP is never sent to an outside service, and the visitor sees nothing.
+  - Table: DB-IP "IP to City Lite" (2026-11, CC BY 4.0 — the By area widget shows the "IP location by DB-IP" credit). UAE ranges only (~10,600 ranges, 226 places), `src/lib/geo/uaeIpLocations.json` (~340 KB), loaded only by the WhatsApp Clicks screen.
+  - **By area** and the new **Area / location** column: the page's area first (R-MKT-06/07, the area the customer asked about), else the IP location ("Dubai · Palm Jumeirah", "Sharjah", "Outside UAE", marked *IP*), else "No area" (older clicks stored without an IP).
+  - IP location is approximate: home / office internet often gives the community; mobile data mostly gives the emirate, sometimes a wrong one. First result (23 Nov): of 25 clicks with an IP — Dubai 17 (Bur Dubai 5, Palm Jumeirah 3, Jebel Ali 2 …), Abu Dhabi 4, Sharjah 2, outside the UAE 2.
+  - Not done: the browser's exact location (needs a permission popup — fewer chats), a paid / online lookup service. The table is a snapshot; refresh it from db-ip.com once or twice a year.
+- **Code:** `src/lib/geo/ipLocation.ts → locateIp, loadIpLocations`; `whatsappClicks.ts → locationOf`; `WhatsAppClicks.tsx`. Test: `tests/unit/batch-1123b.test.ts`.
+- **Status:** Active · Since: 2026-11-23
+
 ### R-LEAD-12 — Leads tabs under the header; Last 7 Days card
 - **Rule:** *"Leads page par Fluent Forms aur WhatsApp Clicks ki tabs ko system kay baki pages kay mutabiq header kay neechay position karein. Fluent Forms kay summary cards mein say 'Conversion Rate' ka card hata kar iski jagah 'Last 7 Days' ka summary card shamil karein."* (2026-11-23)
   - The Fluent Forms / WhatsApp Clicks tab bar sits under the page header, full width, in the Settings tab style (white bar, dark active tab).
   - Fluent Forms cards: Today, Yesterday, Last 30 Days, **Last 7 Days** (in place of Conversion Rate), Action Required.
 - **Code:** `LeadsTabs.tsx`; `FluentFormsLeads.tsx`; `WhatsAppClicks.tsx`. Test: `tests/unit/batch-1123.test.ts`.
+- **Status:** Active · Since: 2026-11-23
+
+### R-LEAD-13 — A deleted website lead stays deleted
+- **Rule:** *"Fluent Forms screen par Form Submissions tab ya widget mein maujood kisi bhi lead ko delete karnay par wo remove nahi hoti. Is deletion failure ko investigate karein aur fix karein."* (2026-11-23)
+  - **Cause:** the lead list is read every 12 seconds twice (the screen, and the sidebar's unread counter on every screen). A read that started before a delete and finished after it put the lead back on screen. Worse, that read saw the lead in the VPS list but no longer in Supabase, and the "copy leads that only reached the VPS to Supabase" step wrote it back — the lead returned for good. A delete with no poll in flight worked (browser test).
+  - Now the deleted id is remembered in the browser (30 days) **before** the server calls; it is hidden from every list, never copied back, and deleted again if a store still holds it a minute later. A read that started before a delete is dropped.
+  - Browser test: every list read slowed to 5 s and the delete pressed while one was running — the lead stayed gone (2 s … 26 s and after a reload); both stores clean.
+- **Code:** `fluentFormsSync.ts → deleteFluentFormLeadRemote, readDeletedLeadIds, fetchFluentFormLeads`; `FluentFormsLeads.tsx`. Test: `tests/unit/batch-1123b.test.ts`.
+- **Status:** Active · Since: 2026-11-23
+
+### R-LEAD-14 — Website Leads header in two rows
+- **Rule:** *"Leads screen par Fluent Forms ka header clean karein aur isay 'Safai Wala Website Leads' ki jagah sirf 'Website Leads' rakhein. Neeche di gayi description ko mukhtasar karein aur 'Endpoint 200 OK Listening' kay tag ko teesri row say hata kar '46 Total Inquiries' kay aagay shift kar dein, taake text sirf do rows mein mehfooz rahay."* (2026-11-23)
+  - Row 1: **Website Leads** + Live and Connected. Row 2: "Fluent Forms from safaeewala.com, synced live · N Total Inquiries [Endpoint: 200 OK Listening]" — the count and the tag stay together.
+- **Code:** `FluentFormsLeads.tsx` (hero). Test: `tests/unit/batch-1123b.test.ts`.
 - **Status:** Active · Since: 2026-11-23
 
 ### R-ATT-09 — Office staff on leave are named on the Excel attendance popup
@@ -1292,6 +1316,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - The opening advance / adjustment stays on the client record only; no ledger copy is written.
 - **Code:** `Clients.tsx` (Add Client), `ClientProfile.tsx` (Edit Profile). Test: `tests/unit/batch-1122b.test.ts`.
 - **Status:** Active · Since: 2026-11-22
+
+### R-FIN-20 — Pending: no future visits; the client's name, the address once
+- **Rule:** *"Pending screen par 'Active Outstanding Dues' mein values repeat ho rahi hain. Is baat ko investigate karein keh aaya yeh issue multiple cleaners assign honay ki wajah say hai ya koi system bug hai. Tamam financial values ko cross-verify karein aur duplicate entries ko remove karke data durust show karna ensure karein."* (2026-11-23)
+  - **Checked (74 rows, all time):** every row is one job-sheet row; a job with several cleaners is **one** row (names joined), so multiple cleaners do not repeat a due. What repeated:
+    - **Display (system):** the Client column showed the address as the name and then the address again ("E2402 Hameni tower E2402 Hameni tower (JVC)"). Now the client's name (from the linked client), and the address under it only when it differs, then the area.
+    - **Future visits (system):** opening a future date on the sheet creates that date's Monthly / Bi-Weekly visit rows, and they showed as dues (Villa 56 St 43B on 27 and 30 Nov). A visit after today (Dubai) is not listed — 74 → 72 rows.
+    - **Monthly / Bi-Weekly visits** (Villa 13B St 57, Villa 56 St 43B, 105 P1 Bldg …) show one row per unpaid visit — each is a separate visit, not a copy.
+    - **Two rows entered twice by the team (data, not changed — owner to decide):** 20 Nov Villa 56 St 43B — the Bi-Weekly visit (Cash, AED 105) and a hand-added row (Pending, AED 105, "Deep cleeaning", start "09:00 PM"); 20 Nov 306 Bldg 8B — Asmita (AED 200) and a row pasted for Ambika "Team A" (AED 200, copy/paste copies the charges). If each was one visit, the extra row's charges should be 0 or the row deleted (PENDING A39).
+- **Code:** `PendingPayments.tsx → allOutstandingRecords` and the Client cell. Test: `tests/unit/batch-1123b.test.ts`.
+- **Status:** Active · Since: 2026-11-23
 
 ### R-FIN-04 — Invoice numbers
 - **Rule:** One scheme: `SAF-<year>-<NNNN>`, next = highest of the year + 1; `addInvoice` replaces any missing, legacy or duplicate number.

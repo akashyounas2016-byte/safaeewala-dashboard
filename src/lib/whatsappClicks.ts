@@ -1,4 +1,5 @@
 import { toDubaiDate } from '@/lib/dubaiTime'
+import { locateIp, type IpLocationData } from '@/lib/geo/ipLocation'
 
 /** R-MKT-03: one click on a WhatsApp button of the website (table whatsapp_clicks, written by the server) */
 export interface WhatsAppClick {
@@ -15,6 +16,8 @@ export interface WhatsAppClick {
   utm_medium?: string | null
   utm_campaign?: string | null
   site_name?: string | null
+  /** the visitor's IP, sent by the plugin (R-MKT-08 reads the location from it) */
+  visitor_ip?: string | null
 }
 
 export type ClickRange = '7' | '30' | '90' | 'all'
@@ -94,4 +97,18 @@ export function areaOf(c: WhatsAppClick, areas: readonly string[]): string {
     if (name) return name
   }
   return 'No area'
+}
+
+/**
+ * R-MKT-08: the location shown for a click, without asking the visitor (no popup):
+ * 1. the area of the page or message (R-MKT-06/07) — the area the customer asked about;
+ * 2. else where the visitor was, from their IP (offline UAE table, approximate) — "Dubai · Palm Jumeirah", "Outside UAE";
+ * 3. else "No area" (clicks from before the plugin stored the IP).
+ */
+export function locationOf(c: WhatsAppClick, areas: readonly string[], ipData?: IpLocationData | null): { label: string; from: 'page' | 'ip' | '' } {
+  const page = areaOf(c, areas)
+  if (page !== 'No area') return { label: page, from: 'page' }
+  const ip = ipData ? locateIp(c.visitor_ip, ipData) : null
+  if (ip) return { label: ip.label, from: 'ip' }
+  return { label: 'No area', from: '' }
 }

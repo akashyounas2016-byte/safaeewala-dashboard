@@ -8,8 +8,9 @@ import { PageHero } from '@/components/layout/PageHero'
 import { Widget } from '@/components/ui/KpiCard'
 import { supabase } from '@/lib/supabase'
 import { todayDubai, toDubaiDate } from '@/lib/dubaiTime'
-import { areaOf, clicksBetween, countBy, pageOf, presetDates, sourceOf, type ClickPreset, type WhatsAppClick } from '@/lib/whatsappClicks'
+import { locationOf, clicksBetween, countBy, pageOf, presetDates, sourceOf, type ClickPreset, type WhatsAppClick } from '@/lib/whatsappClicks'
 import { DUBAI_AREAS } from '@/lib/excelSheet/sheetConfig'
+import { loadIpLocations, type IpLocationData } from '@/lib/geo/ipLocation'
 
 /** R-MKT-06: a summary card in the Daily Job Sheet design; a date card sets the date filter */
 function ClickCard({ label, value, sub, icon: Icon, tone, active, onClick, children }: {
@@ -126,6 +127,10 @@ export function WhatsAppClicks() {
   const [areaFilter, setAreaFilter] = useState('')
   const [moreCards, setMoreCards] = useState(false)
   const [q, setQ] = useState('')
+  // R-MKT-08: offline IP → UAE location table (loaded with this screen only)
+  const [ipData, setIpData] = useState<IpLocationData | null>(null)
+  useEffect(() => { loadIpLocations().then(setIpData, () => setIpData(null)) }, [])
+  const areaOf = (c: WhatsAppClick) => locationOf(c, DUBAI_AREAS, ipData).label
   const [editing, setEditing] = useState<WhatsAppClick | null>(null)
   // R-MKT-05: the last deliveries from the WordPress plugin (time and result), so a missing click can be traced
   const [deliveries, setDeliveries] = useState<{ at: string; status: number; reason: string; page?: string }[] | null>(null)
@@ -168,9 +173,9 @@ export function WhatsAppClicks() {
     const t = q.trim().toLowerCase()
     return rows.filter(c =>
       (!pageFilter || pageOf(c) === pageFilter) &&
-      (!areaFilter || areaOf(c, DUBAI_AREAS) === areaFilter) &&
+      (!areaFilter || areaOf(c) === areaFilter) &&
       (!t || [c.page_title, c.page_url, c.button_text, c.utm_campaign, c.utm_source, c.referrer, c.device, c.wa_message].some(v => String(v || '').toLowerCase().includes(t))))
-  }, [rows, pageFilter, areaFilter, q])
+  }, [rows, pageFilter, areaFilter, q, ipData]) // eslint-disable-line react-hooks/exhaustive-deps
   const { from, to } = presetDates(preset, today, { from: customFrom, to: customTo })
   const shown = useMemo(() => clicksBetween(base, from, to), [base, from, to])
   const countFor = (p: ClickPreset) => { const r = presetDates(p, today); return clicksBetween(base, r.from, r.to).length }
@@ -178,9 +183,9 @@ export function WhatsAppClicks() {
   const byPage = countBy(shown, pageOf)
   const bySource = countBy(shown, sourceOf)
   const byButton = countBy(shown, c => c.button_text || '—')
-  const byArea = countBy(shown, c => areaOf(c, DUBAI_AREAS))
+  const byArea = countBy(shown, c => areaOf(c))
   const pageChoices = useMemo(() => countBy(rows, pageOf).map(r => r.key), [rows])
-  const areaChoices = useMemo(() => countBy(rows, c => areaOf(c, DUBAI_AREAS)).map(r => r.key), [rows])
+  const areaChoices = useMemo(() => countBy(rows, c => areaOf(c)).map(r => r.key), [rows, ipData]) // eslint-disable-line react-hooks/exhaustive-deps
   const periodLabel = preset === 'today' ? 'Today' : preset === 'yesterday' ? 'Yesterday' : preset === 'all' ? 'All time' : preset === 'custom' ? `${from || '…'} → ${to || '…'}` : `Last ${preset} days`
   const filtered = Boolean(pageFilter || areaFilter || q.trim())
   return (
@@ -280,25 +285,33 @@ export function WhatsAppClicks() {
         <Widget title="By page" note="Which pages bring WhatsApp chats" icon={FileText}><Bars list={byPage} /></Widget>
         <Widget title="By source / campaign" note="UTM campaign, source or referring site" icon={Megaphone}><Bars list={bySource} /></Widget>
         <Widget title="By button" note="Which button was clicked" icon={MousePointerClick}><Bars list={byButton} /></Widget>
-        <Widget title="By area" note="Area named in the page link or title (R-MKT-06)" icon={MapPin}><Bars list={byArea} /></Widget>
+        <Widget title="By area" note="Area of the page, else the visitor's location from their IP (approximate)" icon={MapPin}>
+          <Bars list={byArea} />
+          {/* R-MKT-08: DB-IP's free table needs this credit (CC BY 4.0) */}
+          <p className="mt-2 text-[10.5px] text-slate-400">IP location by <a href="https://db-ip.com" target="_blank" rel="noreferrer" className="underline">DB-IP</a></p>
+        </Widget>
       </div>
 
       <div className="bg-white rounded-[24px] border border-slate-200/80 shadow-[0_4px_20px_rgba(15,23,42,0.03)] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[940px] text-left border-collapse">
+          <table className="w-full min-w-[1060px] text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200/80 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
-                <th className="py-3 px-4">When</th><th className="py-3 px-3">Page</th><th className="py-3 px-3">Button</th><th className="py-3 px-3">Source</th><th className="py-3 px-3">Device</th><th className="py-3 px-3">Message</th><th className="py-3 px-4 text-right">Actions</th>
+                <th className="py-3 px-4">When</th><th className="py-3 px-3">Page</th><th className="py-3 px-3">Button</th><th className="py-3 px-3">Source</th><th className="py-3 px-3">Area / location</th><th className="py-3 px-3">Device</th><th className="py-3 px-3">Message</th><th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-[12.5px]">
-              {shown.length === 0 && <tr><td colSpan={7} className="py-12 text-center text-slate-400">{loading ? 'Loading…' : 'No clicks in this period'}</td></tr>}
+              {shown.length === 0 && <tr><td colSpan={8} className="py-12 text-center text-slate-400">{loading ? 'Loading…' : 'No clicks in this period'}</td></tr>}
               {shown.slice(0, 300).map(c => (
                 <tr key={c.id} className="hover:bg-emerald-50/40">
                   <td className="py-2.5 px-4 whitespace-nowrap text-slate-700">{new Date(c.clicked_at).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
                   <td className="py-2.5 px-3 max-w-[260px]">{c.page_url ? <a href={c.page_url} target="_blank" rel="noreferrer" className="text-emerald-800 hover:underline truncate block" title={c.page_url}>{pageOf(c)}</a> : pageOf(c)}</td>
                   <td className="py-2.5 px-3 text-slate-700">{c.button_text || '—'}{c.button_location ? <span className="text-slate-400"> · {c.button_location}</span> : null}</td>
                   <td className="py-2.5 px-3 text-slate-700">{sourceOf(c)}</td>
+                  {(() => { const l = locationOf(c, DUBAI_AREAS, ipData); return (
+                    <td className="py-2.5 px-3 text-slate-700 whitespace-nowrap" title={l.from === 'ip' ? "From the visitor's IP (approximate)" : l.from === 'page' ? 'From the page link / message' : 'No IP stored for this click'}>
+                      {l.label}{l.from === 'ip' && <span className="ml-1 text-[10px] font-bold text-slate-400">IP</span>}
+                    </td>) })()}
                   <td className="py-2.5 px-3 capitalize text-slate-700">{c.device || '—'}</td>
                   <td className="py-2.5 px-3 text-slate-500 max-w-[280px] truncate" title={c.wa_message || ''}>{c.wa_message || '—'}</td>
                   <td className="py-2.5 px-4">

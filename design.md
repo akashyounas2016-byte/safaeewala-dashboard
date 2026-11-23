@@ -216,7 +216,7 @@ The **Add New Agency** popup is the reference design; **Add New Employee** follo
     - Popups (UX-119): header buttons never wrap (one line); a long title wraps instead. The agency payout popup is called "Payment and Advances".
     - Conversations → Templates (UX-120): no title. Search, status dropdown (All, Favorites, Approved, Rejected, …), category, type, sort, Refresh and New Template are in one row, which wraps on narrow screens.
       - The sidebar item stays highlighted on any of its tabs. A role allowed only a tab still gets the item, which leads to that tab.
-      - Fluent Forms is called **Leads (Website)** in the sidebar.
+      - Fluent Forms is called **Leads (Website)** in the sidebar. Its header is **Website Leads** in two rows: title + Live tag; then a short line with the inquiry count and the endpoint tag side by side (R-LEAD-14).
     - Agency → License & Documents (UX-118): the banner with four summary cards (Trade License, NOC, TRN, Contract) was removed. "Current Active Documents" is the first card, with Edit Profile and Upload Document / Renewal. Version History rows have Preview · Download · Delete (asks first; the file stays in the backup).
     - Invoices (UX-115, 2026-11-09):
       - The hero has New Invoice only. Search and Monthly Invoices are in the tabs and the filter row below.

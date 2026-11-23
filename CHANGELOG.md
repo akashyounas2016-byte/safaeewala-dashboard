@@ -8,6 +8,10 @@
 
 - fix(leads): WhatsApp Clicks By Area — clicks on the website's area pages get their area from the link (R-MKT-07)
 - feat(leads): Fluent Forms / WhatsApp Clicks tabs under the header; Last 7 Days card in place of Conversion Rate (R-LEAD-12)
+- feat(leads): WhatsApp Clicks — visitor location from the IP (offline UAE table, no popup): By area + Area / location column (R-MKT-08)
+- fix(leads): a deleted website lead no longer comes back — a 12-second poll in flight restored it and copied it back to Supabase (R-LEAD-13)
+- feat(leads): header "Website Leads" in two rows, endpoint tag beside the inquiry count (R-LEAD-14)
+- fix(pending): Active Outstanding Dues — no future visits, the client's name and the address once; two rows entered twice by the team reported, not changed (R-FIN-20, A39)
 
 ## 2026-11-23 (Deploy to Production VPS, fda816b)
 

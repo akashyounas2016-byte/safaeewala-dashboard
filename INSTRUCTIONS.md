@@ -218,6 +218,8 @@
 
 ### Leads (Website) — do tabs
 - Sidebar mein **Leads (Website)** ab Marketing ke neeche hai. Header ke **neeche** do tabs: **Fluent Forms** aur **WhatsApp Clicks** (baqi screens jaisi patti).
+- Header ka naam ab **Website Leads** hai; neeche ek line mein total inquiries aur "Endpoint: 200 OK Listening".
+- Lead 🗑️ se delete karein to wo hamesha ke liye hat jati hai (pehle kabhi kabhi 12 second baad wapas aa jati thi).
 - Upar ke cards (Today, Yesterday, **Last 30 Days**, **Last 7 Days**, Action Required) neeche ke filters ke saath badalte hain. Conversion Rate wala card hata diya.
 - Submission popup mein **Estimated Value** nahi hai. Edit popup mein **Lead Status** upar ✕ ke saath hai.
 
@@ -227,7 +229,8 @@
 - Ye **lead nahi** hai — click mein customer ka number nahi hota. Ye batata hai ke kaun se pages aur campaigns WhatsApp chats la rahe hain. Asal chat Conversations mein aati hai.
 - **Cards:** Today, Yesterday, 7 din, 30 din, All time — card par click karein to wahi muddat lag jati hai. **More cards** se Mobile clicks, Top pages, Top areas.
 - **Filters:** muddat (Custom range bhi), **By page**, **By area**, search. Page / area chunein to cards bhi badal jate hain. Naya click foran aata hai.
-- **By Area:** area sirf tab pata chalta hai jab click website ke area page (misaal Dubai Investment Park) se aaye, ya message mein area ka naam ho. Home page / service page ke click "No area" mein hi aate hain — click mein address nahi hota.
+- **By Area / Area / location column:** pehle page ka area (misaal Dubai Investment Park ka area page, ya message mein area ka naam). Na ho to visitor ki **IP se location** — "Dubai · Palm Jumeirah", "Sharjah", "Outside UAE" (saath mein chhota **IP** likha hota hai). Visitor ko koi popup nahi aata.
+- IP wali location **andaza** hai: ghar / office ke internet par aksar community sahi aati hai, mobile data par zyada tar sirf emirate (kabhi ghalat emirate). Purane clicks jin ke saath IP save nahi hui, "No area" mein rehte hain.
 - Har row ke aakhir mein ✏️ (**Edit**) aur 🗑️ (**Delete**) hai. Edit se page, button, source, device ya message theek karein; Delete se test ya double click hata dein (pehle poochhta hai). Ye sirf admin / manager kar sakte hain.
 
 ## 5. Complaints aur Health Score
@@ -258,6 +261,13 @@
 
 ### Contract renew (Client Profile)
 - Contract 30 din mein khatam ho raha ho to profile par peela banner aata hai: **+1 / +3 / +6 / +12 mo** dabayein — contract utne mahine aage barh jata hai.
+
+### Pending → Active Outstanding Dues
+- Har row ek job hai. Ek job par kai cleaners hon to bhi ek hi row (naam saath likhe hote hain).
+- Client column mein client ka naam, neeche address (agar naam se alag ho) aur area.
+- Aaj ke baad ki visits (jo abhi hui nahi) yahan nahi aatin.
+- Monthly / Bi-Weekly client ki har unpaid visit alag row hai — ye copy nahi, alag visits hain.
+- Agar ek hi visit do dafa sheet par likh di (misaal copy / paste se dusre cleaner par), to charges dono rows par aa jate hain — extra row ke charges 0 karein ya row delete karein.
 
 ### Advance se pending clear karein
 - Client ka pending bhi ho aur advance bhi, to profile par **Settle AED X from advance** dabayein. Advance purani pending jobs par pehle lagta hai.
