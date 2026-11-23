@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(leads): WhatsApp Clicks By Area — clicks on the website's area pages get their area from the link (R-MKT-07)
+- feat(leads): Fluent Forms / WhatsApp Clicks tabs under the header; Last 7 Days card in place of Conversion Rate (R-LEAD-12)
+
 ## 2026-11-23 (Deploy to Production VPS, fda816b)
 
 - fix(excel-sheet): absent cleaner → replacement banner also for Bi-Weekly clients (R-SCHED-29, A30)

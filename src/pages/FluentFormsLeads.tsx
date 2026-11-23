@@ -779,8 +779,6 @@ export function FluentFormsLeads() {
         </div>
       )}
 
-      <LeadsTabs /> {/* R-LEAD-11 */}
-
       {/* ── Single Merged Hero Header ── */}
       <section className="gradient-card rounded-[24px] px-6 sm:px-7 py-5 sm:py-6 text-white shadow-[0_8px_32px_rgba(15,23,42,0.25)] ring-1 ring-black/10 relative overflow-hidden">
         {/* Glow */}
@@ -870,6 +868,8 @@ export function FluentFormsLeads() {
         </div>
       </section>
 
+      <LeadsTabs /> {/* R-LEAD-11, R-LEAD-12: under the header */}
+
       {/* ── 5 Performance KPI Cards (Real live metrics) ── */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
         {[
@@ -895,20 +895,21 @@ export function FluentFormsLeads() {
             // R-LEAD-09: Last 30 Days instead of the top category ("Villa Cleaning")
             label: 'Last 30 Days',
             value: count30Days,
-            sub: `${count7Days} in the last 7 days`,
+            sub: count30Days > 0 ? `${count30Days} inquiries in the last 30 days` : 'No inquiries in the last 30 days',
             icon: BarChart3,
             iconBg: 'bg-purple-50',
             iconColor: 'text-purple-600',
             highlight: '30 Days',
           },
           {
-            label: 'Conversion Rate',
-            value: `${overallConvRate}%`,
-            sub: `${totalConverted} converted to bookings`,
-            icon: CheckCircle,
+            // R-LEAD-12: Last 7 Days instead of Conversion Rate
+            label: 'Last 7 Days',
+            value: count7Days,
+            sub: count7Days > 0 ? `${count7Days} inquiries in the last 7 days` : 'No inquiries in the last 7 days',
+            icon: Calendar,
             iconBg: 'bg-indigo-50',
             iconColor: 'text-indigo-600',
-            highlight: totalLeads > 0 ? `${totalConverted} of ${totalLeads}` : '0% Live',
+            highlight: '7 Days',
           },
           {
             label: 'Action Required',

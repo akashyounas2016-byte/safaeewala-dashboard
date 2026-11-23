@@ -206,10 +206,25 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule:** *"WhatsApp Click screen ko redesign karein … cards … 'Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'All Time', 'Mobile Clicks', aur 'Top Pages' … filter … 'Custom Range' … 'By Page' aur 'By Area' … cards ka data real-time mein update."* (2026-11-20)
   - Cards in the Daily Job Sheet design: Today, Yesterday, Last 7 days, Last 30 days, All time (a click on one sets the period). **More cards** opens a second row: Mobile clicks, Top pages, Top areas.
   - Filters: period (Today, Yesterday, 7 / 30 days, All time, Custom range from–to), By page, By area, search. Page, area and search also change the cards; the period changes the second row and the lists.
-  - **Area** is read from the page link, title or message (a click has no address). The website's pages name no area today, so every click shows "No area" until area pages exist.
+  - **Area** is read from the page link, title or message (a click has no address). Area pages give their area from the link (R-MKT-07).
   - New clicks arrive live (Supabase channel), with the minute reload as a fallback.
 - **Code:** `src/pages/WhatsAppClicks.tsx`; `src/lib/whatsappClicks.ts → presetDates, clicksBetween, areaOf`. Test: `tests/unit/batch-1120b.test.ts`.
 - **Status:** Active · Since: 2026-11-20
+
+### R-MKT-07 — WhatsApp Clicks: area from the website's area pages
+- **Rule:** *"WhatsApp Clicks kay 'By Area' widget mein tamam leads ka 'No Area' mein show hona investigate karein … issue plugin ki taraf say data transmit na honay ka hai ya CRM par data mapping ka."* (2026-11-23)
+  - **Finding:** the plugin sends what it has — page link, page title, button and WhatsApp message (no area field; a click has no address). Of 51 clicks, 49 came from pages that name no area (home 17, service pages, contact, booking form) — "No area" is right for them. The 2 clicks from `/cleaning-service-areas/dubai-investment-park-dubai/` were a **CRM mapping gap**: the CRM matched only its own list of 19 areas, which has no Dubai Investment Park.
+  - Now a click on a website area page (`/cleaning-service-areas/<area>/`) takes the area from the link, even when it is not in the list. Areas named in the message or title still match the list.
+  - More clicks will show an area as the website's area pages get WhatsApp buttons (or the buttons carry the area in their message).
+- **Code:** `whatsappClicks.ts → areaOf`. Test: `tests/unit/batch-1123.test.ts`.
+- **Status:** Active · Since: 2026-11-23
+
+### R-LEAD-12 — Leads tabs under the header; Last 7 Days card
+- **Rule:** *"Leads page par Fluent Forms aur WhatsApp Clicks ki tabs ko system kay baki pages kay mutabiq header kay neechay position karein. Fluent Forms kay summary cards mein say 'Conversion Rate' ka card hata kar iski jagah 'Last 7 Days' ka summary card shamil karein."* (2026-11-23)
+  - The Fluent Forms / WhatsApp Clicks tab bar sits under the page header, full width, in the Settings tab style (white bar, dark active tab).
+  - Fluent Forms cards: Today, Yesterday, Last 30 Days, **Last 7 Days** (in place of Conversion Rate), Action Required.
+- **Code:** `LeadsTabs.tsx`; `FluentFormsLeads.tsx`; `WhatsAppClicks.tsx`. Test: `tests/unit/batch-1123.test.ts`.
+- **Status:** Active · Since: 2026-11-23
 
 ### R-ATT-09 — Office staff on leave are named on the Excel attendance popup
 - **Why:** Amina Qamar's sick leave (17 Nov) did not show in the Excel Job Sheet's Attendance popup. She is a CSR (office staff), and the sheet and its popup list cleaners only (R-SHEET-02) — the leave itself was saved and synced.

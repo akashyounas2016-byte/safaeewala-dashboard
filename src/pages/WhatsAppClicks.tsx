@@ -185,9 +185,10 @@ export function WhatsAppClicks() {
   const filtered = Boolean(pageFilter || areaFilter || q.trim())
   return (
     <div className="space-y-6">
-      <LeadsTabs /> {/* R-LEAD-11: a tab of Leads (Website) */}
       <PageHero title="WhatsApp Clicks" subtitle="Clicks on the WhatsApp buttons of the website — which pages and campaigns bring chats" showSearch={false}
         actions={<button type="button" onClick={() => void load()} className="h-11 px-5 rounded-2xl bg-white text-emerald-700 font-bold text-sm shadow-lg hover:bg-emerald-50 flex items-center gap-2 cursor-pointer"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Refresh</button>} />
+
+      <LeadsTabs /> {/* R-LEAD-11, R-LEAD-12: a tab of Leads (Website), under the header */}
 
       {/* R-MKT-05: is the website sending? */}
       {deliveries && (() => {

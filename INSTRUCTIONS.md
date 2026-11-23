@@ -217,8 +217,8 @@
 ---
 
 ### Leads (Website) — do tabs
-- Sidebar mein **Leads (Website)** ab Marketing ke neeche hai. Upar do tabs: **Fluent Forms** aur **WhatsApp Clicks** (alag WhatsApp Clicks item hat gaya).
-- Upar ke cards (Today, Yesterday, **Last 30 Days**, Conversion, Action Required) neeche ke filters ke saath badalte hain.
+- Sidebar mein **Leads (Website)** ab Marketing ke neeche hai. Header ke **neeche** do tabs: **Fluent Forms** aur **WhatsApp Clicks** (baqi screens jaisi patti).
+- Upar ke cards (Today, Yesterday, **Last 30 Days**, **Last 7 Days**, Action Required) neeche ke filters ke saath badalte hain. Conversion Rate wala card hata diya.
 - Submission popup mein **Estimated Value** nahi hai. Edit popup mein **Lead Status** upar ✕ ke saath hai.
 
 ### WhatsApp Clicks (website)
@@ -227,6 +227,7 @@
 - Ye **lead nahi** hai — click mein customer ka number nahi hota. Ye batata hai ke kaun se pages aur campaigns WhatsApp chats la rahe hain. Asal chat Conversations mein aati hai.
 - **Cards:** Today, Yesterday, 7 din, 30 din, All time — card par click karein to wahi muddat lag jati hai. **More cards** se Mobile clicks, Top pages, Top areas.
 - **Filters:** muddat (Custom range bhi), **By page**, **By area**, search. Page / area chunein to cards bhi badal jate hain. Naya click foran aata hai.
+- **By Area:** area sirf tab pata chalta hai jab click website ke area page (misaal Dubai Investment Park) se aaye, ya message mein area ka naam ho. Home page / service page ke click "No area" mein hi aate hain — click mein address nahi hota.
 - Har row ke aakhir mein ✏️ (**Edit**) aur 🗑️ (**Delete**) hai. Edit se page, button, source, device ya message theek karein; Delete se test ya double click hata dein (pehle poochhta hai). Ye sirf admin / manager kar sakte hain.
 
 ## 5. Complaints aur Health Score

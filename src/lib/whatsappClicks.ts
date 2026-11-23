@@ -73,6 +73,7 @@ const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 /**
  * R-MKT-06: the Dubai area a click is about, read from the page link / title / message (e.g. "/maid-service-jlt/" →
  * Jumeirah Lake Towers (JLT)). A click has no address of its own, so pages without an area name give "No area".
+ * The plugin sends no area field — only the page link, title and WhatsApp message (checked 2026-11-23).
  */
 export function areaOf(c: WhatsAppClick, areas: readonly string[]): string {
   let path = c.page_url || ''
@@ -82,6 +83,15 @@ export function areaOf(c: WhatsAppClick, areas: readonly string[]): string {
     const short = /\(([^)]+)\)/.exec(area)?.[1]
     const names = [area.replace(/\s*\([^)]*\)/, ''), short].filter(Boolean) as string[]
     if (names.some(n => { const k = norm(n); return k.length >= 3 && hay.includes(` ${k} `) })) return area
+  }
+  // R-MKT-07: the website's area pages ("/cleaning-service-areas/dubai-investment-park-dubai/") name the area in the
+  // link even when it is not in the CRM's list — those clicks showed as "No area"
+  const slug = /\/cleaning-service-areas\/([^/?#]+)/i.exec(path)?.[1]
+  if (slug) {
+    const words = slug.toLowerCase().split('-').filter(Boolean)
+    if (words.length > 1 && words[words.length - 1] === 'dubai') words.pop()
+    const name = words.map(w => (w.length <= 3 && /^(jlt|jvc|jbr|jvt|dip|dso)$/.test(w) ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1))).join(' ')
+    if (name) return name
   }
   return 'No area'
 }
