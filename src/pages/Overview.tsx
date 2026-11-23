@@ -6,12 +6,14 @@ import {
 import {
   CalendarCheck, Users, DollarSign, Star,
   ArrowUpRight, ArrowDownRight, Minus, ArrowRight,
-  AlertCircle, Clock,
+  AlertCircle, Clock, FileText, MessageCircle,
   Calendar, RotateCcw,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { LiveOpsPanel } from '@/components/overview/LiveOpsPanel'
-import { LeadsSummaryCards } from '@/components/overview/LeadsSummaryCards'
+import { usePeriodLeadCounts } from '@/components/overview/usePeriodLeadCounts'
+import { overviewRange, jobProgressByTime, crewMembers, dispatchedNames, onJobs, repeatClientRate, dubaiMinutes } from '@/lib/overviewStats'
+import { currentJobOf } from '@/lib/liveOps'
 import { ReportsPanel } from '@/components/overview/ReportsPanel'
 import { Button } from '@/components/ui/Button'
 import { formatTime } from '@/lib/utils'
@@ -19,7 +21,7 @@ import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import { useCurrentUser } from '@/store/UserContext'
 import type { Booking, BookingFrequency, DailyJob, DailyPendingItem, DailyPendingReceivedItem, Invoice } from '@/types'
-import { invoicedJobIds } from '@/lib/receivables'
+import { invoicedJobIds, invoiceBalance } from '@/lib/receivables'
 import { cleanClientNameFromAddress, isBogusJob, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, jobCollected } from '@/lib/clientDataSync'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
 import { todayDubai } from '@/lib/dubaiTime'
@@ -264,87 +266,6 @@ function RevenueChart({
   )
 }
 
-/* ─── Service mix donut ─── */
-const CIRC = 238.76
-const donutColors = ['#059669', '#0ea5e9', '#f59e0b', '#8b5cf6', '#cbd5e1']
-function ServiceMixDonut({ bookings, dailyJobs }: { bookings: Booking[]; dailyJobs: DailyJob[] }) {
-  const counts: Record<string, number> = {}
-  bookings.forEach(b => {
-    if (b.service_type) counts[b.service_type] = (counts[b.service_type] || 0) + 1
-  })
-  dailyJobs
-    .filter(j => !isBogusJob(j))
-    .forEach(j => {
-      const s = (j.service || '').trim()
-      if (s && s !== '—') counts[s] = (counts[s] || 0) + 1
-    })
-
-  const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1
-  const breakdown = Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([name, count]) => ({ name, value: Math.round((count / total) * 100), count }))
-
-  let offset = 0
-  const segments = breakdown.map(s => {
-    const dash = (s.value / 100) * CIRC
-    const seg = { ...s, dash, offset }
-    offset += dash
-    return seg
-  })
-
-  return (
-    <div className="bg-white rounded-[22px] p-5 border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)]">
-      <div className="mb-5">
-        <h3 className="text-xl font-bold text-[#111827]">Service Mix</h3>
-        <p className="text-sm text-[#6B7280] mt-1">Most booked cleaning services (all operational records)</p>
-      </div>
-
-      <div className="flex justify-center my-2">
-        <div className="relative">
-          <svg width="160" height="160" viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r="38" fill="none" stroke="#f1f5f9" strokeWidth="11" />
-            {segments.length === 0 ? (
-              <circle cx="50" cy="50" r="38" fill="none" stroke="#e2e8f0" strokeWidth="11" />
-            ) : segments.map((seg, i) => (
-              <circle key={seg.name} cx="50" cy="50" r="38" fill="none"
-                stroke={donutColors[i % donutColors.length]} strokeWidth="11"
-                strokeDasharray={`${seg.dash} ${CIRC}`}
-                strokeDashoffset={-seg.offset}
-                transform="rotate(-90 50 50)" />
-            ))}
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <p className="text-[10px] uppercase tracking-[0.1em] text-[#94a3b8] font-semibold">Jobs</p>
-            <p className="text-[28px] font-bold text-[#111827] leading-none mt-0.5">{total}</p>
-            <p className="text-[11px] text-[#94a3b8] mt-0.5">total</p>
-          </div>
-        </div>
-      </div>
-
-      {breakdown.length === 0 ? (
-        <p className="text-center text-sm text-slate-400 mt-4">No jobs recorded yet</p>
-      ) : (
-        <div className="mt-6 space-y-4">
-          {breakdown.map((s, i) => (
-            <div key={s.name} className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="w-3 h-3 rounded-full shrink-0" style={{ background: donutColors[i % donutColors.length] }} />
-                <p className="text-sm font-medium text-[#111827]">{s.name}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">{s.count} jobs</span>
-                <span className="text-sm font-semibold text-[#111827]">{s.value}%</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-
 export type OverviewDatePreset = 'today' | 'yesterday' | '7days' | '30days' | '3months' | '6months' | '1year' | 'all' | 'custom'
 
 /* ─── Overview page ─── */
@@ -374,51 +295,14 @@ export function Overview() {
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const firstName = currentUser?.full_name?.split(' ')[0] || 'there'
 
-  // Calculate active date range
-  const activeDateRange = useMemo(() => {
-    const now = new Date()
-    const todayStr = now.toISOString().split('T')[0]
-
-    if (datePreset === 'today') {
-      return { start: todayStr, end: todayStr, label: 'Today' }
-    }
-    if (datePreset === 'yesterday') {
-      const y = new Date(now)
-      y.setDate(y.getDate() - 1)
-      const yStr = y.toISOString().split('T')[0]
-      return { start: yStr, end: yStr, label: 'Yesterday' }
-    }
-    if (datePreset === '7days') {
-      const d = new Date(now)
-      d.setDate(d.getDate() - 6)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 7 Days' }
-    }
-    if (datePreset === '30days') {
-      const d = new Date(now)
-      d.setDate(d.getDate() - 29)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 30 Days' }
-    }
-    if (datePreset === '3months') {
-      const d = new Date(now)
-      d.setMonth(d.getMonth() - 3)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 3 Months' }
-    }
-    if (datePreset === '6months') {
-      const d = new Date(now)
-      d.setMonth(d.getMonth() - 6)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 6 Months' }
-    }
-    if (datePreset === '1year') {
-      const d = new Date(now)
-      d.setFullYear(d.getFullYear() - 1)
-      return { start: d.toISOString().split('T')[0], end: todayStr, label: 'Last 1 Year' }
-    }
-    if (datePreset === 'custom') {
-      const label = customStartDate && customEndDate ? `${customStartDate} to ${customEndDate}` : 'Custom Range'
-      return { start: customStartDate, end: customEndDate, label }
-    }
-    return { start: '', end: '', label: 'All Time' }
-  }, [datePreset, customStartDate, customEndDate])
+  // R-OPS-16: date range on Dubai dates (it used the UTC date — wrong after 8 PM Dubai)
+  const todayStr = todayDubai()
+  const nowMin = dubaiMinutes()
+  const activeDateRange = useMemo(
+    () => overviewRange(datePreset, todayStr, { from: customStartDate, to: customEndDate }),
+    [datePreset, todayStr, customStartDate, customEndDate],
+  )
+  const leadCounts = usePeriodLeadCounts(activeDateRange.start, activeDateRange.end)
 
   // Helper: check if date is in active range
   const isDateInRange = useMemo(() => {
@@ -468,10 +352,8 @@ export function Overview() {
     // 1. Daily Jobs in period
     periodDailyJobs.forEach(j => {
       const cleanClient = cleanClientNameFromAddress(j.address || j.area || 'Client')
-      const isPending = j.payment_mode === 'Pending' || (cleanNum(j.charges) > cleanNum(j.received) && cleanNum(j.received) === 0)
-      const status: 'in_progress' | 'confirmed' | 'completed' | 'pending' = isPending
-        ? 'pending'
-        : (j.end_time && j.end_time !== '—' ? 'completed' : 'in_progress')
+      // R-OPS-16: progress from the date and times (Done / Live / Scheduled), not from the payment
+      const status: 'in_progress' | 'confirmed' | 'completed' | 'pending' = jobProgressByTime(j, todayStr, nowMin)
       list.push({
         id: `dj-${j.id}`,
         date: j.date || '',
@@ -509,7 +391,7 @@ export function Overview() {
     // Sort chronologically (newest first)
     list.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''))
     return list
-  }, [periodDailyJobs, periodBookings])
+  }, [periodDailyJobs, periodBookings, todayStr, nowMin])
 
   const nonCancelledJobs  = unifiedJobs.filter(j => j.status !== 'cancelled')
   const periodCompleted   = unifiedJobs.filter(j => j.status === 'completed')
@@ -549,15 +431,16 @@ export function Overview() {
     // Same per-job formula as Pending Payments, Daily Job Sheet and Client Profile
     const pendingCtx = buildPendingCalcContext(loadClientAdjustments(), pendingRcvdList)
     const invoiced = invoicedJobIds(invoices)
-    const djPendingList = validDailyJobs.filter(j => calcJobCollectable(j, pendingCtx, invoiced) > 0)
+    // R-OPS-16: same as the Pending screen — no visit after today (R-FIN-20), invoices by what is still unpaid
+    const djPendingList = validDailyJobs.filter(j => !(j.date && j.date > todayStr) && calcJobCollectable(j, pendingCtx, invoiced) > 0)
     const djPendingAmt = djPendingList.reduce((s, j) => s + calcJobCollectable(j, pendingCtx, invoiced), 0)
 
     // 2. Side table pending items
     const sideAmt = pendingList.reduce((s, i) => s + cleanNum(i.amount), 0)
 
     // 3. Unpaid / overdue invoices
-    const pInvoices = invoices.filter(i => i.status === 'sent' || i.status === 'overdue')
-    const invAmt = pInvoices.reduce((s, i) => s + cleanNum(i.total), 0)
+    const pInvoices = invoices.filter(i => i.status !== 'draft' && invoiceBalance(i) > 0)
+    const invAmt = pInvoices.reduce((s, i) => s + invoiceBalance(i), 0)
 
     return {
       totalPendingAmount: djPendingAmt + sideAmt + invAmt,
@@ -566,25 +449,23 @@ export function Overview() {
       sidePendingCount: pendingList.length,
       invoicePendingCount: pInvoices.length,
     }
-  }, [validDailyJobs, pendingList, pendingRcvdList, invoices])
+  }, [validDailyJobs, pendingList, pendingRcvdList, invoices, todayStr])
 
   // ── Staff & Utilization ──
-  const activeEmps = employees.filter(e => e.status === 'active' || e.status === 'engaged_in_project' || !e.status)
+  // R-OPS-16: crew = cleaners only (not drivers, CSR, supervisors); each cleaner of a team counts
+  const activeEmps = useMemo(() => crewMembers(employees), [employees])
   const lowStockItems = inventory.filter(i => i.current_stock <= i.min_stock)
 
   const dispatchedStaffSet = useMemo(() => {
-    const s = new Set<string>()
-    periodDailyJobs.forEach(j => {
-      if (j.staff_name && j.staff_name.trim()) s.add(j.staff_name.trim().toLowerCase())
-    })
+    const names = dispatchedNames(periodDailyJobs)
     periodBookings.forEach(b => {
       (b.assigned_crew || []).forEach(id => {
         const emp = employees.find(e => e.id === id)
-        if (emp) s.add(emp.full_name.trim().toLowerCase())
+        if (emp) names.add(emp.full_name.trim().toLowerCase())
       })
     })
-    return s
-  }, [periodDailyJobs, periodBookings, employees])
+    return new Set(activeEmps.filter(e => onJobs(e, names)).map(e => e.id))
+  }, [periodDailyJobs, periodBookings, employees, activeEmps])
 
   const crewUtilization = activeEmps.length > 0
     ? Math.min(100, Math.round((dispatchedStaffSet.size / activeEmps.length) * 100))
@@ -731,7 +612,7 @@ export function Overview() {
       </div>
 
       {/* ── KPI Cards ── */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
+      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 mb-6">
         <KpiCard
           label={datePreset === 'today' ? 'Jobs Today' : datePreset === 'yesterday' ? 'Jobs Yesterday' : datePreset === 'all' ? 'Total Jobs' : `Jobs (${activeDateRange.label})`}
           value={unifiedJobs.length}
@@ -753,7 +634,7 @@ export function Overview() {
         <KpiCard
           label="Active Cleaners"
           value={activeEmps.length}
-          sub={`${employees.length} total staff · ${dispatchedStaffSet.size} dispatched`}
+          sub={`${dispatchedStaffSet.size} on jobs ${datePreset === 'today' ? 'today' : 'in period'} · ${employees.length} total staff`}
           delta={`${activeEmps.length} active`}
           trend="neutral"
           icon={Users} iconBg="#fef3c7" iconColor="#d97706"
@@ -768,10 +649,26 @@ export function Overview() {
           icon={Star} iconBg="#ede9fe" iconColor="#7c3aed"
           onClick={() => navigate('/reports')}
         />
+        {/* R-LEAD-15: website leads of the chosen period */}
+        <KpiCard
+          label={`Fluent Form Leads (${activeDateRange.label})`}
+          value={leadCounts.forms ?? '…'}
+          sub={leadCounts.formsNew == null ? 'Website form submissions' : `${leadCounts.formsNew} still new · website forms`}
+          delta={leadCounts.forms ? `+${leadCounts.forms}` : '0'}
+          trend={leadCounts.forms ? 'up' : 'neutral'}
+          icon={FileText} iconBg="#e0e7ff" iconColor="#4f46e5"
+          onClick={() => navigate('/fluent-forms')}
+        />
+        <KpiCard
+          label={`WhatsApp Clicks (${activeDateRange.label})`}
+          value={leadCounts.clicks ?? '…'}
+          sub={leadCounts.clicksMobile == null ? 'WhatsApp buttons on the website' : `${leadCounts.clicksMobile} from mobile · website buttons`}
+          delta={leadCounts.clicks ? `+${leadCounts.clicks}` : '0'}
+          trend={leadCounts.clicks ? 'up' : 'neutral'}
+          icon={MessageCircle} iconBg="#dcfce7" iconColor="#16a34a"
+          onClick={() => navigate('/whatsapp-clicks')}
+        />
       </section>
-
-      {/* ── R-LEAD-15: daily leads (Fluent Forms + WhatsApp Clicks), folds to one line ── */}
-      <LeadsSummaryCards />
 
       {/* ── R-OPS-13: Reports (Daily / Yesterday / Last 7 / 30 days) + Live Activity. R-OPS-15: Quick Actions removed ── */}
       <section className="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-6 items-start">
@@ -875,8 +772,8 @@ export function Overview() {
       <section className="grid grid-cols-1 xl:grid-cols-4 gap-5 mb-6">
         {/* Business Performance */}
         {(() => {
-          const repeatClients = clients.filter(c => c.total_bookings > 1).length
-          const repeatRate    = clients.length > 0 ? Math.round((repeatClients / clients.length) * 100) : 0
+          // R-OPS-16: repeat clients from the job sheet (total_bookings is not kept up to date)
+          const repeatRate = repeatClientRate(validDailyJobs, clients.length)
           return (
             <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
               <div className="flex items-center justify-between mb-5">
@@ -890,7 +787,7 @@ export function Overview() {
               </div>
               <div className="space-y-3.5">
                 {[
-                  { label: 'Revenue', value: `AED ${periodRevenue.toLocaleString()}`, pct: Math.min(100, Math.round((periodRevenue / 100000) * 100)), color: '#059669' },
+                  { label: 'Collected', value: `AED ${periodRevenue.toLocaleString()}`, pct: Math.min(100, Math.round((periodRevenue / 100000) * 100)), color: '#059669' },
                   { label: 'Completion Rate', value: `${completionRatePct}%`, pct: completionRatePct, color: '#0369a1' },
                   { label: 'Repeat Client Rate', value: `${repeatRate}%`, pct: repeatRate, color: '#d97706' },
                 ].map(item => (
@@ -914,7 +811,7 @@ export function Overview() {
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="text-lg font-bold text-[#111827]">Crew Availability</h3>
-              <p className="text-sm text-[#6B7280]">Active workforce status</p>
+              <p className="text-sm text-[#6B7280]">Cleaners right now (Dubai time)</p>
             </div>
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
           </div>
@@ -922,26 +819,34 @@ export function Overview() {
             <p className="text-sm text-slate-400 text-center py-4">No active employees yet</p>
           ) : (
             <div className="space-y-4">
-              {activeEmps.slice(0, 3).map((emp, i) => {
-                const currentJob = unifiedJobs.find(b => (b.staff.toLowerCase().includes(emp.full_name.toLowerCase()) || emp.full_name.toLowerCase().includes(b.staff.toLowerCase())) && b.status === 'in_progress')
-                const initials = emp.full_name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()
+              {(() => {
+                // R-OPS-16: cleaners right now (Dubai time) — working, next job today, or free; working first
+                const rows = activeEmps.map(emp => ({ emp, cur: currentJobOf(emp, validDailyJobs, todayStr, nowMin) }))
+                const rank = (r: typeof rows[number]) => (r.cur?.when === 'now' ? 0 : r.cur?.when === 'next' ? 1 : 2)
+                rows.sort((x, y) => rank(x) - rank(y) || x.emp.full_name.localeCompare(y.emp.full_name))
+                const working = rows.filter(r => r.cur?.when === 'now').length
                 const colors = [{ bg: 'bg-emerald-100', text: 'text-emerald-700' }, { bg: 'bg-amber-100', text: 'text-amber-700' }, { bg: 'bg-sky-100', text: 'text-sky-700' }]
-                const c = colors[i % colors.length]
-                return (
-                  <div key={emp.id} className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full ${c.bg} flex items-center justify-center font-bold text-sm ${c.text}`}>{initials}</div>
-                      <div>
-                        <p className="font-medium text-sm text-[#111827]">{emp.full_name}</p>
-                        <p className="text-xs text-[#6B7280]">{currentJob ? currentJob.address.split(',')[0] : 'Available'}</p>
+                return (<>
+                  <p className="text-[12px] text-slate-500 -mt-2"><b className="text-slate-800">{working}</b> working now · <b className="text-slate-800">{rows.filter(r => r.cur?.when === 'next').length}</b> with a job later · <b className="text-slate-800">{rows.filter(r => !r.cur || r.cur.when === 'last').length}</b> free now</p>
+                  {rows.slice(0, 5).map(({ emp, cur }, i) => {
+                    const initials = emp.full_name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()
+                    const c = colors[i % colors.length]
+                    const tag = cur?.when === 'now' ? { t: 'Working', cls: 'bg-sky-100 text-sky-700' } : cur?.when === 'next' ? { t: `Next ${cur.job.start_time || ''}`.trim(), cls: 'bg-amber-100 text-amber-700' } : { t: 'Free', cls: 'bg-emerald-100 text-emerald-700' }
+                    return (
+                      <div key={emp.id} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-10 h-10 rounded-full ${c.bg} flex items-center justify-center font-bold text-sm ${c.text} shrink-0`}>{initials}</div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm text-[#111827] truncate">{emp.full_name}</p>
+                            <p className="text-xs text-[#6B7280] truncate">{cur && cur.when !== 'last' ? (cur.job.address || cur.job.area || 'Job') : 'Available'}</p>
+                          </div>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${tag.cls}`}>{tag.t}</span>
                       </div>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${currentJob ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                      {currentJob ? 'Assigned' : 'Free'}
-                    </span>
-                  </div>
-                )
-              })}
+                    )
+                  })}
+                </>)
+              })()}
             </div>
           )}
         </div>
@@ -993,17 +898,13 @@ export function Overview() {
         </div>
       </section>
 
-      {/* ── Charts ── */}
-      <section className="grid grid-cols-1 lg:grid-cols-[1.65fr_1fr] gap-5 mb-6">
+      {/* ── Charts (R-OPS-16: Service Mix removed) ── */}
+      <section className="mb-6">
         <RevenueChart
           bookings={bookings}
           dailyJobs={validDailyJobs}
           monthlyPayments={monthlyPayments}
           invoices={invoices}
-        />
-        <ServiceMixDonut
-          bookings={periodBookings.length > 0 ? periodBookings : bookings}
-          dailyJobs={periodDailyJobs.length > 0 ? periodDailyJobs : validDailyJobs}
         />
       </section>
 

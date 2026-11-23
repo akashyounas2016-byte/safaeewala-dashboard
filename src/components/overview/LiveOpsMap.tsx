@@ -57,8 +57,8 @@ function card(p: LivePerson, now: number): string {
   </div>`
 }
 
-export default function LiveOpsMap({ people, height = 440, now, focusId, onFocus }: {
-  people: LivePerson[]; height?: number; now: number; focusId?: string | null; onFocus?: (id: string) => void
+export default function LiveOpsMap({ people, height = 560, now, focusId, onFocus, fitSignal = 0 }: {
+  people: LivePerson[]; height?: number; now: number; focusId?: string | null; onFocus?: (id: string) => void; fitSignal?: number
 }) {
   const boxRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -69,7 +69,14 @@ export default function LiveOpsMap({ people, height = 440, now, focusId, onFocus
   useEffect(() => {
     if (!boxRef.current || mapRef.current) return
     const map = L.map(boxRef.current, { zoomControl: true, scrollWheelZoom: true, attributionControl: true }).setView([25.2048, 55.2708], 11)
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' }).addTo(map)
+    // R-OPS-16: colourful base map by default; Streets and Satellite to switch (no API keys)
+    // OpenStreetMap Humanitarian style: bright colours, no key (CARTO's tiles now ask for a key)
+    const colorful = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc', attribution: '© OpenStreetMap contributors, Humanitarian style by OpenStreetMap France' })
+    const streets = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' })
+    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' })
+    colorful.addTo(map)
+    L.control.layers({ Colorful: colorful, Streets: streets, Satellite: satellite }, undefined, { position: 'topright' }).addTo(map)
+    L.control.scale({ imperial: false }).addTo(map)
     layerRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
     const ro = new ResizeObserver(() => map.invalidateSize())
@@ -106,6 +113,14 @@ export default function LiveOpsMap({ people, height = 440, now, focusId, onFocus
     }
   }, [people, now, onFocus])
 
+  // "Fit all" button: show every bot again
+  useEffect(() => {
+    const map = mapRef.current
+    if (!fitSignal || !map || !people.length) return
+    if (people.length === 1) map.setView([people[0].lat, people[0].lng], 14)
+    else map.fitBounds(L.latLngBounds(people.map(p => [p.lat, p.lng] as [number, number])), { padding: [50, 50], maxZoom: 15 })
+  }, [fitSignal]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const m = focusId ? markersRef.current.get(focusId) : undefined
     if (m && mapRef.current) { mapRef.current.setView(m.getLatLng(), Math.max(mapRef.current.getZoom(), 14)); m.openTooltip() }
@@ -114,7 +129,7 @@ export default function LiveOpsMap({ people, height = 440, now, focusId, onFocus
   return (
     <>
       <style>{'@keyframes saf-ping{0%{transform:scale(.85);opacity:.7}100%{transform:scale(1.5);opacity:0}}.saf-bot{background:none;border:none}.saf-bot-tip{border-radius:12px;padding:8px 10px;box-shadow:0 8px 24px rgba(15,23,42,.18);border:1px solid #e2e8f0}'}</style>
-      <div ref={boxRef} className="w-full rounded-2xl overflow-hidden border border-[#E4E8EC] z-0" style={{ height }} />
+      <div ref={boxRef} className="w-full h-full rounded-2xl overflow-hidden border border-[#E4E8EC] z-0" style={{ minHeight: height }} />
     </>
   )
 }

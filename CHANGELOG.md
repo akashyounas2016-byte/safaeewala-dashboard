@@ -12,6 +12,8 @@
 - fix(leads): a deleted website lead no longer comes back — a 12-second poll in flight restored it and copied it back to Supabase (R-LEAD-13)
 - feat(leads): header "Website Leads" in two rows, endpoint tag beside the inquiry count (R-LEAD-14)
 - feat(overview): redesign — no New Booking / Quick Actions (R-OPS-15); Reports by Daily / Yesterday / 7 / 30 days with WhatsApp, copy and CSV (R-OPS-13); Daily Leads cards in two rows that fold (R-LEAD-15); interactive live map with cleaner / driver / CSR bots and hover cards (R-OPS-14, Leaflet)
+- feat(overview): Daily Leads block replaced by Fluent Form + WhatsApp Click cards that follow the date filter (R-LEAD-15); full-width colourful map with Colorful / Streets / Satellite, fit all, full screen (R-OPS-16); Service Mix removed
+- fix(overview): figures checked — Dubai date filter, job progress by time, pending = Pending list (no future visits, invoice balance; also outstandingNow), crew = cleaners only with team members counted, Crew Availability right now, Repeat Client Rate from the job sheet (R-OPS-16)
 - feat(my-duties): cleaners and CSR can share their location with the office (R-OPS-14)
 - fix(pending): Active Outstanding Dues — no future visits, the client's name and the address once; two rows entered twice by the team reported, not changed (R-FIN-20, A39)
 

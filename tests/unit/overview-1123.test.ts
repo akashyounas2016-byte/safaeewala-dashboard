@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs'
 import { buildPeriodReport, periodReportCsv, periodReportText, reportRange } from '@/lib/periodReport'
 import { buildLivePeople, currentJobOf } from '@/lib/liveOps'
-import { countByPeriod } from '@/components/overview/LeadsSummaryCards'
+import { overviewRange, jobProgressByTime, dispatchedNames, crewMembers, onJobs, repeatClientRate } from '@/lib/overviewStats'
 import type { Client, DailyJob, Employee } from '@/types'
 
 const eq = (a: unknown, b: unknown, m: string) => {
@@ -27,7 +27,17 @@ eq([w.jobs, w.billed], [3, 600], 'last 7 days leaves out older jobs')
 eq(/Website leads: 3/.test(periodReportText(r)) && /WhatsApp clicks: 5/.test(periodReportText(r)), true, 'WhatsApp text has leads and clicks')
 eq(periodReportCsv(r).split('\n')[3], 'Jobs,2', 'CSV one figure per line')
 
-eq(countByPeriod([today, today, '2026-11-22', '2026-11-18', '2026-11-01'], today), { today: 2, yesterday: 1, d7: 4, d30: 5 }, 'leads cards count Today / Yesterday / 7 / 30 days')
+// R-OPS-16 (second request): Overview figures checked
+eq(overviewRange('today', today), { start: today, end: today, label: 'Today' }, 'Overview date filter on the Dubai date')
+eq(overviewRange('3months', today).start, '2026-08-23', '3 months back')
+eq(jobProgressByTime({ date: '2026-11-22', start_time: '09:00 AM', end_time: '01:00 PM' }, today, 600), 'completed', 'a past job is done')
+eq(jobProgressByTime({ date: today, start_time: '09:00 AM', end_time: '01:00 PM' }, today, 600), 'in_progress', 'today inside its time = live')
+eq(jobProgressByTime({ date: today, start_time: '02:00 PM', end_time: '05:00 PM' }, today, 600), 'confirmed', 'today later = scheduled (not "completed" because it has an end time)')
+eq(jobProgressByTime({ date: today, start_time: '08:00 AM', end_time: '09:00 AM' }, today, 600), 'completed', 'today after its end = done')
+eq([...dispatchedNames([{ staff_name: 'Asha, Bina' }, { staff_name: 'asha' }])], ['asha', 'bina'], 'each cleaner of a team counts once')
+eq(crewMembers([{ role: 'cleaner', status: 'active' }, { role: 'driver', status: 'active' }, { role: 'csr', status: 'active' }, { role: 'cleaner', status: 'inactive' }] as never).length, 1, 'crew = active cleaners only')
+eq(onJobs({ full_name: 'Ambika Devi Tharu', short_name: 'Ambika' } as never, new Set(['ambika'])), true, 'short name on the sheet matches')
+eq(repeatClientRate([{ client_id: 'a' }, { client_id: 'a' }, { client_id: 'b' }] as never, 4), 25, 'repeat clients from the job sheet')
 
 const emp = (id: string, full_name: string, role: string) => ({ id, full_name, role, status: 'active' }) as unknown as Employee
 const employees = [emp('e1', 'Asha', 'cleaner'), emp('e2', 'Dan', 'driver'), emp('e3', 'Sara', 'csr'), emp('e4', 'Bina', 'cleaner')]
@@ -51,6 +61,13 @@ eq(people[1].detail.includes('Started'), true, 'the job step shows in the card')
 const ov = readFileSync('src/pages/Overview.tsx', 'utf8')
 eq(/actionLabel="New Booking"/.test(ov) || /NewBookingModal/.test(ov), false, 'no New Booking on the Overview header (R-OPS-15)')
 eq(/Quick Actions<\/h3>/.test(ov), false, 'Quick Actions widget removed')
-eq(/<LeadsSummaryCards \/>/.test(ov) && /<ReportsPanel \/>/.test(ov) && /<LiveOpsPanel \/>/.test(ov), true, 'Overview has leads cards, Reports and the live map')
+eq(/LeadsSummaryCards/.test(ov), false, 'Daily Leads widget removed (owner, second request)')
+eq(/usePeriodLeadCounts\(activeDateRange\.start, activeDateRange\.end\)/.test(ov) && /Fluent Form Leads \(/.test(ov) && /WhatsApp Clicks \(/.test(ov), true, 'Fluent Form + WhatsApp Click cards follow the date filter')
+eq(/ServiceMixDonut|Service Mix<\/h3>/.test(ov), false, 'Service Mix removed')
+eq(/<ReportsPanel \/>/.test(ov) && /<LiveOpsPanel \/>/.test(ov), true, 'Overview has Reports and the live map')
+eq(/toISOString\(\)\.split\('T'\)\[0\]/.test(ov.slice(ov.indexOf('export function Overview'), ov.indexOf('export function Overview') + 3000)), false, 'no UTC date for the filter')
+eq(/invoiceBalance\(i\)/.test(ov) && /j\.date > todayStr/.test(ov), true, 'pending card = Pending screen (no future visits, invoice balance)')
+const panel = readFileSync('src/components/overview/LiveOpsPanel.tsx', 'utf8') + readFileSync('src/components/overview/LiveOpsMap.tsx', 'utf8')
+eq(/requestFullscreen/.test(panel) && /Satellite/.test(panel) && /openstreetmap\.fr\/hot/.test(panel) && !/cartocdn/.test(panel) && /Fit all/.test(panel), true, 'map: full screen, Colorful / Streets / Satellite, fit all')
 const md = readFileSync('src/pages/MyDuties.tsx', 'utf8')
 eq(/const canShare = !!linked\b/.test(md) && /Share my location with the office/.test(md), true, 'cleaners / CSR can share their location on My Duties')

@@ -250,11 +250,10 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `FluentFormsLeads.tsx` (hero). Test: `tests/unit/batch-1123b.test.ts`.
 - **Status:** Active · Since: 2026-11-23
 
-### R-LEAD-15 — Overview: daily leads cards (two rows, fold / unfold)
-- **Rule:** see R-OPS-13 (*"Daily leads (Fluent Forms aur WhatsApp Clicks) kay liye expandable summary cards … do rows … collapse ya expand"*).
-  - Row 1 Fluent Forms, row 2 WhatsApp Clicks: Today, Yesterday, Last 7 days, Last 30 days (Dubai dates; deleted / demo leads left out). A card opens that Leads tab. Reloads every minute.
-  - **Collapse** folds the block to one line ("Today: N forms · N WhatsApp clicks"); **Expand** opens it. The choice is remembered on the device.
-- **Code:** `src/components/overview/LeadsSummaryCards.tsx`. Test: `tests/unit/overview-1123.test.ts`.
+### R-LEAD-15 — Overview: Fluent Form and WhatsApp Click cards follow the date filter
+- **Rule:** *"Overview screen say 'Daily Leads' ka widget hata dein aur iski jagah 'Fluent Form' aur 'WhatsApp Click' kay summary cards shamil karein. Yeh cards dynamic honay chahiye jo upar diye gaye date filters kay mutabiq data update karein."* (2026-11-23, replaces the first version: a Daily Leads block with two folding rows)
+  - Two cards among the KPI cards: **Fluent Form Leads (period)** — count, "N still new" — and **WhatsApp Clicks (period)** — count, "N from mobile". The period is the Overview date filter (Today … All Time, Custom Range), Dubai days; deleted / demo leads left out. A card opens that Leads tab; reloads every minute.
+- **Code:** `src/components/overview/usePeriodLeadCounts.ts`; `Overview.tsx` (KPI cards). Test: `tests/unit/overview-1123.test.ts`.
 - **Status:** Active · Since: 2026-11-23
 
 ### R-ATT-09 — Office staff on leave are named on the Excel attendance popup
@@ -1881,8 +1880,23 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-OPS-15 — Overview: no New Booking, no Quick Actions
 - **Rule:** same request as R-OPS-13.
   - The header has no **New Booking** button and the Quick Actions widget is gone. The "+ Schedule a job / + Add a booking" links of the empty job lists open Bookings. New bookings are made on Bookings and the job sheets.
-  - New layout: header → date filter → KPI cards → **Daily Leads** (R-LEAD-15) → **Reports** + Live Activity → **Live Map** → alert cards and the rest as before.
+  - Layout: header → date filter → KPI cards (with Fluent Form + WhatsApp Click, R-LEAD-15) → **Reports** + Live Activity → **Live Map** (full width) → alert cards → Business Health / Crew / Coverage → Revenue vs Target → Dispatch table (R-OPS-16).
 - **Code:** `src/pages/Overview.tsx`. Test: `tests/unit/overview-1123.test.ts`.
+- **Status:** Active · Since: 2026-11-23
+
+### R-OPS-16 — Overview: full-width colourful map, figures checked, no Service Mix
+- **Rule:** *"Live map ko mazeed interactive, colorful, aur full width dein. Map kay neechay maujood cards ko verify karein aur 'Service Mix' widget ko mukammal tor par remove kar dein."* (2026-11-23)
+  - **Map:** full width (560 px), people as cards under it; base maps **Colorful** (OpenStreetMap Humanitarian), **Streets**, **Satellite** (Esri) — no API key (CARTO's colourful tiles now ask for one); **Fit all**, **Full screen**, scale bar, colour legend, colourful header with counts per role.
+  - **Cards below the map, checked against live data (23 Nov) and fixed:**
+    - Date filter used the UTC date — after 8 PM Dubai "Today" was still the day before. Now Dubai dates.
+    - Job progress came from the payment and "has an end time": a Pending-money job was "pending", every row with an end time "done" (94 % completion at 11 AM). Now from the date and times: Done / Live / Scheduled (Today: 13 done, 4 live, 1 scheduled → 72 %).
+    - Pending card counted visits after today and full invoice totals: AED 7,472.5 / 75 items. Now the same as the Pending list (R-FIN-20): AED 7,262.5 / 72. The Payments / Analytics / Reports outstanding figure (`outstandingNow`) also leaves out visits after today (was AED 7,473).
+    - Active Cleaners and Crew Utilization counted every employee (drivers, CSR, office) and a team row "A, B" as one name. Now cleaners only (39) and each cleaner of a team: 14 on jobs today → 36 %.
+    - Crew Availability showed the first 3 employees (a CSR among them) as "Free". Now cleaners right now: working / next job / free, working first.
+    - Business Health: "Revenue" is the money collected → named **Collected**; Repeat Client Rate from the job sheet (client with more than one job), not the unused `total_bookings`.
+    - Today's Coverage, Revenue vs Target, Live Activity, Dispatch table: correct as they are.
+  - **Service Mix** widget removed; Revenue vs Target takes the full width.
+- **Code:** `src/lib/overviewStats.ts`; `Overview.tsx`; `LiveOpsPanel.tsx`, `LiveOpsMap.tsx`; `businessMetrics.ts → outstandingNow`. Test: `tests/unit/overview-1123.test.ts`.
 - **Status:** Active · Since: 2026-11-23
 
 ## Known issues (rules not yet fully honoured)

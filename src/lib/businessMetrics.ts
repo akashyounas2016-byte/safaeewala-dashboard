@@ -93,7 +93,9 @@ export function monthlyFigures(input: MetricsInput, months: { key: string; label
 export function outstandingNow(input: Pick<MetricsInput, 'dailyJobs' | 'invoices' | 'pendingReceipts'>): { jobs: number; invoices: number; total: number } {
   const ctx = buildPendingCalcContext(loadClientAdjustments(), input.pendingReceipts)
   const invoiced = invoicedJobIds(input.invoices)
-  const jobs = realJobs(input.dailyJobs).reduce((s, j) => s + calcJobCollectable(j, ctx, invoiced), 0)
+  // R-FIN-20 / R-OPS-16: a visit after today is not a due yet — same as the Pending list and the Overview card
+  const today = todayDubai()
+  const jobs = realJobs(input.dailyJobs).filter(j => !(j.date && j.date > today)).reduce((s, j) => s + calcJobCollectable(j, ctx, invoiced), 0)
   const inv = input.invoices.filter(i => i.status === 'sent' || i.status === 'overdue').reduce((s, i) => s + invoiceBalance(i), 0)
   return { jobs: Math.round(jobs), invoices: Math.round(inv), total: Math.round(jobs + inv) }
 }
