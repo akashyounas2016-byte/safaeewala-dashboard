@@ -233,6 +233,15 @@
 - IP wali location **andaza** hai: ghar / office ke internet par aksar community sahi aati hai, mobile data par zyada tar sirf emirate (kabhi ghalat emirate). Purane clicks jin ke saath IP save nahi hui, "No area" mein rehte hain.
 - Har row ke aakhir mein ✏️ (**Edit**) aur 🗑️ (**Delete**) hai. Edit se page, button, source, device ya message theek karein; Delete se test ya double click hata dein (pehle poochhta hai). Ye sirf admin / manager kar sakte hain.
 
+## 4b. Overview (pehli screen)
+
+- Header par ab **New Booking** nahi hai, aur **Quick Actions** wala dabba hata diya. Nayi booking **Bookings** ya Job Sheet se banayein.
+- **Daily Leads:** do lines — Fluent Forms aur WhatsApp Clicks — Today, Yesterday, 7 din, 30 din. **Collapse** dabayein to ek line reh jati hai, **Expand** se wapas khul jata hai. Card dabayein to Leads khul jata hai.
+- **Reports:** Daily (aaj), Yesterday, Last 7 Days, Last 30 Days chunein — jobs, billed, collected, pending, expenses, naye clients, leads, clicks aur top areas. **Send by WhatsApp**, **Copy** ya **Download** (Excel mein khulta hai).
+- **Live Map:** cleaners (hara), drivers (neela) aur CSR (jamni) chhote **bot** ki shakal mein. Bot par mouse le jayein (phone par tap) — naam, kaam abhi kya kar raha hai, aur location kab aayi. Upar se All / Cleaners / Drivers / CSR chunein; side list mein naam dabayein to map wahan chala jata hai.
+  - Hara chamakta ghera = abhi live, peela = aaj ki aakhri location, grey = aaj ki aakhri job step ki jagah.
+  - **Location tabhi aati hai jab staff khud share kare:** phone par **My Duties** kholein aur **Share my location with the office** dabayein (driver: "Start shift — share my location"). Page band ho to location rukk jati hai — poore din ki tracking Android app ke saath aayegi.
+
 ## 5. Complaints aur Health Score
 
 - Har complaint ka **track record** rehta hai: kab aayi, kisne likhi, har change (status, severity, cleaner…) kisne aur kab kiya, kab hal hui.

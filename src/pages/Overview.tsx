@@ -6,11 +6,13 @@ import {
 import {
   CalendarCheck, Users, DollarSign, Star,
   ArrowUpRight, ArrowDownRight, Minus, ArrowRight,
-  AlertCircle, Clock, CalendarPlus, FileText, UserCheck, ShoppingCart,
+  AlertCircle, Clock,
   Calendar, RotateCcw,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
-import { NewBookingModal } from '@/components/bookings/NewBookingModal'
+import { LiveOpsPanel } from '@/components/overview/LiveOpsPanel'
+import { LeadsSummaryCards } from '@/components/overview/LeadsSummaryCards'
+import { ReportsPanel } from '@/components/overview/ReportsPanel'
 import { Button } from '@/components/ui/Button'
 import { formatTime } from '@/lib/utils'
 import { PageHero } from '@/components/layout/PageHero'
@@ -347,9 +349,8 @@ export type OverviewDatePreset = 'today' | 'yesterday' | '7days' | '30days' | '3
 
 /* ─── Overview page ─── */
 export function Overview() {
-  const { bookings, clients, employees, invoices, inventory, addBooking, dailyExpenses, dailyJobs } = useData()
+  const { bookings, clients, employees, invoices, inventory, dailyExpenses, dailyJobs } = useData()
   const currentUser = useCurrentUser()
-  const [showNewBooking, setShowNewBooking] = useState(false)
   const navigate = useNavigate()
 
   // Synced local collections and pending records from other screens
@@ -644,8 +645,7 @@ export function Overview() {
         title={`${greeting}, ${firstName} 👋`}
         subtitle={`${activeDateRange.label} · ${unifiedJobs.length} operational jobs · ${periodLive.length} live now · AED ${periodRevenue.toLocaleString()} revenue collected`}
         statusChip={datePreset === 'today' ? 'On track' : activeDateRange.label}
-        actionLabel="New Booking"
-        onAction={() => setShowNewBooking(true)}
+        actionLabel="" /* R-OPS-15: no New Booking on the Overview header (Bookings has it) */
         showSearch={false}
       />
 
@@ -770,33 +770,12 @@ export function Overview() {
         />
       </section>
 
-      {/* ── Quick Actions + Live Activity ── */}
-      <section className="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-6">
-        {/* Quick Actions */}
-        <div className="xl:col-span-2 bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-          <div className="mb-5">
-            <h3 className="text-xl font-bold text-[#111827] mb-1">Quick Actions</h3>
-            <p className="text-sm text-[#6B7280]">Fast operational shortcuts for admin staff</p>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { icon: CalendarPlus, label: 'New Booking',     sub: 'Create customer appointment', bg: 'bg-emerald-100', color: 'text-emerald-600', hover: 'hover:bg-emerald-50', action: () => setShowNewBooking(true) },
-              { icon: FileText,     label: 'Daily Job Sheet', sub: 'Record staff shifts & cash',   bg: 'bg-teal-100',    color: 'text-teal-600',    hover: 'hover:bg-teal-50',    action: () => navigate('/daily-jobs') },
-              { icon: UserCheck,    label: 'Pending Dues',    sub: 'Recover uncollected cash',     bg: 'bg-rose-100',    color: 'text-rose-600',    hover: 'hover:bg-rose-50',    action: () => navigate('/payments?tab=outstanding') },
-              { icon: ShoppingCart, label: 'Purchase Order',  sub: 'Restock cleaning supplies',    bg: 'bg-purple-100',  color: 'text-purple-600',  hover: 'hover:bg-purple-50',  action: () => navigate('/inventory') },
-            ].map(action => (
-              <button key={action.label}
-                onClick={action.action}
-                className={`group bg-slate-50 ${action.hover} border border-[#E4E8EC] rounded-2xl p-5 transition-all text-left cursor-pointer`}>
-                <div className={`w-12 h-12 rounded-2xl ${action.bg} flex items-center justify-center mb-4 group-hover:scale-105 transition-transform`}>
-                  <action.icon size={20} className={action.color} />
-                </div>
-                <h4 className="font-semibold text-[#111827] mb-1">{action.label}</h4>
-                <p className="text-xs text-[#6B7280]">{action.sub}</p>
-              </button>
-            ))}
-          </div>
-        </div>
+      {/* ── R-LEAD-15: daily leads (Fluent Forms + WhatsApp Clicks), folds to one line ── */}
+      <LeadsSummaryCards />
+
+      {/* ── R-OPS-13: Reports (Daily / Yesterday / Last 7 / 30 days) + Live Activity. R-OPS-15: Quick Actions removed ── */}
+      <section className="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-6 items-start">
+        <div className="xl:col-span-2"><ReportsPanel /></div>
 
         {/* Live Activity */}
         <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
@@ -826,6 +805,11 @@ export function Overview() {
             ))}
           </div>
         </div>
+      </section>
+
+      {/* ── R-OPS-14: live map of cleaners, drivers and CSR ── */}
+      <section className="mb-6">
+        <LiveOpsPanel />
       </section>
 
       {/* ── Ops Alert Cards ── */}
@@ -979,7 +963,7 @@ export function Overview() {
             <div className="h-[180px] rounded-[20px] bg-slate-50 border border-[#E4E8EC] flex items-center justify-center">
               <div className="text-center">
                 <p className="text-slate-400 text-sm">No jobs in this period</p>
-                <button onClick={() => setShowNewBooking(true)} className="mt-2 text-emerald-600 font-semibold text-sm hover:underline">+ Schedule a job</button>
+                <button onClick={() => navigate('/bookings')} className="mt-2 text-emerald-600 font-semibold text-sm hover:underline">+ Schedule a job</button>
               </div>
             </div>
           ) : (
@@ -1062,7 +1046,7 @@ export function Overview() {
               No jobs or bookings {datePreset === 'today' ? 'scheduled for today' : `found for ${activeDateRange.label}`}
             </p>
             <div className="flex items-center justify-center gap-4 mt-4">
-              <button onClick={() => setShowNewBooking(true)} className="text-emerald-600 font-semibold text-sm hover:underline">
+              <button onClick={() => navigate('/bookings')} className="text-emerald-600 font-semibold text-sm hover:underline">
                 + Add a booking
               </button>
               <button onClick={() => navigate('/daily-jobs')} className="text-teal-600 font-semibold text-sm hover:underline">
@@ -1148,12 +1132,6 @@ export function Overview() {
         </div>
       </section>
 
-      {/* ── New Booking Modal ── */}
-      <NewBookingModal
-        open={showNewBooking}
-        onClose={() => setShowNewBooking(false)}
-        onAdd={addBooking}
-      />
     </div>
   )
 }

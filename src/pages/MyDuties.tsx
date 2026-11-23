@@ -89,7 +89,8 @@ export function MyDuties() {
   const [shareError, setShareError] = useState<string | null>(null)
   const stopRef = useRef<(() => void) | null>(null)
   useEffect(() => () => stopRef.current?.(), [])
-  const canShare = !!linked && kind === 'driver'
+  // R-OPS-14: cleaners and CSR can share too (Overview live map) — only their own login, only while they press it
+  const canShare = !!linked
   const toggleSharing = () => {
     if (!canShare || !linked) return
     if (sharing) { stopRef.current?.(); stopRef.current = null; setSharing(false); return }
@@ -241,6 +242,17 @@ export function MyDuties() {
       )}
 
       {/* ── Cleaner ── */}
+      {/* R-OPS-14: cleaner / CSR shares their position with the office (Overview live map) */}
+      {person && kind === 'cleaner' && linked && (
+        <div className="space-y-1.5">
+          <button type="button" onClick={toggleSharing}
+            className={`w-full min-h-[52px] rounded-2xl px-4 py-3 flex items-center gap-3 font-bold text-[14px] cursor-pointer ${sharing ? 'bg-rose-600 text-white active:bg-rose-700' : 'bg-emerald-700 text-white active:bg-emerald-800'}`}>
+            {sharing ? <><Square size={18} /> Stop sharing my location</> : <><MapPinned size={20} /> Share my location with the office</>}
+          </button>
+          {sharing && <p className="text-[12px] text-emerald-800 font-semibold">● Sharing your location with the office while this page is open.</p>}
+          {shareError && <p className="text-[12px] text-rose-700 font-semibold">{shareError}</p>}
+        </div>
+      )}
       {person && kind === 'cleaner' && (
         <>
           {cashTotal > 0 && (

@@ -250,6 +250,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `FluentFormsLeads.tsx` (hero). Test: `tests/unit/batch-1123b.test.ts`.
 - **Status:** Active · Since: 2026-11-23
 
+### R-LEAD-15 — Overview: daily leads cards (two rows, fold / unfold)
+- **Rule:** see R-OPS-13 (*"Daily leads (Fluent Forms aur WhatsApp Clicks) kay liye expandable summary cards … do rows … collapse ya expand"*).
+  - Row 1 Fluent Forms, row 2 WhatsApp Clicks: Today, Yesterday, Last 7 days, Last 30 days (Dubai dates; deleted / demo leads left out). A card opens that Leads tab. Reloads every minute.
+  - **Collapse** folds the block to one line ("Today: N forms · N WhatsApp clicks"); **Expand** opens it. The choice is remembered on the device.
+- **Code:** `src/components/overview/LeadsSummaryCards.tsx`. Test: `tests/unit/overview-1123.test.ts`.
+- **Status:** Active · Since: 2026-11-23
+
 ### R-ATT-09 — Office staff on leave are named on the Excel attendance popup
 - **Why:** Amina Qamar's sick leave (17 Nov) did not show in the Excel Job Sheet's Attendance popup. She is a CSR (office staff), and the sheet and its popup list cleaners only (R-SHEET-02) — the leave itself was saved and synced.
   - The popup now names office staff who are absent or on leave that day under the list ("Also away today (office staff, not on the sheet)").
@@ -918,7 +925,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Status:** Active · Since: 2026-10-31
 
 ### R-DRV-03 — Live location only while the driver shares it
-- **Rule:** Location is sent only after the driver presses "Start shift — share my location" on My Duties and while that page is open (at most every 20 s); "Stop sharing" marks it off. A driver can write only the row of the employee linked to their own login; office users can read. Shown as Live (< 5 min), No signal, or Stopped.
+- **Rule:** (R-OPS-14: cleaners and CSR can share too — "Share my location with the office" — and show on the Overview live map.) Location is sent only after the driver presses "Start shift — share my location" on My Duties and while that page is open (at most every 20 s); "Stop sharing" marks it off. A driver can write only the row of the employee linked to their own login; office users can read. Shown as Live (< 5 min), No signal, or Stopped.
 - **Code:** `src/lib/driverLocation.ts`, migration `2026-10-31_driver_locations.sql`, Drivers → Live location.
 - **Map (UX-82):** every driver's pin on one OpenStreetMap map (no API key). It zooms to fit all pins and has + / − / fit buttons. Positions arrive live through Supabase Realtime, with the 30-second reload kept as a fallback. Green pin = live, amber = last known. Speed is shown when the phone reports it.
 - **Limit:** a web page can share location only while it is open on the phone. Tracking in the background needs the Android app.
@@ -1854,6 +1861,29 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Rule (audit 2026-11-22):** Payments → **Weekly report** opens WhatsApp with the last 7 days: jobs and cleaners, billed, collected, pending now, new clients, website leads and WhatsApp clicks. The owner picks who to send it to.
 - **Code:** `weeklyReport.ts → weeklyReportText`; `PaymentsHub.tsx → sendWeeklyReport`. Test: `tests/unit/batch-1122b.test.ts`.
 - **Status:** Active · Since: 2026-11-22
+
+### R-OPS-13 — Overview → Reports by period
+- **Rule:** "Overview screen ko mukammal tor par redesign karein. Header say 'New Booking' ka option hata dein. System mein 'Reports' ka naya system shamil karein jo mukhtalif date filters jaisay Daily, Yesterday, aur Last 7 Days kay mutabiq reports generate kar sakay. Daily leads (Fluent Forms aur WhatsApp Clicks) kay liye expandable summary cards shamil karein jo do rows par mushtamil hon aur unhein collapse ya expand kiya ja sakay. 'Quick Actions' widget ko remove kar dein. Sab say ahem, live activity kay liye mukammal tor par interactive map ka integration layein, jis par cleaners, drivers, aur CSR ko custom bots ya icons ki shakal mein dikhaya jaye. Map par unki real-time locations track hon, aur cursor le janay par unki tafseelat aur mojooda task ka pop-up show ho." (2026-11-23)
+  - Overview → **Reports**: Daily (today), Yesterday, Last 7 Days, Last 30 Days (Dubai dates). Cards: jobs (cleaners, hours), billed, collected, still pending on those jobs, expenses, new clients, website leads, WhatsApp clicks; the top areas below.
+  - **Send by WhatsApp** (text), **Copy**, **Download** (CSV, opens in Excel). The Payments weekly report (R-OPS-12) stays as it is.
+- **Code:** `src/lib/periodReport.ts`; `src/components/overview/ReportsPanel.tsx`. Test: `tests/unit/overview-1123.test.ts`.
+- **Status:** Active · Since: 2026-11-23
+
+### R-OPS-14 — Overview live map of cleaners, drivers and CSR
+- **Rule:** same request as R-OPS-13 (the map part).
+  - Interactive OpenStreetMap map (Leaflet: drag, scroll-zoom, + / −), on the Overview. Each person is a small **bot** in the role's colour — cleaner green, driver blue, CSR purple — with initials; the ring shows the state: green pulsing = live (shared in the last 5 min), amber = last known today, grey = place of today's last job step.
+  - Hover (or tap) a bot → name, role, what they do now (cleaner: the job running now / next / last of the day with its time, area and step; driver: today's stops and the next one; CSR: on duty), and when the position was sent. Filter chips All / Cleaners / Drivers / CSR; the list beside the map centres a person.
+  - **Positions come only from staff themselves:** My Duties → **Share my location** (now for cleaners and CSR too, not only drivers — same table `driver_locations`, own row only, R-DRV-03), or the place saved with a job step. Nobody gets a made-up pin (R-DATA-03); positions older than 16 h are not shown. A web page shares only while it is open on the phone — all-day background tracking needs the Android app (planned).
+  - 23 Nov: nobody shares yet (table empty, 2 staff logins linked) — the map says so. Tested in the browser with positions given to the browser only (nothing written).
+- **Code:** `src/lib/liveOps.ts → buildLivePeople, currentJobOf`; `src/components/overview/LiveOpsPanel.tsx`, `LiveOpsMap.tsx` (lazy); `MyDuties.tsx` (share button). Test: `tests/unit/overview-1123.test.ts`.
+- **Status:** Active · Since: 2026-11-23
+
+### R-OPS-15 — Overview: no New Booking, no Quick Actions
+- **Rule:** same request as R-OPS-13.
+  - The header has no **New Booking** button and the Quick Actions widget is gone. The "+ Schedule a job / + Add a booking" links of the empty job lists open Bookings. New bookings are made on Bookings and the job sheets.
+  - New layout: header → date filter → KPI cards → **Daily Leads** (R-LEAD-15) → **Reports** + Live Activity → **Live Map** → alert cards and the rest as before.
+- **Code:** `src/pages/Overview.tsx`. Test: `tests/unit/overview-1123.test.ts`.
+- **Status:** Active · Since: 2026-11-23
 
 ## Known issues (rules not yet fully honoured)
 
