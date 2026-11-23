@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+## 2026-11-23 (Deploy to Production VPS, ac63643)
+
 - fix(leads): WhatsApp Clicks By Area — clicks on the website's area pages get their area from the link (R-MKT-07)
 - feat(leads): Fluent Forms / WhatsApp Clicks tabs under the header; Last 7 Days card in place of Conversion Rate (R-LEAD-12)
 - feat(leads): WhatsApp Clicks — visitor location from the IP (offline UAE table, no popup): By area + Area / location column (R-MKT-08)
