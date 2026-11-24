@@ -1032,6 +1032,16 @@ export function splitStaffNames(staffName: string): string[] {
     .filter(s => s && !isBogusStaffName(s))
 }
 
+/**
+ * R-EMP-18: how many people worked on these jobs — each cleaner of a team row ("Gyan, Nobel, Sagar") counts once.
+ * Counting the staff_name text instead made a 6-person team one person (1 Oct: 25 shown, 27 worked).
+ */
+export function countStaffOnJobs(jobs: Pick<DailyJob, 'staff_name'>[]): number {
+  const names = new Set<string>()
+  jobs.forEach(j => splitStaffNames(j.staff_name).forEach(n => names.add(n.replace(/\s+/g, ' ').toLowerCase())))
+  return names.size
+}
+
 export function employeeMatchesStaff(emp: Employee, staffName: string): boolean {
   if (!emp || !staffName) return false
   const eNorm = normalizeStaffName(emp.full_name)

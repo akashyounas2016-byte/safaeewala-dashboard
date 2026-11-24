@@ -432,6 +432,20 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/staffRoles.ts → isSheetCleaner, isJobStaff, shortStaffLabel`; `JobSheetSpreadsheet.tsx → staffOptions, idleCleaners`; `AddJobModal.tsx → pickableStaff`; `MyDuties.tsx`; `EmployeeFormModal.tsx`; `Employees.tsx`; `types/index.ts → EmployeeRole`. Test: `tests/unit/sheet-cleaners-csr-1111.test.ts`.
 - **Status:** Active · Since: 2026-11-11
 
+### R-SHEET-03 — Excel Job Sheet: Reconfirmation
+- **Rule:** *"Excel Job Sheet kay footer mein 'Reconfirmation' kay naam say aik button shamil karein. Is button par click karnay say aik pop-up open hona chahiye jo makhsoos financial figures, jaisay total charges, received amount, pending dues, aur balance ka mukammal summary display karay, taake data ki durusti aur calculation verify ki ja sakay."* (2026-11-24, with the office's Excel check as the reference)
+  - Pop-up, same layout as the office's check: **Charges · Less Rcvd · Pending · Balance** (= Charges − Rcvd − Pending) **· Add Adv · Balance** (= Balance + Adv). **0 = the sheet adds up** (green); otherwise it says by how much and lists the rows that do not add up on their own (charges − received − pending + advance ≠ 0), each opens its row. Also cash / online split of Received, and **Copy** (text for WhatsApp).
+  - Figures: all rows of the open dates — the same rows and per-row Pending / Advance as the footer totals. Checked on 1 Oct 2026: 5,740 − 5,520 − 260 = −40, + 40 = **0**, the same as the office's sheet.
+- **Code:** `src/lib/excelSheet/reconfirm.ts → buildReconfirmation`; `components/dailyJobSheet/ReconfirmationModal.tsx`; `JobSheetSpreadsheet.tsx` (footer). Test: `tests/unit/batch-1124b.test.ts`.
+- **Status:** Active · Since: 2026-11-24
+
+### R-SHEET-04 — Excel Job Sheet: Date column when more than one day is open
+- **Rule:** *"Excel Job Sheet par dynamic date column shamil karein jo 'Today' ya 'Yesterday' filters laganay par hide ho jaye. Jab data filters Last 7 Days, Last 30 Days, ya is say baray spectrum par set kiye jayen, to 'Date' ka column 'Start Time' say pehlay khud-ba-khud show hona chahiye."* (2026-11-24)
+  - **Date** (e.g. "Wed 01 Oct") sits right before Start time when more than one day is open (Last 7 Days, Last 30 Days, Last Month … 2 Years, Custom range of several days, All); hidden on Today, Yesterday and one picked date. Not in the column chooser; read-only (a job moves to another date from its edit pop-up).
+  - The date menu gets **Last 7 Days** and **Last 30 Days** (today and the 6 / 29 days before).
+- **Code:** `src/lib/excelSheet/columns.ts → DATE_COLUMN_DEF, buildColumnsWithLetters(…, showDate), fmtSheetDate, EXCEL_DATE_PRESETS`; `sheetConfig.ts → READ_ONLY_COLS`; `JobSheetSpreadsheet.tsx → showDateCol`. Test: `tests/unit/batch-1124b.test.ts`.
+- **Status:** Active · Since: 2026-11-24
+
 ---
 
 ## OT — Overtime
@@ -1107,6 +1121,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - 20 Nov: no two of the 51 employees clash ("Ambika" and "Ambika Devi Tharu" = "Ambika D").
 - **Code:** `src/lib/staffRoles.ts → findNameClash`; `EmployeeFormModal.tsx → handleSubmit`. Test: `tests/unit/batch-1120b.test.ts`.
 - **Status:** Active · Since: 2026-11-20
+
+### R-EMP-18 — Staff on Duty counts every cleaner of a team
+- **Rule:** *"'Number of Employee Error' Excel sheet … wajah maloom karein keh sheet mein employees ki tadaad zyada jabkeh CRM par kam show ho rahi hai. Is data discrepancy ko investigate karke fix karein."* (2026-11-24)
+  - **Cause (1 Oct 2026, the owner's sheet):** the sheet has 27 cleaners with jobs; the CRM has the same 27 names on its 39 rows, but the Daily Job Sheet's **Staff on Duty** counted the *text* of the Staff field. A team row ("Gyan, Nobel, Sagar, Sandesh, Sarmila, Sushila" at Luzora; "Ishwor, Kamala K, Krishna, Sushanta" at Cayan Tower) counted as one person, and 6 people who worked only in a team row were missed → **25**.
+  - **Now:** each name of a team row counts once (`countStaffOnJobs`) → **27**. The data was complete; nothing in the data was changed.
+  - The sheet's other names: Adnan (driver, no job), Karuna and Radhika (last day 30 Sep) — not on duty, rightly not counted.
+- **Code:** `src/lib/clientDataSync.ts → countStaffOnJobs`; `DailyJobSheet.tsx → staffOnDuty`. Test: `tests/unit/batch-1124b.test.ts`.
+- **Status:** Active · Since: 2026-11-24
 
 ---
 

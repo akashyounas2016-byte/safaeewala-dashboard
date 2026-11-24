@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(job-sheet): Staff on Duty counts every cleaner of a team row — 1 Oct showed 25, 27 worked (owner's "No of employee error" sheet; data was complete) (R-EMP-18)
+- feat(excel): footer **Reconfirmation** — Charges − Rcvd − Pending = Balance, + Adv = 0, rows that do not add up, copy (R-SHEET-03)
+- feat(excel): Date column before Start time when more than one day is open; Last 7 / 30 Days presets (R-SHEET-04)
+
 - feat(leads): Fluent Forms rows get ✏️ Edit (opens straight in edit mode); WhatsApp Clicks rows get 👁 View (all fields, Edit / Delete inside) (R-LEAD-16)
 - feat(job-sheet): header order Add Job → Excel Sheet → date filters → ⋮; Import moved into the ⋮ menu; Excel Sheet button under the Jobs widget removed (UX-197)
 - feat(overview): redesign — 12 compact cards 4 per row (Pending Collection, Crew Utilization, Low Stock moved up; Hours Worked, New Clients, Expenses new); Reports / Live Activity / Live Map full width with Hide / Show; Live Map in forest green; Crew Availability | Coverage 50/50; Revenue vs Target | Business Health 70/30 with Crew Utilization + Collection Rate (R-OPS-17)

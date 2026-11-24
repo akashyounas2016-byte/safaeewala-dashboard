@@ -55,11 +55,23 @@ export function mergeNewColumns(ids: string[], defaults: string[]) {
   })
 }
 
-export function buildColumnsWithLetters(order: string[], hiddenIds: string[] = []): ColumnDef[] {
+/**
+ * R-SHEET-04: the Date column. Not a normal column (not in the column chooser): it shows by itself, before
+ * Start time, when more than one day is open (Last 7 / 30 days, months, custom range, All) and hides on
+ * Today / Yesterday / one date. Read-only — a job moves to another date from its edit pop-up.
+ */
+export const DATE_COLUMN_DEF: Omit<ColumnDef, 'col'> = { id: 'date', label: 'Date', width: '112px', type: 'date', formulaHint: 'Date of the job (shown when more than one day is open)' }
+
+export function buildColumnsWithLetters(order: string[], hiddenIds: string[] = [], showDate = false): ColumnDef[] {
   const map = new Map<string, Omit<ColumnDef, 'col'>>(DEFAULT_COLUMN_DEFS.map(c => [c.id, c]))
+  map.set('date', DATE_COLUMN_DEF)
   const validIds = order.filter(id => map.has(id) && id !== 'date' && id !== 'service' && id !== 'team_name')
   mergeNewColumns(validIds, DEFAULT_COLUMN_DEFS.map(c => c.id))
   const visibleIds = validIds.filter(id => !hiddenIds.includes(id))
+  if (showDate) {
+    const at = visibleIds.indexOf('start_time')
+    visibleIds.splice(at >= 0 ? at : Math.min(1, visibleIds.length), 0, 'date')
+  }
   return visibleIds.map((id, idx) => {
     const def = map.get(id)!
     const colLetter = idx < 26
@@ -72,11 +84,19 @@ export function buildColumnsWithLetters(order: string[], hiddenIds: string[] = [
   })
 }
 
+/** R-SHEET-04: "Wed 01 Oct" for the Date column */
+export function fmtSheetDate(d: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(d)) return d
+  return new Date(`${d.slice(0, 10)}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' })
+}
+
 export const COLUMNS: ColumnDef[] = buildColumnsWithLetters(DEFAULT_COLUMN_DEFS.map(c => c.id))
 
 export type ExcelDatePresetKey =
   | 'today'
   | 'yesterday'
+  | 'last_7_days'
+  | 'last_30_days'
   | 'last_month'
   | 'last_3_months'
   | 'last_6_months'
@@ -88,6 +108,8 @@ export type ExcelDatePresetKey =
 export const EXCEL_DATE_PRESETS: { id: ExcelDatePresetKey; label: string; desc?: string }[] = [
   { id: 'today',         label: 'Today',         desc: 'Dubai current date' },
   { id: 'yesterday',     label: 'Yesterday',     desc: 'Previous day' },
+  { id: 'last_7_days',   label: 'Last 7 Days',   desc: 'Today and the 6 days before' },
+  { id: 'last_30_days',  label: 'Last 30 Days',  desc: 'Today and the 29 days before' },
   { id: 'last_month',    label: 'Last Month',    desc: 'Full previous calendar month' },
   { id: 'last_3_months', label: 'Last 3 Months', desc: 'Past 90 days to today' },
   { id: 'last_6_months', label: 'Last 6 Months', desc: 'Past 180 days to today' },

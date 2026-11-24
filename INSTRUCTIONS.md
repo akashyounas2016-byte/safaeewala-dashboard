@@ -109,6 +109,11 @@
 
 ## 2. Daily Job Sheet aur Excel Job Sheet
 
+### Excel Job Sheet: Reconfirmation aur Date column (24 Nov)
+- Neeche footer mein **Reconfirmation** button: wahi hisaab jo office Excel mein karta hai — Charges, Less Rcvd, Pending, Balance, Add Adv, Balance. Aakhri Balance **0** ho to sheet theek hai (hara). 0 na ho to batata hai kitna farq hai aur kaun si rows nahi milti — row dabayein to sheet par wahi row khul jati hai. **Copy** se WhatsApp mein bhej sakte hain.
+- Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
+- Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
+
 ### Header ke buttons (24 Nov)
 - Upar daayen tarteeb: **Add Job** → **Excel Sheet** → date (◀ ▶) aur Today / range → **⋮** menu.
 - **Import** ab ⋮ menu mein hai (**Import Excel**). Jobs table ke upar wala Excel Sheet button hata diya — Excel Sheet ab header mein hai.

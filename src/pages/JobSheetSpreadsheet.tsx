@@ -35,9 +35,11 @@ import { ChangeLogHistoryModal } from '@/components/dailyJobSheet/ChangeLogHisto
 import { cleanAddressDisplay, normalizeJobAddress, isGenericAddress } from '@/lib/utils'
 import { expandTeamJob, nextTeamRef, placeRowsInCleanerBlocks, padCleanerBlocks, buildTeamColorMap } from '@/lib/excelTeams'
 import { splitTotals, isSplitJob } from '@/lib/chargeSplit'
-import { type ColumnDef, DEFAULT_COLUMN_DEFS, mergeNewColumns, buildColumnsWithLetters, COLUMNS, type ExcelDatePresetKey, EXCEL_DATE_PRESETS, chargesPerHour } from '@/lib/excelSheet/columns'
+import { type ColumnDef, DEFAULT_COLUMN_DEFS, mergeNewColumns, buildColumnsWithLetters, COLUMNS, type ExcelDatePresetKey, EXCEL_DATE_PRESETS, chargesPerHour, fmtSheetDate } from '@/lib/excelSheet/columns'
 import { type BlockPalette, BLOCK_PALETTES, SOLID_PALETTE_KEYS, LIGHT_PALETTE_KEYS, PALETTE_KEYS, hslToHex, makeHexPalette } from '@/lib/excelSheet/palettes'
 import { QuickAttendanceModal } from '@/components/dailyJobSheet/QuickAttendanceModal'
+import { ReconfirmationModal } from '@/components/dailyJobSheet/ReconfirmationModal'
+import { buildReconfirmation } from '@/lib/excelSheet/reconfirm'
 import { newRowId, sameJobRow, isBlankNewRow, isClearedRow, teamJobsDeletedElsewhere, type MultiCleanerPaymentInfo, getMultiCleanerPaymentInfo, ensureThreeRowsPerStaff, withIdleCleaners, syncDutyWithTimes, syncHourlyCharges, orderBlocksByName, orderBlocksCustom, sortBlockJobsByTime, BLOCK_ORDER_KEY } from '@/lib/excelSheet/rows'
 import { BlockOrderModal } from '@/components/dailyJobSheet/BlockOrderModal'
 import { applyRowPatch, applyCellPatch, type UndoStep } from '@/lib/excelSheet/undo'
@@ -68,7 +70,7 @@ export function JobSheetSpreadsheet() {
   const [rangeStart, setRangeStart] = useState<string>(initialDate)
   const [rangeEnd, setRangeEnd] = useState<string>(initialDate)
   const [activeDatePreset, setActiveDatePreset] = useState<
-    'today' | 'yesterday' | 'last_month' | 'last_3_months' | 'last_6_months' | 'last_year' | 'two_years' | 'custom' | 'all' | 'single'
+    'today' | 'yesterday' | 'last_7_days' | 'last_30_days' | 'last_month' | 'last_3_months' | 'last_6_months' | 'last_year' | 'two_years' | 'custom' | 'all' | 'single'
   >('today') // 'single': one date picked in the date box (UX-136)
   const [showDatePresetDropdown, setShowDatePresetDropdown] = useState(false)
   const datePresetRef = useRef<HTMLDivElement>(null)
@@ -177,9 +179,12 @@ export function JobSheetSpreadsheet() {
   const [modalDragId, setModalDragId] = useState<string | null>(null)
   const [modalDragOverId, setModalDragOverId] = useState<string | null>(null)
 
+  // R-SHEET-04: a Date column before Start time when more than one day is open
+  const showDateCol = !oneDayOpen
   const columns = useMemo(() => {
-    return buildColumnsWithLetters(columnOrder, hiddenColIds)
-  }, [columnOrder, hiddenColIds])
+    return buildColumnsWithLetters(columnOrder, hiddenColIds, showDateCol)
+  }, [columnOrder, hiddenColIds, showDateCol])
+  const [showReconfirm, setShowReconfirm] = useState(false) // R-SHEET-03
 
   // Row history (UX-40) — from audit_log
   const [rowHistory, setRowHistory] = useState<{ label: string; loading: boolean; entries: AuditEntry[] } | null>(null)
@@ -2443,7 +2448,12 @@ export function JobSheetSpreadsheet() {
       showToast('Date set to Yesterday')
     } else {
       setDateFilterMode('range')
-      if (presetKey === 'last_month') {
+      if (presetKey === 'last_7_days' || presetKey === 'last_30_days') { // R-SHEET-04
+        const back = presetKey === 'last_7_days' ? 6 : 29
+        setRangeStart(addDaysToYMD(today, -back))
+        setRangeEnd(today)
+        showToast(`Date range set to ${presetKey === 'last_7_days' ? 'Last 7 Days' : 'Last 30 Days'}`)
+      } else if (presetKey === 'last_month') {
         const start = iso(new Date(y, m - 1, 1))
         const end = iso(new Date(y, m, 0))
         setRangeStart(start)
@@ -4440,6 +4450,8 @@ export function JobSheetSpreadsheet() {
                               else displayVal = rowPending(row)
                             } else if (col.id === 'advance') {
                               displayVal = isBlankShift || refMoney(mcInfo, row) ? '' : (rowAdvance(row) || '')
+                            } else if (col.id === 'date') {
+                              displayVal = isBlankShift && !row.date ? '' : fmtSheetDate(String(rawVal || '')) // R-SHEET-04
                             } else if (col.id === 'charges_per_hour') {
                               displayVal = isBlankShift || refMoney(mcInfo, row) ? '' : (chargesPerHour(row) || '')
                             } else if (col.id === 'payment_mode') {
@@ -4822,6 +4834,8 @@ export function JobSheetSpreadsheet() {
                         }
                       } else if (col.id === 'advance') {
                         displayVal = isBlankShift || refMoney(mcInfo, row) ? '' : (rowAdvance(row) || '')
+                      } else if (col.id === 'date') {
+                        displayVal = isBlankShift && !row.date ? '' : fmtSheetDate(String(rawVal || '')) // R-SHEET-04
                       } else if (col.id === 'charges_per_hour') {
                         displayVal = isBlankShift || refMoney(mcInfo, row) ? '' : (chargesPerHour(row) || '')
                       } else if (col.id === 'payment_mode') {
@@ -5780,6 +5794,11 @@ export function JobSheetSpreadsheet() {
           <span className="font-bold">{gridRows.length} Total Rows</span>
           <span>·</span>
           <span className="text-slate-500">Tip: Click 'I' button to customize columns · Right-click row for options</span>
+          {/* R-SHEET-03: the office's money cross-check (Charges − Rcvd − Pending + Adv = 0) */}
+          <button type="button" onClick={() => setShowReconfirm(true)} title="Check the sheet's money: Charges, Received, Pending, Balance, Advance"
+            className="ml-1 px-3 py-1 rounded-lg bg-white border border-emerald-400 text-emerald-800 font-bold text-[11.5px] hover:bg-emerald-50 cursor-pointer flex items-center gap-1.5 shadow-xs">
+            <Check size={13} /> Reconfirmation
+          </button>
         </div>
 
         <div className="flex items-center gap-5 font-mono text-[12px] font-bold">
@@ -5816,6 +5835,14 @@ export function JobSheetSpreadsheet() {
           <span>OT: <strong className="text-amber-800 font-black">{totals.totalOT}h</strong></span>
         </div>
       </footer>
+
+      {/* R-SHEET-03: Reconfirmation pop-up (all rows of the open dates, like the footer totals) */}
+      {showReconfirm && (
+        <ReconfirmationModal open onClose={() => setShowReconfirm(false)}
+          data={buildReconfirmation(gridRows, rowPending, rowAdvance)}
+          label={oneDayOpen ? fmtDate(effectiveTargetDate) : dateFilterMode === 'all' ? 'All records' : `${fmtDate(rangeStart)} – ${fmtDate(rangeEnd)}`}
+          onGoToRow={id => { setShowReconfirm(false); setJumpTargetId(id) }} />
+      )}
 
       {/* ── Columns Customization Pop-up Modal ── */}
       <Modal

@@ -94,6 +94,7 @@ import {
   cleanClientNameFromAddress,
   isBogusJob,
   allocateClientCollection,
+  countStaffOnJobs,
   type ScheduledShiftPlan,
 } from '@/lib/clientDataSync'
 import { safeLocalStorageSet, safeLocalStorageGet } from '@/lib/storageUtils'
@@ -1283,7 +1284,7 @@ export function DailyJobSheet() {
   // R-OT-01: Cumulative Overtime across all shifts for the day
   const todayJobsWithOT = useMemo(() => recalculateAllRowsOT(todayJobs), [todayJobs])
   const totalOTHours   = Math.round(todayJobsWithOT.reduce((s, j) => s + totalRowOT(j), 0) * 10) / 10
-  const staffOnDuty    = new Set(todayJobs.map(j => j.staff_name)).size
+  const staffOnDuty    = countStaffOnJobs(todayJobs) // R-EMP-18: each cleaner of a team row counts
   const jobsCount      = todayJobs.length
 
   // Driver summary — collected per staff (Synchronized with Shifts, Advances, and Pending Received)
