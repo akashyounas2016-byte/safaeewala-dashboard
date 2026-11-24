@@ -1550,6 +1550,20 @@ export function FluentFormsLeads() {
                                     <Eye size={13} />
                                   </button>
 
+                                  {/* R-LEAD-16: Edit opens the same window straight in edit mode */}
+                                  <button
+                                    onClick={() => {
+                                      setSelectedLead(lead)
+                                      setIsEditingLead(true)
+                                      markSingleFluentFormAsRead(lead.id)
+                                    }}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                                    title="Edit lead"
+                                    aria-label="Edit lead"
+                                  >
+                                    <Pencil size={13} />
+                                  </button>
+
                                   <button
                                     onClick={() => handleDeleteLead(lead.id)}
                                     className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"

@@ -4,6 +4,7 @@ import { useData } from '@/store/DataContext'
 import { supabase } from '@/lib/supabase'
 import { todayDubai } from '@/lib/dubaiTime'
 import { notify } from '@/lib/notify'
+import { useFolded, FoldButton } from './Foldable'
 import { buildPeriodReport, periodReportCsv, periodReportText, reportRange, REPORT_PERIODS, type ReportPeriod } from '@/lib/periodReport'
 
 /**
@@ -15,6 +16,7 @@ export function ReportsPanel() {
   const [period, setPeriod] = useState<ReportPeriod>('today')
   const today = todayDubai()
   const [extra, setExtra] = useState<{ leads?: number; clicks?: number }>({})
+  const [folded, toggleFold] = useFolded('reports') // R-OPS-17
 
   useEffect(() => {
     let alive = true
@@ -55,7 +57,7 @@ export function ReportsPanel() {
 
   return (
     <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-      <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+      <div className={`flex items-start justify-between gap-3 flex-wrap ${folded ? '' : 'mb-4'}`}>
         <div>
           <h3 className="text-xl font-bold text-[#111827] mb-1 flex items-center gap-2"><ClipboardList size={19} className="text-emerald-600" /> Reports</h3>
           <p className="text-sm text-[#6B7280]">{r.label} · {r.from === r.to ? r.from : `${r.from} → ${r.to}`}</p>
@@ -65,9 +67,12 @@ export function ReportsPanel() {
             <button key={p.id} type="button" onClick={() => setPeriod(p.id)}
               className={`px-3.5 py-1.5 rounded-xl text-[12px] font-bold cursor-pointer transition-colors ${period === p.id ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{p.label}</button>
           ))}
+          <FoldButton folded={folded} onToggle={toggleFold} />
         </div>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {!folded && <>
+      {/* R-OPS-17: full width — the 8 figures in one row on a wide screen */}
+      <div className="grid grid-cols-2 md:grid-cols-4 2xl:grid-cols-8 gap-3">
         {tiles.map(t => (
           <div key={t.label} className="rounded-2xl border border-[#E2E5E0] px-4 py-3">
             <span className="block text-[10.5px] font-bold uppercase tracking-wider text-slate-500">{t.label}</span>
@@ -84,6 +89,7 @@ export function ReportsPanel() {
         <button type="button" onClick={() => void copy()} className="h-10 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-[12.5px] font-bold flex items-center gap-2 cursor-pointer"><Copy size={15} /> Copy</button>
         <button type="button" onClick={download} className="h-10 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-[12.5px] font-bold flex items-center gap-2 cursor-pointer"><Download size={15} /> Download (Excel CSV)</button>
       </div>
+      </>}
     </div>
   )
 }

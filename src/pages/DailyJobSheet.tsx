@@ -2706,6 +2706,28 @@ export function DailyJobSheet() {
 
           {/* Right: Date navigation & Action Buttons */}
           <div className="flex items-center gap-3 shrink-0 flex-wrap">
+            {/* UX-197: header order = Add Job → Excel Sheet → date filters → three dots */}
+            <button
+              type="button"
+              onClick={() => { if (!blockIfClosed()) openAddJob() }}
+              className="h-11 px-5 rounded-2xl bg-white text-emerald-800 font-extrabold text-[13px] shadow-lg hover:bg-emerald-50 transition-all shrink-0 flex items-center gap-2 cursor-pointer"
+            >
+              <Plus size={16} strokeWidth={2.5} className="text-emerald-700" />
+              <span>Add Job</span>
+            </button>
+
+            {/* UX-197: Excel Sheet sits in the header, right after Add Job (moved from under the jobs widget). R-SEC-09: Excel Job Sheet permission */}
+            {canExcel && <button
+              type="button"
+              onClick={() => window.open(`/daily-job-sheet/spreadsheet?date=${selectedDate}`, '_blank', 'noopener,noreferrer')}
+              className="h-11 px-4 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-[12.5px] shadow-sm backdrop-blur-md transition-all shrink-0 flex items-center gap-2 cursor-pointer group"
+              title="Open the full Excel sheet in a new window"
+            >
+              <FileSpreadsheet size={15} className="text-emerald-300 group-hover:scale-110 transition-transform" />
+              <span>Excel Sheet</span>
+              <ExternalLink size={12} className="text-white/50 group-hover:text-white/80 transition-colors" />
+            </button>}
+
             {/* Date Navigation (Previous Day, Date Picker, Next Day) - Sleek unified capsule without bulky nested box */}
             <div className="h-11 flex items-center bg-white/10 hover:bg-white/15 border border-white/20 rounded-2xl backdrop-blur-md shadow-sm transition-all">
               <button
@@ -2956,29 +2978,9 @@ export function DailyJobSheet() {
               }}
             />
 
-            {/* Import Button — R-SEC-09: only with "Import & delete a whole day" */}
-            {canBulk && <button
-              type="button"
-              onClick={() => importRef.current?.click()}
-              disabled={importing}
-              title="Import Excel: the sheet date is taken from the file name"
-              className="h-11 px-4 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-[12.5px] shadow-sm backdrop-blur-md transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60"
-            >
-              <Upload size={15} className="text-emerald-300" />
-              <span>{importing ? 'Importing…' : 'Import'}</span>
-            </button>}
 
-            {/* Primary Action: Add Job Button (Solid White with Green text, matching Clients/Fluent Forms) */}
-            <button
-              type="button"
-              onClick={() => { if (!blockIfClosed()) openAddJob() }}
-              className="h-11 px-5 rounded-2xl bg-white text-emerald-800 font-extrabold text-[13px] shadow-lg hover:bg-emerald-50 transition-all shrink-0 flex items-center gap-2 cursor-pointer"
-            >
-              <Plus size={16} strokeWidth={2.5} className="text-emerald-700" />
-              <span>Add Job</span>
-            </button>
 
-            {/* Three-dot menu containing Print, Export, Template, Delete */}
+            {/* Three-dot menu: Print, Sync, Close Day, Export, Template, Drive, Import (UX-197), Delete */}
             <div className="relative">
               <button
                 type="button"
@@ -2988,7 +2990,7 @@ export function DailyJobSheet() {
                     ? 'bg-white text-emerald-800 border-white shadow-md'
                     : 'bg-white/10 hover:bg-white/20 border-white/20 text-white'
                 }`}
-                title="More actions (Print, Export, Template, Delete)"
+                title="More actions (Print, Import, Export, Template, Delete)"
               >
                 <MoreVertical size={18} />
               </button>
@@ -3103,6 +3105,17 @@ export function DailyJobSheet() {
                     </button>
                     {canBulk && <>{/* R-SEC-09 */}
                     <div className="my-1 border-t border-slate-100" />
+                    {/* UX-197: Import moved here from the header */}
+                    <button
+                      type="button"
+                      disabled={importing}
+                      onClick={() => { setShowHeaderMenu(false); importRef.current?.click() }}
+                      title="Import Excel: the sheet date is taken from the file name"
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[12.5px] font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer text-left disabled:opacity-50"
+                    >
+                      <Upload size={15} className="text-emerald-600" />
+                      <span>{importing ? 'Importing…' : 'Import Excel'}</span>
+                    </button>
                     <button
                       type="button"
                       disabled={todayJobs.length === 0 && todayExpenses.length === 0}
@@ -3651,17 +3664,6 @@ export function DailyJobSheet() {
               )}
             </div>
 
-            {/* Excel Sheet Button — R-SEC-09: only with the Excel Job Sheet permission */}
-            {canExcel && <button
-              type="button"
-              onClick={() => window.open(`/daily-job-sheet/spreadsheet?date=${selectedDate}`, '_blank', 'noopener,noreferrer')}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white text-slate-900 hover:bg-slate-100 font-black text-[12px] shadow-sm hover:shadow transition-all cursor-pointer group shrink-0 border border-slate-200 active:scale-95"
-              title="Open Full Interactive Excel Sheet in a New Window (Full Width, No Sidebar)"
-            >
-              <FileSpreadsheet size={14} className="text-emerald-700 group-hover:scale-110 transition-transform" />
-              <span className="hidden sm:inline">Excel Sheet</span>
-              <ExternalLink size={12} className="text-slate-400 group-hover:text-slate-600 transition-colors" />
-            </button>}
 
             {/* View All / Page size selector */}
             <div className={`flex items-center ${jobsCollapsed ? 'hidden' : ''}`}>

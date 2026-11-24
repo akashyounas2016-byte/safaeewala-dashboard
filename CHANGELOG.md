@@ -6,6 +6,12 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(leads): Fluent Forms rows get ✏️ Edit (opens straight in edit mode); WhatsApp Clicks rows get 👁 View (all fields, Edit / Delete inside) (R-LEAD-16)
+- feat(job-sheet): header order Add Job → Excel Sheet → date filters → ⋮; Import moved into the ⋮ menu; Excel Sheet button under the Jobs widget removed (UX-197)
+- feat(overview): redesign — 12 compact cards 4 per row (Pending Collection, Crew Utilization, Low Stock moved up; Hours Worked, New Clients, Expenses new); Reports / Live Activity / Live Map full width with Hide / Show; Live Map in forest green; Crew Availability | Coverage 50/50; Revenue vs Target | Business Health 70/30 with Crew Utilization + Collection Rate (R-OPS-17)
+- feat(overview): Today's Dispatch & Shifts — Edit a job in the Job Sheet's own pop-up (OT redone, only that date's row, closed day refused), Open on the sheet, search (R-OPS-18)
+- fix(overview): links to /daily-jobs and /payment-processing showed "Page not found" → Daily Job Sheet, Payments history (R-OPS-17)
+
 - data: A39 fixed on owner request — 20 Nov Villa 56 St 43B second copy of the visit deleted (09:00 PM–01:00 PM, AED 105, 16 h false OT; its "Deep cleaning" note and Pending mode moved to the visit); 306 Bldg 8B Ambika team row charges 200 → 0. Pending AED 7,262.5 → 6,957.5 (backup a39-double-entries-2026-11-23.json) (R-FIN-20)
 ## 2026-11-23 (Deploy to Production VPS, ac63643)
 

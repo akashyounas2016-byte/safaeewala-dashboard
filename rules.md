@@ -256,6 +256,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/components/overview/usePeriodLeadCounts.ts`; `Overview.tsx` (KPI cards). Test: `tests/unit/overview-1123.test.ts`.
 - **Status:** Active · Since: 2026-11-23
 
+### R-LEAD-16 — Leads: View, Edit and Delete on every row
+- **Rule:** *"Leads screen par Fluent Forms tab kay Form Submissions widget mein View aur Delete kay sath Edit ka icon bhi shamil karein. Is kay ilawa, WhatsApp Clicks tab mein Edit aur Delete kay sath 'View' (Eye) ka icon bhi lagayein taake tamam actions perfectly functional hon."* (2026-11-24)
+  - **Fluent Forms → Form Submissions:** 👁 View · ✏️ **Edit** (new: opens the submission straight in edit mode, same form and save as before) · 🗑 Delete.
+  - **WhatsApp Clicks:** 👁 **View** (new: every field the website sent — time, page and link, button and place, source and UTM, referring site, area / IP location, IP, device, website, message; read-only, with Edit and Delete in the same window) · ✏️ Edit · 🗑 Delete (R-MKT-04).
+- **Code:** `FluentFormsLeads.tsx` (row actions); `WhatsAppClicks.tsx → ViewClickModal`. Test: `tests/unit/batch-1124.test.ts`.
+- **Status:** Active · Since: 2026-11-24
+
 ### R-ATT-09 — Office staff on leave are named on the Excel attendance popup
 - **Why:** Amina Qamar's sick leave (17 Nov) did not show in the Excel Job Sheet's Attendance popup. She is a CSR (office staff), and the sheet and its popup list cleaners only (R-SHEET-02) — the leave itself was saved and synced.
   - The popup now names office staff who are absent or on leave that day under the list ("Also away today (office staff, not on the sheet)").
@@ -1898,6 +1905,23 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - **Service Mix** widget removed; Revenue vs Target takes the full width.
 - **Code:** `src/lib/overviewStats.ts`; `Overview.tsx`; `LiveOpsPanel.tsx`, `LiveOpsMap.tsx`; `businessMetrics.ts → outstandingNow`. Test: `tests/unit/overview-1123.test.ts`.
 - **Status:** Active · Since: 2026-11-23
+
+### R-OPS-17 — Overview redesign: compact cards, full-width widgets that fold, 50/50 and 70/30 rows
+- **Rule:** *"Overview screen ko mukammal tor par redesign karein; summary cards ka size chota karke inhein 4 say 5 per row set karein aur mazeed cards shamil karein. 'Reports', 'Live Map', aur 'Live Activity' widgets ko full width dein aur in sab mein hide ya collapse karnay ka option shamil karein. Live Map aur uskay header ki color scheme ko behtar banayen. Neeche diay gaye 'Pending Collection', 'Low Stock Alerts', aur 'Crew Utilization' ko bottom say hata kar oopar cards ki rows mukammal karein. 'Total Crew Availability' aur 'Today Coverage' widgets ko 50-50% width dein, jabkay 'Revenue vs Target' aur 'Business Health' ko 70/30 ratio mein organize karein."* (2026-11-24)
+  - **Cards:** 12 compact cards, 4 per row (2 on a phone, 3 on a tablet) — three full rows: Jobs · Collected · **Pending Collection** · Completion Rate / Active Cleaners · **Crew Utilization** · **Hours Worked** (new) · **Low Stock Alerts** / Fluent Form Leads · WhatsApp Clicks · **New Clients** (new) · **Expenses** (new). All follow the date filter except the stock and the pending total (both "right now"). The old three alert cards at the bottom are gone (moved up).
+  - **Reports, Live Activity, Live Map:** each full width with a **Hide / Show** chip in its header; the choice is kept on the device per widget. Reports shows its 8 figures in one row on a wide screen; Live Activity shows up to 8 events in 4 columns.
+  - **Live Map colours:** header in the CRM's forest green (as the page headers) with a soft emerald glow; role chips carry their map colour dot (cleaner green, driver blue, CSR violet); a light mint background under the map and white people cards.
+  - **Rows:** Crew Availability | Today's Coverage = 50 / 50. Revenue vs Target | Business Health = 70 / 30; Business Health adds **Crew Utilization** and **Collection Rate (Job Sheet)** = collected ÷ billed on the period's rows.
+  - **Fixed on the way:** "Open Daily Sheet", the Jobs card and the Dispatch links went to `/daily-jobs` (Page not found) → `/daily-job-sheet`; the Revenue card went to `/payment-processing` (Page not found) → Payments → history.
+- **Code:** `Overview.tsx`; `components/overview/Foldable.tsx` (`useFolded`, `FoldButton`); `ReportsPanel.tsx`; `LiveOpsPanel.tsx`. Test: `tests/unit/batch-1124.test.ts`.
+- **Status:** Active · Since: 2026-11-24
+
+### R-OPS-18 — Overview: Today's Dispatch & Shifts can be edited
+- **Rule:** *"'Today Dispatch & Shifts' ko enhance karke editing ki sahoolat dein."* (2026-11-24)
+  - Every Daily Job Sheet row has ✏️ **Edit** — the same Edit Job pop-up as the Daily Job Sheet (staff, times, client, charges, received, mode, remarks) and the same save (`updateDailyJob`); OT is worked out again from the times (R-OT-01, DEC-015). Only that date's row changes, never the monthly schedule (R-SCHED-01). Shown only with the **Daily Job Sheet** permission; a closed day (Close Day) is refused with a message.
+  - ↗ **Open** takes a job to the Daily Job Sheet on its date (a booking to Bookings). A **search** box (client, address, area, service, cleaner, payment mode) works with the All / Live / Scheduled / Completed tabs.
+- **Code:** `Overview.tsx` (dispatch table, `openEdit`); `components/dailyJobSheet/EditJobModal.tsx` (reused). Test: `tests/unit/batch-1124.test.ts`.
+- **Status:** Active · Since: 2026-11-24
 
 ## Known issues (rules not yet fully honoured)
 

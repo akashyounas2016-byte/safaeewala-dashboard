@@ -38,7 +38,7 @@ eq([old.employee.includes('Excel Job Sheet'), old.employee.includes('Job Sheet I
 const saved = normalizeRolePerms({ employee: ['Daily Job Sheet'], _modules: ALL_MODULE_KEYS })
 eq([canAccessModule('employee', saved, 'Excel Job Sheet'), canAccessModule('admin', saved, 'Excel Job Sheet'), DEFAULT_ROLE_PERMS.supervisor.includes('Job Sheet Import & Delete')], [false, true, false], 'switched off = blocked; admin always allowed')
 const djs = src('src/pages/DailyJobSheet.tsx')
-eq([/useModuleAccess\('Excel Job Sheet'\)/.test(djs), /\{canBulk && <button/.test(djs), /\{canExcel && <button/.test(djs)], [true, true, true], 'the buttons follow the options')
+eq([/useModuleAccess\('Excel Job Sheet'\)/.test(djs), /\{canBulk && <>\{\/\* R-SEC-09 \*\/\}[\s\S]{0,700}importRef\.current\?\.click\(\)/.test(djs) /* UX-197: Import is in the three-dot menu */, /\{canExcel && <button/.test(djs)], [true, true, true], 'the buttons follow the options')
 const settings = src('src/pages/Settings.tsx')
 eq([/id: 'billing'/.test(settings), /activeTab === 'billing'/.test(settings)], [false, false], 'no Billing tab')
 

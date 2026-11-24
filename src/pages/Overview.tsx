@@ -7,7 +7,7 @@ import {
   CalendarCheck, Users, DollarSign, Star,
   ArrowUpRight, ArrowDownRight, Minus, ArrowRight,
   AlertCircle, Clock, FileText, MessageCircle,
-  Calendar, RotateCcw,
+  Calendar, RotateCcw, Package, Gauge, Timer, UserPlus, Receipt, Pencil, Search, ExternalLink, Activity,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { LiveOpsPanel } from '@/components/overview/LiveOpsPanel'
@@ -15,6 +15,11 @@ import { usePeriodLeadCounts } from '@/components/overview/usePeriodLeadCounts'
 import { overviewRange, jobProgressByTime, crewMembers, dispatchedNames, onJobs, repeatClientRate, dubaiMinutes } from '@/lib/overviewStats'
 import { currentJobOf } from '@/lib/liveOps'
 import { ReportsPanel } from '@/components/overview/ReportsPanel'
+import { useFolded, FoldButton } from '@/components/overview/Foldable'
+import { EditJobModal } from '@/components/dailyJobSheet/EditJobModal'
+import { CLOSED_DAYS_KEY, type ClosedDay } from '@/lib/closedDays'
+import { notify } from '@/lib/notify'
+import { useModuleAccess } from '@/store/useModuleAccess'
 import { Button } from '@/components/ui/Button'
 import { formatTime } from '@/lib/utils'
 import { PageHero } from '@/components/layout/PageHero'
@@ -24,7 +29,7 @@ import type { Booking, BookingFrequency, DailyJob, DailyPendingItem, DailyPendin
 import { invoicedJobIds, invoiceBalance } from '@/lib/receivables'
 import { cleanClientNameFromAddress, isBogusJob, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, jobCollected } from '@/lib/clientDataSync'
 import { safeLocalStorageGet } from '@/lib/storageUtils'
-import { todayDubai } from '@/lib/dubaiTime'
+import { todayDubai, toDubaiDate } from '@/lib/dubaiTime'
 import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
 
 
@@ -81,36 +86,70 @@ function StatusPill({ status }: { status: string }) {
   )
 }
 
-/* ─── KPI Card ─── */
+/* ─── KPI Card — R-OPS-17: compact, 4 per row ─── */
 interface KpiCardProps {
   label: string; value: string | number; sub: string
   delta?: string; trend?: 'up' | 'down' | 'neutral'
   icon: ElementType; iconColor: string; iconBg: string
   onClick?: () => void
+  /** a soft tint for the alert cards (pending money, low stock, crew) */
+  tint?: string
 }
-function KpiCard({ label, value, sub, delta, trend = 'neutral', icon: Icon, iconColor, iconBg, onClick }: KpiCardProps) {
+function KpiCard({ label, value, sub, delta, trend = 'neutral', icon: Icon, iconColor, iconBg, onClick, tint }: KpiCardProps) {
   const trendColor = trend === 'up' ? '#059669' : trend === 'down' ? '#ef4444' : '#475569'
   const TrendIcon = trend === 'up' ? ArrowUpRight : trend === 'down' ? ArrowDownRight : Minus
   return (
     <div
       onClick={onClick}
-      className={`bg-white rounded-[24px] p-6 border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] transition-all ${onClick ? 'cursor-pointer hover:shadow-[0_8px_30px_rgba(15,23,42,0.12)] hover:border-emerald-200' : ''}`}
+      className={`rounded-[18px] p-4 border border-[#E4E8EC] shadow-[0_2px_10px_rgba(15,23,42,0.04)] transition-all min-w-0 ${onClick ? 'cursor-pointer hover:shadow-[0_8px_24px_rgba(15,23,42,0.10)] hover:-translate-y-0.5 hover:border-emerald-200' : ''}`}
+      style={{ background: tint || '#fff' }}
     >
-      <div className="flex items-start justify-between mb-6">
-        <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: iconBg }}>
-          <Icon size={20} style={{ color: iconColor }} strokeWidth={2} />
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: iconBg }}>
+          <Icon size={17} style={{ color: iconColor }} strokeWidth={2.2} />
         </div>
         {delta && (
-          <div className="flex items-center gap-1 text-xs font-semibold px-3 py-2 rounded-full"
+          <div className="flex items-center gap-0.5 text-[10.5px] font-bold px-2 py-1 rounded-full truncate max-w-[60%]"
             style={{ color: trendColor, background: trend === 'up' ? '#d1fae5' : trend === 'down' ? '#fee2e2' : '#f1f5f9' }}>
-            <TrendIcon size={13} strokeWidth={2.5} />
-            {delta}
+            <TrendIcon size={11} strokeWidth={2.5} className="shrink-0" />
+            <span className="truncate">{delta}</span>
           </div>
         )}
       </div>
-      <p className="text-3xl font-bold text-[#111827] leading-none tracking-tight">{value}</p>
-      <p className="text-[15px] font-semibold text-[#111827] mt-2">{label}</p>
-      <p className="text-sm text-[#6B7280] mt-1">{sub}</p>
+      <p className="text-[22px] font-black text-[#111827] leading-none tracking-tight truncate">{value}</p>
+      <p className="text-[12.5px] font-bold text-[#111827] mt-1.5 truncate" title={label}>{label}</p>
+      <p className="text-[11.5px] text-[#6B7280] mt-0.5 truncate" title={sub}>{sub}</p>
+    </div>
+  )
+}
+
+/* ─── Live Activity — R-OPS-17: full width, can be hidden ─── */
+function LiveActivityPanel({ events, onOpen }: { events: { icon: string; title: string; sub: string; bg: string; route: string }[]; onOpen: (route: string) => void }) {
+  const [folded, toggle] = useFolded('liveActivity')
+  return (
+    <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+      <div className={`flex items-center justify-between gap-3 ${folded ? '' : 'mb-4'}`}>
+        <div>
+          <h3 className="text-xl font-bold text-[#111827] mb-1 flex items-center gap-2"><Activity size={19} className="text-emerald-600" /> Live Activity
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" /></h3>
+          <p className="text-sm text-[#6B7280]">Recent business events</p>
+        </div>
+        <FoldButton folded={folded} onToggle={toggle} />
+      </div>
+      {!folded && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
+          {events.map((ev, i) => (
+            <div key={i} onClick={() => ev.route && onOpen(ev.route)}
+              className={`flex gap-3 p-3 rounded-xl border border-slate-100 transition-colors min-w-0 ${ev.route ? 'cursor-pointer hover:bg-slate-50' : ''}`}>
+              <div className={`w-10 h-10 rounded-full ${ev.bg} flex items-center justify-center shrink-0`}><span>{ev.icon}</span></div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-[13px] text-[#111827] truncate" title={ev.title}>{ev.title}</p>
+                <p className="text-xs text-[#6B7280] mt-0.5 truncate" title={ev.sub}>{ev.sub}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -270,7 +309,7 @@ export type OverviewDatePreset = 'today' | 'yesterday' | '7days' | '30days' | '3
 
 /* ─── Overview page ─── */
 export function Overview() {
-  const { bookings, clients, employees, invoices, inventory, dailyExpenses, dailyJobs } = useData()
+  const { bookings, clients, employees, invoices, inventory, dailyExpenses, dailyJobs, updateDailyJob } = useData()
   const currentUser = useCurrentUser()
   const navigate = useNavigate()
 
@@ -290,6 +329,10 @@ export function Overview() {
   const [customStartDate, setCustomStartDate] = useState('')
   const [customEndDate, setCustomEndDate] = useState('')
   const [dispatchTab, setDispatchTab] = useState<'all' | 'live' | 'scheduled' | 'completed'>('all')
+  // R-OPS-18: Dispatch table — search and edit a job right here (same Edit Job pop-up as the Daily Job Sheet)
+  const [dispatchQ, setDispatchQ] = useState('')
+  const [editJob, setEditJob] = useState<DailyJob | null>(null)
+  const canEditJobs = useModuleAccess('Daily Job Sheet')
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
@@ -347,6 +390,7 @@ export function Overview() {
       paymentMode: string
       staff: string
       source: 'Daily Job Sheet' | 'Booking'
+      job?: DailyJob
     }> = []
 
     // 1. Daily Jobs in period
@@ -367,6 +411,7 @@ export function Overview() {
         paymentMode: j.payment_mode || 'Cash',
         staff: j.staff_name || 'Staff',
         source: 'Daily Job Sheet',
+        job: j,
       })
     })
 
@@ -473,28 +518,44 @@ export function Overview() {
 
   // Filtered Dispatch Table rows
   const displayDispatchBookings = useMemo(() => {
-    if (dispatchTab === 'live') return unifiedJobs.filter(j => j.status === 'in_progress')
-    if (dispatchTab === 'scheduled') return unifiedJobs.filter(j => j.status === 'confirmed')
-    if (dispatchTab === 'completed') return unifiedJobs.filter(j => j.status === 'completed')
-    return unifiedJobs
-  }, [unifiedJobs, dispatchTab])
+    const byTab = dispatchTab === 'live' ? unifiedJobs.filter(j => j.status === 'in_progress')
+      : dispatchTab === 'scheduled' ? unifiedJobs.filter(j => j.status === 'confirmed')
+      : dispatchTab === 'completed' ? unifiedJobs.filter(j => j.status === 'completed')
+      : unifiedJobs
+    const t = dispatchQ.trim().toLowerCase()
+    return t ? byTab.filter(j => [j.clientName, j.address, j.area, j.service, j.staff, j.paymentMode].some(v => String(v || '').toLowerCase().includes(t))) : byTab
+  }, [unifiedJobs, dispatchTab, dispatchQ])
+
+  // R-OPS-17: more cards — hours worked, new clients, expenses of the period
+  const periodHours = Math.round(periodDailyJobs.reduce((s, j) => s + cleanNum(j.duty_hours), 0) * 10) / 10
+  const periodNewClients = clients.filter(c => c.created_at && isDateInRange(toDubaiDate(new Date(c.created_at)))).length
+  const periodExpenseList = dailyExpenses.filter(e => isDateInRange(e.date))
+  const periodExpenses = periodExpenseList.reduce((s, e) => s + cleanNum(e.amount), 0)
+  const periodWord = datePreset === 'today' ? 'today' : datePreset === 'yesterday' ? 'yesterday' : activeDateRange.label
+
+  // R-OPS-18: a closed day stays locked here too (Daily Job Sheet → Close Day)
+  const openEdit = (job: DailyJob) => {
+    const closed = safeLocalStorageGet<Record<string, ClosedDay>>(CLOSED_DAYS_KEY, {})
+    if (closed[job.date]) { notify.error(`${job.date} is closed. Reopen the day on the Daily Job Sheet to change it.`); return }
+    setEditJob(job)
+  }
 
   /* ── Live Activity from real data ── */
   const liveEvents: { icon: string; title: string; sub: string; bg: string; route: string }[] = []
   
   // Recent Daily Jobs
-  const recentJobs = [...validDailyJobs].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 2)
+  const recentJobs = [...validDailyJobs].sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 4)
   recentJobs.forEach(j => {
     const cleanClient = cleanClientNameFromAddress(j.address || j.area || 'Client')
     liveEvents.push({
-      icon: '🧹', bg: 'bg-emerald-100', route: '/daily-jobs',
+      icon: '🧹', bg: 'bg-emerald-100', route: '/daily-job-sheet',
       title: `Job: ${cleanClient}`,
       sub: `${j.service || 'Cleaning'} · ${j.staff_name} · AED ${(cleanNum(j.charges) || cleanNum(j.received)).toLocaleString()}`,
     })
   })
 
   // Recent Bookings
-  const recentBookings = [...bookings].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 1)
+  const recentBookings = [...bookings].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 2)
   recentBookings.forEach(b => liveEvents.push({
     icon: '📅', bg: 'bg-teal-100', route: '/bookings',
     title: `Booking: ${b.client_name}`,
@@ -515,7 +576,7 @@ export function Overview() {
     sub: `${lowStockItems[0].current_stock} ${lowStockItems[0].unit} remaining · reorder needed`,
   })
 
-  const displayEvents = liveEvents.length > 0 ? liveEvents.slice(0, 4) : [
+  const displayEvents = liveEvents.length > 0 ? liveEvents.slice(0, 8) : [
     { icon: '👋', bg: 'bg-slate-100', route: '', title: 'No activity yet', sub: 'Add a job or invoice to see events here' },
   ]
 
@@ -611,8 +672,8 @@ export function Overview() {
         </div>
       </div>
 
-      {/* ── KPI Cards ── */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 mb-6">
+      {/* ── KPI Cards — R-OPS-17: compact, 4 per row; Pending, Low Stock and Crew Utilization moved up here ── */}
+      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5 mb-6">
         <KpiCard
           label={datePreset === 'today' ? 'Jobs Today' : datePreset === 'yesterday' ? 'Jobs Yesterday' : datePreset === 'all' ? 'Total Jobs' : `Jobs (${activeDateRange.label})`}
           value={unifiedJobs.length}
@@ -620,34 +681,65 @@ export function Overview() {
           delta={unifiedJobs.length > 0 ? `+${unifiedJobs.length}` : '0'}
           trend={unifiedJobs.length > 0 ? 'up' : 'neutral'}
           icon={CalendarCheck} iconBg="#d1fae5" iconColor="#059669"
-          onClick={() => navigate('/daily-jobs')}
+          onClick={() => navigate('/daily-job-sheet')}
         />
         <KpiCard
-          label={datePreset === 'today' ? 'Revenue Today' : datePreset === 'yesterday' ? 'Revenue Yesterday' : datePreset === 'all' ? 'Total Revenue' : `Revenue (${activeDateRange.label})`}
+          label={datePreset === 'today' ? 'Collected Today' : datePreset === 'yesterday' ? 'Collected Yesterday' : datePreset === 'all' ? 'Total Collected' : `Collected (${activeDateRange.label})`}
           value={`AED ${periodRevenue.toLocaleString()}`}
-          sub={`From ${periodCompleted.length + periodLive.length} completed & live jobs`}
-          delta={periodRevenue > 0 ? `AED ${periodRevenue.toLocaleString()}` : 'AED 0'}
+          sub={`From ${periodCompleted.length + periodLive.length} done & live jobs`}
           trend={periodRevenue > 0 ? 'up' : 'neutral'}
           icon={DollarSign} iconBg="#e0f2fe" iconColor="#0369a1"
-          onClick={() => navigate('/payment-processing')}
+          onClick={() => navigate('/payments?tab=history')}
         />
         <KpiCard
-          label="Active Cleaners"
-          value={activeEmps.length}
-          sub={`${dispatchedStaffSet.size} on jobs ${datePreset === 'today' ? 'today' : 'in period'} · ${employees.length} total staff`}
-          delta={`${activeEmps.length} active`}
-          trend="neutral"
-          icon={Users} iconBg="#fef3c7" iconColor="#d97706"
-          onClick={() => navigate('/employees')}
+          label="Pending Collection"
+          value={`AED ${totalPendingAmount.toLocaleString()}`}
+          sub={totalPendingCount > 0 ? `${totalPendingCount} items · ${dailyPendingCount + sidePendingCount} Job Sheet · ${invoicePendingCount} invoices` : 'All payments collected'}
+          delta={totalPendingCount > 0 ? `${totalPendingCount} open` : 'settled'}
+          trend={totalPendingCount > 0 ? 'down' : 'up'}
+          icon={AlertCircle} iconBg="#fee2e2" iconColor="#dc2626" tint="#fff7f7"
+          onClick={() => navigate('/payments?tab=outstanding')}
         />
         <KpiCard
           label="Completion Rate"
           value={`${completionRatePct}%`}
-          sub={`${periodCompleted.length} of ${nonCancelledJobs.length} active jobs`}
-          delta={`${completionRatePct}% rate`}
-          trend="up"
+          sub={`${periodCompleted.length} of ${nonCancelledJobs.length} jobs done`}
+          delta={completionRatePct >= 80 ? 'on track' : 'in progress'}
+          trend={completionRatePct >= 80 ? 'up' : 'neutral'}
           icon={Star} iconBg="#ede9fe" iconColor="#7c3aed"
           onClick={() => navigate('/reports')}
+        />
+        <KpiCard
+          label="Active Cleaners"
+          value={activeEmps.length}
+          sub={`${dispatchedStaffSet.size} on jobs ${periodWord} · ${employees.length} total staff`}
+          icon={Users} iconBg="#fef3c7" iconColor="#d97706"
+          onClick={() => navigate('/employees')}
+        />
+        <KpiCard
+          label="Crew Utilization"
+          value={`${crewUtilization}%`}
+          sub={`${dispatchedStaffSet.size} of ${activeEmps.length} cleaners dispatched ${periodWord}`}
+          delta={crewUtilization >= 70 ? 'healthy' : 'low'}
+          trend={crewUtilization >= 70 ? 'up' : 'down'}
+          icon={Gauge} iconBg="#d1fae5" iconColor="#047857" tint="#f6fdf9"
+          onClick={() => navigate('/employees')}
+        />
+        <KpiCard
+          label={`Hours Worked (${activeDateRange.label})`}
+          value={`${periodHours.toLocaleString()} h`}
+          sub={`${periodDailyJobs.length} Job Sheet rows · duty hours`}
+          icon={Timer} iconBg="#cffafe" iconColor="#0e7490"
+          onClick={() => navigate('/attendance')}
+        />
+        <KpiCard
+          label="Low Stock Alerts"
+          value={lowStockItems.length}
+          sub={lowStockItems.length > 0 ? `${lowStockItems[0].name} needs reorder` : 'All items stocked'}
+          delta={lowStockItems.length > 0 ? 'reorder' : 'ok'}
+          trend={lowStockItems.length > 0 ? 'down' : 'up'}
+          icon={Package} iconBg="#fef3c7" iconColor="#b45309" tint={lowStockItems.length > 0 ? '#fffbeb' : undefined}
+          onClick={() => navigate('/inventory')}
         />
         {/* R-LEAD-15: website leads of the chosen period */}
         <KpiCard
@@ -668,144 +760,31 @@ export function Overview() {
           icon={MessageCircle} iconBg="#dcfce7" iconColor="#16a34a"
           onClick={() => navigate('/whatsapp-clicks')}
         />
+        <KpiCard
+          label={`New Clients (${activeDateRange.label})`}
+          value={periodNewClients}
+          sub={`${clients.length} clients in total`}
+          delta={periodNewClients ? `+${periodNewClients}` : '0'}
+          trend={periodNewClients ? 'up' : 'neutral'}
+          icon={UserPlus} iconBg="#fce7f3" iconColor="#be185d"
+          onClick={() => navigate('/clients')}
+        />
+        <KpiCard
+          label={`Expenses (${activeDateRange.label})`}
+          value={`AED ${periodExpenses.toLocaleString()}`}
+          sub={`${periodExpenseList.length} expense${periodExpenseList.length === 1 ? '' : 's'} · Daily Job Sheet & direct`}
+          icon={Receipt} iconBg="#f1f5f9" iconColor="#475569"
+          onClick={() => navigate('/expenses')}
+        />
       </section>
 
-      {/* ── R-OPS-13: Reports (Daily / Yesterday / Last 7 / 30 days) + Live Activity. R-OPS-15: Quick Actions removed ── */}
-      <section className="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-6 items-start">
-        <div className="xl:col-span-2"><ReportsPanel /></div>
+      {/* ── R-OPS-13 Reports · Live Activity · R-OPS-14 Live Map — R-OPS-17: each full width, each can be hidden ── */}
+      <section className="mb-6"><ReportsPanel /></section>
+      <section className="mb-6"><LiveActivityPanel events={displayEvents} onOpen={route => navigate(route)} /></section>
+      <section className="mb-6"><LiveOpsPanel /></section>
 
-        {/* Live Activity */}
-        <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h3 className="text-xl font-bold text-[#111827] mb-1">Live Activity</h3>
-              <p className="text-sm text-[#6B7280]">Recent business events</p>
-            </div>
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-          </div>
-          <div className="space-y-2">
-            {displayEvents.map((ev, i) => (
-              <div
-                key={i}
-                onClick={() => ev.route && navigate(ev.route)}
-                className={`flex gap-4 p-2 rounded-xl transition-colors ${ev.route ? 'cursor-pointer hover:bg-slate-50' : ''}`}
-              >
-                <div className={`w-10 h-10 rounded-full ${ev.bg} flex items-center justify-center shrink-0`}>
-                  <span>{ev.icon}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm text-[#111827]">{ev.title}</p>
-                  <p className="text-xs text-[#6B7280] mt-1">{ev.sub}</p>
-                </div>
-                {ev.route && <span className="text-slate-300 self-center text-[11px]">→</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── R-OPS-14: live map of cleaners, drivers and CSR ── */}
-      <section className="mb-6">
-        <LiveOpsPanel />
-      </section>
-
-      {/* ── Ops Alert Cards ── */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
-        <div
-          onClick={() => navigate('/payments?tab=outstanding')}
-          className="bg-red-50 border border-red-100 rounded-3xl p-6 cursor-pointer hover:shadow-md transition-all hover:border-red-300 group"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <AlertCircle size={20} className="text-red-600" />
-            </div>
-            <span className="text-red-700 font-bold text-xs bg-red-100 px-3 py-1 rounded-full flex items-center gap-1">
-              <span>{totalPendingCount > 0 ? 'Pending Collection' : 'All Settled'}</span>
-              <ArrowRight size={12} />
-            </span>
-          </div>
-          <h3 className="text-2xl font-bold text-red-700">AED {totalPendingAmount.toLocaleString()}</h3>
-          <p className="font-semibold text-[#111827] mt-1">Pending Payments & Receivables</p>
-          <p className="text-sm text-red-600 mt-2">
-            {totalPendingCount > 0
-              ? `${totalPendingCount} pending items (${dailyPendingCount + sidePendingCount} Job Sheet · ${invoicePendingCount} Invoices)`
-              : 'Zero outstanding balances · All payments collected'}
-          </p>
-        </div>
-
-        <div
-          onClick={() => navigate('/inventory')}
-          className="bg-amber-50 border border-amber-100 rounded-3xl p-6 cursor-pointer hover:shadow-md transition-all hover:border-amber-300 group"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <AlertCircle size={20} className="text-amber-600" />
-            </div>
-            <span className="text-amber-700 font-semibold text-sm">Inventory Alert</span>
-          </div>
-          <h3 className="text-2xl font-bold text-amber-700">{lowStockItems.length}</h3>
-          <p className="font-semibold text-[#111827] mt-1">Low Stock Alerts</p>
-          <p className="text-sm text-amber-600 mt-2">
-            {lowStockItems.length > 0 ? `${lowStockItems[0].name} needs reorder` : 'All items stocked'}
-          </p>
-        </div>
-
-        <div
-          onClick={() => navigate('/employees')}
-          className="bg-emerald-50 border border-emerald-100 rounded-3xl p-6 cursor-pointer hover:shadow-md transition-all hover:border-emerald-300 group"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <Clock size={20} className="text-emerald-600" />
-            </div>
-            <span className="text-emerald-700 font-semibold text-sm">{crewUtilization >= 70 ? 'Healthy' : 'Low'}</span>
-          </div>
-          <h3 className="text-2xl font-bold text-emerald-700">{crewUtilization}%</h3>
-          <p className="font-semibold text-[#111827] mt-1">Crew Utilization</p>
-          <p className="text-sm text-emerald-600 mt-2">
-            {dispatchedStaffSet.size} cleaners dispatched {datePreset === 'today' ? 'today' : 'in period'}
-          </p>
-        </div>
-      </section>
-
-      {/* ── Smart Operations Row ── */}
-      <section className="grid grid-cols-1 xl:grid-cols-4 gap-5 mb-6">
-        {/* Business Performance */}
-        {(() => {
-          // R-OPS-16: repeat clients from the job sheet (total_bookings is not kept up to date)
-          const repeatRate = repeatClientRate(validDailyJobs, clients.length)
-          return (
-            <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-              <div className="flex items-center justify-between mb-5">
-                <div>
-                  <h3 className="text-lg font-bold text-[#111827]">Business Health</h3>
-                  <p className="text-sm text-[#6B7280]">
-                    {datePreset === 'today' ? 'Today performance' : `${activeDateRange.label} performance`}
-                  </p>
-                </div>
-                <span className="text-2xl">{completionRatePct >= 80 ? '🟢' : completionRatePct >= 60 ? '🟡' : '🔴'}</span>
-              </div>
-              <div className="space-y-3.5">
-                {[
-                  { label: 'Collected', value: `AED ${periodRevenue.toLocaleString()}`, pct: Math.min(100, Math.round((periodRevenue / 100000) * 100)), color: '#059669' },
-                  { label: 'Completion Rate', value: `${completionRatePct}%`, pct: completionRatePct, color: '#0369a1' },
-                  { label: 'Repeat Client Rate', value: `${repeatRate}%`, pct: repeatRate, color: '#d97706' },
-                ].map(item => (
-                  <div key={item.label}>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-[12px] text-slate-600 font-medium">{item.label}</span>
-                      <span className="text-[12px] font-bold text-[#111827]">{item.value}</span>
-                    </div>
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${item.pct}%`, background: item.color }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )
-        })()}
-
+      {/* ── R-OPS-17: Crew Availability and Today's Coverage, half and half ── */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6 items-stretch">
         {/* Crew Availability */}
         <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
           <div className="flex items-center justify-between mb-5">
@@ -852,7 +831,7 @@ export function Overview() {
         </div>
 
         {/* Coverage */}
-        <div className="xl:col-span-2 bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+        <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="text-lg font-bold text-[#111827]">
@@ -860,7 +839,7 @@ export function Overview() {
               </h3>
               <p className="text-sm text-[#6B7280]">Active service areas — {unifiedJobs.length} jobs</p>
             </div>
-            <button onClick={() => navigate('/daily-jobs')} className="px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 text-sm font-semibold hover:bg-emerald-200 transition-colors">
+            <button onClick={() => navigate('/daily-job-sheet')} className="px-4 py-2 rounded-xl bg-emerald-100 text-emerald-700 text-sm font-semibold hover:bg-emerald-200 transition-colors">
               Open Daily Sheet
             </button>
           </div>
@@ -898,14 +877,58 @@ export function Overview() {
         </div>
       </section>
 
-      {/* ── Charts (R-OPS-16: Service Mix removed) ── */}
-      <section className="mb-6">
-        <RevenueChart
-          bookings={bookings}
-          dailyJobs={validDailyJobs}
-          monthlyPayments={monthlyPayments}
-          invoices={invoices}
-        />
+      {/* ── R-OPS-17: Revenue vs Target (70 %) and Business Health (30 %). R-OPS-16: Service Mix removed ── */}
+      <section className="grid grid-cols-1 lg:grid-cols-10 gap-5 mb-6 items-stretch">
+        <div className="lg:col-span-7 min-w-0">
+          <RevenueChart
+            bookings={bookings}
+            dailyJobs={validDailyJobs}
+            monthlyPayments={monthlyPayments}
+            invoices={invoices}
+          />
+        </div>
+        {/* Business Performance */}
+        {(() => {
+          // R-OPS-16: repeat clients from the job sheet (total_bookings is not kept up to date)
+          const repeatRate = repeatClientRate(validDailyJobs, clients.length)
+          // R-OPS-17: collection rate = collected on the period's Job Sheet rows / billed on them
+          const billed = periodDailyJobs.reduce((s, j) => s + cleanNum(j.charges), 0)
+          const collectedOnJobs = periodDailyJobs.reduce((s, j) => s + jobCollected(j), 0)
+          const collectionRate = billed > 0 ? Math.min(100, Math.round((collectedOnJobs / billed) * 100)) : 0
+          return (
+            <div className="lg:col-span-3 bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h3 className="text-lg font-bold text-[#111827]">Business Health</h3>
+                  <p className="text-sm text-[#6B7280]">
+                    {datePreset === 'today' ? 'Today performance' : `${activeDateRange.label} performance`}
+                  </p>
+                </div>
+                <span className="text-2xl">{completionRatePct >= 80 ? '🟢' : completionRatePct >= 60 ? '🟡' : '🔴'}</span>
+              </div>
+              <div className="space-y-3.5">
+                {[
+                  { label: 'Collected', value: `AED ${periodRevenue.toLocaleString()}`, pct: Math.min(100, Math.round((periodRevenue / 100000) * 100)), color: '#059669' },
+                  { label: 'Completion Rate', value: `${completionRatePct}%`, pct: completionRatePct, color: '#0369a1' },
+                  { label: 'Repeat Client Rate', value: `${repeatRate}%`, pct: repeatRate, color: '#d97706' },
+                  { label: 'Crew Utilization', value: `${crewUtilization}%`, pct: crewUtilization, color: '#047857' },
+                  { label: 'Collection Rate (Job Sheet)', value: billed > 0 ? `${collectionRate}% of AED ${billed.toLocaleString()}` : '—', pct: collectionRate, color: '#7c3aed' },
+                ].map(item => (
+                  <div key={item.label}>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-[12px] text-slate-600 font-medium">{item.label}</span>
+                      <span className="text-[12px] font-bold text-[#111827]">{item.value}</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${item.pct}%`, background: item.color }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
+
       </section>
 
       {/* ── Dispatch & Bookings Table ── */}
@@ -918,6 +941,12 @@ export function Overview() {
             <p className="text-sm text-[#6B7280]">
               {displayDispatchBookings.length} jobs · {periodLive.length} live, {periodConfirmed.length} scheduled, {periodCompleted.length} completed
             </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input value={dispatchQ} onChange={e => setDispatchQ(e.target.value)} placeholder="Search client, area, cleaner…" aria-label="Search jobs"
+              className="w-[230px] text-[12.5px] pl-9 pr-3 py-2 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-emerald-500" />
           </div>
           <div className="flex bg-slate-100 rounded-2xl p-1 gap-1">
             {[
@@ -939,18 +968,19 @@ export function Overview() {
               </button>
             ))}
           </div>
+          </div>
         </div>
 
         {displayDispatchBookings.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-slate-400 text-[15px]">
-              No jobs or bookings {datePreset === 'today' ? 'scheduled for today' : `found for ${activeDateRange.label}`}
+              {dispatchQ.trim() ? `No job matches "${dispatchQ.trim()}"` : <>No jobs or bookings {datePreset === 'today' ? 'scheduled for today' : `found for ${activeDateRange.label}`}</>}
             </p>
             <div className="flex items-center justify-center gap-4 mt-4">
               <button onClick={() => navigate('/bookings')} className="text-emerald-600 font-semibold text-sm hover:underline">
                 + Add a booking
               </button>
-              <button onClick={() => navigate('/daily-jobs')} className="text-teal-600 font-semibold text-sm hover:underline">
+              <button onClick={() => navigate('/daily-job-sheet')} className="text-teal-600 font-semibold text-sm hover:underline">
                 → Open Daily Job Sheet
               </button>
             </div>
@@ -966,6 +996,7 @@ export function Overview() {
                   <th className="px-7 py-4 font-semibold">Staff / Crew</th>
                   <th className="px-7 py-4 font-semibold">Status</th>
                   <th className="px-7 py-4 font-semibold">Amount</th>
+                  <th className="px-5 py-4 font-semibold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1011,6 +1042,17 @@ export function Overview() {
                         </span>
                       )}
                     </td>
+                    <td className="px-5 py-5">
+                      {/* R-OPS-18: edit this date's row (R-SCHED-01: only this row, never the monthly schedule) or open it */}
+                      <div className="flex justify-end gap-1.5">
+                        {b.job && canEditJobs && (
+                          <button type="button" onClick={() => openEdit(b.job!)} title="Edit this job" aria-label="Edit job"
+                            className="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-emerald-700 hover:border-emerald-300 flex items-center justify-center cursor-pointer"><Pencil size={14} /></button>
+                        )}
+                        <button type="button" onClick={() => navigate(b.job ? `/daily-job-sheet?date=${b.date}` : '/bookings')} title={b.job ? 'Open on the Daily Job Sheet' : 'Open in Bookings'} aria-label="Open"
+                          className="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-sky-700 hover:border-sky-300 flex items-center justify-center cursor-pointer"><ExternalLink size={14} /></button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1023,7 +1065,7 @@ export function Overview() {
             Showing {displayDispatchBookings.length} {activeDateRange.label} · {unifiedJobs.length} total period records
           </p>
           <div className="flex items-center gap-4">
-            <Link to="/daily-jobs" className="text-[#059669] font-semibold hover:underline flex items-center gap-1.5 text-sm">
+            <Link to="/daily-job-sheet" className="text-[#059669] font-semibold hover:underline flex items-center gap-1.5 text-sm">
               Daily Job Sheet <ArrowRight size={14} />
             </Link>
             <Link to="/bookings" className="text-[#059669] font-semibold hover:underline flex items-center gap-1.5 text-sm">
@@ -1033,6 +1075,15 @@ export function Overview() {
         </div>
       </section>
 
+      {/* R-OPS-18: same Edit Job pop-up as the Daily Job Sheet; OT is worked out again from the times (R-OT-01) */}
+      <EditJobModal
+        open={!!editJob}
+        job={editJob}
+        onClose={() => setEditJob(null)}
+        onSave={(id, patch) => { updateDailyJob(id, patch); notify.success('Job updated') }}
+        employees={employees}
+        existingJobsForDate={editJob ? validDailyJobs.filter(j => j.date === editJob.date) : []}
+      />
     </div>
   )
 }

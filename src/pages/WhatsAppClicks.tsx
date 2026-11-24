@@ -1,6 +1,6 @@
 import { LeadsTabs } from '@/components/leads/LeadsTabs'
 import React, { useEffect, useMemo, useState } from 'react'
-import { MessageCircle, MousePointerClick, Smartphone, FileText, RefreshCw, Search, Megaphone, Pencil, Trash2, CalendarDays, CalendarRange, History, MapPin, ChevronDown, ChevronUp, X } from 'lucide-react'
+import { MessageCircle, MousePointerClick, Smartphone, FileText, RefreshCw, Search, Megaphone, Pencil, Trash2, Eye, ExternalLink, CalendarDays, CalendarRange, History, MapPin, ChevronDown, ChevronUp, X } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { confirmAsync, notify } from '@/lib/notify'
 import { logAudit } from '@/lib/auditLog'
@@ -111,6 +111,51 @@ function EditClickModal({ click, onClose, onSaved }: { click: WhatsAppClick | nu
   )
 }
 
+/** R-LEAD-16: view one click — every field the website sent, read-only, with Edit / Delete from the same window */
+function ViewClickModal({ click, location, onClose, onEdit, onDelete }: {
+  click: WhatsAppClick | null; location: string; onClose: () => void; onEdit: (c: WhatsAppClick) => void; onDelete: (c: WhatsAppClick) => void
+}) {
+  if (!click) return null
+  const when = new Date(click.clicked_at).toLocaleString('en-GB', { timeZone: 'Asia/Dubai', weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const rows: [string, React.ReactNode][] = [
+    ['When (Dubai)', when],
+    ['Page', pageOf(click)],
+    ['Page link', click.page_url ? <a href={click.page_url} target="_blank" rel="noreferrer" className="text-emerald-700 hover:underline break-all inline-flex items-center gap-1">{click.page_url} <ExternalLink size={12} /></a> : null],
+    ['Button', click.button_text],
+    ['Button place', click.button_location],
+    ['Source', sourceOf(click)],
+    ['UTM source', click.utm_source],
+    ['UTM medium', click.utm_medium],
+    ['UTM campaign', click.utm_campaign],
+    ['Referring site', click.referrer],
+    ['Area / location', location],
+    ['Visitor IP', click.visitor_ip],
+    ['Device', click.device],
+    ['Website', click.site_name],
+  ]
+  return (
+    <Modal open onClose={onClose} title="WhatsApp click" size="lg"
+      footer={<div className="flex justify-between gap-2">
+        <button type="button" onClick={() => onDelete(click)} className="h-9 px-4 rounded-xl border border-red-200 text-[12.5px] font-semibold text-red-600 bg-white hover:bg-red-50 cursor-pointer flex items-center gap-1.5"><Trash2 size={14} /> Delete</button>
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose} className="h-9 px-4 rounded-xl border border-slate-200 text-[12.5px] font-semibold text-slate-600 bg-white cursor-pointer">Close</button>
+          <button type="button" onClick={() => onEdit(click)} className="h-9 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[12.5px] font-bold cursor-pointer flex items-center gap-1.5"><Pencil size={14} /> Edit</button>
+        </div>
+      </div>}>
+      <dl className="grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-x-4 gap-y-2 text-[13px]">
+        {rows.map(([k, v]) => (
+          <React.Fragment key={k}>
+            <dt className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em] sm:pt-0.5">{k}</dt>
+            <dd className="text-slate-800 break-words">{v || <span className="text-slate-400">—</span>}</dd>
+          </React.Fragment>
+        ))}
+      </dl>
+      <p className="mt-4 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.08em]">WhatsApp message</p>
+      <p className="mt-1 p-3 rounded-xl bg-slate-50 border border-slate-100 text-[13px] text-slate-800 whitespace-pre-wrap">{click.wa_message || '—'}</p>
+    </Modal>
+  )
+}
+
 /**
  * R-MKT-03: clicks on the website's WhatsApp buttons (WordPress plugin → /api/webhook/whatsapp-clicks →
  * whatsapp_clicks). A click has no customer phone — it shows which pages, buttons and campaigns bring chats.
@@ -132,18 +177,20 @@ export function WhatsAppClicks() {
   useEffect(() => { loadIpLocations().then(setIpData, () => setIpData(null)) }, [])
   const areaOf = (c: WhatsAppClick) => locationOf(c, DUBAI_AREAS, ipData).label
   const [editing, setEditing] = useState<WhatsAppClick | null>(null)
+  const [viewing, setViewing] = useState<WhatsAppClick | null>(null) // R-LEAD-16
   // R-MKT-05: the last deliveries from the WordPress plugin (time and result), so a missing click can be traced
   const [deliveries, setDeliveries] = useState<{ at: string; status: number; reason: string; page?: string }[] | null>(null)
 
   // R-MKT-04: delete one click (a test click, a duplicate)
   const remove = async (c: WhatsAppClick) => {
     const ok = await confirmAsync({ title: 'Delete click', message: `Delete this click?\n${c.page_title || c.page_url || ''} · ${c.button_text || ''}`, confirmLabel: 'Delete', tone: 'danger' })
-    if (!ok) return
+    if (!ok) return false
     const { data, error } = await supabase.from('whatsapp_clicks').delete().eq('id', c.id).select()
-    if (error || !data?.length) { notify.error(error ? `Not deleted: ${error.message}` : NO_RIGHTS.replace('Not saved', 'Not deleted')); return }
+    if (error || !data?.length) { notify.error(error ? `Not deleted: ${error.message}` : NO_RIGHTS.replace('Not saved', 'Not deleted')); return false }
     logAudit({ action: 'deleted', entity: 'whatsapp_click', entity_id: c.id, entity_name: c.page_title || c.page_url || 'WhatsApp click' })
     setRows(prev => prev.filter(x => x.id !== c.id))
     notify.success('Click deleted')
+    return true
   }
 
   const load = async () => {
@@ -315,8 +362,9 @@ export function WhatsAppClicks() {
                   <td className="py-2.5 px-3 capitalize text-slate-700">{c.device || '—'}</td>
                   <td className="py-2.5 px-3 text-slate-500 max-w-[280px] truncate" title={c.wa_message || ''}>{c.wa_message || '—'}</td>
                   <td className="py-2.5 px-4">
-                    {/* R-MKT-04: edit / delete the row */}
+                    {/* R-MKT-04: edit / delete the row; R-LEAD-16: view (eye) first */}
                     <div className="flex justify-end gap-1.5">
+                      <button type="button" onClick={() => setViewing(c)} title="View" aria-label="View click" className="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-sky-700 hover:border-sky-300 flex items-center justify-center cursor-pointer"><Eye size={14} /></button>
                       <button type="button" onClick={() => setEditing(c)} title="Edit" aria-label="Edit click" className="w-8 h-8 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-emerald-700 hover:border-emerald-300 flex items-center justify-center cursor-pointer"><Pencil size={14} /></button>
                       <button type="button" onClick={() => void remove(c)} title="Delete" aria-label="Delete click" className="w-8 h-8 rounded-lg border border-red-200 bg-white text-red-600 hover:bg-red-50 flex items-center justify-center cursor-pointer"><Trash2 size={14} /></button>
                     </div>
@@ -328,6 +376,9 @@ export function WhatsAppClicks() {
         </div>
         {shown.length > 300 && <p className="text-[11.5px] text-slate-400 text-center py-2.5 border-t border-slate-100">Showing the newest 300 of {shown.length} — narrow the search or the date range</p>}
       </div>
+      <ViewClickModal click={viewing} location={viewing ? locationOf(viewing, DUBAI_AREAS, ipData).label : ''} onClose={() => setViewing(null)}
+        onEdit={c => { setViewing(null); setEditing(c) }}
+        onDelete={c => { void remove(c).then(done => { if (done) setViewing(null) }) }} />
       <EditClickModal click={editing} onClose={() => setEditing(null)} onSaved={c => setRows(prev => prev.map(x => (x.id === c.id ? c : x)))} />
     </div>
   )

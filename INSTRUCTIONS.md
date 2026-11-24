@@ -109,6 +109,10 @@
 
 ## 2. Daily Job Sheet aur Excel Job Sheet
 
+### Header ke buttons (24 Nov)
+- Upar daayen tarteeb: **Add Job** → **Excel Sheet** → date (◀ ▶) aur Today / range → **⋮** menu.
+- **Import** ab ⋮ menu mein hai (**Import Excel**). Jobs table ke upar wala Excel Sheet button hata diya — Excel Sheet ab header mein hai.
+
 ### "Checks" (peeli warning) kya hai
 - Row par **"1 check"** ka matlab hai row mein kuch dekhne layak hai — misaal: *Ends before it starts* (khatam hone ka time shuru se pehle). Ye sirf warning hai, job save hoti hai.
 - Time AM / PM ke sath parha jata hai: 9:00 AM – 8:00 PM bilkul theek hai. Warning sirf tab aati hai jab shift sach mein raat se agle din jaye (jaise 8 PM – 9 AM) — tab time dobara dekh lein.
@@ -221,6 +225,7 @@
 - Header ka naam ab **Website Leads** hai; neeche ek line mein total inquiries aur "Endpoint: 200 OK Listening".
 - Lead 🗑️ se delete karein to wo hamesha ke liye hat jati hai (pehle kabhi kabhi 12 second baad wapas aa jati thi).
 - Upar ke cards (Today, Yesterday, **Last 30 Days**, **Last 7 Days**, Action Required) neeche ke filters ke saath badalte hain. Conversion Rate wala card hata diya.
+- Form Submissions ki har row par 👁 **View**, ✏️ **Edit** aur 🗑️ **Delete**. Edit dabayein to lead seedha edit mode mein khulti hai.
 - Submission popup mein **Estimated Value** nahi hai. Edit popup mein **Lead Status** upar ✕ ke saath hai.
 
 ### WhatsApp Clicks (website)
@@ -231,11 +236,15 @@
 - **Filters:** muddat (Custom range bhi), **By page**, **By area**, search. Page / area chunein to cards bhi badal jate hain. Naya click foran aata hai.
 - **By Area / Area / location column:** pehle page ka area (misaal Dubai Investment Park ka area page, ya message mein area ka naam). Na ho to visitor ki **IP se location** — "Dubai · Palm Jumeirah", "Sharjah", "Outside UAE" (saath mein chhota **IP** likha hota hai). Visitor ko koi popup nahi aata.
 - IP wali location **andaza** hai: ghar / office ke internet par aksar community sahi aati hai, mobile data par zyada tar sirf emirate (kabhi ghalat emirate). Purane clicks jin ke saath IP save nahi hui, "No area" mein rehte hain.
-- Har row ke aakhir mein ✏️ (**Edit**) aur 🗑️ (**Delete**) hai. Edit se page, button, source, device ya message theek karein; Delete se test ya double click hata dein (pehle poochhta hai). Ye sirf admin / manager kar sakte hain.
+- Har row ke aakhir mein 👁 (**View**), ✏️ (**Edit**) aur 🗑️ (**Delete**) hai. View se click ki poori detail (page, button, source, IP location, device, message) ek window mein — wahin se Edit ya Delete bhi. Edit se page, button, source, device ya message theek karein; Delete se test ya double click hata dein (pehle poochhta hai). Ye sirf admin / manager kar sakte hain.
 
 ## 4b. Overview (pehli screen)
 
 - Header par ab **New Booking** nahi hai, aur **Quick Actions** wala dabba hata diya. Nayi booking **Bookings** ya Job Sheet se banayein.
+- **Naya design (24 Nov):** upar 12 chhote cards, ek line mein 4 — Jobs, Collected, **Pending Collection**, Completion / Active Cleaners, **Crew Utilization**, **Hours Worked**, **Low Stock** / Fluent Form, WhatsApp Clicks, **New Clients**, **Expenses**. Neeche wale Pending / Low Stock / Crew dabbe ab upar cards mein hain.
+- **Reports**, **Live Activity** aur **Live Map** poori chaurai mein hain. Har ek ke header mein **Hide** dabayein to wo band ho jata hai (**Show** se wapas) — aap ka computer yaad rakhta hai.
+- Crew Availability aur Today's Coverage aadhe-aadhe; Revenue vs Target bara (70%) aur Business Health chhota (30%) — Business Health mein ab Crew Utilization aur Collection Rate bhi.
+- **Today's Dispatch & Shifts:** har job par ✏️ **Edit** — wahi popup jo Daily Job Sheet par hai (staff, time, charges, received, mode, remarks). Sirf us din ki row badalti hai, client ka monthly schedule nahi; OT khud dobara banta hai. Band (Close Day) din edit nahi hota. ↗ se job Daily Job Sheet par us date par khulti hai. Upar **search** se client, area ya cleaner dhoondein.
 - Upar ke cards mein **Fluent Form Leads** aur **WhatsApp Clicks** bhi hain — ye upar wale **Date Filter** (Today, Yesterday, 7 Days … Custom) ke mutabiq badalte hain. Card dabayein to Leads khul jata hai. (Daily Leads wala dabba hata diya.)
 - **Service Mix** wala chart hata diya. Revenue vs Target ab poori chaurai mein hai.
 - Neeche ke cards theek kiye: Pending card ab Pending screen jitna hi dikhata hai (aaj ke baad ki visits nahi); Active Cleaners / Crew Utilization sirf cleaners ginte hain; Crew Availability batata hai abhi kaun kaam par hai, kis ki job baad mein hai, kaun free hai; jobs ka Done / Live / Scheduled waqt se banta hai.

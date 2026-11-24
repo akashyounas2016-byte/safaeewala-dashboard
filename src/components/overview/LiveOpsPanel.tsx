@@ -8,6 +8,7 @@ import { useDayPlan } from '@/lib/driverPlans'
 import { buildRouteSites } from '@/lib/driverRoutes'
 import { buildLivePeople, type LiveRole } from '@/lib/liveOps'
 import { dubaiMinutes } from '@/lib/overviewStats'
+import { useFolded, FoldButton } from './Foldable'
 
 const LiveOpsMap = lazy(() => import('./LiveOpsMap'))
 const COLOR: Record<LiveRole, string> = { cleaner: '#059669', driver: '#2563eb', csr: '#7c3aed' }
@@ -29,6 +30,7 @@ export function LiveOpsPanel() {
   const [fitSignal, setFitSignal] = useState(0)
   const [full, setFull] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
+  const [folded, toggleFold] = useFolded('liveMap') // R-OPS-17
   const checkins = useJobCheckins(today)
   const [plan] = useDayPlan(today)
 
@@ -74,28 +76,34 @@ export function LiveOpsPanel() {
 
   return (
     <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
-      {/* Colourful header */}
-      <div className="px-5 py-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 text-white flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h3 className="text-xl font-bold flex items-center gap-2"><Radar size={20} /> Live Map</h3>
-          <p className="text-[12.5px] text-white/85">Cleaners, drivers and CSR on duty — hover a bot for the person and their task</p>
+      {/* R-OPS-17: header in the CRM's forest green (same as the page headers); each role chip in its map colour */}
+      <div className="px-5 py-4 bg-[radial-gradient(120%_160%_at_0%_0%,#14532d_0%,#0F1F19_55%,#0b1712_100%)] text-white flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="w-10 h-10 rounded-2xl bg-emerald-400/15 border border-emerald-300/25 flex items-center justify-center"><Radar size={20} className="text-emerald-300" /></span>
+          <div>
+            <h3 className="text-xl font-bold flex items-center gap-2">Live Map
+              <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold bg-emerald-400/15 text-emerald-200 border border-emerald-300/25 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" /> {live} live now
+              </span>
+            </h3>
+            <p className="text-[12.5px] text-white/70">Cleaners, drivers and CSR on duty — hover a bot for the person and their task</p>
+          </div>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="mr-1 inline-flex items-center gap-1.5 text-[12px] font-bold bg-white/15 border border-white/25 px-2.5 py-1 rounded-full">
-            <span className="w-2 h-2 rounded-full bg-lime-300 animate-pulse" /> {live} live now
-          </span>
-          {chips.map(c => (
+          {!folded && chips.map(c => (
             <button key={c.id} type="button" onClick={() => setRole(c.id)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold cursor-pointer transition-colors ${role === c.id ? 'bg-white shadow' : 'bg-white/15 hover:bg-white/25 text-white'}`}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-bold cursor-pointer transition-colors border ${role === c.id ? 'bg-white shadow border-white' : 'bg-white/5 hover:bg-white/10 border-white/15 text-white/90'}`}
               style={role === c.id ? { color: c.color } : undefined}>
+              <span className="w-2 h-2 rounded-full" style={{ background: c.id === 'all' ? '#e2e8f0' : c.color }} />
               <c.icon size={13} /> {c.label}
-              <span className="min-w-[18px] text-center px-1 rounded-md text-[11px]" style={role === c.id ? { background: c.color, color: '#fff' } : { background: 'rgba(255,255,255,.25)' }}>{c.n}</span>
+              <span className="min-w-[18px] text-center px-1 rounded-md text-[11px]" style={role === c.id ? { background: c.color, color: '#fff' } : { background: 'rgba(255,255,255,.14)' }}>{c.n}</span>
             </button>
           ))}
+          <FoldButton folded={folded} onToggle={toggleFold} light />
         </div>
       </div>
 
-      <div className="p-4 sm:p-5 space-y-4">
+      {!folded && <div className="p-4 sm:p-5 space-y-4 bg-gradient-to-b from-emerald-50/60 to-white">
         {/* Map — full width */}
         <div ref={boxRef} className={`relative ${full ? 'bg-white p-3' : ''}`} style={full ? { height: '100vh' } : undefined}>
           <Suspense fallback={<div className="w-full rounded-2xl bg-slate-100 animate-pulse" style={{ height: 560 }} />}>
@@ -132,7 +140,7 @@ export function LiveOpsPanel() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
             {shown.map(p => (
               <button key={p.id} type="button" onClick={() => setFocus(p.id)}
-                className={`w-full text-left flex gap-2.5 p-2.5 rounded-xl border-l-4 border transition-colors cursor-pointer ${focus === p.id ? 'bg-slate-50 border-slate-300' : 'border-slate-100 hover:bg-slate-50'}`}
+                className={`w-full text-left flex gap-2.5 p-2.5 rounded-xl border-l-4 border transition-colors cursor-pointer bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${focus === p.id ? 'border-slate-300 ring-2 ring-emerald-100' : 'border-slate-100 hover:bg-slate-50'}`}
                 style={{ borderLeftColor: COLOR[p.role] }}>
                 <span className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-white text-[11px] font-black" style={{ background: COLOR[p.role], boxShadow: `0 0 0 2px #fff, 0 0 0 4px ${RING[p.state]}` }}>
                   {p.name.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}
@@ -146,7 +154,7 @@ export function LiveOpsPanel() {
             ))}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   )
 }
