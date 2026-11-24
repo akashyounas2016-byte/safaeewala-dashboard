@@ -1454,6 +1454,17 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/permissions.ts → APP_MODULES, PERMISSION_CATEGORIES, normalizeRolePerms`; `UserManagement.tsx → RolePermissionsPanel`; `DailyJobSheet.tsx`; `Settings.tsx`.
 - **Status:** Active · Since: 2026-11-12
 
+### R-SEC-10 — A cleaner / driver login sees only its own data (database, API, app)
+- **Rule:** *"Cleaner ki profile ko restrict karein taake unhein sirf apni assigned bookings aur duties nazar ayen, aur deegar employees ya general data hidden rahay."* (2026-11-24; owner chose: app + database)
+  - **Screens:** unchanged — a field login (an Employee login linked to a staff record that is not a supervisor) opens My Duties only; any other address sends it back there (R-SEC-05). Checked with a TEST cleaner login on live: /clients, /daily-job-sheet, /employees, / → My Duties.
+  - **Database (already live since 5 Nov, R-SEC-07, `2026-11-05_field_login_rows.sql`):** jobs with their own name only (TEST login: 1 of 606), no clients, bookings, invoices, expenses, inventory, agencies, leads.
+  - **Database (new, `2026-11-24_field_login_more_tables.sql`, owner runs it):** the tables still open to every login are limited too — **audit log** (all 2,390 changes with before / after copies were readable), **job steps**, **live positions**, **attendance**: own rows only. **Employees:** own record only — the drivers' full records (salary, passport, Emirates ID) were readable; My Duties now gets the driver's name and phone from `field_staff_directory()`.
+  - **VPS API:** a field login may call only health and error logs; leads, agencies, backups, WhatsApp-click log and the rest answer 403 (`webhookServer.cjs → FIELD_API_ALLOWED`). Before, any signed-in login could read every website lead with phone numbers.
+  - **App:** the sidebar's lead counter does not run for a field login — also not while the login type is still loading (its first poll read all leads from the VPS and tried to copy them into Supabase: 48 changes stuck on the TEST phone).
+- **Code:** migrations above; `webhookServer.cjs → activeUserFrom, authorizeApi`; `Sidebar.tsx`; `fluentFormsSync.ts → useFluentFormsUnreadCount(enabled)`; `MyDuties.tsx → field_staff_directory`. Test: `tests/unit/batch-1124c.test.ts`.
+- **Status:** Active (app); SQL and VPS part live after the owner runs the SQL and the next deploy · Since: 2026-11-24
+
+
 ### R-SEC-05 — Cleaners and drivers see only their own duties
 - **Rule:** *"cleaners ko sirf cleaners ki duties aur drivers ko sirf drivers ki duties nazar ayen, aur koi dosra inhein access na kar sakay."*
   - **Field staff** = a login with role *Employee* linked to a staff record (Settings → Users) whose staff role is not *supervisor*.
@@ -1944,6 +1955,18 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - ↗ **Open** takes a job to the Daily Job Sheet on its date (a booking to Bookings). A **search** box (client, address, area, service, cleaner, payment mode) works with the All / Live / Scheduled / Completed tabs.
 - **Code:** `Overview.tsx` (dispatch table, `openEdit`); `components/dailyJobSheet/EditJobModal.tsx` (reused). Test: `tests/unit/batch-1124.test.ts`.
 - **Status:** Active · Since: 2026-11-24
+
+### R-OPS-19 — Live location from the staff member's phone (best a website can do)
+- **Rule:** *"Overview screen par mojood Live Map ko cleaner ki device GPS say connect karein; is kay liye background location permissions aur real-time tracking mechanism implement karein. Testing kay liye cleaner ki ID say login karke unki movement ko map par verify karne ki sahoolat dein."* (2026-11-24; owner chose the best web version now, the Android app later)
+  - **Once on, stays on:** after a cleaner / driver / CSR presses **Share my location** on My Duties, opening My Duties again on that phone starts sharing by itself (remembered per person on the phone) until they press Stop.
+  - **Screen kept awake** while sharing (Screen Wake Lock), so the phone does not lock and stop it; when the screen comes back on the position is sent at once.
+  - **Real time:** a position at once, on every move (at most every 20 s) and at least every minute when standing still (the map counts < 5 min as live). The office map updates live (Supabase Realtime, 30 s fallback).
+  - **Status line:** "Sharing with the office · last sent 12s ago · screen kept on".
+  - **Limit:** a website cannot send with the page closed or the phone locked (Android / iPhone rule); true background tracking needs the Android app (owner: later).
+  - **Tested 24 Nov** with a TEST cleaner login on live (simulated phone GPS): shared → the TEST Cleaner bot on the Overview map; moved 2 km → the saved position followed; reopened My Duties → sharing started by itself; Stop → off.
+- **Code:** `src/lib/useLiveSharing.ts`; `driverLocation.ts → startLocationSharing (heartbeat, ping)`; `MyDuties.tsx`. Test: `tests/unit/batch-1124c.test.ts`.
+- **Status:** Active · Since: 2026-11-24
+
 
 ## Known issues (rules not yet fully honoured)
 

@@ -16,31 +16,53 @@ export interface DriverLocation {
 }
 
 const MIN_INTERVAL_MS = 20_000 // save at most every 20 s
+const HEARTBEAT_MS = 60_000    // R-SEC-10 / R-OPS-14: standing still still counts as "live" (the map's live = < 5 min)
 
-export function startLocationSharing(employeeId: string, onError: (msg: string) => void): () => void {
-  if (!('geolocation' in navigator)) { onError('This phone or browser cannot share location.'); return () => {} }
+export interface SharingHandle {
+  stop: () => void
+  /** send the position now (e.g. when the phone screen comes back on) */
+  ping: () => void
+}
+
+export function startLocationSharing(
+  employeeId: string,
+  onError: (msg: string) => void,
+  onSent?: (at: number) => void,
+): SharingHandle {
+  if (!('geolocation' in navigator)) { onError('This phone or browser cannot share location.'); return { stop: () => {}, ping: () => {} } }
   let last = 0
-  const watchId = navigator.geolocation.watchPosition(
-    pos => {
-      const now = Date.now()
-      if (now - last < MIN_INTERVAL_MS) return
-      last = now
-      void supabase.from('driver_locations').upsert({
-        employee_id: employeeId,
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
-        accuracy: pos.coords.accuracy ?? null,
-        speed: pos.coords.speed ?? null,
-        sharing: true,
-        updated_at: new Date().toISOString(),
-      }).then(({ error }) => { if (error) onError(`Location not saved: ${error.message}`) })
+  let lastPos: GeolocationPosition | null = null
+  const save = (pos: GeolocationPosition, force = false) => {
+    lastPos = pos
+    const now = Date.now()
+    if (!force && now - last < MIN_INTERVAL_MS) return
+    last = now
+    void supabase.from('driver_locations').upsert({
+      employee_id: employeeId,
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      accuracy: pos.coords.accuracy ?? null,
+      speed: pos.coords.speed ?? null,
+      sharing: true,
+      updated_at: new Date().toISOString(),
+    }).then(({ error }) => { if (error) onError(`Location not saved: ${error.message}`); else onSent?.(now) })
+  }
+  const fail = (err: GeolocationPositionError) =>
+    onError(err.code === err.PERMISSION_DENIED ? 'Location permission was refused — allow it in the browser settings.' : `Location error: ${err.message}`)
+  const opts: PositionOptions = { enableHighAccuracy: true, maximumAge: 15_000, timeout: 30_000 }
+  const watchId = navigator.geolocation.watchPosition(pos => save(pos), fail, opts)
+  // a phone that does not move fires no new position: ask again every minute (or resend the last one)
+  const beat = window.setInterval(() => {
+    if (Date.now() - last < HEARTBEAT_MS - 1000) return
+    navigator.geolocation.getCurrentPosition(pos => save(pos, true), () => { if (lastPos) save(lastPos, true) }, opts)
+  }, HEARTBEAT_MS / 2)
+  return {
+    stop: () => {
+      navigator.geolocation.clearWatch(watchId)
+      window.clearInterval(beat)
+      void supabase.from('driver_locations').update({ sharing: false, updated_at: new Date().toISOString() }).eq('employee_id', employeeId)
     },
-    err => onError(err.code === err.PERMISSION_DENIED ? 'Location permission was refused — allow it in the browser settings.' : `Location error: ${err.message}`),
-    { enableHighAccuracy: true, maximumAge: 15_000, timeout: 30_000 },
-  )
-  return () => {
-    navigator.geolocation.clearWatch(watchId)
-    void supabase.from('driver_locations').update({ sharing: false, updated_at: new Date().toISOString() }).eq('employee_id', employeeId)
+    ping: () => navigator.geolocation.getCurrentPosition(pos => save(pos, true), fail, opts),
   }
 }
 

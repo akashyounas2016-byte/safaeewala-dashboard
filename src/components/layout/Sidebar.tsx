@@ -202,9 +202,12 @@ interface SidebarContentProps {
 function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
   const { user: me, signOut } = useAuth()
   const rolePerms      = useRolePerms()
-  const fluentUnreadCount = useFluentFormsUnreadCount()
   // R-ALERT-01: open alerts on the Alerts item (none for cleaners / drivers, R-SEC-05)
-  const { isField: isFieldLogin } = useFieldStaff()
+  const { isField: isFieldLogin, resolving: staffResolving } = useFieldStaff()
+  // R-SEC-10: no lead polling for field logins — and none before we know (the first poll of a cleaner login
+  // read every lead from the VPS and tried to copy them into Supabase: 48 stuck changes on the phone)
+  const maybeField = me?.role === 'employee' && !!me?.employee_id && (staffResolving || isFieldLogin)
+  const fluentUnreadCount = useFluentFormsUnreadCount(!!me && !maybeField)
   const { alerts: openAlerts } = useAlerts(!isFieldLogin)
   const waUnread = useWhatsAppUnread(!isFieldLogin) // R-WA-01
   const badgeOf = (to: string) => (to === '/fluent-forms' ? fluentUnreadCount : to === '/alerts' ? openAlerts.length : to === '/whatsapp-crm' || to === '/inbox' ? waUnread : undefined)

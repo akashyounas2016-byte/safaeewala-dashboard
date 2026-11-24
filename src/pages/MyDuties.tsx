@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   MapPinned, Navigation, Square, ChevronLeft, ChevronRight, Clock, MapPin, Users, Truck,
   Banknote, Lock, Eye, Package, CalendarDays, Sparkles, Phone, MessageCircle, PlayCircle, CheckCircle2, AlertTriangle, Car,
@@ -9,13 +9,15 @@ import { whatsappUrl } from '@/lib/driverRoutes'
 import { notify } from '@/lib/notify'
 import type { Client } from '@/types'
 import { useData } from '@/store/DataContext'
+import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/store/UserContext'
 import { useFieldStaff } from '@/store/useFieldStaff'
 import { todayDubai, addDays } from '@/lib/dubaiTime'
 import { fmtDate } from '@/components/dailyJobSheet/jobSheetUtils'
 import { activeDrivers, buildRouteSites, googleMapsRouteUrl } from '@/lib/driverRoutes'
 import { useDayPlan } from '@/lib/driverPlans'
-import { startLocationSharing } from '@/lib/driverLocation'
+import { useLiveSharing } from '@/lib/useLiveSharing'
+import { ageLabel } from '@/lib/driverLocation'
 import { SiteCard } from '@/components/drivers/SiteCard'
 import { canApproveLeave, findMark, weekdayOf } from '@/lib/attendance'
 import { cleanerDuties, dutyKindOf, mapsSearchUrl, type CleanerDuty, type DutyKind } from '@/lib/duties'
@@ -49,6 +51,22 @@ export function MyDuties() {
     || (isOffice ? (previewKind === 'driver' ? drivers : cleaners).find(e => e.id === previewId) : undefined)
   const kind = dutyKindOf(person)
 
+  // R-SEC-10: a cleaner login cannot read the drivers' records any more — their names come from
+  // field_staff_directory() (name and phone only). Before that SQL is run, the employees list still has them.
+  const [directory, setDirectory] = useState<Employee[]>([])
+  useEffect(() => {
+    if (!linked) return
+    let alive = true
+    void supabase.rpc('field_staff_directory').then(({ data, error }) => {
+      if (alive && !error && Array.isArray(data)) setDirectory(data as Employee[])
+    })
+    return () => { alive = false }
+  }, [linked])
+  const staffForDuties = useMemo(
+    () => [...employees, ...directory.filter(d => !employees.some(e => e.id === d.id))],
+    [employees, directory],
+  )
+
   const [date, setDate] = useState(() => todayDubai())
   const today = todayDubai()
   const [plan] = useDayPlan(date)
@@ -61,8 +79,8 @@ export function MyDuties() {
 
   // Cleaner view
   const duties = useMemo(
-    () => (kind === 'cleaner' && person ? cleanerDuties(dailyJobs, person, date, plan, employees) : []),
-    [kind, person, dailyJobs, date, plan, employees],
+    () => (kind === 'cleaner' && person ? cleanerDuties(dailyJobs, person, date, plan, staffForDuties) : []),
+    [kind, person, dailyJobs, date, plan, staffForDuties],
   )
   const totalHours = Math.round(duties.reduce((s, d) => s + d.hours, 0) * 10) / 10
   const cashTotal = duties.reduce((s, d) => s + d.cashToCollect, 0)
@@ -84,20 +102,18 @@ export function MyDuties() {
     return job ? clients.find(c => jobMatchesClient(job, c)) : undefined
   }
 
-  // Live location (drivers, own login only)
-  const [sharing, setSharing] = useState(false)
-  const [shareError, setShareError] = useState<string | null>(null)
-  const stopRef = useRef<(() => void) | null>(null)
-  useEffect(() => () => stopRef.current?.(), [])
-  // R-OPS-14: cleaners and CSR can share too (Overview live map) — only their own login, only while they press it
+  // Live location (own login only). R-OPS-14: cleaners and CSR share too (Overview live map).
+  // R-OPS-19: once turned on it starts again by itself when My Duties opens; the screen is kept awake
   const canShare = !!linked
-  const toggleSharing = () => {
-    if (!canShare || !linked) return
-    if (sharing) { stopRef.current?.(); stopRef.current = null; setSharing(false); return }
-    setShareError(null)
-    stopRef.current = startLocationSharing(linked.id, msg => setShareError(msg))
-    setSharing(true)
-  }
+  const live = useLiveSharing(linked?.id)
+  const sharing = live.sharing
+  const shareError = live.error
+  const toggleSharing = () => { if (canShare) live.toggle() }
+  const [, setTick] = useState(0)
+  useEffect(() => { if (!sharing) return; const t = window.setInterval(() => setTick(n => n + 1), 10_000); return () => window.clearInterval(t) }, [sharing])
+  const shareStatus = sharing
+    ? `● Sharing with the office${live.lastSentAt ? ` · last sent ${ageLabel(new Date(live.lastSentAt).toISOString())}` : ' · finding your position…'}${live.awake ? ' · screen kept on' : ''}. Keep this page open — it starts again by itself when you open My Duties.`
+    : ''
 
   // A login that is not linked to a staff record and is not office: nothing to show
   if (!linked && !isOffice) {
@@ -233,7 +249,7 @@ export function MyDuties() {
               {sharing ? <><Square size={18} /> Stop sharing my location</> : <><MapPinned size={20} /> Start shift — share my location</>}
             </button>
           </div>
-          {sharing && <p className="text-[12px] text-emerald-800 font-semibold">● Sharing your location with the office while this page is open.</p>}
+          {sharing && <p className="text-[12px] text-emerald-800 font-semibold">{shareStatus}</p>}
           {shareError && <p className="text-[12px] text-rose-700 font-semibold">{shareError}</p>}
           {stops.length === 0
             ? <EmptyDay text={`No stops assigned for ${fmtDate(date)}.`} />
@@ -249,7 +265,7 @@ export function MyDuties() {
             className={`w-full min-h-[52px] rounded-2xl px-4 py-3 flex items-center gap-3 font-bold text-[14px] cursor-pointer ${sharing ? 'bg-rose-600 text-white active:bg-rose-700' : 'bg-emerald-700 text-white active:bg-emerald-800'}`}>
             {sharing ? <><Square size={18} /> Stop sharing my location</> : <><MapPinned size={20} /> Share my location with the office</>}
           </button>
-          {sharing && <p className="text-[12px] text-emerald-800 font-semibold">● Sharing your location with the office while this page is open.</p>}
+          {sharing && <p className="text-[12px] text-emerald-800 font-semibold">{shareStatus}</p>}
           {shareError && <p className="text-[12px] text-rose-700 font-semibold">{shareError}</p>}
         </div>
       )}

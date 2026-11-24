@@ -588,10 +588,12 @@ export function countUnreadFluentForms(leads: FluentFormLead[]): number {
   }).length
 }
 
-export function useFluentFormsUnreadCount() {
+/** enabled = false (cleaner / driver logins, R-SEC-10): no polling — they cannot read leads */
+export function useFluentFormsUnreadCount(enabled = true) {
   const [unreadCount, setUnreadCount] = useState<number>(0)
 
   useEffect(() => {
+    if (!enabled) { setUnreadCount(0); return }
     let mounted = true
 
     const checkCount = async () => {
@@ -626,7 +628,7 @@ export function useFluentFormsUnreadCount() {
       window.removeEventListener('storage', handleRead)
       clearInterval(interval)
     }
-  }, [])
+  }, [enabled])
 
   return unreadCount
 }

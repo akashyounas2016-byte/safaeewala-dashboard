@@ -541,10 +541,20 @@ async function activeUserFrom(req) {
   const ur = await fetch(`${SUPABASE_URL}/auth/v1/user`, { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${token}` } });
   if (!ur.ok) return null;
   const user = await ur.json();
-  const rows = await supa(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,status`);
+  const rows = await supa(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,status,employee_id`);
   const me = rows && rows[0];
-  return me && me.status === 'active' ? { ...user, role: me.role } : null;
+  if (!me || me.status !== 'active') return null;
+  // R-SEC-10: an Employee login linked to a cleaner / driver record is a field login (same as the app's isFieldStaff)
+  let field = false;
+  if (me.role === 'employee' && me.employee_id) {
+    const emp = await supa(`/rest/v1/employees?id=eq.${encodeURIComponent(me.employee_id)}&select=role`).catch(() => null);
+    field = !!(emp && emp[0] && emp[0].role !== 'supervisor');
+  }
+  return { ...user, role: me.role, field };
 }
+
+/** R-SEC-10: what a field login (cleaner, driver) may call — My Duties needs none of the data endpoints */
+const FIELD_API_ALLOWED = new Set(['/api/health', '/api/logs/errors', '/api/logs/csp']);
 
 /**
  * SEC-06: a signed-in, active user checked with the public key only — used while the service key is
@@ -593,6 +603,8 @@ async function authorizeApi(req, pathname, parsedUrl) {
   }
   try {
     const user = await activeUserFrom(req);
+    // R-SEC-10: cleaners / drivers do not read leads, agencies, backups or settings through the API
+    if (user && user.field && !FIELD_API_ALLOWED.has(pathname)) return { ok: false, status: 403, error: 'Not available for this login.' };
     if (user) return { ok: true };
   } catch (err) {
     return { ok: false, status: 502, error: 'Could not verify the session' };

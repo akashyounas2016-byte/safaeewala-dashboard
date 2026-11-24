@@ -258,6 +258,8 @@
 - Map par cleaners (hara), drivers (neela) aur CSR (jamni) chhote **bot** ki shakal mein. Bot par mouse le jayein (phone par tap) — naam, kaam abhi kya kar raha hai, aur location kab aayi. Upar se All / Cleaners / Drivers / CSR chunein; side list mein naam dabayein to map wahan chala jata hai.
   - Hara chamakta ghera = abhi live, peela = aaj ki aakhri location, grey = aaj ki aakhri job step ki jagah.
   - **Location tabhi aati hai jab staff khud share kare:** phone par **My Duties** kholein aur **Share my location with the office** dabayein (driver: "Start shift — share my location"). Page band ho to location rukk jati hai — poore din ki tracking Android app ke saath aayegi.
+  - **24 Nov se:** ek dafa Share dabaya to agli baar My Duties kholte hi location khud shuru ho jati hai (jab tak **Stop** na dabayein). Share ke dauran phone ki screen band nahi hoti; neeche likha hota hai "last sent … ago". Cleaner khara bhi ho to har minute location jati hai. **My Duties ka page khula rakhein** — page band ya phone lock ho to location nahi jati (ye Android app se hoga).
+  - Cleaner / driver ki login ab sirf apni duties dekhti hai: na clients, na doosre employees ka record, na leads, na Activity Log.
 
 ## 5. Complaints aur Health Score
 

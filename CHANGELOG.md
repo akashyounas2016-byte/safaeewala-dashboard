@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- security: a cleaner / driver login reads only its own data — new SQL `2026-11-24_field_login_more_tables.sql` (audit log, job steps, positions, attendance, drivers' full records; owner runs it), VPS API answers 403 to field logins except health / logs, no lead polling for field logins (R-SEC-10)
+- feat(my-duties): live location — starts again by itself once turned on, keeps the screen awake, sends every minute when standing still and at once when the screen comes back, "last sent" status (R-OPS-19)
+
 - fix(job-sheet): Staff on Duty counts every cleaner of a team row — 1 Oct showed 25, 27 worked (owner's "No of employee error" sheet; data was complete) (R-EMP-18)
 - feat(excel): footer **Reconfirmation** — Charges − Rcvd − Pending = Balance, + Adv = 0, rows that do not add up, copy (R-SHEET-03)
 - feat(excel): Date column before Start time when more than one day is open; Last 7 / 30 Days presets (R-SHEET-04)
