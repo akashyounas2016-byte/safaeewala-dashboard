@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(employees): the page crashed ("Cannot read properties of null (reading 'forEach')") when one staff record had no skills list — the TEST Cleaner made on 24 Nov; that record is repaired and the Employees list / profile now treat a missing skills list as empty
+
 - security: a cleaner / driver login reads only its own data — new SQL `2026-11-24_field_login_more_tables.sql` (audit log, job steps, positions, attendance, drivers' full records; owner runs it), VPS API answers 403 to field logins except health / logs, no lead polling for field logins (R-SEC-10)
 - feat(my-duties): live location — starts again by itself once turned on, keeps the screen awake, sends every minute when standing still and at once when the screen comes back, "last sent" status (R-OPS-19)
 

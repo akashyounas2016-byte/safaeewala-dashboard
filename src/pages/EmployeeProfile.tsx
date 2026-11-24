@@ -1032,7 +1032,7 @@ export function EmployeeProfile() {
                   {(emp.skills || []).length === 0 ? (
                     <p className="text-[12px] text-slate-400">No specific skills listed</p>
                   ) : (
-                    emp.skills.map(s => (
+                    (emp.skills ?? []).map(s => (
                       <span key={s} className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1 rounded-full text-[12px] font-semibold">
                         {s}
                       </span>

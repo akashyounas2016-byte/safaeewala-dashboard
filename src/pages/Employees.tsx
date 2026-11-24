@@ -708,7 +708,8 @@ export function Employees() {
   /* Aggregate skills scoped to selected agency */
   const skillCounts = useMemo(() => {
     return agencyScopedEmployees.reduce((acc, e) => {
-      e.skills.forEach(s => { acc[s] = (acc[s] || 0) + 1 })
+      // a record saved without skills (null) must not break the page (live 25 Nov)
+      for (const s of e.skills ?? []) acc[s] = (acc[s] || 0) + 1
       return acc
     }, {} as Record<string, number>)
   }, [agencyScopedEmployees])
@@ -953,14 +954,14 @@ export function Employees() {
 
               {/* Skills Tags */}
               <div className="flex flex-wrap gap-1.5 mb-2">
-                {emp.skills.slice(0, 3).map(s => (
+                {(emp.skills ?? []).slice(0, 3).map(s => (
                   <span key={s} className="text-[10.5px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-semibold border border-slate-200/60">
                     {s}
                   </span>
                 ))}
-                {emp.skills.length > 3 && (
+                {(emp.skills ?? []).length > 3 && (
                   <span className="text-[10.5px] text-slate-400 font-bold self-center">
-                    +{emp.skills.length - 3}
+                    +{(emp.skills ?? []).length - 3}
                   </span>
                 )}
               </div>
