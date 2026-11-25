@@ -8,6 +8,7 @@ import type { Agency, Booking, Client, Employee } from '@/types'
 import { employeeMatchesStaff, realCleanerName, splitStaffNames } from '@/lib/clientDataSync'
 import { buildAgencyNotifications } from '@/lib/agencyAlerts'
 import { daysUntil, formatDate, isWrongDocDate, DOC_ALERT_DAYS } from '@/lib/utils'
+import { minutesLate, lateText } from '@/lib/dutyChecks'
 
 /**
  * R-ALERT-01: every alert of the CRM in one list, for Sidebar → Alerts. Main screens no longer carry
@@ -218,6 +219,40 @@ export function bookingAlerts(bookings: Booking[], today: string): CrmAlert[] {
  * R-ALERT-04: Cleaner-reported duty issues routed centrally into Admin alerts.
  * Cleaners report issues via My Duties; Admin gets an immediate high-priority alert with links to Job Sheet and Booking.
  */
+/**
+ * R-DUTY-04: a job of today not started LATE_GRACE minutes after its start time — for cleaners who have a CRM
+ * login (only they can press Start job on My Duties; the others would raise an alert for every job of the day).
+ */
+export function lateStartAlerts(
+  jobs: { id: string; date?: string; staff_name?: string; start_time?: string; end_time?: string; address?: string; area?: string }[],
+  checkins: { job_id: string; cleaner: string; employee_id?: string | null; status: string }[],
+  employees: Employee[],
+  loginEmployeeIds: Set<string>,
+  today: string,
+  nowMin: number,
+): CrmAlert[] {
+  const out: CrmAlert[] = []
+  const withLogin = employees.filter(e => loginEmployeeIds.has(e.id) && e.status !== 'inactive')
+  jobs.forEach(j => {
+    if (String(j.date || '').slice(0, 10) !== today) return
+    splitStaffNames(j.staff_name || '').forEach(name => {
+      const e = withLogin.find(x => employeeMatchesStaff(x, name))
+      if (!e) return
+      const step = checkins.find(c => c.job_id === j.id && (c.employee_id === e.id || c.cleaner.trim().toLowerCase() === e.full_name.trim().toLowerCase()))
+      if (step?.status === 'issue') return // already reported to the office
+      const late = minutesLate(j, step?.status, today, nowMin)
+      if (!late) return
+      out.push({
+        id: `duty-late-${today}-${j.id}-${e.id}`, source: 'duties', severity: late >= 60 ? 'high' : 'medium',
+        title: `Not started · ${e.full_name}`,
+        message: `${j.address || j.area || 'Job'} was due at ${j.start_time} — ${lateText(late)} late, Start job not pressed on My Duties${step?.status === 'on_way' ? ' (on the way)' : ''}.`,
+        actionUrl: `/daily-job-sheet?date=${today}&job=${encodeURIComponent(j.id)}`, actionLabel: 'Open job',
+      })
+    })
+  })
+  return out
+}
+
 export function cleanerIssueAlerts(
   issues: { id: string; job_id: string; date: string; cleaner: string; status: string; note?: string | null }[],
   jobs: { id: string; client_name?: string; site?: string; address?: string; area?: string; date?: string; booking_id?: string }[] = []

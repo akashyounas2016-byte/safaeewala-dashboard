@@ -4,13 +4,14 @@ import { useNotifications } from '@/store/NotificationContext'
 import { analyzeCRMHealth } from '@/lib/crmAIBot'
 import { buildCrewTimeline } from '@/lib/crewTimeline'
 import { backupHealth, type BackupStatus } from '@/lib/backupStatus'
-import { agencyAlerts, bookingAlerts, cleanerIssueAlerts, scheduleCleanerAlerts, contractEndAlerts, buildAlerts, employeeDocAlerts, type CrmAlert } from '@/lib/alerts'
+import { agencyAlerts, bookingAlerts, cleanerIssueAlerts, lateStartAlerts, scheduleCleanerAlerts, contractEndAlerts, buildAlerts, employeeDocAlerts, type CrmAlert } from '@/lib/alerts'
 import { CONTRACTS_KEY } from '@/lib/clientContracts'
 import type { RecurringContract } from '@/types'
 import { todayDubai } from '@/lib/dubaiTime'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { supabase } from '@/lib/supabase'
 import type { JobCheckin } from '@/lib/jobCheckins'
+import { dubaiMinutes } from '@/lib/overviewStats'
 
 const DISMISSED_KEY = 'safaeewala_alerts_dismissed'
 const CHANGED = 'safaeewala:alerts-dismissed'
@@ -39,10 +40,25 @@ export function useAlerts(enabled = true): {
 
   // R-ALERT-04: Cleaner reported issues from My Duties routed to Admin alerts in real time
   const [dutyIssues, setDutyIssues] = useState<JobCheckin[]>([])
+  // R-DUTY-04: today's job steps and who has a login, for "not started" alerts; re-checked every minute
+  const [todaySteps, setTodaySteps] = useState<JobCheckin[]>([])
+  const [loginIds, setLoginIds] = useState<Set<string>>(new Set())
+  const [nowMin, setNowMin] = useState(() => dubaiMinutes())
+  useEffect(() => {
+    if (!enabled) return
+    const t = window.setInterval(() => setNowMin(dubaiMinutes()), 60_000)
+    void supabase.from('profiles').select('employee_id').not('employee_id', 'is', null).then(({ data, error }) => {
+      if (!error && data) setLoginIds(new Set((data as { employee_id: string }[]).map(r => r.employee_id)))
+    })
+    return () => window.clearInterval(t)
+  }, [enabled])
   useEffect(() => {
     if (!enabled) return
     let alive = true
     const loadIssues = () => {
+      void supabase.from('job_checkins').select('*').eq('date', today).then(({ data, error }) => {
+        if (alive && !error && data) setTodaySteps(data as JobCheckin[])
+      })
       void supabase.from('job_checkins')
         .select('*')
         .eq('status', 'issue')
@@ -65,7 +81,7 @@ export function useAlerts(enabled = true): {
       alive = false
       void supabase.removeChannel(channel)
     }
-  }, [enabled])
+  }, [enabled, today])
 
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => safeLocalStorageGet<string[]>(DISMISSED_KEY, []))
   useEffect(() => {
@@ -95,9 +111,10 @@ export function useAlerts(enabled = true): {
         ...scheduleCleanerAlerts(clients, employees),
         ...contractEndAlerts(clients, safeLocalStorageGet<RecurringContract[]>(CONTRACTS_KEY, []), today), // R-ALERT-05
         ...cleanerIssueAlerts(dutyIssues, dailyJobs),
+        ...lateStartAlerts(dailyJobs, todaySteps, employees, loginIds, today, nowMin), // R-DUTY-04
       ],
     })
-  }, [enabled, notifications, bookings, clients, dailyJobs, employees, agencies, today, backup, dutyIssues])
+  }, [enabled, notifications, bookings, clients, dailyJobs, employees, agencies, today, backup, dutyIssues, todaySteps, loginIds, nowMin])
 
   const hidden = new Set(dismissedIds)
   return {

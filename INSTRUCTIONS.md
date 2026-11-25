@@ -118,6 +118,12 @@
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
+### My Duties: waqt ka takrao aur late (25 Nov, raat)
+- "Ambika" ki My Duties mein "Ambika Devi Tharu" ki jobs aa rahi thin (naam milane ki ghalti) — is liye do jobs ek hi waqt dikh rahi thin. Theek ho gaya.
+- Agar kisi cleaner ki do jobs ka waqt sach mein takraye to dono cards par **laal** likha aata hai: "Time clash … Call the office".
+- Ek job **Start** ho to doosri Start nahi hoti jab tak pehli ka **End job** na dabayein.
+- Job ka time guzre **15 minute** aur Start na dabaya ho: card par **"Not started — … late"**, cleaner ke phone par notification (pehli dafa phone ijazat maangta hai), aur office ke **Alerts** mein "Not started · naam". (Sirf un cleaners ke liye jin ki CRM login hai.)
+
 ### Live Map (25 Nov, raat)
 - Har bande ka **pin** us ke role ke rang mein hai aur neeche **poora naam** likha hai. Mouse le jayein to likha aata hai woh **kahan** hai ("Now at: Villa 4-34B, Mirdif").
 - Ek hi jagah kai log hon to beech mein ek gol nishaan (ginti ke saath) aur har banda line se juda hota hai — koi kisi ke peeche nahi chhupta.

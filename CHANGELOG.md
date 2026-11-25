@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(my-duties): "Ambika" was shown the jobs of "Ambika Devi Tharu" (names matched both ways) — looked like a time clash; time-clash warning on both cards, Start job refused while another job is started, late-start banner + phone notification for the cleaner and "Not started" alert for the office (R-DUTY-04)
+
 - change(payments): 5 equal cards a row, one row at first (the five of before), View more for the next rows; Active Contracts and High Value cards removed (R-FIN-22)
 - fix(live-map): a job step of yesterday's job pressed today now shows (Ayesha); steps of yesterday and today live; "on duty / on the map / no position yet" with the list of who is missing and why; pins with full names and role signs, hover shows the place; same-place hub with lines; Technical filter instead of CSR (R-OPS-21)
 

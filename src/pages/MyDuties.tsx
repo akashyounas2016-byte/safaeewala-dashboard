@@ -21,6 +21,9 @@ import { ageLabel } from '@/lib/driverLocation'
 import { SiteCard } from '@/components/drivers/SiteCard'
 import { canApproveLeave, findMark, weekdayOf } from '@/lib/attendance'
 import { cleanerDuties, dutyKindOf, mapsSearchUrl, type CleanerDuty, type DutyKind } from '@/lib/duties'
+import { dutyClashes, clashText, startBlockedBy, minutesLate, lateText } from '@/lib/dutyChecks'
+import { dubaiMinutes } from '@/lib/overviewStats'
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import type { Employee } from '@/types'
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -90,9 +93,37 @@ export function MyDuties() {
   const checkins = useJobCheckins(date)
   const checkinOf = (jobId: string) => (person ? checkins.rows[checkinId(jobId, person.full_name)] : undefined)
   const doneCount = duties.filter(d => checkinOf(d.job.id)?.status === 'done').length
+  // R-DUTY-04: overlapping jobs, one job at a time, late starts
+  const clashes = useMemo(() => dutyClashes(duties.map(d => d.job)), [duties])
+  const [nowMin, setNowMin] = useState(() => dubaiMinutes())
+  useEffect(() => { const t = window.setInterval(() => setNowMin(dubaiMinutes()), 60_000); return () => window.clearInterval(t) }, [])
+  const lateOf = (d: CleanerDuty) => minutesLate(d.job, checkinOf(d.job.id)?.status, today, nowMin)
+  // Tell the cleaner once per late job (own login only — not the office previewing): phone notification when allowed, else a message
+  useEffect(() => {
+    if (!linked || !person) return
+    const seen = safeLocalStorageGet<string[]>('safaeewala_late_told', [])
+    const fresh = duties.filter(d => lateOf(d) > 0 && !seen.includes(`${d.job.id}|${d.job.date}`))
+    if (!fresh.length) return
+    fresh.forEach(d => {
+      const body = `${d.site} should have started at ${d.start}. Press Start job, or report an issue to the office.`
+      try {
+        if ('Notification' in window && Notification.permission === 'granted') new Notification('Job not started yet', { body, tag: `late-${d.job.id}` })
+        else notify.warning(`Job not started yet — ${body}`)
+      } catch { notify.warning(`Job not started yet — ${body}`) }
+    })
+    safeLocalStorageSet('safaeewala_late_told', [...seen, ...fresh.map(d => `${d.job.id}|${d.job.date}`)].slice(-300))
+  }, [duties, nowMin, checkins.rows, linked]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const step = async (jobId: string, status: CheckinStatus, note?: string) => {
     const d = duties.find(x => x.job.id === jobId)
     if (!person || !d) return
+    // R-DUTY-04: one job at a time — the started one has to end first
+    if (status === 'started') {
+      const busy = startBlockedBy(duties.map(x => x.job), id => checkinOf(id)?.status, jobId)
+      if (busy) { notify.error(`End the job at ${busy.address || busy.area || 'the other site'} first — one job at a time.`); return }
+    }
+    // ask once for phone notifications (late-start reminders)
+    if (linked && 'Notification' in window && Notification.permission === 'default') void Notification.requestPermission().catch(() => {})
     const err = await checkins.update({ id: d.job.id, date }, person.full_name, person.id, status, note)
     if (err) notify.error(`Not saved: ${err}`)
     else notify.success(`${CHECKIN_LABEL[status]} · ${d.site}`)
@@ -280,7 +311,8 @@ export function MyDuties() {
             ? <EmptyDay text={`No jobs for ${fmtDate(date)}.`} />
             : <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3">{duties.map((d, i) => (
                 <DutyCard key={d.job.id} duty={d} index={i} checkin={checkinOf(d.job.id)} client={clientOf(d.job.id)}
-                  canUpdate={checkins.ready} onStep={(st, note) => void step(d.job.id, st, note)} />
+                  canUpdate={checkins.ready} onStep={(st, note) => void step(d.job.id, st, note)}
+                  clash={clashes.get(d.job.id) ? clashText(clashes.get(d.job.id)!) : undefined} late={lateOf(d)} />
               ))}</div>}
           {!checkins.ready && <p className="text-[11.5px] text-slate-500">Job progress (On the way / Started / Done) turns on once the office runs the job_checkins setup.</p>}
         </>
@@ -294,9 +326,13 @@ function EmptyDay({ text }: { text: string }) {
 }
 
 /** One cleaning job on the cleaner's phone */
-function DutyCard({ duty: d, index, checkin, client, canUpdate, onStep }: {
+function DutyCard({ duty: d, index, checkin, client, canUpdate, onStep, clash, late = 0 }: {
   duty: CleanerDuty; index: number; checkin?: JobCheckin; client?: Client; canUpdate: boolean
   onStep: (status: CheckinStatus, note?: string) => void
+  /** R-DUTY-04: another of their jobs at the same time */
+  clash?: string
+  /** R-DUTY-04: minutes past the start without Start job */
+  late?: number
 }) {
   const material = String(d.job.material || '').trim()
   const [issueOpen, setIssueOpen] = useState(false)
@@ -327,6 +363,12 @@ function DutyCard({ duty: d, index, checkin, client, canUpdate, onStep }: {
         {d.hours > 0 && <span className="text-[11.5px] font-black px-2 py-0.5 rounded-full bg-white border border-emerald-200 text-emerald-800">{d.hours}h</span>}
       </div>
       <div className="p-4 space-y-2.5">
+        {clash && (
+          <p role="alert" className="text-[12px] font-bold text-rose-800 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 flex gap-2"><AlertTriangle size={15} className="shrink-0 mt-px" /> {clash}</p>
+        )}
+        {late > 0 && checkin?.status !== 'issue' && (
+          <p role="alert" className="text-[12px] font-bold text-amber-900 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2 flex gap-2"><Clock size={15} className="shrink-0 mt-px" /> Not started — {lateText(late)} late (start {d.start}). Press Start job, or report an issue.</p>
+        )}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[15px] font-black text-[#111827] leading-snug break-words">{d.site}</p>

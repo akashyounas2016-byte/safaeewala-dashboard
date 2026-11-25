@@ -995,6 +995,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `MyDuties.tsx → DutyCard`, `src/lib/bookingSync.ts → jobPatchFromBookingPatch`, migration `2026-11-09_duty_booking_sync.sql`.
 - **Status:** Built · needs the migration · Since: 2026-11-09
 
+### R-DUTY-04 — My Duties: the right person's jobs, time clash, one job at a time, late starts
+- **Rule:** *"My duties mein Ambika ki do jobs same time par different locations par start ho rahi hain, jo ke scheduling conflict hai. System mein aisi validation honi chahiye jo overlapping times ko block kare aur agar koi job waqt par start nahi hoti, to cleaner aur admin dono ko foran notification bheje."* (2026-11-25)
+  - **Cause (not a clash in the data):** the 09:00–12:00 job at Nihon Kohden Middle belongs to **Ambika Devi Tharu** (short name Ambika D), another employee. Names were matched both ways, so the employee **Ambika** was also given the jobs of "Ambika Devi Tharu". Now one way only: the sheet's name may be a shorter form of the employee's ("Rupa" → "Rupa Basnet …"), never longer; the short name matches exactly. Checked on live data (Sep–Nov): only these two staff names change (Ambika ⇄ "Ambika Devi Tharu", "Ambika Devi Tharu, Uma Kumari Magar"). The test steps pressed in preview on that job under "Ambika" were left as they are.
+  - **Clash on the card:** when two of the person's jobs overlap, both cards say "Time clash with … (times). Call the office before starting." The office already gets "Clash · name" in Alerts (Daily Job Sheet check).
+  - **One job at a time:** Start job is refused while another of their jobs is Started and not Ended — "End the job at … first — one job at a time."
+  - **Late:** 15 minutes after the start time without Start job (today): the card says "Not started — n min late"; the cleaner gets a phone notification once per job (asked for on their first step; else an on-screen message); the office gets **"Not started · name"** in Alerts (high after 1 h), re-checked every minute — only for cleaners with a CRM login (the others cannot press Start; A40). A reported issue stops it.
+- **Code:** `src/lib/dutyChecks.ts`; `MyDuties.tsx → step, DutyCard (clash, late)`; `alerts.ts → lateStartAlerts`; `useAlerts.ts`; `clientDataSync.ts → employeeMatchesStaff`. Test: `tests/unit/batch-1125f.test.ts`.
+- **Status:** Active · Since: 2026-11-25
+
+
 ---
 
 ## EMP — Employees

@@ -1051,7 +1051,12 @@ export function employeeMatchesStaff(emp: Employee, staffName: string): boolean 
     const sNorm = normalizeStaffName(name)
     if (!sNorm) return false
     if (eNorm === sNorm || emp.id === `emp-dj-${sNorm}`) return true
-    // Whole-word match only ("Rupa" must not match "Rupak")
+    // R-DUTY-04: the short name on the sheet ("Ambika D") is this person
+    if (emp.short_name && normalizeStaffName(emp.short_name) === sNorm) return true
+    // Whole-word match only ("Rupa" must not match "Rupak"), and only one way: the sheet's name may be a
+    // shorter form of the employee's ("Rupa" → "Rupa Basnet …"), never longer — "Ambika" (one employee) was
+    // given the jobs of "Ambika Devi Tharu" (another employee) on My Duties and looked like a time clash.
+    if (toWords(name).split(' ').length > toWords(emp.full_name).split(' ').length) return false
     return containsWords(emp.full_name, name)
   })
 }
