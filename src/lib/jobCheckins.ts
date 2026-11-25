@@ -1,5 +1,38 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
+
+/**
+ * R-APP-04: offline job steps. A step pressed without internet (or when the upload fails on the network) is kept
+ * on the phone with the time it was pressed and sent as soon as the phone is online again (every 30 s / on
+ * "online"). The screen shows it at once; "n steps waiting to send" until they are out.
+ */
+const QUEUE_KEY = 'safaeewala_checkin_queue'
+export const QUEUE_EVENT = 'safaeewala:checkin-queue'
+export const queuedSteps = (): JobCheckin[] => safeLocalStorageGet<JobCheckin[]>(QUEUE_KEY, [])
+const saveQueue = (q: JobCheckin[]) => { safeLocalStorageSet(QUEUE_KEY, q); window.dispatchEvent(new Event(QUEUE_EVENT)) }
+const isNetworkError = (msg: string) => /fetch|network|failed to|timeout|offline|load failed/i.test(msg)
+let flushing = false
+export async function flushCheckinQueue(): Promise<number> {
+  if (flushing || (typeof navigator !== 'undefined' && !navigator.onLine)) return queuedSteps().length
+  flushing = true
+  try {
+    let q = queuedSteps()
+    for (const row of [...q]) {
+      const { error } = await supabase.from('job_checkins').upsert(row)
+      if (error && isNetworkError(error.message)) break
+      q = q.filter(r => !(r.id === row.id && r.updated_at === row.updated_at)) // sent (or refused for good — not retried forever)
+      saveQueue(q)
+    }
+    return q.length
+  } finally { flushing = false }
+}
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('online', () => { void flushCheckinQueue() })
+  // unref: never keeps a Node process (tests, build tools) alive
+  const t = setInterval(() => { if (queuedSteps().length) void flushCheckinQueue() }, 30_000) as unknown as { unref?: () => void }
+  t.unref?.()
+}
 
 /**
  * R-DUTY-01 — job progress from My Duties: On my way → Started → Done, or an Issue for the office.
@@ -23,6 +56,9 @@ export interface JobCheckin {
   lng?: number | null
   updated_at: string
 }
+
+/** update() returns this when the step was kept on the phone (offline) — not an error */
+export const QUEUED = 'queued'
 
 export const checkinId = (jobId: string, cleaner: string) => `${jobId}|${cleaner.trim().toLowerCase()}`
 
@@ -88,7 +124,8 @@ export function useJobCheckins(date: string) {
       if (!alive) return
       if (error) { setReady(false); return }
       setReady(true)
-      setRows(Object.fromEntries(((data ?? []) as JobCheckin[]).map(r => [r.id, r])))
+      const queued = queuedSteps().filter(r => r.date === date)
+      setRows(Object.fromEntries([...((data ?? []) as JobCheckin[]), ...queued].map(r => [r.id, r])))
     })
     const channel = supabase.channel(`crm-job-checkins-${date}-${Math.random().toString(36).slice(2, 9)}`).on('postgres_changes', { event: '*', schema: 'public', table: 'job_checkins', filter: `date=eq.${date}` }, payload => {
       const row = payload.new as JobCheckin | undefined
@@ -116,7 +153,13 @@ export function useJobCheckins(date: string) {
       updated_at: now,
     }
     setRows(r => ({ ...r, [id]: row }))
-    const { error } = await supabase.from('job_checkins').upsert(row)
+    // R-APP-04: no internet → keep it on the phone and send it later (the pressed time stays)
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine
+    const { error } = offline ? { error: { message: 'offline' } } : await supabase.from('job_checkins').upsert(row).then(r => r, (e: unknown) => ({ error: { message: e instanceof Error ? e.message : 'network' } }))
+    if (error && isNetworkError(error.message)) {
+      saveQueue([...queuedSteps().filter(r => r.id !== id), row])
+      return QUEUED
+    }
     if (error) { setRows(r => (prev ? { ...r, [id]: prev } : Object.fromEntries(Object.entries(r).filter(([k]) => k !== id)))); return error.message }
     return null
   }

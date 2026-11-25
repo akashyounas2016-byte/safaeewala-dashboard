@@ -4,10 +4,10 @@ import { useNotifications } from '@/store/NotificationContext'
 import { analyzeCRMHealth } from '@/lib/crmAIBot'
 import { buildCrewTimeline } from '@/lib/crewTimeline'
 import { backupHealth, type BackupStatus } from '@/lib/backupStatus'
-import { agencyAlerts, bookingAlerts, cleanerIssueAlerts, lateStartAlerts, scheduleCleanerAlerts, contractEndAlerts, buildAlerts, employeeDocAlerts, type CrmAlert } from '@/lib/alerts'
+import { agencyAlerts, bookingAlerts, cleanerIssueAlerts, lateStartAlerts, farStepAlerts, silentLocationAlerts, scheduleCleanerAlerts, contractEndAlerts, buildAlerts, employeeDocAlerts, type CrmAlert } from '@/lib/alerts'
 import { CONTRACTS_KEY } from '@/lib/clientContracts'
 import type { RecurringContract } from '@/types'
-import { todayDubai } from '@/lib/dubaiTime'
+import { todayDubai, addDays } from '@/lib/dubaiTime'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { supabase } from '@/lib/supabase'
 import type { JobCheckin } from '@/lib/jobCheckins'
@@ -43,10 +43,17 @@ export function useAlerts(enabled = true): {
   // R-DUTY-04: today's job steps and who has a login, for "not started" alerts; re-checked every minute
   const [todaySteps, setTodaySteps] = useState<JobCheckin[]>([])
   const [loginIds, setLoginIds] = useState<Set<string>>(new Set())
+  // R-APP-04: job steps with a position (60 days, to learn each place) and the latest staff positions
+  const [stepHistory, setStepHistory] = useState<JobCheckin[]>([])
+  const [positions, setPositions] = useState<{ employee_id: string; updated_at: string }[]>([])
   const [nowMin, setNowMin] = useState(() => dubaiMinutes())
   useEffect(() => {
     if (!enabled) return
-    const t = window.setInterval(() => setNowMin(dubaiMinutes()), 60_000)
+    const t = window.setInterval(() => {
+      setNowMin(dubaiMinutes())
+      // R-APP-04: positions re-read every minute for the No location alert
+      void supabase.from('driver_locations').select('employee_id, updated_at').then(({ data, error }) => { if (!error && data) setPositions(data as { employee_id: string; updated_at: string }[]) })
+    }, 60_000)
     void supabase.from('profiles').select('employee_id').not('employee_id', 'is', null).then(({ data, error }) => {
       if (!error && data) setLoginIds(new Set((data as { employee_id: string }[]).map(r => r.employee_id)))
     })
@@ -58,6 +65,12 @@ export function useAlerts(enabled = true): {
     const loadIssues = () => {
       void supabase.from('job_checkins').select('*').eq('date', today).then(({ data, error }) => {
         if (alive && !error && data) setTodaySteps(data as JobCheckin[])
+      })
+      void supabase.from('job_checkins').select('id, job_id, lat, lng, date').not('lat', 'is', null).gte('date', addDays(today, -60)).limit(3000).then(({ data, error }) => {
+        if (alive && !error && data) setStepHistory(data as JobCheckin[])
+      })
+      void supabase.from('driver_locations').select('employee_id, updated_at').then(({ data, error }) => {
+        if (alive && !error && data) setPositions(data as { employee_id: string; updated_at: string }[])
       })
       void supabase.from('job_checkins')
         .select('*')
@@ -112,9 +125,11 @@ export function useAlerts(enabled = true): {
         ...contractEndAlerts(clients, safeLocalStorageGet<RecurringContract[]>(CONTRACTS_KEY, []), today), // R-ALERT-05
         ...cleanerIssueAlerts(dutyIssues, dailyJobs),
         ...lateStartAlerts(dailyJobs, todaySteps, employees, loginIds, today, nowMin), // R-DUTY-04
+        ...farStepAlerts(todaySteps, stepHistory, dailyJobs, today), // R-APP-04
+        ...silentLocationAlerts(dailyJobs, positions, employees, loginIds, today, nowMin, Date.now()), // R-APP-04
       ],
     })
-  }, [enabled, notifications, bookings, clients, dailyJobs, employees, agencies, today, backup, dutyIssues, todaySteps, loginIds, nowMin])
+  }, [enabled, notifications, bookings, clients, dailyJobs, employees, agencies, today, backup, dutyIssues, todaySteps, loginIds, nowMin, stepHistory, positions])
 
   const hidden = new Set(dismissedIds)
   return {

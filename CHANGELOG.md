@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(clients): Clients / Monthly / Bi-Weekly cards in the Daily Job Sheet design with tags at the top; Bi-Weekly 5 cards; no tagline on the Monthly tab (R-CLI-17)
+
+- feat(app): offline job steps, photo at Start / End + client signature (SQL A46), soft place check at Start with an office alert, "No location" alert, driver manifest with Dropped / Picked and "Tell I'm late" (R-APP-04)
+
 - change(payments): no "To collect" tag, same-height cards; client names in Active Outstanding Dues open the profile (R-FIN-23)
 - docs(job-sheet): Staff on Duty = cleaners with a job, each once — 26 Nov 10 of 11 jobs is right (Nim Kumari 2 jobs) (R-EMP-19)
 - change(clients): tab bar above the cards; Monthly / Bi-Weekly tabs show their own cards instead of the general ones (R-CLI-16)

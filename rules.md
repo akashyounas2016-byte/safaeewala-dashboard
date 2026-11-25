@@ -845,6 +845,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `Clients.tsx → biweekly, tab bar`. Test: `tests/unit/batch-1126c.test.ts`.
 - **Status:** Active · Since: 2026-11-26
 
+### R-CLI-17 — Clients cards: the Daily Job Sheet design, tags at the top
+- **Rule:** *"Client screen ke cards ka design Daily Job Sheet ke mutabiq set karein aur di gayi tasweer ke mutabiq niche wale tags ko hata kar naye muqam par lagayein. Monthly aur Biweekly client cards ka design bhi aisa hi ho, jabke Biweekly view se 'Contract Off' ka card hata kar sirf paanch cards show karein. 'Follow Up' tag ko 'Pending Dues' ke bilkul sath tarteeb dein … Monthly Client tab par … tagline … use hata dein."* (2026-11-26)
+  - Clients, Monthly and Bi-Weekly cards are the shared Daily Job Sheet card (coloured title, solid icon tile, big value, grey line); the tag ("99 active", "To follow up" …) sits **under the title at the top**, not at the bottom. All the same height (144 px).
+  - Bi-Weekly: 5 cards — Contracts Off removed (its count is the tag of Contracts On, "n off"); "To follow up" is on Pending Dues.
+  - Monthly tab inside Clients: the line "n Monthly Clients · Billed … · Received …" between the tabs and the cards is gone; its 6 cards use the same design ("n paused" on Active Contracts, "To follow up" on Pending Balance).
+- **Code:** `components/ui/KpiCard.tsx → chipTop`; `Clients.tsx → renderCard, Bi-Weekly cards`; `MonthlyClients.tsx`. Test: `tests/unit/batch-1126e.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
+
 
 ### R-BK-06 — Ad-hoc jobs for monthly / bi-weekly clients
 - **Rule:** *"'Ad-Hoc Booking' ka feature … monthly clients ko regular schedule kay ilawa additional standard services … extra jobs ka bill alag say generate ho."* (2026-11-21)
@@ -2104,6 +2113,18 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Limit: if the phone owner swipes the app away or the phone restarts, it starts again only when the app is opened (start-on-boot needs more native work — later).
 - **Code:** `useLiveSharing.ts`; `MyDuties.tsx → inApp, appLocationLine`; `driverLocation.ts` (notification text). Test: `tests/unit/batch-1126b.test.ts`.
 - **Status:** Active · Since: 2026-11-26
+
+### R-APP-04 — App: offline steps, job proof, place check, office alerts, driver manifest
+- **Rule:** *"jo recomendation diye hen apk k liye wo b add krdo apk me"* (2026-11-26) — Claude's recommendations of the same day.
+  - **Offline steps:** On the way / Start / End / Issue pressed without internet are kept on the phone with the pressed time and sent when it is online (every 30 s and on reconnect); My Duties shows "n job steps saved on this phone".
+  - **Job proof:** Start job asks for a photo, End job for a photo and the **client's signature** (finger) — optional, never blocks the step. Private bucket `job-proofs` (SQL `2026-11-26_job_proofs.sql`, owner runs — A46); the office sees them as thumbnails on the cleaner's card in My Duties (preview); cleaners only their own.
+  - **Place check (soft geofence):** the usual place of an address is learnt from earlier job steps with a position there (median). Start job more than 300 m away asks "You seem away from this job — start anyway?"; the office gets **"Started / Ended away from the place · name"** in Alerts. No client coordinates are needed.
+  - **No location:** for staff with a login who are on a job now, Alerts shows **"No location · name"** when no position came for 15 minutes (app closed, location off, no signal); positions re-read every minute.
+  - **Driver manifest:** each stop lists its cleaners with **Dropped** / **Picked up** (time saved in the day plan, office sees it) and **Tell I'm late** (WhatsApp text).
+  - **Not done:** start after the phone restarts (Android does not let an app start itself in the background; it starts when opened), push notifications (owner: later, Firebase).
+- **Code:** `jobCheckins.ts → queue`; `jobProofs.ts`; `geofence.ts`; `components/duties/SignaturePad.tsx`; `components/drivers/DriverManifest.tsx`; `driverPlans.ts → manifest`; `alerts.ts → farStepAlerts, silentLocationAlerts`; `useAlerts.ts`; `MyDuties.tsx`; SQL `2026-11-26_job_proofs.sql`. Test: `tests/unit/batch-1126d.test.ts`.
+- **Status:** Active (proof photos after A46) · Since: 2026-11-26
+
 
 
 

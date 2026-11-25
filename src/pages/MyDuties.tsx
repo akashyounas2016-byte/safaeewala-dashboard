@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   MapPinned, Navigation, Square, ChevronLeft, ChevronRight, Clock, MapPin, Users, Truck,
-  Banknote, Lock, Eye, Package, CalendarDays, Sparkles, Phone, MessageCircle, PlayCircle, CheckCircle2, AlertTriangle, Car, Download,
+  Banknote, Lock, Eye, Package, CalendarDays, Sparkles, Phone, MessageCircle, PlayCircle, CheckCircle2, AlertTriangle, Car, Download, Camera,
 } from 'lucide-react'
-import { useJobCheckins, nextStep, CHECKIN_LABEL, checkinId, type JobCheckin, type CheckinStatus } from '@/lib/jobCheckins'
+import { useJobCheckins, nextStep, CHECKIN_LABEL, checkinId, QUEUED, QUEUE_EVENT, queuedSteps, type JobCheckin, type CheckinStatus } from '@/lib/jobCheckins'
+import { proofPath, shrinkImage, uploadProof, useJobProofs, type ProofKind } from '@/lib/jobProofs'
+import { GEOFENCE_M, addressKey, distanceM, distanceText, positionsByAddress, sitePosition } from '@/lib/geofence'
+import { SignaturePad } from '@/components/duties/SignaturePad'
+import { confirmAsync } from '@/lib/notify'
 import { jobMatchesClient } from '@/lib/clientDataSync'
 import { whatsappUrl } from '@/lib/driverRoutes'
 import { notify } from '@/lib/notify'
@@ -19,6 +23,7 @@ import { useDayPlan } from '@/lib/driverPlans'
 import { useLiveSharing } from '@/lib/useLiveSharing'
 import { ageLabel } from '@/lib/driverLocation'
 import { SiteCard } from '@/components/drivers/SiteCard'
+import { DriverManifest } from '@/components/drivers/DriverManifest'
 import { canApproveLeave, findMark, weekdayOf } from '@/lib/attendance'
 import { cleanerDuties, dutyKindOf, mapsSearchUrl, type CleanerDuty, type DutyKind } from '@/lib/duties'
 import { dutyClashes, clashText, startBlockedBy, minutesLate, lateText } from '@/lib/dutyChecks'
@@ -73,7 +78,7 @@ export function MyDuties() {
 
   const [date, setDate] = useState(() => todayDubai())
   const today = todayDubai()
-  const [plan] = useDayPlan(date)
+  const [plan, updatePlan] = useDayPlan(date) // R-APP-04: the driver ticks the manifest
 
   // Driver view
   const sites = useMemo(() => buildRouteSites(dailyJobs, date), [dailyJobs, date])
@@ -116,9 +121,36 @@ export function MyDuties() {
     safeLocalStorageSet('safaeewala_late_told', [...seen, ...fresh.map(d => `${d.job.id}|${d.job.date}`)].slice(-300))
   }, [duties, nowMin, checkins.rows, linked]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const step = async (jobId: string, status: CheckinStatus, note?: string) => {
+  // R-APP-04: earlier job steps of this person with a position — to learn where each place is (soft geofence)
+  const [ownSteps, setOwnSteps] = useState<{ job_id: string; lat: number | null; lng: number | null }[]>([])
+  useEffect(() => {
+    if (!person?.id) return
+    let alive = true
+    void supabase.from('job_checkins').select('job_id, lat, lng').eq('employee_id', person.id).not('lat', 'is', null).order('updated_at', { ascending: false }).limit(400)
+      .then(({ data }) => { if (alive && data) setOwnSteps(data as { job_id: string; lat: number | null; lng: number | null }[]) })
+    return () => { alive = false }
+  }, [person?.id])
+  // R-APP-04: steps kept on the phone while offline
+  const [waiting, setWaiting] = useState(() => queuedSteps().length)
+  useEffect(() => { const f = () => setWaiting(queuedSteps().length); window.addEventListener(QUEUE_EVENT, f); return () => window.removeEventListener(QUEUE_EVENT, f) }, [])
+  const here = () => new Promise<{ lat: number; lng: number } | null>(resolve => {
+    if (!('geolocation' in navigator)) { resolve(null); return }
+    navigator.geolocation.getCurrentPosition(p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }), () => resolve(null), { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 })
+  })
+
+  const step = async (jobId: string, status: CheckinStatus, note?: string, proof?: { photo?: File | null; signature?: Blob | null }) => {
     const d = duties.find(x => x.job.id === jobId)
     if (!person || !d) return
+    // R-APP-04: far from the usual place of this address? ask first (never blocks — GPS indoors can be off)
+    if (status === 'started' && linked) {
+      const byAddr = positionsByAddress(ownSteps.filter(s => s.job_id !== jobId), id => dailyJobs.find(j => j.id === id)?.address)
+      const site = sitePosition(byAddr.get(addressKey(d.job.address)) || [])
+      const me = site ? await here() : null
+      if (site && me) {
+        const m = distanceM(site, me)
+        if (m > GEOFENCE_M && !(await confirmAsync({ title: 'You seem away from this job', message: `Your phone is about ${distanceText(m)} from where ${d.site} usually is. Start the job anyway? The office will see this.`, confirmLabel: 'Start anyway' }))) return
+      }
+    }
     // R-DUTY-04: one job at a time — the started one has to end first
     if (status === 'started') {
       const busy = startBlockedBy(duties.map(x => x.job), id => checkinOf(id)?.status, jobId)
@@ -127,8 +159,19 @@ export function MyDuties() {
     // ask once for phone notifications (late-start reminders)
     if (linked && 'Notification' in window && Notification.permission === 'default') void Notification.requestPermission().catch(() => {})
     const err = await checkins.update({ id: d.job.id, date }, person.full_name, person.id, status, note)
-    if (err) notify.error(`Not saved: ${err}`)
+    if (err === QUEUED) notify.info(`${CHECKIN_LABEL[status]} saved on the phone — it is sent as soon as there is internet`)
+    else if (err) { notify.error(`Not saved: ${err}`); return }
     else notify.success(`${CHECKIN_LABEL[status]} · ${d.site}`)
+    // R-APP-04: proof photo / client signature (optional; a failed upload never undoes the step)
+    const uploads: [ProofKind, Blob][] = []
+    try {
+      if (proof?.photo) uploads.push([status === 'started' ? 'start' : 'end', await shrinkImage(proof.photo)])
+    } catch (e) { notify.warning(e instanceof Error ? e.message : 'Photo could not be read') }
+    if (proof?.signature) uploads.push(['signature', proof.signature])
+    for (const [kind, blob] of uploads) {
+      const upErr = await uploadProof(proofPath(date, d.job.id, person.full_name, kind), blob)
+      if (upErr) notify.warning(`${kind === 'signature' ? 'Signature' : 'Photo'} not saved: ${upErr}`)
+    }
   }
   const clientOf = (jobId: string): Client | undefined => {
     const job = dailyJobs.find(j => j.id === jobId)
@@ -175,6 +218,12 @@ export function MyDuties() {
 
   return (
     <div className="w-full space-y-3 sm:space-y-4">
+      {/* R-APP-04: steps pressed without internet */}
+      {waiting > 0 && (
+        <div className="px-4 py-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-[13px] font-bold">
+          {waiting} job step{waiting === 1 ? '' : 's'} saved on this phone — sent automatically when the internet is back.
+        </div>
+      )}
       {/* R-APP-02: a newer test build of the app exists */}
       {appUpdate && (
         <a href={appUpdate.url} className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-sky-50 border border-sky-200 text-sky-950 active:bg-sky-100">
@@ -306,7 +355,7 @@ export function MyDuties() {
           {!inApp && shareError && <p className="text-[12px] text-rose-700 font-semibold">{shareError}</p>}
           {stops.length === 0
             ? <EmptyDay text={`No stops assigned for ${fmtDate(date)}.`} />
-            : <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{stops.map(s => <SiteCard key={s.key} site={s} index={sites.indexOf(s)} />)}</div>}
+            : <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{stops.map(s => <div key={s.key} className="space-y-2"><SiteCard site={s} index={sites.indexOf(s)} /><DriverManifest site={s} plan={plan} onChange={updatePlan} canEdit={!!linked && linked.id === person.id} /></div>)}</div>}
         </>
       )}
 
@@ -334,7 +383,7 @@ export function MyDuties() {
             ? <EmptyDay text={`No jobs for ${fmtDate(date)}.`} />
             : <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3">{duties.map((d, i) => (
                 <DutyCard key={d.job.id} duty={d} index={i} checkin={checkinOf(d.job.id)} client={clientOf(d.job.id)}
-                  canUpdate={checkins.ready} onStep={(st, note) => void step(d.job.id, st, note)}
+                  canUpdate={checkins.ready} onStep={(st, note, proof) => void step(d.job.id, st, note, proof)} showProofs={!linked || linked.id !== person.id}
                   clash={clashes.get(d.job.id) ? clashText(clashes.get(d.job.id)!) : undefined} late={lateOf(d)} />
               ))}</div>}
           {!checkins.ready && <p className="text-[11.5px] text-slate-500">Job progress (On the way / Started / Done) turns on once the office runs the job_checkins setup.</p>}
@@ -349,9 +398,11 @@ function EmptyDay({ text }: { text: string }) {
 }
 
 /** One cleaning job on the cleaner's phone */
-function DutyCard({ duty: d, index, checkin, client, canUpdate, onStep, clash, late = 0 }: {
+function DutyCard({ duty: d, index, checkin, client, canUpdate, onStep, clash, late = 0, showProofs = false }: {
   duty: CleanerDuty; index: number; checkin?: JobCheckin; client?: Client; canUpdate: boolean
-  onStep: (status: CheckinStatus, note?: string) => void
+  onStep: (status: CheckinStatus, note?: string, proof?: { photo?: File | null; signature?: Blob | null }) => void
+  /** R-APP-04: the office looking at someone's duties sees the proof photos / signature */
+  showProofs?: boolean
   /** R-DUTY-04: another of their jobs at the same time */
   clash?: string
   /** R-DUTY-04: minutes past the start without Start job */
@@ -363,6 +414,10 @@ function DutyCard({ duty: d, index, checkin, client, canUpdate, onStep, clash, l
   // R-DUTY-02: Start Job / End Job ask first in a popup (big buttons, made for a phone — the same flow the app will use)
   const [confirm, setConfirm] = useState<'started' | 'done' | null>(null)
   const [endNote, setEndNote] = useState('')
+  const [photo, setPhoto] = useState<File | null>(null)       // R-APP-04
+  const [signature, setSignature] = useState<Blob | null>(null)
+  const proofs = useJobProofs(d.job.date, d.job.id, showProofs && !!checkin)
+  const closeConfirm = () => { setConfirm(null); setEndNote(''); setPhoto(null); setSignature(null) }
   // a booking completed in the office shows as done here too (the job row follows the booking, R-SYNC-06)
   const officeDone = String(d.job.status || '') === 'completed' && checkin?.status !== 'done'
   const next = officeDone ? null : nextStep(checkin?.status)
@@ -437,6 +492,16 @@ function DutyCard({ duty: d, index, checkin, client, canUpdate, onStep, clash, l
             {checkin.status === 'issue' && checkin.note ? ` · ${checkin.note}` : ''}
           </p>
         )}
+        {proofs.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap" aria-label="Job proof">
+            {proofs.map(f => (
+              <a key={f.name} href={f.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 text-[11.5px] font-bold text-slate-700 hover:bg-white">
+                <img src={f.url} alt="" className="w-8 h-8 rounded object-cover bg-white" />
+                {f.kind === 'start' ? 'Start photo' : f.kind === 'end' ? 'End photo' : 'Signature'}
+              </a>
+            ))}
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-2 pt-1">
           {next ? (
             <>
@@ -482,11 +547,18 @@ function DutyCard({ duty: d, index, checkin, client, canUpdate, onStep, clash, l
                 <>
                   {d.cashToCollect > 0 && <p className="text-[12.5px] font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Collect AED {d.cashToCollect} from the client</p>}
                   <input value={endNote} onChange={e => setEndNote(e.target.value)} placeholder="Anything for the office? (optional)" className="w-full h-11 px-3 rounded-xl border border-slate-200 text-[13.5px]" />
+                  <SignaturePad onChange={setSignature} />
                 </>
               )}
+              {/* R-APP-04: proof photo (optional) */}
+              <label className={`flex items-center gap-2 min-h-[44px] px-3 rounded-xl border text-[13px] font-bold cursor-pointer ${photo ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-200 text-slate-700'}`}>
+                <Camera size={17} className="shrink-0" />
+                {photo ? `Photo added (${Math.round(photo.size / 1024)} KB) — tap to change` : confirm === 'started' ? 'Take a photo before starting (optional)' : 'Take a photo of the finished work (optional)'}
+                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => setPhoto(e.target.files?.[0] || null)} />
+              </label>
               <div className="grid grid-cols-2 gap-2 pt-1">
-                <button type="button" onClick={() => { setConfirm(null); setEndNote('') }} className="min-h-[46px] rounded-xl border border-slate-200 font-bold text-[14px] cursor-pointer">Cancel</button>
-                <button type="button" onClick={() => { onStep(confirm, confirm === 'done' ? endNote.trim() || undefined : undefined); setConfirm(null); setEndNote('') }}
+                <button type="button" onClick={closeConfirm} className="min-h-[46px] rounded-xl border border-slate-200 font-bold text-[14px] cursor-pointer">Cancel</button>
+                <button type="button" onClick={() => { onStep(confirm, confirm === 'done' ? endNote.trim() || undefined : undefined, { photo, signature: confirm === 'done' ? signature : null }); closeConfirm() }}
                   className={`min-h-[46px] rounded-xl text-white font-bold text-[14px] cursor-pointer ${confirm === 'started' ? 'bg-emerald-700' : 'bg-emerald-900'}`}>
                   {confirm === 'started' ? 'Start job' : 'End job'}
                 </button>

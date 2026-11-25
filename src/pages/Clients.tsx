@@ -539,33 +539,13 @@ export function Clients() {
   ]
 
   // UX-97: every card is clickable — it filters the cards and the widgets below (Total Clients shows all)
+  // R-CLI-17: the Daily Job Sheet card (shared KpiCard), the tag next to the title at the top
   const renderCard = (card: KpiCardItem) => {
     const isSelected = card.filter === 'all' ? !filterType : filterType === card.filter
     return (
-      <button
-        key={card.label}
-        type="button"
-        aria-pressed={isSelected}
-        onClick={() => setFilterType(card.filter === 'all' || isSelected ? null : card.filter)}
-        className={`group relative text-left rounded-[16px] p-4 sm:p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer flex flex-col justify-between w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1 ${
-          isSelected
-            ? 'bg-emerald-50/50 border-2 border-emerald-500 shadow-[0_1px_2px_rgba(20,32,27,0.04)]'
-            : 'bg-white hover:bg-[#FAFBF9] border border-[#E2E5E0] hover:border-[#C9D2CC] shadow-[0_1px_2px_rgba(20,32,27,0.04)]'
-        }`}
-      >
-        <div className="flex items-start justify-between gap-2 mb-2 w-full">
-          {/* UX-101: a long title wraps to a 2nd line beside the icon — the card does not grow */}
-          <span className={`text-[11px] font-bold tracking-wider uppercase leading-[1.3] line-clamp-2 break-words min-w-0 ${card.labelColor}`}>{card.label}</span>
-          <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0 text-white shadow-md transition-transform duration-200 group-hover:scale-105 ${card.iconSolid}`}>
-            <card.icon size={18} strokeWidth={2.2} />
-          </div>
-        </div>
-        <div className="w-full">
-          <p className="text-[23px] sm:text-[26px] font-black tracking-tight leading-tight truncate text-[#111827]">{card.value}</p>
-          <p className="text-[11px] sm:text-[11.5px] font-medium mt-1 truncate text-slate-500">{card.sub}</p>
-          <span className={`inline-block mt-1.5 text-[10.5px] font-bold px-2 py-0.5 rounded-full truncate max-w-full ${card.deltaUp ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{card.delta}</span>
-        </div>
-      </button>
+      <KpiCard key={card.label} label={card.label} value={card.value} sub={card.sub} icon={card.icon} labelColor={card.labelColor} iconSolid={card.iconSolid}
+        chip={card.delta} chipTone={card.deltaUp ? 'up' : 'down'} chipTop active={isSelected}
+        onClick={() => setFilterType(card.filter === 'all' || isSelected ? null : card.filter)} />
     )
   }
 
@@ -1116,13 +1096,12 @@ export function Clients() {
 
       {/* R-CLI-20: the Bi-Weekly tab's own cards (in place of the general ones) */}
       {shownTab === 'biweekly' && (
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5">
           <KpiCard label="Bi-Weekly Clients" value={biweekly.count} sub="Clients on a Bi-Weekly plan" icon={Repeat} labelColor="text-teal-700" iconSolid="bg-[#0d9488] shadow-teal-500/25" />
-          <KpiCard label="Contracts On" value={biweekly.active} sub="Visits are being planned" icon={CheckCircle2} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" />
-          <KpiCard label="Contracts Off" value={biweekly.off} sub="Paused or ended" icon={PauseCircle} labelColor="text-slate-700" iconSolid="bg-[#64748b] shadow-slate-500/25" />
+          <KpiCard label="Contracts On" value={biweekly.active} sub="Visits are being planned" icon={CheckCircle2} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" chip={biweekly.off ? `${biweekly.off} off` : 'All on'} chipTone={biweekly.off ? 'plain' : 'up'} chipTop />
           <KpiCard label="Visits This Week" value={biweekly.week} sub="Job sheet rows, Mon–Sun" icon={CalendarDays} labelColor="text-sky-700" iconSolid="bg-[#0284c7] shadow-sky-500/25" />
           <KpiCard label="Visits This Month" value={biweekly.month} sub={`AED ${Math.round(biweekly.monthCharges).toLocaleString()} charges`} icon={CalendarCheck} labelColor="text-indigo-700" iconSolid="bg-[#4f46e5] shadow-indigo-500/25" />
-          <KpiCard label="Pending Dues" value={`AED ${Math.round(biweekly.pending).toLocaleString()}`} sub={`${biweekly.owing} client${biweekly.owing === 1 ? '' : 's'} owing`} icon={Wallet} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25" chip={biweekly.owing ? 'To follow up' : 'All clear'} chipTone={biweekly.owing ? 'warn' : 'up'} />
+          <KpiCard label="Pending Dues" value={`AED ${Math.round(biweekly.pending).toLocaleString()}`} sub={`${biweekly.owing} client${biweekly.owing === 1 ? '' : 's'} owing`} icon={Wallet} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25" chip={biweekly.owing ? 'To follow up' : 'All clear'} chipTone={biweekly.owing ? 'warn' : 'up'} chipTop />
         </div>
       )}
 

@@ -118,6 +118,16 @@
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
+### Clients cards (26 Nov, raat)
+- Clients, Monthly aur Bi-Weekly ke cards ab Daily Job Sheet jaise; chhota tag (jaise "99 active", "To follow up") ab upar title ke neeche. Bi-Weekly mein 5 cards (Contracts Off ki ginti "Contracts On" ke tag mein). Monthly tab par upar wali line hata di.
+
+### App: naye features (26 Nov)
+- **Internet na ho** to bhi On the way / Start / End dabayein — phone mein save hota hai ("saved on this phone") aur net aate hi khud chala jata hai, wahi waqt ke saath.
+- **Start job** par kaam se pehle ki **photo**, **End job** par khatam kaam ki photo aur **client ka signature** (ungli se) — optional. Office My Duties mein us cleaner ko chun kar photos dekh sakta hai. (Pehle office Supabase mein SQL chalaye — A46.)
+- Cleaner job ki jagah se **300 m** se door ho kar Start kare to app poochti hai, aur office ke **Alerts** mein "Started away from the place".
+- Job ke waqt cleaner ki location **15 minute** na aaye to Alerts mein **"No location"**.
+- **Driver:** har stop par cleaners ki list — **Dropped** / **Picked up** dabayein (waqt save hota hai); **Tell I'm late** se WhatsApp message.
+
 ### Payments, Staff on Duty, Clients tabs (26 Nov)
 - Payments: Outstanding card par "To collect" nahi; sab cards barabar. **Active Outstanding Dues** mein client ke naam par click → us ki profile.
 - **Staff on Duty** = jin cleaners ki us din kam az kam ek job hai, har cleaner ek dafa (2 job wala bhi ek). Bina job wale nahi gine jate. 26 Nov: 11 jobs, 10 cleaners (Nim Kumari ki 2 jobs) — sahi hai.

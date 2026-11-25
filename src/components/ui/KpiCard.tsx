@@ -18,6 +18,8 @@ export interface KpiCardProps {
   active?: boolean
   onClick?: () => void
   title?: string
+  /** R-CLI-17: the chip sits under the label at the top (Clients / Monthly / Bi-Weekly cards), not at the bottom */
+  chipTop?: boolean
 }
 
 const CHIP: Record<NonNullable<KpiCardProps['chipTone']>, string> = {
@@ -27,7 +29,7 @@ const CHIP: Record<NonNullable<KpiCardProps['chipTone']>, string> = {
   plain: 'bg-slate-100 text-slate-600',
 }
 
-export function KpiCard({ label, value, sub, icon: Icon, labelColor, iconSolid, chip, chipTone = 'plain', active, onClick, title }: KpiCardProps) {
+export function KpiCard({ label, value, sub, icon: Icon, labelColor, iconSolid, chip, chipTone = 'plain', active, onClick, title, chipTop }: KpiCardProps) {
   const Tag = onClick ? 'button' : 'div'
   return (
     <Tag
@@ -38,7 +40,10 @@ export function KpiCard({ label, value, sub, icon: Icon, labelColor, iconSolid, 
       } ${active ? 'bg-emerald-50/50 border-2 border-emerald-500' : 'bg-white border border-[#E2E5E0] hover:border-[#C9D2CC]'} shadow-[0_1px_2px_rgba(20,32,27,0.04)]`}
     >
       <div className="flex items-start justify-between gap-2 mb-2 w-full">
-        <span className={`text-[11px] font-bold tracking-wider uppercase leading-[1.3] line-clamp-2 break-words min-w-0 ${labelColor}`}>{label}</span>
+        <span className="min-w-0 flex flex-col items-start gap-1">
+          <span className={`text-[11px] font-bold tracking-wider uppercase leading-[1.3] line-clamp-2 break-words min-w-0 ${labelColor}`}>{label}</span>
+          {chip && chipTop && <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-full truncate max-w-full ${CHIP[chipTone]}`}>{chip}</span>}
+        </span>
         <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0 text-white shadow-md transition-transform duration-200 group-hover:scale-105 ${iconSolid}`}>
           <Icon size={18} strokeWidth={2.2} />
         </div>
@@ -46,7 +51,7 @@ export function KpiCard({ label, value, sub, icon: Icon, labelColor, iconSolid, 
       <div className="w-full">
         <p className="text-[23px] sm:text-[26px] font-black tracking-tight leading-tight truncate text-[#111827]">{value}</p>
         {sub && <p className="text-[11px] sm:text-[11.5px] font-medium mt-1 truncate text-slate-500">{sub}</p>}
-        {chip && <span className={`inline-block mt-1.5 text-[10.5px] font-bold px-2 py-0.5 rounded-full truncate max-w-full ${CHIP[chipTone]}`}>{chip}</span>}
+        {chip && !chipTop && <span className={`inline-block mt-1.5 text-[10.5px] font-bold px-2 py-0.5 rounded-full truncate max-w-full ${CHIP[chipTone]}`}>{chip}</span>}
       </div>
     </Tag>
   )

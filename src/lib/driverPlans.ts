@@ -14,6 +14,8 @@ export interface DayPlan {
   assignments: Record<string, string>              // siteKey → driver employee id
   shifts: Record<string, DriverShift>              // driver id → shift
   sent: Record<string, { at: string; signature: string }> // driver id → last sent sheet
+  /** R-APP-04: pickup manifest — siteKey → cleaner (lower case) → when dropped / picked up */
+  manifest?: Record<string, Record<string, { dropped?: string; picked?: string }>>
 }
 type AllPlans = Record<string, DayPlan>             // date → plan
 

@@ -20,4 +20,4 @@ eq(/Cleaners with a job · each once/.test(src('src/components/dailyJobSheet/Job
 const cl = src('src/pages/Clients.tsx')
 eq(/\{shownTab === 'general' && \(<>/.test(cl) && /shownTab === 'biweekly' && \(/.test(cl), true, 'general cards only on the Clients tab; Bi-Weekly has its own')
 eq(cl.indexOf('aria-label="Client type"') < cl.indexOf('KPI Summary Cards'), true, 'tab bar above the cards')
-eq(['Bi-Weekly Clients', 'Contracts On', 'Contracts Off', 'Visits This Week', 'Visits This Month', 'Pending Dues'].every(l => cl.includes(`label="${l}"`)), true, 'the six Bi-Weekly cards')
+eq(['Bi-Weekly Clients', 'Contracts On', 'Visits This Week', 'Visits This Month', 'Pending Dues'].every(l => cl.includes(`label="${l}"`)), true, 'the Bi-Weekly cards (Contracts Off removed by R-CLI-17)')

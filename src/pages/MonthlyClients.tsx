@@ -12,6 +12,7 @@ import {
   Sparkles, Printer, Send, MessageCircle, FileSpreadsheet, Check, UserCheck,
   LayoutGrid, List, Grid3x3, Eye,
 } from 'lucide-react'
+import { KpiCard } from '@/components/ui/KpiCard'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -1471,11 +1472,8 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
         </div>
       )}
 
-      {embedded ? (
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-[12.5px] text-slate-600"><span className="font-bold text-slate-800">{monthlySummaries.length} Monthly Clients</span> · Billed AED {totalMonthlyCharges.toLocaleString()} · Received AED {(totalMonthlyReceived + totalPaymentsRecorded).toLocaleString()} · {activeRange.label}</p>
-        </div>
-      ) : (
+      {/* R-CLI-17: inside Clients no tagline between the tabs and the cards */}
+      {embedded ? null : (
       <>{/* Page Hero with Unified Summary */}
       <PageHero
         title="Monthly Clients & Contracts"
@@ -1507,91 +1505,14 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
       /></>
       )}
 
-      {/* Unified Executive KPI Cards (Real Cashflow & Payments) */}
+      {/* Unified Executive KPI Cards — R-CLI-17: the Daily Job Sheet card design (tags at the top) */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
-        {/* Card 1: Monthly Clients */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-teal-200 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Monthly Clients</span>
-            <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center">
-              <Users size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-[24px] font-extrabold text-[#111827]">{monthlySummaries.length}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">{totalVisits} shifts ({activeRange.label})</p>
-          </div>
-        </div>
-
-        {/* Card 2: Active Contracts */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-emerald-200 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Active Contracts</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <RotateCw size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-[24px] font-extrabold text-emerald-600">{activeContracts.length}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">{contracts.length} total · {pausedContracts.length} paused</p>
-          </div>
-        </div>
-
-        {/* Card 3: Payments Received (Replaced theoretical Contract MRR) */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-emerald-200 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Payments Received</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <CreditCard size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-[22px] font-extrabold text-emerald-700">AED {(totalMonthlyReceived + totalPaymentsRecorded).toLocaleString()}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">{payments.length} payment{payments.length === 1 ? '' : 's'} recorded</p>
-          </div>
-        </div>
-
-        {/* Card 4: Daily Job Sheet Monthly Charges */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-teal-200 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Billed Charges</span>
-            <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center">
-              <DollarSign size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-[22px] font-extrabold text-teal-900">AED {totalMonthlyCharges.toLocaleString()}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">From Daily Job Sheet</p>
-          </div>
-        </div>
-
-        {/* Card 5: Pending Balance */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-amber-200 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Pending Balance</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Calendar size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-[22px] font-extrabold text-amber-900">AED {totalMonthlyBalanceDue.toLocaleString()}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">Uncollected monthly dues</p>
-          </div>
-        </div>
-
-        {/* Card 6: Overtime (OT) Logged */}
-        <div className="bg-white rounded-[20px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex flex-col justify-between hover:border-rose-200 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Overtime (OT)</span>
-            <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-              <Clock size={16} />
-            </div>
-          </div>
-          <div>
-            <p className="text-[22px] font-extrabold text-rose-900">{totalOTHours} hrs</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">{totalDutyHours}h duty · {monthlySummaries.filter(c => c.totalOTHours > 0).length} OT clients</p>
-          </div>
-        </div>
+        <KpiCard label="Monthly Clients" value={monthlySummaries.length} sub={`${totalVisits} shifts (${activeRange.label})`} icon={Users} labelColor="text-teal-700" iconSolid="bg-[#0d9488] shadow-teal-500/25" />
+        <KpiCard label="Active Contracts" value={activeContracts.length} sub={`${contracts.length} total`} icon={RotateCw} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" chip={pausedContracts.length ? `${pausedContracts.length} paused` : 'All on'} chipTone={pausedContracts.length ? 'plain' : 'up'} chipTop />
+        <KpiCard label="Payments Received" value={`AED ${(totalMonthlyReceived + totalPaymentsRecorded).toLocaleString()}`} sub={`${payments.length} payment${payments.length === 1 ? '' : 's'} recorded`} icon={CreditCard} labelColor="text-emerald-700" iconSolid="bg-[#047857] shadow-emerald-500/25" />
+        <KpiCard label="Billed Charges" value={`AED ${totalMonthlyCharges.toLocaleString()}`} sub="From Daily Job Sheet" icon={DollarSign} labelColor="text-teal-700" iconSolid="bg-[#0f766e] shadow-teal-500/25" />
+        <KpiCard label="Pending Balance" value={`AED ${totalMonthlyBalanceDue.toLocaleString()}`} sub="Uncollected monthly dues" icon={Calendar} labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25" chip={totalMonthlyBalanceDue > 0 ? 'To follow up' : 'All clear'} chipTone={totalMonthlyBalanceDue > 0 ? 'warn' : 'up'} chipTop />
+        <KpiCard label="Overtime (OT)" value={`${totalOTHours} hrs`} sub={`${totalDutyHours}h duty · ${monthlySummaries.filter(c => c.totalOTHours > 0).length} OT clients`} icon={Clock} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25" />
       </div>
 
       {/* Segmented View Tabs & Action Bar */}

@@ -9,6 +9,8 @@ import { employeeMatchesStaff, realCleanerName, splitStaffNames } from '@/lib/cl
 import { buildAgencyNotifications } from '@/lib/agencyAlerts'
 import { daysUntil, formatDate, isWrongDocDate, DOC_ALERT_DAYS } from '@/lib/utils'
 import { minutesLate, lateText } from '@/lib/dutyChecks'
+import { GEOFENCE_M, addressKey, distanceM, distanceText, positionsByAddress, sitePosition } from '@/lib/geofence'
+import { timeToMinutes } from '@/lib/shiftClash'
 
 /**
  * R-ALERT-01: every alert of the CRM in one list, for Sidebar → Alerts. Main screens no longer carry
@@ -248,6 +250,71 @@ export function lateStartAlerts(
         message: `${j.address || j.area || 'Job'} was due at ${j.start_time} — ${lateText(late)} late, Start job not pressed on My Duties${step?.status === 'on_way' ? ' (on the way)' : ''}.`,
         actionUrl: `/daily-job-sheet?date=${today}&job=${encodeURIComponent(j.id)}`, actionLabel: 'Open job',
       })
+    })
+  })
+  return out
+}
+
+/**
+ * R-APP-04: a job started (or ended) more than GEOFENCE_M from where that address usually is — learnt from the
+ * other job steps with a position at the same address. Soft: GPS indoors can be off, so it is a medium alert.
+ */
+export function farStepAlerts(
+  todaySteps: { id: string; job_id: string; cleaner: string; status: string; lat?: number | null; lng?: number | null }[],
+  history: { job_id: string; lat?: number | null; lng?: number | null }[],
+  jobs: { id: string; address?: string; area?: string; date?: string }[],
+  today: string,
+): CrmAlert[] {
+  const addr = (id: string) => jobs.find(j => j.id === id)?.address
+  const out: CrmAlert[] = []
+  for (const s of todaySteps) {
+    if ((s.status !== 'started' && s.status !== 'done') || s.lat == null || s.lng == null) continue
+    const others = positionsByAddress(history.filter(h => h.job_id !== s.job_id), addr).get(addressKey(addr(s.job_id))) || []
+    const site = sitePosition(others)
+    if (!site) continue
+    const m = distanceM(site, { lat: Number(s.lat), lng: Number(s.lng) })
+    if (m <= GEOFENCE_M) continue
+    out.push({
+      id: `duty-far-${today}-${s.id}`, source: 'duties', severity: 'medium',
+      title: `${s.status === 'started' ? 'Started' : 'Ended'} away from the place · ${s.cleaner}`,
+      message: `${addr(s.job_id) || 'The job'}: the phone was about ${distanceText(m)} from where this address usually is.`,
+      actionUrl: `/daily-job-sheet?date=${today}&job=${encodeURIComponent(s.job_id)}`, actionLabel: 'Open job',
+    })
+  }
+  return out
+}
+
+/**
+ * R-APP-04: on a job now but no position for 15 minutes (or none today) — for staff with a CRM login (the app);
+ * the app may be closed, location off or the phone without signal.
+ */
+export function silentLocationAlerts(
+  jobs: { id: string; date?: string; staff_name?: string; start_time?: string; end_time?: string; address?: string }[],
+  locations: { employee_id: string; updated_at: string }[],
+  employees: Employee[],
+  loginEmployeeIds: Set<string>,
+  today: string,
+  nowMin: number,
+  nowMs: number,
+): CrmAlert[] {
+  const out: CrmAlert[] = []
+  employees.filter(e => loginEmployeeIds.has(e.id) && e.status !== 'inactive').forEach(e => {
+    const job = jobs.find(j => {
+      if (String(j.date || '').slice(0, 10) !== today || !splitStaffNames(j.staff_name || '').some(n => employeeMatchesStaff(e, n))) return false
+      const s = timeToMinutes(j.start_time), en = timeToMinutes(j.end_time)
+      if (s === null || en === null) return false
+      const end = en > s ? en : en + 1440
+      return s <= nowMin && nowMin < end
+    })
+    if (!job) return
+    const loc = locations.find(l => l.employee_id === e.id)
+    const age = loc ? Math.round((nowMs - new Date(loc.updated_at).getTime()) / 60000) : null
+    if (age !== null && age < 15) return
+    out.push({
+      id: `duty-silent-${today}-${e.id}-${job.id}`, source: 'duties', severity: 'medium',
+      title: `No location · ${e.full_name}`,
+      message: `On a job now (${job.address || 'job'}, ${job.start_time}–${job.end_time}) but ${age === null ? 'no position came today' : `the last position is ${age} min old`} — the app may be closed, location off or no signal.`,
+      actionUrl: '/', actionLabel: 'Open live map',
     })
   })
   return out

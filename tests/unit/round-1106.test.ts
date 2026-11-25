@@ -32,8 +32,8 @@ eq(/totalServices >= 2 && !isClientMonthly/.test(src('src/pages/ClientProfile.ts
 const cl = src('src/pages/Clients.tsx')
 const order = Array.from(cl.matchAll(/\{ label: '([^']+)',\s+value:/g)).map(m => m[1])
 eq(order.slice(0, 10), ['Total Clients', 'Active Clients', 'Monthly Clients', 'New This Month', 'VIP Clients', 'Total Bookings', 'Total Revenue', 'Avg Lifetime', 'Due Balance', 'Advance Balance'], 'two rows of 5')
-eq((cl.match(/xl:grid-cols-5 gap-3\.5/g) || []).length, 2, '5 a row')
-eq(/line-clamp-2/.test(cl) && /line-clamp-2/.test(src('src/components/dailyJobSheet/JobSheetKPIs.tsx')), true, 'long titles wrap on Clients and Daily Job Sheet cards')
+eq((cl.match(/xl:grid-cols-5 gap-3\.5/g) || []).length >= 2, true, '5 a row (R-CLI-17: the Bi-Weekly row too)')
+eq((/line-clamp-2/.test(cl) || (/<KpiCard/.test(cl) && /line-clamp-2/.test(src('src/components/ui/KpiCard.tsx')))) && /line-clamp-2/.test(src('src/components/dailyJobSheet/JobSheetKPIs.tsx')), true, 'long titles wrap on Clients (shared card, R-CLI-17) and Daily Job Sheet cards')
 
 // UX-102: Employees
 const em = src('src/pages/Employees.tsx')
