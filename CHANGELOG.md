@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(inventory): In Stock and Min Stock in their own right-aligned columns with the unit under the number; Add Item pop-up shows the essentials (name, category, unit, current / minimum stock), the rest under "More details"; a number is refused as the unit (UX-198)
+
 - change(payments): one date filter under the header (Today, 7 / 14 / 30 Days, This / Last Month, 3 / 6 / 12 Months, This / Last Year, All Time, Custom Range) for the cards and the lists — the second filter above the list is gone; Weekly report, Export Report and Record Manual Pending in a ⋮ menu; 14 cards (Filtered Due Total moved up, Clients Owing, High Value Dues, Oldest Due, Unpaid Invoices, Recovery Rate added) each can be hidden; the list toolbar is one row with the sort at the end (R-FIN-21)
 
 - data (owner's word, 25 Nov): Asmita 25 Nov 107 Juma Al Naboodah Charges 10 → 20 (2 h × 10, client's AED 10 advance pays 10, 10 pending) (R-SHEET-05); Luzora 1 Oct team row 09:00–13:00 / 4 h → 11:00–17:00 / 6 h as on the office sheet (A41); TEST Cleaner employee + login deleted (A43). Before values in Safaeewala-backups

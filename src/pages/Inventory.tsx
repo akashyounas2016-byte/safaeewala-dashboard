@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Plus, Search, AlertTriangle, Package, TrendingUp, DollarSign, Truck, Boxes, BarChart3, RefreshCw, Trash2, PackagePlus } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Plus, Search, AlertTriangle, Package, TrendingUp, DollarSign, Truck, Boxes, BarChart3, RefreshCw, Trash2, PackagePlus, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -22,6 +22,21 @@ const KPI_SOURCES: Record<string, string> = {
   'Categories': 'Distinct item categories',
 }
 
+/** UX-198: common units for the Add Item pop-up (any other word can be typed) */
+const INVENTORY_UNITS = ['Bottles', 'Litres', 'Gallons', 'Pieces', 'Pairs', 'Boxes', 'Packs', 'Rolls', 'Kg', 'Cans']
+/** UX-198: a number is not a unit ("5" made the table read "11 5") */
+const isValidUnit = (u: string) => !!u.trim() && !/^[\d.,\s]+$/.test(u.trim())
+
+/** UX-198: a quantity with its unit under it, so In Stock and Min do not run together */
+function Qty({ n, unit, tone, strong }: { n: number; unit?: string; tone: string; strong?: boolean }) {
+  return (
+    <div className="leading-tight text-right tabular-nums">
+      <span className={`${strong ? 'text-[15px] font-extrabold' : 'text-[14px] font-semibold'} ${tone}`}>{n.toLocaleString()}</span>
+      {unit && <span className="block text-[10.5px] font-medium text-slate-400 truncate max-w-[90px] ml-auto">{unit}</span>}
+    </div>
+  )
+}
+
 function stockLevel(item: InventoryItem) {
   const ratio = item.min_stock > 0 ? item.current_stock / item.min_stock : Infinity
   const w = `${item.reorder_quantity > 0 ? Math.min(100, (item.current_stock / item.reorder_quantity) * 100) : 100}%`
@@ -42,6 +57,12 @@ export function Inventory() {
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)   // UX-15
   const [usingItem, setUsingItem] = useState<InventoryItem | null>(null)       // UX-15
   const ledger = useInventoryLedger()
+  const [showMore, setShowMore] = useState(false) // UX-198
+  // UX-198: pick lists from the items already in use (no dummy entries, R-DATA-03)
+  const uniq = (xs: (string | undefined)[], base: string[] = []) => [...new Set([...base, ...xs.map(x => (x || '').trim()).filter(Boolean)])]
+  const categoryOptions = useMemo(() => uniq(inventory.map(i => i.category), ['Chemicals', 'Equipment', 'PPE', 'Consumables']), [inventory])
+  const locationOptions = useMemo(() => uniq(inventory.map(i => i.location), ['Main Storeroom', 'Van 1', 'Van 2', 'Van 3']), [inventory])
+  const supplierOptions = useMemo(() => uniq(inventory.map(i => i.supplier)), [inventory])
   const orderItems = (items: InventoryItem[]) => {
     const n = ledger.createOrders(items)
     notify[n > 0 ? 'success' : 'info'](n > 0 ? `${n} purchase order${n === 1 ? '' : 's'} created` : 'These items already have open orders')
@@ -171,8 +192,13 @@ export function Inventory() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-[#E4E8EC] bg-slate-50">
-                    {['Item', 'Category', 'Location', 'In Stock', 'Min', 'Stock Level', 'Unit Cost', 'Value', ''].map(h => (
-                      <th key={h} className="text-left px-3 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.07em] whitespace-nowrap">
+                    {/* UX-198: numbers right-aligned in their own wide columns; In Stock and Min separated by a line */}
+                    {([
+                      ['Item', 'text-left px-4'], ['Category', 'text-left px-3'], ['Location', 'text-left px-3'],
+                      ['In Stock', 'text-right px-5 min-w-[110px] bg-slate-100/70'], ['Min Stock', 'text-right px-5 min-w-[110px] border-l border-slate-200'],
+                      ['Stock Level', 'text-left px-5 min-w-[140px]'], ['Unit Cost', 'text-right px-3'], ['Value', 'text-right px-3'], ['', 'px-3'],
+                    ] as const).map(([h, cls]) => (
+                      <th key={h || 'actions'} className={`${cls} py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-[0.07em] whitespace-nowrap`}>
                         {h}
                       </th>
                     ))}
@@ -183,7 +209,7 @@ export function Inventory() {
                     const level = stockLevel(item)
                     return (
                       <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-3 py-3">
+                        <td className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
                             <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
                               <Package size={14} className="text-slate-500" />
@@ -198,13 +224,13 @@ export function Inventory() {
                           <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{item.category}</span>
                         </td>
                         <td className="px-3 py-3 text-[12px] text-slate-500">{item.location}</td>
-                        <td className="px-3 py-3">
-                          <span className={`text-[13px] font-bold ${level.textColor}`}>
-                            {item.current_stock} {item.unit}
-                          </span>
+                        <td className="px-5 py-3 bg-slate-50/70">
+                          <Qty n={item.current_stock} unit={item.unit} tone={level.textColor} strong />
                         </td>
-                        <td className="px-3 py-3 text-[12px] text-slate-400">{item.min_stock} {item.unit}</td>
-                        <td className="px-3 py-3">
+                        <td className="px-5 py-3 border-l border-slate-100">
+                          <Qty n={item.min_stock} unit={item.unit} tone="text-slate-500" />
+                        </td>
+                        <td className="px-5 py-3">
                           <div className="flex items-center gap-2">
                             <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                               <div className={`h-full rounded-full ${level.barColor}`} style={{ width: level.width }} />
@@ -212,8 +238,8 @@ export function Inventory() {
                             <span className={`text-[11px] font-semibold ${level.textColor}`}>{level.label}</span>
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-[12px] text-slate-600">AED {item.unit_cost.toLocaleString()}</td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-3 text-[12px] text-slate-600 text-right whitespace-nowrap tabular-nums">AED {item.unit_cost.toLocaleString()}</td>
+                        <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">
                           <span className="text-[13px] font-bold text-[#111827]">AED {(item.current_stock * item.unit_cost).toLocaleString()}</span>
                         </td>
                         <td className="px-3 py-3">
@@ -427,51 +453,64 @@ export function Inventory() {
         )}
       </Modal>
 
+      {/* UX-198: the essentials first (name, category, unit, current / minimum stock); the rest under "More details" */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title="Add Inventory Item" size="md">
         <form className="space-y-4" onSubmit={e => {
           e.preventDefault()
           const fd = new FormData(e.currentTarget)
+          const unit = String(fd.get('unit') || '').trim()
+          if (!isValidUnit(unit)) { notify.error('Unit should be a word like Bottles, Litres or Pieces — not a number'); return }
+          const num = (k: string) => Math.max(0, Number(fd.get(k)) || 0)
           addInventory({
-            name: fd.get('name') as string,
+            name: String(fd.get('name') || '').trim(),
             category: fd.get('category') as string,
-            unit: fd.get('unit') as string,
-            current_stock: Number(fd.get('current_stock')),
-            min_stock: Number(fd.get('min_stock')),
-            reorder_quantity: Number(fd.get('reorder_quantity')),
-            unit_cost: Number(fd.get('unit_cost')),
-            location: fd.get('location') as string,
-            supplier: fd.get('supplier') as string,
+            unit,
+            current_stock: num('current_stock'),
+            min_stock: num('min_stock'),
+            reorder_quantity: num('reorder_quantity'),
+            unit_cost: num('unit_cost'),
+            location: (fd.get('location') as string) || 'Main Storeroom',
+            supplier: String(fd.get('supplier') || '').trim(),
             last_restocked: todayDubai(),
           })
           setShowModal(false)
+          setShowMore(false)
         }}>
-          <Input name="name" label="Item Name" placeholder="e.g. All-Purpose Cleaner" required />
+          <Input name="name" label="Item Name" placeholder="e.g. All-Purpose Cleaner 5L" required autoFocus />
           <div className="grid grid-cols-2 gap-4">
             <Select name="category" label="Category">
-              <option>Chemicals</option>
-              <option>Equipment</option>
-              <option>PPE</option>
-              <option>Consumables</option>
+              {categoryOptions.map(c => <option key={c}>{c}</option>)}
             </Select>
-            <Input name="unit" label="Unit" placeholder="e.g. Litres, Pieces, Boxes" />
+            <div>
+              <Input name="unit" label="Unit" placeholder="Bottles, Litres, Pieces…" list="inventory-units" required />
+              <datalist id="inventory-units">{INVENTORY_UNITS.map(u => <option key={u} value={u} />)}</datalist>
+            </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
-            <Input name="current_stock" label="Current Stock" type="number" placeholder="0" defaultValue="0" />
-            <Input name="min_stock" label="Min Stock" type="number" placeholder="0" defaultValue="0" />
-            <Input name="reorder_quantity" label="Reorder Qty" type="number" placeholder="0" defaultValue="0" />
+          <div className="rounded-2xl bg-emerald-50/60 border border-emerald-100 p-3.5 grid grid-cols-2 gap-4">
+            <Input name="current_stock" label="Current Stock" type="number" min="0" step="any" placeholder="How many you have now" required />
+            <Input name="min_stock" label="Minimum Stock" type="number" min="0" step="any" placeholder="Alert at or below" defaultValue="0" />
+            <p className="col-span-2 text-[11.5px] text-emerald-800 -mt-1">When stock reaches the minimum, the item shows as Low / Critical and goes to the Restock Queue.</p>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input name="unit_cost" label="Unit Cost (AED)" type="number" placeholder="0.00" step="0.01" defaultValue="0" />
-            <Select name="location" label="Location">
-              <option>Main Storeroom</option>
-              <option>Van 1</option>
-              <option>Van 2</option>
-              <option>Van 3</option>
-            </Select>
+          <button type="button" onClick={() => setShowMore(v => !v)} aria-expanded={showMore}
+            className="flex items-center gap-1.5 text-[12.5px] font-bold text-slate-600 hover:text-emerald-700 cursor-pointer">
+            <ChevronDown size={15} className={`transition-transform ${showMore ? 'rotate-180' : ''}`} /> More details (optional) — cost, supplier, location, reorder quantity
+          </button>
+          {/* kept in the form while hidden so their defaults are still saved */}
+          <div className={showMore ? 'space-y-4' : 'hidden'}>
+            <div className="grid grid-cols-2 gap-4">
+              <Input name="unit_cost" label="Unit Cost (AED)" type="number" min="0" placeholder="0.00" step="0.01" />
+              <Input name="reorder_quantity" label="Reorder Quantity" type="number" min="0" step="any" placeholder="How many to order" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Select name="location" label="Location" defaultValue="Main Storeroom">
+                {locationOptions.map(l => <option key={l}>{l}</option>)}
+              </Select>
+              <Input name="supplier" label="Supplier" placeholder="Supplier name" list="inventory-suppliers" />
+              <datalist id="inventory-suppliers">{supplierOptions.map(x => <option key={x} value={x} />)}</datalist>
+            </div>
           </div>
-          <Input name="supplier" label="Supplier" placeholder="Supplier name" />
           <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowModal(false)}>Cancel</Button>
+            <Button type="button" variant="outline" className="flex-1" onClick={() => { setShowModal(false); setShowMore(false) }}>Cancel</Button>
             <Button type="submit" className="flex-1">Add Item</Button>
           </div>
         </form>

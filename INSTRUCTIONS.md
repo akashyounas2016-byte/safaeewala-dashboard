@@ -118,6 +118,11 @@
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
+### Inventory (25 Nov)
+- Table mein **In Stock** aur **Min Stock** ab alag alag columns hain: upar number, neeche unit (Bottle, Pair…).
+- **Add Item** mein pehle sirf zaroori cheezein: naam, category, unit, Current Stock, Minimum Stock. Cost, supplier, location, reorder quantity **More details** dabane par.
+- Unit mein number na likhein (jaise "5") — Bottles, Litres, Pieces jaisa lafz likhein. "abc" item ka unit abhi "5" hai, Edit se theek kar dein.
+
 ### Payments screen (25 Nov)
 - **Date filter sirf ek hai**, header ke neeche: Today, 7 Days, 14 Days, 30 Days, This Month, Last Month. **More** mein 3 / 6 / 12 Months, This Year, Last Year, All Time aur **Custom Range** (From / To). Yahi date cards aur neeche ki lists (Outstanding, Recovered, Cash Book) dono par lagti hai.
 - **Weekly report, Export Report, Record Manual Pending** ab header ke **⋮** menu mein hain.
