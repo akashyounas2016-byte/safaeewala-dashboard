@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- data (owner's word, 25 Nov): Asmita 25 Nov 107 Juma Al Naboodah Charges 10 → 20 (2 h × 10, client's AED 10 advance pays 10, 10 pending) (R-SHEET-05); Luzora 1 Oct team row 09:00–13:00 / 4 h → 11:00–17:00 / 6 h as on the office sheet (A41); TEST Cleaner employee + login deleted (A43). Before values in Safaeewala-backups
+
 - fix(excel): changing a job's Start / End time (picked from the list, typed + Enter or in the formula bar) now redoes Charges = rate × Duty Hrs — 12–2 PM at 10 / hr stayed at 10 instead of 20 (R-SHEET-05)
 
 - fix(employees): the page crashed ("Cannot read properties of null (reading 'forEach')") when one staff record had no skills list — the TEST Cleaner made on 24 Nov; that record is repaired and the Employees list / profile now treat a missing skills list as empty
