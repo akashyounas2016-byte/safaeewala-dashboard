@@ -33,13 +33,14 @@ jobs:
         run: npm install
 
       - name: Setup Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      # the ubuntu runner already has the Android SDK (ANDROID_HOME); Gradle fetches a missing platform itself
+      - name: Android SDK
+        run: echo "ANDROID_HOME=$ANDROID_HOME" && ls "$ANDROID_HOME/platforms" | tail -3
 
       - name: Sync the Capacitor project
         run: npx cap sync android
