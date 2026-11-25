@@ -2034,7 +2034,8 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-OPS-23 — Overview: choose and order the cards
 - **Rule:** *"Overview screen ke mukhtalif cards ko hide ya show karne ke liye date filter ke paas aik 'Cards' ka icon shamil karein, jis se pop-up khule aur user apni marzi se cards ki tarteeb badal sake ya unhein chupa sake. Iski mukammal settings save honi chahiye taake dobara screen kholne par settings tabdeel na hon."* (2026-11-25)
   - A **Cards n/12** button at the right of the date filter opens a pop-up with the 12 cards: a tick to show / hide each, drag a row or ↑ ↓ to change the order, **Reset to default**, Done. The cards follow at once.
-  - Saved on that computer (browser) — each person keeps their own layout; a card added later shows at the end. Checked: hide + move + reload keeps it; Reset brings all 12 back.
+  - Saved on that computer (browser) — each person keeps their own layout; a card added later shows at the end. Checked: hide + move + reload keeps it; Reset brings the default back.
+  - **R-OPS-24 (owner, same day):** *"Fluent Form, WhatsApp Clicks, Low Stock Alerts, aur Completion Rate ke cards by default hide hone chahiye."* These four start hidden (8 of 12 shown) until the person ticks them; Reset to default returns to these 8.
 - **Code:** `components/overview/CardsCustomizer.tsx → useCardPrefs, CardsCustomizer`; `Overview.tsx → OV_CARDS, cardNodes`. Test: `tests/unit/batch-1125h.test.ts`.
 - **Status:** Active · Since: 2026-11-25
 

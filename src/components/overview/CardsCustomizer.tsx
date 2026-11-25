@@ -11,18 +11,20 @@ export interface CardPrefs { order: string[]; hidden: string[] }
 const KEY = 'safaeewala_overview_cards'
 
 /** The saved order (new cards added at the end, removed ones dropped) and the hidden list */
-export function useCardPrefs(defaultIds: string[]): [CardPrefs, (p: CardPrefs) => void] {
+/** `defaultHidden`: cards hidden until the person shows them (R-OPS-24) */
+export function useCardPrefs(defaultIds: string[], defaultHidden: string[] = []): [CardPrefs, (p: CardPrefs) => void] {
   const fix = (p: Partial<CardPrefs> | null): CardPrefs => {
     const saved = (p?.order || []).filter(id => defaultIds.includes(id))
-    return { order: [...saved, ...defaultIds.filter(id => !saved.includes(id))], hidden: (p?.hidden || []).filter(id => defaultIds.includes(id)) }
+    return { order: [...saved, ...defaultIds.filter(id => !saved.includes(id))], hidden: (p ? p.hidden || [] : defaultHidden).filter(id => defaultIds.includes(id)) }
   }
   const [prefs, setPrefs] = useState<CardPrefs>(() => fix(safeLocalStorageGet<CardPrefs | null>(KEY, null)))
   const save = (p: CardPrefs) => { const f = fix(p); setPrefs(f); safeLocalStorageSet(KEY, f) }
   return [prefs, save]
 }
 
-export function CardsCustomizer({ cards, prefs, onChange }: {
+export function CardsCustomizer({ cards, prefs, onChange, defaultHidden = [] }: {
   cards: { id: string; label: string }[]
+  defaultHidden?: string[]
   prefs: CardPrefs
   onChange: (p: CardPrefs) => void
 }) {
@@ -65,7 +67,7 @@ export function CardsCustomizer({ cards, prefs, onChange }: {
           })}
         </ul>
         <div className="flex items-center justify-between gap-2 mt-4">
-          <button type="button" onClick={() => onChange({ order: cards.map(c => c.id), hidden: [] })} className="inline-flex items-center gap-1.5 text-[12.5px] font-bold text-slate-600 hover:text-emerald-700 cursor-pointer">
+          <button type="button" onClick={() => onChange({ order: cards.map(c => c.id), hidden: defaultHidden })} className="inline-flex items-center gap-1.5 text-[12.5px] font-bold text-slate-600 hover:text-emerald-700 cursor-pointer">
             <RotateCcw size={13} /> Reset to default
           </button>
           <button type="button" onClick={() => setOpen(false)} className="h-10 px-5 rounded-xl bg-[#0F1F19] text-white text-[13px] font-bold cursor-pointer">Done</button>

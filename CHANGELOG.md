@@ -6,7 +6,7 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
-- feat(overview): "Cards" button next to the date filter — show / hide and reorder the 12 cards, saved on this computer (R-OPS-23)
+- feat(overview): "Cards" button next to the date filter — show / hide and reorder the 12 cards, saved on this computer (R-OPS-23); Fluent Form, WhatsApp Clicks, Low Stock and Completion Rate hidden at first (R-OPS-24)
 
 - feat(app): Safaeewala Duties Android test app — opens the live My Duties, location in the background through a foreground service, no-internet screen, APK built on GitHub as a pre-release (R-APP-01)
 - change(live-map): people at one place placed upper-left / upper-right, top / left / right…, solid lines with a white casing, a people icon at the centre, state as badge icons instead of the yellow ring (R-OPS-22)

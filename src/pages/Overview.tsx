@@ -91,6 +91,8 @@ function StatusPill({ status }: { status: string }) {
 
 /** R-OPS-23: the Overview cards (default order) for the Cards pop-up */
 const OV_CARDS = [{ id: 'jobs', label: 'Jobs' }, { id: 'collected', label: 'Collected' }, { id: 'pending', label: 'Pending Collection' }, { id: 'completion', label: 'Completion Rate' }, { id: 'active_cleaners', label: 'Active Cleaners' }, { id: 'crew_util', label: 'Crew Utilization' }, { id: 'hours', label: 'Hours Worked' }, { id: 'low_stock', label: 'Low Stock Alerts' }, { id: 'leads', label: 'Fluent Form Leads' }, { id: 'wa_clicks', label: 'WhatsApp Clicks' }, { id: 'new_clients', label: 'New Clients' }, { id: 'expenses', label: 'Expenses' }]
+/** R-OPS-24: hidden at first (shown again under "Cards") — a cleaner first screen */
+const OV_CARDS_HIDDEN = ['leads', 'wa_clicks', 'low_stock', 'completion']
 
 /* ─── KPI Card — R-OPS-17: compact, 4 per row ─── */
 interface KpiCardProps {
@@ -410,7 +412,7 @@ export function Overview() {
   const toggleCol = (id: string) => setHiddenCols(prev => { const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]; safeLocalStorageSet('safaeewala_overview_dispatch_hidden', next); return next })
   const showCol = (id: string) => !hiddenCols.includes(id)
   // R-OPS-23: which cards show and in what order (saved on this computer)
-  const [cardPrefs, setCardPrefs] = useCardPrefs(OV_CARDS.map(c => c.id))
+  const [cardPrefs, setCardPrefs] = useCardPrefs(OV_CARDS.map(c => c.id), OV_CARDS_HIDDEN)
   const [editJob, setEditJob] = useState<DailyJob | null>(null)
   const canEditJobs = useModuleAccess('Daily Job Sheet')
 
@@ -888,7 +890,7 @@ export function Overview() {
               Showing: <span className="text-emerald-600 font-extrabold">{unifiedJobs.length}</span> jobs ({activeDateRange.label})
             </span>
           </div>
-          <CardsCustomizer cards={OV_CARDS} prefs={cardPrefs} onChange={setCardPrefs} />
+          <CardsCustomizer cards={OV_CARDS} prefs={cardPrefs} onChange={setCardPrefs} defaultHidden={OV_CARDS_HIDDEN} />
         </div>
       </div>
 

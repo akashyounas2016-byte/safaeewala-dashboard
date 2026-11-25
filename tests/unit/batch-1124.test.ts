@@ -27,7 +27,8 @@ eq((djs.match(/spreadsheet\?date=\$\{selectedDate\}/g) || []).length, 1, 'only o
 
 // R-OPS-17
 const ov = src('src/pages/Overview.tsx')
-const cards = ov.slice(ov.indexOf('{/* ── KPI Cards'), ov.indexOf('{/* ── R-OPS-13 Reports'))
+// R-OPS-23: the cards now live in cardNodes (shown in the order chosen under "Cards")
+const cards = ov.slice(ov.indexOf('const cardNodes'), ov.indexOf('{/* ── Page Hero')) + ov.slice(ov.indexOf('{/* ── KPI Cards'), ov.indexOf('{/* ── R-OPS-20'))
 eq((cards.match(/<KpiCard\b/g) || []).length, 12, '12 summary cards (3 full rows of 4)')
 eq(/lg:grid-cols-4/.test(cards), true, '4 cards per row')
 eq(['Pending Collection', 'Crew Utilization', 'Low Stock Alerts', 'Hours Worked', 'New Clients', 'Expenses'].every(t => cards.includes(t)), true, 'Pending, Crew, Low Stock moved up; Hours, New Clients, Expenses added')

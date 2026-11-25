@@ -119,7 +119,8 @@
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
 ### Overview: apne cards chunein (25 Nov)
-- Date filter ki line mein daayen taraf **Cards** button. Dabayein → har card ke saath tick (dikhana / chhupana) aur ↑ ↓ (ya row ko pakad kar khenchein) se tarteeb. **Reset to default** se sab wapas. Ye setting isi computer par yaad rehti hai.
+- Date filter ki line mein daayen taraf **Cards** button. Dabayein → har card ke saath tick (dikhana / chhupana) aur ↑ ↓ (ya row ko pakad kar khenchein) se tarteeb. **Reset to default** se shuru wale 8 cards wapas. Ye setting isi computer par yaad rehti hai.
+- Shuru mein **Fluent Form, WhatsApp Clicks, Low Stock Alerts, Completion Rate** chhupe hote hain — chahiye hon to Cards mein tick kar dein.
 
 ### Safaeewala Duties app (test, 25 Nov)
 - **APK kahan se:** GitHub → repo → **Releases** → "Safaeewala Duties — test build …" → `.apk` file phone par kholein → "Install unknown apps" allow → Install.
