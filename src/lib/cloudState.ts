@@ -199,10 +199,27 @@ export async function pullCloudState(timeoutMs = 2500): Promise<void> {
   }
 }
 
+/**
+ * R-APP-02: a cleaner / driver login may write only the driver plan to app_state (R-SEC-07 policy). Other keys it
+ * changes on its phone stay on the phone — no upload, no "changes not saved" banner (14 were stuck on the app).
+ */
+const FIELD_WRITABLE = new Set(['safaeewala_driver_plans'])
+let fieldLogin = false
+export function setCloudFieldLogin(isField: boolean) {
+  if (fieldLogin === isField) return
+  fieldLogin = isField
+  if (isField) {
+    const meta = readMeta()
+    Object.keys(meta).forEach(k => { if (meta[k]?.dirty && !FIELD_WRITABLE.has(k)) setKeyMeta(k, { dirty: false }) })
+    lastError = undefined
+  }
+}
+
 async function push(key: string): Promise<void> {
+  if (fieldLogin && !FIELD_WRITABLE.has(key)) { setKeyMeta(key, { dirty: false }); return }
   try {
     // R-SYNC-19: this device's delete markers go up first, so no other device merges a deleted item back
-    if (key !== TOMBSTONES_KEY && readMeta()[TOMBSTONES_KEY]?.dirty) await push(TOMBSTONES_KEY)
+    if (key !== TOMBSTONES_KEY && !fieldLogin && readMeta()[TOMBSTONES_KEY]?.dirty) await push(TOMBSTONES_KEY)
     const meta = readMeta()
     // Someone else uploaded since our last sync → merge their version in first (with everyone's delete markers)
     const { data: rows, error: readErr } = await supabase.from(TABLE).select('key, value, updated_at').in('key', key === TOMBSTONES_KEY ? [key] : [key, TOMBSTONES_KEY])

@@ -128,6 +128,7 @@
 - **Share my location** dabayein → phone location maange to **"Allow all the time"** chunein, notification ki ijazat bhi dein. Ab screen band ho ya app peeche ho, location jaati rehti hai; upar notification "Safaeewala Duties — on duty" dikhta hai. Duty khatam → **Stop sharing**.
 - Internet na ho to "No internet connection — Try again" aata hai.
 - Naya test build aane par kabhi purani app uninstall karni pad sakti hai (abhi test key hai).
+- **26 Nov:** website ki har tabdeeli app mein **khud** aa jati hai (app website hi kholti hai) — naya APK sirf tab jab app khud badle. Tab My Duties par neela banner aata hai: **"New app version — tap to download"** → download → file khol kar Install. Office GitHub mein signing key daal de (A45) to naya version purani app ke **upar** install hota hai, uninstall ki zaroorat nahi.
 - Notifications (push) baad mein aayengi.
 
 ### Live Map: ek jagah kai log (25 Nov, raat)

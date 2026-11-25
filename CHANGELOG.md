@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(app): page no longer under the status / navigation bar, normal text size, cleaner logins stop trying to upload shared settings ("14 changes not saved"), "New app version" banner, build number + fixed signing key from GitHub secrets (R-APP-02)
+
 - feat(overview): "Cards" button next to the date filter — show / hide and reorder the 12 cards, saved on this computer (R-OPS-23); Fluent Form, WhatsApp Clicks, Low Stock and Completion Rate hidden at first (R-OPS-24)
 
 - feat(app): Safaeewala Duties Android test app — opens the live My Duties, location in the background through a foreground service, no-internet screen, APK built on GitHub as a pre-release (R-APP-01)

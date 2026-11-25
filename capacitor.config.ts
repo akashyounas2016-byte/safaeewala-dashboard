@@ -23,6 +23,8 @@ const config: CapacitorConfig = {
   plugins: {
     // WebView requests are slowed down in the background — send them natively instead
     CapacitorHttp: { enabled: true },
+    // R-APP-02: the WebView stays clear of the status bar and the navigation bar
+    SystemBars: { insetsHandling: 'css' },
   },
 }
 

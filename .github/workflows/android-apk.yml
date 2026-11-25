@@ -45,11 +45,20 @@ jobs:
       - name: Sync the Capacitor project
         run: npx cap sync android
 
+      # R-APP-02: the fixed signing key (if the owner added the secrets), so updates install over the old app
+      - name: Signing key
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/safaeewala.p12"; echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/safaeewala.p12" >> "$GITHUB_ENV"; echo "fixed key"; else echo "no secret: debug key"; fi
+
       - name: Build the debug APK
         working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon -PappVersionCode=${{ github.run_number }}
           cp app/build/outputs/apk/debug/app-debug.apk "../safaeewala-duties-test-${{ github.run_number }}.apk"
 
       - name: Keep the APK with this run

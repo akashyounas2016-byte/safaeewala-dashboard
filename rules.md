@@ -2050,6 +2050,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `capacitor.config.ts`; `android/`; `app-shell/`; `.github/workflows/android-apk.yml`; `src/lib/driverLocation.ts → isNativeApp, startNativeSharing`; `useLiveSharing.ts`; `MyDuties.tsx`. Test: `tests/unit/batch-1125g.test.ts`.
 - **Status:** Active (test) · Since: 2026-11-25
 
+### R-APP-02 — App: inside the bars, normal text size, clean sync, update check, one signing key
+- **Rule:** *"app ke sath screenshots … header aur footer ke masail … app ka size aur layout ooversized lag raha hai isay durust karein … kiya hr bar mjhe new app install krni pre gi iska koi auto method nahi k hud hi update ho?"* (2026-11-26, test build 2 on the owner's phone)
+  - **Header / footer:** the page ran under the status bar (clock, battery) and the navigation bar — the site asks for edge-to-edge (`viewport-fit=cover`). Inside the app that is switched off and Capacitor keeps the WebView inside the bars (`SystemBars.insetsHandling: css`).
+  - **Oversized:** the phone's font-size setting was applied to the page; the app keeps the page's own text size (`setTextZoom(100)`).
+  - **"14 changes not saved … app_state_field_add":** a cleaner / driver login may write only the driver plan to app_state (R-SEC-07); the sync now uploads only that for them, the rest stays on the phone, no banner.
+  - **Updates:** screens and fixes of the website reach the app by themselves (it opens the live site). A new APK is needed only when the app itself changes; then My Duties shows **"New app version (build N) — tap to download"** (checks GitHub at most every 6 hours; the build number is the GitHub run number). To install over the old app every build must carry the same signing key: a key was made on 26 Nov (Safaeewala-backups/android-signing, not in the repo); the owner adds it as GitHub secrets `ANDROID_KEYSTORE_B64` and `ANDROID_KEYSTORE_PASSWORD` (A45). Until then each build uses a new debug key and the old app has to be removed first. Fully silent updates need Google Play (internal testing) — later, owner's choice.
+- **Code:** `src/main.tsx`; `capacitor.config.ts`; `android/app/src/main/java/com/safaeewala/duties/MainActivity.java`; `android/app/build.gradle`; `.github/workflows/android-apk.yml`; `src/lib/cloudState.ts → setCloudFieldLogin`; `Sidebar.tsx`; `src/lib/appUpdate.ts`; `MyDuties.tsx`. Test: `tests/unit/batch-1126.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
+
 
 
 

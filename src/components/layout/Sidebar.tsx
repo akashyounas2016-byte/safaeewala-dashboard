@@ -1,4 +1,5 @@
-import { Fragment, useState, useMemo, type ElementType } from 'react'
+import { Fragment, useEffect, useState, useMemo, type ElementType } from 'react'
+import { setCloudFieldLogin } from '@/lib/cloudState'
 import { useLocation } from 'react-router-dom'
 import { groupPaths, MODULE_GROUPS } from '@/lib/moduleGroups'
 import { NavLink } from 'react-router-dom'
@@ -208,6 +209,7 @@ function SidebarContent({ onClose, onToggleCollapse }: SidebarContentProps) {
   // read every lead from the VPS and tried to copy them into Supabase: 48 stuck changes on the phone)
   const maybeField = me?.role === 'employee' && !!me?.employee_id && (staffResolving || isFieldLogin)
   const fluentUnreadCount = useFluentFormsUnreadCount(!!me && !maybeField)
+  useEffect(() => { setCloudFieldLogin(!!maybeField) }, [maybeField]) // R-APP-02
   const { alerts: openAlerts } = useAlerts(!isFieldLogin)
   const waUnread = useWhatsAppUnread(!isFieldLogin) // R-WA-01
   const badgeOf = (to: string) => (to === '/fluent-forms' ? fluentUnreadCount : to === '/alerts' ? openAlerts.length : to === '/whatsapp-crm' || to === '/inbox' ? waUnread : undefined)

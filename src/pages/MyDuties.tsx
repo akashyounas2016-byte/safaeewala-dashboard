@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   MapPinned, Navigation, Square, ChevronLeft, ChevronRight, Clock, MapPin, Users, Truck,
-  Banknote, Lock, Eye, Package, CalendarDays, Sparkles, Phone, MessageCircle, PlayCircle, CheckCircle2, AlertTriangle, Car,
+  Banknote, Lock, Eye, Package, CalendarDays, Sparkles, Phone, MessageCircle, PlayCircle, CheckCircle2, AlertTriangle, Car, Download,
 } from 'lucide-react'
 import { useJobCheckins, nextStep, CHECKIN_LABEL, checkinId, type JobCheckin, type CheckinStatus } from '@/lib/jobCheckins'
 import { jobMatchesClient } from '@/lib/clientDataSync'
@@ -22,6 +22,7 @@ import { SiteCard } from '@/components/drivers/SiteCard'
 import { canApproveLeave, findMark, weekdayOf } from '@/lib/attendance'
 import { cleanerDuties, dutyKindOf, mapsSearchUrl, type CleanerDuty, type DutyKind } from '@/lib/duties'
 import { dutyClashes, clashText, startBlockedBy, minutesLate, lateText } from '@/lib/dutyChecks'
+import { useAppUpdate } from '@/lib/appUpdate'
 import { dubaiMinutes } from '@/lib/overviewStats'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import type { Employee } from '@/types'
@@ -93,6 +94,7 @@ export function MyDuties() {
   const checkins = useJobCheckins(date)
   const checkinOf = (jobId: string) => (person ? checkins.rows[checkinId(jobId, person.full_name)] : undefined)
   const doneCount = duties.filter(d => checkinOf(d.job.id)?.status === 'done').length
+  const appUpdate = useAppUpdate() // R-APP-02
   // R-DUTY-04: overlapping jobs, one job at a time, late starts
   const clashes = useMemo(() => dutyClashes(duties.map(d => d.job)), [duties])
   const [nowMin, setNowMin] = useState(() => dubaiMinutes())
@@ -163,6 +165,13 @@ export function MyDuties() {
 
   return (
     <div className="w-full space-y-3 sm:space-y-4">
+      {/* R-APP-02: a newer test build of the app exists */}
+      {appUpdate && (
+        <a href={appUpdate.url} className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-sky-50 border border-sky-200 text-sky-950 active:bg-sky-100">
+          <Download size={18} className="text-sky-700 shrink-0" />
+          <span className="text-[13px] font-bold leading-snug">New app version (build {appUpdate.build}) — tap to download, then open the file to install.</span>
+        </a>
+      )}
       {/* Header — full width of the page column on every screen size */}
       <div className="w-full gradient-card text-white rounded-[22px] sm:rounded-[24px] px-4 py-4 sm:px-7 sm:py-6 shadow-[0_8px_32px_rgba(15,23,42,0.28)] ring-1 ring-black/10">
         <div className="flex items-start justify-between gap-3">

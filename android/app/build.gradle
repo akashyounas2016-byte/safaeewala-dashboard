@@ -7,8 +7,9 @@ android {
         applicationId "com.safaeewala.duties"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // R-APP-02: each GitHub build has a higher number (the run number), so the app can tell a newer one exists
+        versionCode((project.findProperty('appVersionCode') ?: '1') as Integer)
+        versionName "1.0.${project.findProperty('appVersionCode') ?: '1'}"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,7 +17,24 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // R-APP-02: one fixed signing key (GitHub secret) so a new build installs over the old app.
+    // Without the secret the build falls back to the runner's debug key (then the old app must be removed first).
+    signingConfigs {
+        safaeewala {
+            def ks = System.getenv('ANDROID_KEYSTORE_PATH')
+            if (ks) {
+                storeFile file(ks)
+                storeType 'pkcs12'
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias 'safaeewala'
+                keyPassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            }
+        }
+    }
     buildTypes {
+        debug {
+            if (System.getenv('ANDROID_KEYSTORE_PATH')) signingConfig signingConfigs.safaeewala
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

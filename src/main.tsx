@@ -3,6 +3,12 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { installApiAuth } from '@/lib/apiAuth'
+// R-APP-02: inside the Android app the page must not run under the status bar / navigation bar — without
+// viewport-fit=cover the app's WebView keeps clear of them (Capacitor SystemBars, insetsHandling "css")
+if ((window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()) {
+  document.querySelector('meta[name="viewport"]')?.setAttribute('content', 'width=device-width, initial-scale=1.0')
+  document.documentElement.classList.add('in-app')
+}
 import { installErrorReporting } from '@/lib/errorReport'
 import { installDateYearLimit } from '@/lib/dateInputs'
 
