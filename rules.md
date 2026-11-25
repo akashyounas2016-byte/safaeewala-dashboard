@@ -839,6 +839,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `clientDataSync.ts → extractAllClientsFromDailyJobs`. Test: `tests/unit/excel-client-1121.test.ts`.
 - **Status:** Active · Since: 2026-11-21
 
+### R-CLI-16 — Clients: each tab brings its own cards
+- **Rule:** *"Client screen par 'Monthly' ya 'Biweekly' tabs par click karne par, upar wale general cards ki jagah unhi tabs se makhsoos cards show hone chahiye, jo abhi niche nazar aate hain."* (2026-11-26)
+  - The tab bar (Clients · Monthly Clients · Bi-Weekly Clients) is now above the cards. **Clients**: the general cards as before. **Monthly Clients**: no general cards — the Monthly screen's own cards come first. **Bi-Weekly Clients**: its own 6 cards — Bi-Weekly Clients, Contracts On, Contracts Off, Visits This Week (Mon–Sun), Visits This Month (with charges), Pending Dues (clients owing).
+- **Code:** `Clients.tsx → biweekly, tab bar`. Test: `tests/unit/batch-1126c.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
+
 ### R-BK-06 — Ad-hoc jobs for monthly / bi-weekly clients
 - **Rule:** *"'Ad-Hoc Booking' ka feature … monthly clients ko regular schedule kay ilawa additional standard services … extra jobs ka bill alag say generate ho."* (2026-11-21)
   - Add Job (Excel, Daily, Booking) for a Monthly / Bi-Weekly client shows **Ad-hoc job** — the remark gets "Ad-hoc" and the Mode is not "Monthly", so it is paid like any job.
@@ -1163,6 +1170,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/clientDataSync.ts → countStaffOnJobs`; `DailyJobSheet.tsx → staffOnDuty`. Test: `tests/unit/batch-1124b.test.ts`.
 - **Status:** Active · Since: 2026-11-24
 
+### R-EMP-19 — Staff on Duty: what it counts (checked 26 Nov)
+- **Question:** *"Aaj ki date mein 10 staff on duty show ho rahe hain jabke total jobs 11 hain. Wazeh karein ke is metric mein tamam hazir cleaners shamil hain ya sirf woh jinhein jobs assigned hain."* (2026-11-26)
+  - **Answer:** cleaners who have at least one job on the date, each counted once (R-ATT-01 "Present (working)", R-EMP-18). Cleaners without a job (available / standby) are not in it. 26 Nov: 11 jobs, 10 cleaners — Nim Kumari Shahu has two (10:00–13:00 Warehouse no.7, 14:00–16:00 Art corner Showroom 8), which do not overlap. No conflict.
+  - The card now says so: "Cleaners with a job · each once".
+- **Code:** `JobSheetKPIs.tsx`. Test: `tests/unit/batch-1126c.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
+
 ---
 
 ## AGN — Agencies
@@ -1409,6 +1424,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Active Contracts and High Value Dues cards removed (12 left). 5 a row, all the same width and height. At first one row: Outstanding, Collected, Pending Recovered, Monthly Contracts, Advance Balance (the cards before R-FIN-21). **View more ⌄ (n)** opens the next row; **Less ⌃** goes back to one row. Hide / Show all (R-FIN-21) still work.
 - **Code:** `PaymentsHub.tsx → cards, cardRows`. Test: `tests/unit/batch-1125e.test.ts`.
 - **Status:** Active · Since: 2026-11-25
+
+### R-FIN-23 — Payments: same-size cards, client name opens the profile
+- **Rule:** *"Payment screen par 'Outstanding' card ke andar maujood 'To Collect' ka tag hata dein taake text pura nazar aaye aur card ki height barabar rahe … 'Active Outstanding Dues' widget mein client ke naam par click karne se direct unki profile par redirection honi chahiye."* (2026-11-26)
+  - Outstanding card: no "To collect" tag; its line lists only the parts that have money ("Jobs AED 9,544", invoices / manual only when not 0). Checked: the 5 cards are the same height (144 px).
+  - Active Outstanding Dues: the client's name links to /clients/<id> (the job's client, or the client the job matches; invoices by their client; manual items by the same name). A due without a client record shows the name as text (1 of 9 on 26 Nov).
+- **Code:** `PaymentsHub.tsx`; `PendingPayments.tsx → clientId`. Test: `tests/unit/batch-1126c.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
 
 
 ### R-FIN-04 — Invoice numbers

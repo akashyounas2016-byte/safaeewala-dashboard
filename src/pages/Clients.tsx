@@ -2,12 +2,13 @@ import { clientMoneySummary } from '@/lib/clientAdvance'
 import { clientReceiptsOf, receiptTotal, loadPendingReceipts, getClientDailyJobsHistory } from '@/lib/clientDataSync'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { formatClientAddress } from '@/lib/clientAddress'
+import { KpiCard } from '@/components/ui/KpiCard'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Search, Phone, MapPin, Calendar, TrendingUp, Users, Star, DollarSign,
   Heart, Award, CheckCircle, Trash2, ExternalLink, ArrowUpDown, RotateCcw, X, Filter, Clock,
   Save, Check, ChevronDown, UserCheck, Edit2, LayoutGrid, List, ChevronUp, AlertCircle, Sparkles, Grid3x3,
-  Wallet, CalendarCheck, Plus, Building2, Handshake, BarChart3
+  Wallet, CalendarCheck, Plus, Building2, Handshake, BarChart3, Repeat, CheckCircle2, PauseCircle, CalendarDays
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -405,6 +406,25 @@ export function Clients() {
       : isMonthlyClient(c, dailyJobs, allMonthlySummaries) ? 'monthly' : 'general'
   const tabCounts = { general: clients.length, monthly: 0, biweekly: 0 } // UX-168: Clients = every client
   clients.forEach(c => { const m = modeOfClient(c); if (m !== 'general') tabCounts[m]++ })
+  // R-CLI-20: the Bi-Weekly tab's cards
+  const biweekly = (() => {
+    const list = clients.filter(c => modeOfClient(c) === 'biweekly')
+    const today = todayDubai()
+    const dow = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7 // Monday = 0
+    const weekStart = addDays(today, -dow), weekEnd = addDays(weekStart, 6), month = today.slice(0, 7)
+    const jobsOf = (c: Client) => dailyJobs.filter(j => jobMatchesClient(j, c))
+    let week = 0, monthN = 0, monthCharges = 0, pending = 0, owing = 0
+    list.forEach(c => {
+      jobsOf(c).forEach(j => {
+        const d = String(j.date || '').slice(0, 10)
+        if (d >= weekStart && d <= weekEnd) week++
+        if (d.slice(0, 7) === month) { monthN++; monthCharges += Number(j.charges) || 0 }
+      })
+      const due = calcClientPendingBalance(c, dailyJobs)
+      if (due > 0) { pending += due; owing++ }
+    })
+    return { count: list.length, active: list.filter(c => c.contract_active !== false).length, off: list.filter(c => c.contract_active === false).length, week, month: monthN, monthCharges, pending, owing }
+  })()
 
   const filtered = (() => {
     const base = clients.filter(c => {
@@ -1044,6 +1064,18 @@ export function Clients() {
         }
       />
 
+      {/* ── UX-163: Clients / Monthly Clients / Bi-Weekly Clients — R-CLI-20: above the cards, each tab brings its own cards ── */}
+      <div role="tablist" aria-label="Client type" className="flex items-center gap-1.5 bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-1.5 w-fit max-w-full overflow-x-auto">
+        {([['general', 'Clients'], ['monthly', 'Monthly Clients'], ['biweekly', 'Bi-Weekly Clients']] as const).filter(([id]) => id !== 'monthly' || canMonthly).map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={shownTab === id} onClick={() => setModeTab(id)}
+            className={`px-4 py-2 rounded-xl text-[13px] font-bold whitespace-nowrap transition-colors cursor-pointer flex items-center gap-2 ${shownTab === id ? 'bg-emerald-700 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'}`}>
+            {label}
+            <span className={`text-[10.5px] font-black px-1.5 py-0.5 rounded-full ${shownTab === id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{tabCounts[id]}</span>
+          </button>
+        ))}
+      </div>
+
+      {shownTab === 'general' && (<>
       {/* ── KPI Summary Cards: Single Row of 6 Cards ── */}
       <div className="space-y-3">
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5">
@@ -1080,16 +1112,19 @@ export function Clients() {
         )}
       </div>
 
-      {/* ── UX-163: Clients / Monthly Clients / Bi-Weekly Clients ── */}
-      <div role="tablist" aria-label="Client type" className="flex items-center gap-1.5 bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-1.5 w-fit max-w-full overflow-x-auto">
-        {([['general', 'Clients'], ['monthly', 'Monthly Clients'], ['biweekly', 'Bi-Weekly Clients']] as const).filter(([id]) => id !== 'monthly' || canMonthly).map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={shownTab === id} onClick={() => setModeTab(id)}
-            className={`px-4 py-2 rounded-xl text-[13px] font-bold whitespace-nowrap transition-colors cursor-pointer flex items-center gap-2 ${shownTab === id ? 'bg-emerald-700 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'}`}>
-            {label}
-            <span className={`text-[10.5px] font-black px-1.5 py-0.5 rounded-full ${shownTab === id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{tabCounts[id]}</span>
-          </button>
-        ))}
-      </div>
+      </>)}
+
+      {/* R-CLI-20: the Bi-Weekly tab's own cards (in place of the general ones) */}
+      {shownTab === 'biweekly' && (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
+          <KpiCard label="Bi-Weekly Clients" value={biweekly.count} sub="Clients on a Bi-Weekly plan" icon={Repeat} labelColor="text-teal-700" iconSolid="bg-[#0d9488] shadow-teal-500/25" />
+          <KpiCard label="Contracts On" value={biweekly.active} sub="Visits are being planned" icon={CheckCircle2} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" />
+          <KpiCard label="Contracts Off" value={biweekly.off} sub="Paused or ended" icon={PauseCircle} labelColor="text-slate-700" iconSolid="bg-[#64748b] shadow-slate-500/25" />
+          <KpiCard label="Visits This Week" value={biweekly.week} sub="Job sheet rows, Mon–Sun" icon={CalendarDays} labelColor="text-sky-700" iconSolid="bg-[#0284c7] shadow-sky-500/25" />
+          <KpiCard label="Visits This Month" value={biweekly.month} sub={`AED ${Math.round(biweekly.monthCharges).toLocaleString()} charges`} icon={CalendarCheck} labelColor="text-indigo-700" iconSolid="bg-[#4f46e5] shadow-indigo-500/25" />
+          <KpiCard label="Pending Dues" value={`AED ${Math.round(biweekly.pending).toLocaleString()}`} sub={`${biweekly.owing} client${biweekly.owing === 1 ? '' : 's'} owing`} icon={Wallet} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25" chip={biweekly.owing ? 'To follow up' : 'All clear'} chipTone={biweekly.owing ? 'warn' : 'up'} />
+        </div>
+      )}
 
       {/* UX-168: the Monthly tab shows the Monthly Clients screen itself (its cards, payments, contracts, coverage) */}
       {shownTab === 'monthly' ? <MonthlyClients embedded /> : (<>

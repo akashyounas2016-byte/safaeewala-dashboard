@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(payments): no "To collect" tag, same-height cards; client names in Active Outstanding Dues open the profile (R-FIN-23)
+- docs(job-sheet): Staff on Duty = cleaners with a job, each once — 26 Nov 10 of 11 jobs is right (Nim Kumari 2 jobs) (R-EMP-19)
+- change(clients): tab bar above the cards; Monthly / Bi-Weekly tabs show their own cards instead of the general ones (R-CLI-16)
+
 - change(app): location always on in the app, no Share / Stop button, permission asked when it opens (R-APP-03)
 - feat(job-sheet): Cards pop-up (show / hide / order) with the Bookings cards hidden at first (R-SHEET-06); Table / Cards / Board / Calendar views of the jobs (R-SHEET-07)
 

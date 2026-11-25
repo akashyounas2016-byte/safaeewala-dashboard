@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { requireFields } from '@/components/common/FormGuard'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Clock, AlertCircle, CheckCircle, CheckCircle2, DollarSign,
   TrendingUp, Users, Calendar, Search, X, ChevronLeft, ChevronRight,
@@ -22,7 +22,7 @@ import { usePagination } from '@/hooks/usePagination'
 import { invoicedJobIds, invoiceBalance } from '@/lib/receivables'
 import type { DailyJob, DailyPendingItem, DailyPendingReceivedItem } from '@/types'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
-import { buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, splitStaffNames, calcJobLaterReceipts, isBogusJob } from '@/lib/clientDataSync'
+import { buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, splitStaffNames, calcJobLaterReceipts, isBogusJob, jobMatchesClient } from '@/lib/clientDataSync'
 import * as XLSX from 'xlsx'
 import { todayDubai } from '@/lib/dubaiTime'
 import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
@@ -61,6 +61,8 @@ export interface UnifiedPendingRecord {
   id: string
   date: string
   clientName: string
+  /** R-FIN-23: the client record, so the name opens the profile */
+  clientId?: string
   staffName: string
   address: string
   area: string
@@ -336,8 +338,10 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
       // Only real dues — a fully paid row stays out even if its mode says "Pending"
       if (due > 0) {
         const client = (job.client_id && clientById.get(job.client_id)?.full_name?.trim()) || job.address || job.area || 'Client'
+        const linked = (job.client_id && clientById.get(job.client_id)) || clients.find(c => jobMatchesClient(job, c))
         list.push({
           id: `job-${job.id}`,
+          clientId: linked?.id,
           date: job.date || '',
           clientName: client,
           staffName: job.staff_name || '—',
@@ -365,6 +369,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
           id: item.id,
           date: item.date || '',
           clientName: item.client || 'Client Account',
+          clientId: clients.find(c => c.full_name?.trim().toLowerCase() === String(item.client || '').trim().toLowerCase())?.id,
           staffName: (item as any).staff || '—',
           address: item.client || '—',
           area: '—',
@@ -388,6 +393,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
         id: `inv-${inv.id}`,
         date: (inv.created_at || '').split('T')[0] || inv.due_date,
         clientName: inv.client_name,
+        clientId: inv.client_id && clientById.has(inv.client_id) ? inv.client_id : undefined,
         staffName: '—',
         address: inv.client_address || '—',
         area: '—',
@@ -1179,7 +1185,10 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
                       {/* Client & Address */}
                       <td className="py-3.5 px-4">
                         <div className="flex flex-col">
-                          <span className="font-extrabold text-[#111827]">{rec.clientName}</span>
+                          {/* R-FIN-23: the name opens the client's profile */}
+                          {rec.clientId
+                            ? <Link to={`/clients/${rec.clientId}`} className="font-extrabold text-[#111827] hover:text-emerald-700 hover:underline" title="Open the client's profile">{rec.clientName}</Link>
+                            : <span className="font-extrabold text-[#111827]">{rec.clientName}</span>}
                           <span className="text-[11px] text-slate-400 font-normal flex items-center gap-1 mt-0.5">
                             <MapPin size={11} className="text-slate-400 shrink-0" />
                             {/* R-FIN-20: the address once — it used to repeat the name when the name was the address */}

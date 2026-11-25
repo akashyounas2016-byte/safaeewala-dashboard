@@ -118,6 +118,11 @@
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
+### Payments, Staff on Duty, Clients tabs (26 Nov)
+- Payments: Outstanding card par "To collect" nahi; sab cards barabar. **Active Outstanding Dues** mein client ke naam par click → us ki profile.
+- **Staff on Duty** = jin cleaners ki us din kam az kam ek job hai, har cleaner ek dafa (2 job wala bhi ek). Bina job wale nahi gine jate. 26 Nov: 11 jobs, 10 cleaners (Nim Kumari ki 2 jobs) — sahi hai.
+- Clients: tabs ab cards ke upar. **Monthly** tab par Monthly ke cards, **Bi-Weekly** tab par Bi-Weekly ke cards (clients, contracts on / off, is hafte / is mahine ki visits, pending).
+
 ### Daily Job Sheet: cards aur views (26 Nov)
 - Cards ke upar **Cards** button: dikhana / chhupana / tarteeb (Overview jaisa). Bookings wale cards bhi aa gaye — **Scheduled, Live Now, Completed, Monthly Jobs, Billed Revenue, Duty Hours** — shuru mein chhupe hain, chahiye hon to tick karein.
 - **Jobs** ke header mein **Table · Cards · Board · Calendar**: Table wahi purani sheet; Cards = har job ka card; Board = Scheduled / Live / Done; Calendar = har din ka column. Kisi job par click = Edit. Bookings screen abhi waisi hi hai (aap kahenge tab hatayenge).

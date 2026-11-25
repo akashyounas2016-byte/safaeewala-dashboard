@@ -205,7 +205,8 @@ export const JobSheetKPIs: React.FC<JobSheetKPIsProps> = ({
     {
       id: 'staff',
       label: isDateRange ? 'ACTIVE STAFF' : 'STAFF ON DUTY',
-      sublabel: isDateRange ? 'Cleaners deployed' : 'Present on shift',
+      // R-EMP-19: cleaners with at least one job, each once (one with 2 jobs counts once) — not the idle ones
+      sublabel: isDateRange ? 'Cleaners with jobs · each once' : 'Cleaners with a job · each once',
       value: String(staffOnDuty),
       valueColor: 'text-[#065f46]',
       labelColor: 'text-emerald-800',
