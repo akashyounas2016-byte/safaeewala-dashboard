@@ -1,18 +1,20 @@
 import { weeklyReportText } from '@/lib/weeklyReport'
 import { supabase } from '@/lib/supabase'
 import { todayDubai, addDays } from '@/lib/dubaiTime'
-import { useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Clock, Users, CheckCircle2, Repeat, PiggyBank, BookOpen, UserCheck, History, Wallet, AlertCircle, TrendingUp } from 'lucide-react'
+import { Clock, Users, CheckCircle2, Repeat, PiggyBank, BookOpen, UserCheck, History, Wallet, AlertCircle, TrendingUp, MoreVertical, Send, Download, Plus, EyeOff, Eye, Filter, ShieldAlert, Percent, FileText, Scale, Hourglass, Landmark } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
 import { KpiCard, Widget } from '@/components/ui/KpiCard'
 import { useData } from '@/store/DataContext'
-import { safeLocalStorageGet } from '@/lib/storageUtils'
-import { loadPendingReceipts, loadClientAdjustments, calcClientOpeningPending } from '@/lib/clientDataSync'
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
+import { loadPendingReceipts, loadClientAdjustments, calcClientOpeningPending, calcClientPendingBalance } from '@/lib/clientDataSync'
 import { calcClientAdvanceBalance } from '@/lib/clientAdvance'
-import { lastMonths, monthlyFigures, outstandingNow, type MonthlyPaymentLike } from '@/lib/businessMetrics'
+import { outstandingNow, rangeFigures, type MonthlyPaymentLike } from '@/lib/businessMetrics'
+import { inPaymentsRange, presetFromParams, resolvePaymentsRange, type PaymentsRangePreset } from '@/lib/paymentsRange'
+import { PaymentsDateBar } from '@/components/payments/PaymentsDateBar'
 import { formatDate } from '@/lib/utils'
-import { PendingPayments } from '@/pages/PendingPayments'
+import { PendingPayments, type PendingRequest, type PendingStats } from '@/pages/PendingPayments'
 import { PaymentProcessing } from '@/pages/PaymentProcessing'
 import type { DailyAdvanceItem, DailyPendingItem } from '@/types'
 
@@ -37,6 +39,15 @@ const PENDING_TABS: HubTab[] = ['outstanding', 'by_client', 'recovered', 'cash_b
 export const hubTabOf = (t: string | null): HubTab => (t === 'pending' ? 'outstanding' : HUB_TABS.some(x => x.key === t) ? (t as HubTab) : 'outstanding')
 
 const aed = (n: number) => `AED ${Math.round(n).toLocaleString()}`
+
+/** R-FIN-21: cards the user hid on this computer */
+const HIDDEN_CARDS_KEY = 'safaeewala_payments_hidden_cards'
+function useHiddenCards() {
+  const [hidden, setHidden] = useState<string[]>(() => safeLocalStorageGet<string[]>(HIDDEN_CARDS_KEY, []))
+  const save = (next: string[]) => { setHidden(next); safeLocalStorageSet(HIDDEN_CARDS_KEY, next) }
+  return { hidden, hide: (id: string) => save([...new Set([...hidden, id])]), showAll: () => save([]) }
+}
+const daysSince = (date: string) => Math.max(0, Math.round((Date.parse(`${todayDubai()}T00:00:00Z`) - Date.parse(`${date.slice(0, 10)}T00:00:00Z`)) / 86_400_000))
 
 function AdvancesPanel() {
   const { clients, dailyJobs } = useData()
@@ -82,20 +93,27 @@ export function PaymentsHub() {
   const { dailyJobs, bookings, clients, dailyExpenses, invoices } = useData()
   const [params, setParams] = useSearchParams()
   const tab = hubTabOf(params.get('tab'))
-  // R-FIN-18: period of the money cards — this month, last month, last 3 / 12 months
-  const period = (['this', 'last', '3', '12'] as const).find(p => p === params.get('period')) || 'this'
-  const setPeriod = (p: string) => setParams(prev => { const n = new URLSearchParams(prev); n.set('period', p); return n })
+  // R-FIN-21: one date filter for the whole screen (cards + the Outstanding / Recovered / Cash Book lists); old ?period= links still work
+  const preset = presetFromParams(params.get('range'), params.get('period'))
+  const from = params.get('from') || '', to = params.get('to') || ''
+  const range = useMemo(() => resolvePaymentsRange(preset, from, to), [preset, from, to])
+  const setPreset = (p: PaymentsRangePreset) => setParams(prev => { const n = new URLSearchParams(prev); n.set('range', p); n.delete('period'); return n })
+  const setCustom = (f: string, t: string) => setParams(prev => { const n = new URLSearchParams(prev); n.set('range', 'custom'); n.delete('period'); if (f) n.set('from', f); else n.delete('from'); if (t) n.set('to', t); else n.delete('to'); return n })
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [request, setRequest] = useState<PendingRequest | null>(null)
+  const [stats, setStats] = useState<PendingStats | null>(null)
+  const onStats = useCallback((x: PendingStats) => setStats(x), [])
+  const clearRequest = useCallback(() => setRequest(null), [])
+  const { hidden, hide, showAll } = useHiddenCards()
 
   const figures = useMemo(() => {
     const monthlyPayments = safeLocalStorageGet<MonthlyPaymentLike[]>('safaeewala_monthly_client_payments', [])
     const pendingReceipts = loadPendingReceipts()
     const manual = safeLocalStorageGet<DailyPendingItem[]>('safaeewala_daily_pending_items', []).reduce((s, i) => s + (Number(i.amount) || 0), 0)
     const out = outstandingNow({ dailyJobs, invoices, pendingReceipts })
-    const months = period === 'last' ? lastMonths(2).slice(0, 1) : lastMonths(period === '3' ? 3 : period === '12' ? 12 : 1)
-    const figs = monthlyFigures({ dailyJobs, bookings, clients, dailyExpenses, invoices, monthlyPayments, pendingReceipts }, months)
-    const m = { key: '', label: months.length === 1 ? months[0].label : `${months[0].label} – ${months[months.length - 1].label}`, collected: figs.reduce((s, f) => s + f.collected, 0), contractRevenue: figs.reduce((s, f) => s + f.contractRevenue, 0) }
-    const keys = new Set(months.map(x => x.key))
-    const recovered = pendingReceipts.filter(p => keys.has(String(p.date).slice(0, 7))).reduce((s, p) => s + (Number(p.cash) || 0) + (Number(p.online) || 0), 0)
+    const rf = rangeFigures({ dailyJobs, bookings, clients, dailyExpenses, invoices, monthlyPayments, pendingReceipts }, d => inPaymentsRange(range, d))
+    const m = { label: range.label, collected: rf.collected, contractRevenue: rf.contractRevenue }
+    const recovered = rf.recovered
     // R-FIN-15: advance held, adjustments and opening balances — the same figures as the Client Profile
     const adjustments = loadClientAdjustments()
     const advance = clients.reduce((s, c) => s + calcClientAdvanceBalance(c, dailyJobs, adjustments), 0)
@@ -103,8 +121,11 @@ export function PaymentsHub() {
     const adjusted = adjustments.filter(a => a.type !== 'advance' && a.type !== 'advance_deduction').reduce((s, a) => s + (Number(a.amount) || 0), 0) + clients.reduce((s, c) => s + (Number(c.adjustment_amount) || 0), 0)
     const opening = clients.reduce((s, c) => s + calcClientOpeningPending(c, pendingReceipts), 0)
     const activeContracts = clients.filter(c => c.contract_active !== false && (c.service_mode === 'biweekly' || (c.service_days || []).length > 0)).length
-    return { outstanding: out.total + manual, out, manual, collected: m.collected, recovered, contracts: m.contractRevenue, advance, advanceClients, adjusted, opening, activeContracts, monthLabel: m.label }
-  }, [dailyJobs, bookings, clients, dailyExpenses, invoices, period])
+    const owing = clients.filter(c => calcClientPendingBalance(c, dailyJobs, pendingReceipts, adjustments) > 0).length
+    const unpaidInvoices = invoices.filter(i => i.status === 'sent' || i.status === 'overdue').length
+    const recoveryRate = recovered + out.total + manual > 0 ? Math.round((recovered / (recovered + out.total + manual)) * 100) : 0
+    return { outstanding: out.total + manual, out, manual, collected: m.collected, recovered, contracts: m.contractRevenue, advance, advanceClients, adjusted, opening, activeContracts, owing, unpaidInvoices, recoveryRate, monthLabel: m.label }
+  }, [dailyJobs, bookings, clients, dailyExpenses, invoices, range])
 
   const sendWeeklyReport = async () => {
     const today = todayDubai(), from = addDays(today, -6)
@@ -125,42 +146,84 @@ export function PaymentsHub() {
         statusChip={figures.outstanding > 0 ? `${aed(figures.outstanding)} outstanding` : 'All settled'}
         showSearch={false}
         actions={
-          // R-OPS-12: the weekly report for the owner, ready to send on WhatsApp
-          <button type="button" onClick={() => void sendWeeklyReport()} className="h-11 px-5 rounded-2xl bg-white text-emerald-700 font-bold text-sm shadow-lg hover:bg-emerald-50 cursor-pointer">Weekly report</button>
+          // R-FIN-21: Weekly report (R-OPS-12), Export Report and Record Manual Pending in one menu
+          <div className="relative">
+            <button type="button" onClick={() => setMenuOpen(v => !v)} aria-label="More actions" aria-expanded={menuOpen} title="Weekly report, Export Report, Record Manual Pending"
+              className={`h-11 w-11 rounded-2xl border transition-all cursor-pointer flex items-center justify-center backdrop-blur-md shadow-sm ${menuOpen ? 'bg-white text-emerald-800 border-white shadow-md' : 'bg-white/10 hover:bg-white/20 border-white/20 text-white'}`}>
+              <MoreVertical size={18} />
+            </button>
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                <div role="menu" className="absolute right-0 top-full mt-2 w-60 bg-white rounded-2xl border border-[#E4E8EC] shadow-[0_16px_48px_rgba(15,23,42,0.22)] py-2 z-50 text-slate-800">
+                  {([
+                    { label: 'Weekly report', note: 'Send on WhatsApp', icon: Send, run: () => void sendWeeklyReport() },
+                    { label: 'Export Report', note: 'Outstanding + recovered (Excel)', icon: Download, run: () => { if (!PENDING_TABS.includes(tab)) go('outstanding'); setRequest(r => ({ kind: 'export', n: (r?.n ?? 0) + 1 })) } },
+                    { label: 'Record Manual Pending', note: 'A due not on the job sheet', icon: Plus, run: () => { if (!PENDING_TABS.includes(tab)) go('outstanding'); setRequest(r => ({ kind: 'add', n: (r?.n ?? 0) + 1 })) } },
+                  ] as const).map(a => (
+                    <button key={a.label} type="button" role="menuitem" onClick={() => { setMenuOpen(false); a.run() }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-slate-50 cursor-pointer">
+                      <a.icon size={15} className="text-emerald-700 shrink-0" />
+                      <span className="min-w-0"><span className="block text-[12.5px] font-semibold text-slate-800">{a.label}</span><span className="block text-[11px] text-slate-500">{a.note}</span></span>
+                    </button>
+                  ))}
+                  {hidden.length > 0 && (
+                    <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); showAll() }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-slate-50 cursor-pointer border-t border-slate-100 mt-1">
+                      <Eye size={15} className="text-slate-500 shrink-0" /><span className="text-[12.5px] font-semibold text-slate-700">Show hidden cards ({hidden.length})</span>
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         }
       />
 
-      {/* R-FIN-15: the period of the money cards */}
-      <div className="flex items-center gap-1.5 flex-wrap" role="group" aria-label="Period">
-        <span className="text-[11.5px] font-bold text-slate-500 mr-1">Period:</span>
-        {([['this', 'This month'], ['last', 'Last month'], ['3', 'Last 3 months'], ['12', 'Last 12 months']] as const).map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setPeriod(k)} className={`px-3 py-1 rounded-lg text-[12px] font-bold border cursor-pointer ${period === k ? 'bg-[#0F1F19] text-white border-[#0F1F19]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{l}</button>
-        ))}
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5">
-        <KpiCard label="Outstanding" value={aed(figures.outstanding)} sub={`Jobs ${aed(figures.out.jobs)} · invoices ${aed(figures.out.invoices)} · manual ${aed(figures.manual)}`} icon={AlertCircle} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25" chip={figures.outstanding > 0 ? 'To collect' : 'All clear'} chipTone={figures.outstanding > 0 ? 'warn' : 'up'} active={tab === 'outstanding'} onClick={() => go('outstanding')} />
-        <KpiCard label={period === 'this' ? 'Collected This Month' : `Collected · ${figures.monthLabel}`} value={aed(figures.collected)} sub="Received, recoveries, contracts" icon={TrendingUp} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" chip="All payments" chipTone="up" active={tab === 'history'} onClick={() => go('history')} />
-        <KpiCard label="Pending Recovered" value={aed(figures.recovered)} sub={`Old dues collected · ${figures.monthLabel}`} icon={CheckCircle2} labelColor="text-teal-700" iconSolid="bg-[#0d9488] shadow-teal-500/25" chip="Recovered" chipTone="up" active={tab === 'recovered'} onClick={() => go('recovered')} />
-        <KpiCard label="Monthly Contracts" value={aed(figures.contracts)} sub={`Contract payments · ${figures.monthLabel}`} icon={Repeat} labelColor="text-indigo-700" iconSolid="bg-[#4f46e5] shadow-indigo-500/25" chip="Contracts" active={tab === 'monthly'} onClick={() => go('monthly')} />
-        <KpiCard label="Advance Balance" value={aed(figures.advance)} sub={`${figures.advanceClients} client${figures.advanceClients === 1 ? '' : 's'} paid ahead`} icon={PiggyBank} labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25" chip="Advances" active={tab === 'advances'} onClick={() => go('advances')} />
-      </div>
+      {/* R-FIN-21: the one date filter (it was here and again above the Outstanding list) */}
+      <PaymentsDateBar range={range} from={from} to={to} onPreset={setPreset} onCustom={setCustom}
+        note={PENDING_TABS.includes(tab) ? 'cards, Outstanding, Recovered and Cash Book' : 'cards'} />
 
-      {/* R-FIN-15: the other client balances, so this screen matches the Client Profile / Clients */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-        {[
-          { label: 'Adjustments', value: aed(figures.adjusted), sub: 'Discounts, waivers, corrections given', tone: 'text-indigo-700 bg-indigo-50' },
-          { label: 'Opening balances', value: aed(figures.opening), sub: 'Old dues brought in with the clients, still open', tone: 'text-rose-700 bg-rose-50' },
-          { label: 'Active contracts', value: String(figures.activeContracts), sub: 'Monthly + Bi-Weekly clients on', tone: 'text-emerald-700 bg-emerald-50' },
-        ].map(c => (
-          <div key={c.label} className="bg-white rounded-[18px] border border-[#E4E8EC] shadow-xs px-4 py-3 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <span className={`text-[10.5px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${c.tone}`}>{c.label}</span>
-              <p className="text-[11px] text-slate-500 mt-1 truncate">{c.sub}</p>
+      {/* R-FIN-21: the money cards — each can be hidden (⋮ → Show hidden cards brings them back) */}
+      {(() => {
+        const onPending = PENDING_TABS.includes(tab)
+        const cards: { id: string; label: string; value: string; sub: string; icon: typeof Clock; color: string; solid: string; chip?: string; tone?: 'up' | 'warn' | 'plain'; active?: boolean; onClick?: () => void }[] = [
+          { id: 'outstanding', label: 'Outstanding', value: aed(figures.outstanding), sub: `Jobs ${aed(figures.out.jobs)} · invoices ${aed(figures.out.invoices)} · manual ${aed(figures.manual)}`, icon: AlertCircle, color: 'text-rose-700', solid: 'bg-[#e11d48] shadow-rose-500/25', chip: figures.outstanding > 0 ? 'To collect' : 'All clear', tone: figures.outstanding > 0 ? 'warn' : 'up', active: tab === 'outstanding', onClick: () => go('outstanding') },
+          { id: 'filtered_due', label: 'Filtered Due Total', value: onPending && stats ? aed(stats.total) : '—', sub: onPending && stats ? `${stats.count} due${stats.count === 1 ? '' : 's'} · ${range.label} + list filters` : 'Open Outstanding to see', icon: Filter, color: 'text-amber-700', solid: 'bg-[#d97706] shadow-amber-500/25', onClick: () => go('outstanding') },
+          { id: 'collected', label: 'Collected', value: aed(figures.collected), sub: `Received, recoveries, contracts · ${range.label}`, icon: TrendingUp, color: 'text-emerald-700', solid: 'bg-[#059669] shadow-emerald-500/25', active: tab === 'history', onClick: () => go('history') },
+          { id: 'recovered', label: 'Pending Recovered', value: aed(figures.recovered), sub: `Old dues collected · ${range.label}`, icon: CheckCircle2, color: 'text-teal-700', solid: 'bg-[#0d9488] shadow-teal-500/25', active: tab === 'recovered', onClick: () => go('recovered') },
+          { id: 'recovery_rate', label: 'Recovery Rate', value: `${figures.recoveryRate}%`, sub: 'Recovered ÷ (recovered + outstanding)', icon: Percent, color: 'text-teal-700', solid: 'bg-[#0f766e] shadow-teal-500/25' },
+          { id: 'contracts', label: 'Monthly Contracts', value: aed(figures.contracts), sub: `Contract payments · ${range.label}`, icon: Repeat, color: 'text-indigo-700', solid: 'bg-[#4f46e5] shadow-indigo-500/25', active: tab === 'monthly', onClick: () => go('monthly') },
+          { id: 'advance', label: 'Advance Balance', value: aed(figures.advance), sub: `${figures.advanceClients} client${figures.advanceClients === 1 ? '' : 's'} paid ahead`, icon: PiggyBank, color: 'text-amber-700', solid: 'bg-[#b45309] shadow-amber-500/25', active: tab === 'advances', onClick: () => go('advances') },
+          { id: 'owing', label: 'Clients Owing', value: String(figures.owing), sub: 'Clients with a balance due', icon: Users, color: 'text-rose-700', solid: 'bg-[#be123c] shadow-rose-500/25', active: tab === 'by_client', onClick: () => go('by_client') },
+          { id: 'high_value', label: 'High Value Dues', value: onPending && stats ? aed(stats.high) : '—', sub: onPending && stats ? `${stats.highCount} due${stats.highCount === 1 ? '' : 's'} of AED 500 or more` : 'Open Outstanding to see', icon: ShieldAlert, color: 'text-orange-700', solid: 'bg-[#ea580c] shadow-orange-500/25', onClick: () => go('outstanding') },
+          { id: 'oldest', label: 'Oldest Due', value: onPending && stats?.oldest ? `${daysSince(stats.oldest)} days` : '—', sub: onPending && stats?.oldest ? `Since ${formatDate(stats.oldest)}` : onPending ? 'No open due' : 'Open Outstanding to see', icon: Hourglass, color: 'text-slate-700', solid: 'bg-[#475569] shadow-slate-500/25', onClick: () => go('outstanding') },
+          { id: 'invoices', label: 'Unpaid Invoices', value: aed(figures.out.invoices), sub: `${figures.unpaidInvoices} invoice${figures.unpaidInvoices === 1 ? '' : 's'} sent or overdue`, icon: FileText, color: 'text-sky-700', solid: 'bg-[#0284c7] shadow-sky-500/25' },
+          { id: 'adjustments', label: 'Adjustments', value: aed(figures.adjusted), sub: 'Discounts, waivers, corrections given', icon: Scale, color: 'text-indigo-700', solid: 'bg-[#6366f1] shadow-indigo-500/25' },
+          { id: 'opening', label: 'Opening Balances', value: aed(figures.opening), sub: 'Old dues brought in, still open', icon: Landmark, color: 'text-rose-700', solid: 'bg-[#9f1239] shadow-rose-500/25' },
+          { id: 'active_contracts', label: 'Active Contracts', value: String(figures.activeContracts), sub: 'Monthly + Bi-Weekly clients on', icon: Repeat, color: 'text-emerald-700', solid: 'bg-[#047857] shadow-emerald-500/25' },
+        ]
+        const shown = cards.filter(c => !hidden.includes(c.id))
+        return (
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-7 gap-3">
+              {shown.map(c => (
+                <div key={c.id} className="relative group/card">
+                  <KpiCard label={c.label} value={c.value} sub={c.sub} icon={c.icon} labelColor={c.color} iconSolid={c.solid} chip={c.chip} chipTone={c.tone} active={c.active} onClick={c.onClick} />
+                  <button type="button" onClick={() => hide(c.id)} aria-label={`Hide ${c.label}`} title="Hide this card"
+                    className="absolute bottom-2 right-2 w-6 h-6 rounded-lg bg-white/90 border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 flex items-center justify-center opacity-0 group-hover/card:opacity-100 focus:opacity-100 transition-opacity cursor-pointer">
+                    <EyeOff size={12} />
+                  </button>
+                </div>
+              ))}
             </div>
-            <p className="text-lg font-bold text-slate-900 shrink-0">{c.value}</p>
+            {hidden.length > 0 && (
+              <button type="button" onClick={showAll} className="text-[11.5px] font-bold text-slate-500 hover:text-emerald-700 cursor-pointer flex items-center gap-1">
+                <Eye size={12} /> {hidden.length} hidden card{hidden.length === 1 ? '' : 's'} · Show all
+              </button>
+            )}
           </div>
-        ))}
-      </div>
+        )
+      })()}
       <nav className="flex items-center gap-1.5 flex-wrap bg-white p-1.5 rounded-2xl border border-[#E4E8EC] shadow-xs" aria-label="Payments">
         {HUB_TABS.map(t => (
           <button key={t.key} type="button" onClick={() => go(t.key)} aria-current={tab === t.key ? 'page' : undefined}
@@ -170,7 +233,7 @@ export function PaymentsHub() {
         ))}
       </nav>
 
-      {PENDING_TABS.includes(tab) && <PendingPayments embedded />}
+      {PENDING_TABS.includes(tab) && <PendingPayments embedded range={range} request={request} onRequestDone={clearRequest} onStats={onStats} />}
       {tab === 'monthly' && <PaymentProcessing embedded tab="monthly" />}
       {tab === 'history' && <PaymentProcessing embedded tab="history" />}
       {tab === 'advances' && <AdvancesPanel />}

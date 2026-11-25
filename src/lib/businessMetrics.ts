@@ -90,6 +90,20 @@ export function monthlyFigures(input: MetricsInput, months: { key: string; label
 }
 
 /** Money still to collect today: job dues (same formula as Pending / Payments) + open invoice balances */
+/**
+ * R-FIN-21: the money of any date range (the Payments date filter) — the same sums as monthlyFigures, by day.
+ * `inRange` gets a YYYY-MM-DD date.
+ */
+export function rangeFigures(input: MetricsInput, inRange: (date: string) => boolean): { collected: number; contractRevenue: number; recovered: number; revenue: number } {
+  const jobs = realJobs(input.dailyJobs).filter(j => inRange(String(j.date || '').slice(0, 10)))
+  const extra = bookingsWithoutRow(input.bookings, realJobs(input.dailyJobs)).filter(b => inRange(String(b.scheduled_date || '').slice(0, 10)))
+  const contractRevenue = input.monthlyPayments.filter(p => inRange(String(p.date || '').slice(0, 10))).reduce((s, p) => s + num(p.amount), 0)
+  const recovered = input.pendingReceipts.filter(p => inRange(String(p.date || '').slice(0, 10))).reduce((s, p) => s + num(p.cash) + num(p.online), 0)
+  const collected = jobs.reduce((s, j) => s + jobCollected(j), 0) + extra.reduce((s, b) => s + num(b.received_amount), 0) + recovered + contractRevenue
+  const revenue = jobs.reduce((s, j) => s + num(j.charges), 0) + extra.reduce((s, b) => s + num(b.total_amount), 0) + contractRevenue
+  return { collected, contractRevenue, recovered, revenue }
+}
+
 export function outstandingNow(input: Pick<MetricsInput, 'dailyJobs' | 'invoices' | 'pendingReceipts'>): { jobs: number; invoices: number; total: number } {
   const ctx = buildPendingCalcContext(loadClientAdjustments(), input.pendingReceipts)
   const invoiced = invoicedJobIds(input.invoices)

@@ -26,6 +26,7 @@ import { buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, spl
 import * as XLSX from 'xlsx'
 import { todayDubai } from '@/lib/dubaiTime'
 import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
+import type { PaymentsRange } from '@/lib/paymentsRange'
 
 export type PendingDatePreset =
   | 'today'
@@ -76,8 +77,22 @@ export interface UnifiedPendingRecord {
   paymentMode?: string
 }
 
-/** R-FIN-08: `embedded` = shown inside Payments (its header, cards and tab bar come from the Payments screen) */
-export function PendingPayments({ embedded = false }: { embedded?: boolean } = {}) {
+/** R-FIN-21: the figures of the filtered Outstanding list, shown as cards on the Payments screen */
+export interface PendingStats { total: number; count: number; high: number; highCount: number; jobSheet: number; manual: number; recovered: number; recoveryRate: number; oldest: string }
+export interface PendingRequest { kind: 'export' | 'add'; n: number }
+
+/**
+ * R-FIN-08: `embedded` = shown inside Payments (its header, cards and tab bar come from the Payments screen).
+ * R-FIN-21: embedded, the date range comes from the Payments date filter (`range`), Export / Record Manual Pending
+ * from its menu (`request`), and the filtered totals go up to its cards (`onStats`).
+ */
+export function PendingPayments({ embedded = false, range, request, onRequestDone, onStats }: {
+  embedded?: boolean
+  range?: PaymentsRange
+  request?: PendingRequest | null
+  onRequestDone?: () => void
+  onStats?: (s: PendingStats) => void
+} = {}) {
   const { dailyJobs, invoices, updateInvoice, clients } = useData()
   const [searchParams] = useSearchParams()
 
@@ -149,6 +164,8 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
 
   // ── Compute Active Date Range ──
   const activeRange = useMemo(() => {
+    // R-FIN-21: inside Payments the one date filter above sets the range
+    if (embedded && range) return { start: range.start, end: range.end, label: range.label, sub: range.sub, isAllTime: range.isAllTime }
     const now = new Date()
     const todayStr = now.toISOString().split('T')[0]
 
@@ -289,7 +306,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
       sub: 'Complete pending history across all recorded shifts',
       isAllTime: true,
     }
-  }, [datePreset, selectedMonth, customStartDate, customEndDate, currentYear, lastYear])
+  }, [embedded, range, datePreset, selectedMonth, customStartDate, customEndDate, currentYear, lastYear])
 
   // Helper: check if date is in active range
   const isDateInRange = (dateStr: string) => {
@@ -489,6 +506,12 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
     return Math.round((totalRecoveredAmount / totalExposure) * 100)
   }, [totalPendingAmount, totalRecoveredAmount])
 
+  // R-FIN-21: the filtered totals go up to the Payments cards
+  const oldestDue = useMemo(() => filteredOutstanding.reduce((o, r) => (r.date && (!o || r.date < o) ? r.date : o), ''), [filteredOutstanding])
+  useEffect(() => {
+    onStats?.({ total: totalPendingAmount, count: filteredOutstanding.length, high: highValueAmount, highCount: highValuePending.length, jobSheet: jobSheetPendingAmount, manual: manualPendingAmount, recovered: totalRecoveredAmount, recoveryRate, oldest: oldestDue })
+  }, [onStats, totalPendingAmount, filteredOutstanding.length, highValueAmount, highValuePending.length, jobSheetPendingAmount, manualPendingAmount, totalRecoveredAmount, recoveryRate, oldestDue])
+
   // Known staff list for filter
   const distinctStaffList = useMemo(() => {
     const set = new Set<string>()
@@ -653,6 +676,14 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
     XLSX.writeFile(wb, `Safaeewala_Pending_Report_${cleanLabel}.xlsx`)
   }
 
+  // R-FIN-21: Export Report / Record Manual Pending picked in the Payments menu
+  useEffect(() => {
+    if (!request || request.n <= 0) return
+    if (request.kind === 'export') handleExportExcel()
+    else setShowAddModal(true)
+    onRequestDone?.()
+  }, [request?.n]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="space-y-6 pb-12">
 
@@ -668,17 +699,6 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
             className="text-emerald-700 hover:text-emerald-900 text-[13px] font-bold p-1 cursor-pointer"
           >
             ✕
-          </button>
-        </div>
-      )}
-
-      {embedded && (
-        <div className="flex items-center justify-end gap-2 flex-wrap">
-          <button type="button" onClick={handleExportExcel} className="h-10 px-4 rounded-xl bg-white border border-[#E2E5E0] text-slate-800 font-semibold text-[12.5px] flex items-center gap-2 cursor-pointer hover:bg-slate-50">
-            <Download size={14} /> Export Report
-          </button>
-          <button type="button" onClick={() => setShowAddModal(true)} className="h-10 px-4 rounded-xl bg-[#0F1F19] text-white font-bold text-[12.5px] flex items-center gap-2 cursor-pointer hover:bg-[#1a2f27]">
-            + Record Manual Pending
           </button>
         </div>
       )}
@@ -797,8 +817,8 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
 
       </>)}
 
-      {/* ── Date Preset Filter Bar (Quick Pills & Dropdown Engine) ── */}
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center justify-between flex-wrap gap-3">
+      {/* ── Date Preset Filter Bar (Quick Pills & Dropdown Engine) ── R-FIN-21: inside Payments the date filter is the one under the header */}
+      {!embedded && <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center justify-between flex-wrap gap-3">
         {/* Left: Active Date Range Display with Month Stepper */}
         <div className="flex items-center gap-3 flex-wrap">
           <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
@@ -932,10 +952,10 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
             )}
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Custom Date Range Pickers (Shown only when 'custom' is active) */}
-      {datePreset === 'custom' && (
+      {!embedded && datePreset === 'custom' && (
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center gap-4 flex-wrap animate-in fade-in duration-150">
           <div className="flex items-center gap-2">
             <span className="text-[12px] font-bold text-slate-700">From:</span>
@@ -1024,10 +1044,11 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
       </>)}
 
       {/* ── Toolbar: Search & Multi-Filters ── */}
-      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-5 py-4 flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3 flex-1 min-w-[280px] flex-wrap">
+      {/* R-FIN-21: one row — search, filters, and Sort at the end (the Filtered Due Total is a card on top now) */}
+      <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] px-4 py-3 flex items-center gap-2.5 flex-wrap xl:flex-nowrap">
+        <div className="flex items-center gap-2.5 flex-1 min-w-0 flex-wrap xl:flex-nowrap">
           {/* Search */}
-          <div className="relative flex-1 min-w-[220px]">
+          <div className="relative flex-1 min-w-[200px]">
             <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
@@ -1051,7 +1072,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
           <select
             value={staffFilter}
             onChange={e => setStaffFilter(e.target.value)}
-            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 cursor-pointer font-medium"
+            className="text-[13px] px-3 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 cursor-pointer font-medium min-w-0 max-w-[230px]"
           >
             <option value="all">All Staff / Cleaners</option>
             {distinctStaffList.map(s => <option key={s} value={s}>{s}</option>)}
@@ -1061,7 +1082,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
           <select
             value={sourceFilter}
             onChange={e => setSourceFilter(e.target.value as any)}
-            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 cursor-pointer font-medium"
+            className="text-[13px] px-3 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 cursor-pointer font-medium min-w-0 max-w-[230px]"
           >
             <option value="all">All Sources (Job Sheet + Manual)</option>
             <option value="job_sheet">Daily Job Sheet Shifts</option>
@@ -1072,7 +1093,7 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
           <select
             value={amountFilter}
             onChange={e => setAmountFilter(e.target.value as any)}
-            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 cursor-pointer font-medium"
+            className="text-[13px] px-3 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 cursor-pointer font-medium min-w-0 max-w-[230px]"
           >
             <option value="all">All Amounts</option>
             <option value="high">High Dues (≥ AED 500)</option>
@@ -1080,18 +1101,6 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
             <option value="low">Low Dues (&lt; AED 200)</option>
           </select>
 
-          {/* Sort Order */}
-          <select
-            value={sortOrder}
-            onChange={e => setSortOrder(e.target.value as any)}
-            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 cursor-pointer font-medium"
-          >
-            <option value="highest">Highest Due Amount First</option>
-            <option value="lowest">Lowest Due Amount First</option>
-            <option value="newest">Newest Date First</option>
-            <option value="oldest">Oldest Date First</option>
-            <option value="client_name">Client Name (A–Z)</option>
-          </select>
 
           {(search || staffFilter !== 'all' || sourceFilter !== 'all' || amountFilter !== 'all') && (
             <button
@@ -1109,11 +1118,20 @@ type PendingTab = 'outstanding' | 'recovered' | 'staff_summary' | 'by_client' | 
           )}
         </div>
 
-        <div className="px-3.5 py-2 rounded-xl bg-amber-50/70 border border-amber-200 text-right">
-          <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider block">Filtered Due Total</span>
-          <span className="text-[15px] font-black text-amber-900">
-            AED {totalPendingAmount.toLocaleString()}
-          </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <ArrowUpDown size={14} className="text-slate-400" aria-hidden />
+          <select
+            aria-label="Sort"
+            value={sortOrder}
+            onChange={e => setSortOrder(e.target.value as any)}
+            className="text-[13px] px-3.5 py-2.5 bg-[#f8fafc] border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 text-slate-700 cursor-pointer font-semibold"
+          >
+            <option value="highest">Highest Due Amount First</option>
+            <option value="lowest">Lowest Due Amount First</option>
+            <option value="newest">Newest Date First</option>
+            <option value="oldest">Oldest Date First</option>
+            <option value="client_name">Client Name (A–Z)</option>
+          </select>
         </div>
       </div>
 

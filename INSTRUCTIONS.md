@@ -118,6 +118,12 @@
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
+### Payments screen (25 Nov)
+- **Date filter sirf ek hai**, header ke neeche: Today, 7 Days, 14 Days, 30 Days, This Month, Last Month. **More** mein 3 / 6 / 12 Months, This Year, Last Year, All Time aur **Custom Range** (From / To). Yahi date cards aur neeche ki lists (Outstanding, Recovered, Cash Book) dono par lagti hai.
+- **Weekly report, Export Report, Record Manual Pending** ab header ke **⋮** menu mein hain.
+- **Cards:** Filtered Due Total ab upar card mein hai (search / staff / amount filter ke baad ka total). Naye cards: Clients Owing, High Value Dues, Oldest Due, Unpaid Invoices, Recovery Rate. Card par mouse le jayein to neeche kone mein **aankh** ka button — dabane se card chhup jata hai. Wapas laane ke liye "hidden cards · Show all" ya ⋮ → Show hidden cards.
+- List ke upar search aur filters ek line mein hain; aakhir mein **Highest Due Amount First** (sort).
+
 ### Header ke buttons (24 Nov)
 - Upar daayen tarteeb: **Add Job** → **Excel Sheet** → date (◀ ▶) aur Today / range → **⋮** menu.
 - **Import** ab ⋮ menu mein hai (**Import Excel**). Jobs table ke upar wala Excel Sheet button hata diya — Excel Sheet ab header mein hai.

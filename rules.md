@@ -1352,7 +1352,7 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 ### R-FIN-18 — Payments: period filter on the cards
 - **Rule (audit 2026-11-22):** Payments cards show This month, Last month, Last 3 months or Last 12 months (`?period=this|last|3|12`, opens on This month — D-13). Card labels name the period. Balances (pending, advance) stay "now".
 - **Code:** `PaymentsHub.tsx`.
-- **Status:** Active · Since: 2026-11-22
+- **Status:** Extended by R-FIN-21 (2026-11-25): the four periods are now part of the one date filter; old `?period=` links still open the same period · Since: 2026-11-22
 
 ### R-FIN-19 — Opening advance / adjustment counted once
 - **Why:** A24 browser test (2026-11-22): Edit Profile → Advance 100 showed **Advance AED 200**. Saving the form kept the amount on the client **and** wrote a copy into the adjustments ledger ("Updated opening advance balance"; Add Client wrote "Initial opening advance payment"); both were counted. The adjustment field was doubled the same way. No real client had such a copy (checked on live data).
@@ -1369,6 +1369,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
     - **Two rows entered twice by the team (data, not changed — owner to decide):** 20 Nov Villa 56 St 43B — the Bi-Weekly visit (Cash, AED 105) and a hand-added row (Pending, AED 105, "Deep cleeaning", start "09:00 PM"); 20 Nov 306 Bldg 8B — Asmita (AED 200) and a row pasted for Ambika "Team A" (AED 200, copy/paste copies the charges). If each was one visit, the extra row's charges should be 0 or the row deleted (PENDING A39). **Fixed 2026-11-23 on owner request:** the Villa 56 copy deleted (it also gave Bina 16 h of false OT; its note and Pending mode moved to the visit), Ambika's row set to AED 0 — Pending AED 7,262.5 → 6,957.5.
 - **Code:** `PendingPayments.tsx → allOutstandingRecords` and the Client cell. Test: `tests/unit/batch-1123b.test.ts`.
 - **Status:** Active · Since: 2026-11-23
+
+### R-FIN-21 — Payments: one date filter, a ⋮ menu, cards that can be hidden
+- **Rule:** *"Payment screen par date filters duplicate ho rahe hain. Inhein payment header ke neeche se hata kar sirf upar header ke neeche show karein. Ismein Today, 7 days, 14 days, multiple options, aur custom range honi chahiye. Header mein jo weekly report, export reports, aur record manual pending ke options hain, unhein header mein three dots menu ke andar daal dein."* and *"Active outstanding dues ke upar jo widget hai, usme se 'Filter Due Total' wale hissey ko hata kar upar cards mein shift karein. Is page par mazeed mufeed cards shamil karein aur unhein hide karne ka option bhi den. Is section ko single row mein convert karein, jahan 'Filter Due Total' ki jagah 'Highest Due Amount First' show ho."* (2026-11-25)
+  - **One date filter** under the header: Today · 7 Days · 14 Days · 30 Days · This Month · Last Month, and **More**: Last 3 / 6 / 12 Months, This Year, Last Year, All Time, **Custom Range** (From / To). Dubai dates; opens on This Month. It sets the period of the cards **and** of the Outstanding / Recovered / Cash Book / Staff lists (the lists had their own second filter — removed inside Payments). In the URL: `?range=…&from=&to=`. Old `?period=this|last|3|12` links open This Month / Last Month / Last 3 Months / Last 12 Months — "3 / 12 months" are now the last 90 / 365 days.
+  - **Header ⋮ menu:** Weekly report (WhatsApp, R-OPS-12), **Export Report** (Excel of the Outstanding + Recovered lists) and **Record Manual Pending** — from another tab they open the Outstanding tab first. Also "Show hidden cards (n)".
+  - **Cards (14):** Outstanding, **Filtered Due Total** (the Outstanding list with its search / staff / source / amount filters — moved here from the list's toolbar), Collected, Pending Recovered, Recovery Rate, Monthly Contracts, Advance Balance, Clients Owing, High Value Dues (≥ AED 500), Oldest Due (days), Unpaid Invoices, Adjustments, Opening Balances, Active Contracts. The three list cards show "—" on the Monthly / Advances / All Payments tabs. Every card has a hide button (eye, on hover); hidden cards are remembered on that computer, "n hidden cards · Show all" brings them back.
+  - **The list toolbar is one row:** search, staff, source, amount — and **Highest Due Amount First** (sort) at the end where the total was.
+- **Code:** `src/lib/paymentsRange.ts`; `components/payments/PaymentsDateBar.tsx`; `businessMetrics.ts → rangeFigures`; `PaymentsHub.tsx`; `PendingPayments.tsx (range, request, onStats)`. Test: `tests/unit/batch-1125b.test.ts`.
+- **Status:** Active · Since: 2026-11-25
 
 ### R-FIN-04 — Invoice numbers
 - **Rule:** One scheme: `SAF-<year>-<NNNN>`, next = highest of the year + 1; `addInvoice` replaces any missing, legacy or duplicate number.
