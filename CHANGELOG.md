@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(app): location always on in the app, no Share / Stop button, permission asked when it opens (R-APP-03)
+- feat(job-sheet): Cards pop-up (show / hide / order) with the Bookings cards hidden at first (R-SHEET-06); Table / Cards / Board / Calendar views of the jobs (R-SHEET-07)
+
 - fix(app): page no longer under the status / navigation bar, normal text size, cleaner logins stop trying to upload shared settings ("14 changes not saved"), "New app version" banner, build number + fixed signing key from GitHub secrets (R-APP-02)
 
 - feat(overview): "Cards" button next to the date filter — show / hide and reorder the 12 cards, saved on this computer (R-OPS-23); Fluent Form, WhatsApp Clicks, Low Stock and Completion Rate hidden at first (R-OPS-24)

@@ -2,7 +2,16 @@ import React from 'react'
 import {
   Receipt, Wallet, CheckCircle, TrendingUp, DollarSign,
   AlertCircle, CreditCard, Clock, Users, Briefcase,
+  CalendarClock, Radio, CheckCircle2, Repeat, BadgeDollarSign, Timer,
 } from 'lucide-react'
+import type { DailyJob } from '@/types'
+import { jobProgressByTime, dubaiMinutes } from '@/lib/overviewStats'
+import { todayDubai } from '@/lib/dubaiTime'
+import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
+import { CardsCustomizer, useCardPrefs } from '@/components/overview/CardsCustomizer'
+
+/** R-SHEET-06: the Bookings cards brought here (hidden at first; shown from "Cards") */
+export const JOB_SHEET_EXTRA_CARDS = ['scheduled', 'live', 'completed', 'monthly_jobs', 'billed', 'duty_hours']
 
 export interface JobSheetKPIsProps {
   isDateRange: boolean
@@ -19,6 +28,8 @@ export interface JobSheetKPIsProps {
   onPaymentFilter: (filter: 'ALL' | 'Cash' | 'Online' | 'Pending' | 'Monthly') => void
   onScrollTo: (id: string) => void
   onEnableOTColumn: () => void
+  /** R-SHEET-06: the jobs of the open date(s), for the Bookings cards */
+  jobs?: DailyJob[]
 }
 
 export const JobSheetKPIs: React.FC<JobSheetKPIsProps> = ({
@@ -36,7 +47,18 @@ export const JobSheetKPIs: React.FC<JobSheetKPIsProps> = ({
   onPaymentFilter,
   onScrollTo,
   onEnableOTColumn,
+  jobs = [],
 }) => {
+  // R-SHEET-06: Scheduled / Live / Completed by the jobs' times (same as Bookings and the Overview)
+  const today = todayDubai(), nowMin = dubaiMinutes()
+  const progress = jobs.map(j => ({ j, st: jobProgressByTime(j, today, nowMin) }))
+  const nScheduled = progress.filter(x => x.st === 'confirmed').length
+  const nLive = progress.filter(x => x.st === 'in_progress').length
+  const done = progress.filter(x => x.st === 'completed')
+  const nMonthly = jobs.filter(j => /monthly/i.test(String(j.payment_mode || ''))).length
+  const billed = done.reduce((s, x) => s + cleanNum(x.j.charges), 0)
+  const dutyHours = Math.round(jobs.reduce((s, j) => s + cleanNum(j.duty_hours), 0) * 10) / 10
+  const toJobs = () => { onPaymentFilter('ALL'); onScrollTo('jobs-table-section') }
   const row1Cards = [
     {
       id: 'charges',
@@ -217,47 +239,27 @@ export const JobSheetKPIs: React.FC<JobSheetKPIsProps> = ({
     },
   ]
 
+  const extraCards = [
+    { id: 'scheduled', label: 'SCHEDULED', sublabel: 'Jobs still to start', value: String(nScheduled), valueColor: 'text-teal-950', labelColor: 'text-teal-700', sublabelColor: 'text-slate-500', icon: CalendarClock, iconBg: 'bg-[#0d9488] text-white shadow-md shadow-teal-500/25', tooltip: 'Jobs whose time has not started yet', onClick: toJobs },
+    { id: 'live', label: 'LIVE NOW', sublabel: 'Cleaners on site now', value: String(nLive), valueColor: 'text-cyan-950', labelColor: 'text-cyan-700', sublabelColor: 'text-slate-500', icon: Radio, iconBg: 'bg-[#0891b2] text-white shadow-md shadow-cyan-500/25', tooltip: 'Jobs going on right now', onClick: toJobs },
+    { id: 'completed', label: 'COMPLETED', sublabel: 'Jobs finished', value: String(done.length), valueColor: 'text-emerald-950', labelColor: 'text-emerald-700', sublabelColor: 'text-slate-500', icon: CheckCircle2, iconBg: 'bg-[#059669] text-white shadow-md shadow-emerald-500/25', tooltip: 'Jobs whose time has ended', onClick: toJobs },
+    { id: 'monthly_jobs', label: 'MONTHLY JOBS', sublabel: 'Monthly contract visits', value: String(nMonthly), valueColor: 'text-teal-950', labelColor: 'text-teal-700', sublabelColor: 'text-slate-500', icon: Repeat, iconBg: 'bg-[#0f766e] text-white shadow-md shadow-teal-500/25', tooltip: 'Click to show the Monthly jobs', onClick: () => { onPaymentFilter('Monthly'); onScrollTo('jobs-table-section') } },
+    { id: 'billed', label: 'BILLED REVENUE', sublabel: 'Charges of finished jobs', value: `AED ${billed.toLocaleString()}`, valueColor: 'text-purple-950', labelColor: 'text-purple-700', sublabelColor: 'text-slate-500', icon: BadgeDollarSign, iconBg: 'bg-[#7c3aed] text-white shadow-md shadow-purple-500/25', tooltip: 'Charges of the jobs whose time has ended', onClick: toJobs },
+    { id: 'duty_hours', label: 'DUTY HOURS', sublabel: 'Total booked hours', value: `${dutyHours}h`, valueColor: 'text-sky-950', labelColor: 'text-sky-700', sublabelColor: 'text-slate-500', icon: Timer, iconBg: 'bg-[#0284c7] text-white shadow-md shadow-sky-500/25', tooltip: 'Duty hours of the open date(s)', onClick: toJobs },
+  ]
+  // R-SHEET-06: one list — shown, hidden and ordered from "Cards" (saved on this computer)
+  const allCards = [...row1Cards, ...row2Cards, ...extraCards]
+  const [prefs, setPrefs] = useCardPrefs(allCards.map(c => c.id), JOB_SHEET_EXTRA_CARDS, 'safaeewala_job_sheet_cards')
+  const byId = new Map(allCards.map(c => [c.id, c]))
+  const shown = prefs.order.filter(id => !prefs.hidden.includes(id)).map(id => byId.get(id)!).filter(Boolean)
+
   return (
-    <div className="space-y-3 sm:space-y-3.5">
-      {/* Row 1: Primary Financial & Net Revenue Flow (Charges card first!) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-3.5">
-        {row1Cards.map(c => {
-          const Icon = c.icon
-          return (
-            <button
-              key={c.id}
-              type="button"
-              onClick={c.onClick}
-              title={c.tooltip}
-              className={`group relative rounded-[16px] bg-white hover:bg-[#FAFBF9] border border-[#E2E5E0] hover:border-[#C9D2CC] shadow-[0_1px_2px_rgba(20,32,27,0.04)] p-4 sm:p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] cursor-pointer flex flex-col justify-between text-left w-full focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1`}
-            >
-              <div className="flex items-start justify-between gap-2 mb-2 w-full">
-                <span className={`text-[11px] font-bold tracking-wider uppercase leading-[1.3] line-clamp-2 break-words min-w-0 ${c.labelColor}`}>{/* UX-101 */}
-                  {c.label}
-                </span>
-                <div
-                  className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105 ${c.iconBg}`}
-                >
-                  <Icon size={18} strokeWidth={2.2} />
-                </div>
-              </div>
-
-              <div className="w-full">
-                <p className={`text-[23px] sm:text-[26px] font-black tracking-tight leading-tight truncate ${c.valueColor}`}>
-                  {c.value}
-                </p>
-                <p className={`text-[11px] sm:text-[11.5px] font-medium mt-1 truncate ${c.sublabelColor}`}>
-                  {c.sublabel}
-                </p>
-              </div>
-            </button>
-          )
-        })}
+    <div className="space-y-2">
+      <div className="flex justify-end">
+        <CardsCustomizer title="Daily Job Sheet cards" cards={allCards.map(c => ({ id: c.id, label: c.label.charAt(0) + c.label.slice(1).toLowerCase() }))} prefs={prefs} onChange={setPrefs} defaultHidden={JOB_SHEET_EXTRA_CARDS} />
       </div>
-
-      {/* Row 2: Breakdowns & Operational Workload (5 Cards) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-3.5">
-        {row2Cards.map(c => {
+        {shown.map(c => {
           const Icon = c.icon
           return (
             <button

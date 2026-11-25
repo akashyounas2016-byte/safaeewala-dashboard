@@ -12,19 +12,20 @@ const KEY = 'safaeewala_overview_cards'
 
 /** The saved order (new cards added at the end, removed ones dropped) and the hidden list */
 /** `defaultHidden`: cards hidden until the person shows them (R-OPS-24) */
-export function useCardPrefs(defaultIds: string[], defaultHidden: string[] = []): [CardPrefs, (p: CardPrefs) => void] {
+export function useCardPrefs(defaultIds: string[], defaultHidden: string[] = [], storageKey = KEY): [CardPrefs, (p: CardPrefs) => void] {
   const fix = (p: Partial<CardPrefs> | null): CardPrefs => {
     const saved = (p?.order || []).filter(id => defaultIds.includes(id))
     return { order: [...saved, ...defaultIds.filter(id => !saved.includes(id))], hidden: (p ? p.hidden || [] : defaultHidden).filter(id => defaultIds.includes(id)) }
   }
-  const [prefs, setPrefs] = useState<CardPrefs>(() => fix(safeLocalStorageGet<CardPrefs | null>(KEY, null)))
-  const save = (p: CardPrefs) => { const f = fix(p); setPrefs(f); safeLocalStorageSet(KEY, f) }
+  const [prefs, setPrefs] = useState<CardPrefs>(() => fix(safeLocalStorageGet<CardPrefs | null>(storageKey, null)))
+  const save = (p: CardPrefs) => { const f = fix(p); setPrefs(f); safeLocalStorageSet(storageKey, f) }
   return [prefs, save]
 }
 
-export function CardsCustomizer({ cards, prefs, onChange, defaultHidden = [] }: {
+export function CardsCustomizer({ cards, prefs, onChange, defaultHidden = [], title = 'Overview cards' }: {
   cards: { id: string; label: string }[]
   defaultHidden?: string[]
+  title?: string
   prefs: CardPrefs
   onChange: (p: CardPrefs) => void
 }) {
@@ -46,7 +47,7 @@ export function CardsCustomizer({ cards, prefs, onChange, defaultHidden = [] }: 
         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl cursor-pointer">
         <LayoutGrid size={14} /> Cards <span className="text-emerald-600/80">{shownCount}/{prefs.order.length}</span>
       </button>
-      <Modal open={open} onClose={() => setOpen(false)} title="Overview cards" size="md">
+      <Modal open={open} onClose={() => setOpen(false)} title={title} size="md">
         <p className="text-[12.5px] text-slate-500 mb-3">Tick the cards to show. Drag a row, or use the arrows, to change the order. Saved on this computer.</p>
         <ul className="space-y-1.5" aria-label="Cards">
           {prefs.order.map((id, i) => {

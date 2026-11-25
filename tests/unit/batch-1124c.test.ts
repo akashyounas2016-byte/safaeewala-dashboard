@@ -29,7 +29,7 @@ eq(/supabase\.rpc\('field_staff_directory'\)/.test(md) && /cleanerDuties\(dailyJ
 
 // R-OPS-19 — live location
 const ls = src('src/lib/useLiveSharing.ts')
-eq([/wakeLock\.request\('screen'\)/.test(ls), /safeLocalStorageGet<boolean>\(shareKey\(employeeId\), false\)\) start\(\)/.test(ls), /visibilitychange/.test(ls)], [true, true, true], 'screen kept awake, starts again by itself, sends when the screen comes back')
+eq([/wakeLock\.request\('screen'\)/.test(ls), /safeLocalStorageGet<boolean>\(shareKey\(employeeId\), false\)\)+ start\(\)/.test(ls), /visibilitychange/.test(ls)], [true, true, true], 'screen kept awake, starts again by itself, sends when the screen comes back')
 const dl = src('src/lib/driverLocation.ts')
 eq(/HEARTBEAT_MS = 60_000/.test(dl) && /getCurrentPosition\(pos => save\(pos, true\)/.test(dl), true, 'standing still still sends every minute')
 eq(/useLiveSharing\(linked\?\.id\)/.test(md) && /last sent/.test(md), true, 'My Duties uses it and shows when the position was last sent')

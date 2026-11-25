@@ -74,6 +74,7 @@ import {
 import { GoogleDriveWebhookModal } from '@/components/dailyJobSheet/GoogleDriveWebhookModal'
 import { MonthlyScheduleSyncModal } from '@/components/dailyJobSheet/MonthlyScheduleSyncModal'
 import { JobSheetKPIs } from '@/components/dailyJobSheet/JobSheetKPIs'
+import { JobViews, JOB_SHEET_VIEWS, type JobSheetView } from '@/components/dailyJobSheet/JobViews'
 import { CrewTimeline } from '@/components/dailyJobSheet/CrewTimeline'
 import { buildCrewTimeline, driverNameForJob, jobStatusLabel } from '@/lib/crewTimeline'
 import { buildRouteSites } from '@/lib/driverRoutes'
@@ -1134,6 +1135,21 @@ export function DailyJobSheet() {
   const allSheetRows = [...filteredActiveJobRows, ...filteredNilRows]
 
   const totalRows  = allSheetRows.length
+  // R-SHEET-07: Table (the sheet) or the Bookings views — Cards, Board, Calendar (remembered on this computer)
+  const [jobsView, setJobsViewState] = useState<JobSheetView>(() => safeLocalStorageGet<JobSheetView>('safaeewala_job_sheet_view', 'table'))
+  const setJobsView = (v: JobSheetView) => { setJobsViewState(v); safeLocalStorageSet('safaeewala_job_sheet_view', v) }
+  // a team job split into one row per cleaner is one job in the views (its original row, with every cleaner)
+  const jobsForViews = useMemo(() => {
+    const seen = new Set<string>()
+    const out: DailyJob[] = []
+    for (const r of filteredActiveJobRows) {
+      const id = String((r as any)._originalJobId || r.id)
+      if (seen.has(id)) continue
+      seen.add(id)
+      out.push((r as any)._originalJobId ? (dailyJobs.find(j => j.id === id) || r) : r)
+    }
+    return out
+  }, [filteredActiveJobRows, dailyJobs])
   const totalPages = pageSize === 'all' ? 1 : Math.ceil(totalRows / pageSize) || 1
   const activePage = Math.min(currentPage, totalPages)
 
@@ -3204,6 +3220,7 @@ export function DailyJobSheet() {
         totalOTHours={totalOTHours}
         staffOnDuty={staffOnDuty}
         jobsCount={jobsCount}
+        jobs={todayJobs} // R-SHEET-06
         onPaymentFilter={setPaymentFilter}
         onScrollTo={scrollToElement}
         onEnableOTColumn={() => {
@@ -3252,6 +3269,13 @@ export function DailyJobSheet() {
                 <h3 className="text-[15px] font-bold text-[#111827] leading-tight">Jobs</h3>
                 <p className="text-[11.5px] text-slate-500 leading-tight">{todayJobs.length} job{todayJobs.length === 1 ? '' : 's'} · {isDateRange ? `${fmtDate(effectiveStartDate)} – ${fmtDate(effectiveEndDate)}` : fmtDate(selectedDate)}</p>
               </div>
+            </div>
+            {/* R-SHEET-07: views of the Bookings screen */}
+            <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1" role="group" aria-label="Jobs view">
+              {JOB_SHEET_VIEWS.map(v => (
+                <button key={v.key} type="button" onClick={() => setJobsView(v.key)} aria-pressed={jobsView === v.key}
+                  className={`px-3 py-1 rounded-lg text-[12px] font-bold cursor-pointer ${jobsView === v.key ? 'bg-white text-[#111827] shadow-xs' : 'text-slate-500 hover:text-slate-800'}`}>{v.label}</button>
+              ))}
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
               {searchQuery && (
@@ -3689,6 +3713,9 @@ export function DailyJobSheet() {
         {/* UX-99: the Jobs list can be hidden like the Crew timeline */}
         {!jobsCollapsed && (<>
 
+        {jobsView !== 'table' ? (
+          <JobViews jobs={jobsForViews} view={jobsView} onOpen={job => { if (!blockIfClosed(job.date)) { const target = (job as any)._originalJobId ? (dailyJobs.find(j => j.id === (job as any)._originalJobId) || job) : job; setEditJob(target) } }} />
+        ) : (<>
         {/* ── Table Container / Project Teams Columnar Board ── */}
         {paymentFilter === 'Project' && projectBoardView === 'board' ? (
           <div className="p-4 sm:p-6 bg-slate-50/70 min-h-[420px]">
@@ -4130,6 +4157,7 @@ export function DailyJobSheet() {
             </div>
           )}
         </div>
+        </>)}
         </>)}
       </div>
 

@@ -10,7 +10,7 @@ const ids = [...(/const OV_CARDS = \[(.*)\]/.exec(ov)?.[1] || '').matchAll(/id: 
 eq(ids.length, 12, 'all 12 cards can be chosen')
 eq(ids.every(id => new RegExp(`\\n    ${id}: \\(`).test(ov)), true, 'every card has its own entry')
 eq(/cardPrefs\.order\.filter\(id => !cardPrefs\.hidden\.includes\(id\)/.test(ov) && /<CardsCustomizer cards=\{OV_CARDS\}/.test(ov), true, 'cards follow the saved order and hidden list; button by the date filter')
-eq(/safeLocalStorageSet\(KEY, f\)/.test(cc) && /'safaeewala_overview_cards'/.test(cc), true, 'saved on this computer')
+eq(/safeLocalStorageSet\(storageKey, f\)/.test(cc) && /storageKey = KEY/.test(cc) && /'safaeewala_overview_cards'/.test(cc), true, 'saved on this computer')
 eq(/Reset to default/.test(cc) && /draggable/.test(cc) && /Move \$\{labelOf\(id\)\} up/.test(cc), true, 'tick, drag / arrows, reset')
 eq(/\[\.\.\.saved, \.\.\.defaultIds\.filter\(id => !saved\.includes\(id\)\)\]/.test(cc), true, 'a card added later shows at the end')
 eq(/const OV_CARDS_HIDDEN = \['leads', 'wa_clicks', 'low_stock', 'completion'\]/.test(ov) && /useCardPrefs\(OV_CARDS\.map\(c => c\.id\), OV_CARDS_HIDDEN\)/.test(ov), true, 'R-OPS-24: four cards hidden at first')

@@ -57,9 +57,10 @@ export function useLiveSharing(employeeId: string | undefined) {
     letSleep()
   }, [employeeId, letSleep])
 
-  // Turned on before on this phone → on again when My Duties opens
+  // Turned on before on this phone → on again when My Duties opens.
+  // R-APP-03: in the app it is always on — permission is asked when the app opens, no on / off button
   useEffect(() => {
-    if (employeeId && safeLocalStorageGet<boolean>(shareKey(employeeId), false)) start()
+    if (employeeId && (isNativeApp() || safeLocalStorageGet<boolean>(shareKey(employeeId), false))) start()
     return () => { handle.current?.stop(); handle.current = null; letSleep() }
   }, [employeeId]) // eslint-disable-line react-hooks/exhaustive-deps
 

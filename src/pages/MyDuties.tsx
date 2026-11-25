@@ -142,6 +142,16 @@ export function MyDuties() {
   const sharing = live.sharing
   const shareError = live.error
   const toggleSharing = () => { if (canShare) live.toggle() }
+  // R-APP-03: in the app location is always on (no on / off button); a status line shows it is working
+  const inApp = live.native
+  const appLocationLine = inApp && canShare ? (
+    <div className={`px-4 py-3 rounded-2xl border text-[12.5px] font-semibold flex items-start gap-2 ${shareError ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-emerald-50 border-emerald-200 text-emerald-900'}`}>
+      <MapPinned size={17} className="shrink-0 mt-px" />
+      <span>{shareError
+        ? <>{shareError} Location is needed for your duties — allow it for Safaeewala Duties in the phone settings.</>
+        : <>Location is on — the office sees you on the map{live.lastSentAt ? ` · last sent ${ageLabel(new Date(live.lastSentAt).toISOString())}` : ' · finding your position…'}. It keeps working in the background.</>}</span>
+    </div>
+  ) : null
   const [, setTick] = useState(0)
   useEffect(() => { if (!sharing) return; const t = window.setInterval(() => setTick(n => n + 1), 10_000); return () => window.clearInterval(t) }, [sharing])
   const shareStatus = sharing
@@ -284,13 +294,16 @@ export function MyDuties() {
               className={`min-h-[52px] rounded-2xl px-4 py-3 flex items-center gap-3 font-bold text-[14px] ${route ? 'bg-sky-600 text-white active:bg-sky-700' : 'bg-slate-100 text-slate-400 pointer-events-none'}`}>
               <Navigation size={20} /> Open my route in Google Maps
             </a>
+            {!inApp && (
             <button type="button" onClick={toggleSharing} disabled={!canShare}
               className={`min-h-[52px] rounded-2xl px-4 py-3 flex items-center gap-3 font-bold text-[14px] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${sharing ? 'bg-rose-600 text-white active:bg-rose-700' : 'bg-emerald-700 text-white active:bg-emerald-800'}`}>
               {sharing ? <><Square size={18} /> Stop sharing my location</> : <><MapPinned size={20} /> Start shift — share my location</>}
             </button>
+            )}
           </div>
-          {sharing && <p className="text-[12px] text-emerald-800 font-semibold">{shareStatus}</p>}
-          {shareError && <p className="text-[12px] text-rose-700 font-semibold">{shareError}</p>}
+          {appLocationLine}
+          {!inApp && sharing && <p className="text-[12px] text-emerald-800 font-semibold">{shareStatus}</p>}
+          {!inApp && shareError && <p className="text-[12px] text-rose-700 font-semibold">{shareError}</p>}
           {stops.length === 0
             ? <EmptyDay text={`No stops assigned for ${fmtDate(date)}.`} />
             : <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{stops.map(s => <SiteCard key={s.key} site={s} index={sites.indexOf(s)} />)}</div>}
@@ -299,7 +312,8 @@ export function MyDuties() {
 
       {/* ── Cleaner ── */}
       {/* R-OPS-14: cleaner / CSR shares their position with the office (Overview live map) */}
-      {person && kind === 'cleaner' && linked && (
+      {person && kind === 'cleaner' && linked && inApp && appLocationLine}
+      {person && kind === 'cleaner' && linked && !inApp && (
         <div className="space-y-1.5">
           <button type="button" onClick={toggleSharing}
             className={`w-full min-h-[52px] rounded-2xl px-4 py-3 flex items-center gap-3 font-bold text-[14px] cursor-pointer ${sharing ? 'bg-rose-600 text-white active:bg-rose-700' : 'bg-emerald-700 text-white active:bg-emerald-800'}`}>

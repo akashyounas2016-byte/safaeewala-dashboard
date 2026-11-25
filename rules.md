@@ -454,6 +454,21 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `JobSheetSpreadsheet.tsx → commitTimeSelect, handleFormulaBarChange`; `src/lib/excelSheet/rows.ts → syncDutyWithTimes, syncHourlyCharges`. Test: `tests/unit/batch-1125.test.ts`.
 - **Status:** Active · Since: 2026-11-25
 
+### R-SHEET-06 — Daily Job Sheet cards: show, hide, order; the Bookings cards added
+- **Rule:** *"Daily Job Sheet ke cards ko customize karne ke liye unhein hide, show, aur reorder karne ka option dein. Booking screen ke tamam cards ko Daily Job Sheet mein shamil karein, siwaye unke jo pehle se maujood hain, aur inhein by default hide rakhein."* (2026-11-26)
+  - A **Cards n/16** button above the cards (same pop-up as the Overview, R-OPS-23): tick, drag / ↑ ↓, Reset; saved on this computer.
+  - From Bookings, the cards the sheet did not have: **Scheduled, Live Now, Completed** (by the jobs' times), **Monthly Jobs** (opens the Monthly filter), **Billed Revenue** (charges of finished jobs), **Duty Hours** — hidden at first. Bookings' Total Bookings, Total Workload, Cleaners on Duty, Pending / Uncollected were already there as Jobs, Charges, Staff on Duty, Pending.
+- **Code:** `components/dailyJobSheet/JobSheetKPIs.tsx → JOB_SHEET_EXTRA_CARDS`; `CardsCustomizer.tsx (storageKey)`. Test: `tests/unit/batch-1126b.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
+### R-SHEET-07 — Daily Job Sheet: Table, Cards, Board, Calendar
+- **Rule:** *"Booking screen ke mukhtalif views—jaise Card, Table, Board, aur Calendar—ko Daily Job Sheet mein shamil karein … jab tak ke Booking screen ko abhi remove nahi krna jab me kahun tb remove krna he"* (2026-11-26)
+  - A view switch in the Jobs header: **Table** (the sheet as before), **Cards** (one card per job: time, status, client, area, cleaners, charges · mode), **Board** (Scheduled / Live / Done columns), **Calendar** (a column per open day, today highlighted). The views follow the date, search and payment filters; a team job split per cleaner is one card; click = Edit Job. The choice is remembered on this computer.
+  - The Bookings screen stays as it is until the owner says to remove it.
+- **Code:** `components/dailyJobSheet/JobViews.tsx`; `DailyJobSheet.tsx → jobsView, jobsForViews`. Test: `tests/unit/batch-1126b.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
+
 ---
 
 ## OT — Overtime
@@ -2058,6 +2073,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - **Updates:** screens and fixes of the website reach the app by themselves (it opens the live site). A new APK is needed only when the app itself changes; then My Duties shows **"New app version (build N) — tap to download"** (checks GitHub at most every 6 hours; the build number is the GitHub run number). To install over the old app every build must carry the same signing key: a key was made on 26 Nov (Safaeewala-backups/android-signing, not in the repo); the owner adds it as GitHub secrets `ANDROID_KEYSTORE_B64` and `ANDROID_KEYSTORE_PASSWORD` (A45). Until then each build uses a new debug key and the old app has to be removed first. Fully silent updates need Google Play (internal testing) — later, owner's choice.
 - **Code:** `src/main.tsx`; `capacitor.config.ts`; `android/app/src/main/java/com/safaeewala/duties/MainActivity.java`; `android/app/build.gradle`; `.github/workflows/android-apk.yml`; `src/lib/cloudState.ts → setCloudFieldLogin`; `Sidebar.tsx`; `src/lib/appUpdate.ts`; `MyDuties.tsx`. Test: `tests/unit/batch-1126.test.ts`.
 - **Status:** Active · Since: 2026-11-26
+
+### R-APP-03 — App: location always on, no on / off button
+- **Rule:** *"app me my duties k page pr location on off ka option b remove kren or app k start me just permission mange uske bad jb tk app mobile me he background me uski location track krta rahe"* (2026-11-26)
+  - In the app (cleaner and driver logins) the Share / Stop button is gone. When the app opens it asks for location (and notifications), then sends the position in the background as long as the app runs — the Android notification "Safaeewala Duties — location on" says so. My Duties shows one line: "Location is on — the office sees you on the map · last sent …" (or what to allow when it was refused).
+  - The website (browser) keeps its Share / Stop button (R-OPS-19).
+  - Limit: if the phone owner swipes the app away or the phone restarts, it starts again only when the app is opened (start-on-boot needs more native work — later).
+- **Code:** `useLiveSharing.ts`; `MyDuties.tsx → inApp, appLocationLine`; `driverLocation.ts` (notification text). Test: `tests/unit/batch-1126b.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
 
 
 

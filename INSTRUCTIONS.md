@@ -118,6 +118,13 @@
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
+### Daily Job Sheet: cards aur views (26 Nov)
+- Cards ke upar **Cards** button: dikhana / chhupana / tarteeb (Overview jaisa). Bookings wale cards bhi aa gaye — **Scheduled, Live Now, Completed, Monthly Jobs, Billed Revenue, Duty Hours** — shuru mein chhupe hain, chahiye hon to tick karein.
+- **Jobs** ke header mein **Table · Cards · Board · Calendar**: Table wahi purani sheet; Cards = har job ka card; Board = Scheduled / Live / Done; Calendar = har din ka column. Kisi job par click = Edit. Bookings screen abhi waisi hi hai (aap kahenge tab hatayenge).
+
+### App: location hamesha on (26 Nov)
+- App mein **Share / Stop** ka button nahi. App kholte hi location ki ijazat maangti hai, phir peeche bhi location jaati rehti hai (upar notification "location on"). Website par button waisa hi hai.
+
 ### Overview: apne cards chunein (25 Nov)
 - Date filter ki line mein daayen taraf **Cards** button. Dabayein → har card ke saath tick (dikhana / chhupana) aur ↑ ↓ (ya row ko pakad kar khenchein) se tarteeb. **Reset to default** se shuru wale 8 cards wapas. Ye setting isi computer par yaad rehti hai.
 - Shuru mein **Fluent Form, WhatsApp Clicks, Low Stock Alerts, Completion Rate** chhupe hote hain — chahiye hon to Cards mein tick kar dein.

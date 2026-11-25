@@ -46,8 +46,8 @@ function startNativeSharing(employeeId: string, onError: (msg: string) => void, 
   }
   const plugin = import('@capacitor/core').then(({ registerPlugin }) => registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation'))
   const watcher = plugin.then(bg => bg.addWatcher({
-    backgroundTitle: 'Safaeewala Duties — on duty',
-    backgroundMessage: 'Sharing your location with the office. Stop sharing in the app when your duty ends.',
+    backgroundTitle: 'Safaeewala Duties — location on',
+    backgroundMessage: 'Your location is shared with the Safaeewala office for your duties (R-APP-03).',
     requestPermissions: true,
     stale: false,
     distanceFilter: 25,
