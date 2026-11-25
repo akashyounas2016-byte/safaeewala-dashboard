@@ -118,6 +118,9 @@
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
+### Overview: apne cards chunein (25 Nov)
+- Date filter ki line mein daayen taraf **Cards** button. Dabayein → har card ke saath tick (dikhana / chhupana) aur ↑ ↓ (ya row ko pakad kar khenchein) se tarteeb. **Reset to default** se sab wapas. Ye setting isi computer par yaad rehti hai.
+
 ### Safaeewala Duties app (test, 25 Nov)
 - **APK kahan se:** GitHub → repo → **Releases** → "Safaeewala Duties — test build …" → `.apk` file phone par kholein → "Install unknown apps" allow → Install.
 - App khol kar **CRM login** se login karein — seedha **My Duties** khulta hai (wahi jo website par hai, har update khud aa jata hai).

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, type ElementType } from 'react'
+import { useState, useRef, useEffect, useMemo, Fragment, type ElementType, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -16,6 +16,7 @@ import { overviewRange, jobProgressByTime, crewMembers, dispatchedNames, onJobs,
 import { currentJobOf } from '@/lib/liveOps'
 import { ReportsPanel } from '@/components/overview/ReportsPanel'
 import { useFolded, FoldButton } from '@/components/overview/Foldable'
+import { CardsCustomizer, useCardPrefs } from '@/components/overview/CardsCustomizer'
 import { EditJobModal } from '@/components/dailyJobSheet/EditJobModal'
 import { CLOSED_DAYS_KEY, type ClosedDay } from '@/lib/closedDays'
 import { notify } from '@/lib/notify'
@@ -87,6 +88,9 @@ function StatusPill({ status }: { status: string }) {
     </span>
   )
 }
+
+/** R-OPS-23: the Overview cards (default order) for the Cards pop-up */
+const OV_CARDS = [{ id: 'jobs', label: 'Jobs' }, { id: 'collected', label: 'Collected' }, { id: 'pending', label: 'Pending Collection' }, { id: 'completion', label: 'Completion Rate' }, { id: 'active_cleaners', label: 'Active Cleaners' }, { id: 'crew_util', label: 'Crew Utilization' }, { id: 'hours', label: 'Hours Worked' }, { id: 'low_stock', label: 'Low Stock Alerts' }, { id: 'leads', label: 'Fluent Form Leads' }, { id: 'wa_clicks', label: 'WhatsApp Clicks' }, { id: 'new_clients', label: 'New Clients' }, { id: 'expenses', label: 'Expenses' }]
 
 /* ─── KPI Card — R-OPS-17: compact, 4 per row ─── */
 interface KpiCardProps {
@@ -405,6 +409,8 @@ export function Overview() {
   const [colsOpen, setColsOpen] = useState(false)
   const toggleCol = (id: string) => setHiddenCols(prev => { const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]; safeLocalStorageSet('safaeewala_overview_dispatch_hidden', next); return next })
   const showCol = (id: string) => !hiddenCols.includes(id)
+  // R-OPS-23: which cards show and in what order (saved on this computer)
+  const [cardPrefs, setCardPrefs] = useCardPrefs(OV_CARDS.map(c => c.id))
   const [editJob, setEditJob] = useState<DailyJob | null>(null)
   const canEditJobs = useModuleAccess('Daily Job Sheet')
 
@@ -665,6 +671,134 @@ export function Overview() {
     { icon: '👋', bg: 'bg-slate-100', route: '', title: 'No activity yet', sub: 'Add a job or invoice to see events here' },
   ]
 
+  // R-OPS-23: the cards by id — shown in the order and with the hidden ones chosen under "Cards"
+  const cardNodes: Record<string, ReactNode> = {
+    jobs: (
+        <KpiCard
+        label={datePreset === 'today' ? 'Jobs Today' : datePreset === 'yesterday' ? 'Jobs Yesterday' : datePreset === 'all' ? 'Total Jobs' : `Jobs (${activeDateRange.label})`}
+        value={unifiedJobs.length}
+        sub={`${periodLive.length} live · ${periodConfirmed.length} scheduled · ${periodCompleted.length} done`}
+        delta={unifiedJobs.length > 0 ? `+${unifiedJobs.length}` : '0'}
+        trend={unifiedJobs.length > 0 ? 'up' : 'neutral'}
+        icon={CalendarCheck} iconBg="#d1fae5" iconColor="#059669"
+        onClick={() => navigate('/daily-job-sheet')}
+      />
+    ),
+    collected: (
+        <KpiCard
+        label={datePreset === 'today' ? 'Collected Today' : datePreset === 'yesterday' ? 'Collected Yesterday' : datePreset === 'all' ? 'Total Collected' : `Collected (${activeDateRange.label})`}
+        value={`AED ${periodRevenue.toLocaleString()}`}
+        sub={`From ${periodCompleted.length + periodLive.length} done & live jobs`}
+        trend={periodRevenue > 0 ? 'up' : 'neutral'}
+        icon={DollarSign} iconBg="#e0f2fe" iconColor="#0369a1"
+        onClick={() => navigate('/payments?tab=history')}
+      />
+    ),
+    pending: (
+        <KpiCard
+        label="Pending Collection"
+        value={`AED ${totalPendingAmount.toLocaleString()}`}
+        sub={totalPendingCount > 0 ? `${totalPendingCount} items · ${dailyPendingCount + sidePendingCount} Job Sheet · ${invoicePendingCount} invoices` : 'All payments collected'}
+        delta={totalPendingCount > 0 ? `${totalPendingCount} open` : 'settled'}
+        trend={totalPendingCount > 0 ? 'down' : 'up'}
+        icon={AlertCircle} iconBg="#fee2e2" iconColor="#dc2626" tint="#fff7f7"
+        onClick={() => navigate('/payments?tab=outstanding')}
+      />
+    ),
+    completion: (
+        <KpiCard
+        label="Completion Rate"
+        value={`${completionRatePct}%`}
+        sub={`${periodCompleted.length} of ${nonCancelledJobs.length} jobs done`}
+        delta={completionRatePct >= 80 ? 'on track' : 'in progress'}
+        trend={completionRatePct >= 80 ? 'up' : 'neutral'}
+        icon={Star} iconBg="#ede9fe" iconColor="#7c3aed"
+        onClick={() => navigate('/reports')}
+      />
+    ),
+    active_cleaners: (
+        <KpiCard
+        label="Active Cleaners"
+        value={activeEmps.length}
+        sub={`${dispatchedStaffSet.size} on jobs ${periodWord} · ${employees.length} total staff`}
+        icon={Users} iconBg="#fef3c7" iconColor="#d97706"
+        onClick={() => navigate('/employees')}
+      />
+    ),
+    crew_util: (
+        <KpiCard
+        label="Crew Utilization"
+        value={`${crewUtilization}%`}
+        sub={`${dispatchedStaffSet.size} of ${activeEmps.length} cleaners dispatched ${periodWord}`}
+        delta={crewUtilization >= 70 ? 'healthy' : 'low'}
+        trend={crewUtilization >= 70 ? 'up' : 'down'}
+        icon={Gauge} iconBg="#d1fae5" iconColor="#047857" tint="#f6fdf9"
+        onClick={() => navigate('/employees')}
+      />
+    ),
+    hours: (
+        <KpiCard
+        label={`Hours Worked (${activeDateRange.label})`}
+        value={`${periodHours.toLocaleString()} h`}
+        sub={`${periodDailyJobs.length} Job Sheet rows · duty hours`}
+        icon={Timer} iconBg="#cffafe" iconColor="#0e7490"
+        onClick={() => navigate('/attendance')}
+      />
+    ),
+    low_stock: (
+        <KpiCard
+        label="Low Stock Alerts"
+        value={lowStockItems.length}
+        sub={lowStockItems.length > 0 ? `${lowStockItems[0].name} needs reorder` : 'All items stocked'}
+        delta={lowStockItems.length > 0 ? 'reorder' : 'ok'}
+        trend={lowStockItems.length > 0 ? 'down' : 'up'}
+        icon={Package} iconBg="#fef3c7" iconColor="#b45309" tint={lowStockItems.length > 0 ? '#fffbeb' : undefined}
+        onClick={() => navigate('/inventory')}
+      />
+    ),
+    leads: (
+        <KpiCard
+        label={`Fluent Form Leads (${activeDateRange.label})`}
+        value={leadCounts.forms ?? '…'}
+        sub={leadCounts.formsNew == null ? 'Website form submissions' : `${leadCounts.formsNew} still new · website forms`}
+        delta={leadCounts.forms ? `+${leadCounts.forms}` : '0'}
+        trend={leadCounts.forms ? 'up' : 'neutral'}
+        icon={FileText} iconBg="#e0e7ff" iconColor="#4f46e5"
+        onClick={() => navigate('/fluent-forms')}
+      />
+    ),
+    wa_clicks: (
+        <KpiCard
+        label={`WhatsApp Clicks (${activeDateRange.label})`}
+        value={leadCounts.clicks ?? '…'}
+        sub={leadCounts.clicksMobile == null ? 'WhatsApp buttons on the website' : `${leadCounts.clicksMobile} from mobile · website buttons`}
+        delta={leadCounts.clicks ? `+${leadCounts.clicks}` : '0'}
+        trend={leadCounts.clicks ? 'up' : 'neutral'}
+        icon={MessageCircle} iconBg="#dcfce7" iconColor="#16a34a"
+        onClick={() => navigate('/whatsapp-clicks')}
+      />
+    ),
+    new_clients: (
+        <KpiCard
+        label={`New Clients (${activeDateRange.label})`}
+        value={periodNewClients}
+        sub={`${clients.length} clients in total`}
+        delta={periodNewClients ? `+${periodNewClients}` : '0'}
+        trend={periodNewClients ? 'up' : 'neutral'}
+        icon={UserPlus} iconBg="#fce7f3" iconColor="#be185d"
+        onClick={() => navigate('/clients')}
+      />
+    ),
+    expenses: (
+        <KpiCard
+        label={`Expenses (${activeDateRange.label})`}
+        value={`AED ${periodExpenses.toLocaleString()}`}
+        sub={`${periodExpenseList.length} expense${periodExpenseList.length === 1 ? '' : 's'} · Daily Job Sheet & direct`}
+        icon={Receipt} iconBg="#f1f5f9" iconColor="#475569"
+        onClick={() => navigate('/expenses')}
+      />
+    ),
+  }
   return (
     <div>
       {/* ── Page Hero ── */}
@@ -754,113 +888,13 @@ export function Overview() {
               Showing: <span className="text-emerald-600 font-extrabold">{unifiedJobs.length}</span> jobs ({activeDateRange.label})
             </span>
           </div>
+          <CardsCustomizer cards={OV_CARDS} prefs={cardPrefs} onChange={setCardPrefs} />
         </div>
       </div>
 
       {/* ── KPI Cards — R-OPS-17: compact, 4 per row; Pending, Low Stock and Crew Utilization moved up here ── */}
       <section className="ov-cards grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5 mb-6">
-        <KpiCard
-          label={datePreset === 'today' ? 'Jobs Today' : datePreset === 'yesterday' ? 'Jobs Yesterday' : datePreset === 'all' ? 'Total Jobs' : `Jobs (${activeDateRange.label})`}
-          value={unifiedJobs.length}
-          sub={`${periodLive.length} live · ${periodConfirmed.length} scheduled · ${periodCompleted.length} done`}
-          delta={unifiedJobs.length > 0 ? `+${unifiedJobs.length}` : '0'}
-          trend={unifiedJobs.length > 0 ? 'up' : 'neutral'}
-          icon={CalendarCheck} iconBg="#d1fae5" iconColor="#059669"
-          onClick={() => navigate('/daily-job-sheet')}
-        />
-        <KpiCard
-          label={datePreset === 'today' ? 'Collected Today' : datePreset === 'yesterday' ? 'Collected Yesterday' : datePreset === 'all' ? 'Total Collected' : `Collected (${activeDateRange.label})`}
-          value={`AED ${periodRevenue.toLocaleString()}`}
-          sub={`From ${periodCompleted.length + periodLive.length} done & live jobs`}
-          trend={periodRevenue > 0 ? 'up' : 'neutral'}
-          icon={DollarSign} iconBg="#e0f2fe" iconColor="#0369a1"
-          onClick={() => navigate('/payments?tab=history')}
-        />
-        <KpiCard
-          label="Pending Collection"
-          value={`AED ${totalPendingAmount.toLocaleString()}`}
-          sub={totalPendingCount > 0 ? `${totalPendingCount} items · ${dailyPendingCount + sidePendingCount} Job Sheet · ${invoicePendingCount} invoices` : 'All payments collected'}
-          delta={totalPendingCount > 0 ? `${totalPendingCount} open` : 'settled'}
-          trend={totalPendingCount > 0 ? 'down' : 'up'}
-          icon={AlertCircle} iconBg="#fee2e2" iconColor="#dc2626" tint="#fff7f7"
-          onClick={() => navigate('/payments?tab=outstanding')}
-        />
-        <KpiCard
-          label="Completion Rate"
-          value={`${completionRatePct}%`}
-          sub={`${periodCompleted.length} of ${nonCancelledJobs.length} jobs done`}
-          delta={completionRatePct >= 80 ? 'on track' : 'in progress'}
-          trend={completionRatePct >= 80 ? 'up' : 'neutral'}
-          icon={Star} iconBg="#ede9fe" iconColor="#7c3aed"
-          onClick={() => navigate('/reports')}
-        />
-        <KpiCard
-          label="Active Cleaners"
-          value={activeEmps.length}
-          sub={`${dispatchedStaffSet.size} on jobs ${periodWord} · ${employees.length} total staff`}
-          icon={Users} iconBg="#fef3c7" iconColor="#d97706"
-          onClick={() => navigate('/employees')}
-        />
-        <KpiCard
-          label="Crew Utilization"
-          value={`${crewUtilization}%`}
-          sub={`${dispatchedStaffSet.size} of ${activeEmps.length} cleaners dispatched ${periodWord}`}
-          delta={crewUtilization >= 70 ? 'healthy' : 'low'}
-          trend={crewUtilization >= 70 ? 'up' : 'down'}
-          icon={Gauge} iconBg="#d1fae5" iconColor="#047857" tint="#f6fdf9"
-          onClick={() => navigate('/employees')}
-        />
-        <KpiCard
-          label={`Hours Worked (${activeDateRange.label})`}
-          value={`${periodHours.toLocaleString()} h`}
-          sub={`${periodDailyJobs.length} Job Sheet rows · duty hours`}
-          icon={Timer} iconBg="#cffafe" iconColor="#0e7490"
-          onClick={() => navigate('/attendance')}
-        />
-        <KpiCard
-          label="Low Stock Alerts"
-          value={lowStockItems.length}
-          sub={lowStockItems.length > 0 ? `${lowStockItems[0].name} needs reorder` : 'All items stocked'}
-          delta={lowStockItems.length > 0 ? 'reorder' : 'ok'}
-          trend={lowStockItems.length > 0 ? 'down' : 'up'}
-          icon={Package} iconBg="#fef3c7" iconColor="#b45309" tint={lowStockItems.length > 0 ? '#fffbeb' : undefined}
-          onClick={() => navigate('/inventory')}
-        />
-        {/* R-LEAD-15: website leads of the chosen period */}
-        <KpiCard
-          label={`Fluent Form Leads (${activeDateRange.label})`}
-          value={leadCounts.forms ?? '…'}
-          sub={leadCounts.formsNew == null ? 'Website form submissions' : `${leadCounts.formsNew} still new · website forms`}
-          delta={leadCounts.forms ? `+${leadCounts.forms}` : '0'}
-          trend={leadCounts.forms ? 'up' : 'neutral'}
-          icon={FileText} iconBg="#e0e7ff" iconColor="#4f46e5"
-          onClick={() => navigate('/fluent-forms')}
-        />
-        <KpiCard
-          label={`WhatsApp Clicks (${activeDateRange.label})`}
-          value={leadCounts.clicks ?? '…'}
-          sub={leadCounts.clicksMobile == null ? 'WhatsApp buttons on the website' : `${leadCounts.clicksMobile} from mobile · website buttons`}
-          delta={leadCounts.clicks ? `+${leadCounts.clicks}` : '0'}
-          trend={leadCounts.clicks ? 'up' : 'neutral'}
-          icon={MessageCircle} iconBg="#dcfce7" iconColor="#16a34a"
-          onClick={() => navigate('/whatsapp-clicks')}
-        />
-        <KpiCard
-          label={`New Clients (${activeDateRange.label})`}
-          value={periodNewClients}
-          sub={`${clients.length} clients in total`}
-          delta={periodNewClients ? `+${periodNewClients}` : '0'}
-          trend={periodNewClients ? 'up' : 'neutral'}
-          icon={UserPlus} iconBg="#fce7f3" iconColor="#be185d"
-          onClick={() => navigate('/clients')}
-        />
-        <KpiCard
-          label={`Expenses (${activeDateRange.label})`}
-          value={`AED ${periodExpenses.toLocaleString()}`}
-          sub={`${periodExpenseList.length} expense${periodExpenseList.length === 1 ? '' : 's'} · Daily Job Sheet & direct`}
-          icon={Receipt} iconBg="#f1f5f9" iconColor="#475569"
-          onClick={() => navigate('/expenses')}
-        />
+        {cardPrefs.order.filter(id => !cardPrefs.hidden.includes(id) && cardNodes[id]).map(id => <Fragment key={id}>{cardNodes[id]}</Fragment>)}
       </section>
 
       {/* ── R-OPS-20: Live Map right after the cards, then Live Activity and Reports (each full width, each can be hidden) ── */}
