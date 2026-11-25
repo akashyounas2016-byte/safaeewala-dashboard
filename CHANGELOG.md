@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(excel): changing a job's Start / End time (picked from the list, typed + Enter or in the formula bar) now redoes Charges = rate × Duty Hrs — 12–2 PM at 10 / hr stayed at 10 instead of 20 (R-SHEET-05)
+
 - fix(employees): the page crashed ("Cannot read properties of null (reading 'forEach')") when one staff record had no skills list — the TEST Cleaner made on 24 Nov; that record is repaired and the Employees list / profile now treat a missing skills list as empty
 
 - security: a cleaner / driver login reads only its own data — new SQL `2026-11-24_field_login_more_tables.sql` (audit log, job steps, positions, attendance, drivers' full records; owner runs it), VPS API answers 403 to field logins except health / logs, no lead polling for field logins (R-SEC-10)

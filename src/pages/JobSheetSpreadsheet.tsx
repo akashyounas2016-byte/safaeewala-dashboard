@@ -1319,7 +1319,8 @@ export function JobSheetSpreadsheet() {
     const r = { ...updated[rowIdx] }
     const fmt = formatTimeOnly(timeStr)
     r[colId] = fmt !== '—' ? fmt : timeStr
-    updated[rowIdx] = syncDutyWithTimes(r, !String(timeStr || '').trim()) // UX-139
+    // UX-139 + UX-175 (R-SHEET-05): a time picked from the list redoes Duty Hrs and then Charges = rate × hours
+    updated[rowIdx] = syncHourlyCharges(syncDutyWithTimes(r, !String(timeStr || '').trim()), colId)
     // R-OT-01: Recalculate cumulative multi-shift Overtime
     const finalGrid = recalculateAllRowsOT(updated)
     if (refuseClash(finalGrid)) { setEditingCell(null); return }
@@ -1976,10 +1977,12 @@ export function JobSheetSpreadsheet() {
       } else {
         ;(row as any)[colId] = newVal
       }
+      // R-SHEET-05: a time typed in the formula bar redoes Duty Hrs too (then Charges below)
+      if ((colId === 'start_time' || colId === 'end_time') && !newVal.startsWith('=')) Object.assign(row, syncDutyWithTimes(row, !newVal.trim()))
       Object.assign(row, syncHourlyCharges(row, colId)) // UX-175
 
       updated[activeCell.rowIdx] = row
-      pushState(updated)
+      pushState(colId === 'start_time' || colId === 'end_time' ? recalculateAllRowsOT(updated) : updated) // R-OT-01
     }
   }
 

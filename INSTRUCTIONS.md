@@ -109,6 +109,10 @@
 
 ## 2. Daily Job Sheet aur Excel Job Sheet
 
+### Excel Job Sheet: time badlein to Charges khud badalte hain (25 Nov)
+- Jis job mein **Charges / Hr** likha ho, us ka Start ya End time badlein (list se chunein ya likh kar Enter) to Duty Hrs aur **Charges = Charges / Hr × Duty Hrs** khud update ho jate hain. Misaal: 12–1 PM, 10 / hr = 10 → End time 2 PM = 20.
+- Jo rows is fix se pehle badli thin un ke Charges purane hi rahenge — time ya Charges / Hr dobara select kar dein to theek ho jayenge.
+
 ### Excel Job Sheet: Reconfirmation aur Date column (24 Nov)
 - Neeche footer mein **Reconfirmation** button: wahi hisaab jo office Excel mein karta hai — Charges, Less Rcvd, Pending, Balance, Add Adv, Balance. Aakhri Balance **0** ho to sheet theek hai (hara). 0 na ho to batata hai kitna farq hai aur kaun si rows nahi milti — row dabayein to sheet par wahi row khul jati hai. **Copy** se WhatsApp mein bhej sakte hain.
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.

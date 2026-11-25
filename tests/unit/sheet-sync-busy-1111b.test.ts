@@ -22,7 +22,7 @@ eq([busy.has('dipak sada'), busy.get('gyan')?.until, busy.get('ishwor')?.until],
 eq([syncDutyWithTimes({ start_time: '', end_time: '01:00 PM', duty_hours: 3, ot_hours: 1 }).duty_hours, syncDutyWithTimes({ start_time: '', end_time: '', duty_hours: 3, ot_hours: 1 }).ot_hours], [0, 0], 'a removed time clears Duty Hrs and OT')
 eq(syncDutyWithTimes({ start_time: '09:00 AM', end_time: '', duty_hours: 4 }, false).duty_hours, 4, 'typing the first time keeps the hours until the second one is there')
 eq(syncDutyWithTimes({ start_time: '09:00 AM', end_time: '01:30 PM', duty_hours: 0 }).duty_hours, 4.5, 'both times → worked out')
-eq((page.match(/syncDutyWithTimes\(/g) || []).length, 3, 'typed, picked and Delete all use it')
+eq((page.match(/syncDutyWithTimes\(/g) || []).length, 4, 'typed, picked, formula bar (R-SHEET-05) and Delete all use it')
 
 // ── R-SYNC-16: OT alone is not a change; conflicts use the saved job ──
 eq(sameJobRow(job('a', 'Uma', '09:00 AM', '01:00 PM', { ot_hours: 0 }), job('a', 'Uma', '09:00 AM', '01:00 PM', { ot_hours: 2 })), true, 'OT worked out again is not an unsaved change / not "changed elsewhere"')

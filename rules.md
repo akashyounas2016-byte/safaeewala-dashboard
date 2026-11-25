@@ -446,6 +446,14 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/excelSheet/columns.ts → DATE_COLUMN_DEF, buildColumnsWithLetters(…, showDate), fmtSheetDate, EXCEL_DATE_PRESETS`; `sheetConfig.ts → READ_ONLY_COLS`; `JobSheetSpreadsheet.tsx → showDateCol`. Test: `tests/unit/batch-1124b.test.ts`.
 - **Status:** Active · Since: 2026-11-24
 
+### R-SHEET-05 — Excel Job Sheet: a time change redoes Charges when the job has a rate per hour
+- **Rule:** *"jab Smitha ki job ka time 12 say 1 PM (1 hour) say barha kar 12 say 2 PM (2 hours) kiya jata hai, aur charges per hour 10 hain, to charges ka column 10 ki jagah 20 update nahi hota … time change honay par charges khud-ba-khud recalculate hon."* (2026-11-25)
+  - **Cause:** a time picked from the cell's list or typed + Enter (`commitTimeSelect`) redid Duty Hrs but not Charges; only other edit paths applied UX-175. A time typed in the formula bar did not redo Duty Hrs at all.
+  - **Now:** every way of changing Start / End time redoes Duty Hrs, then **Charges = Charges / Hr × Duty Hrs** (when a rate is set), then OT for the cleaner's day. Jobs without a rate keep their typed Charges (UX-181).
+  - Tested on localhost with a TEST job: 12–1 PM at 10 / hr → end time 2 PM → 2.00 h, Charges 20, saved. Rows changed before this fix keep their old Charges until a time or the rate is edited again.
+- **Code:** `JobSheetSpreadsheet.tsx → commitTimeSelect, handleFormulaBarChange`; `src/lib/excelSheet/rows.ts → syncDutyWithTimes, syncHourlyCharges`. Test: `tests/unit/batch-1125.test.ts`.
+- **Status:** Active · Since: 2026-11-25
+
 ---
 
 ## OT — Overtime
