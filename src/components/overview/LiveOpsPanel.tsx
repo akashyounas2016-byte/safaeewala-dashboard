@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Radar, Sparkles, Truck, Headset, Users, Maximize2, Minimize2, Crosshair } from 'lucide-react'
+import { Radar, Sparkles, Truck, Headset, Users, Maximize2, Minimize2, Crosshair, GripHorizontal } from 'lucide-react'
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { useData } from '@/store/DataContext'
 import { todayDubai } from '@/lib/dubaiTime'
 import { fetchDriverLocations, subscribeDriverLocations, ageLabel, type DriverLocation } from '@/lib/driverLocation'
@@ -10,7 +11,13 @@ import { buildLivePeople, type LiveRole } from '@/lib/liveOps'
 import { dubaiMinutes } from '@/lib/overviewStats'
 import { useFolded, FoldButton } from './Foldable'
 
-const LiveOpsMap = lazy(() => import('./LiveOpsMap'))
+// R-OPS-20: the map code (Leaflet) starts downloading as soon as the Overview opens, not when the panel renders
+const loadMap = () => import('./LiveOpsMap')
+const LiveOpsMap = lazy(loadMap)
+if (typeof window !== 'undefined') void loadMap().catch(() => {})
+/** R-OPS-20: map height, dragged by the handle under it (remembered on this computer) */
+const MAP_H_KEY = 'safaeewala_overview_map_h'
+const MAP_H_MIN = 300, MAP_H_MAX = 1000, MAP_H_DEFAULT = 520
 const COLOR: Record<LiveRole, string> = { cleaner: '#059669', driver: '#2563eb', csr: '#7c3aed' }
 const RING = { live: '#22c55e', stale: '#f59e0b', checkin: '#94a3b8' } as const
 
@@ -31,6 +38,17 @@ export function LiveOpsPanel() {
   const [full, setFull] = useState(false)
   const boxRef = useRef<HTMLDivElement>(null)
   const [folded, toggleFold] = useFolded('liveMap') // R-OPS-17
+  const [mapH, setMapH] = useState(() => Math.min(MAP_H_MAX, Math.max(MAP_H_MIN, Number(safeLocalStorageGet<number>(MAP_H_KEY, MAP_H_DEFAULT)) || MAP_H_DEFAULT)))
+  const startDrag = (e: React.PointerEvent) => {
+    e.preventDefault()
+    const y0 = e.clientY, h0 = mapH
+    let last = h0
+    const move = (ev: PointerEvent) => { last = Math.min(MAP_H_MAX, Math.max(MAP_H_MIN, Math.round(h0 + ev.clientY - y0))); setMapH(last) }
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); safeLocalStorageSet(MAP_H_KEY, last) }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+  const nudge = (d: number) => setMapH(h => { const n = Math.min(MAP_H_MAX, Math.max(MAP_H_MIN, h + d)); safeLocalStorageSet(MAP_H_KEY, n); return n })
   const checkins = useJobCheckins(today)
   const [plan] = useDayPlan(today)
 
@@ -106,8 +124,8 @@ export function LiveOpsPanel() {
       {!folded && <div className="p-4 sm:p-5 space-y-4 bg-gradient-to-b from-emerald-50/60 to-white">
         {/* Map — full width */}
         <div ref={boxRef} className={`relative ${full ? 'bg-white p-3' : ''}`} style={full ? { height: '100vh' } : undefined}>
-          <Suspense fallback={<div className="w-full rounded-2xl bg-slate-100 animate-pulse" style={{ height: 560 }} />}>
-            <LiveOpsMap people={shown} now={now} focusId={focus} onFocus={onFocus} fitSignal={fitSignal} height={full ? window.innerHeight - 24 : 560} />
+          <Suspense fallback={<div className="w-full rounded-2xl bg-gradient-to-br from-emerald-50 to-slate-100 animate-pulse flex items-center justify-center text-[12px] font-semibold text-emerald-800/70" style={{ height: mapH }}>Loading map…</div>}>
+            <LiveOpsMap people={shown} now={now} focusId={focus} onFocus={onFocus} fitSignal={fitSignal} height={full ? window.innerHeight - 24 : mapH} />
           </Suspense>
           <div className="absolute left-14 top-3 z-[500] flex gap-1.5">
             <button type="button" onClick={() => setFitSignal(n => n + 1)} title="Show everyone"
@@ -134,6 +152,19 @@ export function LiveOpsPanel() {
             </div>
           )}
         </div>
+
+        {/* R-OPS-20: drag to make the map taller / shorter (arrow keys work too); double-click = default height */}
+        {!full && (
+          <div role="separator" aria-orientation="horizontal" aria-label="Map height — drag to resize" aria-valuemin={MAP_H_MIN} aria-valuemax={MAP_H_MAX} aria-valuenow={mapH} tabIndex={0}
+            onPointerDown={startDrag} onDoubleClick={() => nudge(MAP_H_DEFAULT - mapH)}
+            onKeyDown={e => { if (e.key === 'ArrowDown') { e.preventDefault(); nudge(40) } if (e.key === 'ArrowUp') { e.preventDefault(); nudge(-40) } }}
+            title="Drag to change the map height · double-click for the default"
+            className="-mt-2 h-4 flex items-center justify-center cursor-ns-resize select-none touch-none group focus:outline-none">
+            <span className="flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-white border border-slate-200 shadow-sm text-[10.5px] font-semibold text-slate-500 group-hover:text-emerald-700 group-hover:border-emerald-300 group-focus:ring-2 group-focus:ring-emerald-300">
+              <GripHorizontal size={13} /> {mapH}px
+            </span>
+          </div>
+        )}
 
         {/* People under the map */}
         {shown.length > 0 && (

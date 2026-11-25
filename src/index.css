@@ -143,3 +143,28 @@ main {
 [data-invalid="true"] label {
   color: #e11d48;
 }
+
+/* R-OPS-20: Overview — cards rise in one after another, a light sweep on hover; Live Activity crew animations */
+@keyframes ovUp { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+@keyframes ovShine { from { transform: translateX(-120%) skewX(-18deg) } to { transform: translateX(260%) skewX(-18deg) } }
+@keyframes ovDrive { 0% { left: 0 } 100% { left: calc(100% - 18px) } }
+@keyframes ovRoad { from { background-position: 0 0 } to { background-position: -24px 0 } }
+@keyframes ovScrub { 0%, 100% { transform: rotate(-14deg) } 50% { transform: rotate(14deg) } }
+@keyframes ovStripes { from { background-position: 0 0 } to { background-position: 20px 0 } }
+@keyframes ovPop { 0% { transform: scale(.6); opacity: 0 } 70% { transform: scale(1.12) } 100% { transform: scale(1); opacity: 1 } }
+.ov-cards > * { animation: ovUp .5s cubic-bezier(.2,.7,.2,1) both }
+.ov-cards > :nth-child(2) { animation-delay: .04s } .ov-cards > :nth-child(3) { animation-delay: .08s } .ov-cards > :nth-child(4) { animation-delay: .12s }
+.ov-cards > :nth-child(5) { animation-delay: .16s } .ov-cards > :nth-child(6) { animation-delay: .2s } .ov-cards > :nth-child(7) { animation-delay: .24s } .ov-cards > :nth-child(8) { animation-delay: .28s }
+.ov-cards > :nth-child(9) { animation-delay: .32s } .ov-cards > :nth-child(10) { animation-delay: .36s } .ov-cards > :nth-child(11) { animation-delay: .4s } .ov-cards > :nth-child(12) { animation-delay: .44s }
+.ov-card { position: relative; overflow: hidden }
+.ov-card::after { content: ''; position: absolute; top: 0; bottom: 0; width: 40%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.65), transparent); transform: translateX(-120%) skewX(-18deg); pointer-events: none }
+.ov-card:hover::after { animation: ovShine .9s ease }
+.ov-card:hover .ov-card-icon { transform: scale(1.08) rotate(-4deg) }
+.ov-road { background-image: linear-gradient(90deg, #cbd5e1 50%, transparent 50%); background-size: 12px 2px; background-repeat: repeat-x; background-position: 0 50%; animation: ovRoad .8s linear infinite }
+.ov-van { position: absolute; top: 50%; translate: 0 -50%; animation: ovDrive 3.2s ease-in-out infinite alternate }
+.ov-scrub { animation: ovScrub .9s ease-in-out infinite; transform-origin: 50% 85% }
+.ov-progress { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.28) 0 6px, transparent 6px 12px); animation: ovStripes .8s linear infinite }
+.ov-pop { animation: ovPop .45s ease both }
+@media (prefers-reduced-motion: reduce) {
+  .ov-cards > *, .ov-card:hover::after, .ov-road, .ov-van, .ov-scrub, .ov-progress, .ov-pop { animation: none !important }
+}

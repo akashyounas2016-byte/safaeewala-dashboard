@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(invoices): Edit on every unpaid invoice (same form, filled in; number, status and payments kept; paid / void locked), several line items, wider New Invoice with the client list showing each client's pending amount instead of the area, VAT options on one row (UX-199)
+- change(overview): coloured animated cards, Live Map right after the cards (loads sooner, height by drag), Live Activity shows each cleaner cleaning / on the way / done with animations, Today's Dispatch last with Time = start – end, no Service column, hideable columns (R-OPS-20)
+
 - change(inventory): In Stock and Min Stock in their own right-aligned columns with the unit under the number; Add Item pop-up shows the essentials (name, category, unit, current / minimum stock), the rest under "More details"; a number is refused as the unit (UX-198)
 
 - change(payments): one date filter under the header (Today, 7 / 14 / 30 Days, This / Last Month, 3 / 6 / 12 Months, This / Last Year, All Time, Custom Range) for the cards and the lists — the second filter above the list is gone; Weekly report, Export Report and Record Manual Pending in a ⋮ menu; 14 cards (Filtered Due Total moved up, Clients Owing, High Value Dues, Oldest Due, Unpaid Invoices, Recovery Rate added) each can be hidden; the list toolbar is one row with the sort at the end (R-FIN-21)

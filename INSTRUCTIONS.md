@@ -118,6 +118,17 @@
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
+### Invoices (25 Nov)
+- Har invoice ke saath ab **Edit** (pencil) bhi hai: wahi form khulta hai, sab bhara hua. Number, status aur payments wahi rehte hain. **Paid** ya **Void** invoice edit nahi hoti (taala dikhta hai). Jitna paisa mil chuka hai, total us se kam nahi ho sakta.
+- New Invoice mein client chunte waqt har client ke saath **Pending AED …** (laal) ya **No dues** (hara) likha aata hai. Area wala chip hata diya (address neeche likha hota hai).
+- Ek invoice mein kai lines ho sakti hain: **+ Add line**.
+
+### Overview (25 Nov)
+- Cards ab halke rangon mein hain aur khulte waqt ek ke baad ek aate hain.
+- **Live Map** cards ke foran baad hai. Map ke neeche chhota button (jaise "520px") pakad kar upar / neeche khenchein to map chhota / bada hota hai. Double-click se wapas 520.
+- **Live Activity** mein har cleaner ka card: **Cleaning** (kitna kaam ho gaya), **On the way** (gaari chal rahi), **Later today**, **Day done**. Cleaner My Duties par jo dabata hai (On the way / Started / Done) wahi pehle maana jata hai.
+- **Today's Dispatch & Shifts** sab se neeche. Service column nahi; Time mein start aur "to end". **Columns** button se columns chhupa sakte hain.
+
 ### Inventory (25 Nov)
 - Table mein **In Stock** aur **Min Stock** ab alag alag columns hain: upar number, neeche unit (Bottle, Pair…).
 - **Add Item** mein pehle sirf zaroori cheezein: naam, category, unit, Current Stock, Minimum Stock. Cost, supplier, location, reorder quantity **More details** dabane par.

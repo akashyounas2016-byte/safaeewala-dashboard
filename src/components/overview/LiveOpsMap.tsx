@@ -68,10 +68,11 @@ export default function LiveOpsMap({ people, height = 560, now, focusId, onFocus
 
   useEffect(() => {
     if (!boxRef.current || mapRef.current) return
-    const map = L.map(boxRef.current, { zoomControl: true, scrollWheelZoom: true, attributionControl: true }).setView([25.2048, 55.2708], 11)
+    // R-OPS-20: draw markers on one canvas and keep tiles around the view, so the map comes up and pans faster
+    const map = L.map(boxRef.current, { zoomControl: true, scrollWheelZoom: true, attributionControl: true, preferCanvas: true, fadeAnimation: false }).setView([25.2048, 55.2708], 11)
     // R-OPS-16: colourful base map by default; Streets and Satellite to switch (no API keys)
     // OpenStreetMap Humanitarian style: bright colours, no key (CARTO's tiles now ask for a key)
-    const colorful = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc', attribution: '© OpenStreetMap contributors, Humanitarian style by OpenStreetMap France' })
+    const colorful = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc', keepBuffer: 4, updateWhenZooming: false, attribution: '© OpenStreetMap contributors, Humanitarian style by OpenStreetMap France' })
     const streets = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap contributors' })
     const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' })
     colorful.addTo(map)
@@ -129,7 +130,7 @@ export default function LiveOpsMap({ people, height = 560, now, focusId, onFocus
   return (
     <>
       <style>{'@keyframes saf-ping{0%{transform:scale(.85);opacity:.7}100%{transform:scale(1.5);opacity:0}}.saf-bot{background:none;border:none}.saf-bot-tip{border-radius:12px;padding:8px 10px;box-shadow:0 8px 24px rgba(15,23,42,.18);border:1px solid #e2e8f0}'}</style>
-      <div ref={boxRef} className="w-full h-full rounded-2xl overflow-hidden border border-[#E4E8EC] z-0" style={{ minHeight: height }} />
+      <div ref={boxRef} className="w-full rounded-2xl overflow-hidden border border-[#E4E8EC] z-0" style={{ height }} />
     </>
   )
 }

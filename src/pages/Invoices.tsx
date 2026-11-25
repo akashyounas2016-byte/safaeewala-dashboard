@@ -7,6 +7,7 @@ import {
   FileText, Percent, Trash2, DollarSign, User, MapPin, Sparkles,
   CalendarCheck, ArrowRight, Calendar, CalendarDays, Tag, X, RotateCcw,
   ChevronDown, Check, Eye, Pencil,
+  Plus, Lock,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -16,7 +17,7 @@ import { KpiCard } from '@/components/ui/KpiCard'
 import { formatDate } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
 import type { Invoice, Client } from '@/types'
-import { extractAllClientsFromDailyJobs } from '@/lib/clientDataSync'
+import { extractAllClientsFromDailyJobs, calcClientPendingBalance, loadPendingReceipts, loadClientAdjustments } from '@/lib/clientDataSync'
 import { getCompanyInfo, useCompanyInfo } from '@/lib/companyInfo'
 import { nextInvoiceNumber } from '@/lib/invoiceNumber'
 import { invoiceBalance, isPartlyPaid } from '@/lib/receivables'
@@ -147,6 +148,7 @@ export function Invoices() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
+  const [editingInv, setEditingInv] = useState<Invoice | null>(null) // UX-199
   const [selected, setSelected] = useState<Invoice | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [voidReason, setVoidReason] = useState('')
@@ -411,6 +413,19 @@ export function Invoices() {
                               <DollarSign size={14} />
                             </button>
                           )}
+                          {/* UX-199: Edit — paid and void invoices are locked (money already recorded / cancelled) */}
+                          {inv.status === 'paid' || inv.status === 'void' ? (
+                            <span className="p-1.5 rounded-lg text-slate-300 cursor-not-allowed" title={inv.status === 'paid' ? 'Paid invoices cannot be edited' : 'Void invoices cannot be edited'} aria-label="Edit (locked)">
+                              <Lock size={14} />
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setEditingInv(inv)}
+                              aria-label="Edit invoice"
+                              className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600 transition-colors" title="Edit invoice">
+                              <Pencil size={14} />
+                            </button>
+                          )}
                           <button
                             onClick={() => setConfirmDeleteId(inv.id)}
                             className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors" title={inv.status === 'draft' ? 'Delete draft' : 'Void invoice (issued invoices are kept)'}>
@@ -593,11 +608,31 @@ export function Invoices() {
       </Modal>
 
       {/* ── New Invoice Modal ── */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="New Invoice" size="lg">
+      <Modal open={showModal} onClose={() => setShowModal(false)} title="New Invoice" size="xl">
         <NewInvoiceForm
           onClose={() => setShowModal(false)}
           onAdd={(draft) => { addInvoice(draft); setShowModal(false) }}
         />
+      </Modal>
+
+      {/* UX-199: Edit Invoice — same form, filled in; the number, status and payments stay */}
+      <Modal open={!!editingInv} onClose={() => setEditingInv(null)} title={editingInv ? `Edit Invoice ${editingInv.invoice_number}` : ''} size="xl">
+        {editingInv && (
+          <NewInvoiceForm
+            key={editingInv.id}
+            initial={editingInv}
+            onClose={() => setEditingInv(null)}
+            onAdd={() => {}}
+            onSave={(patch) => {
+              const paid = Number(editingInv.amount_paid) || 0
+              if (paid > 0 && patch.total < paid - 0.01) { notify.error(`AED ${paid.toLocaleString()} is already paid on this invoice — the total cannot be less`); return }
+              updateInvoice(editingInv.id, patch)
+              if (selected?.id === editingInv.id) setSelected({ ...selected, ...patch })
+              notify.success(`Invoice ${editingInv.invoice_number} updated`)
+              setEditingInv(null)
+            }}
+          />
+        )}
       </Modal>
     </div>
   )
@@ -644,22 +679,28 @@ function formatClientAddress(c: Client | any): string {
   return parts.filter(Boolean).join(', ') || bldg || area || city || 'Dubai, UAE'
 }
 
-function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Omit<Invoice, 'id' | 'created_at'>) => void }) {
+type InvoicePatch = Pick<Invoice, 'client_id' | 'client_name' | 'client_address' | 'trn' | 'due_date' | 'subtotal' | 'vat_rate' | 'vat_amount' | 'total' | 'apply_vat' | 'discount_type' | 'discount_value' | 'discount_amount' | 'line_items' | 'notes'>
+interface LineDraft { description: string; quantity: number; unit_price: number }
+
+/** UX-199: `initial` + `onSave` = Edit Invoice (same form, filled in) */
+function NewInvoiceForm({ onClose, onAdd, initial, onSave }: { onClose: () => void; onAdd: (i: Omit<Invoice, 'id' | 'created_at'>) => void; initial?: Invoice; onSave?: (patch: InvoicePatch) => void }) {
   const { clients, dailyJobs, invoices } = useData()
-  const [qty, setQty] = useState(1)
-  const [unitPrice, setUnitPrice] = useState(0)
+  // UX-199: one or more lines (an invoice from Monthly Invoices can have several)
+  const [lines, setLines] = useState<LineDraft[]>(() =>
+    initial?.line_items?.length ? initial.line_items.map(l => ({ description: l.description, quantity: Number(l.quantity) || 1, unit_price: Number(l.unit_price) || 0 })) : [{ description: '', quantity: 1, unit_price: 0 }])
+  const setLine = (i: number, patch: Partial<LineDraft>) => setLines(ls => ls.map((l, k) => (k === i ? { ...l, ...patch } : l)))
 
   // ── VAT Tax Status & Custom Tax Percentage State ──
   // Options: 'standard' (5% UAE VAT), 'exempt' (0% Tax-Exempt), 'custom' (user-defined %)
-  const [taxMode, setTaxMode] = useState<'standard' | 'exempt' | 'custom'>('standard')
-  const [customTaxRate, setCustomTaxRate] = useState<number | ''>(5)
+  const [taxMode, setTaxMode] = useState<'standard' | 'exempt' | 'custom'>(() => !initial ? 'standard' : (initial.vat_rate === 0 || initial.apply_vat === false) ? 'exempt' : initial.vat_rate === 5 ? 'standard' : 'custom')
+  const [customTaxRate, setCustomTaxRate] = useState<number | ''>(initial ? (Number(initial.vat_rate) || 0) : 5)
 
   // ── Discount state ──
-  const [discountType, setDiscountType] = useState<'flat' | 'percentage'>('percentage')
-  const [discountValue, setDiscountValue] = useState<number | ''>('')
+  const [discountType, setDiscountType] = useState<'flat' | 'percentage'>(initial?.discount_type || 'percentage')
+  const [discountValue, setDiscountValue] = useState<number | ''>(initial?.discount_value ?? '')
 
   // ── Financial Calculations ──
-  const grossSubtotal = qty * (Number(unitPrice) || 0)
+  const grossSubtotal = Math.round(lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.unit_price) || 0), 0) * 100) / 100
 
   const discountAmount = useMemo(() => {
     if (!discountValue || Number(discountValue) <= 0 || grossSubtotal <= 0) return 0
@@ -688,12 +729,12 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
   const total = Math.round((netSubtotal + vatAmount) * 100) / 100
 
   // ── Client Fields Connected to Real Database ──
-  const [clientName, setClientName] = useState('')
-  const [clientAddress, setClientAddress] = useState('')
-  const [clientId, setClientId] = useState('')
-  const [trn, setTrn] = useState('')
+  const [clientName, setClientName] = useState(initial?.client_name || '')
+  const [clientAddress, setClientAddress] = useState(initial?.client_address || '')
+  const [clientId, setClientId] = useState(initial?.client_id || '')
+  const [trn, setTrn] = useState(initial?.trn || '')
   const defaultDueDate = useMemo(() => addDays(todayDubai(), 10), []) // INV-A06: Dubai date
-  const [dueDate, setDueDate] = useState(defaultDueDate)
+  const [dueDate, setDueDate] = useState(initial?.due_date || defaultDueDate)
 
   const [showNameSuggestions, setShowNameSuggestions] = useState(false)
   const [showAddressSuggestions, setShowAddressSuggestions] = useState(false)
@@ -744,6 +785,14 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
     return list.sort((a, b) => a.full_name.localeCompare(b.full_name))
   }, [clients, dailyJobs])
 
+  // UX-199: pending balance per client for the dropdown (worked out once per open list)
+  const pendingCache = useMemo(() => ({ receipts: loadPendingReceipts(), adjustments: loadClientAdjustments(), map: new Map<string, number>() }), [dailyJobs, clients]) // eslint-disable-line react-hooks/exhaustive-deps
+  const pendingOf = (c: Client) => {
+    const k = c.id || c.full_name
+    if (!pendingCache.map.has(k)) pendingCache.map.set(k, calcClientPendingBalance(c, dailyJobs, pendingCache.receipts, pendingCache.adjustments))
+    return pendingCache.map.get(k) || 0
+  }
+
   // Filter clients for Name input
   const filteredNameClients = useMemo(() => {
     const list = realClients.length > 0 ? realClients : clients.filter(c => Boolean(c.full_name?.trim()))
@@ -788,7 +837,21 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
     <form className="space-y-4" onSubmit={e => {
       e.preventDefault()
       const fd = new FormData(e.currentTarget)
-      const desc = fd.get('description') as string
+      const cleanLines = lines.filter(l => l.description.trim() || Number(l.unit_price) > 0)
+      if (cleanLines.length === 0 || cleanLines.some(l => !l.description.trim())) { notify.error('Every line needs a description'); return }
+      const line_items = cleanLines.map(l => ({ description: l.description.trim(), quantity: Number(l.quantity) || 0, unit_price: Number(l.unit_price) || 0, amount: Math.round((Number(l.quantity) || 0) * (Number(l.unit_price) || 0) * 100) / 100 }))
+      if (initial && onSave) {
+        // UX-199: Edit — the invoice number, status, dates and payments stay as they are
+        onSave({
+          client_id: clientId || '', client_name: clientName.trim(), client_address: clientAddress.trim(), trn: trn.trim(), due_date: dueDate,
+          subtotal: netSubtotal, vat_rate: vatRate, vat_amount: vatAmount, total, apply_vat: vatRate > 0,
+          discount_type: discountAmount > 0 ? discountType : undefined,
+          discount_value: discountAmount > 0 && typeof discountValue === 'number' ? discountValue : undefined,
+          discount_amount: discountAmount > 0 ? discountAmount : undefined,
+          line_items, notes: (fd.get('notes') as string) || '',
+        })
+        return
+      }
       const invoiceNum = nextInvoiceNumber(invoices)
       onAdd({
         invoice_number: invoiceNum,
@@ -807,7 +870,7 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
         discount_type: discountAmount > 0 ? discountType : undefined,
         discount_value: discountAmount > 0 && typeof discountValue === 'number' ? discountValue : undefined,
         discount_amount: discountAmount > 0 ? discountAmount : undefined,
-        line_items: [{ description: desc, quantity: qty, unit_price: unitPrice, amount: grossSubtotal }],
+        line_items,
         notes: (fd.get('notes') as string) || '',
       })
     }}>
@@ -854,7 +917,7 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
 
           {/* Real Clients Suggestions Dropdown */}
           {showNameSuggestions && (
-            <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-left animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute left-0 top-full mt-1.5 z-50 w-[min(680px,calc(100vw-4rem))] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-left animate-in fade-in zoom-in-95 duration-100">
               <div className="px-3.5 py-2 bg-gradient-to-r from-slate-50 via-emerald-50/30 to-slate-50 border-b border-slate-100 flex items-center justify-between text-[11px] text-slate-600 font-bold">
                 <span className="flex items-center gap-1.5 text-emerald-800">
                   <User size={13} className="text-emerald-600" />
@@ -898,11 +961,13 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
                                   Monthly
                                 </span>
                               )}
-                              {c.area && (
-                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                                  {c.area}
-                                </span>
-                              )}
+                              {/* UX-199: the client's pending status (the area chip repeated the address below — removed) */}
+                              {(() => {
+                                const due = pendingOf(c)
+                                return due > 0
+                                  ? <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap">Pending AED {Math.round(due).toLocaleString()}</span>
+                                  : <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">No dues</span>
+                              })()}
                             </div>
                           </div>
                           <div className="text-[11px] text-slate-500 truncate mt-0.5 flex items-center gap-2">
@@ -1032,19 +1097,29 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
       </div>
 
       <div className="bg-slate-50 rounded-xl p-4 space-y-3 border border-[#E4E8EC]">
-        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.1em]">Line Item</p>
+        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.1em]">Line Items</p>
         <div className="grid grid-cols-12 gap-2 text-[11px] text-slate-500 font-medium px-1">
           <span className="col-span-6">Description</span>
           <span className="col-span-2 text-right">Qty</span>
           <span className="col-span-2 text-right">Unit Price</span>
           <span className="col-span-2 text-right">Amount</span>
         </div>
-        <div className="grid grid-cols-12 gap-2">
-          <div className="col-span-6"><Input name="description" placeholder="Service description" required /></div>
-          <div className="col-span-2"><Input type="number" value={qty} min={1} onChange={e => setQty(Number(e.target.value))} /></div>
-          <div className="col-span-2"><Input type="number" value={unitPrice} min={0} step="0.01" onChange={e => setUnitPrice(Number(e.target.value))} /></div>
-          <div className="col-span-2"><Input type="number" value={grossSubtotal.toFixed(2)} readOnly /></div>
-        </div>
+        {lines.map((l, i) => (
+          <div key={i} className="grid grid-cols-12 gap-2 items-center">
+            <div className="col-span-6"><Input aria-label={`Line ${i + 1} description`} placeholder="Service description" value={l.description} onChange={e => setLine(i, { description: e.target.value })} required={i === 0} /></div>
+            <div className="col-span-2"><Input aria-label={`Line ${i + 1} quantity`} type="number" value={l.quantity} min={0} step="any" onChange={e => setLine(i, { quantity: Number(e.target.value) })} /></div>
+            <div className="col-span-2"><Input aria-label={`Line ${i + 1} unit price`} type="number" value={l.unit_price} min={0} step="0.01" onChange={e => setLine(i, { unit_price: Number(e.target.value) })} /></div>
+            <div className="col-span-2 flex items-center gap-1">
+              <Input aria-label={`Line ${i + 1} amount`} type="number" value={((Number(l.quantity) || 0) * (Number(l.unit_price) || 0)).toFixed(2)} readOnly />
+              {lines.length > 1 && (
+                <button type="button" onClick={() => setLines(ls => ls.filter((_, k) => k !== i))} aria-label={`Remove line ${i + 1}`} className="p-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer shrink-0"><X size={13} /></button>
+              )}
+            </div>
+          </div>
+        ))}
+        <button type="button" onClick={() => setLines(ls => [...ls, { description: '', quantity: 1, unit_price: 0 }])} className="text-[12px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer">
+          <Plus size={13} /> Add line
+        </button>
       </div>
 
       {/* ── Tax Status & Discount Options ── */}
@@ -1079,7 +1154,7 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
                 setTaxMode('standard')
                 setCustomTaxRate(5)
               }}
-              className={`py-1.5 px-2 text-[11px] font-bold rounded-md transition-all text-center cursor-pointer ${
+              className={`py-1.5 px-2 text-[11px] font-bold rounded-md transition-all text-center cursor-pointer whitespace-nowrap ${
                 taxMode === 'standard'
                   ? 'bg-purple-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -1094,7 +1169,7 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
                 setTaxMode('exempt')
                 setCustomTaxRate(0)
               }}
-              className={`py-1.5 px-2 text-[11px] font-bold rounded-md transition-all text-center cursor-pointer ${
+              className={`py-1.5 px-2 text-[11px] font-bold rounded-md transition-all text-center cursor-pointer whitespace-nowrap ${
                 taxMode === 'exempt'
                   ? 'bg-slate-700 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -1111,7 +1186,7 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
                   setCustomTaxRate(10)
                 }
               }}
-              className={`py-1.5 px-2 text-[11px] font-bold rounded-md transition-all text-center cursor-pointer ${
+              className={`py-1.5 px-2 text-[11px] font-bold rounded-md transition-all text-center cursor-pointer whitespace-nowrap ${
                 taxMode === 'custom'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -1284,10 +1359,10 @@ function NewInvoiceForm({ onClose, onAdd }: { onClose: () => void; onAdd: (i: Om
           </div>
         </div>
       </div>
-      <Textarea name="notes" label="Notes" placeholder="Payment terms, bank details, thank you message..." rows={2} />
+      <Textarea name="notes" label="Notes" placeholder="Payment terms, bank details, thank you message..." rows={2} defaultValue={initial?.notes || ''} />
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-        <Button type="submit" className="flex-1 font-bold">Send Invoice</Button>
+        <Button type="submit" className="flex-1 font-bold">{initial ? 'Save Changes' : 'Send Invoice'}</Button>
       </div>
     </form>
   )

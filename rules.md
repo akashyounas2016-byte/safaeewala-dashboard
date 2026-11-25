@@ -1984,6 +1984,17 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/useLiveSharing.ts`; `driverLocation.ts → startLocationSharing (heartbeat, ping)`; `MyDuties.tsx`. Test: `tests/unit/batch-1124c.test.ts`.
 - **Status:** Active · Since: 2026-11-24
 
+### R-OPS-20 — Overview: coloured cards, Live Map after the cards, crew in motion, Dispatch columns
+- **Rule:** *"Overview screen ke cards ko halkay mukhtalif rang dein taake professional aur animated look aaye. Live map widget ko cards ke baad lagayein, iski loading speed behtar karein aur height adjust karne ke liye drag ka option dein. Live activity widget ko mazeed behtar banayein jis mein cleaners ki movement aur kaam ki animations nazar ayen. 'Today Dispatch and Shifts' widget ko aakhir mein rakhein, is se 'Service' ka column hata kar 'Time' mein start aur end time shamil karein, aur columns ko hide karne ki sahulat dein."* (2026-11-25)
+  - **Cards:** each card a light shade of its own icon colour (fading to white), rise in one after another when the page opens, a soft sweep and a tilted icon on hover. No motion for people who turned motion off (prefers-reduced-motion).
+  - **Order:** cards → **Live Map** → Live Activity → Reports → Crew / Coverage → Revenue / Health → **Today's Dispatch & Shifts** (last).
+  - **Live Map:** the map code starts downloading when the Overview opens (it waited for the panel); markers on one canvas, tiles kept around the view, no tile fade; a "Loading map…" box. **Height:** drag the handle under the map (300–1000 px; arrow keys too; double-click = 520 px), remembered on that computer.
+  - **Live Activity (Today):** a card per cleaner with today's jobs — **Cleaning** (scrubbing sponge, pulse ring, moving progress bar with start – end and %), **On the way** (van driving along a road, start time), **Later today**, **Day done** (✓, finished time), with done / total jobs; counts per state in the header; 8 shown, "Show all". A job step from My Duties (On the way / Started / Done) wins over the clock; a step left without Done stops counting an hour after the job's end. Then the latest events as before.
+  - **Dispatch:** Service column removed; **Time** = start on top, "to end" under it (bookings: end time or start + duration); rows of a day in start-time order; **Columns** menu hides Time / Client / Staff / Status / Amount (remembered).
+- **Code:** `src/lib/crewMotion.ts`; `Overview.tsx → KpiCard, CrewCard, LiveActivityPanel, dispatch columns`; `components/overview/LiveOpsPanel.tsx (loadMap, mapH)`; `LiveOpsMap.tsx`; `index.css (.ov-*)`. Test: `tests/unit/batch-1125d.test.ts`.
+- **Status:** Active · Since: 2026-11-25
+
+
 
 ## Known issues (rules not yet fully honoured)
 

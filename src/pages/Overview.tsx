@@ -7,7 +7,7 @@ import {
   CalendarCheck, Users, DollarSign, Star,
   ArrowUpRight, ArrowDownRight, Minus, ArrowRight,
   AlertCircle, Clock, FileText, MessageCircle,
-  Calendar, RotateCcw, Package, Gauge, Timer, UserPlus, Receipt, Pencil, Search, ExternalLink, Activity,
+  Calendar, RotateCcw, Package, Gauge, Timer, UserPlus, Receipt, Pencil, Search, ExternalLink, Activity, Columns3,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { LiveOpsPanel } from '@/components/overview/LiveOpsPanel'
@@ -21,16 +21,18 @@ import { CLOSED_DAYS_KEY, type ClosedDay } from '@/lib/closedDays'
 import { notify } from '@/lib/notify'
 import { useModuleAccess } from '@/store/useModuleAccess'
 import { Button } from '@/components/ui/Button'
-import { formatTime } from '@/lib/utils'
+import { crewMotion, fmtMin, type CrewMotion } from '@/lib/crewMotion'
+import { useJobCheckins } from '@/lib/jobCheckins'
+import { parseTimeToMinutes } from '@/components/dailyJobSheet/jobSheetUtils'
 import { PageHero } from '@/components/layout/PageHero'
 import { useData } from '@/store/DataContext'
 import { useCurrentUser } from '@/store/UserContext'
 import type { Booking, BookingFrequency, DailyJob, DailyPendingItem, DailyPendingReceivedItem, Invoice } from '@/types'
 import { invoicedJobIds, invoiceBalance } from '@/lib/receivables'
 import { cleanClientNameFromAddress, isBogusJob, buildPendingCalcContext, loadClientAdjustments, calcJobCollectable, jobCollected } from '@/lib/clientDataSync'
-import { safeLocalStorageGet } from '@/lib/storageUtils'
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { todayDubai, toDubaiDate } from '@/lib/dubaiTime'
-import { cleanNum } from '@/components/dailyJobSheet/jobSheetUtils'
+import { cleanNum, formatTime12h } from '@/components/dailyJobSheet/jobSheetUtils'
 
 
 /** Bookings without a Daily Job Sheet row — a booking with a row is already counted through that row (AUD-01) */
@@ -101,11 +103,12 @@ function KpiCard({ label, value, sub, delta, trend = 'neutral', icon: Icon, icon
   return (
     <div
       onClick={onClick}
-      className={`rounded-[18px] p-4 border border-[#E4E8EC] shadow-[0_2px_10px_rgba(15,23,42,0.04)] transition-all min-w-0 ${onClick ? 'cursor-pointer hover:shadow-[0_8px_24px_rgba(15,23,42,0.10)] hover:-translate-y-0.5 hover:border-emerald-200' : ''}`}
-      style={{ background: tint || '#fff' }}
+      // R-OPS-20: each card a light shade of its own colour, a soft sweep on hover (index.css .ov-card)
+      className={`ov-card rounded-[18px] p-4 border shadow-[0_2px_10px_rgba(15,23,42,0.04)] transition-all duration-300 min-w-0 ${onClick ? 'cursor-pointer hover:shadow-[0_10px_28px_rgba(15,23,42,0.12)] hover:-translate-y-1' : ''}`}
+      style={{ background: `linear-gradient(145deg, ${iconBg} 0%, ${tint || '#ffffff'} 62%)`, borderColor: `${iconColor}26` }}
     >
       <div className="flex items-center justify-between gap-2 mb-3">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: iconBg }}>
+        <div className="ov-card-icon w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-300 shadow-sm" style={{ background: '#ffffffcc', boxShadow: `0 0 0 1px ${iconColor}22` }}>
           <Icon size={17} style={{ color: iconColor }} strokeWidth={2.2} />
         </div>
         {delta && (
@@ -123,32 +126,98 @@ function KpiCard({ label, value, sub, delta, trend = 'neutral', icon: Icon, icon
   )
 }
 
-/* ─── Live Activity — R-OPS-17: full width, can be hidden ─── */
-function LiveActivityPanel({ events, onOpen }: { events: { icon: string; title: string; sub: string; bg: string; route: string }[]; onOpen: (route: string) => void }) {
+/* ─── Live Activity — R-OPS-17: full width, can be hidden. R-OPS-20: the crew in motion on top ─── */
+const CREW_STYLE: Record<CrewMotion['state'], { label: string; tone: string; bg: string; bar: string }> = {
+  working: { label: 'Cleaning', tone: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', bar: 'bg-emerald-500' },
+  on_way: { label: 'On the way', tone: 'text-sky-700', bg: 'bg-sky-50 border-sky-200', bar: 'bg-sky-500' },
+  later: { label: 'Later today', tone: 'text-slate-600', bg: 'bg-slate-50 border-slate-200', bar: 'bg-slate-400' },
+  done: { label: 'Day done', tone: 'text-violet-700', bg: 'bg-violet-50 border-violet-200', bar: 'bg-violet-500' },
+}
+function CrewCard({ c }: { c: CrewMotion }) {
+  const st = CREW_STYLE[c.state]
+  const initials = c.name.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()
+  return (
+    <div className={`ov-pop rounded-xl border p-3 min-w-0 ${st.bg}`}>
+      <div className="flex items-center gap-2.5 min-w-0">
+        <span className="relative w-9 h-9 rounded-full bg-white border border-white shadow-sm flex items-center justify-center text-[11px] font-black text-slate-700 shrink-0">
+          {initials}
+          {c.state === 'working' && <span className="absolute -right-1 -bottom-1 text-[13px] ov-scrub" aria-hidden>🧽</span>}
+          {c.state === 'done' && <span className="absolute -right-1 -bottom-1 text-[12px]" aria-hidden>✅</span>}
+          {c.state === 'working' && <span className="absolute inset-0 rounded-full ring-2 ring-emerald-400/60 animate-ping" aria-hidden />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[12.5px] font-bold text-[#111827] truncate" title={c.name}>{c.name}</p>
+          <p className={`text-[11px] font-bold ${st.tone} truncate`}>{st.label}{c.fromStep ? ' · from My Duties' : ''}</p>
+        </div>
+        <span className="text-[10.5px] font-bold text-slate-500 shrink-0 tabular-nums">{c.jobsDone}/{c.jobsToday}</span>
+      </div>
+      <p className="text-[11px] text-slate-600 mt-2 truncate" title={c.place}>{c.state === 'on_way' ? 'To ' : c.state === 'done' ? 'Last: ' : ''}{c.place}{c.area ? ` · ${c.area}` : ''}</p>
+      {c.state === 'working' && (
+        <div className="mt-1.5">
+          <div className="h-1.5 rounded-full bg-white overflow-hidden"><div className={`h-full rounded-full ov-progress ${st.bar}`} style={{ width: `${c.progress}%` }} /></div>
+          <p className="text-[10.5px] text-slate-500 mt-1 tabular-nums">{fmtMin(c.start)} – {fmtMin(c.end)} · {c.progress}%</p>
+        </div>
+      )}
+      {c.state === 'on_way' && (
+        <div className="mt-1.5">
+          <div className="relative h-4"><div className="absolute inset-x-0 top-1/2 h-0.5 ov-road" /><span className="ov-van text-[14px]" aria-hidden>🚐</span></div>
+          <p className="text-[10.5px] text-slate-500 tabular-nums">Starts {fmtMin(c.start)}</p>
+        </div>
+      )}
+      {(c.state === 'later' || c.state === 'done') && (
+        <p className="text-[10.5px] text-slate-500 mt-1 tabular-nums">{c.state === 'later' ? `Next ${fmtMin(c.start)} – ${fmtMin(c.end)}` : `Finished ${fmtMin(c.end)}`}</p>
+      )}
+    </div>
+  )
+}
+function LiveActivityPanel({ events, crew, onOpen }: { events: { icon: string; title: string; sub: string; bg: string; route: string }[]; crew: CrewMotion[]; onOpen: (route: string) => void }) {
   const [folded, toggle] = useFolded('liveActivity')
+  const [showAll, setShowAll] = useState(false)
+  const n = (st: CrewMotion['state']) => crew.filter(c => c.state === st).length
+  const shownCrew = showAll ? crew : crew.slice(0, 8)
   return (
     <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-      <div className={`flex items-center justify-between gap-3 ${folded ? '' : 'mb-4'}`}>
+      <div className={`flex items-center justify-between gap-3 flex-wrap ${folded ? '' : 'mb-4'}`}>
         <div>
           <h3 className="text-xl font-bold text-[#111827] mb-1 flex items-center gap-2"><Activity size={19} className="text-emerald-600" /> Live Activity
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" /></h3>
-          <p className="text-sm text-[#6B7280]">Recent business events</p>
+          <p className="text-sm text-[#6B7280]">Who is cleaning, who is on the way, and the latest business events</p>
         </div>
-        <FoldButton folded={folded} onToggle={toggle} />
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {!folded && crew.length > 0 && (['working', 'on_way', 'later', 'done'] as const).map(st => (
+            <span key={st} className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${CREW_STYLE[st].bg} ${CREW_STYLE[st].tone}`}>{CREW_STYLE[st].label} {n(st)}</span>
+          ))}
+          <FoldButton folded={folded} onToggle={toggle} />
+        </div>
       </div>
       {!folded && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
-          {events.map((ev, i) => (
-            <div key={i} onClick={() => ev.route && onOpen(ev.route)}
-              className={`flex gap-3 p-3 rounded-xl border border-slate-100 transition-colors min-w-0 ${ev.route ? 'cursor-pointer hover:bg-slate-50' : ''}`}>
-              <div className={`w-10 h-10 rounded-full ${ev.bg} flex items-center justify-center shrink-0`}><span>{ev.icon}</span></div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-[13px] text-[#111827] truncate" title={ev.title}>{ev.title}</p>
-                <p className="text-xs text-[#6B7280] mt-0.5 truncate" title={ev.sub}>{ev.sub}</p>
+        <>
+          {crew.length > 0 && (
+            <div className="mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+                {shownCrew.map(c => <CrewCard key={c.name} c={c} />)}
               </div>
+              {crew.length > 8 && (
+                <button type="button" onClick={() => setShowAll(v => !v)} className="mt-2 text-[12px] font-bold text-emerald-700 hover:underline cursor-pointer">
+                  {showAll ? 'Show less' : `Show all ${crew.length} cleaners`}
+                </button>
+              )}
             </div>
-          ))}
-        </div>
+          )}
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Latest events</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
+            {events.map((ev, i) => (
+              <div key={i} onClick={() => ev.route && onOpen(ev.route)} style={{ animationDelay: `${i * 40}ms` }}
+                className={`ov-pop flex gap-3 p-3 rounded-xl border border-slate-100 transition-colors min-w-0 ${ev.route ? 'cursor-pointer hover:bg-slate-50' : ''}`}>
+                <div className={`w-10 h-10 rounded-full ${ev.bg} flex items-center justify-center shrink-0`}><span>{ev.icon}</span></div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-[13px] text-[#111827] truncate" title={ev.title}>{ev.title}</p>
+                  <p className="text-xs text-[#6B7280] mt-0.5 truncate" title={ev.sub}>{ev.sub}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
@@ -331,6 +400,11 @@ export function Overview() {
   const [dispatchTab, setDispatchTab] = useState<'all' | 'live' | 'scheduled' | 'completed'>('all')
   // R-OPS-18: Dispatch table — search and edit a job right here (same Edit Job pop-up as the Daily Job Sheet)
   const [dispatchQ, setDispatchQ] = useState('')
+  // R-OPS-20: Dispatch columns can be hidden (remembered on this computer)
+  const [hiddenCols, setHiddenCols] = useState<string[]>(() => safeLocalStorageGet<string[]>('safaeewala_overview_dispatch_hidden', []))
+  const [colsOpen, setColsOpen] = useState(false)
+  const toggleCol = (id: string) => setHiddenCols(prev => { const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]; safeLocalStorageSet('safaeewala_overview_dispatch_hidden', next); return next })
+  const showCol = (id: string) => !hiddenCols.includes(id)
   const [editJob, setEditJob] = useState<DailyJob | null>(null)
   const canEditJobs = useModuleAccess('Daily Job Sheet')
 
@@ -381,6 +455,9 @@ export function Overview() {
       id: string
       date: string
       time: string
+      /** R-OPS-20: start and end shown together in the Time column */
+      start: string
+      end: string
       clientName: string
       address: string
       area: string
@@ -402,6 +479,8 @@ export function Overview() {
         id: `dj-${j.id}`,
         date: j.date || '',
         time: j.start_time && j.end_time ? `${j.start_time} - ${j.end_time}` : (j.start_time || '—'),
+        start: j.start_time || '',
+        end: j.end_time || '',
         clientName: cleanClient,
         address: j.address || j.area || 'Dubai',
         area: j.area || 'Dubai',
@@ -421,6 +500,8 @@ export function Overview() {
         id: b.id,
         date: b.scheduled_date,
         time: b.scheduled_time || '—',
+        start: b.scheduled_time || '',
+        end: b.end_time || (() => { const m = parseTimeToMinutes(b.scheduled_time); return m !== null && Number(b.duration_hours) > 0 ? fmtMin(m + Math.round(Number(b.duration_hours) * 60)) : '' })(),
         clientName: b.client_name,
         address: b.service_address,
         area: b.service_address.split(',')[1]?.trim() || b.service_address.split(',')[0]?.trim() || 'Dubai',
@@ -434,7 +515,7 @@ export function Overview() {
     })
 
     // Sort chronologically (newest first)
-    list.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''))
+    list.sort((a, b) => (b.date || '').localeCompare(a.date || '') || ((parseTimeToMinutes(a.start) ?? 9999) - (parseTimeToMinutes(b.start) ?? 9999)))
     return list
   }, [periodDailyJobs, periodBookings, todayStr, nowMin])
 
@@ -539,6 +620,10 @@ export function Overview() {
     if (closed[job.date]) { notify.error(`${job.date} is closed. Reopen the day on the Daily Job Sheet to change it.`); return }
     setEditJob(job)
   }
+
+  // R-OPS-20: what each cleaner is doing now (job steps from My Duties win over the clock)
+  const todayCheckins = useJobCheckins(todayStr)
+  const crew = useMemo(() => crewMotion(dailyJobs, Object.values(todayCheckins.rows), todayStr, nowMin), [dailyJobs, todayCheckins.rows, todayStr, nowMin])
 
   /* ── Live Activity from real data ── */
   const liveEvents: { icon: string; title: string; sub: string; bg: string; route: string }[] = []
@@ -673,7 +758,7 @@ export function Overview() {
       </div>
 
       {/* ── KPI Cards — R-OPS-17: compact, 4 per row; Pending, Low Stock and Crew Utilization moved up here ── */}
-      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5 mb-6">
+      <section className="ov-cards grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5 mb-6">
         <KpiCard
           label={datePreset === 'today' ? 'Jobs Today' : datePreset === 'yesterday' ? 'Jobs Yesterday' : datePreset === 'all' ? 'Total Jobs' : `Jobs (${activeDateRange.label})`}
           value={unifiedJobs.length}
@@ -778,10 +863,10 @@ export function Overview() {
         />
       </section>
 
-      {/* ── R-OPS-13 Reports · Live Activity · R-OPS-14 Live Map — R-OPS-17: each full width, each can be hidden ── */}
-      <section className="mb-6"><ReportsPanel /></section>
-      <section className="mb-6"><LiveActivityPanel events={displayEvents} onOpen={route => navigate(route)} /></section>
+      {/* ── R-OPS-20: Live Map right after the cards, then Live Activity and Reports (each full width, each can be hidden) ── */}
       <section className="mb-6"><LiveOpsPanel /></section>
+      <section className="mb-6"><LiveActivityPanel events={displayEvents} crew={datePreset === 'today' ? crew : []} onOpen={route => navigate(route)} /></section>
+      <section className="mb-6"><ReportsPanel /></section>
 
       {/* ── R-OPS-17: Crew Availability and Today's Coverage, half and half ── */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6 items-stretch">
@@ -968,6 +1053,24 @@ export function Overview() {
               </button>
             ))}
           </div>
+          <div className="relative">
+            <button type="button" onClick={() => setColsOpen(v => !v)} aria-expanded={colsOpen} aria-label="Columns"
+              className="h-9 px-3 rounded-xl border border-[#E4E8EC] bg-white text-[12px] font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer">
+              <Columns3 size={14} /> Columns{hiddenCols.length > 0 ? ` (${hiddenCols.length} hidden)` : ''}
+            </button>
+            {colsOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setColsOpen(false)} />
+                <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-[#E4E8EC] rounded-2xl shadow-xl z-50 p-2">
+                  {([['time', 'Time'], ['client', 'Client'], ['staff', 'Staff / Crew'], ['status', 'Status'], ['amount', 'Amount']] as const).map(([id, label]) => (
+                    <label key={id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 text-[12.5px] font-semibold text-slate-700 cursor-pointer">
+                      <input type="checkbox" checked={showCol(id)} onChange={() => toggleCol(id)} className="accent-emerald-600" /> {label}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           </div>
         </div>
 
@@ -987,32 +1090,27 @@ export function Overview() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px]">
+            <table className="w-full min-w-[760px]">
               <thead className="bg-slate-50 text-left text-sm text-[#6B7280]">
                 <tr>
-                  <th className="px-7 py-4 font-semibold">{datePreset === 'today' ? 'Time' : 'Date & Time'}</th>
-                  <th className="px-7 py-4 font-semibold">Client</th>
-                  <th className="px-7 py-4 font-semibold">Service</th>
-                  <th className="px-7 py-4 font-semibold">Staff / Crew</th>
-                  <th className="px-7 py-4 font-semibold">Status</th>
-                  <th className="px-7 py-4 font-semibold">Amount</th>
+                  {/* R-OPS-20: Service column removed; Time shows start – end; columns can be hidden */}
+                  {showCol('time') && <th className="px-6 py-4 font-semibold">{datePreset === 'today' ? 'Time' : 'Date & Time'}</th>}
+                  {showCol('client') && <th className="px-6 py-4 font-semibold">Client</th>}
+                  {showCol('staff') && <th className="px-6 py-4 font-semibold">Staff / Crew</th>}
+                  {showCol('status') && <th className="px-6 py-4 font-semibold">Status</th>}
+                  {showCol('amount') && <th className="px-6 py-4 font-semibold">Amount</th>}
                   <th className="px-5 py-4 font-semibold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {displayDispatchBookings.map((b, idx) => (
                   <tr key={b.id} className="border-t border-[#E4E8EC] hover:bg-slate-50 transition-all">
-                    <td className="px-7 py-5 font-semibold text-[#111827]">
-                      {datePreset === 'today' ? (
-                        formatTime(`${b.date}T${b.time}`) || b.time
-                      ) : (
-                        <div>
-                          <p className="font-bold text-[#111827] text-[13px]">{b.date}</p>
-                          <p className="text-[11px] text-slate-500 mt-0.5">{b.time}</p>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-7 py-5">
+                    {showCol('time') && <td className="px-6 py-5 whitespace-nowrap">
+                      {datePreset !== 'today' && <p className="font-bold text-[#111827] text-[13px]">{b.date}</p>}
+                      <p className="font-semibold text-[#111827] text-[13px] tabular-nums">{b.start ? formatTime12h(b.start) : '—'}</p>
+                      <p className="text-[11.5px] text-slate-500 tabular-nums">{b.end ? `to ${formatTime12h(b.end)}` : ''}</p>
+                    </td>}
+                    {showCol('client') && <td className="px-6 py-5">
                       <div className="flex items-center gap-4">
                         <Avatar name={b.clientName} idx={idx} />
                         <div className="min-w-0">
@@ -1030,18 +1128,17 @@ export function Overview() {
                           <p className="text-sm text-[#6B7280]">{b.address}</p>
                         </div>
                       </div>
-                    </td>
-                    <td className="px-7 py-5 font-medium text-[#111827]">{b.service}</td>
-                    <td className="px-7 py-5 text-sm text-slate-600 font-medium">{b.staff}</td>
-                    <td className="px-7 py-5"><StatusPill status={b.status} /></td>
-                    <td className="px-7 py-5 font-bold text-[#111827]">
+                    </td>}
+                    {showCol('staff') && <td className="px-6 py-5 text-sm text-slate-600 font-medium">{b.staff}</td>}
+                    {showCol('status') && <td className="px-6 py-5"><StatusPill status={b.status} /></td>}
+                    {showCol('amount') && <td className="px-6 py-5 font-bold text-[#111827]">
                       AED {b.amount.toLocaleString()}
                       {b.paymentMode && (
                         <span className="block text-[11px] font-normal text-slate-400 mt-0.5">
                           {b.paymentMode}
                         </span>
                       )}
-                    </td>
+                    </td>}
                     <td className="px-5 py-5">
                       {/* R-OPS-18: edit this date's row (R-SCHED-01: only this row, never the monthly schedule) or open it */}
                       <div className="flex justify-end gap-1.5">
