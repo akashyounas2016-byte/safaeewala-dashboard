@@ -118,6 +118,16 @@
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
+### Live Map (25 Nov, raat)
+- Har bande ka **pin** us ke role ke rang mein hai aur neeche **poora naam** likha hai. Mouse le jayein to likha aata hai woh **kahan** hai ("Now at: Villa 4-34B, Mirdif").
+- Ek hi jagah kai log hon to beech mein ek gol nishaan (ginti ke saath) aur har banda line se juda hota hai — koi kisi ke peeche nahi chhupta.
+- **CSR** map par nahi; us ki jagah **Technical** ka filter.
+- Map ke neeche: **Cleaners on duty now · On the map · No position yet**. Jo kaam par hai magar map par nahi, us ka naam aur wajah neeche likhi hoti hai (location share nahi ki / step dabaya magar phone ne location nahi di). Map par aane ke liye cleaner My Duties par **Share my location** dabaye ya job ka step (On the way / Start) dabaye aur phone location allow kare.
+- Kal ki job aaj start ki ho to bhi map par aati hai (Ayesha wala masla).
+
+### Payments cards (25 Nov, raat)
+- Ek row mein 5 cards, sab barabar. Pehle sirf ek row; **View more** se agli row, **Less** se wapas.
+
 ### Invoices (25 Nov)
 - Har invoice ke saath ab **Edit** (pencil) bhi hai: wahi form khulta hai, sab bhara hua. Number, status aur payments wahi rehte hain. **Paid** ya **Void** invoice edit nahi hoti (taala dikhta hai). Jitna paisa mil chuka hai, total us se kam nahi ho sakta.
 - New Invoice mein client chunte waqt har client ke saath **Pending AED …** (laal) ya **No dues** (hara) likha aata hai. Area wala chip hata diya (address neeche likha hota hai).

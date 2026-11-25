@@ -1379,6 +1379,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/paymentsRange.ts`; `components/payments/PaymentsDateBar.tsx`; `businessMetrics.ts → rangeFigures`; `PaymentsHub.tsx`; `PendingPayments.tsx (range, request, onStats)`. Test: `tests/unit/batch-1125b.test.ts`.
 - **Status:** Active · Since: 2026-11-25
 
+### R-FIN-22 — Payments cards: 5 a row, one row at first
+- **Rule:** *"Payment screen par cards ki tadad kam karein. 'Active Contract' aur 'High Volume' ke cards hata dein … sabhi cards ka size, height aur width ek jaisa rakhein. 1 row me 5 cards show hone chaheye and bydefault just 1 rows show hong (us me wohi card show honge jo in changes se phle ho rahe the) … end pr view ya arrow k signs se mazeed rows dekhe ga user."* (2026-11-25)
+  - Active Contracts and High Value Dues cards removed (12 left). 5 a row, all the same width and height. At first one row: Outstanding, Collected, Pending Recovered, Monthly Contracts, Advance Balance (the cards before R-FIN-21). **View more ⌄ (n)** opens the next row; **Less ⌃** goes back to one row. Hide / Show all (R-FIN-21) still work.
+- **Code:** `PaymentsHub.tsx → cards, cardRows`. Test: `tests/unit/batch-1125e.test.ts`.
+- **Status:** Active · Since: 2026-11-25
+
+
 ### R-FIN-04 — Invoice numbers
 - **Rule:** One scheme: `SAF-<year>-<NNNN>`, next = highest of the year + 1; `addInvoice` replaces any missing, legacy or duplicate number.
   - The year is the Dubai year (INV-A02).
@@ -1993,6 +2000,18 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - **Dispatch:** Service column removed; **Time** = start on top, "to end" under it (bookings: end time or start + duration); rows of a day in start-time order; **Columns** menu hides Time / Client / Staff / Status / Amount (remembered).
 - **Code:** `src/lib/crewMotion.ts`; `Overview.tsx → KpiCard, CrewCard, LiveActivityPanel, dispatch columns`; `components/overview/LiveOpsPanel.tsx (loadMap, mapH)`; `LiveOpsMap.tsx`; `index.css (.ov-*)`. Test: `tests/unit/batch-1125d.test.ts`.
 - **Status:** Active · Since: 2026-11-25
+
+### R-OPS-21 — Live map: full names, where they are, same-place hub, Technical instead of CSR, every job step live
+- **Rule:** *"Map par har cleaner ka poora naam aur professional icon show karein. Hover karne par jo pop-up khulta hai, us mein cleaner ki current location ka naam bhi nazar aana chahiye … Map aur Booking screen ke darmiyan data synchronization ka masla hai; booking screen par 14 live jobs dikh rahi hain jabke map par sirf aik cleaner show ho raha hai … Ayesha Ghamani ki job start karne ke bawajood woh map par nazar nahi aayin … aik hi location par multiple cleaners … aik markazi point banayein aur tamam cleaners ko us se connect kar dein … Live map se CSR ka option hata kar uski jagah 'Technical' staff ka filter shamil karein."* (2026-11-25)
+  - **Pins:** a map pin in the role's colour with its sign (sparkle cleaner, van driver, wrench technical) and the person's **full name** under it (was a robot with initials).
+  - **Hover:** name, role, task, **Now at:** the place — the job's address when the position came from a job step ("Villa 4-34B, Mirdif (started)"), else the street / area looked up once from OpenStreetMap (position rounded to ~100 m, cached; nothing else sent).
+  - **Same place (≈40 m):** one dark centre point with the count (hover = the names); the pins sit on a ring around it, each joined by a dashed line in its role colour; redone on zoom.
+  - **Roles:** CSR (office) are no longer on the map; **Technical** (technical + ducting) has its own filter, orange.
+  - **Ayesha (cause):** she started a job dated 24 Nov on 25 Nov at 20:42 with her position; the map read only steps of **today's** jobs. Now any step pressed in the last 16 hours counts, whatever the job's date, and the map listens live to steps of yesterday's and today's jobs.
+  - **Map vs live jobs (cause):** Bookings counts jobs by their time; the map shows only people whose phone sent a position (Share my location, or a job step with location). No one is put on the map without a real position (R-OPS-14). New line under the map: **Cleaners on duty now · On the map · No position yet**, and a card for each cleaner on a job now (or with a step today) who has no position, with the reason ("job time now — no step pressed, location not shared" / "step pressed without location"). Updates by itself.
+- **Code:** `src/lib/liveOps.ts → liveRoleOf, buildLivePeople, unplacedOnDuty`; `components/overview/LiveOpsMap.tsx → botIcon, card, lookupPlace, spreadRef`; `LiveOpsPanel.tsx`. Test: `tests/unit/batch-1125e.test.ts`.
+- **Status:** Active · Since: 2026-11-25
+
 
 
 

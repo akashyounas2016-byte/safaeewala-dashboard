@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(payments): 5 equal cards a row, one row at first (the five of before), View more for the next rows; Active Contracts and High Value cards removed (R-FIN-22)
+- fix(live-map): a job step of yesterday's job pressed today now shows (Ayesha); steps of yesterday and today live; "on duty / on the map / no position yet" with the list of who is missing and why; pins with full names and role signs, hover shows the place; same-place hub with lines; Technical filter instead of CSR (R-OPS-21)
+
 - feat(invoices): Edit on every unpaid invoice (same form, filled in; number, status and payments kept; paid / void locked), several line items, wider New Invoice with the client list showing each client's pending amount instead of the area, VAT options on one row (UX-199)
 - change(overview): coloured animated cards, Live Map right after the cards (loads sooner, height by drag), Live Activity shows each cleaner cleaning / on the way / done with animations, Today's Dispatch last with Time = start – end, no Service column, hideable columns (R-OPS-20)
 

@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { todayDubai, addDays } from '@/lib/dubaiTime'
 import { useCallback, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Clock, Users, CheckCircle2, Repeat, PiggyBank, BookOpen, UserCheck, History, Wallet, AlertCircle, TrendingUp, MoreVertical, Send, Download, Plus, EyeOff, Eye, Filter, ShieldAlert, Percent, FileText, Scale, Hourglass, Landmark } from 'lucide-react'
+import { Clock, Users, CheckCircle2, Repeat, PiggyBank, BookOpen, UserCheck, History, Wallet, AlertCircle, TrendingUp, MoreVertical, Send, Download, Plus, EyeOff, Eye, Filter, Percent, ChevronDown, ChevronUp, FileText, Scale, Hourglass, Landmark } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
 import { KpiCard, Widget } from '@/components/ui/KpiCard'
 import { useData } from '@/store/DataContext'
@@ -105,6 +105,7 @@ export function PaymentsHub() {
   const onStats = useCallback((x: PendingStats) => setStats(x), [])
   const clearRequest = useCallback(() => setRequest(null), [])
   const { hidden, hide, showAll } = useHiddenCards()
+  const [cardRows, setCardRows] = useState(1) // R-FIN-22
 
   const figures = useMemo(() => {
     const monthlyPayments = safeLocalStorageGet<MonthlyPaymentLike[]>('safaeewala_monthly_client_payments', [])
@@ -188,26 +189,27 @@ export function PaymentsHub() {
         const onPending = PENDING_TABS.includes(tab)
         const cards: { id: string; label: string; value: string; sub: string; icon: typeof Clock; color: string; solid: string; chip?: string; tone?: 'up' | 'warn' | 'plain'; active?: boolean; onClick?: () => void }[] = [
           { id: 'outstanding', label: 'Outstanding', value: aed(figures.outstanding), sub: `Jobs ${aed(figures.out.jobs)} · invoices ${aed(figures.out.invoices)} · manual ${aed(figures.manual)}`, icon: AlertCircle, color: 'text-rose-700', solid: 'bg-[#e11d48] shadow-rose-500/25', chip: figures.outstanding > 0 ? 'To collect' : 'All clear', tone: figures.outstanding > 0 ? 'warn' : 'up', active: tab === 'outstanding', onClick: () => go('outstanding') },
-          { id: 'filtered_due', label: 'Filtered Due Total', value: onPending && stats ? aed(stats.total) : '—', sub: onPending && stats ? `${stats.count} due${stats.count === 1 ? '' : 's'} · ${range.label} + list filters` : 'Open Outstanding to see', icon: Filter, color: 'text-amber-700', solid: 'bg-[#d97706] shadow-amber-500/25', onClick: () => go('outstanding') },
           { id: 'collected', label: 'Collected', value: aed(figures.collected), sub: `Received, recoveries, contracts · ${range.label}`, icon: TrendingUp, color: 'text-emerald-700', solid: 'bg-[#059669] shadow-emerald-500/25', active: tab === 'history', onClick: () => go('history') },
           { id: 'recovered', label: 'Pending Recovered', value: aed(figures.recovered), sub: `Old dues collected · ${range.label}`, icon: CheckCircle2, color: 'text-teal-700', solid: 'bg-[#0d9488] shadow-teal-500/25', active: tab === 'recovered', onClick: () => go('recovered') },
-          { id: 'recovery_rate', label: 'Recovery Rate', value: `${figures.recoveryRate}%`, sub: 'Recovered ÷ (recovered + outstanding)', icon: Percent, color: 'text-teal-700', solid: 'bg-[#0f766e] shadow-teal-500/25' },
           { id: 'contracts', label: 'Monthly Contracts', value: aed(figures.contracts), sub: `Contract payments · ${range.label}`, icon: Repeat, color: 'text-indigo-700', solid: 'bg-[#4f46e5] shadow-indigo-500/25', active: tab === 'monthly', onClick: () => go('monthly') },
           { id: 'advance', label: 'Advance Balance', value: aed(figures.advance), sub: `${figures.advanceClients} client${figures.advanceClients === 1 ? '' : 's'} paid ahead`, icon: PiggyBank, color: 'text-amber-700', solid: 'bg-[#b45309] shadow-amber-500/25', active: tab === 'advances', onClick: () => go('advances') },
+          { id: 'filtered_due', label: 'Filtered Due Total', value: onPending && stats ? aed(stats.total) : '—', sub: onPending && stats ? `${stats.count} due${stats.count === 1 ? '' : 's'} · ${range.label} + list filters` : 'Open Outstanding to see', icon: Filter, color: 'text-amber-700', solid: 'bg-[#d97706] shadow-amber-500/25', onClick: () => go('outstanding') },
+          { id: 'recovery_rate', label: 'Recovery Rate', value: `${figures.recoveryRate}%`, sub: 'Recovered ÷ (recovered + outstanding)', icon: Percent, color: 'text-teal-700', solid: 'bg-[#0f766e] shadow-teal-500/25' },
           { id: 'owing', label: 'Clients Owing', value: String(figures.owing), sub: 'Clients with a balance due', icon: Users, color: 'text-rose-700', solid: 'bg-[#be123c] shadow-rose-500/25', active: tab === 'by_client', onClick: () => go('by_client') },
-          { id: 'high_value', label: 'High Value Dues', value: onPending && stats ? aed(stats.high) : '—', sub: onPending && stats ? `${stats.highCount} due${stats.highCount === 1 ? '' : 's'} of AED 500 or more` : 'Open Outstanding to see', icon: ShieldAlert, color: 'text-orange-700', solid: 'bg-[#ea580c] shadow-orange-500/25', onClick: () => go('outstanding') },
           { id: 'oldest', label: 'Oldest Due', value: onPending && stats?.oldest ? `${daysSince(stats.oldest)} days` : '—', sub: onPending && stats?.oldest ? `Since ${formatDate(stats.oldest)}` : onPending ? 'No open due' : 'Open Outstanding to see', icon: Hourglass, color: 'text-slate-700', solid: 'bg-[#475569] shadow-slate-500/25', onClick: () => go('outstanding') },
           { id: 'invoices', label: 'Unpaid Invoices', value: aed(figures.out.invoices), sub: `${figures.unpaidInvoices} invoice${figures.unpaidInvoices === 1 ? '' : 's'} sent or overdue`, icon: FileText, color: 'text-sky-700', solid: 'bg-[#0284c7] shadow-sky-500/25' },
           { id: 'adjustments', label: 'Adjustments', value: aed(figures.adjusted), sub: 'Discounts, waivers, corrections given', icon: Scale, color: 'text-indigo-700', solid: 'bg-[#6366f1] shadow-indigo-500/25' },
           { id: 'opening', label: 'Opening Balances', value: aed(figures.opening), sub: 'Old dues brought in, still open', icon: Landmark, color: 'text-rose-700', solid: 'bg-[#9f1239] shadow-rose-500/25' },
-          { id: 'active_contracts', label: 'Active Contracts', value: String(figures.activeContracts), sub: 'Monthly + Bi-Weekly clients on', icon: Repeat, color: 'text-emerald-700', solid: 'bg-[#047857] shadow-emerald-500/25' },
         ]
-        const shown = cards.filter(c => !hidden.includes(c.id))
+        const visible = cards.filter(c => !hidden.includes(c.id))
+        // R-FIN-22: 5 cards a row, one row at first (the five cards of before R-FIN-21); the arrow opens one more row
+        const shown = visible.slice(0, cardRows * 5)
+        const moreRows = Math.ceil(visible.length / 5)
         return (
           <div className="space-y-2">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-7 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 auto-rows-fr gap-3">
               {shown.map(c => (
-                <div key={c.id} className="relative group/card">
+                <div key={c.id} className="relative group/card h-full min-w-0 [&>*:first-child]:h-full">
                   <KpiCard label={c.label} value={c.value} sub={c.sub} icon={c.icon} labelColor={c.color} iconSolid={c.solid} chip={c.chip} chipTone={c.tone} active={c.active} onClick={c.onClick} />
                   <button type="button" onClick={() => hide(c.id)} aria-label={`Hide ${c.label}`} title="Hide this card"
                     className="absolute bottom-2 right-2 w-6 h-6 rounded-lg bg-white/90 border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 flex items-center justify-center opacity-0 group-hover/card:opacity-100 focus:opacity-100 transition-opacity cursor-pointer">
@@ -216,11 +218,25 @@ export function PaymentsHub() {
                 </div>
               ))}
             </div>
-            {hidden.length > 0 && (
-              <button type="button" onClick={showAll} className="text-[11.5px] font-bold text-slate-500 hover:text-emerald-700 cursor-pointer flex items-center gap-1">
-                <Eye size={12} /> {hidden.length} hidden card{hidden.length === 1 ? '' : 's'} · Show all
-              </button>
-            )}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              {hidden.length > 0 ? (
+                <button type="button" onClick={showAll} className="text-[11.5px] font-bold text-slate-500 hover:text-emerald-700 cursor-pointer flex items-center gap-1">
+                  <Eye size={12} /> {hidden.length} hidden card{hidden.length === 1 ? '' : 's'} · Show all
+                </button>
+              ) : <span />}
+              {moreRows > 1 && (
+                <div className="flex items-center gap-1.5">
+                  {cardRows > 1 && (
+                    <button type="button" onClick={() => setCardRows(1)} aria-label="Show fewer cards" title="Show fewer cards"
+                      className="h-8 px-3 rounded-xl border border-[#E4E8EC] bg-white text-[12px] font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-1 cursor-pointer"><ChevronUp size={14} /> Less</button>
+                  )}
+                  {cardRows < moreRows && (
+                    <button type="button" onClick={() => setCardRows(r => r + 1)} aria-label="Show more cards" title="Show the next row of cards"
+                      className="h-8 px-3 rounded-xl border border-emerald-200 bg-emerald-50 text-[12px] font-bold text-emerald-700 hover:bg-emerald-100 flex items-center gap-1 cursor-pointer">View more <ChevronDown size={14} /> <span className="text-emerald-600/70">({visible.length - shown.length})</span></button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )
       })()}

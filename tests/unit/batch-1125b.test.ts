@@ -35,7 +35,7 @@ eq([rf.collected, rf.contractRevenue, rf.recovered], [mf.collected, mf.contractR
 const hub = src('src/pages/PaymentsHub.tsx')
 eq(/<PaymentsDateBar /.test(hub) && !/Period:<\/span>/.test(hub), true, 'one date filter under the header (the Period row is gone)')
 eq(['Weekly report', 'Export Report', 'Record Manual Pending'].every(l => hub.includes(`label: '${l}'`)) && /aria-label="More actions"/.test(hub), true, 'Weekly report, Export Report, Record Manual Pending in the ⋮ menu')
-eq(['filtered_due', 'owing', 'high_value', 'oldest', 'invoices', 'recovery_rate'].every(id => hub.includes(`id: '${id}'`)), true, 'Filtered Due Total and the new cards')
+eq(['filtered_due', 'owing', 'oldest', 'invoices', 'recovery_rate'].every(id => hub.includes(`id: '${id}'`)), true, 'Filtered Due Total and the new cards')
 eq(/aria-label=\{`Hide \$\{c\.label\}`\}/.test(hub) && /safeLocalStorageSet\(HIDDEN_CARDS_KEY/.test(hub) && /Show all/.test(hub), true, 'every card can be hidden, remembered, shown again')
 const pp = src('src/pages/PendingPayments.tsx')
 eq(/\{!embedded && <div className=/.test(pp) && /!embedded && datePreset === 'custom'/.test(pp), true, 'the list\'s own date filter is not shown inside Payments')
