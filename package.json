@@ -15,6 +15,9 @@
     "api:local": "node --env-file=server.local.env webhookServer.cjs"
   },
   "dependencies": {
+    "@capacitor-community/background-geolocation": "^1.3.2",
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -49,6 +52,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
     "@types/leaflet": "^1.9.22",

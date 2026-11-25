@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Radar, Sparkles, Truck, Wrench, Users, Maximize2, Minimize2, Crosshair, GripHorizontal, MapPinOff } from 'lucide-react'
+import { Radar, Sparkles, Truck, Wrench, Users, Maximize2, Minimize2, Crosshair, GripHorizontal, MapPinOff, Radio, Clock3, Flag } from 'lucide-react'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 import { useData } from '@/store/DataContext'
 import { todayDubai, addDays } from '@/lib/dubaiTime'
@@ -19,7 +19,8 @@ if (typeof window !== 'undefined') void loadMap().catch(() => {})
 const MAP_H_KEY = 'safaeewala_overview_map_h'
 const MAP_H_MIN = 300, MAP_H_MAX = 1000, MAP_H_DEFAULT = 520
 const COLOR: Record<LiveRole, string> = { cleaner: '#059669', driver: '#2563eb', technical: '#ea580c' } // R-OPS-21: Technical instead of CSR
-const RING = { live: '#22c55e', stale: '#f59e0b', checkin: '#94a3b8' } as const
+const STATE_CLS = { live: 'bg-green-600', stale: 'bg-slate-600', checkin: 'bg-indigo-700' } as const // R-OPS-22
+const STATE_LABEL = { live: 'Live', stale: 'Last known', checkin: 'Last job step' } as const
 
 /**
  * R-OPS-14 / R-OPS-16: Overview → Live map, full width. Cleaners, drivers and CSR who share their position
@@ -145,9 +146,10 @@ export function LiveOpsPanel() {
               <span key={r} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: COLOR[r] }} />{r === 'technical' ? 'Technical' : r === 'driver' ? 'Driver' : 'Cleaner'}</span>
             ))}
             <span className="text-slate-300">|</span>
-            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-white" style={{ boxShadow: `0 0 0 2px ${RING.live}` }} />Live</span>
-            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-white" style={{ boxShadow: `0 0 0 2px ${RING.stale}` }} />Last known</span>
-            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-white" style={{ boxShadow: `0 0 0 2px ${RING.checkin}` }} />Last job step</span>
+            {/* R-OPS-22: the same badge icons as on the pins */}
+            <span className="inline-flex items-center gap-1"><span className="w-3.5 h-3.5 rounded-full bg-green-600 text-white flex items-center justify-center"><Radio size={9} strokeWidth={2.6} /></span>Live</span>
+            <span className="inline-flex items-center gap-1"><span className="w-3.5 h-3.5 rounded-full bg-slate-600 text-white flex items-center justify-center"><Clock3 size={9} strokeWidth={2.6} /></span>Last known</span>
+            <span className="inline-flex items-center gap-1"><span className="w-3.5 h-3.5 rounded-full bg-indigo-700 text-white flex items-center justify-center"><Flag size={8} strokeWidth={2.6} /></span>Last job step</span>
           </div>
           {shown.length === 0 && (
             <div className="absolute inset-x-4 top-14 z-[500] pointer-events-none flex justify-center">
@@ -202,8 +204,12 @@ export function LiveOpsPanel() {
               <button key={p.id} type="button" onClick={() => setFocus(p.id)}
                 className={`w-full text-left flex gap-2.5 p-2.5 rounded-xl border-l-4 border transition-colors cursor-pointer bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${focus === p.id ? 'border-slate-300 ring-2 ring-emerald-100' : 'border-slate-100 hover:bg-slate-50'}`}
                 style={{ borderLeftColor: COLOR[p.role] }}>
-                <span className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-white text-[11px] font-black" style={{ background: COLOR[p.role], boxShadow: `0 0 0 2px #fff, 0 0 0 4px ${RING[p.state]}` }}>
+                <span className="relative w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-white text-[11px] font-black" style={{ background: COLOR[p.role] }}>
                   {p.name.split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase()}
+                  {/* R-OPS-22: state as a badge icon (was a coloured ring) */}
+                  <span className={`absolute -right-1 -bottom-1 w-4 h-4 rounded-full border-2 border-white text-white flex items-center justify-center ${STATE_CLS[p.state]}`} aria-label={STATE_LABEL[p.state]} title={STATE_LABEL[p.state]}>
+                    {p.state === 'live' ? <Radio size={8} strokeWidth={2.8} /> : p.state === 'stale' ? <Clock3 size={8} strokeWidth={2.8} /> : <Flag size={7} strokeWidth={2.8} />}
+                  </span>
                 </span>
                 <span className="min-w-0">
                   <span className="block text-[12.5px] font-bold text-[#111827] truncate">{p.name} <span className="font-semibold" style={{ color: COLOR[p.role] }}>· {p.roleLabel}</span></span>

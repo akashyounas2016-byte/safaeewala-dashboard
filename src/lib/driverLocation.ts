@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation'
 
 /**
  * Live driver location (R-DRV-03). Only while the driver has pressed "Start sharing" on
@@ -24,11 +25,64 @@ export interface SharingHandle {
   ping: () => void
 }
 
+/** R-APP-01: true inside the Safaeewala Duties Android app (Capacitor), false in a browser */
+export const isNativeApp = (): boolean => !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()
+
+/**
+ * R-APP-01: in the Android app the position comes from a foreground service (a notification shows while it runs),
+ * so it keeps going with the screen off or the app in the background — what a website cannot do (R-OPS-19).
+ */
+function startNativeSharing(employeeId: string, onError: (msg: string) => void, onSent?: (at: number) => void): SharingHandle {
+  let last = 0
+  let lastFix: { lat: number; lng: number; accuracy: number | null; speed: number | null } | null = null
+  let stopped = false
+  const send = (force = false) => {
+    if (!lastFix) return
+    const now = Date.now()
+    if (!force && now - last < MIN_INTERVAL_MS) return
+    last = now
+    void supabase.from('driver_locations').upsert({ employee_id: employeeId, ...lastFix, sharing: true, updated_at: new Date().toISOString() })
+      .then(({ error }) => { if (error) onError(`Location not saved: ${error.message}`); else onSent?.(now) })
+  }
+  const plugin = import('@capacitor/core').then(({ registerPlugin }) => registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation'))
+  const watcher = plugin.then(bg => bg.addWatcher({
+    backgroundTitle: 'Safaeewala Duties — on duty',
+    backgroundMessage: 'Sharing your location with the office. Stop sharing in the app when your duty ends.',
+    requestPermissions: true,
+    stale: false,
+    distanceFilter: 25,
+  }, (loc, err) => {
+    if (stopped) return
+    if (err) {
+      if (err.code === 'NOT_AUTHORIZED') {
+        onError('Location permission is off — open Settings and allow location "All the time" for Safaeewala Duties.')
+        void bg.openSettings()
+      } else onError(`Location error: ${err.message}`)
+      return
+    }
+    if (!loc) return
+    lastFix = { lat: loc.latitude, lng: loc.longitude, accuracy: loc.accuracy ?? null, speed: loc.speed ?? null }
+    send()
+  })).catch(e => { onError(`Background location could not start: ${e instanceof Error ? e.message : String(e)}`); return '' })
+  // standing still sends no new fix: resend the last one every minute (the map's live = < 5 min)
+  const beat = window.setInterval(() => { if (Date.now() - last >= HEARTBEAT_MS - 1000) send(true) }, HEARTBEAT_MS / 2)
+  return {
+    stop: () => {
+      stopped = true
+      window.clearInterval(beat)
+      void Promise.all([plugin, watcher]).then(([bg, id]) => { if (id) void bg.removeWatcher({ id }) })
+      void supabase.from('driver_locations').update({ sharing: false, updated_at: new Date().toISOString() }).eq('employee_id', employeeId)
+    },
+    ping: () => send(true),
+  }
+}
+
 export function startLocationSharing(
   employeeId: string,
   onError: (msg: string) => void,
   onSent?: (at: number) => void,
 ): SharingHandle {
+  if (isNativeApp()) return startNativeSharing(employeeId, onError, onSent)
   if (!('geolocation' in navigator)) { onError('This phone or browser cannot share location.'); return { stop: () => {}, ping: () => {} } }
   let last = 0
   let lastPos: GeolocationPosition | null = null

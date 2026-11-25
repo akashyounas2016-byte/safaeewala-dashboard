@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Safaeewala Duties</string>
+    <string name="title_activity_main">Safaeewala Duties</string>
+    <string name="package_name">com.safaeewala.duties</string>
+    <string name="custom_url_scheme">com.safaeewala.duties</string>
+    <!-- R-APP-01: background location notification -->
+    <string name="capacitor_background_geolocation_notification_channel_name">Location while on duty</string>
+    <string name="capacitor_background_geolocation_notification_color">#059669</string>
+</resources>

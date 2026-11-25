@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'android', 'app-shell']), // R-APP-01: the Android project is built on GitHub
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

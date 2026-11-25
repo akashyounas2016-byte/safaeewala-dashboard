@@ -2022,6 +2022,26 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/liveOps.ts → liveRoleOf, buildLivePeople, unplacedOnDuty`; `components/overview/LiveOpsMap.tsx → botIcon, card, lookupPlace, spreadRef`; `LiveOpsPanel.tsx`. Test: `tests/unit/batch-1125e.test.ts`.
 - **Status:** Active · Since: 2026-11-25
 
+### R-OPS-22 — Live map: same-place layout, clear lines, badge icons
+- **Rule:** *"Agar aik hi jagah multiple cleaners hon, to unhein daye gaye nishanat ke mutabiq, jaisa ke top, left, aur right sides par behtar tarike se tarteeb dein. Aisha Ghimani jese cleaners ki connection lines wazeh honi chahiye … pehli istemaal hone wali peeli nishani ki jagah koi zyada professional aur relevant icon lagayein."* (2026-11-25)
+  - **Layout around a place:** 2 people → upper-left and upper-right; 3 → top, left, right; 4–8 → top, left, right, then the diagonals and the bottom; more → evenly all round. Pins pointing down sit a little further out so they do not cover the centre (Ayesha's pin sat on the centre).
+  - **Lines:** solid 3.5 px in the role colour on a 7 px white casing, a dot where the pin stands (were thin dashed lines).
+  - **Centre:** a white circle with a dark edge, a "people" icon and a green count badge; hover = the names with their role colour (was a black number).
+  - **State:** a small badge icon on each pin — green signal (live), slate clock (last known), indigo flag (last job step) — instead of the yellow / grey ring; the same icons in the legend and on the people cards under the map.
+- **Code:** `LiveOpsMap.tsx → spreadAngles, STATE_BADGE, spread`; `LiveOpsPanel.tsx`. Test: `tests/unit/batch-1125g.test.ts`.
+- **Status:** Active · Since: 2026-11-25
+
+### R-APP-01 — Safaeewala Duties: the Android test app
+- **Rule:** *"han app bnana shuru kro, notification hum bad me add kr len gen"* — after Claude's proposal (Capacitor app built on GitHub; login, background GPS, job steps; push notifications later). (2026-11-25)
+  - **What it is:** an Android app (Capacitor 8, id `com.safaeewala.duties`) that opens the live CRM at /my-duties — the same login, My Duties, job steps (On the way / Start / End / Issue), R-DUTY-04 checks. Website deploys reach the app at once; a new APK is needed only when the app shell changes.
+  - **Background location:** in the app, Share my location runs a foreground service (notification "Safaeewala Duties — on duty") through `@capacitor-community/background-geolocation`, so the position keeps going with the screen off or the app in the background (the website cannot — R-OPS-19). Every 25 m moved, at most every 20 s, and a resend every minute when standing still. Requests go native (CapacitorHttp) so Android does not slow them; `useLegacyBridge` keeps updates after 5 minutes. Android asks for location (choose "Allow all the time") and notifications.
+  - **No internet:** a "No internet connection — Try again" screen (app-shell/index.html).
+  - **Build:** GitHub Actions `android-apk.yml` (Java 21, Android SDK) on a push that changes android/, capacitor.config.ts or app-shell/, or by hand (Run workflow); the APK is a pre-release "Safaeewala Duties — test build N" and an artifact. Debug-signed: a later build may need the old one uninstalled first until a fixed signing key is set (owner, later).
+  - **Later:** push notifications (Firebase — owner), offline queue for steps, photo / distance checks at Start & End, own app icon.
+- **Code:** `capacitor.config.ts`; `android/`; `app-shell/`; `.github/workflows/android-apk.yml`; `src/lib/driverLocation.ts → isNativeApp, startNativeSharing`; `useLiveSharing.ts`; `MyDuties.tsx`. Test: `tests/unit/batch-1125g.test.ts`.
+- **Status:** Active (test) · Since: 2026-11-25
+
+
 
 
 

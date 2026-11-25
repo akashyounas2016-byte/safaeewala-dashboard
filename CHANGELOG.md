@@ -6,6 +6,9 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(app): Safaeewala Duties Android test app — opens the live My Duties, location in the background through a foreground service, no-internet screen, APK built on GitHub as a pre-release (R-APP-01)
+- change(live-map): people at one place placed upper-left / upper-right, top / left / right…, solid lines with a white casing, a people icon at the centre, state as badge icons instead of the yellow ring (R-OPS-22)
+
 - fix(my-duties): "Ambika" was shown the jobs of "Ambika Devi Tharu" (names matched both ways) — looked like a time clash; time-clash warning on both cards, Start job refused while another job is started, late-start banner + phone notification for the cleaner and "Not started" alert for the office (R-DUTY-04)
 
 - change(payments): 5 equal cards a row, one row at first (the five of before), View more for the next rows; Active Contracts and High Value cards removed (R-FIN-22)

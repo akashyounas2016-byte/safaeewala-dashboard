@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { startLocationSharing, type SharingHandle } from '@/lib/driverLocation'
+import { startLocationSharing, isNativeApp, type SharingHandle } from '@/lib/driverLocation'
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/storageUtils'
 
 /** Minimal Screen Wake Lock types (not in every TS lib) */
@@ -26,7 +26,8 @@ export function useLiveSharing(employeeId: string | undefined) {
 
   const keepAwake = useCallback(async () => {
     const nav = navigator as WakeLockNav
-    if (!nav.wakeLock || document.visibilityState !== 'visible') return
+    // R-APP-01: the app shares from a background service — no need to keep the screen on
+    if (isNativeApp() || !nav.wakeLock || document.visibilityState !== 'visible') return
     try {
       lock.current = await nav.wakeLock.request('screen')
       setAwake(true)
@@ -73,5 +74,5 @@ export function useLiveSharing(employeeId: string | undefined) {
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [keepAwake])
 
-  return { sharing, error, lastSentAt, awake, start, stop, toggle: () => (handle.current ? stop() : start()) }
+  return { sharing, error, lastSentAt, awake, native: isNativeApp(), start, stop, toggle: () => (handle.current ? stop() : start()) }
 }

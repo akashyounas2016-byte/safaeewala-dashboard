@@ -118,6 +118,18 @@
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
+### Safaeewala Duties app (test, 25 Nov)
+- **APK kahan se:** GitHub → repo → **Releases** → "Safaeewala Duties — test build …" → `.apk` file phone par kholein → "Install unknown apps" allow → Install.
+- App khol kar **CRM login** se login karein — seedha **My Duties** khulta hai (wahi jo website par hai, har update khud aa jata hai).
+- **Share my location** dabayein → phone location maange to **"Allow all the time"** chunein, notification ki ijazat bhi dein. Ab screen band ho ya app peeche ho, location jaati rehti hai; upar notification "Safaeewala Duties — on duty" dikhta hai. Duty khatam → **Stop sharing**.
+- Internet na ho to "No internet connection — Try again" aata hai.
+- Naya test build aane par kabhi purani app uninstall karni pad sakti hai (abhi test key hai).
+- Notifications (push) baad mein aayengi.
+
+### Live Map: ek jagah kai log (25 Nov, raat)
+- 2 log → beech ke nishaan se upar-baayen aur upar-daayen; 3 → upar, baayen, daayen; zyada → chaaron taraf. Lines mote aur saaf (safed border ke saath).
+- Peeli ring ki jagah pin ke kone par chhota icon: **hara signal** = live, **ghadi** = last known, **jhanda** = last job step.
+
 ### My Duties: waqt ka takrao aur late (25 Nov, raat)
 - "Ambika" ki My Duties mein "Ambika Devi Tharu" ki jobs aa rahi thin (naam milane ki ghalti) — is liye do jobs ek hi waqt dikh rahi thin. Theek ho gaya.
 - Agar kisi cleaner ki do jobs ka waqt sach mein takraye to dono cards par **laal** likha aata hai: "Time clash … Call the office".

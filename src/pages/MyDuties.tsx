@@ -143,7 +143,7 @@ export function MyDuties() {
   const [, setTick] = useState(0)
   useEffect(() => { if (!sharing) return; const t = window.setInterval(() => setTick(n => n + 1), 10_000); return () => window.clearInterval(t) }, [sharing])
   const shareStatus = sharing
-    ? `● Sharing with the office${live.lastSentAt ? ` · last sent ${ageLabel(new Date(live.lastSentAt).toISOString())}` : ' · finding your position…'}${live.awake ? ' · screen kept on' : ''}. Keep this page open — it starts again by itself when you open My Duties.`
+    ? `● Sharing with the office${live.lastSentAt ? ` · last sent ${ageLabel(new Date(live.lastSentAt).toISOString())}` : ' · finding your position…'}${live.awake ? ' · screen kept on' : ''}${live.native ? '. Works with the screen off — the app keeps sending (R-APP-01).' : '. Keep this page open — it starts again by itself when you open My Duties.'}`
     : ''
 
   // A login that is not linked to a staff record and is not office: nothing to show
