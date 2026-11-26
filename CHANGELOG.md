@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- fix(app): cleaner logins no longer show "changes not saved" (remembered field login, policy refusal kept quietly, old error cleared); location line removed in the app (R-APP-05); A46 / A47 SQL checked live
+
 - feat(app): leave from My Duties — annual / sick / emergency, half day, short leave, this year's balance, cancel a waiting request; "Leave request" alert for the office; Half Day category (R-ATT-12, SQL A47)
 
 - change(live-map): lighter header, UAE-only bounds, pins scale with the zoom (R-OPS-25); change(overview): data widgets start folded (R-OPS-26)

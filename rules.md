@@ -2180,6 +2180,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `jobCheckins.ts → queue`; `jobProofs.ts`; `geofence.ts`; `components/duties/SignaturePad.tsx`; `components/drivers/DriverManifest.tsx`; `driverPlans.ts → manifest`; `alerts.ts → farStepAlerts, silentLocationAlerts`; `useAlerts.ts`; `MyDuties.tsx`; SQL `2026-11-26_job_proofs.sql`. Test: `tests/unit/batch-1126d.test.ts`.
 - **Status:** Active (proof photos after A46) · Since: 2026-11-26
 
+### R-APP-05 — App: no "changes not saved" for cleaners, no location line
+- **Rule:** *"ye top pe error kyun aa raha hai … neeche ye jo location ki information aa rahi hai yahan par nahi aani chahiye … remove kar do"* (2026-11-26, phone screenshot: "14 changes not saved … excel_column_align … app_state_field_add").
+  - **Cause:** when the app opens, settings saved on the phone are uploaded before the app knows the login is a cleaner; the database refuses them (cleaners may write only the driver plan, R-SEC-07), the error stayed on the banner although the R-APP-02 fix later cleared the queue.
+  - **Now:** the phone remembers it is a cleaner / driver login (so the first uploads are held back on the next start); an upload refused by the field-login policy is kept on the phone without an error; an upload that fails after the login turned out to be a cleaner is dropped quietly; the banner shows no old error once nothing is waiting. The answer is set only once the login is known.
+  - **Location line removed** in the app; only a refused location permission is shown (then the office cannot see the person on the map).
+  - Checked 26 Nov: the owner's SQL A46 (job-proofs bucket) and A47 (leave) are live — a TEST cleaner login could add and cancel its own pending leave, was refused for someone else and for "approved" (TEST login deleted).
+- **Code:** `cloudState.ts → FIELD_FLAG, setCloudFieldLogin, clearFieldDirty, push`; `Sidebar.tsx`; `MyDuties.tsx → appLocationLine`. Test: `tests/unit/batch-1126h.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
+
 
 
 

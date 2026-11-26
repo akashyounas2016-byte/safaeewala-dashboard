@@ -188,12 +188,12 @@ export function MyDuties() {
   const toggleSharing = () => { if (canShare) live.toggle() }
   // R-APP-03: in the app location is always on (no on / off button); a status line shows it is working
   const inApp = live.native
-  const appLocationLine = inApp && canShare ? (
-    <div className={`px-4 py-3 rounded-2xl border text-[12.5px] font-semibold flex items-start gap-2 ${shareError ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-emerald-50 border-emerald-200 text-emerald-900'}`}>
+  // R-APP-05: in the app nothing is shown while location works (owner: remove the line); only a refused permission
+  // is shown, because then the office cannot see the person on the map
+  const appLocationLine = inApp && canShare && shareError ? (
+    <div className="px-4 py-3 rounded-2xl border text-[12.5px] font-semibold flex items-start gap-2 bg-rose-50 border-rose-200 text-rose-800">
       <MapPinned size={17} className="shrink-0 mt-px" />
-      <span>{shareError
-        ? <>{shareError} Location is needed for your duties — allow it for Safaeewala Duties in the phone settings.</>
-        : <>Location is on — the office sees you on the map{live.lastSentAt ? ` · last sent ${ageLabel(new Date(live.lastSentAt).toISOString())}` : ' · finding your position…'}. It keeps working in the background.</>}</span>
+      <span>{shareError} Location is needed for your duties — allow it for Safaeewala Duties in the phone settings.</span>
     </div>
   ) : null
   const [, setTick] = useState(0)

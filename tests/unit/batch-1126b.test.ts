@@ -12,7 +12,7 @@ const src = (p: string) => readFileSync(p, 'utf8')
 eq(/if \(employeeId && \(isNativeApp\(\) \|\| safeLocalStorageGet<boolean>\(shareKey\(employeeId\), false\)\)\) start\(\)/.test(src('src/lib/useLiveSharing.ts')), true, 'in the app location starts by itself (permission asked when it opens)')
 const md = src('src/pages/MyDuties.tsx')
 eq(/kind === 'cleaner' && linked && !inApp && \(/.test(md) && /\{!inApp && \(\s*<button type="button" onClick=\{toggleSharing\}/.test(md), true, 'no on / off button in the app (cleaner and driver); the browser keeps it')
-eq(/Location is on — the office sees you on the map/.test(md), true, 'a status line shows it is working')
+eq(/Location is on — the office sees you on the map/.test(md), false, 'no status line while it works (R-APP-05: owner asked to remove it)')
 
 // R-SHEET-06
 eq(JOB_SHEET_EXTRA_CARDS, ['scheduled', 'live', 'completed', 'monthly_jobs', 'billed', 'duty_hours'], 'the Bookings cards not already on the sheet, hidden at first')

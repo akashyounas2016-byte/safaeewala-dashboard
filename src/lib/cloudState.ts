@@ -89,7 +89,10 @@ const setKeyMeta = (key: string, patch: KeyMeta) => {
 
 export function getCloudStateStatus(): CloudStateStatus {
   const meta = readMeta()
-  return { unsynced: Object.values(meta).filter(m => m.dirty).length, lastError }
+  const unsynced = Object.values(meta).filter(m => m.dirty).length
+  // R-APP-05: nothing waiting → no old error left on the banner
+  if (unsynced === 0) lastError = undefined
+  return { unsynced, lastError }
 }
 
 const readLocal = (key: string): unknown => {
@@ -204,15 +207,26 @@ export async function pullCloudState(timeoutMs = 2500): Promise<void> {
  * changes on its phone stay on the phone — no upload, no "changes not saved" banner (14 were stuck on the app).
  */
 const FIELD_WRITABLE = new Set(['safaeewala_driver_plans'])
-let fieldLogin = false
+// R-APP-05: remembered on the phone, so the first uploads after opening the app (before the login is known) are
+// already held back — they failed and showed "14 changes not saved" on every start
+const FIELD_FLAG = 'safaeewala_field_login'
+let fieldLogin = (() => { try { return localStorage.getItem(FIELD_FLAG) === '1' } catch { return false } })()
 export function setCloudFieldLogin(isField: boolean) {
-  if (fieldLogin === isField) return
-  fieldLogin = isField
-  if (isField) {
-    const meta = readMeta()
-    Object.keys(meta).forEach(k => { if (meta[k]?.dirty && !FIELD_WRITABLE.has(k)) setKeyMeta(k, { dirty: false }) })
-    lastError = undefined
+  try { if (isField) localStorage.setItem(FIELD_FLAG, '1'); else localStorage.removeItem(FIELD_FLAG) } catch { /* private mode */ }
+  if (fieldLogin === isField) {
+    if (isField) clearFieldDirty()
+    return
   }
+  fieldLogin = isField
+  if (isField) clearFieldDirty()
+}
+function clearFieldDirty() {
+  const meta = readMeta()
+  lastError = undefined
+  let changed = false
+  Object.keys(meta).forEach(k => { if (meta[k]?.dirty && !FIELD_WRITABLE.has(k)) { meta[k] = { ...meta[k], dirty: false }; changed = true } })
+  writeMeta(meta) // also tells the banner (even when nothing changed — the old error goes)
+  void changed
 }
 
 async function push(key: string): Promise<void> {
@@ -240,6 +254,10 @@ async function push(key: string): Promise<void> {
     lastError = undefined
     setKeyMeta(key, { syncedAt: updated_at, dirty: false })
   } catch (err) {
+    // R-APP-05: the login turned out to be a cleaner / driver while this upload ran — keep it on the phone, no error
+    if (fieldLogin && !FIELD_WRITABLE.has(key)) { setKeyMeta(key, { dirty: false }); return }
+    // the server says this login may not write shared settings (field-login policy) → it is a cleaner / driver
+    if (/app_state_field/i.test(String(err)) && !FIELD_WRITABLE.has(key)) { setCloudFieldLogin(true); setKeyMeta(key, { dirty: false }); return }
     lastError = `Not saved to cloud (${key.replace('safaeewala_', '')}): ${err instanceof Error ? err.message : String(err)}`
     console.warn('[cloudState]', lastError)
     setKeyMeta(key, { dirty: true })
