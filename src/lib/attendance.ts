@@ -25,9 +25,12 @@ export interface AttendanceOverride {
  * Absence categories on the Attendance screen (R-ATT-05). A leave category is a request that
  * admin / manager approve (stays leave) or reject (becomes absent); an absence is final at once.
  */
-export const LEAVE_CATEGORIES = ['Sick Leave', 'Emergency Leave', 'Annual Leave', 'Weekly Off', 'Short Leave'] as const
+export const LEAVE_CATEGORIES = ['Sick Leave', 'Emergency Leave', 'Annual Leave', 'Weekly Off', 'Short Leave', 'Half Day'] as const
 /** R-ATT-10: part of the day off — the cleaner still works that day, so it is not "away" (stays in assign lists) */
 export const SHORT_LEAVE = 'Short Leave'
+/** R-ATT-12: half a day (morning or afternoon) — like Short Leave, the cleaner can still work the other part */
+export const HALF_DAY = 'Half Day'
+export const isPartDayLeave = (c?: string) => c === SHORT_LEAVE || c === HALF_DAY
 export const ABSENCE_CATEGORIES = ['Uninformed Absence', 'Other'] as const
 export type AbsenceCategory = (typeof LEAVE_CATEGORIES)[number] | (typeof ABSENCE_CATEGORIES)[number]
 export const isLeaveCategory = (c?: string) => (LEAVE_CATEGORIES as readonly string[]).includes(c || '')
@@ -226,7 +229,29 @@ export function buildCleanerRoster(employees: Employee[], dailyJobs: DailyJob[],
 }
 
 /** R-ATT-08: absent, or on leave (pending or approved), on that date — kept off the job sheet and the assign lists */
-export const isAwayMark = (m?: AttendanceOverride | null) => m?.status === 'absent' || (m?.status === 'on_leave' && m.category !== SHORT_LEAVE)
+export const isAwayMark = (m?: AttendanceOverride | null) => m?.status === 'absent' || (m?.status === 'on_leave' && !isPartDayLeave(m.category))
+
+/** R-ATT-12: days of annual leave a year (UAE labour law: 30 calendar days after the first year) */
+export const ANNUAL_LEAVE_DAYS = 30
+
+export interface LeaveBalance { annualUsed: number; annualLeft: number; sick: number; emergency: number; halfDays: number; shortLeaves: number; pending: number }
+/** R-ATT-12: one person's leave this year — approved leave counts, pending is shown apart; a half day is 0.5 of annual */
+export function leaveBalance(marks: Record<string, AttendanceOverride>, employeeId: string, year: string): LeaveBalance {
+  const out: LeaveBalance = { annualUsed: 0, annualLeft: ANNUAL_LEAVE_DAYS, sick: 0, emergency: 0, halfDays: 0, shortLeaves: 0, pending: 0 }
+  for (const [key, m] of Object.entries(marks)) {
+    const { date, cleanerKey } = splitMarkKey(key)
+    if (cleanerKey !== `id:${employeeId}` || !date.startsWith(year) || m.status !== 'on_leave') continue
+    if (m.approval === 'pending') { out.pending++; continue }
+    if (m.approval === 'rejected') continue
+    if (m.category === 'Annual Leave') out.annualUsed += 1
+    else if (m.category === HALF_DAY) { out.halfDays += 1; out.annualUsed += 0.5 }
+    else if (m.category === 'Sick Leave') out.sick += 1
+    else if (m.category === 'Emergency Leave') out.emergency += 1
+    else if (m.category === SHORT_LEAVE) out.shortLeaves += 1
+  }
+  out.annualLeft = Math.max(0, ANNUAL_LEAVE_DAYS - out.annualUsed)
+  return out
+}
 
 /** The key a cleaner's mark is saved under: by employee id when registered, else by name (AUD-38) */
 export function attendanceKeyFor(date: string, name: string, employees: Pick<Employee, 'id' | 'full_name'>[]): { key: string; nameKey: string } {

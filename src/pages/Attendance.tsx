@@ -84,6 +84,7 @@ const CATEGORY_LABEL: Record<AbsenceCategory, string> = {
   'Annual Leave': 'Annual / Casual Leave',
   'Weekly Off': 'Day Off / Weekly Rest',
   'Short Leave': 'Short Leave (part of the day)',
+  'Half Day': 'Half Day (morning or afternoon)', // R-ATT-12
   'Uninformed Absence': 'Uninformed Absence / No Show',
   'Other': 'Other Reason (absent)',
 }

@@ -410,6 +410,16 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/components/dailyJobSheet/QuickAttendanceModal.tsx`; `JobSheetSpreadsheet.tsx`. Test: `tests/unit/complaints-roles-excel-1112.test.ts`.
 - **Status:** Active · Since: 2026-11-12
 
+### R-ATT-12 — Leave from the app: full day, half day, short leave, balance
+- **Rule:** *"mazeed unko leave ke related, agar to short leave unhone leni ho … kaun kaun se features add kar sakta hoon APK mein"* → Claude's first recommendation; owner: "continue" (2026-11-26).
+  - **My Duties → My leave** (cleaners and drivers, own login): this year's balance — **Annual left n / 30** (UAE law; a half day counts 0.5), Sick days, Half / short, Waiting — and **Apply for leave**: Annual, Sick, Emergency (from – to, up to 30 days, one row per day), **Half day** (morning / afternoon off) or **Short leave** (from – to hours); reason required except annual. The person's requests list with Waiting / Approved / Rejected; a waiting future one can be cancelled. Office preview shows it without the Apply button.
+  - Each day is a pending leave mark in attendance_marks — the office approves / rejects on **Attendance** as before (R-ATT-05) and gets **"Leave request · name"** in Alerts (days and first date) until it decides.
+  - **Half Day** is a new leave category; like Short Leave the person stays on the job sheet / pick lists for the other part of the day.
+  - Needs SQL `2026-11-26_field_leave_requests.sql` (owner, A47): a field login may add / change / cancel only its own pending leave. Before that the app says "the office has not switched on leave requests yet".
+- **Code:** `src/lib/leaveRequests.ts`; `attendance.ts → HALF_DAY, isPartDayLeave, leaveBalance, ANNUAL_LEAVE_DAYS`; `components/duties/MyLeave.tsx`; `MyDuties.tsx`; `alerts.ts → leaveRequestAlerts`; `useAlerts.ts`; SQL above. Test: `tests/unit/batch-1126g.test.ts`.
+- **Status:** Active (requests after A47) · Since: 2026-11-26
+
+
 ---
 
 ## SHEET — Excel Job Sheet

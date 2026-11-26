@@ -980,7 +980,7 @@ export function DailyJobSheet() {
     const emp = employees.find(e => (e.full_name || '').trim().toLowerCase() === name.trim().toLowerCase())
     return findMark(attendanceMarks, date, name, emp?.id)
   }
-  const isAwayMark = (m?: AttendanceOverride) => m?.status === 'absent' || (m?.status === 'on_leave' && m.category !== 'Short Leave') // R-ATT-10
+  const isAwayMark = (m?: AttendanceOverride) => m?.status === 'absent' || (m?.status === 'on_leave' && m.category !== 'Short Leave' && m.category !== 'Half Day') // R-ATT-10, R-ATT-12
 
   // Cleaners with no job that day, placed at the bottom of the Jobs list (R-ATT-09: all of them, with their
   // Attendance mark — available, absent or on leave; a job an absent cleaner still holds stays tagged "reassign")

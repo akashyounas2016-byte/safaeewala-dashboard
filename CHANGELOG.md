@@ -6,6 +6,8 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- feat(app): leave from My Duties — annual / sick / emergency, half day, short leave, this year's balance, cancel a waiting request; "Leave request" alert for the office; Half Day category (R-ATT-12, SQL A47)
+
 - change(live-map): lighter header, UAE-only bounds, pins scale with the zoom (R-OPS-25); change(overview): data widgets start folded (R-OPS-26)
 - change(clients): no tags on Monthly / Bi-Weekly cards (R-CLI-18); change(expenses): five cards (R-FIN-24)
 - feat(invoices): one standard Generate Invoice pop-up with Discount + VAT Tax Status, also for Invoices → New Invoice (R-FIN-25); columns Duty Hours / Price per Hour / Charges (R-FIN-26); Monthly Invoices cards first, 10 entries + View all (R-FIN-27)

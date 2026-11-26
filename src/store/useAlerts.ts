@@ -4,7 +4,7 @@ import { useNotifications } from '@/store/NotificationContext'
 import { analyzeCRMHealth } from '@/lib/crmAIBot'
 import { buildCrewTimeline } from '@/lib/crewTimeline'
 import { backupHealth, type BackupStatus } from '@/lib/backupStatus'
-import { agencyAlerts, bookingAlerts, cleanerIssueAlerts, lateStartAlerts, farStepAlerts, silentLocationAlerts, scheduleCleanerAlerts, contractEndAlerts, buildAlerts, employeeDocAlerts, type CrmAlert } from '@/lib/alerts'
+import { agencyAlerts, bookingAlerts, cleanerIssueAlerts, leaveRequestAlerts, lateStartAlerts, farStepAlerts, silentLocationAlerts, scheduleCleanerAlerts, contractEndAlerts, buildAlerts, employeeDocAlerts, type CrmAlert } from '@/lib/alerts'
 import { CONTRACTS_KEY } from '@/lib/clientContracts'
 import type { RecurringContract } from '@/types'
 import { todayDubai, addDays } from '@/lib/dubaiTime'
@@ -23,7 +23,7 @@ export function useAlerts(enabled = true): {
   dismiss: (id: string) => void
   restoreAll: () => void
 } {
-  const { bookings, clients, dailyJobs, employees, agencies } = useData()
+  const { bookings, clients, dailyJobs, employees, agencies, attendanceMarks } = useData()
   const { notifications } = useNotifications()
   const today = todayDubai()
 
@@ -125,11 +125,12 @@ export function useAlerts(enabled = true): {
         ...contractEndAlerts(clients, safeLocalStorageGet<RecurringContract[]>(CONTRACTS_KEY, []), today), // R-ALERT-05
         ...cleanerIssueAlerts(dutyIssues, dailyJobs),
         ...lateStartAlerts(dailyJobs, todaySteps, employees, loginIds, today, nowMin), // R-DUTY-04
+        ...leaveRequestAlerts(attendanceMarks, employees, today), // R-ATT-12
         ...farStepAlerts(todaySteps, stepHistory, dailyJobs, today), // R-APP-04
         ...silentLocationAlerts(dailyJobs, positions, employees, loginIds, today, nowMin, Date.now()), // R-APP-04
       ],
     })
-  }, [enabled, notifications, bookings, clients, dailyJobs, employees, agencies, today, backup, dutyIssues, todaySteps, loginIds, nowMin, stepHistory, positions])
+  }, [enabled, notifications, bookings, clients, dailyJobs, employees, agencies, today, backup, dutyIssues, todaySteps, loginIds, nowMin, stepHistory, positions, attendanceMarks])
 
   const hidden = new Set(dismissedIds)
   return {

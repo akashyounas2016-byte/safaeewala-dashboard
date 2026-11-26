@@ -16,7 +16,7 @@ import { notify } from '@/lib/notify'
 export function attendanceLabel(mark: AttendanceOverride | undefined, hasJob: boolean): string {
   if (mark?.status === 'absent') return 'Absent'
   if (mark?.status === 'on_leave') {
-    const base = mark.category === SHORT_LEAVE ? 'Short Leave' : 'Leave'
+    const base = mark.category === SHORT_LEAVE ? 'Short Leave' : mark.category === 'Half Day' ? 'Half Day' : 'Leave' // R-ATT-12
     return mark.approval === 'pending' ? `${base} (pending)` : base
   }
   return hasJob ? 'Present' : 'Available'

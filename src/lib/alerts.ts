@@ -320,6 +320,38 @@ export function silentLocationAlerts(
   return out
 }
 
+/**
+ * R-ATT-12: leave asked for and still waiting — one alert per person (days and first date), until the office decides
+ * on Attendance. Past days are not counted.
+ */
+export function leaveRequestAlerts(
+  marks: Record<string, { status: string; approval?: string; category?: string; reason?: string; requestedBy?: string }>,
+  employees: Employee[],
+  today: string,
+): CrmAlert[] {
+  const byPerson = new Map<string, { name: string; dates: string[]; kinds: Set<string> }>()
+  for (const [key, m] of Object.entries(marks)) {
+    if (m.status !== 'on_leave' || m.approval !== 'pending') continue
+    const i = key.indexOf('_')
+    const date = key.slice(0, i), who = key.slice(i + 1)
+    if (date < today) continue
+    const emp = who.startsWith('id:') ? employees.find(e => e.id === who.slice(3)) : undefined
+    const name = emp?.full_name || m.requestedBy || who
+    const cur = byPerson.get(who) || { name, dates: [], kinds: new Set<string>() }
+    cur.dates.push(date); if (m.category) cur.kinds.add(m.category)
+    byPerson.set(who, cur)
+  }
+  return [...byPerson.entries()].map(([who, p]) => {
+    p.dates.sort()
+    return {
+      id: `leave-req-${who}-${p.dates.join(',')}`, source: 'staff' as const, severity: 'medium' as const,
+      title: `Leave request · ${p.name}`,
+      message: `${[...p.kinds].join(', ') || 'Leave'} — ${p.dates.length} day${p.dates.length === 1 ? '' : 's'} from ${formatDate(p.dates[0])}. Approve or reject on Attendance.`,
+      actionUrl: `/attendance?date=${p.dates[0]}`, actionLabel: 'Open Attendance',
+    }
+  })
+}
+
 export function cleanerIssueAlerts(
   issues: { id: string; job_id: string; date: string; cleaner: string; status: string; note?: string | null }[],
   jobs: { id: string; client_name?: string; site?: string; address?: string; area?: string; date?: string; booking_id?: string }[] = []

@@ -118,6 +118,12 @@
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
+### App: leave (26 Nov, raat 3)
+- Cleaner / driver apni login mein **My Duties** ke neeche **My leave**: Annual kitni baqi (30 mein se), sick, half / short, aur kitni approval ka intezar.
+- **Apply for leave**: Annual, Sick, Emergency (kis din se kis din tak), **Half day** (subah ya shaam ki chhutti), **Short leave** (kitne baje se kitne baje tak). Wajah likhein.
+- Office ko **Alerts** mein "Leave request · naam" aata hai — **Attendance** screen par Approve / Reject. Cleaner ko app mein Waiting / Approved / Rejected dikhta hai; waiting request khud cancel kar sakta hai.
+- Pehle office Supabase mein SQL chalaye (A47), tab yeh chalega.
+
 ### Invoices, Overview, Expenses (26 Nov, raat 2)
 - **New Invoice** (Invoices screen): pehle client chunein (Pending / No dues dikhta hai) — phir wahi **Generate Invoice** popup jo Monthly Clients mein hai. Is mein ab **VAT / Tax Status** (Standard 5% · Exempt · Custom %) aur **Discount** (% ya AED) bhi hai.
 - Invoice mein columns: **Duty Hours · Price per Hour · Charges**.
