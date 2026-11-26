@@ -25,6 +25,7 @@ import { ageLabel } from '@/lib/driverLocation'
 import { SiteCard } from '@/components/drivers/SiteCard'
 import { DriverManifest } from '@/components/drivers/DriverManifest'
 import { MyLeave } from '@/components/duties/MyLeave'
+import { MyMonthCard } from '@/components/duties/MyMonthCard'
 import { canApproveLeave, findMark, weekdayOf } from '@/lib/attendance'
 import { cleanerDuties, dutyKindOf, mapsSearchUrl, type CleanerDuty, type DutyKind } from '@/lib/duties'
 import { dutyClashes, clashText, startBlockedBy, minutesLate, lateText } from '@/lib/dutyChecks'
@@ -390,6 +391,8 @@ export function MyDuties() {
           {!checkins.ready && <p className="text-[11.5px] text-slate-500">Job progress (On the way / Started / Done) turns on once the office runs the job_checkins setup.</p>}
         </>
       )}
+      {/* R-ATT-13: my month — days, jobs, hours, OT, leave, absences */}
+      {person && (kind === 'cleaner' || kind === 'driver') && <MyMonthCard emp={person} jobs={dailyJobs} marks={attendanceMarks} />}
       {/* R-ATT-12: leave from the app — balance, apply, my requests */}
       {person && (kind === 'cleaner' || kind === 'driver') && (
         <MyLeave employeeId={person.id} name={person.full_name} marks={attendanceMarks} canEdit={!!linked && linked.id === person.id} />

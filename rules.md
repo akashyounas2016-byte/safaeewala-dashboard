@@ -419,6 +419,15 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `src/lib/leaveRequests.ts`; `attendance.ts → HALF_DAY, isPartDayLeave, leaveBalance, ANNUAL_LEAVE_DAYS`; `components/duties/MyLeave.tsx`; `MyDuties.tsx`; `alerts.ts → leaveRequestAlerts`; `useAlerts.ts`; SQL above. Test: `tests/unit/batch-1126g.test.ts`.
 - **Status:** Active (requests after A47) · Since: 2026-11-26
 
+### R-ATT-13 — My month on My Duties (attendance, hours, OT)
+- **Rule:** Claude's second recommendation for the app ("meri attendance, hours aur payslip"); owner: "continue" (2026-11-26).
+  - **My Duties → My month** (cleaner / driver; office preview too): this month or last month — Days worked, Jobs, Duty hours, **Overtime** (worked out like the sheet, per cleaner and date, R-OT-01 / R-OT-03), Leave days, Half / short, Absent — and **Day by day**. A team job counts for each of its cleaners; rejected leave and pending leave are not counted (pending shows "(waiting)" in the list).
+  - **No payslip yet:** the CRM holds only the monthly salary — no OT rate, deductions or advance ledger — so no pay is worked out here until the owner gives those rules (PENDING A48).
+  - Checked 26 Nov: Ambika November 17 days · 27 jobs · 75 h · 1 absent; Nim Kumari Shahu 15 days · 23 jobs · 54 h.
+- **Code:** `src/lib/myMonth.ts`; `components/duties/MyMonthCard.tsx`; `MyDuties.tsx`. Test: `tests/unit/batch-1126i.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
+
 
 ---
 

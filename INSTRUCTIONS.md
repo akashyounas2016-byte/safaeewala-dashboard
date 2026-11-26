@@ -118,6 +118,10 @@
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
+### App: My month (26 Nov, raat 4)
+- My Duties par **My month**: is mahine (ya pichle mahine) kitne din kaam kiya, kitni jobs, kitne ghante, kitna **OT**, kitni leave / half / short, kitni absent — aur **Day by day** list. Sab Daily Job Sheet aur Attendance se. Kuch ghalat lage to office ko batayein.
+- Payslip abhi nahi — salary ke rules (OT rate, katauti, advance) office tay kare to banegi.
+
 ### App: leave (26 Nov, raat 3)
 - Cleaner / driver apni login mein **My Duties** ke neeche **My leave**: Annual kitni baqi (30 mein se), sick, half / short, aur kitni approval ka intezar.
 - **Apply for leave**: Annual, Sick, Emergency (kis din se kis din tak), **Half day** (subah ya shaam ki chhutti), **Short leave** (kitne baje se kitne baje tak). Wajah likhein.
