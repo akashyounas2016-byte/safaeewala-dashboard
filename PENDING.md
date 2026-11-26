@@ -2,7 +2,7 @@
 
 One list of what is still open, for the owner, Claude and Antigravity. **Update it in the same commit** whenever something is finished (remove it) or added. Finished items go to [CHANGELOG.md](CHANGELOG.md), not here.
 
-Last updated: 2026-11-26 · Live on crm.safaeewala.com: `a8b3027` (26 Nov: app R-APP-02..04, Job Sheet cards + views R-SHEET-06/07, Payments R-FIN-23, Clients cards R-CLI-16/17) · Test APK: GitHub Releases `android-test-3` · 2026-11-15: all 174 test-period jobs deleted on owner's request ; duplicate "Villa# 06 - Zayan" + TEST clients (TEST Villa, Test 2- NH bldg, ABC Test 1) deleted with their contracts (backups in ../Safaeewala-backups)
+Last updated: 2026-11-26 · Live on crm.safaeewala.com: `a90a3af` (26 Nov: standard invoice pop-up R-FIN-25..27, map R-OPS-25, folded widgets R-OPS-26, R-CLI-18, R-FIN-24) · Test APK: GitHub Releases `android-test-3` · 2026-11-15: all 174 test-period jobs deleted on owner's request ; duplicate "Villa# 06 - Zayan" + TEST clients (TEST Villa, Test 2- NH bldg, ABC Test 1) deleted with their contracts (backups in ../Safaeewala-backups)
 
 ---
 
