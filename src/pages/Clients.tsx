@@ -1098,10 +1098,10 @@ export function Clients() {
       {shownTab === 'biweekly' && (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5">
           <KpiCard label="Bi-Weekly Clients" value={biweekly.count} sub="Clients on a Bi-Weekly plan" icon={Repeat} labelColor="text-teal-700" iconSolid="bg-[#0d9488] shadow-teal-500/25" />
-          <KpiCard label="Contracts On" value={biweekly.active} sub="Visits are being planned" icon={CheckCircle2} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" chip={biweekly.off ? `${biweekly.off} off` : 'All on'} chipTone={biweekly.off ? 'plain' : 'up'} chipTop />
+          <KpiCard label="Contracts On" value={biweekly.active} sub={`Visits being planned · ${biweekly.off} off`} icon={CheckCircle2} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" />
           <KpiCard label="Visits This Week" value={biweekly.week} sub="Job sheet rows, Mon–Sun" icon={CalendarDays} labelColor="text-sky-700" iconSolid="bg-[#0284c7] shadow-sky-500/25" />
           <KpiCard label="Visits This Month" value={biweekly.month} sub={`AED ${Math.round(biweekly.monthCharges).toLocaleString()} charges`} icon={CalendarCheck} labelColor="text-indigo-700" iconSolid="bg-[#4f46e5] shadow-indigo-500/25" />
-          <KpiCard label="Pending Dues" value={`AED ${Math.round(biweekly.pending).toLocaleString()}`} sub={`${biweekly.owing} client${biweekly.owing === 1 ? '' : 's'} owing`} icon={Wallet} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25" chip={biweekly.owing ? 'To follow up' : 'All clear'} chipTone={biweekly.owing ? 'warn' : 'up'} chipTop />
+          <KpiCard label="Pending Dues" value={`AED ${Math.round(biweekly.pending).toLocaleString()}`} sub={`${biweekly.owing} client${biweekly.owing === 1 ? '' : 's'} owing`} icon={Wallet} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25" />
         </div>
       )}
 

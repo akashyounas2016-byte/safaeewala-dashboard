@@ -43,7 +43,7 @@ function botIcon(p: LivePerson): L.DivIcon {
   const c = ROLE_COLOR[p.role]
   const pulse = p.state === 'live' ? `<span style="position:absolute;left:50%;top:15px;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:9999px;border:2px solid ${STATE_RING.live};opacity:.55;animation:saf-ping 1.8s ease-out infinite"></span>` : ''
   const html = `
-    <div style="position:relative;width:170px;height:66px;display:flex;flex-direction:column;align-items:center">
+    <div style="position:relative;width:170px;height:66px;display:flex;flex-direction:column;align-items:center;transform:scale(var(--saf-pin-scale,1));transform-origin:85px 44px;transition:transform .15s">
       ${pulse}
       <svg width="34" height="44" viewBox="0 0 34 44" style="filter:drop-shadow(0 3px 4px rgba(15,23,42,.35))">
         <path d="M17 1.5C8.4 1.5 1.5 8.3 1.5 16.8 1.5 28 17 42.5 17 42.5S32.5 28 32.5 16.8C32.5 8.3 25.6 1.5 17 1.5z" fill="${c}" stroke="#fff" stroke-width="2"/>
@@ -106,7 +106,17 @@ export default function LiveOpsMap({ people, height = 560, now, focusId, onFocus
   useEffect(() => {
     if (!boxRef.current || mapRef.current) return
     // R-OPS-20: draw markers on one canvas and keep tiles around the view, so the map comes up and pans faster
-    const map = L.map(boxRef.current, { zoomControl: true, scrollWheelZoom: true, attributionControl: true, preferCanvas: true, fadeAnimation: false }).setView([25.2048, 55.2708], 11)
+    // R-OPS-25: the map stays on the UAE — it cannot be dragged or zoomed out past it
+    const UAE = L.latLngBounds([22.4, 51.0], [26.4, 56.8])
+    const map = L.map(boxRef.current, { zoomControl: true, scrollWheelZoom: true, attributionControl: true, preferCanvas: true, fadeAnimation: false, maxBounds: UAE.pad(0.05), maxBoundsViscosity: 1, minZoom: 7 }).setView([25.2048, 55.2708], 11)
+    // R-OPS-25: pins and names smaller when zoomed out, full size when zoomed in
+    const scalePins = () => {
+      const z = map.getZoom()
+      const k = z >= 14 ? 1 : z >= 12 ? 0.85 : z >= 10 ? 0.72 : 0.6
+      boxRef.current?.style.setProperty('--saf-pin-scale', String(k))
+    }
+    scalePins()
+    map.on('zoomend', scalePins)
     // R-OPS-16: colourful base map by default; Streets and Satellite to switch (no API keys)
     // OpenStreetMap Humanitarian style: bright colours, no key (CARTO's tiles now ask for a key)
     const colorful = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', { maxZoom: 19, subdomains: 'abc', keepBuffer: 4, updateWhenZooming: false, attribution: '© OpenStreetMap contributors, Humanitarian style by OpenStreetMap France' })
@@ -195,7 +205,7 @@ export default function LiveOpsMap({ people, height = 560, now, focusId, onFocus
       const names = list.map(p => `<span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:${ROLE_COLOR[p.role]};margin-right:5px"></span>${esc(p.name)}`).join('<br>')
       L.marker([lat, lng], {
         icon: L.divIcon({ className: 'saf-bot', iconSize: [38, 38], iconAnchor: [19, 19], html: `
-          <div style="position:relative;width:38px;height:38px;border-radius:9999px;background:#fff;border:3px solid #0F1F19;box-shadow:0 3px 8px rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center">
+          <div style="transform:scale(var(--saf-pin-scale,1));position:relative;width:38px;height:38px;border-radius:9999px;background:#fff;border:3px solid #0F1F19;box-shadow:0 3px 8px rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0F1F19" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c0-3 2.5-5.2 5.5-5.2s5.5 2.2 5.5 5.2"/><circle cx="16.5" cy="9" r="2.6"/><path d="M15.5 13.9c2.8.1 5 2.1 5 4.9"/></svg>
             <span style="position:absolute;right:-7px;top:-7px;min-width:19px;height:19px;padding:0 4px;border-radius:9999px;background:#059669;color:#fff;border:2px solid #fff;font:800 10.5px/15px system-ui;text-align:center">${list.length}</span>
           </div>` }),

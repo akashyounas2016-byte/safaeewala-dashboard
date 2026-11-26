@@ -6,6 +6,10 @@
 
 ## Unreleased (in `main`, not yet confirmed deployed)
 
+- change(live-map): lighter header, UAE-only bounds, pins scale with the zoom (R-OPS-25); change(overview): data widgets start folded (R-OPS-26)
+- change(clients): no tags on Monthly / Bi-Weekly cards (R-CLI-18); change(expenses): five cards (R-FIN-24)
+- feat(invoices): one standard Generate Invoice pop-up with Discount + VAT Tax Status, also for Invoices → New Invoice (R-FIN-25); columns Duty Hours / Price per Hour / Charges (R-FIN-26); Monthly Invoices cards first, 10 entries + View all (R-FIN-27)
+
 - change(clients): Clients / Monthly / Bi-Weekly cards in the Daily Job Sheet design with tags at the top; Bi-Weekly 5 cards; no tagline on the Monthly tab (R-CLI-17)
 
 - feat(app): offline job steps, photo at Start / End + client signature (SQL A46), soft place check at Start with an office alert, "No location" alert, driver manifest with Dropped / Picked and "Tell I'm late" (R-APP-04)

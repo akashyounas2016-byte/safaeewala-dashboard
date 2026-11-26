@@ -18,7 +18,7 @@ eq(/useState<'grid' \| 'table' \| 'wide'>/.test(mc) && /setViewMode\('wide'\)/.t
 eq(/xl:grid-cols-3 2xl:grid-cols-4/.test(mc) && /wide \? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-start' : 'space-y-5'/.test(mc), true, 'wide view: 3–4 cards a row, widgets at the bottom')
 
 const ex = src('src/pages/Expenses.tsx')
-eq((ex.match(/<KpiCard /g) || []).length, 6, 'Expenses: six Daily Job Sheet style cards')
+eq((ex.match(/<KpiCard /g) || []).length, 5, 'Expenses: five Daily Job Sheet style cards (Top Category removed, R-FIN-24)')
 eq(/<Widget title="Profit & Loss"/.test(ex) && !/>Expense Ratio</.test(ex), true, 'Expense Ratio card moved into a Profit & Loss widget')
 eq(/Number\(b\.received_amount\) \|\| 0\), 0\) \/\/ R-FIN-07/.test(ex), true, 'collections count received on bookings, like Payments')
 

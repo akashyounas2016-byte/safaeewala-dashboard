@@ -118,6 +118,13 @@
 - Date menu mein **Last 7 Days** aur **Last 30 Days** bhi hain. Ek se zyada din khule hon to Start time se pehle **Date** ka column khud aa jata hai; Today / Yesterday par nahi hota.
 - Daily Job Sheet par **Staff on Duty** ab team ke har cleaner ko ginta hai (pehle team wali row ek banda ginti thi — 1 Oct par 25 dikhata tha, asal 27).
 
+### Invoices, Overview, Expenses (26 Nov, raat 2)
+- **New Invoice** (Invoices screen): pehle client chunein (Pending / No dues dikhta hai) — phir wahi **Generate Invoice** popup jo Monthly Clients mein hai. Is mein ab **VAT / Tax Status** (Standard 5% · Exempt · Custom %) aur **Discount** (% ya AED) bhi hai.
+- Invoice mein columns: **Duty Hours · Price per Hour · Charges**.
+- Monthly Invoices: cards sab se upar; neeche mahina / Card · Table · Compact. Pehle 10 statements — **View all** se sab.
+- Overview: Reports, Live Activity, Crew / Coverage, Revenue / Health aur Dispatch shuru mein band — **Show** dabayein. Live Map ka header halka; map sirf UAE tak; zoom out par pins chhote.
+- Monthly / Bi-Weekly cards par tags nahi. Expenses par 5 cards (Top Category hata diya).
+
 ### Clients cards (26 Nov, raat)
 - Clients, Monthly aur Bi-Weekly ke cards ab Daily Job Sheet jaise; chhota tag (jaise "99 active", "To follow up") ab upar title ke neeche. Bi-Weekly mein 5 cards (Contracts Off ki ginti "Contracts On" ke tag mein). Monthly tab par upar wali line hata di.
 

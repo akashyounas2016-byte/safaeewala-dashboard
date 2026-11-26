@@ -10,7 +10,7 @@ eq(/chip && chipTop &&/.test(kc) && /chip && !chipTop &&/.test(kc), true, 'a car
 const cl = src('src/pages/Clients.tsx')
 eq(/chip=\{card\.delta\} chipTone=\{card\.deltaUp \? 'up' : 'down'\} chipTop/.test(cl), true, 'Clients cards: the shared design, tag at the top')
 eq(!/label="Contracts Off"/.test(cl) && /xl:grid-cols-5 gap-3\.5">\s*<KpiCard label="Bi-Weekly Clients"/.test(cl), true, 'Bi-Weekly: five cards (Contracts Off removed)')
-eq(/label="Pending Dues"[^\n]*'To follow up'[^\n]*chipTop/.test(cl), true, 'To follow up sits with Pending Dues')
+eq(/label="Pending Dues"[^\n]*'To follow up'/.test(cl), false, 'Pending Dues without a tag (R-CLI-18 removed To follow up)')
 const mc = src('src/pages/MonthlyClients.tsx')
 eq(/\{embedded \? null : \(/.test(mc) && !/Monthly Clients<\/span> · Billed AED/.test(mc), true, 'Monthly tab: no tagline between the tabs and the cards')
 eq((mc.match(/<KpiCard label="/g) || []).length, 6, 'Monthly: six cards in the same design')

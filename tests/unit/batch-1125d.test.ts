@@ -36,5 +36,5 @@ eq(/aria-label="Edit invoice"/.test(inv) && /Paid invoices cannot be edited/.tes
 eq(/initial\?: Invoice; onSave\?: \(patch: InvoicePatch\) => void/.test(inv) && /'Save Changes' : 'Send Invoice'/.test(inv), true, 'Edit uses the same form, filled in')
 eq(/the total cannot be less/.test(inv), true, 'total not below what is already paid')
 eq(/Pending AED \{Math\.round\(due\)/.test(inv) && !/\{c\.area\}\n\s*<\/span>/.test(inv) && /w-\[min\(680px/.test(inv), true, 'client list: wider, pending status, no area chip')
-eq(/title="New Invoice" size="xl"/.test(inv) && /cursor-pointer whitespace-nowrap \$\{/.test(inv), true, 'wider pop-up, VAT options on one row')
+eq(/title="New Invoice — choose the client"/.test(inv) && /cursor-pointer whitespace-nowrap \$\{/.test(inv) && /whitespace-nowrap cursor-pointer \$\{invoiceTaxMode === k/.test(src('src/pages/MonthlyClients.tsx')), true, 'New Invoice = the standard pop-up (R-FIN-25); VAT options on one row')
 eq(/Add line/.test(inv), true, 'several line items')

@@ -7,6 +7,7 @@ import {
   FileText, CalendarCheck, ArrowLeft,
 } from 'lucide-react'
 import { PageHero } from '@/components/layout/PageHero'
+import { KpiCard } from '@/components/ui/KpiCard'
 import { Input, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
@@ -120,6 +121,7 @@ export function MonthlyInvoices() {
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [viewMode, setViewMode]           = useState<ViewMode>('card')
   const [editVisit, setEditVisit]         = useState<(Visit & { clientName: string }) | null>(null)
+  const [showAllInv, setShowAllInv]       = useState(false) // R-FIN-27: 10 entries, then View all
 
   const monthKey   = `${selectedMonth.getFullYear()}-${String(selectedMonth.getMonth() + 1).padStart(2, '0')}`
   const monthLabel = selectedMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -169,6 +171,7 @@ export function MonthlyInvoices() {
       }
     }).sort((a, b) => a.clientName.localeCompare(b.clientName))
   }, [dailyJobs, clients, monthKey])
+  const visibleStatements = showAllInv ? statements : statements.slice(0, 10)
 
   const totalRevenue = statements.reduce((s, c) => s + c.grandTotal, 0)
   const totalHours   = statements.reduce((s, c) => s + c.totalHours, 0)
@@ -270,7 +273,15 @@ export function MonthlyInvoices() {
         </div>
       </div>
 
-      {/* Month Selector + View Toggle */}
+      {/* KPI Row — R-FIN-27: the cards first, in the Daily Job Sheet design */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <KpiCard label="Total Revenue" value={`AED ${totalRevenue.toFixed(0)}`} sub={monthLabel} icon={DollarSign} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" />
+        <KpiCard label="Total Clients" value={statements.length} sub="Monthly statements" icon={Users} labelColor="text-blue-700" iconSolid="bg-[#2563eb] shadow-blue-500/25" />
+        <KpiCard label="Total Hours" value={`${totalHours}h`} sub="Duty hours billed" icon={Clock} labelColor="text-violet-700" iconSolid="bg-[#7c3aed] shadow-violet-500/25" />
+        <KpiCard label="VAT Billed (5%)" value={`AED ${totalVAT.toFixed(0)}`} sub="On the statements" icon={TrendingUp} labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25" />
+      </div>
+
+      {/* Month Selector + View Toggle — R-FIN-27: under the cards */}
       <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-4 flex items-center justify-between gap-4">
         <button onClick={prevMonth} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
           <ChevronLeft size={20} className="text-slate-600" />
@@ -301,24 +312,6 @@ export function MonthlyInvoices() {
         </div>
       </div>
 
-      {/* KPI Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Revenue', value: `AED ${totalRevenue.toFixed(0)}`, icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'Total Clients', value: statements.length,                icon: Users,      color: 'text-blue-600',    bg: 'bg-blue-50'   },
-          { label: 'Total Hours',   value: `${totalHours}h`,                 icon: Clock,      color: 'text-violet-600',  bg: 'bg-violet-50' },
-          { label: 'VAT Billed (5%)', value: `AED ${totalVAT.toFixed(0)}`,     icon: TrendingUp, color: 'text-amber-600',   bg: 'bg-amber-50'  },
-        ].map(card => (
-          <div key={card.label} className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
-            <div className={`w-10 h-10 rounded-xl ${card.bg} flex items-center justify-center mb-3`}>
-              <card.icon size={18} className={card.color} />
-            </div>
-            <p className="text-2xl font-bold text-[#111827]">{card.value}</p>
-            <p className="text-[12px] text-slate-500 mt-1">{card.label}</p>
-          </div>
-        ))}
-      </div>
-
       {/* Summary Table (always shown) */}
       {statements.length > 0 && (
         <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
@@ -338,7 +331,7 @@ export function MonthlyInvoices() {
                 </tr>
               </thead>
               <tbody>
-                {statements.map((s, i) => (
+                {visibleStatements.map((s, i) => (
                   <tr key={s.clientName} className="border-b border-[#E4E8EC] hover:bg-[#f8fafc]">
                     <td className="px-4 py-3 text-[12px] text-slate-400 font-medium">{i + 1}</td>
                     <td className="px-4 py-3">
@@ -368,7 +361,7 @@ export function MonthlyInvoices() {
         <div className="space-y-5">
           {statements.length === 0 ? (
             <EmptyState month={monthLabel} />
-          ) : statements.map((s, idx) => (
+          ) : visibleStatements.map((s, idx) => (
             <div key={s.clientName} className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
               {/* Header */}
               <div className="px-6 py-4 flex items-start justify-between gap-4 border-b border-[#E4E8EC]"
@@ -496,7 +489,7 @@ export function MonthlyInvoices() {
       {/* View: COMPACT */}
       {viewMode === 'compact' && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {statements.length === 0 ? <EmptyState month={monthLabel} /> : statements.map((s, idx) => (
+          {statements.length === 0 ? <EmptyState month={monthLabel} /> : visibleStatements.map((s, idx) => (
             <div key={s.clientName} className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
               <div className="flex items-start gap-3 mb-4">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-[13px] shrink-0"
@@ -540,6 +533,15 @@ export function MonthlyInvoices() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* R-FIN-27: View all / Show less */}
+      {statements.length > 10 && (
+        <div className="flex justify-center">
+          <button type="button" onClick={() => setShowAllInv(v => !v)} className="h-9 px-4 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-[12.5px] font-bold hover:bg-emerald-100 cursor-pointer">
+            {showAllInv ? 'Show the first 10' : `View all ${statements.length} statements`}
+          </button>
         </div>
       )}
 

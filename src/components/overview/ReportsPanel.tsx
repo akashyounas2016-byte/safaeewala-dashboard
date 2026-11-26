@@ -16,7 +16,7 @@ export function ReportsPanel() {
   const [period, setPeriod] = useState<ReportPeriod>('today')
   const today = todayDubai()
   const [extra, setExtra] = useState<{ leads?: number; clicks?: number }>({})
-  const [folded, toggleFold] = useFolded('reports') // R-OPS-17
+  const [folded, toggleFold] = useFolded('reports', true) // R-OPS-17; R-OPS-26: starts folded
 
   useEffect(() => {
     let alive = true

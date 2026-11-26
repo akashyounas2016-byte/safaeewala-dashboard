@@ -15,7 +15,7 @@ import { usePeriodLeadCounts } from '@/components/overview/usePeriodLeadCounts'
 import { overviewRange, jobProgressByTime, crewMembers, dispatchedNames, onJobs, repeatClientRate, dubaiMinutes } from '@/lib/overviewStats'
 import { currentJobOf } from '@/lib/liveOps'
 import { ReportsPanel } from '@/components/overview/ReportsPanel'
-import { useFolded, FoldButton } from '@/components/overview/Foldable'
+import { useFolded, FoldButton, FoldSection } from '@/components/overview/Foldable'
 import { CardsCustomizer, useCardPrefs } from '@/components/overview/CardsCustomizer'
 import { EditJobModal } from '@/components/dailyJobSheet/EditJobModal'
 import { CLOSED_DAYS_KEY, type ClosedDay } from '@/lib/closedDays'
@@ -177,7 +177,7 @@ function CrewCard({ c }: { c: CrewMotion }) {
   )
 }
 function LiveActivityPanel({ events, crew, onOpen }: { events: { icon: string; title: string; sub: string; bg: string; route: string }[]; crew: CrewMotion[]; onOpen: (route: string) => void }) {
-  const [folded, toggle] = useFolded('liveActivity')
+  const [folded, toggle] = useFolded('liveActivity', true) // R-OPS-26: starts folded
   const [showAll, setShowAll] = useState(false)
   const n = (st: CrewMotion['state']) => crew.filter(c => c.state === st).length
   const shownCrew = showAll ? crew : crew.slice(0, 8)
@@ -904,8 +904,10 @@ export function Overview() {
       <section className="mb-6"><LiveActivityPanel events={displayEvents} crew={datePreset === 'today' ? crew : []} onOpen={route => navigate(route)} /></section>
       <section className="mb-6"><ReportsPanel /></section>
 
+      {/* R-OPS-26: the data widgets start folded — one line each, Show to open (kept per computer) */}
+      <FoldSection id="crewCoverage" title="Crew Availability · Today's Coverage" note="Cleaners now and the areas covered">
       {/* ── R-OPS-17: Crew Availability and Today's Coverage, half and half ── */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6 items-stretch">
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
         {/* Crew Availability */}
         <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] p-5">
           <div className="flex items-center justify-between mb-5">
@@ -998,8 +1000,10 @@ export function Overview() {
         </div>
       </section>
 
+      </FoldSection>
+      <FoldSection id="revenueHealth" title="Revenue vs Target · Business Health" note="Monthly revenue and the health of the period">
       {/* ── R-OPS-17: Revenue vs Target (70 %) and Business Health (30 %). R-OPS-16: Service Mix removed ── */}
-      <section className="grid grid-cols-1 lg:grid-cols-10 gap-5 mb-6 items-stretch">
+      <section className="grid grid-cols-1 lg:grid-cols-10 gap-5 items-stretch">
         <div className="lg:col-span-7 min-w-0">
           <RevenueChart
             bookings={bookings}
@@ -1052,6 +1056,8 @@ export function Overview() {
 
       </section>
 
+      </FoldSection>
+      <FoldSection id="dispatch" title={datePreset === 'today' ? "Today's Dispatch & Shifts" : 'Operational Jobs & Dispatch'} note={`${displayDispatchBookings.length} jobs · ${periodLive.length} live`}>
       {/* ── Dispatch & Bookings Table ── */}
       <section className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
         <div className="p-5 border-b border-[#E4E8EC] flex items-center justify-between gap-4 flex-wrap">
@@ -1207,6 +1213,7 @@ export function Overview() {
           </div>
         </div>
       </section>
+      </FoldSection>
 
       {/* R-OPS-18: same Edit Job pop-up as the Daily Job Sheet; OT is worked out again from the times (R-OT-01) */}
       <EditJobModal

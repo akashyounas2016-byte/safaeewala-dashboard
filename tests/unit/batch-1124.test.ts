@@ -36,7 +36,7 @@ eq(/Ops Alert Cards/.test(ov), false, 'the bottom alert cards are gone')
 eq(/<section className="mb-6"><ReportsPanel \/><\/section>/.test(ov) && /<section className="mb-6"><LiveActivityPanel/.test(ov) && /<section className="mb-6"><LiveOpsPanel \/><\/section>/.test(ov), true, 'Reports, Live Activity, Live Map each full width')
 const panels = src('src/components/overview/ReportsPanel.tsx') + src('src/components/overview/LiveOpsPanel.tsx') + ov
 eq((panels.match(/useFolded\('/g) || []).length, 3, 'all three widgets can be hidden')
-eq(/lg:grid-cols-2 gap-5 mb-6 items-stretch/.test(ov) && /lg:grid-cols-10/.test(ov) && /lg:col-span-7/.test(ov) && /lg:col-span-3/.test(ov), true, 'Crew | Coverage 50/50, Revenue | Business Health 70/30')
+eq(/lg:grid-cols-2 gap-5 (mb-6 )?items-stretch/.test(ov) && /lg:grid-cols-10/.test(ov) && /lg:col-span-7/.test(ov) && /lg:col-span-3/.test(ov), true, 'Crew | Coverage 50/50, Revenue | Business Health 70/30')
 eq(/'\/daily-jobs'|payment-processing/.test(ov), false, 'no links to pages that do not exist')
 
 // R-OPS-18

@@ -33,4 +33,4 @@ eq(/6\. Material/.test(shell) && /7\. Charges \/ Hr/.test(shell), true, 'weekly 
 const bi = readFileSync('src/components/clients/BiWeeklyScheduleCard.tsx', 'utf8')
 eq(/Total Charges/.test(bi), true, 'bi-weekly schedule has Total Charges')
 const mc = readFileSync('src/pages/MonthlyClients.tsx', 'utf8')
-eq(/Charges\/hr\./.test(mc) && /Leave this job out of the invoice/.test(mc), true, 'invoice preview: Sr#/Date/Day/Hours/Charges/hr/Amount with actions (R-FIN-13)')
+eq(/Price per Hour/.test(mc) && /Leave this job out of the invoice/.test(mc), true, 'invoice preview: Sr#/Date/Day/Duty Hours/Price per Hour/Charges with actions (R-FIN-13, names R-FIN-26)')

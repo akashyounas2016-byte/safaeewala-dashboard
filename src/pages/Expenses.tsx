@@ -497,16 +497,14 @@ export function Expenses() {
         showSearch={false}
       />
 
-      {/* ── UX-111: KPI cards in the Daily Job Sheet style, equal height (the tall Expense Ratio card became the Profit & Loss widget) ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
+      {/* ── UX-111: KPI cards in the Daily Job Sheet style, equal height. R-FIN-24: Top Category removed — five cards ── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5">
         <KpiCard label="Total Expenses" value={`AED ${totalExpenses.toLocaleString()}`} sub={`${filteredExpenses.length} records · ${activeRange.label}`} icon={TrendingDown}
           labelColor="text-slate-700" iconSolid="bg-[#475569] shadow-slate-500/25" chip="Job sheet + office" title="All expenses in the period (Daily Job Sheet + office)" />
         <KpiCard label="Job Sheet Ops" value={`AED ${jobSheetExpensesTotal.toLocaleString()}`} sub="Fuel, parking & drivers" icon={Truck}
           labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25" chip={totalExpenses > 0 ? `${Math.round((jobSheetExpensesTotal / totalExpenses) * 100)}% of spend` : '0% of spend'} chipTone="warn" title="Expenses recorded on the Daily Job Sheet" />
         <KpiCard label="Office & Admin" value={`AED ${officeExpensesTotal.toLocaleString()}`} sub="Facilities, tools & supplies" icon={Building2}
           labelColor="text-purple-700" iconSolid="bg-[#7c3aed] shadow-purple-500/25" chip={totalExpenses > 0 ? `${Math.round((officeExpensesTotal / totalExpenses) * 100)}% of spend` : '0% of spend'} title="Expenses entered directly (office / admin)" />
-        <KpiCard label="Top Category" value={topCategory?.category || 'None'} sub={topCategory ? `AED ${topCategory.amount.toLocaleString()}` : 'No data'} icon={PieChart}
-          labelColor="text-blue-700" iconSolid="bg-[#2563eb] shadow-blue-500/25" chip={topCategory && totalExpenses > 0 ? `${Math.round((topCategory.amount / totalExpenses) * 100)}% of spend` : '—'} title="Category with the highest spend in the period" />
         <KpiCard label="Daily Average" value={`AED ${avgDailyExpense.toLocaleString()}`} sub={`Across ${activeExpenseDays} active days`} icon={Calendar}
           labelColor="text-teal-700" iconSolid="bg-[#0d9488] shadow-teal-500/25" chip="Per active day" title="Total expenses ÷ days that have expenses" />
         <KpiCard label="Net Profit" value={periodDays ? `AED ${Math.round(netAfterPayroll).toLocaleString()}` : `AED ${profit.toLocaleString()}`}

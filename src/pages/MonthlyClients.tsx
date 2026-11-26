@@ -173,7 +173,9 @@ export interface MonthlyClientPayment {
 export const MONTHLY_RECORD_PAYMENT_EVENT = 'safaeewala:monthly-record-payment'
 
 /** UX-168: `embedded` — shown as the Monthly tab of Clients: no header of its own, its buttons in a row */
-export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}) {
+/** R-FIN-25: open only the Generate Invoice pop-up for this client (Invoices → New Invoice) */
+export interface InvoiceOnlyClient { id?: string; name: string; address?: string; area?: string }
+export function MonthlyClients({ embedded = false, invoiceOnly }: { embedded?: boolean; invoiceOnly?: { client: InvoiceOnlyClient; onClose: () => void } } = {}) {
   const { clients, dailyJobs, employees, addClient, updateClient, addBooking, addInvoice, invoices, trimVisitsToContract } = useData()
   const [editClient, setEditClient] = useState<Client | null>(null) // UX-173
   const navigate = useNavigate()
@@ -701,6 +703,11 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
   const [invoiceIssueDate, setInvoiceIssueDate] = useState<string>('')
   const [invoiceDueDate, setInvoiceDueDate] = useState<string>('')
   const [invoiceIncludeVat, setInvoiceIncludeVat] = useState<boolean>(true)
+  // R-FIN-25: Discount and VAT Tax Status on the standard invoice (Standard 5 % / Exempt 0 % / Custom %)
+  const [invoiceTaxMode, setInvoiceTaxMode] = useState<'standard' | 'exempt' | 'custom'>('standard')
+  const [invoiceCustomTax, setInvoiceCustomTax] = useState<number | ''>(5)
+  const [invoiceDiscountType, setInvoiceDiscountType] = useState<'percentage' | 'flat'>('percentage')
+  const [invoiceDiscountValue, setInvoiceDiscountValue] = useState<number | ''>('')
   // R-FIN-13: per-line management of the invoice preview — left out, hours / rate changed for this invoice, details shown
   const [invoiceExcluded, setInvoiceExcluded] = useState<Set<string>>(new Set())
   const [invoiceIncludeAdHoc, setInvoiceIncludeAdHoc] = useState(false) // R-BK-06
@@ -746,6 +753,18 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
     }
   }
 
+  // R-FIN-25: invoice-only mode opens the pop-up for the given client (a Monthly client's own summary when it is one)
+  useEffect(() => {
+    if (!invoiceOnly) return
+    const n = invoiceOnly.client.name.trim().toLowerCase()
+    const known = monthlySummaries.find(m => m.name.trim().toLowerCase() === n || (invoiceOnly.client.id && m.matchedClientId === invoiceOnly.client.id))
+    handleOpenCreateInvoice(known || {
+      id: invoiceOnly.client.id || `inv-${n}`, name: invoiceOnly.client.name, rawAddress: invoiceOnly.client.address || '', area: invoiceOnly.client.area || '',
+      totalCharges: 0, totalReceived: 0, balanceDue: 0, totalOTHours: 0, totalDutyHours: 0, visitsCount: 0, cleaners: [], lastService: '', services: [], jobs: [],
+      isRegisteredClient: !!invoiceOnly.client.id, matchedClientId: invoiceOnly.client.id,
+    } as MonthlyClientSummary)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleOpenCreateInvoice = (c: MonthlyClientSummary) => {
     setInvoiceClient(c)
     const now = new Date()
@@ -784,6 +803,7 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
 
     setInvoiceType('detailed')
     setInvoiceIncludeVat(true)
+    setInvoiceTaxMode('standard'); setInvoiceCustomTax(5); setInvoiceDiscountType('percentage'); setInvoiceDiscountValue('') // R-FIN-25
     setInvoiceSuccessMsg(null)
     setInvoiceExcluded(new Set()) // R-FIN-13
     setInvoiceOverrides({})
@@ -798,6 +818,9 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
         totalHours: 0,
         totalOT: 0,
         subtotal: 0,
+        gross: 0,
+        discountAmount: 0,
+        vatRate: 0,
         vatAmount: 0,
         grandTotal: 0,
         lineItems: [] as InvoiceLineItem[],
@@ -898,14 +921,24 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
       }
     }
 
-    const vatAmount = invoiceIncludeVat ? Math.round(subtotal * 0.05 * 100) / 100 : 0
-    const grandTotal = Math.round((subtotal + vatAmount) * 100) / 100
+    // R-FIN-25: discount on the lines, then VAT on what is left
+    const gross = subtotal
+    const dv = Number(invoiceDiscountValue) || 0
+    const discountAmount = dv <= 0 || gross <= 0 ? 0
+      : invoiceDiscountType === 'percentage' ? Math.round(gross * Math.min(100, dv) / 100 * 100) / 100 : Math.min(gross, dv)
+    const net = Math.round((gross - discountAmount) * 100) / 100
+    const vatRate = invoiceTaxMode === 'exempt' ? 0 : invoiceTaxMode === 'standard' ? 5 : Math.max(0, Math.min(100, Number(invoiceCustomTax) || 0))
+    const vatAmount = Math.round(net * vatRate / 100 * 100) / 100
+    const grandTotal = Math.round((net + vatAmount) * 100) / 100
 
     return {
       shifts: filteredShifts,
       totalHours,
       totalOT,
-      subtotal,
+      subtotal: net,
+      gross,
+      discountAmount,
+      vatRate,
       vatAmount,
       grandTotal,
       lineItems,
@@ -920,6 +953,10 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
     invoiceHourlyRate,
     invoiceCustomAmount,
     invoiceIncludeVat,
+    invoiceTaxMode,
+    invoiceCustomTax,
+    invoiceDiscountType,
+    invoiceDiscountValue,
     contractsByClientName,
     invoiceExcluded,
     invoiceOverrides,
@@ -934,7 +971,7 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
       return
     }
 
-    const { lineItems, subtotal, vatAmount, grandTotal, totalHours, shifts } = invoiceCalculations
+    const { lineItems, subtotal, vatAmount, grandTotal, totalHours, shifts, gross, discountAmount, vatRate } = invoiceCalculations
 
     // R-FIN-13: an itemized invoice prints Sr# · Date · Day · Hours · Charges/hr · Amount
     const dayOf = (desc: string) => /\(([^)]+)\)\s*$/.exec(desc)?.[1] || ''
@@ -1044,13 +1081,14 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
           <thead>
             <tr>
               <th style="width: 50px;">Sr#</th><th style="text-align:left;">Date</th><th style="text-align:left;">Day</th>
-              <th style="width: 70px;">Hours</th><th style="text-align:right; width: 110px;">Charges/hr.</th><th style="text-align:right; width: 120px;">Amount</th>
+              <th style="width: 80px;">Duty Hours</th><th style="text-align:right; width: 110px;">Price per Hour</th><th style="text-align:right; width: 120px;">Charges</th>
             </tr>
           </thead>
           <tbody>
             ${detailedRows}
+            ${discountAmount > 0 ? `<tr><td colspan="5" style="padding: 8px 10px;">Charges</td><td style="padding: 8px 10px; text-align:right;">${money(gross)}</td></tr><tr><td colspan="5" style="padding: 8px 10px; color:#dc2626;">Discount</td><td style="padding: 8px 10px; text-align:right; color:#dc2626;">-${money(discountAmount)}</td></tr>` : ''}
             <tr><td colspan="5" style="padding: 8px 10px; font-weight:700;">Subtotal</td><td style="padding: 8px 10px; text-align:right; font-weight:700;">${money(subtotal)}</td></tr>
-            <tr><td colspan="5" style="padding: 8px 10px;">VAT @ ${invoiceIncludeVat ? '5' : '0'}%</td><td style="padding: 8px 10px; text-align:right;">${money(vatAmount)}</td></tr>
+            <tr><td colspan="5" style="padding: 8px 10px;">VAT @ ${vatRate}%</td><td style="padding: 8px 10px; text-align:right;">${money(vatAmount)}</td></tr>
             <tr><td colspan="5" style="padding: 8px 10px; font-weight:900;">Total</td><td style="padding: 8px 10px; text-align:right; font-weight:900;">${money(grandTotal)}</td></tr>
           </tbody>
         </table>` : `
@@ -1058,9 +1096,9 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
           <thead>
             <tr>
               <th style="text-align: left;">Service Description &amp; Shift Breakdown</th>
-              <th style="text-align: center; width: 60px;">Qty/Hrs</th>
-              <th style="text-align: right; width: 110px;">Unit Rate</th>
-              <th style="text-align: right; width: 120px;">Amount</th>
+              <th style="text-align: center; width: 80px;">Duty Hours</th>
+              <th style="text-align: right; width: 110px;">Price per Hour</th>
+              <th style="text-align: right; width: 120px;">Charges</th>
             </tr>
           </thead>
           <tbody>
@@ -1070,8 +1108,9 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
 
         <div class="totals-section">
           <div class="totals-box">
+            ${discountAmount > 0 ? `<div class="total-row"><span>Charges</span><span>AED ${gross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div><div class="total-row" style="color:#dc2626"><span>Discount</span><span>- AED ${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>` : ''}
             <div class="total-row"><span>Subtotal</span><span>AED ${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div class="total-row"><span>UAE VAT (${invoiceIncludeVat ? '5%' : '0%'})</span><span>AED ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div class="total-row"><span>UAE VAT (${vatRate}%)</span><span>AED ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
             <div class="grand-total-row"><span>Total Due (AED)</span><span style="color: #0d9488;">AED ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
           </div>
         </div>
@@ -1100,7 +1139,7 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
 
   const handleSaveInvoiceToSystem = () => {
     if (!invoiceClient) return
-    const { lineItems, subtotal, vatAmount, grandTotal } = invoiceCalculations
+    const { lineItems, subtotal, vatAmount, grandTotal, discountAmount, vatRate } = invoiceCalculations
 
     const matchedRegistered = clients.find(
       x => x.id === invoiceClient.matchedClientId || x.full_name.toLowerCase() === invoiceClient.name.toLowerCase()
@@ -1115,7 +1154,10 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
       line_items: lineItems,
       subtotal,
       vat_amount: vatAmount,
-      vat_rate: invoiceIncludeVat ? 5 : 0,
+      vat_rate: vatRate,
+      apply_vat: vatRate > 0,
+      // R-FIN-25: the discount given on this invoice
+      ...(discountAmount > 0 ? { discount_type: invoiceDiscountType, discount_value: Number(invoiceDiscountValue) || 0, discount_amount: discountAmount } : {}),
       total: grandTotal,
       status: 'sent',
       due_date: invoiceDueDate,
@@ -1129,7 +1171,7 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
 
   const handleShareWhatsAppInvoice = () => {
     if (!invoiceClient) return
-    const { subtotal, vatAmount, grandTotal, totalHours, shifts } = invoiceCalculations
+    const { subtotal, vatAmount, grandTotal, totalHours, shifts, discountAmount, vatRate } = invoiceCalculations
     const matchedClient = clients.find(
       c => c.id === invoiceClient.matchedClientId || c.full_name.toLowerCase() === invoiceClient.name.toLowerCase()
     )
@@ -1145,7 +1187,8 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
       `*Visits Logged:* ${shifts.length} shifts (${totalHours} duty hours)`,
       ``,
       `Subtotal: AED ${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      `VAT (5%): AED ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      ...(discountAmount > 0 ? [`Discount: - AED ${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`] : []),
+      `VAT (${vatRate}%): AED ${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       `*Grand Total: AED ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}*`,
       `*Due Date:* ${invoiceDueDate}`,
       ``,
@@ -1454,6 +1497,496 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
     </div>
   )
 
+  // R-FIN-25: the standard Generate Invoice pop-up — also opened from Invoices → New Invoice (invoiceOnly)
+  const generateInvoiceModal = (
+    <>
+      {/* ═══════════════════════════════════════════════════════════════
+          GENERATE MONTHLY INVOICE MODAL (Simple & Detailed with Custom Date Range)
+         ═══════════════════════════════════════════════════════════════ */}
+      <Modal
+        open={showInvoiceModal}
+        onClose={() => { setShowInvoiceModal(false); invoiceOnly?.onClose() }}
+        title={invoiceClient ? `Generate Invoice — ${invoiceClient.name}` : 'Generate Invoice'}
+        size="xl"
+      >
+        {invoiceClient && (() => {
+          const { shifts, totalHours, totalOT, subtotal, vatAmount, grandTotal, lineItems } = invoiceCalculations
+          const matchedContract = contractsByClientName.get(invoiceClient.name.toLowerCase().trim())
+
+          return (
+            <div className="space-y-5 text-slate-800">
+              {/* Success Notification Alert */}
+              {invoiceSuccessMsg && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-2xl flex items-center justify-between shadow-xs animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                    <span className="text-[13px] font-bold">{invoiceSuccessMsg}</span>
+                  </div>
+                  <Link
+                    to="/invoices"
+                    className="text-[12px] font-bold text-emerald-700 hover:text-emerald-900 underline flex items-center gap-1"
+                  >
+                    Go to Invoices <ExternalLink size={12} />
+                  </Link>
+                </div>
+              )}
+
+              {/* Client & Invoice Mode Header Bar */}
+              <div className="bg-gradient-to-r from-teal-50 via-slate-50 to-white rounded-2xl p-4 border border-teal-100/80 flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <Avatar name={invoiceClient.name} size="md" idx={0} />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-[15.5px] font-extrabold text-[#111827]">{invoiceClient.name}</h4>
+                      <span className="text-[10px] font-bold bg-teal-100 text-teal-800 border border-teal-200 px-2 py-0.5 rounded-full uppercase">
+                        Monthly Client
+                      </span>
+                      {matchedContract && (
+                        <span className="text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-full">
+                          Contract: AED {matchedContract.amount}/{matchedContract.frequency === 'weekly' ? 'wk' : matchedContract.frequency === 'biweekly' ? '2wk' : 'mo'}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[12px] text-slate-500 mt-0.5 flex items-center gap-1">
+                      <MapPin size={11} className="text-slate-400" />
+                      <span>{invoiceClient.rawAddress || invoiceClient.area || 'Dubai'}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Simple vs Detailed Invoice Selector */}
+                <div className="flex items-center gap-1.5 p-1 bg-white border border-[#E4E8EC] rounded-xl shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceType('simple')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all cursor-pointer ${
+                      invoiceType === 'simple'
+                        ? 'bg-teal-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                    }`}
+                  >
+                    <FileText size={13} />
+                    <span>Simple Invoice</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceType('detailed')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all cursor-pointer ${
+                      invoiceType === 'detailed'
+                        ? 'bg-teal-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                    }`}
+                  >
+                    <FileSpreadsheet size={13} />
+                    <span>Detailed Invoice</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Date Range Selection & Quick Presets */}
+              <div className="bg-white rounded-2xl border border-[#E4E8EC] p-4 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <label className="text-[12px] font-bold text-slate-700 flex items-center gap-1.5">
+                    <Calendar size={14} className="text-teal-600" />
+                    <span>Custom Date Range for Invoice</span>
+                  </label>
+                  {/* Presets */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[
+                      { key: 'this_month', label: 'This Month' },
+                      { key: 'last_month', label: 'Last Month' },
+                      { key: '28days', label: 'Last 28 Days' },
+                      { key: 'custom', label: 'Custom Range' },
+                    ].map(p => (
+                      <button
+                        key={p.key}
+                        type="button"
+                        onClick={() => handleSetInvoicePreset(p.key as any)}
+                        className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
+                          invoicePreset === p.key
+                            ? 'bg-teal-50 text-teal-800 border-teal-300'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Start Date</label>
+                    <input
+                      type="date"
+                      value={invoiceStartDate}
+                      onChange={e => {
+                        setInvoiceStartDate(e.target.value)
+                        setInvoicePreset('custom')
+                      }}
+                      className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">End Date</label>
+                    <input
+                      type="date"
+                      value={invoiceEndDate}
+                      onChange={e => {
+                        setInvoiceEndDate(e.target.value)
+                        setInvoicePreset('custom')
+                      }}
+                      className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Issue Date</label>
+                    <input
+                      type="date"
+                      value={invoiceIssueDate}
+                      onChange={e => setInvoiceIssueDate(e.target.value)}
+                      className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Due Date</label>
+                    <input
+                      type="date"
+                      value={invoiceDueDate}
+                      onChange={e => setInvoiceDueDate(e.target.value)}
+                      className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium text-slate-800"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Pricing, Invoice #, and Tax Settings */}
+              <div className="bg-white rounded-2xl border border-[#E4E8EC] p-4 shadow-2xs space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Invoice Number</label>
+                    <input
+                      type="text"
+                      value={invoiceNumber}
+                      onChange={e => setInvoiceNumber(e.target.value)}
+                      className="w-full text-[12.5px] font-mono px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-bold text-teal-800"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Pricing Model</label>
+                    <select
+                      value={invoicePricingModel}
+                      onChange={e => setInvoicePricingModel(e.target.value as any)}
+                      className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 cursor-pointer font-medium text-slate-800"
+                    >
+                      <option value="shift_charges">Daily Sheet Recorded Charges</option>
+                      <option value="hourly_rate">Custom Hourly Rate (AED/hr)</option>
+                      {matchedContract && <option value="contract">Contract Rate (AED {matchedContract.amount})</option>}
+                      <option value="custom_total">Fixed / Custom Lump Sum Amount</option>
+                    </select>
+                  </div>
+
+                  {invoicePricingModel === 'hourly_rate' ? (
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Hourly Rate (AED)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="0.5"
+                        value={invoiceHourlyRate}
+                        onChange={e => setInvoiceHourlyRate(Number(e.target.value))}
+                        className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-bold text-slate-800"
+                      />
+                    </div>
+                  ) : invoicePricingModel === 'custom_total' ? (
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Custom Total (AED)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={invoiceCustomAmount}
+                        onChange={e => setInvoiceCustomAmount(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-bold text-slate-800"
+                      />
+                    </div>
+                  ) : <div />}
+                </div>
+
+                {/* R-FIN-25: VAT Tax Status and Discount — the same widgets as the Invoices form */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+                  <div className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11.5px] font-bold text-slate-700">VAT / Tax Status</span>
+                      <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{invoiceCalculations.vatRate}%</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5 p-1 bg-white rounded-lg border border-slate-200">
+                      {([['standard', 'Standard (5%)'], ['exempt', 'Exempt (0%)'], ['custom', 'Custom %']] as const).map(([k, l]) => (
+                        <button key={k} type="button" onClick={() => setInvoiceTaxMode(k)} aria-pressed={invoiceTaxMode === k}
+                          className={`py-1.5 px-2 text-[11px] font-bold rounded-md whitespace-nowrap cursor-pointer ${invoiceTaxMode === k ? 'bg-purple-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{l}</button>
+                      ))}
+                    </div>
+                    {invoiceTaxMode === 'custom' && (
+                      <input type="number" min="0" max="100" step="0.5" value={invoiceCustomTax} aria-label="Custom tax %"
+                        onChange={e => setInvoiceCustomTax(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full text-[12.5px] px-3 py-1.5 bg-white border border-purple-300 rounded-lg font-bold text-purple-900" placeholder="Tax %" />
+                    )}
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3 border border-[#E4E8EC] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11.5px] font-bold text-slate-700">Discount (optional)</span>
+                      {invoiceCalculations.discountAmount > 0 && <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-600">- AED {invoiceCalculations.discountAmount.toLocaleString()}</span>}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="grid grid-cols-2 gap-1 p-1 bg-white rounded-lg border border-slate-200 shrink-0">
+                        {([['percentage', '%'], ['flat', 'AED']] as const).map(([k, l]) => (
+                          <button key={k} type="button" onClick={() => setInvoiceDiscountType(k)} aria-pressed={invoiceDiscountType === k}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-md cursor-pointer ${invoiceDiscountType === k ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>{l}</button>
+                        ))}
+                      </div>
+                      <input type="number" min="0" step="0.5" value={invoiceDiscountValue} aria-label="Discount"
+                        onChange={e => setInvoiceDiscountValue(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="flex-1 min-w-0 text-[12.5px] px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-bold" placeholder={invoiceDiscountType === 'percentage' ? 'e.g. 10' : 'e.g. 50'} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Shifts & Preview Summary Bar */}
+              <div className="flex items-center justify-between px-3 py-2 bg-slate-100/80 rounded-xl text-[12px] text-slate-600">
+                <span className="font-semibold">
+                  Found <strong className="text-teal-700 font-bold">{shifts.length} shifts</strong> between {formatDisplayDate(invoiceStartDate) || invoiceStartDate} and {formatDisplayDate(invoiceEndDate) || invoiceEndDate}
+                </span>
+                <span className="flex items-center gap-2 text-[11px]">
+                  <span>Duty: <strong className="text-slate-800">{totalHours}h</strong></span>
+                  {totalOT > 0 && <span className="text-amber-700 font-bold">({totalOT}h OT)</span>}
+                  <span className="bg-teal-100 text-teal-800 font-bold px-2 py-0.5 rounded-full capitalize">{invoiceType} Format</span>
+                </span>
+              </div>
+
+              {/* Live Invoice Preview Line Items Table */}
+              <div className="border border-[#E4E8EC] rounded-2xl overflow-hidden shadow-2xs">
+                <div className="bg-[#f8fafc] px-4 py-2.5 border-b border-[#E4E8EC] flex items-center justify-between">
+                  <h5 className="text-[12px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <FileText size={13} className="text-teal-600" />
+                    <span>Live Invoice Line Items Preview ({lineItems.length} {lineItems.length === 1 ? 'item' : 'items'})</span>
+                  </h5>
+                  <span className="text-[11px] text-slate-400 font-medium">What will appear on print / document</span>
+                </div>
+                <div className="max-h-72 overflow-y-auto">
+                  {invoiceType === 'detailed' && shifts.length > 0 ? (
+                    // R-FIN-13: Sr# · Date · Day · Hours · Charges/hr · Amount, with View / Edit / Delete per line
+                    <table className="w-full text-left border-collapse text-[12px]">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-[10.5px] font-bold text-slate-500 uppercase">
+                        <tr>
+                          <th className="py-2 px-3 text-center">Sr#</th>
+                          <th className="py-2 px-3">Date</th>
+                          <th className="py-2 px-3">Day</th>
+                          <th className="py-2 px-3 text-center">Duty Hours</th>
+                          <th className="py-2 px-3 text-right">Price per Hour</th>
+                          <th className="py-2 px-3 text-right">Charges</th>
+                          <th className="py-2 px-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E4E8EC]">
+                        {shifts.map((job, idx) => {
+                          const item = lineItems[idx]
+                          const day = /\(([^)]+)\)\s*$/.exec(item?.description || '')?.[1] || ''
+                          const date = (item?.description || '').replace(/\s*\([^)]+\)\s*$/, '')
+                          const editing = invoiceEditRow?.id === job.id
+                          return (
+                            <tr key={job.id} className="hover:bg-slate-50/70">
+                              <td className="py-2 px-3 text-center text-slate-500 font-mono text-[11px]">{idx + 1}</td>
+                              <td className="py-2 px-3 font-semibold text-slate-800">{date}</td>
+                              <td className="py-2 px-3 text-slate-600">{day}</td>
+                              <td className="py-2 px-3 text-center">
+                                {editing ? <input type="number" min="0" step="0.5" value={invoiceEditRow!.hours} onChange={e => setInvoiceEditRow({ ...invoiceEditRow!, hours: e.target.value })} aria-label="Hours" className="w-16 px-1.5 py-1 border border-slate-200 rounded-lg text-center" /> : item?.quantity}
+                              </td>
+                              <td className="py-2 px-3 text-right font-mono">
+                                {editing ? <input type="number" min="0" step="0.5" value={invoiceEditRow!.rate} onChange={e => setInvoiceEditRow({ ...invoiceEditRow!, rate: e.target.value })} aria-label="Charges per hour" className="w-20 px-1.5 py-1 border border-slate-200 rounded-lg text-right" /> : Number(item?.unit_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-2 px-3 text-right font-bold font-mono text-slate-900">{Number(item?.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td className="py-2 px-3">
+                                <div className="flex justify-end gap-1">
+                                  {editing ? (
+                                    <>
+                                      <button type="button" title="Save this line" onClick={() => { setInvoiceOverrides(o => ({ ...o, [job.id]: { hours: Number(invoiceEditRow!.hours) || 0, rate: Number(invoiceEditRow!.rate) || 0 } })); setInvoiceEditRow(null) }} className="p-1.5 rounded-lg bg-teal-600 text-white cursor-pointer"><Check size={12} /></button>
+                                      <button type="button" title="Cancel" onClick={() => setInvoiceEditRow(null)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 cursor-pointer"><X size={12} /></button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button type="button" title="View job" aria-label="View job" onClick={() => setInvoiceViewJob(job)} className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-teal-700 cursor-pointer"><Eye size={12} /></button>
+                                      <button type="button" title="Edit hours / rate on this invoice" aria-label="Edit line" onClick={() => setInvoiceEditRow({ id: job.id, hours: String(item?.quantity ?? ''), rate: String(item?.unit_price ?? '') })} className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-indigo-700 cursor-pointer"><Edit2 size={12} /></button>
+                                      <button type="button" title="Leave this job out of the invoice (the job itself stays)" aria-label="Remove line" onClick={() => setInvoiceExcluded(s => new Set([...s, job.id]))} className="p-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 cursor-pointer"><Trash2 size={12} /></button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                        <tr className="bg-slate-50 font-bold"><td colSpan={5} className="py-2 px-3">Subtotal</td><td className="py-2 px-3 text-right font-mono">{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td /></tr>
+                        <tr className="bg-slate-50"><td colSpan={5} className="py-2 px-3">VAT @ {invoiceCalculations.vatRate}%{invoiceCalculations.discountAmount > 0 ? ` (after AED ${invoiceCalculations.discountAmount.toLocaleString()} discount)` : ''}</td><td className="py-2 px-3 text-right font-mono">{vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td /></tr>
+                        <tr className="bg-teal-50 font-black"><td colSpan={5} className="py-2 px-3">Total</td><td className="py-2 px-3 text-right font-mono">{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td /></tr>
+                      </tbody>
+                    </table>
+                  ) : (
+                  <table className="w-full text-left border-collapse text-[12px]">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-[10.5px] font-bold text-slate-500 uppercase">
+                      <tr>
+                        <th className="py-2.5 px-3.5">#</th>
+                        <th className="py-2.5 px-3">Description</th>
+                        <th className="py-2.5 px-3 text-center">Duty Hours</th>
+                        <th className="py-2.5 px-3 text-right">Price per Hour</th>
+                        <th className="py-2.5 px-3.5 text-right">Charges (AED)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E4E8EC]">
+                      {lineItems.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/70">
+                          <td className="py-2.5 px-3.5 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                          <td className="py-2.5 px-3 font-medium text-slate-800 max-w-[420px]">
+                            {item.description}
+                          </td>
+                          <td className="py-2.5 px-3 text-center text-slate-600 font-semibold">{item.quantity}</td>
+                          <td className="py-2.5 px-3 text-right text-slate-600 font-mono">
+                            AED {Number(item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-2.5 px-3.5 text-right font-bold text-slate-900 font-mono">
+                            AED {Number(item.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  )}
+                </div>
+                {/* R-BK-06: extra (Ad-hoc) jobs of the period — not in the monthly bill unless chosen */}
+                {invoiceClient && (() => {
+                  const extras = dailyJobs.filter(j => isAdHocJob(j) && j.date && (!invoiceStartDate || j.date >= invoiceStartDate) && (!invoiceEndDate || j.date <= invoiceEndDate) && normalizeKey(cleanClientNameFromAddress(j.address || '')) === normalizeKey(invoiceClient.name))
+                  if (!extras.length) return null
+                  return (
+                    <label className="px-4 py-2 border-t border-[#E4E8EC] text-[11.5px] text-indigo-800 flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={invoiceIncludeAdHoc} onChange={e => setInvoiceIncludeAdHoc(e.target.checked)} className="accent-indigo-600" />
+                      Include {extras.length} Ad-hoc job{extras.length === 1 ? '' : 's'} (AED {extras.reduce((s, j) => s + (Number(j.charges) || 0), 0)}) — normally billed on their own
+                    </label>
+                  )
+                })()}
+                {invoiceExcluded.size > 0 && (
+                  <div className="px-4 py-2 border-t border-[#E4E8EC] text-[11.5px] text-slate-600 flex items-center justify-between">
+                    <span>{invoiceExcluded.size} job{invoiceExcluded.size === 1 ? '' : 's'} left out of this invoice</span>
+                    <button type="button" onClick={() => setInvoiceExcluded(new Set())} className="font-bold text-teal-700 hover:underline cursor-pointer">Put back</button>
+                  </div>
+                )}
+              </div>
+
+              {/* R-FIN-13: one job's full details */}
+              <Modal open={!!invoiceViewJob} onClose={() => setInvoiceViewJob(null)} title="Job details" size="md">
+                {invoiceViewJob && (
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px]">
+                    {([
+                      ['Date', formatDate(invoiceViewJob.date)], ['Cleaner', invoiceViewJob.staff_name], ['Time', `${invoiceViewJob.start_time || '—'} – ${invoiceViewJob.end_time || '—'}`],
+                      ['Duty hours', `${invoiceViewJob.duty_hours ?? 0} h`], ['OT', `${calcJobOTHours(invoiceViewJob)} h`], ['Address', invoiceViewJob.address], ['Area', invoiceViewJob.area],
+                      ['Material', invoiceViewJob.material], ['Charges', `AED ${invoiceViewJob.charges ?? 0}`], ['Charges / hr', invoiceViewJob.charges_per_hour ? `AED ${invoiceViewJob.charges_per_hour}` : '—'],
+                      ['Received', `AED ${invoiceViewJob.received ?? 0}`], ['Mode', invoiceViewJob.payment_mode], ['Remarks', invoiceViewJob.remarks],
+                    ] as [string, unknown][]).map(([k, v]) => (
+                      <div key={k} className="contents"><dt className="text-slate-500 font-semibold">{k}</dt><dd className="text-slate-900 font-bold break-words">{String(v || '—')}</dd></div>
+                    ))}
+                  </dl>
+                )}
+              </Modal>
+
+              {/* Financial Totals & Bank Notes */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-slate-50 rounded-2xl border border-slate-200 p-3.5 text-[12px]">
+                  <p className="font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                    <ShieldCheck size={14} className="text-teal-600" />
+                    <span>Payment Terms & Notes</span>
+                  </p>
+                  <textarea
+                    rows={3}
+                    value={invoiceNotes}
+                    onChange={e => setInvoiceNotes(e.target.value)}
+                    className="w-full text-[12px] p-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 resize-none font-medium text-slate-600"
+                  />
+                  <p className="text-[10.5px] text-slate-400 mt-1">TRN: 100234567890003 · Commercial Bank of Dubai / FAB</p>
+                </div>
+
+                <div className="bg-gradient-to-br from-teal-50/60 to-emerald-50/60 rounded-2xl border border-teal-200 p-4 space-y-2">
+                  {invoiceCalculations.discountAmount > 0 && (
+                    <div className="flex justify-between text-[12.5px] text-red-600">
+                      <span>Discount:</span>
+                      <span className="font-bold">- AED {invoiceCalculations.discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-[12.5px] text-slate-600">
+                    <span>Subtotal:</span>
+                    <span className="font-bold text-slate-800">AED {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between text-[12.5px] text-slate-600">
+                    <span>UAE VAT ({invoiceCalculations.vatRate}%):</span>
+                    <span className="font-bold text-slate-800">AED {vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-teal-200">
+                    <span className="text-[14px] font-black text-slate-900">Total Due (AED):</span>
+                    <span className="text-[19px] font-black text-teal-800">AED {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons: Print / PDF, Save, WhatsApp, Close */}
+              <div className="flex items-center justify-between pt-3 border-t border-slate-200 flex-wrap gap-2.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowInvoiceModal(false)}
+                  className="px-4 text-[12px]"
+                >
+                  Close
+                </Button>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleShareWhatsAppInvoice}
+                    className="h-10 px-3.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-[12px] transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                    title="Share invoice summary on WhatsApp"
+                  >
+                    <MessageCircle size={14} className="text-emerald-600" />
+                    <span>WhatsApp</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveInvoiceToSystem}
+                    className="h-10 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-[12px] transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    title="Save to system invoices database"
+                  >
+                    <Save size={14} />
+                    <span>Save to Invoices</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePrintGeneratedInvoice}
+                    className="h-10 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-[12px] transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    title="Print or Download PDF"
+                  >
+                    <Printer size={14} />
+                    <span>Print / Download PDF</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
+      </Modal>
+    </>
+  )
+  if (invoiceOnly) return generateInvoiceModal
+
   return (
     <div className="space-y-6">
       {/* Notification banner for payment actions */}
@@ -1508,10 +2041,10 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
       {/* Unified Executive KPI Cards — R-CLI-17: the Daily Job Sheet card design (tags at the top) */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
         <KpiCard label="Monthly Clients" value={monthlySummaries.length} sub={`${totalVisits} shifts (${activeRange.label})`} icon={Users} labelColor="text-teal-700" iconSolid="bg-[#0d9488] shadow-teal-500/25" />
-        <KpiCard label="Active Contracts" value={activeContracts.length} sub={`${contracts.length} total`} icon={RotateCw} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" chip={pausedContracts.length ? `${pausedContracts.length} paused` : 'All on'} chipTone={pausedContracts.length ? 'plain' : 'up'} chipTop />
+        <KpiCard label="Active Contracts" value={activeContracts.length} sub={`${contracts.length} total · ${pausedContracts.length} paused`} icon={RotateCw} labelColor="text-emerald-700" iconSolid="bg-[#059669] shadow-emerald-500/25" />
         <KpiCard label="Payments Received" value={`AED ${(totalMonthlyReceived + totalPaymentsRecorded).toLocaleString()}`} sub={`${payments.length} payment${payments.length === 1 ? '' : 's'} recorded`} icon={CreditCard} labelColor="text-emerald-700" iconSolid="bg-[#047857] shadow-emerald-500/25" />
         <KpiCard label="Billed Charges" value={`AED ${totalMonthlyCharges.toLocaleString()}`} sub="From Daily Job Sheet" icon={DollarSign} labelColor="text-teal-700" iconSolid="bg-[#0f766e] shadow-teal-500/25" />
-        <KpiCard label="Pending Balance" value={`AED ${totalMonthlyBalanceDue.toLocaleString()}`} sub="Uncollected monthly dues" icon={Calendar} labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25" chip={totalMonthlyBalanceDue > 0 ? 'To follow up' : 'All clear'} chipTone={totalMonthlyBalanceDue > 0 ? 'warn' : 'up'} chipTop />
+        <KpiCard label="Pending Balance" value={`AED ${totalMonthlyBalanceDue.toLocaleString()}`} sub="Uncollected monthly dues" icon={Calendar} labelColor="text-amber-700" iconSolid="bg-[#d97706] shadow-amber-500/25" />
         <KpiCard label="Overtime (OT)" value={`${totalOTHours} hrs`} sub={`${totalDutyHours}h duty · ${monthlySummaries.filter(c => c.totalOTHours > 0).length} OT clients`} icon={Clock} labelColor="text-rose-700" iconSolid="bg-[#e11d48] shadow-rose-500/25" />
       </div>
 
@@ -3041,471 +3574,7 @@ export function MonthlyClients({ embedded = false }: { embedded?: boolean } = {}
         </form>
       </Modal>
 
-      {/* ═══════════════════════════════════════════════════════════════
-          GENERATE MONTHLY INVOICE MODAL (Simple & Detailed with Custom Date Range)
-         ═══════════════════════════════════════════════════════════════ */}
-      <Modal
-        open={showInvoiceModal}
-        onClose={() => setShowInvoiceModal(false)}
-        title={invoiceClient ? `Generate Invoice — ${invoiceClient.name}` : 'Generate Invoice'}
-        size="xl"
-      >
-        {invoiceClient && (() => {
-          const { shifts, totalHours, totalOT, subtotal, vatAmount, grandTotal, lineItems } = invoiceCalculations
-          const matchedContract = contractsByClientName.get(invoiceClient.name.toLowerCase().trim())
-
-          return (
-            <div className="space-y-5 text-slate-800">
-              {/* Success Notification Alert */}
-              {invoiceSuccessMsg && (
-                <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 px-4 py-3 rounded-2xl flex items-center justify-between shadow-xs animate-in fade-in duration-200">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
-                    <span className="text-[13px] font-bold">{invoiceSuccessMsg}</span>
-                  </div>
-                  <Link
-                    to="/invoices"
-                    className="text-[12px] font-bold text-emerald-700 hover:text-emerald-900 underline flex items-center gap-1"
-                  >
-                    Go to Invoices <ExternalLink size={12} />
-                  </Link>
-                </div>
-              )}
-
-              {/* Client & Invoice Mode Header Bar */}
-              <div className="bg-gradient-to-r from-teal-50 via-slate-50 to-white rounded-2xl p-4 border border-teal-100/80 flex items-center justify-between flex-wrap gap-3">
-                <div className="flex items-center gap-3">
-                  <Avatar name={invoiceClient.name} size="md" idx={0} />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-[15.5px] font-extrabold text-[#111827]">{invoiceClient.name}</h4>
-                      <span className="text-[10px] font-bold bg-teal-100 text-teal-800 border border-teal-200 px-2 py-0.5 rounded-full uppercase">
-                        Monthly Client
-                      </span>
-                      {matchedContract && (
-                        <span className="text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-full">
-                          Contract: AED {matchedContract.amount}/{matchedContract.frequency === 'weekly' ? 'wk' : matchedContract.frequency === 'biweekly' ? '2wk' : 'mo'}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[12px] text-slate-500 mt-0.5 flex items-center gap-1">
-                      <MapPin size={11} className="text-slate-400" />
-                      <span>{invoiceClient.rawAddress || invoiceClient.area || 'Dubai'}</span>
-                    </p>
-                  </div>
-                </div>
-
-                {/* Simple vs Detailed Invoice Selector */}
-                <div className="flex items-center gap-1.5 p-1 bg-white border border-[#E4E8EC] rounded-xl shadow-2xs">
-                  <button
-                    type="button"
-                    onClick={() => setInvoiceType('simple')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all cursor-pointer ${
-                      invoiceType === 'simple'
-                        ? 'bg-teal-600 text-white shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                    }`}
-                  >
-                    <FileText size={13} />
-                    <span>Simple Invoice</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setInvoiceType('detailed')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all cursor-pointer ${
-                      invoiceType === 'detailed'
-                        ? 'bg-teal-600 text-white shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                    }`}
-                  >
-                    <FileSpreadsheet size={13} />
-                    <span>Detailed Invoice</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Date Range Selection & Quick Presets */}
-              <div className="bg-white rounded-2xl border border-[#E4E8EC] p-4 shadow-2xs space-y-3">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <label className="text-[12px] font-bold text-slate-700 flex items-center gap-1.5">
-                    <Calendar size={14} className="text-teal-600" />
-                    <span>Custom Date Range for Invoice</span>
-                  </label>
-                  {/* Presets */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {[
-                      { key: 'this_month', label: 'This Month' },
-                      { key: 'last_month', label: 'Last Month' },
-                      { key: '28days', label: 'Last 28 Days' },
-                      { key: 'custom', label: 'Custom Range' },
-                    ].map(p => (
-                      <button
-                        key={p.key}
-                        type="button"
-                        onClick={() => handleSetInvoicePreset(p.key as any)}
-                        className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
-                          invoicePreset === p.key
-                            ? 'bg-teal-50 text-teal-800 border-teal-300'
-                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Start Date</label>
-                    <input
-                      type="date"
-                      value={invoiceStartDate}
-                      onChange={e => {
-                        setInvoiceStartDate(e.target.value)
-                        setInvoicePreset('custom')
-                      }}
-                      className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium text-slate-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">End Date</label>
-                    <input
-                      type="date"
-                      value={invoiceEndDate}
-                      onChange={e => {
-                        setInvoiceEndDate(e.target.value)
-                        setInvoicePreset('custom')
-                      }}
-                      className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium text-slate-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Issue Date</label>
-                    <input
-                      type="date"
-                      value={invoiceIssueDate}
-                      onChange={e => setInvoiceIssueDate(e.target.value)}
-                      className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium text-slate-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-500 mb-1">Due Date</label>
-                    <input
-                      type="date"
-                      value={invoiceDueDate}
-                      onChange={e => setInvoiceDueDate(e.target.value)}
-                      className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-medium text-slate-800"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Pricing, Invoice #, and Tax Settings */}
-              <div className="bg-white rounded-2xl border border-[#E4E8EC] p-4 shadow-2xs space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Invoice Number</label>
-                    <input
-                      type="text"
-                      value={invoiceNumber}
-                      onChange={e => setInvoiceNumber(e.target.value)}
-                      className="w-full text-[12.5px] font-mono px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-bold text-teal-800"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Pricing Model</label>
-                    <select
-                      value={invoicePricingModel}
-                      onChange={e => setInvoicePricingModel(e.target.value as any)}
-                      className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 cursor-pointer font-medium text-slate-800"
-                    >
-                      <option value="shift_charges">Daily Sheet Recorded Charges</option>
-                      <option value="hourly_rate">Custom Hourly Rate (AED/hr)</option>
-                      {matchedContract && <option value="contract">Contract Rate (AED {matchedContract.amount})</option>}
-                      <option value="custom_total">Fixed / Custom Lump Sum Amount</option>
-                    </select>
-                  </div>
-
-                  {invoicePricingModel === 'hourly_rate' ? (
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Hourly Rate (AED)</label>
-                      <input
-                        type="number"
-                        min="1"
-                        step="0.5"
-                        value={invoiceHourlyRate}
-                        onChange={e => setInvoiceHourlyRate(Number(e.target.value))}
-                        className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-bold text-slate-800"
-                      />
-                    </div>
-                  ) : invoicePricingModel === 'custom_total' ? (
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 mb-1">Custom Total (AED)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={invoiceCustomAmount}
-                        onChange={e => setInvoiceCustomAmount(e.target.value)}
-                        placeholder="0.00"
-                        className="w-full text-[12.5px] px-3 py-2 bg-slate-50 border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 font-bold text-slate-800"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex items-center pt-5">
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={invoiceIncludeVat}
-                          onChange={e => setInvoiceIncludeVat(e.target.checked)}
-                          className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300"
-                        />
-                        <span className="text-[12px] font-bold text-slate-700">Include UAE VAT (5%)</span>
-                      </label>
-                    </div>
-                  )}
-                </div>
-
-                {invoicePricingModel !== 'hourly_rate' && invoicePricingModel !== 'custom_total' ? null : (
-                  <div className="pt-1">
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={invoiceIncludeVat}
-                        onChange={e => setInvoiceIncludeVat(e.target.checked)}
-                        className="w-4 h-4 rounded text-teal-600 focus:ring-teal-500 border-slate-300"
-                      />
-                      <span className="text-[12px] font-bold text-slate-700">Include UAE VAT (5%)</span>
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              {/* Shifts & Preview Summary Bar */}
-              <div className="flex items-center justify-between px-3 py-2 bg-slate-100/80 rounded-xl text-[12px] text-slate-600">
-                <span className="font-semibold">
-                  Found <strong className="text-teal-700 font-bold">{shifts.length} shifts</strong> between {formatDisplayDate(invoiceStartDate) || invoiceStartDate} and {formatDisplayDate(invoiceEndDate) || invoiceEndDate}
-                </span>
-                <span className="flex items-center gap-2 text-[11px]">
-                  <span>Duty: <strong className="text-slate-800">{totalHours}h</strong></span>
-                  {totalOT > 0 && <span className="text-amber-700 font-bold">({totalOT}h OT)</span>}
-                  <span className="bg-teal-100 text-teal-800 font-bold px-2 py-0.5 rounded-full capitalize">{invoiceType} Format</span>
-                </span>
-              </div>
-
-              {/* Live Invoice Preview Line Items Table */}
-              <div className="border border-[#E4E8EC] rounded-2xl overflow-hidden shadow-2xs">
-                <div className="bg-[#f8fafc] px-4 py-2.5 border-b border-[#E4E8EC] flex items-center justify-between">
-                  <h5 className="text-[12px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                    <FileText size={13} className="text-teal-600" />
-                    <span>Live Invoice Line Items Preview ({lineItems.length} {lineItems.length === 1 ? 'item' : 'items'})</span>
-                  </h5>
-                  <span className="text-[11px] text-slate-400 font-medium">What will appear on print / document</span>
-                </div>
-                <div className="max-h-72 overflow-y-auto">
-                  {invoiceType === 'detailed' && shifts.length > 0 ? (
-                    // R-FIN-13: Sr# · Date · Day · Hours · Charges/hr · Amount, with View / Edit / Delete per line
-                    <table className="w-full text-left border-collapse text-[12px]">
-                      <thead className="bg-slate-50 border-b border-slate-200 text-[10.5px] font-bold text-slate-500 uppercase">
-                        <tr>
-                          <th className="py-2 px-3 text-center">Sr#</th>
-                          <th className="py-2 px-3">Date</th>
-                          <th className="py-2 px-3">Day</th>
-                          <th className="py-2 px-3 text-center">Hours</th>
-                          <th className="py-2 px-3 text-right">Charges/hr.</th>
-                          <th className="py-2 px-3 text-right">Amount</th>
-                          <th className="py-2 px-3 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#E4E8EC]">
-                        {shifts.map((job, idx) => {
-                          const item = lineItems[idx]
-                          const day = /\(([^)]+)\)\s*$/.exec(item?.description || '')?.[1] || ''
-                          const date = (item?.description || '').replace(/\s*\([^)]+\)\s*$/, '')
-                          const editing = invoiceEditRow?.id === job.id
-                          return (
-                            <tr key={job.id} className="hover:bg-slate-50/70">
-                              <td className="py-2 px-3 text-center text-slate-500 font-mono text-[11px]">{idx + 1}</td>
-                              <td className="py-2 px-3 font-semibold text-slate-800">{date}</td>
-                              <td className="py-2 px-3 text-slate-600">{day}</td>
-                              <td className="py-2 px-3 text-center">
-                                {editing ? <input type="number" min="0" step="0.5" value={invoiceEditRow!.hours} onChange={e => setInvoiceEditRow({ ...invoiceEditRow!, hours: e.target.value })} aria-label="Hours" className="w-16 px-1.5 py-1 border border-slate-200 rounded-lg text-center" /> : item?.quantity}
-                              </td>
-                              <td className="py-2 px-3 text-right font-mono">
-                                {editing ? <input type="number" min="0" step="0.5" value={invoiceEditRow!.rate} onChange={e => setInvoiceEditRow({ ...invoiceEditRow!, rate: e.target.value })} aria-label="Charges per hour" className="w-20 px-1.5 py-1 border border-slate-200 rounded-lg text-right" /> : Number(item?.unit_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </td>
-                              <td className="py-2 px-3 text-right font-bold font-mono text-slate-900">{Number(item?.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                              <td className="py-2 px-3">
-                                <div className="flex justify-end gap-1">
-                                  {editing ? (
-                                    <>
-                                      <button type="button" title="Save this line" onClick={() => { setInvoiceOverrides(o => ({ ...o, [job.id]: { hours: Number(invoiceEditRow!.hours) || 0, rate: Number(invoiceEditRow!.rate) || 0 } })); setInvoiceEditRow(null) }} className="p-1.5 rounded-lg bg-teal-600 text-white cursor-pointer"><Check size={12} /></button>
-                                      <button type="button" title="Cancel" onClick={() => setInvoiceEditRow(null)} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 cursor-pointer"><X size={12} /></button>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <button type="button" title="View job" aria-label="View job" onClick={() => setInvoiceViewJob(job)} className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-teal-700 cursor-pointer"><Eye size={12} /></button>
-                                      <button type="button" title="Edit hours / rate on this invoice" aria-label="Edit line" onClick={() => setInvoiceEditRow({ id: job.id, hours: String(item?.quantity ?? ''), rate: String(item?.unit_price ?? '') })} className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-indigo-700 cursor-pointer"><Edit2 size={12} /></button>
-                                      <button type="button" title="Leave this job out of the invoice (the job itself stays)" aria-label="Remove line" onClick={() => setInvoiceExcluded(s => new Set([...s, job.id]))} className="p-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 cursor-pointer"><Trash2 size={12} /></button>
-                                    </>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                        <tr className="bg-slate-50 font-bold"><td colSpan={5} className="py-2 px-3">Subtotal</td><td className="py-2 px-3 text-right font-mono">{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td /></tr>
-                        <tr className="bg-slate-50"><td colSpan={5} className="py-2 px-3">VAT @ {invoiceIncludeVat ? '5' : '0'}%</td><td className="py-2 px-3 text-right font-mono">{vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td /></tr>
-                        <tr className="bg-teal-50 font-black"><td colSpan={5} className="py-2 px-3">Total</td><td className="py-2 px-3 text-right font-mono">{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td /></tr>
-                      </tbody>
-                    </table>
-                  ) : (
-                  <table className="w-full text-left border-collapse text-[12px]">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-[10.5px] font-bold text-slate-500 uppercase">
-                      <tr>
-                        <th className="py-2.5 px-3.5">#</th>
-                        <th className="py-2.5 px-3">Description</th>
-                        <th className="py-2.5 px-3 text-center">Qty / Hours</th>
-                        <th className="py-2.5 px-3 text-right">Unit Rate</th>
-                        <th className="py-2.5 px-3.5 text-right">Amount (AED)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#E4E8EC]">
-                      {lineItems.map((item, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/70">
-                          <td className="py-2.5 px-3.5 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
-                          <td className="py-2.5 px-3 font-medium text-slate-800 max-w-[420px]">
-                            {item.description}
-                          </td>
-                          <td className="py-2.5 px-3 text-center text-slate-600 font-semibold">{item.quantity}</td>
-                          <td className="py-2.5 px-3 text-right text-slate-600 font-mono">
-                            AED {Number(item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="py-2.5 px-3.5 text-right font-bold text-slate-900 font-mono">
-                            AED {Number(item.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  )}
-                </div>
-                {/* R-BK-06: extra (Ad-hoc) jobs of the period — not in the monthly bill unless chosen */}
-                {invoiceClient && (() => {
-                  const extras = dailyJobs.filter(j => isAdHocJob(j) && j.date && (!invoiceStartDate || j.date >= invoiceStartDate) && (!invoiceEndDate || j.date <= invoiceEndDate) && normalizeKey(cleanClientNameFromAddress(j.address || '')) === normalizeKey(invoiceClient.name))
-                  if (!extras.length) return null
-                  return (
-                    <label className="px-4 py-2 border-t border-[#E4E8EC] text-[11.5px] text-indigo-800 flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={invoiceIncludeAdHoc} onChange={e => setInvoiceIncludeAdHoc(e.target.checked)} className="accent-indigo-600" />
-                      Include {extras.length} Ad-hoc job{extras.length === 1 ? '' : 's'} (AED {extras.reduce((s, j) => s + (Number(j.charges) || 0), 0)}) — normally billed on their own
-                    </label>
-                  )
-                })()}
-                {invoiceExcluded.size > 0 && (
-                  <div className="px-4 py-2 border-t border-[#E4E8EC] text-[11.5px] text-slate-600 flex items-center justify-between">
-                    <span>{invoiceExcluded.size} job{invoiceExcluded.size === 1 ? '' : 's'} left out of this invoice</span>
-                    <button type="button" onClick={() => setInvoiceExcluded(new Set())} className="font-bold text-teal-700 hover:underline cursor-pointer">Put back</button>
-                  </div>
-                )}
-              </div>
-
-              {/* R-FIN-13: one job's full details */}
-              <Modal open={!!invoiceViewJob} onClose={() => setInvoiceViewJob(null)} title="Job details" size="md">
-                {invoiceViewJob && (
-                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px]">
-                    {([
-                      ['Date', formatDate(invoiceViewJob.date)], ['Cleaner', invoiceViewJob.staff_name], ['Time', `${invoiceViewJob.start_time || '—'} – ${invoiceViewJob.end_time || '—'}`],
-                      ['Duty hours', `${invoiceViewJob.duty_hours ?? 0} h`], ['OT', `${calcJobOTHours(invoiceViewJob)} h`], ['Address', invoiceViewJob.address], ['Area', invoiceViewJob.area],
-                      ['Material', invoiceViewJob.material], ['Charges', `AED ${invoiceViewJob.charges ?? 0}`], ['Charges / hr', invoiceViewJob.charges_per_hour ? `AED ${invoiceViewJob.charges_per_hour}` : '—'],
-                      ['Received', `AED ${invoiceViewJob.received ?? 0}`], ['Mode', invoiceViewJob.payment_mode], ['Remarks', invoiceViewJob.remarks],
-                    ] as [string, unknown][]).map(([k, v]) => (
-                      <div key={k} className="contents"><dt className="text-slate-500 font-semibold">{k}</dt><dd className="text-slate-900 font-bold break-words">{String(v || '—')}</dd></div>
-                    ))}
-                  </dl>
-                )}
-              </Modal>
-
-              {/* Financial Totals & Bank Notes */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="bg-slate-50 rounded-2xl border border-slate-200 p-3.5 text-[12px]">
-                  <p className="font-bold text-slate-700 mb-1 flex items-center gap-1.5">
-                    <ShieldCheck size={14} className="text-teal-600" />
-                    <span>Payment Terms & Notes</span>
-                  </p>
-                  <textarea
-                    rows={3}
-                    value={invoiceNotes}
-                    onChange={e => setInvoiceNotes(e.target.value)}
-                    className="w-full text-[12px] p-2 bg-white border border-[#E4E8EC] rounded-xl focus:outline-none focus:border-teal-500 resize-none font-medium text-slate-600"
-                  />
-                  <p className="text-[10.5px] text-slate-400 mt-1">TRN: 100234567890003 · Commercial Bank of Dubai / FAB</p>
-                </div>
-
-                <div className="bg-gradient-to-br from-teal-50/60 to-emerald-50/60 rounded-2xl border border-teal-200 p-4 space-y-2">
-                  <div className="flex justify-between text-[12.5px] text-slate-600">
-                    <span>Subtotal:</span>
-                    <span className="font-bold text-slate-800">AED {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="flex justify-between text-[12.5px] text-slate-600">
-                    <span>UAE VAT ({invoiceIncludeVat ? '5%' : '0%'}):</span>
-                    <span className="font-bold text-slate-800">AED {vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="flex justify-between items-center pt-2 border-t border-teal-200">
-                    <span className="text-[14px] font-black text-slate-900">Total Due (AED):</span>
-                    <span className="text-[19px] font-black text-teal-800">AED {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons: Print / PDF, Save, WhatsApp, Close */}
-              <div className="flex items-center justify-between pt-3 border-t border-slate-200 flex-wrap gap-2.5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowInvoiceModal(false)}
-                  className="px-4 text-[12px]"
-                >
-                  Close
-                </Button>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={handleShareWhatsAppInvoice}
-                    className="h-10 px-3.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-[12px] transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                    title="Share invoice summary on WhatsApp"
-                  >
-                    <MessageCircle size={14} className="text-emerald-600" />
-                    <span>WhatsApp</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSaveInvoiceToSystem}
-                    className="h-10 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-[12px] transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
-                    title="Save to system invoices database"
-                  >
-                    <Save size={14} />
-                    <span>Save to Invoices</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handlePrintGeneratedInvoice}
-                    className="h-10 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-[12px] transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
-                    title="Print or Download PDF"
-                  >
-                    <Printer size={14} />
-                    <span>Print / Download PDF</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )
-        })()}
-      </Modal>
+      {generateInvoiceModal}
     </div>
   )
 }

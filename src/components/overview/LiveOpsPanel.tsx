@@ -101,7 +101,7 @@ export function LiveOpsPanel() {
   return (
     <div className="bg-white rounded-[22px] border border-[#E4E8EC] shadow-[0_4px_20px_rgba(15,23,42,0.05)] overflow-hidden">
       {/* R-OPS-17: header in the CRM's forest green (same as the page headers); each role chip in its map colour */}
-      <div className="px-5 py-4 bg-[radial-gradient(120%_160%_at_0%_0%,#14532d_0%,#0F1F19_55%,#0b1712_100%)] text-white flex items-center justify-between gap-3 flex-wrap">
+      <div className="px-5 py-4 bg-[radial-gradient(120%_160%_at_0%_0%,#2f8f5e_0%,#1f6e49_55%,#185c3d_100%)] /* R-OPS-25: a lighter green */ text-white flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <span className="w-10 h-10 rounded-2xl bg-emerald-400/15 border border-emerald-300/25 flex items-center justify-center"><Radar size={20} className="text-emerald-300" /></span>
           <div>

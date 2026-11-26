@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { PageHero } from '@/components/layout/PageHero'
+import { MonthlyClients, type InvoiceOnlyClient } from '@/pages/MonthlyClients'
 import { KpiCard } from '@/components/ui/KpiCard'
 import { formatDate } from '@/lib/utils'
 import { useData } from '@/store/DataContext'
@@ -115,9 +116,9 @@ function printInvoice(invoice: Invoice) {
     <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
       <thead><tr style="border-bottom:2px solid #111827">
         <th style="text-align:left;padding:8px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280">Description</th>
-        <th style="text-align:right;padding:8px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280">Qty</th>
-        <th style="text-align:right;padding:8px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280">Unit Price</th>
-        <th style="text-align:right;padding:8px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280">Amount</th>
+        <th style="text-align:right;padding:8px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280">Duty Hours</th>
+        <th style="text-align:right;padding:8px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280">Price per Hour</th>
+        <th style="text-align:right;padding:8px 0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280">Charges</th>
       </tr></thead>
       <tbody>${lines}</tbody>
     </table>
@@ -149,6 +150,7 @@ export function Invoices() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [editingInv, setEditingInv] = useState<Invoice | null>(null) // UX-199
+  const [invoiceFor, setInvoiceFor] = useState<InvoiceOnlyClient | null>(null) // R-FIN-25
   const [selected, setSelected] = useState<Invoice | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [voidReason, setVoidReason] = useState('')
@@ -608,12 +610,11 @@ export function Invoices() {
       </Modal>
 
       {/* ── New Invoice Modal ── */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="New Invoice" size="xl">
-        <NewInvoiceForm
-          onClose={() => setShowModal(false)}
-          onAdd={(draft) => { addInvoice(draft); setShowModal(false) }}
-        />
+      {/* R-FIN-25: New Invoice = pick the client, then the standard Generate Invoice pop-up (same as Monthly Clients) */}
+      <Modal open={showModal} onClose={() => setShowModal(false)} title="New Invoice — choose the client" size="lg">
+        <InvoiceClientPicker onPick={c => { setShowModal(false); setInvoiceFor(c) }} />
       </Modal>
+      {invoiceFor && <MonthlyClients invoiceOnly={{ client: invoiceFor, onClose: () => setInvoiceFor(null) }} />}
 
       {/* UX-199: Edit Invoice — same form, filled in; the number, status and payments stay */}
       <Modal open={!!editingInv} onClose={() => setEditingInv(null)} title={editingInv ? `Edit Invoice ${editingInv.invoice_number}` : ''} size="xl">
@@ -677,6 +678,48 @@ function formatClientAddress(c: Client | any): string {
     parts.push(city)
   }
   return parts.filter(Boolean).join(', ') || bldg || area || city || 'Dubai, UAE'
+}
+
+/** R-FIN-25: the client for a new invoice — name, address and pending status; or a name typed by hand */
+function InvoiceClientPicker({ onPick }: { onPick: (c: InvoiceOnlyClient) => void }) {
+  const { clients, dailyJobs } = useData()
+  const [q, setQ] = useState('')
+  const pendingMap = useMemo(() => {
+    const receipts = loadPendingReceipts(), adjustments = loadClientAdjustments()
+    return new Map(clients.map(c => [c.id, calcClientPendingBalance(c, dailyJobs, receipts, adjustments)]))
+  }, [clients, dailyJobs])
+  const list = clients.filter(c => !isDummySeedClient(c) && c.full_name?.trim())
+    .filter(c => { const t = q.trim().toLowerCase(); return !t || c.full_name.toLowerCase().includes(t) || (c.phone || '').includes(t) || formatClientAddress(c).toLowerCase().includes(t) })
+    .sort((a, b) => a.full_name.localeCompare(b.full_name)).slice(0, 60)
+  return (
+    <div className="space-y-3">
+      <Input placeholder="Search client name, phone or address…" value={q} onChange={e => setQ(e.target.value)} autoFocus />
+      <div className="max-h-[420px] overflow-y-auto divide-y divide-slate-100 rounded-2xl border border-slate-200">
+        {list.map(c => {
+          const due = pendingMap.get(c.id) || 0
+          return (
+            <button key={c.id} type="button" onClick={() => onPick({ id: c.id, name: c.full_name, address: formatClientAddress(c), area: c.area })}
+              className="w-full text-left px-3.5 py-2.5 hover:bg-emerald-50/80 flex items-center gap-3 cursor-pointer">
+              <span className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0">{c.full_name.charAt(0).toUpperCase()}</span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[13px] font-bold text-slate-900 truncate">{c.full_name}</span>
+                <span className="block text-[11px] text-slate-500 truncate">{formatClientAddress(c) || 'Dubai, UAE'}{c.phone ? ` · ${c.phone}` : ''}</span>
+              </span>
+              {due > 0
+                ? <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap">Pending AED {Math.round(due).toLocaleString()}</span>
+                : <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">No dues</span>}
+            </button>
+          )
+        })}
+        {list.length === 0 && <p className="px-4 py-6 text-center text-[12.5px] text-slate-500">No client matches.</p>}
+      </div>
+      {q.trim() && (
+        <button type="button" onClick={() => onPick({ name: q.trim() })} className="w-full h-10 rounded-xl border border-dashed border-slate-300 text-[12.5px] font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">
+          Invoice "{q.trim()}" (not in the client list)
+        </button>
+      )}
+    </div>
+  )
 }
 
 type InvoicePatch = Pick<Invoice, 'client_id' | 'client_name' | 'client_address' | 'trn' | 'due_date' | 'subtotal' | 'vat_rate' | 'vat_amount' | 'total' | 'apply_vat' | 'discount_type' | 'discount_value' | 'discount_amount' | 'line_items' | 'notes'>
@@ -1100,17 +1143,17 @@ function NewInvoiceForm({ onClose, onAdd, initial, onSave }: { onClose: () => vo
         <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-[0.1em]">Line Items</p>
         <div className="grid grid-cols-12 gap-2 text-[11px] text-slate-500 font-medium px-1">
           <span className="col-span-6">Description</span>
-          <span className="col-span-2 text-right">Qty</span>
-          <span className="col-span-2 text-right">Unit Price</span>
-          <span className="col-span-2 text-right">Amount</span>
+          <span className="col-span-2 text-right">Duty Hours</span>
+          <span className="col-span-2 text-right">Price per Hour</span>
+          <span className="col-span-2 text-right">Charges</span>
         </div>
         {lines.map((l, i) => (
           <div key={i} className="grid grid-cols-12 gap-2 items-center">
             <div className="col-span-6"><Input aria-label={`Line ${i + 1} description`} placeholder="Service description" value={l.description} onChange={e => setLine(i, { description: e.target.value })} required={i === 0} /></div>
-            <div className="col-span-2"><Input aria-label={`Line ${i + 1} quantity`} type="number" value={l.quantity} min={0} step="any" onChange={e => setLine(i, { quantity: Number(e.target.value) })} /></div>
-            <div className="col-span-2"><Input aria-label={`Line ${i + 1} unit price`} type="number" value={l.unit_price} min={0} step="0.01" onChange={e => setLine(i, { unit_price: Number(e.target.value) })} /></div>
+            <div className="col-span-2"><Input aria-label={`Line ${i + 1} duty hours`} type="number" value={l.quantity} min={0} step="any" onChange={e => setLine(i, { quantity: Number(e.target.value) })} /></div>
+            <div className="col-span-2"><Input aria-label={`Line ${i + 1} price per hour`} type="number" value={l.unit_price} min={0} step="0.01" onChange={e => setLine(i, { unit_price: Number(e.target.value) })} /></div>
             <div className="col-span-2 flex items-center gap-1">
-              <Input aria-label={`Line ${i + 1} amount`} type="number" value={((Number(l.quantity) || 0) * (Number(l.unit_price) || 0)).toFixed(2)} readOnly />
+              <Input aria-label={`Line ${i + 1} charges`} type="number" value={((Number(l.quantity) || 0) * (Number(l.unit_price) || 0)).toFixed(2)} readOnly />
               {lines.length > 1 && (
                 <button type="button" onClick={() => setLines(ls => ls.filter((_, k) => k !== i))} aria-label={`Remove line ${i + 1}`} className="p-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer shrink-0"><X size={13} /></button>
               )}
@@ -1443,9 +1486,9 @@ function InvoiceView({ invoice, onMarkPaid, onSend, onPrint, onDelete, onRecordP
           <thead>
             <tr className="border-b-2 border-[#111827]">
               <th className="text-left py-2 text-[10.5px] font-bold text-slate-500 uppercase tracking-[0.07em]">Description</th>
-              <th className="text-right py-2 text-[10.5px] font-bold text-slate-500 uppercase tracking-[0.07em]">Qty</th>
-              <th className="text-right py-2 text-[10.5px] font-bold text-slate-500 uppercase tracking-[0.07em]">Unit Price</th>
-              <th className="text-right py-2 text-[10.5px] font-bold text-slate-500 uppercase tracking-[0.07em]">Amount</th>
+              <th className="text-right py-2 text-[10.5px] font-bold text-slate-500 uppercase tracking-[0.07em]">Duty Hours</th>
+              <th className="text-right py-2 text-[10.5px] font-bold text-slate-500 uppercase tracking-[0.07em]">Price per Hour</th>
+              <th className="text-right py-2 text-[10.5px] font-bold text-slate-500 uppercase tracking-[0.07em]">Charges</th>
               <th className="text-right py-2 text-[10.5px] font-bold text-slate-500 uppercase tracking-[0.07em] w-[96px]">Actions</th>
             </tr>
           </thead>

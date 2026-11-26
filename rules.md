@@ -853,6 +853,13 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
 - **Code:** `components/ui/KpiCard.tsx → chipTop`; `Clients.tsx → renderCard, Bi-Weekly cards`; `MonthlyClients.tsx`. Test: `tests/unit/batch-1126e.test.ts`.
 - **Status:** Active · Since: 2026-11-26
 
+### R-CLI-18 — Monthly and Bi-Weekly cards without tags
+- **Rule:** *"Monthly aur Biweekly client cards se 'All On', 'All Clear', aur 'To Follow Up' jaise tags hata dein … normal Clients screen ke cards par tags pehle ki tarah barqaraar rakhein."* (2026-11-26)
+  - Monthly and Bi-Weekly cards have no tag (the paused / off count moved into the grey line); the Clients tab keeps its tags (R-CLI-17).
+- **Code:** `MonthlyClients.tsx`; `Clients.tsx`. Test: `tests/unit/batch-1126f.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
+
 
 
 ### R-BK-06 — Ad-hoc jobs for monthly / bi-weekly clients
@@ -1440,6 +1447,31 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - Active Outstanding Dues: the client's name links to /clients/<id> (the job's client, or the client the job matches; invoices by their client; manual items by the same name). A due without a client record shows the name as text (1 of 9 on 26 Nov).
 - **Code:** `PaymentsHub.tsx`; `PendingPayments.tsx → clientId`. Test: `tests/unit/batch-1126c.test.ts`.
 - **Status:** Active · Since: 2026-11-26
+
+### R-FIN-24 — Expenses: five cards
+- **Rule:** *"Expenses screen par 'Top Category' ka card hata kar sirf paanch cards dikhayein."* (2026-11-26) — Total Expenses, Job Sheet Ops, Office & Admin, Daily Average, Net Profit, 5 a row.
+- **Code:** `Expenses.tsx`. Test: `tests/unit/batch-1126f.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
+### R-FIN-25 — One invoice pop-up: Generate Invoice, with Discount and VAT Tax Status
+- **Rule:** *"Generate Invoice pop-up ko standard banayein, jo ke Monthly Client tab se khulta hai. Yahi pop-up ab Invoices screen par 'New Invoice' click karne par bhi appear hona chahiye. Bas is mein 'Discount' aur 'VAT Tax Status' ke widgets shamil kar dein."* (2026-11-26)
+  - The Monthly Clients Generate Invoice pop-up (simple / detailed, date range, pricing model, job lines with edit / leave out, extra jobs, print, WhatsApp, save) is the standard one. New widgets: **VAT / Tax Status** (Standard 5 % · Exempt 0 % · Custom %) and **Discount** (% or AED). Totals: Charges → − Discount → Subtotal → + VAT → Total Due; printed, shared and saved the same way (discount and VAT rate on the invoice).
+  - **Invoices → New Invoice**: choose the client (search, address, Pending / No dues) or type a name, then the same pop-up opens for that client (their job-sheet visits of the period). Edit Invoice keeps its own form (UX-199).
+  - Checked: Villa 13B St 57, this month — 1,537.50 − 10 % (153.75) = 1,383.75 + VAT 69.19 = 1,452.94.
+- **Code:** `MonthlyClients.tsx → invoiceTaxMode, invoiceDiscount*, invoiceCalculations, generateInvoiceModal, invoiceOnly`; `Invoices.tsx → InvoiceClientPicker`. Test: `tests/unit/batch-1126f.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
+### R-FIN-26 — Invoice columns: Duty Hours, Price per Hour, Charges
+- **Rule:** *"Invoices ki tafseel mein jahan 'Quantity' likha hai, use badal kar 'Duty Hours' karein. 'Unit Price' ki jagah 'Price per Hour' aur 'Amount' ki jagah 'Charges'."* (2026-11-26) — on the invoice view, the printed invoice, the Edit form and the Generate Invoice pop-up / print.
+- **Code:** `Invoices.tsx`; `MonthlyClients.tsx`. Test: `tests/unit/batch-1126f.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
+### R-FIN-27 — Monthly Invoices: cards first, 10 entries then View all
+- **Rule:** *"Monthly Invoices tab mein cards ko upar rakhein aur 'November 26 Card Table Compact' wale widget ko niche shift karein. Invoices widget mein by default sirf 10 entries show karein aur 'View All' ya 'Expand' ka option dein."* (2026-11-26)
+  - The 4 cards (Daily Job Sheet design) come first, the month / Card · Table · Compact bar under them; the overview table and the views show 10 statements, then **View all n statements** / Show the first 10.
+- **Code:** `MonthlyInvoices.tsx`. Test: `tests/unit/batch-1126f.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
 
 
 
@@ -2085,6 +2117,19 @@ Areas: `SCHED` Monthly schedules · `ATT` Attendance · `OT` Overtime · `SYNC` 
   - **R-OPS-24 (owner, same day):** *"Fluent Form, WhatsApp Clicks, Low Stock Alerts, aur Completion Rate ke cards by default hide hone chahiye."* These four start hidden (8 of 12 shown) until the person ticks them; Reset to default returns to these 8.
 - **Code:** `components/overview/CardsCustomizer.tsx → useCardPrefs, CardsCustomizer`; `Overview.tsx → OV_CARDS, cardNodes`. Test: `tests/unit/batch-1125h.test.ts`.
 - **Status:** Active · Since: 2026-11-25
+
+### R-OPS-25 — Live map: lighter header, UAE only, pins scale with the zoom
+- **Rule:** *"Live Map ke header ka color thoda halka rakhein … map ki boundaries ko restrict karein taake yeh sirf UAE tak hi zoom out ho sake … cleaners ke points screen ke mutabiq chote ya bade hone chahiye."* (2026-11-26)
+  - Header: a lighter green (#2f8f5e → #185c3d). The map cannot be dragged or zoomed out past the UAE (bounds 22.4–26.4 N, 51.0–56.8 E, min zoom 7). Pins and their names: full size at zoom 14+, 85 % at 12–13, 72 % at 10–11, 60 % below.
+- **Code:** `LiveOpsMap.tsx`; `LiveOpsPanel.tsx`. Test: `tests/unit/batch-1126f.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
+### R-OPS-26 — Overview: data widgets start folded
+- **Rule:** *"Overview page par maujood mukhtalif clients ke data widgets ko by default hide karne ki sahulat dein taake scrolling kam ho aur zaroorat padne par hi inhe expand kiya ja sake."* (2026-11-26)
+  - Reports, Live Activity, Crew Availability · Today's Coverage, Revenue vs Target · Business Health and Today's Dispatch start folded to one line with **Show**; the cards and the Live Map stay open. A person's Show / Hide is kept on that computer.
+- **Code:** `components/overview/Foldable.tsx → useFolded(id, defaultFolded), FoldSection`; `Overview.tsx`; `ReportsPanel.tsx`. Test: `tests/unit/batch-1126f.test.ts`.
+- **Status:** Active · Since: 2026-11-26
+
 
 
 ### R-APP-01 — Safaeewala Duties: the Android test app
